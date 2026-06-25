@@ -16,13 +16,11 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
@@ -59,7 +57,7 @@ import java.util.List;
  *
  * <p>An accelerated operation progresses through several phases:</p>
  * <pre>
- * 1. Scope Preparation:  prepareScope() -> creates ArgumentMap, prepares inputs
+ * 1. Scope Preparation:  prepareScope() -> creates the argument map and prepares inputs
  * 2. Compilation:        load() -> compiles or retrieves cached kernel/native code
  * 3. Argument Setup:     getProcessDetails() -> prepares arguments for execution
  * 4. Execution:          operator.accept() -> runs kernel/native code
@@ -74,26 +72,19 @@ import java.util.List;
  * // When scope is prepared:
  * prepareScope() {
  *     // Creates MemoryDataArgumentMap
- *     argumentMap = MemoryDataArgumentMap.create(context, metadata, isKernel());
- *
- *     // Maps operation inputs to kernel arguments
- *     prepareArguments(argumentMap);
+ *     argumentMap = MemoryDataArgumentMap.create();
  * }
  * }</pre>
  *
- * <h2>Kernel vs Non-Kernel Operations</h2>
+ * <h2>Kernel vs Native Execution</h2>
  *
- * <p>Operations can be either kernel-based (executed on GPU/accelerator) or non-kernel (JNI/native):</p>
+ * <p>Whether an operation is dispatched as a GPU/OpenCL/Metal kernel or as JNI/native code is
+ * determined by the {@link ComputeContext} the operation was created within, not by the operation
+ * itself:</p>
  * <pre>{@code
- * // Kernel operation (GPU)
- * AcceleratedOperation kernelOp = new MyKernelOperation(context, true);
- * kernelOp.prepareScope();  // Creates argumentMap
- * kernelOp.load();          // Compiles OpenCL/Metal kernel
- *
- * // Non-kernel operation (JNI)
- * AcceleratedOperation nativeOp = new MyNativeOperation(context, false);
- * nativeOp.prepareScope();  // Simpler argument handling
- * nativeOp.load();          // Compiles C code via JNI
+ * AcceleratedOperation op = new MyOperation(context);
+ * op.prepareScope();  // Creates argumentMap
+ * op.load();          // Compiles via the context (OpenCL/Metal kernel, or C/JNI)
  * }</pre>
  *
  * <h2>Instruction Set Management</h2>
@@ -189,12 +180,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/** Timing metric for wrapped evaluation. */
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
-	/** Indicates whether this operation executes as a kernel (GPU/OpenCL/Metal) or JNI native code. */
-	private final boolean kernel;
-
-	/** Enables or disables automatic argument mapping via {@link MemoryDataArgumentMap}. */
-	private boolean argumentMapping;
-
 	/** The {@link ComputeContext} this operation executes within (OpenCL, Metal, JNI, etc.). */
 	private ComputeContext<MemoryData> context;
 
@@ -214,13 +199,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Creates a new accelerated operation within the specified compute context.
 	 *
 	 * @param context The {@link ComputeContext} for compilation and execution (OpenCL, Metal, JNI, etc.)
-	 * @param kernel  {@code true} if this operation executes as a GPU/OpenCL/Metal kernel,
-	 *                {@code false} for JNI native code execution
 	 */
-	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel) {
-		setArgumentMapping(true);
+	protected AcceleratedOperation(ComputeContext<MemoryData> context) {
 		this.context = context;
-		this.kernel = kernel;
 	}
 
 	/**
@@ -254,15 +235,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return The execution key for this operation
 	 */
 	public abstract <K extends ExecutionKey> K getExecutionKey();
-
-	/**
-	 * Enables or disables automatic argument mapping via {@link MemoryDataArgumentMap}.
-	 *
-	 * @param enabled true to enable argument mapping, false to disable
-	 */
-	protected void setArgumentMapping(boolean enabled) {
-		this.argumentMapping = enabled;
-	}
 
 	/**
 	 * Returns the argument list for this operation.
@@ -302,7 +274,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Prepares the scope for compilation by creating argument mappings and input managers.
 	 *
 	 * <p>This method initializes the {@link MemoryDataArgumentMap} if argument mapping is enabled,
-	 * and delegates to {@link #prepareScope(ScopeInputManager)} for scope-specific setup.</p>
+	 * and delegates to {@link #prepareScope(ArgumentProvider)} for scope-specific setup.</p>
 	 *
 	 * @throws UnsupportedOperationException if prepareScope has already been called
 	 */
@@ -313,21 +285,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		resetArguments();
 
-		if (argumentMapping) {
-			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isKernel());
-			prepareArguments(argumentMap);
-		}
+		// Provide an aggregate-buffer factory so that small input arguments can be folded into
+		// a single kernel argument (keeping the kernel's argument count under the compute
+		// context's limit). Eligibility is decided per argument by size inside the map.
+		argumentMap = MemoryDataArgumentMap.create(i -> createAggregatedInput(i, i));
 
-		prepareScope(argumentMap == null ?
-				DefaultScopeInputManager.getInstance(getComputeContext().getLanguage()) : argumentMap.getScopeInputManager());
+		prepareScope(argumentMap);
 	}
 
 	/**
 	 * Prepares the scope with the specified input manager.
 	 *
-	 * @param manager The {@link ScopeInputManager} for handling input registration
+	 * @param manager The {@link ArgumentProvider} for handling input registration
 	 */
-	protected void prepareScope(ScopeInputManager manager) {
+	protected void prepareScope(ArgumentProvider manager) {
 		prepareScope(manager, null);
 	}
 
@@ -352,18 +323,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		} catch (Exception e) {
 			throw new OperatorPoolExhaustedException(e);
 		}
-	}
-
-	/**
-	 * Prepares arguments for this operation by adding them to the argument map.
-	 *
-	 * <p>Delegates to {@link ScopeLifecycle#prepareArguments} for all inputs.</p>
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		if (getInputs() != null) ScopeLifecycle.prepareArguments(getInputs().stream(), map);
 	}
 
 	/**
@@ -461,7 +420,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		if (detailsFactory != null) return;
 
 		detailsFactory = new ProcessDetailsFactory<>(
-				isKernel(), isFixedCount(), getCount(),
+				isFixedCount(), getCount(),
 				getArgumentVariables(), getOutputArgumentIndex(),
 				this::createMemoryReplacementManager,
 				getComputeContext()::runLater);
@@ -538,6 +497,36 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * {@link AcceleratedProcessDetails#getSemaphore() completion semaphore} is this
 	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.</p>
 	 *
+	 * <p><strong>Execution model.</strong> Two independent host-mediated memory mechanisms may wrap
+	 * the kernel, and they unwind in reverse order of how they are set up:</p>
+	 * <ul>
+	 *   <li><strong>Cross-provider replacement</strong> (active when {@code !process.isEmpty()};
+	 *   managed by {@link org.almostrealism.hardware.mem.MemoryReplacementManager}). Arguments not
+	 *   already on the kernel's provider are reserved into a provider-owned temp:
+	 *   {@code process.getPrepare()} copies them in, {@code process.getPostprocess()} copies the
+	 *   results back. That copy-back crosses providers, so it must run only after the kernel has
+	 *   actually completed — which forces a per-operation completion wait (and, on Metal, a per-op
+	 *   command-buffer commit). Operations that need no replacement do NOT wait here: their dispatch
+	 *   accumulates into the provider's open command buffer and is committed once at the genuine
+	 *   boundary (the {@code OperationList} runner's trailing wait, or a top-level
+	 *   {@code run()}/{@code evaluate()}) — this is where Metal command-buffer batching happens, so
+	 *   only the replaced op pays the per-op commit.</li>
+	 *   <li><strong>Compile-time argument aggregation</strong> (active when the argument map has
+	 *   replacements; managed by {@link MemoryDataArgumentMap}). Small inputs are folded into one
+	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
+	 *   copied back afterward follows the side-effect policy: {@code output == null} copies every
+	 *   slice back; {@code output != null} (default) copies none (the caller's explicit output is
+	 *   taken to be the only result of interest); {@code output != null} with
+	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
+	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not
+	 *   overwritten by the stale read copy of {@code x}).</li>
+	 * </ul>
+	 *
+	 * <p>When both apply, the unwind order is correctness-critical: the replacement's
+	 * {@code postprocess} (temp&rarr;aggregate) must run BEFORE aggregation's de-aggregation
+	 * (aggregate&rarr;originals), otherwise the de-aggregation reads a stale aggregate and the
+	 * result reads as zero.</p>
+	 *
 	 * @param output    The destination memory bank for operation results, or null
 	 * @param args      The input arguments for the operation
 	 * @param dependsOn The prior operation's completion {@link Semaphore} to chain on, or null
@@ -559,30 +548,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// Prepare the operator
 			Execution operator = setupOperator(process);
 
-			// "processing" means this operation needs cross-provider memory replacement: its arguments
-			// are copied into a shared memory reservation on the kernel's provider (prepare, below) and
-			// the result is copied back out afterward (postprocess).
-			//
-			// Aggregation is the signal that this operation CANNOT be batched into the provider's
-			// shared command buffer. The de-aggregation copies between memory in DIFFERENT
-			// MemoryProviders — the aggregated buffer is provider-owned (e.g. a Metal command buffer's
-			// memory) while the originals usually are not — so it must run only after this kernel has
-			// actually completed. That forces a per-operation completion wait below (and, on Metal, a
-			// per-operation command-buffer commit). This per-op commit is correct and intended; it is
-			// also why a Metal command buffer that carries an aggregated op is not shared with others.
-			//
-			// The inverse is the case that matters for performance: when "processing" is false there
-			// is NO per-op wait here, so the dispatch simply accumulates into the provider's open
-			// command buffer and is committed ONCE at the genuine boundary (the OperationList runner's
-			// trailing wait, or a top-level run()/evaluate()). That is where Metal command-buffer
-			// batching happens. Aggregation rarely occurs for performance-critical work because those
-			// buffers exceed the off-heap threshold (AR_HARDWARE_OFF_HEAP_SIZE); setting it to 0 keeps
-			// every reservation provider-owned and avoids aggregation entirely.
-			//
-			// IMPORTANT: do NOT add a per-op wait for non-aggregated operations, and do NOT treat the
-			// mere presence of an aggregated operation as a reason to stop batching the others — only
-			// the aggregated operation itself pays the per-op commit.
-			boolean processing = isPreprocessingRequired(process);
+			// Two host-mediated memory mechanisms may wrap the kernel (see method javadoc):
+			// compile-time argument aggregation (aggregating) and cross-provider replacement
+			// (processing). They are set up here and unwound in reverse order after the kernel runs.
+			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
+			boolean aggregateCopyOut = aggregating
+					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
+
+			if (aggregating) {
+				argumentMap.getPrepareData().get().run();
+			}
+
+			boolean processing = !process.isEmpty();
 
 			// Preprocessing
 			if (processing) {
@@ -603,19 +580,28 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// unchanged.
 			process.setSemaphore(nextSemaphore);
 
-			// Postprocessing. This per-op wait is required, NOT batching being switched off
-			// arbitrarily: the de-aggregation below crosses MemoryProviders and must run after the
-			// kernel completes (see the "processing" explanation above). It only applies to
-			// aggregated operations; non-aggregated ones never reach here and stay batched.
-			if (processing) {
+			// Postprocessing runs only for ops that need it (cross-provider replacement and/or
+			// aggregation copy-out); plain ops stay batched. The per-op wait ensures the kernel has
+			// completed before the host-mediated copy-backs read its results.
+			if (processing || aggregateCopyOut) {
 				if (nextSemaphore != null) {
-					// TODO  This should actually result in a new Semaphore
-					// TODO  that performs the post processing whenever the
-					// TODO  original semaphore is finished
+					// TODO  result in a new Semaphore that performs the postprocessing when the
+					// TODO  original semaphore finishes, rather than blocking the host here
 					nextSemaphore.waitFor();
 				}
 
-				process.getPostprocess().get().run();
+				// Reverse-order unwind (see javadoc): the replacement copy-back (temp->aggregate) MUST
+				// precede aggregation's de-aggregation (aggregate->originals), or the de-aggregation
+				// reads a stale aggregate and the result reads as zero.
+				if (processing) {
+					process.getPostprocess().get().run();
+				}
+
+				if (aggregateCopyOut) {
+					(output == null ?
+							argumentMap.getPostprocessData() :
+							argumentMap.getPostprocessData((MemoryData) output)).get().run();
+				}
 			}
 		});
 
@@ -654,23 +640,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			throw new HardwareException("Could not setup operator", e);
 		}
 	}
-
-	/**
-	 * Determines whether preprocessing (cross-provider memory replacement) is required before kernel execution.
-	 *
-	 * @param process The process details to check
-	 * @return true if preprocessing is required, false otherwise
-	 */
-	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {
-		return !process.isEmpty();
-	}
-
-	/**
-	 * Returns true if this operation executes as a GPU/OpenCL/Metal kernel.
-	 *
-	 * @return true if kernel-based, false if JNI native
-	 */
-	public boolean isKernel() { return kernel; }
 
 	/**
 	 * Destroys this operation and releases associated resources.

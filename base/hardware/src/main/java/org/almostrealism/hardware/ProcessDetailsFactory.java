@@ -241,8 +241,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public static boolean enableKernelSizeWarnings =
 			SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
-	/** True if this factory produces kernel (parallel) operations; false for scalar operations. */
-	private boolean kernel;
 	/** True if the count is fixed at construction time and cannot be inferred from arguments. */
 	private boolean fixedCount;
 	/** Declared number of parallel work items (kernel size) for fixed-count operations. */
@@ -282,7 +280,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	/**
 	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances.
 	 *
-	 * @param kernel True if this is a kernel (parallel) operation; false for scalar
 	 * @param fixedCount True if the kernel size is fixed at construction time
 	 * @param count Declared number of parallel work items (used when fixedCount is true)
 	 * @param arguments Ordered list of array variables representing kernel arguments
@@ -290,7 +287,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * @param replacements Supplier of the memory replacement manager
 	 * @param executor Executor for asynchronous kernel dispatch
 	 */
-	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
+	public ProcessDetailsFactory(boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
 								 int outputArgIndex,
 								 Supplier<MemoryReplacementManager> replacements,
@@ -299,7 +296,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			throw new IllegalArgumentException();
 		}
 
-		this.kernel = kernel;
 		this.fixedCount = fixedCount;
 		this.count = count;
 
@@ -317,7 +313,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.executor = executor;
 	}
 
-	public boolean isKernel() { return kernel; }
 	@Override
 	public boolean isFixedCount() { return fixedCount; }
 	@Override
@@ -349,9 +344,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
 
-		if (!isKernel()) {
-			kernelSize = 1;
-		} else if (isFixedCount()) {
+		if (isFixedCount()) {
 			kernelSize = getCount();
 
 			if (output != null) {

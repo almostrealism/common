@@ -18,7 +18,6 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.compute.ComputeRequirement;
@@ -818,10 +817,6 @@ public class Scope<T> extends ArrayList<Scope<T>>
 					// recursively made into a requirement of itself
 					// Function names are globally unique, making this detection possible
 					// but there is perhaps a better way than string comparison eventually
-					if (getName() != null && computation instanceof NameProvider && getName().equals(((NameProvider) computation).getFunctionName())) {
-						return Collections.singletonList(arg);
-					}
-
 					Scope<?> s = computation.getScope(context);
 					if (s.getName() != null && s.getName().equals(getName())) {
 						return Collections.singletonList(arg);

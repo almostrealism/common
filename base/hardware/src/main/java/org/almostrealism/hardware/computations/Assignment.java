@@ -16,9 +16,8 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -226,12 +225,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		return metadata;
 	}
 
-	/** {@inheritDoc} */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-	}
-
 	/**
 	 * Prepares the scope by setting up inputs and purging unused variables.
 	 *
@@ -239,7 +232,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * @param context the kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		purgeVariables();
@@ -392,6 +385,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			if (shortCircuit) {
 				return new DestinationEvaluable(ev, destination);
 			}
+
+			return super.get();
 		}
 
 		// TODO  It would be preferable to always use DestinationEvaluable, but it

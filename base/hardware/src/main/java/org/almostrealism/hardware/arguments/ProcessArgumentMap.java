@@ -190,6 +190,13 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 	private Map<ArrayVariable<?>, ProcessTreePositionKey> positionsForArguments;
 	/** Dynamic substitutions replacing original producers at specific tree positions. */
 	private Map<ProcessTreePositionKey, Producer> substitutions;
+	/**
+	 * Substitutions keyed directly by argument variable, for arguments that have no process tree
+	 * position (e.g. a synthesized aggregate buffer argument folded in at compile time). Such an
+	 * argument cannot be matched to a {@link Process} node, so a per-operation value is supplied
+	 * here instead. Used to make instruction reuse safe when argument aggregation is active.
+	 */
+	private Map<ArrayVariable<?>, Producer<?>> directSubstitutions;
 
 	/**
 	 * Creates a copy of an existing argument map, sharing the same position mappings.
@@ -201,6 +208,7 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		this.argumentsByPosition = new HashMap<>(existing.getArgumentsByPosition());
 		this.positionsForArguments = new HashMap<>(existing.getPositionsForArguments());
 		this.substitutions = new HashMap<>();
+		this.directSubstitutions = new HashMap<>();
 	}
 
 	/**
@@ -214,6 +222,7 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		this.argumentsByPosition = new HashMap<>();
 		this.positionsForArguments = new HashMap<>();
 		this.substitutions = new HashMap<>();
+		this.directSubstitutions = new HashMap<>();
 
 		addChildren(new ProcessTreePositionKey(), process);
 	}
@@ -312,6 +321,23 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 	}
 
 	/**
+	 * Registers a per-operation value for an argument that has no process tree position.
+	 *
+	 * <p>The synthesized aggregate buffer argument is not part of the {@link Process} tree, so it
+	 * cannot be matched to a tree position and is never reached by {@link #putSubstitutions}. When
+	 * a compiled scope is reused, each operation must supply its own aggregate buffer (populated
+	 * with its own inputs); this registers that buffer's producer against the shared aggregate
+	 * argument so {@link #getEvaluable} resolves it per operation rather than returning the
+	 * originally compiled operation's buffer.</p>
+	 *
+	 * @param argument The argument variable to substitute (one with no tree position)
+	 * @param producer The per-operation value producer for that argument
+	 */
+	public void putDirect(ArrayVariable<?> argument, Producer<?> producer) {
+		directSubstitutions.put(argument, producer);
+	}
+
+	/**
 	 * Traverses the given process tree and registers each {@link Producer} as a substitution
 	 * at its corresponding tree position.
 	 *
@@ -354,6 +380,10 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 				Evaluable ev = (Evaluable) producer.get();
 				return new Provider(((MemoryData) ev.evaluate()).getRootDelegate());
 			}
+		} else if (directSubstitutions.containsKey(argument)) {
+			// The argument has no process tree position but a per-operation value was registered
+			// for it (e.g. a per-operation aggregate buffer during instruction reuse).
+			producer = directSubstitutions.get(argument);
 		} else {
 			// The argument isn't associated with a position,
 			// so no substitution should be expected

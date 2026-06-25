@@ -367,7 +367,7 @@ public interface ExpressionArithmetic<T> {
 	 * @return an expression representing {@code this != operand}
 	 */
 	public default Expression neq(Expression<?> operand) {
-		return Equals.of(self(), operand).not();
+		return NotEquals.of(self(), operand);
 	}
 
 	/**

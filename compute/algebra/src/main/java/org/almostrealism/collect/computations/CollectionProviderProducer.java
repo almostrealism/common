@@ -30,6 +30,7 @@ import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -305,6 +306,14 @@ public class CollectionProviderProducer<T extends Shape>
 	 * <p>The signature is used for process graph analysis, caching, and identifying
 	 * equivalent producers.</p>
 	 *
+	 * <p>When the value is eligible for argument aggregation, the signature additionally encodes
+	 * the root delegate's length as {@code &aggRoot=<length>}. A compiled kernel that aggregates
+	 * bakes in the aggregate layout, which depends on the size of the root delegate folded into
+	 * the shared buffer; two otherwise-identical producers whose roots differ in size (e.g. a
+	 * 2-element view of a 2-element root vs. of an 8-element root) fold to different layouts and
+	 * must not share a compiled kernel. Encoding the root length scopes instruction reuse to
+	 * compatible aggregate layouts.</p>
+	 *
 	 * @return A signature string
 	 */
 	@Override
@@ -312,8 +321,15 @@ public class CollectionProviderProducer<T extends Shape>
 		String shape = "|" + value.getShape().toStringDetail();
 
 		if (value instanceof MemoryData) {
-			return ((MemoryData) value).getOffset() + ":" +
-				((MemoryData) value).getMemLength() + shape;
+			MemoryData md = (MemoryData) value;
+			String sig = md.getOffset() + ":" + md.getMemLength() + shape;
+
+			// Aggregation-eligible: scope reuse to compatible aggregate layouts (see javadoc).
+			if (MemoryDataArgumentMap.isAggregationTarget(md.getRootDelegate())) {
+				sig = sig + "&aggRoot=" + md.getRootDelegate().getMemLength();
+			}
+
+			return sig;
 		}
 
 		return shape;

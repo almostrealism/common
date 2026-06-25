@@ -28,6 +28,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.model.Block;
+import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.studio.optimize.OptimizeFactorFeatures;
 import org.almostrealism.util.FirFilterTestFeatures;
@@ -87,8 +88,19 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * and {@code delaySamples} match the corresponding PDSL parameter names.</p>
 	 */
 	public static class Config {
-		/** Number of audio channels. */
+		/** Number of audio channels (equal to {@code channelIndices.length}). */
 		public final int channels;
+		/**
+		 * The scene channel index rendered at each bank position. Argument banks are
+		 * always built at zero-based positions {@code 0..channels-1} (matching the
+		 * consolidated render buffer's row order), but each position's genome reads must
+		 * resolve to the <em>actual</em> scene channel selected for that position — so
+		 * {@link AudioScene#renderChannel}'s single-channel selection {@code [c]} reads
+		 * channel {@code c}'s genes rather than channel 0's. For the multi-channel
+		 * zero-based contiguous selection this is the identity {@code [0,1,...,n-1]}, so
+		 * the mapping is a no-op there. Indexed via {@link #channel(int)}.
+		 */
+		public final int[] channelIndices;
 		/** Samples per channel per forward pass. */
 		public final int signalSize;
 		/** Audio sample rate in Hz. */
@@ -103,7 +115,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		public final double masterBusGain;
 
 		/**
-		 * Creates a configuration record using the project default master-bus gain.
+		 * Creates a configuration record using the project default master-bus gain and the
+		 * identity channel mapping (bank position {@code p} reads channel {@code p}).
 		 *
 		 * @param channels     audio channel count
 		 * @param signalSize   samples per pass
@@ -119,10 +132,10 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		}
 
 		/**
-		 * Creates a configuration record with an explicit master-bus gain. The PDSL
-		 * {@code mixdown_master} layer applies {@code scale(master_gain)} followed by
-		 * a hard {@code clip(-1, 1)} as its master limiter stage, mirroring
-		 * {@code MixdownManager.createEfx()}.
+		 * Creates a configuration record with an explicit master-bus gain and the identity
+		 * channel mapping. The PDSL {@code mixdown_master} layer applies
+		 * {@code scale(master_gain)} followed by a hard {@code clip(-1, 1)} as its master
+		 * limiter stage, mirroring {@code MixdownManager.createEfx()}.
 		 *
 		 * @param channels      audio channel count
 		 * @param signalSize    samples per pass
@@ -135,13 +148,77 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		 */
 		public Config(int channels, int signalSize, int sampleRate, int filterOrder,
 					  double wetLevel, int delaySamples, double masterBusGain) {
-			this.channels = channels;
+			this(identityChannels(channels), signalSize, sampleRate, filterOrder,
+					wetLevel, delaySamples, masterBusGain);
+		}
+
+		/**
+		 * Creates a configuration record for an explicit channel selection using the
+		 * project default master-bus gain.
+		 *
+		 * @param channelIndices the scene channel index for each bank position (non-empty)
+		 * @param signalSize     samples per pass
+		 * @param sampleRate     audio sample rate (Hz)
+		 * @param filterOrder    FIR filter order
+		 * @param wetLevel       wet-send scalar level
+		 * @param delaySamples   static integer delay length in samples
+		 */
+		public Config(int[] channelIndices, int signalSize, int sampleRate, int filterOrder,
+					  double wetLevel, int delaySamples) {
+			this(channelIndices, signalSize, sampleRate, filterOrder, wetLevel, delaySamples,
+					MixdownManager.masterBusGain);
+		}
+
+		/**
+		 * Creates a configuration record for an explicit channel selection. Used when the
+		 * rendered selection is not the zero-based contiguous prefix — notably the
+		 * single-channel selection {@code [c]} from {@link AudioScene#renderChannel} — so
+		 * the adapter's per-channel genome reads resolve to the selected scene channels
+		 * while the argument banks stay zero-based.
+		 *
+		 * @param channelIndices the scene channel index for each bank position (non-empty)
+		 * @param signalSize     samples per pass
+		 * @param sampleRate     audio sample rate (Hz)
+		 * @param filterOrder    FIR filter order
+		 * @param wetLevel       wet-send scalar level
+		 * @param delaySamples   static integer delay length in samples
+		 * @param masterBusGain  master-bus headroom multiplier
+		 */
+		public Config(int[] channelIndices, int signalSize, int sampleRate, int filterOrder,
+					  double wetLevel, int delaySamples, double masterBusGain) {
+			this.channelIndices = channelIndices.clone();
+			this.channels = this.channelIndices.length;
 			this.signalSize = signalSize;
 			this.sampleRate = sampleRate;
 			this.filterOrder = filterOrder;
 			this.wetLevel = wetLevel;
 			this.delaySamples = delaySamples;
 			this.masterBusGain = masterBusGain;
+		}
+
+		/**
+		 * Returns the scene channel index whose genes drive the bank at the given
+		 * zero-based position.
+		 *
+		 * @param position the zero-based bank position ({@code 0..channels-1})
+		 * @return the scene channel index to read genome state from
+		 */
+		public int channel(int position) {
+			return channelIndices[position];
+		}
+
+		/**
+		 * Builds the identity channel mapping {@code [0,1,...,channels-1]}.
+		 *
+		 * @param channels the channel count
+		 * @return the identity index array
+		 */
+		private static int[] identityChannels(int channels) {
+			int[] indices = new int[channels];
+			for (int i = 0; i < channels; i++) {
+				indices[i] = i;
+			}
+			return indices;
 		}
 	}
 
@@ -262,11 +339,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		int taps = config.filterOrder + 1;
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(ADAPTER.a(1, ADAPTER.cp(hpCutoff.range(ADAPTER.shape(1), ch)),
-					hpCutoffProducer(manager, ch)));
+					hpCutoffProducer(manager, config.channel(ch))));
 			refresh.add(ADAPTER.a(1, ADAPTER.cp(volume.range(ADAPTER.shape(1), ch)),
-					volumeProducer(manager, ch)));
+					volumeProducer(manager, config.channel(ch))));
 		}
-		refresh.add(ADAPTER.a(1, ADAPTER.cp(lpCutoff), lpCutoffProducer(manager, 0)));
+		// Master low-pass: a single post-sum filter (lp_cutoff is shape [1]). The Java path
+		// applies it after main.sum() and reads channelIndex(0) — the first selected channel's
+		// mainFilterDown gene. Sourcing the one global cutoff from the zeroth selected channel
+		// is a convenience (the long-run intent is a single/global gene, not per-channel); for
+		// a single-channel render this resolves to that channel's own gene.
+		refresh.add(ADAPTER.a(1, ADAPTER.cp(lpCutoff), lpCutoffProducer(manager, config.channel(0))));
 
 		// The FIR coefficient slots hold the TRUNCATED IMPULSE RESPONSE of Java's
 		// AudioPassFilter biquad at the current cutoff. The IR recurrence cannot be built
@@ -281,19 +363,19 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(ADAPTER.a(taps,
 					ADAPTER.cp(hpCoeffs.range(ADAPTER.shape(taps), ch * taps)),
-					tableRow(hpTable, hpCutoffProducer(manager, ch), binScale, taps)));
+					tableRow(hpTable, hpCutoffProducer(manager, config.channel(ch)), binScale, taps)));
 		}
 		refresh.add(ADAPTER.a(taps, ADAPTER.cp(lpCoeffs),
-				tableRow(lpTable, lpCutoffProducer(manager, 0), binScale, taps)));
+				tableRow(lpTable, lpCutoffProducer(manager, config.channel(0)), binScale, taps)));
 
 		if (efx != null) {
 			PackedCollection efxAutomation = (PackedCollection) args.get("efx_automation");
 			PackedCollection reverbSend = (PackedCollection) args.get("reverb_send");
 			for (int ch = 0; ch < config.channels; ch++) {
 				refresh.add(ADAPTER.a(1, ADAPTER.cp(efxAutomation.range(ADAPTER.shape(1), ch)),
-						efxAutomationProducer(efx, ch)));
+						efxAutomationProducer(efx, config.channel(ch))));
 				refresh.add(ADAPTER.a(1, ADAPTER.cp(reverbSend.range(ADAPTER.shape(1), ch)),
-						reverbSendProducer(manager, ch)));
+						reverbSendProducer(manager, config.channel(ch))));
 			}
 		}
 
@@ -328,7 +410,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param taps       FIR taps per response
 	 * @return the response table
 	 */
-	private static PackedCollection biquadResponseTable(boolean high, int sampleRate, int taps) {
+	public static PackedCollection biquadResponseTable(boolean high, int sampleRate, int taps) {
 		int bins = FILTER_TABLE_BINS;
 		int tail = taps - 1;
 		double r = FixedFilterChromosome.defaultResonance;
@@ -437,12 +519,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		Map<String, Object> args = buildArgsMap(manager, config);
 
 		// efx_filter_coeffs: producer([channels, fir_taps]) — the per-channel gene-chosen
-		// HP/LP coefficient bank from EfxManager.applyMixdownManager.java filter.
+		// HP/LP coefficient bank matching EfxManager.applyFilter (decision gene picks HP vs LP).
 		args.put("efx_filter_coeffs", efxFilterCoefficients(efx, config));
 
 		// efx_wet_level: producer([channels]) — delayLevels[ch,0] (maxWet already folded
 		// into the gene transform), the per-channel wet send level in EfxManager.apply().
-		args.put("efx_wet_level", perChannelProducer(config.channels, ch -> efxWetLevelProducer(efx, ch)));
+		args.put("efx_wet_level",
+				perChannelProducer(config.channels, ch -> efxWetLevelProducer(efx, config.channel(ch))));
 
 		// efx_automation: [channels] slot — the 0.5*(1+automation_curve) modulation
 		// EfxManager.apply() applies to the wet path. Time-varying (clock-driven), so it
@@ -453,10 +536,14 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// .mself(fi(), transmission, fc(wetOut)). PDSL feedback is block-parallel
 		// (frame-quantized), so it approximates the per-sample Java recurrence.
 		//
-		// efx_fb_delay: producer([channels]) — per-channel feedback delay in samples
-		// (constant = config.delaySamples; must be < the ring buffer = signal_size).
-		args.put("efx_fb_delay",
-				new PackedCollection(config.channels).fill((double) config.delaySamples));
+		// efx_fb_delay: producer([channels]) — per-channel feedback delay in samples from the
+		// EfxManager delay-time gene (delayTimes[ch,0] beat-multiple × beatDuration × sampleRate),
+		// mirroring the AdjustableDelayCell delay in EfxManager.apply. Floored to whole samples for
+		// an integer ring index; the ring below is sized so every gene delay fits.
+		double beatSamples = efx.getBeatDuration() * efx.getSampleRate();
+		args.put("efx_fb_delay", perChannelProducer(config.channels, ch -> ADAPTER.floor(
+				ADAPTER.multiply(efx.getDelayTimes().valueAt(config.channel(ch), 0)
+						.getResultant(ADAPTER.c(1.0)), ADAPTER.c(beatSamples)))));
 
 		// efx_fb_transmission: producer([channels, channels]) — the genome routing matrix
 		// scaled to a guaranteed-contraction (max row sum <= feedbackGain < 1) so the
@@ -465,13 +552,19 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("efx_fb_transmission", ADAPTER.multiply(transmissionMatrix(manager, config),
 				ADAPTER.c(feedbackGain / config.channels)));
 
-		// efx_fb_passthrough: producer([channels, channels]) — diagonal output level
-		// (the wet/output gain of the echo), mirroring fc(wetOut) as a static wet level.
-		args.put("efx_fb_passthrough", diagonalMatrix(config.channels, config.wetLevel));
+		// efx_fb_passthrough: producer([channels, channels]) — the per-position feedback output
+		// level on the diagonal, sourced from the wetOut gene (mirroring fc(wetOut.valueAt(0)) in
+		// MixdownManager.createEfx). Full gene value, no stability cap (owner: maximum fidelity).
+		args.put("efx_fb_passthrough", passthroughMatrix(manager, config));
 
-		// Fresh feedback ring state: buffers span channels * signal_size (one frame; the
-		// delay is < signal_size), heads one write position per channel.
-		PackedCollection fbBuffers = new PackedCollection(config.channels * config.signalSize).fill(0.0);
+		// Fresh feedback ring state. The ring spans whole frames (feedbackNetworkBlock requires
+		// the per-channel buffer to be a multiple of signal_size) sized so the longest gene delay
+		// fits: ceil((maxDelay + 1) / signal_size) frames, where maxDelay covers the gene's delay
+		// ceiling (MAX_FEEDBACK_DELAY_BEATS). One write head per channel.
+		int maxDelaySamples = (int) Math.ceil(MAX_FEEDBACK_DELAY_BEATS * beatSamples);
+		int fbFrames = Math.max(1, (maxDelaySamples + 1 + config.signalSize - 1) / config.signalSize);
+		int fbRing = fbFrames * config.signalSize;
+		PackedCollection fbBuffers = new PackedCollection(config.channels * fbRing).fill(0.0);
 		PackedCollection fbHeads = new PackedCollection(config.channels).fill(0.0);
 		args.put("fb_buffers", fbBuffers);
 		args.put("fb_heads", fbHeads);
@@ -558,6 +651,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	private static final int REVERB_FRAMES = 2;
 
 	/**
+	 * Longest efx feedback delay the ring must accommodate, in beats. Matches the ceiling of
+	 * {@code EfxManager}'s delay-time choice gene (its choices top out at {@code 1.5 × 2^2 = 6}
+	 * beats), so any gene-selected delay fits within the sized feedback ring.
+	 */
+	private static final double MAX_FEEDBACK_DELAY_BEATS = 6.0;
+
+	/**
 	 * Produces the shape-{@code [1]} per-channel reverb send level, mirroring the
 	 * {@code reverbFactor} in {@link MixdownManager#createEfx}: a channel sends to the reverb
 	 * bus only if it is in {@link MixdownManager#getReverbChannels()}, scaled by the reverb
@@ -586,7 +686,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param config structural configuration
 	 * @return a {@code [channels]} {@link PackedCollection} of per-tap delay sample counts
 	 */
-	private static PackedCollection reverbTapDelays(Config config) {
+	public static PackedCollection reverbTapDelays(Config config) {
 		int ring = REVERB_FRAMES * config.signalSize;
 		// fraction[ch] = 0.3 + 0.55*(ch+1)/(channels+1); delay[ch] = floor(fraction * ring).
 		CollectionProducer fraction = ADAPTER.integers(0, config.channels).add(1.0)
@@ -607,7 +707,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param gain scale factor / resulting spectral radius
 	 * @return an {@code [n, n]} {@link PackedCollection} feedback matrix
 	 */
-	private static PackedCollection householderMatrix(int n, double gain) {
+	public static PackedCollection householderMatrix(int n, double gain) {
 		// gain * (I - off), with off = 2/n applied to every element:
 		// diagonal = gain*(1 - off), off-diagonal = -gain*off.
 		double off = 2.0 / n;
@@ -618,28 +718,17 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Builds a row-major {@code [n, n]} diagonal matrix slot with {@code value} on the diagonal.
+	 * Builds the {@code [channels, fir_taps]} per-channel efx filter coefficient bank, matching
+	 * {@link EfxManager#applyFilter}: the decision gene ({@code delayLevels[ch,2]}) selects
+	 * high-pass vs low-pass and the cutoff gene ({@code 20000 * delayLevels[ch,3]}, clamped to a
+	 * valid Nyquist range) sets the corner, over the same windowed-sinc coefficient family.
 	 *
-	 * @param n     matrix dimension
-	 * @param value the diagonal value
-	 * @return a {@code [n, n]} {@link PackedCollection} diagonal matrix
-	 */
-	private static PackedCollection diagonalMatrix(int n, double value) {
-		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
-		ADAPTER.a(n * n, ADAPTER.cp(matrix), ADAPTER.identity(n).multiply(value)).get().run();
-		return matrix;
-	}
-
-	/**
-	 * Builds the {@code [channels, fir_taps]} per-channel efx filter coefficient bank from the
-	 * gene-driven cutoff ({@code 20000 * delayLevels[ch,3]}, clamped to a valid Nyquist range).
-	 *
-	 * <p><b>Wire-first approximation:</b> {@link EfxManager#applyFilter} selects high-pass OR
-	 * low-pass per channel via the decision gene ({@code delayLevels[ch,2]}) using a runtime
-	 * {@code choice(...)}. That selector is not generatable inside the compiled PDSL model
-	 * graph, so this renders a per-channel low-pass only (the same shape as the mixdown wet
-	 * filter). The high-pass option is dropped pending a graph-compatible per-channel filter
-	 * selection.</p>
+	 * <p>The legacy {@code choice(2, …, decision, concat(hp, lp))} selector indexes the
+	 * coefficient pair by {@code floor(decision × 2)} — high-pass for {@code decision < 0.5},
+	 * low-pass otherwise. {@code Choice} cannot be code-generated inside the compiled PDSL model,
+	 * so the selection is reproduced here with generatable arithmetic that compiles into the
+	 * model: a {@code sel ∈ {0, 1}} weight blends the two coefficient banks
+	 * ({@code hp·(1 − sel) + lp·sel}), yielding exactly the chosen filter per channel.</p>
 	 *
 	 * @param efx    the effects manager whose chromosomes are sampled
 	 * @param config structural configuration
@@ -650,14 +739,24 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		Chromosome<PackedCollection> levels = efx.getDelayLevels();
 		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
 		for (int ch = 0; ch < config.channels; ch++) {
-			Producer<PackedCollection> cutoffUnit = levels.valueAt(ch, 3).getResultant(ADAPTER.c(1.0));
-			Producer<PackedCollection> cutoffHz = ADAPTER.multiply(cutoffUnit, ADAPTER.c(20000.0));
+			int src = config.channel(ch);
+			// sel = floor(decision * 2) clamped to {0, 1}: 0 selects high-pass, 1 low-pass,
+			// matching choice(2, decision, concat(hp, lp)) in EfxManager.applyFilter.
+			Producer<PackedCollection> decision = levels.valueAt(src, 2).getResultant(ADAPTER.c(1.0));
+			Producer<PackedCollection> sel = ADAPTER.floor(ADAPTER.multiply(
+					ADAPTER.min(decision, ADAPTER.c(0.999999)), ADAPTER.c(2.0)));
+
+			Producer<PackedCollection> cutoffHz = ADAPTER.multiply(
+					levels.valueAt(src, 3).getResultant(ADAPTER.c(1.0)), ADAPTER.c(20000.0));
 			Producer<PackedCollection> clamped = ADAPTER.max(ADAPTER.c(20.0),
 					ADAPTER.min(cutoffHz, ADAPTER.c(0.49 * config.sampleRate)));
-			perChannel[ch] = ADAPTER.lowPassCoefficients(clamped, config.sampleRate, config.filterOrder);
+			CollectionProducer hp =
+					ADAPTER.highPassCoefficients(clamped, config.sampleRate, config.filterOrder);
+			CollectionProducer lp =
+					ADAPTER.lowPassCoefficients(clamped, config.sampleRate, config.filterOrder);
+			perChannel[ch] = hp.multiply(ADAPTER.c(1.0).subtract(sel)).add(lp.multiply(sel));
 		}
-		CollectionProducer concatenated = ADAPTER.concat(perChannel);
-		return concatenated.reshape(new TraversalPolicy(config.channels, firTaps));
+		return channelBank(perChannel, new TraversalPolicy(config.channels, firTaps));
 	}
 
 	/**
@@ -705,7 +804,27 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		for (int ch = 0; ch < channels; ch++) {
 			cols[ch] = perChannel.apply(ch);
 		}
-		return ADAPTER.concat(cols).reshape(new TraversalPolicy(channels));
+		return channelBank(cols, new TraversalPolicy(channels));
+	}
+
+	/**
+	 * Joins per-channel argument columns into a single bank reshaped to {@code shape}.
+	 * With two or more columns the columns are joined with {@code concat}; a single
+	 * column cannot use {@code concat} (which requires two or more inputs), so the lone
+	 * column is wrapped directly and reshaped. Either way the assembled bank has the
+	 * same form, so the single-channel selection from {@link AudioScene#renderChannel}
+	 * builds its {@code [1]}/{@code [1, taps]}/{@code [1, 1]} bank without tripping
+	 * {@code concat}'s arity floor.
+	 *
+	 * @param columns the per-channel producer columns (length {@code >= 1})
+	 * @param shape   the target shape of the assembled bank
+	 * @return the assembled, reshaped bank
+	 */
+	private static Producer<PackedCollection> channelBank(
+			Producer<PackedCollection>[] columns, TraversalPolicy shape) {
+		CollectionProducer joined = columns.length == 1
+				? ADAPTER.c(columns[0]) : ADAPTER.concat(columns);
+		return joined.reshape(shape);
 	}
 
 	/**
@@ -828,7 +947,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		Chromosome<PackedCollection> wetFilter = manager.getWetFilter();
 		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
 		for (int ch = 0; ch < config.channels; ch++) {
-			Producer<PackedCollection> lpUnit = wetFilter.valueAt(ch).valueAt(1)
+			Producer<PackedCollection> lpUnit = wetFilter.valueAt(config.channel(ch)).valueAt(1)
 					.getResultant(ADAPTER.c(1.0));
 			Producer<PackedCollection> lpHz = ADAPTER.multiply(lpUnit, ADAPTER.c(20000.0));
 			Producer<PackedCollection> lpHzClamped = ADAPTER.max(ADAPTER.c(20.0),
@@ -836,8 +955,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 			perChannel[ch] = ADAPTER.lowPassCoefficients(
 					lpHzClamped, config.sampleRate, config.filterOrder);
 		}
-		CollectionProducer concatenated = ADAPTER.concat(perChannel);
-		return concatenated.reshape(new TraversalPolicy(config.channels, firTaps));
+		return channelBank(perChannel, new TraversalPolicy(config.channels, firTaps));
 	}
 
 	/**
@@ -850,6 +968,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * the producer on every forward pass, so chromosome-state changes flow
 	 * through the routing matrix without rebuilding the layer. Cells beyond
 	 * the chromosome's extent are zero.
+	 *
+	 * <p>The transmission grid is read by bank <em>position</em>, not by
+	 * {@link Config#channel(int) selected channel} — mirroring the Java path's
+	 * {@code .mself(fi(), transmission, ...)} in {@link MixdownManager#createEfx},
+	 * which indexes the feedback grid by the cell's own position rather than its
+	 * scene channel. A single-channel selection therefore reads the {@code [0][0]}
+	 * routing cell regardless of which scene channel is rendered.</p>
 	 *
 	 * @param manager the mixdown manager whose transmission chromosome is sampled
 	 * @param config  structural configuration
@@ -870,8 +995,33 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 				}
 			}
 		}
-		CollectionProducer concatenated = ADAPTER.concat(cells);
-		return concatenated.reshape(new TraversalPolicy(config.channels, config.channels));
+		return channelBank(cells, new TraversalPolicy(config.channels, config.channels));
+	}
+
+	/**
+	 * Builds the {@code [channels, channels]} feedback passthrough matrix — the diagonal output
+	 * level of the efx feedback grid, sourced from the {@code wetOut} gene to mirror
+	 * {@code fc(wetOut.valueAt(0))} in {@link MixdownManager#createEfx}. The single {@code wetOut}
+	 * gene's per-position factors fill the diagonal (bank position {@code n} reads factor {@code n},
+	 * matching {@link #transmissionMatrix}'s position-indexed convention); off-diagonal cells are
+	 * zero. Positions beyond the gene length read zero.
+	 *
+	 * @param manager the mixdown manager whose {@code wetOut} chromosome is sampled
+	 * @param config  structural configuration
+	 * @return shape-{@code [channels, channels]} diagonal passthrough producer
+	 */
+	private static Producer<PackedCollection> passthroughMatrix(MixdownManager manager, Config config) {
+		Gene<PackedCollection> wetOut = manager.getWetOut().valueAt(0);
+		int diag = Math.min(wetOut.length(), config.channels);
+		Producer<PackedCollection>[] cells = new Producer[config.channels * config.channels];
+		for (int n = 0; n < config.channels; n++) {
+			for (int m = 0; m < config.channels; m++) {
+				cells[n * config.channels + m] = (n == m && n < diag)
+						? wetOut.valueAt(n).getResultant(ADAPTER.c(1.0))
+						: ADAPTER.c(0.0);
+			}
+		}
+		return channelBank(cells, new TraversalPolicy(config.channels, config.channels));
 	}
 
 	/**

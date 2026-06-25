@@ -24,8 +24,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.lang.reflect.Method;
-
 /**
  * Verifies that the {@link MixdownManagerPdslAdapter}'s closed-form, producer-built biquad
  * impulse-response table reproduces the original Java IIR recurrence element-wise. The
@@ -57,15 +55,11 @@ public class BiquadResponseTableParityTest extends TestSuiteBase {
 	 * Invokes the producer-built table and asserts element-wise agreement with the recurrence.
 	 *
 	 * @param high true for the high-pass design; false for low-pass
-	 * @throws Exception if the reflective invocation fails
 	 */
-	private void assertTableMatches(boolean high) throws Exception {
+	private void assertTableMatches(boolean high) {
 		int taps = FILTER_ORDER + 1;
 
-		Method method = MixdownManagerPdslAdapter.class.getDeclaredMethod(
-				"biquadResponseTable", boolean.class, int.class, int.class);
-		method.setAccessible(true);
-		PackedCollection table = (PackedCollection) method.invoke(null, high, SAMPLE_RATE, taps);
+		PackedCollection table = MixdownManagerPdslAdapter.biquadResponseTable(high, SAMPLE_RATE, taps);
 
 		double[] reference = referenceTable(high, taps);
 		double maxDiff = 0.0;

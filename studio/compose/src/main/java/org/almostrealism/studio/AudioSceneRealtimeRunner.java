@@ -137,22 +137,38 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	}
 
 	/**
-	 * Returns whether the PDSL mixdown path supports the given channel selection. The
-	 * compiled mixdown model requires at least two channels (the adapter's per-channel
-	 * argument construction uses {@code concat}, which needs two or more inputs), and the
-	 * adapter reads genome and automation genes by list position, so the selection must
-	 * be the zero-based contiguous prefix {@code [0, 1, ..., n-1]} for gene reads to map
-	 * to the right pattern channels. Anything else (e.g. the single-channel selection
-	 * from {@link AudioScene#renderChannel}) renders through the CellList runner instead.
+	 * Returns whether the PDSL mixdown path supports the given channel selection.
+	 *
+	 * <p>Two selection shapes are supported:</p>
+	 * <ul>
+	 *   <li><b>Any single channel</b> {@code [c]} — including the non-zero selection from
+	 *       {@link AudioScene#renderChannel}. The adapter maps bank position 0 to channel
+	 *       {@code c}'s genome (via {@link MixdownManagerPdslAdapter.Config#channel(int)}),
+	 *       so the PDSL render reads the same genes the CellList path reads for that
+	 *       channel.</li>
+	 *   <li><b>The zero-based contiguous multi-channel prefix</b> {@code [0, 1, ..., n-1]}
+	 *       — the full-scene render. Here the channel mapping is the identity, so the
+	 *       per-channel genome reads land on the matching pattern channels.</li>
+	 * </ul>
+	 *
+	 * <p>A non-contiguous multi-channel selection (e.g. {@code [0, 2]}) is not yet
+	 * validated and renders through the CellList runner instead: the cross-channel
+	 * transmission feedback grid is indexed by bank position rather than scene channel,
+	 * so an arbitrary multi-channel subset would not faithfully reproduce the routing.</p>
 	 *
 	 * @param channels the resolved channel indices
 	 * @return true when the PDSL path can faithfully render this selection
 	 */
 	private boolean supportsPdsl(List<Integer> channels) {
-		if (channels.size() < 2) return false;
+		if (channels.isEmpty() || channels.stream().anyMatch(c -> c == null)) return false;
 
+		// Any single channel is supported — the adapter maps its genome reads to the
+		// selected channel index, so a non-zero [c] renders channel c's genes.
+		if (channels.size() == 1) return true;
+
+		// Multi-channel: still require the zero-based contiguous prefix [0, 1, ..., n-1].
 		return IntStream.range(0, channels.size())
-				.allMatch(i -> channels.get(i) != null && channels.get(i) == i);
+				.allMatch(i -> channels.get(i) == i);
 	}
 
 	/**
@@ -234,26 +250,32 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	/**
 	 * Builds the Block-forward PDSL real-time runner.
 	 *
-	 * <p>The Java pattern-prepare phase is reused unchanged (via
-	 * {@link AudioScene#getCells}, which populates the render cells and the consolidated
-	 * render buffer), but the per-frame {@link CellList} it returns is <em>not</em> ticked.
-	 * Instead, each tick runs a compiled PDSL mixdown {@link Block} once over the whole
-	 * buffer and streams its output to the master line. When effects are enabled the layer
-	 * is {@code mixdown_master_wet}, which reads the MAIN voicing (rows {@code [0,channels)}
-	 * of the consolidated buffer) for the dry mix and the separately-rendered WET voicing
-	 * (rows {@code [channels,2*channels)}) for the efx bus, matching the Java MAIN+WET
-	 * routing; with effects off it is the single-input {@code mixdown_master}.</p>
+	 * <p>The Java pattern-prepare phase populates the render cells and the consolidated
+	 * render buffer (via {@link AudioScene#prepareRenderBuffers}); no Java mixdown
+	 * {@link CellList} is built — all DSP runs in the compiled PDSL block. Each tick runs a
+	 * compiled PDSL mixdown {@link Block} once over the whole buffer and streams its output
+	 * to the master line. When effects are enabled the layer is {@code mixdown_master_wet},
+	 * which reads the MAIN voicing (rows {@code [0,channels)} of the consolidated buffer)
+	 * for the dry mix and the separately-rendered WET voicing (rows
+	 * {@code [channels,2*channels)}) for the efx bus, matching the Java MAIN+WET routing;
+	 * with effects off it is the single-input {@code mixdown_master}.</p>
 	 *
-	 * <p><b>Wire-first scope.</b> This path currently:</p>
+	 * <p><b>Parity with the CellList path.</b> The compiled mixdown reproduces the full
+	 * Java DSP chain and is parity-validated (by ear and windowed RMS) on the real-scene
+	 * A/B in {@code AudioScenePdslCutoverTest}:</p>
 	 * <ul>
-	 *   <li>writes a mono master (the LEFT writer) duplicated to both stereo channels;</li>
-	 *   <li>renders the {@code mixdown_master}/{@code mixdown_master_wet} DSP only — the
-	 *       full per-channel {@code EfxManager} chain and the reverb network are not yet in
-	 *       PDSL, so it is not bit-parity with the Java path;</li>
-	 *   <li>still builds (and compiles) the unused Java mixdown {@link CellList} as a
-	 *       side effect of reusing {@code getCells} for pattern preparation.</li>
+	 *   <li>the per-channel {@code EfxManager} chain (gene-chosen filter, wet level,
+	 *       automation, cross-channel transmission feedback grid) — <b>migrated</b>;</li>
+	 *   <li>the reverb network ({@code delay_network}) — <b>migrated</b>;</li>
+	 *   <li>single-channel and zero-based contiguous multi-channel selections are both
+	 *       supported (see {@link #supportsPdsl}); the adapter maps per-channel genome
+	 *       reads to the selected scene channels.</li>
 	 * </ul>
-	 * These are deliberate gaps to be closed once the path is validated end-to-end.
+	 *
+	 * <p><b>Remaining wire-first gap.</b> The path writes a mono master (the LEFT writer)
+	 * duplicated to both stereo channels; true stereo (per-channel PAN in the PDSL mixdown)
+	 * is outstanding. The per-buffer automation granularity (one clock value per forward
+	 * pass) is the documented trade-off versus the CellList path's per-frame automation.</p>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
@@ -265,15 +287,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		final int[] currentFrame = {0};
 		int channelCount = channels.size();
 
-		// Frame index within the current buffer (0..bufferSize-1), shared by the pattern
-		// WaveCell external frame control and the output-streaming loop below.
+		// Frame index within the current buffer (0..bufferSize-1), driven by the
+		// output-streaming loop below.
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
-		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
 
-		// Reuse the proven pattern-preparation wiring. The returned Java mixdown CellList
-		// is intentionally not ticked on this path — the PDSL block performs all DSP.
-		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
-				() -> currentFrame[0], bufferFrameProducer);
+		// Prepare the pattern-render wiring (render cells + consolidated buffer) WITHOUT
+		// building the Java mixdown CellList: the PDSL block performs all DSP, so the
+		// CellList would only be compiled and discarded. prepareRenderBuffers reproduces the
+		// pattern-prepare side effects getCells relies on and returns just the setup.
+		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
+				() -> currentFrame[0]);
 
 		// Choose the DSP layer based on whether a separate WET voicing was rendered.
 		// AudioScene fills the consolidated buffer in the order
@@ -294,8 +317,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// image would require per-channel PAN in the PDSL mixdown (not separate-region
 		// processing); until that exists, render one master and stream it to both writers.
 		MixdownManager mixdown = scene.getMixdownManager();
+		// Pass the actual selected channel indices (not just the count) so the adapter's
+		// per-channel genome reads resolve to the rendered channels. For a single-channel
+		// renderChannel(c) selection this maps bank position 0 to channel c's genes; for the
+		// multi-channel zero-based contiguous selection it is the identity mapping.
+		int[] channelIndices = channels.stream().mapToInt(Integer::intValue).toArray();
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
-				channelCount, bufferSize, scene.getSampleRate(),
+				channelIndices, bufferSize, scene.getSampleRate(),
 				pdslFilterOrder, pdslWetLevel, pdslDelaySamples);
 
 		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
@@ -334,7 +362,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			@Override
 			public Supplier<Runnable> setup() {
 				OperationList setup = new OperationList("AudioScene PDSL RealTime Runner Setup");
-				setup.add(cells.setup());
+				setup.add(patternSetup);
 				setup.add(() -> () -> compiled.reset());
 				return setup;
 			}
@@ -375,7 +403,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			@Override
 			public void reset() {
 				currentFrame[0] = 0;
-				cells.reset();
 				compiled.reset();
 				scene.getTimeManager().getClock().setFrame(0);
 			}

@@ -112,8 +112,14 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 
 	/**
 	 * Asserts {@code reference[0..W) == window0} and {@code reference[W..2W) == window1}
-	 * to within {@code 1e-9}, and that the reference is non-trivial (so the test is
+	 * to within {@code 1e-6}, and that the reference is non-trivial (so the test is
 	 * not vacuously comparing zeros).
+	 *
+	 * <p>The tolerance allows for float32 rounding. With argument aggregation enabled the
+	 * windowed and single-render paths compile to kernels whose argument layout differs, so
+	 * a sum can evaluate in a different order between them, giving up to a few float32 ULPs
+	 * of difference (~6e-8 per ULP near 1.0). A bit-exact ({@code 0.0}) comparison would be
+	 * tighter than a single ULP and is not achievable once operation order can change.</p>
 	 */
 	private void assertSplitMatches(String label, PackedCollection reference,
 									PackedCollection window0, PackedCollection window1) {
@@ -131,7 +137,9 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 
 		Assert.assertTrue(label + " reference is trivially zero (refRms=" + refRms + ")",
 				refRms > 1e-3);
+		// Float32 tolerance: argument aggregation can reorder a sum between the windowed and
+		// single-render kernels, producing up to a few ULPs (~6e-8 each near 1.0) of difference.
 		Assert.assertEquals(label + " offset-W window diverges from the single render",
-				0.0, worst, 1e-9);
+				0.0, worst, 1e-6);
 	}
 }
