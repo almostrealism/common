@@ -109,6 +109,64 @@ nohup ./runner.sh > runner.log 2>&1 &
 tmux new-session -d -s ar-runner './runner.sh'
 ```
 
+### Restarting After Editing `.env`
+
+`.env` is read **once**, when `runner.sh` starts. The re-registration that
+happens between jobs does **not** re-read it, so changes (e.g. `RUNNER_SCOPE`,
+`RUNNER_CPU_LIMIT`, labels) only take effect after the wrapper script itself is
+restarted — restarting just the runner agent is not enough.
+
+Do this while the runner is **Idle** (not mid-job) so you don't interrupt a build:
+
+```bash
+# 1. See what's running, with PID and parent PID. Match on the script name
+#    (NOT a full path) — when started via `cd ... && nohup ./runner.sh` the
+#    command line is just `bash ./runner.sh`, so a path-prefixed pattern misses
+#    it. Note `runner\.sh` does not match the agent's `run.sh`.
+ps -Ao pid,ppid,command | grep -Ei 'runner\.sh|run\.sh|Runner\.Listener' | grep -v grep
+
+# If more than one `runner.sh` appears you have multiple wrappers running (e.g.
+# nohup was started more than once). Kill them ALL — concurrent wrappers default
+# to the same RUNNER_NAME and clobber each other's registration.
+
+# 2. Stop gracefully — signal BOTH the wrapper loop and the runner agent.
+#    The wrapper's SIGINT trap then deregisters the runner from GitHub.
+pkill -INT -f 'runner\.sh'
+pkill -INT -f 'Runner\.Listener'
+
+# 3. Confirm everything is gone (should print nothing)
+pgrep -fl 'runner\.sh|run\.sh|Runner\.Listener'
+
+# 4. Relaunch ONE instance with the new .env
+nohup ./runner.sh > runner.log 2>&1 &
+
+# 5. Watch startup — the banner echoes the active scope/settings
+tail -f runner.log
+```
+
+Signal **both** processes: the wrapper is normally blocked waiting on the runner
+agent (`Runner.Listener`), so signaling the agent lets that foreground command
+return, after which the wrapper's `cleanup` trap fires and deregisters cleanly.
+Signaling only the agent would just make the loop re-register with the *old*
+in-memory configuration.
+
+A wrapper with parent PID `1` was orphaned by `nohup` (its launching shell
+exited) — that is normal and does **not** mean it is supervised. Only an actual
+launchd service (see below) respawns the runner automatically; if you used
+launchd, stop it with `launchctl bootout` instead of `pkill`, or it will
+relaunch instantly.
+
+Avoid `kill -9` — it bypasses the deregister trap and leaves a stale offline
+runner in GitHub. It is not fatal (the script calls `remove_runner` before
+re-registering, and ephemeral runners are cleaned up server-side), but a graceful
+stop is tidier.
+
+> When switching a runner from repo to org scope (`RUNNER_SCOPE=org`), the
+> graceful stop above deregisters it from its old repo-level registration (the
+> dying process still holds the old env), and the fresh start registers it at the
+> org level. Make sure the runner group grants the relevant repositories access
+> first, or jobs will queue.
+
 ### launchd Service (Auto-Start on Boot)
 
 To start the runner automatically on login, create a launchd plist:

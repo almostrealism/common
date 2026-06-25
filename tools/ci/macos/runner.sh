@@ -155,6 +155,49 @@ mkdir -p "${RUNNER_WORKDIR}"
 # Setting it to /tmp/ar_libs/ causes permission errors on shared or sandboxed systems.
 # AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend.
 
+# ---------- Helper: request a runner token from the GitHub API ----------
+
+# Requests a runner token (e.g. runners/registration-token or
+# runners/remove-token) for the configured scope. Echoes the token on stdout on
+# success; on failure logs the HTTP status and the API error message to stderr
+# and returns non-zero. This surfaces permission/scope problems instead of
+# failing silently with an empty token.
+request_runner_token() {
+    local endpoint="$1"
+    local response http_status body token message
+
+    response=$(curl -sS -w $'\n%{http_code}' -X POST \
+        -H "Authorization: token ${GITHUB_PAT}" \
+        -H "Accept: application/vnd.github+json" \
+        "${API_BASE}/actions/${endpoint}" || true)
+
+    http_status=$(printf '%s\n' "${response}" | tail -n1)
+    body=$(printf '%s\n' "${response}" | sed '$d')
+    token=$(printf '%s' "${body}" | jq -r '.token // empty')
+
+    if [ -n "${token}" ]; then
+        printf '%s' "${token}"
+        return 0
+    fi
+
+    message=$(printf '%s' "${body}" | jq -r '.message // empty')
+    echo "  GitHub API request to ${endpoint} failed (HTTP ${http_status:-no response})." >&2
+    if [ -n "${message}" ]; then
+        echo "  GitHub says: ${message}" >&2
+    elif [ -n "${body}" ]; then
+        echo "  Response body: ${body}" >&2
+    fi
+    if [ "${RUNNER_SCOPE}" = "org" ]; then
+        echo "  Org scope needs a PAT with admin:org (classic) or the organization" >&2
+        echo "  'Self-hosted runners' read/write permission (fine-grained), with" >&2
+        echo "  ${GITHUB_OWNER} as the token's resource owner." >&2
+    else
+        echo "  Repo scope needs a PAT with the repo scope (classic) or the" >&2
+        echo "  repository 'Administration' read/write permission (fine-grained)." >&2
+    fi
+    return 1
+}
+
 # ---------- Helper: remove runner config ----------
 
 remove_runner() {
@@ -164,11 +207,7 @@ remove_runner() {
 
     echo "Removing existing runner configuration..."
 
-    REMOVE_TOKEN=$(curl -s -X POST \
-        -H "Authorization: token ${GITHUB_PAT}" \
-        -H "Accept: application/vnd.github.v3+json" \
-        "${API_BASE}/actions/runners/remove-token" \
-        | jq -r '.token // empty')
+    REMOVE_TOKEN=$(request_runner_token "runners/remove-token") || REMOVE_TOKEN=""
 
     if [ -n "${REMOVE_TOKEN}" ]; then
         cd "${RUNNER_DIR}"
@@ -183,13 +222,7 @@ remove_runner() {
 
 configure_runner() {
     echo "Requesting registration token..."
-    REG_TOKEN=$(curl -s -X POST \
-        -H "Authorization: token ${GITHUB_PAT}" \
-        -H "Accept: application/vnd.github.v3+json" \
-        "${API_BASE}/actions/runners/registration-token" \
-        | jq -r '.token // empty')
-
-    if [ -z "${REG_TOKEN}" ]; then
+    if ! REG_TOKEN=$(request_runner_token "runners/registration-token"); then
         echo "ERROR: Failed to obtain registration token."
         return 1
     fi
