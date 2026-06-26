@@ -34,6 +34,12 @@ catches up.
 - **JDK 17**: `brew install --cask temurin@17`
 - **Maven**: `brew install maven`
 - **jq**: `brew install jq`
+- **Full Xcode** (NOT just the Command Line Tools) — required for jobs that build
+  the macOS app via `xcodebuild`. Install from the App Store or with
+  `brew install xcodes && xcodes install --latest`. Note the install path: the
+  App Store gives `/Applications/Xcode.app`, while `xcodes` gives a versioned
+  `/Applications/Xcode-<version>.app`. Select the actual path:
+  `sudo xcode-select -s /Applications/Xcode-<version>.app/Contents/Developer`
 - **GitHub Personal Access Token** with `repo` + `admin:org` scopes
 
 ## Quick Start
@@ -311,6 +317,29 @@ gh api repos/almostrealism/common/actions/runners \
   auto-detected library directory is writable. `AR_HARDWARE_LIBS` is
   auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` should be
   left unset to auto-detect the best available backend.
+
+### `xcodebuild requires Xcode` / wrong developer directory
+
+Jobs that build the macOS app invoke `xcodebuild`, which needs the **full Xcode**
+app — the Command Line Tools alone are not enough. The error
+`tool 'xcodebuild' requires Xcode, but active developer directory
+'/Library/Developer/CommandLineTools' is a command line tools instance` means
+either Xcode is not installed or `xcode-select` points at the CLT.
+
+1. Check what is active: `xcode-select -p`
+2. Confirm Xcode is installed and note its exact path: `ls -d /Applications/Xcode*.app`
+   (if absent, install via the App Store, `xcodes install --latest`, or a manual
+   download from developer.apple.com). `xcodes` installs a versioned
+   `Xcode-<version>.app`, not a plain `Xcode.app`.
+3. Point the toolchain at that exact path (one-time, system-wide):
+   `sudo xcode-select -s /Applications/Xcode-<version>.app/Contents/Developer`
+4. Accept the license and finish first-launch setup:
+   `sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch`
+5. Verify: `xcodebuild -version`
+
+The runner picks up the system-wide selection automatically — no restart needed.
+Without sudo, set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` in
+the runner's environment instead; `xcodebuild` honors it over `xcode-select`.
 
 ### JDK not found after setup
 

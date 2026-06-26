@@ -117,7 +117,12 @@ final class WorkstreamLifecycleHandler {
             archiveSlackChannel = JsonFieldExtractor.extractBoolean(body, "archiveSlackChannel");
         }
         workstream.setArchived(true);
-        if (listener != null) listener.persistConfig();
+        // Do not report the archive — or touch the Slack channel — until the
+        // archived flag is durably written. A failed write must surface as an
+        // error, not a green ok that vanishes on the next restart.
+        if (listener != null && !listener.persistConfig()) {
+            return FlowTreeApiEndpoint.persistFailureResponse("Archive");
+        }
 
         String archivedAt = Instant.now().toString();
         boolean slackChannelArchived = false;
@@ -176,7 +181,9 @@ final class WorkstreamLifecycleHandler {
             return errorResponse.apply("Unknown workstream: " + workstreamId);
         }
         workstream.setArchived(false);
-        if (listener != null) listener.persistConfig();
+        if (listener != null && !listener.persistConfig()) {
+            return FlowTreeApiEndpoint.persistFailureResponse("Unarchive");
+        }
         log.accept("Unarchived workstream " + workstreamId);
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json",
@@ -218,7 +225,9 @@ final class WorkstreamLifecycleHandler {
         if (activeErr != null) return activeErr;
 
         if (listener != null) {
-            listener.unregisterAndPersistWorkstream(workstream);
+            if (!listener.unregisterAndPersistWorkstream(workstream)) {
+                return FlowTreeApiEndpoint.persistFailureResponse("Delete");
+            }
         } else {
             ownerNotifier.removeWorkstream(workstreamId);
         }
