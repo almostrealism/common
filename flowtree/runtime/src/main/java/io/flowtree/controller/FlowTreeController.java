@@ -51,6 +51,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.github.GitHubTokenValidator;
+import io.flowtree.workstream.McpServerEntry;
+import io.flowtree.workstream.PushedToolEntry;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.slack.SlackListener;
@@ -503,12 +505,11 @@ public class FlowTreeController implements ConsoleFeatures {
 
             // Clear stale channel→workstream entries and per-notifier registrations
             // before re-registering. Without this, workstreams removed or moved to a
-            // different workspace would remain active after the reload.
-            listener.clearWorkstreams();
-
-            for (Workstream workstream : config.toWorkstreams()) {
-                registerWorkstream(workstream);
-            }
+            // different workspace would remain active after the reload. The clear and
+            // the re-registration run as one atomic step on the listener so a
+            // concurrent API registration cannot be wiped by the intervening clear or
+            // observe the empty intermediate state.
+            listener.reregisterWorkstreams(config.toWorkstreams());
             log("Reloaded " + config.getWorkstreams().size() +
                               " workstream(s) from " + configFile.getName());
         } catch (IOException e) {
@@ -898,7 +899,7 @@ public class FlowTreeController implements ConsoleFeatures {
     private void startCentralizedMcpServers(WorkstreamConfig config, File configDir) {
         // No-op: ar-manager replaces all centralized MCP servers.
         // Agents access ar-manager over HTTP with HMAC temp tokens.
-        Map<String, WorkstreamConfig.McpServerEntry> mcpServers = config.getMcpServers();
+        Map<String, McpServerEntry> mcpServers = config.getMcpServers();
         if (mcpServers == null || mcpServers.isEmpty()) return;
 
         log("Configuring " + mcpServers.size() + " centralized MCP server(s)...");
@@ -907,9 +908,9 @@ public class FlowTreeController implements ConsoleFeatures {
         StringBuilder configJson = new StringBuilder("{");
         boolean first = true;
 
-        for (Map.Entry<String, WorkstreamConfig.McpServerEntry> entry : mcpServers.entrySet()) {
+        for (Map.Entry<String, McpServerEntry> entry : mcpServers.entrySet()) {
             String serverName = entry.getKey();
-            WorkstreamConfig.McpServerEntry serverEntry = entry.getValue();
+            McpServerEntry serverEntry = entry.getValue();
 
             String url;
             List<String> tools;
@@ -1077,8 +1078,8 @@ public class FlowTreeController implements ConsoleFeatures {
         // workstreams.yaml entries. The built-ins go first so that
         // operator entries with the same name silently override them
         // (giving operators a release valve if they need a custom build).
-        Map<String, WorkstreamConfig.PushedToolEntry> pushedTools = new LinkedHashMap<>();
-        pushedTools.put("ar-secrets", builtInSecretsEntry());
+        Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
+        pushedTools.put("ar-secrets", PushedToolEntry.builtInSecrets());
         if (loadedConfig != null && loadedConfig.getPushedTools() != null) {
             pushedTools.putAll(loadedConfig.getPushedTools());
         }
@@ -1088,9 +1089,9 @@ public class FlowTreeController implements ConsoleFeatures {
         StringBuilder configJson = new StringBuilder("{");
         boolean first = true;
 
-        for (Map.Entry<String, WorkstreamConfig.PushedToolEntry> entry : pushedTools.entrySet()) {
+        for (Map.Entry<String, PushedToolEntry> entry : pushedTools.entrySet()) {
             String serverName = entry.getKey();
-            WorkstreamConfig.PushedToolEntry toolEntry = entry.getValue();
+            PushedToolEntry toolEntry = entry.getValue();
 
             Path sourcePath = resolveToolSource(toolEntry.getSource(), configDir);
             if (!Files.exists(sourcePath)) {
@@ -1149,25 +1150,6 @@ public class FlowTreeController implements ConsoleFeatures {
 
         configJson.append("}");
         this.pushedToolsConfig = configJson.toString();
-    }
-
-    /**
-     * Builds the synthetic {@link WorkstreamConfig.PushedToolEntry} for the
-     * built-in {@code ar-secrets} MCP server. Source path
-     * ({@code tools/mcp/secrets/server.py}) is resolved through the same
-     * {@link #resolveToolSource(String, File)} fallback chain as
-     * operator-declared entries: config-relative first, then
-     * {@code FLOWTREE_APP_DIR}-relative (default {@code /app}). No env
-     * overrides — ar-secrets reads {@code AR_CONTROLLER_URL},
-     * {@code AR_WORKSTREAM_ID}, and {@code AR_MANAGER_TOKEN} from the
-     * process environment that {@code CodingAgentJob} sets per job.
-     *
-     * @return a {@link WorkstreamConfig.PushedToolEntry} for ar-secrets
-     */
-    private static WorkstreamConfig.PushedToolEntry builtInSecretsEntry() {
-        WorkstreamConfig.PushedToolEntry entry = new WorkstreamConfig.PushedToolEntry();
-        entry.setSource("tools/mcp/secrets/server.py");
-        return entry;
     }
 
     /**

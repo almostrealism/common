@@ -955,6 +955,99 @@ public class Workstream {
                 .replace("\r", "\\r");
     }
 
+    /**
+     * Returns a human-readable representation of the named configuration
+     * setting for display by the {@code /flowtree config} command. Optional
+     * fields that are unset render as {@code "(not set)"}.
+     *
+     * @param key the setting name (e.g. {@code "maxBudgetUsd"}, {@code "defaultBranch"})
+     * @return the current value as a string, or {@code null} if the key is unknown
+     */
+    public String describeSetting(String key) {
+        switch (key) {
+            case "maxBudgetUsd": return String.format("%.2f", getMaxBudgetUsd());
+            case "maxTurns": return String.valueOf(getMaxTurns());
+            case "defaultBranch": return getDefaultBranch() != null ? getDefaultBranch() : "(not set)";
+            case "baseBranch": return getBaseBranch() != null ? getBaseBranch() : "(not set)";
+            case "repoUrl": return getRepoUrl() != null ? getRepoUrl() : "(not set)";
+            case "workingDirectory": return getWorkingDirectory() != null ? getWorkingDirectory() : "(not set)";
+            case "pushToOrigin": return String.valueOf(isPushToOrigin());
+            case "allowedTools": return getAllowedTools();
+            case "gitUserName": return getGitUserName() != null ? getGitUserName() : "(not set)";
+            case "gitUserEmail": return getGitUserEmail() != null ? getGitUserEmail() : "(not set)";
+            case "planningDocument": return getPlanningDocument() != null ? getPlanningDocument() : "(not set)";
+            case "workstreamId": return getWorkstreamId();
+            case "channelId": return getChannelId();
+            case "channelName": return getChannelName();
+            default: return null;
+        }
+    }
+
+    /**
+     * Applies a new value to the named configuration setting on behalf of the
+     * {@code /flowtree config} command. Read-only keys ({@code workstreamId},
+     * {@code channelId}, {@code channelName}) and unparseable numeric values
+     * are rejected. The caller is responsible for persisting the change.
+     *
+     * @param key   the setting name
+     * @param value the new value as a string
+     * @return an error message when the update is rejected, or {@code null} on success
+     */
+    public String applySetting(String key, String value) {
+        switch (key) {
+            case "maxBudgetUsd":
+                try {
+                    setMaxBudgetUsd(Double.parseDouble(value));
+                } catch (NumberFormatException e) {
+                    return "Invalid number: `" + value + "`";
+                }
+                return null;
+            case "maxTurns":
+                try {
+                    setMaxTurns(Integer.parseInt(value));
+                } catch (NumberFormatException e) {
+                    return "Invalid integer: `" + value + "`";
+                }
+                return null;
+            case "defaultBranch":
+                setDefaultBranch(value);
+                return null;
+            case "baseBranch":
+                setBaseBranch(value);
+                return null;
+            case "repoUrl":
+                setRepoUrl(value);
+                return null;
+            case "workingDirectory":
+                setWorkingDirectory(value);
+                return null;
+            case "pushToOrigin":
+                setPushToOrigin(Boolean.parseBoolean(value));
+                return null;
+            case "allowedTools":
+                setAllowedTools(value);
+                return null;
+            case "gitUserName":
+                setGitUserName(value);
+                return null;
+            case "gitUserEmail":
+                setGitUserEmail(value);
+                return null;
+            case "planningDocument":
+                setPlanningDocument(value);
+                return null;
+            case "workstreamId":
+            case "channelId":
+            case "channelName":
+                return "`" + key + "` is read-only and cannot be modified.";
+            default:
+                return "Unknown setting: `" + key + "`\n"
+                    + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
+                    + "`baseBranch`, `repoUrl`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
+                    + "`gitUserName`, `gitUserEmail`, `planningDocument`";
+        }
+    }
+
     @Override
     public String toString() {
         return "Workstream{" +
