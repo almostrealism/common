@@ -36,6 +36,24 @@
 - `docs/internals/celllist-realtime-streaming.md`, `features-pattern.md`,
   `backend-compilation-and-dispatch.md` — stable framework references the redesign builds on.
 
+## Keeping these current
+
+These are planning docs, not API reference — they drift the moment the code moves, and this
+set has been stale before. When you touch this area, keep them honest:
+
+- **Verify against source + `git log`, not memory or the consultant index.** Both lag
+  reality: a recent recall still described the a2 real-scene gap and the
+  argument-aggregation pool blocker as open *after both were resolved*, and asserted
+  nothing was outdated. Treat any claim here — and any recalled memory — as something to
+  re-check against current code before relying on it.
+- **Update the doc in the same change that changes the claim.** The recurring failure was
+  fixing code (or learning a fact) and leaving the doc behind.
+- **Date and qualify empirical claims.** Benchmark/validation numbers carry the date,
+  machine, and flags (e.g. `AR_PDSL_MIXDOWN`), because they do not reproduce identically
+  across hardware or genomes.
+- **Name symbols, not just line numbers.** Prefer `Class.method` / a stable constant name
+  over a bare `:NNN`; line numbers rot fastest.
+
 ## History
 
 This folder was consolidated from a larger set of phase/investigation docs. Superseded

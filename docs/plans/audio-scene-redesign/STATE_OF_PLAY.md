@@ -30,14 +30,14 @@ tick. At 44.1 kHz the budget is **~92.9 ms** for a 4096-frame tick, **~185.8 ms*
 
 The a3 DSP/mixdown is **migrated to PDSL, parity-validated by ear, and runs under the
 realtime budget** (faster than the legacy CellList tick). The efx-feedback parity has since
-closed its three biggest character gaps. What remains for the full real-time vision is the
-**a2** pattern-render integration on real scenes, **true stereo**, flipping the default,
-and the a1/a2/a3 ring decoupling.
+closed its three biggest character gaps, and a2 batched pattern dispatch is now validated
+on real scenes. What remains for the full real-time vision is **true stereo**, flipping the
+batched/PDSL defaults, and the a1/a2/a3 ring decoupling.
 
 | Concern | Status |
 |---|---|
 | **a2 batching — the mechanism** (per-note rendering was ~89% of cost, ~99.4% JNI dispatch) | **PROVEN** on the synthetic sentinel path: dispatch fires, matches per-note within the enforced RMS bound, 3000 sustained dispatches, well under the per-tick budget for the pattern layer in isolation. → [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md). |
-| **a2 batching — real-scene integration** | **OPEN (primary focus).** On the full curated-library scene, batched dispatch does not reliably fire — some note shapes render `peak=0.0` (silence). `BatchedRealSceneRenderTest` is `@Ignore`d. This is integration/classification work, not a defect in the batching kernel. |
+| **a2 batching — real-scene integration** | **RESOLVED (2026-06-26).** On the full curated-library scene batched dispatch fires correctly and renders non-silent audio: single melodic channel `batchedDispatchCount=1388 / fallback=0 / peak=0.51`; all six channels `2220 / 4568(percussive fall back by design) / peak=0.56`. `BatchedRealSceneRenderTest` is re-enabled. Unblocked by the argument-aggregation rebuild; the a2 classification path was unchanged. → [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md). |
 | **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL, parity by ear, under budget.** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). Default (vectorized) tick 66–139 ms vs the 185.8 ms budget at 8192 (1.34–2.81×), faster than the CellList tick (298–373 ms). Accepted approximations: [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md). |
 | **efx-feedback parity** | **THREE of four character gaps CLOSED** (gene HP/LP filter, gene-driven feedback delay, gene-driven feedback level — commit `4992598a3`). Only the block-rate re-entry remains. [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §2/§3.1. |
 | **Metal dispatch ceiling** (host wedged past ~2300–2560 cumulative dispatches) | **SOLVED** — 3000+ sustained dispatches, regression-guarded. [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §8.3. |
@@ -49,7 +49,8 @@ processing be expressed in PDSL with acoustic parity and at/under the real-time 
 YES** — the PDSL tick is under budget by default and faster than CellList, after the
 `delay_network` ring update was de-fragmented (1382 ms → 3 ms) and channel-uniform bodies
 were vectorized. The remaining per-tick cost is per-note pattern prep (the a2 item), not
-the DSP.
+the DSP. Confirmed end-to-end on the full real scene (2026-06-26): the 6-channel curated
+render keeps up warm (ratio ≈ 0.97 at 4096) with batched pattern dispatch + PDSL mixdown.
 
 **Hard constraints learned the hard way** (full detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md)):
 1. **Real-time requires HYBRID routing — never force `AR_HARDWARE_DRIVER`.** `mtl` fails to
@@ -77,10 +78,10 @@ own clock:
 ```
 
 **Where we are vs. the target:** the a2 batching collapsed the N per-note dispatches into
-one (the proven win), and a3 is now a fast compiled PDSL model. What remains to reach the
-full streaming shape: **(1)** make a2 batched dispatch fire on real scenes, and **(2)**
-decouple a1/a2/a3 onto independent clocks via rolling buffers (today pattern audio is
-bulk-rendered once in `setup`, not streamed seconds-ahead).
+one (the proven win, now validated on real scenes), and a3 is now a fast compiled PDSL
+model. What remains to reach the full streaming shape: **decouple a1/a2/a3 onto independent
+clocks via rolling buffers** — run a2 seconds-ahead of a3, rather than bulk-rendering the
+pattern audio once in `setup` as today.
 
 ## 4. What has landed
 
@@ -108,11 +109,10 @@ bulk-rendered once in `setup`, not streamed seconds-ahead).
 
 ## 5. What's genuinely open
 
-- **a2 real-scene batched dispatch — the primary focus.** Make batched dispatch fire
-  (`batchedDispatchCount>0`, `fallbackCount==0`, non-silent) for *every* production note
-  shape on the real curated-library path; an unhandled shape currently falls through to
-  `peak=0.0`. The natural first step is re-checking whether `BatchedRealSceneRenderTest`
-  can be re-enabled now that the aggregation co-blocker is resolved. → [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
+- **Flip `AR_PATTERN_BATCHED` on by default.** a2 batched dispatch is now validated
+  end-to-end on real audio ([A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md) §4.2), but
+  `PatternLayerManager.enableBatched` is still off by default; flip it once the warm /
+  continuous real-scene methods and a broader genome sweep are confirmed clean.
 - **True stereo.** The PDSL path is dual-mono (one master duplicated to both writers).
   True stereo must be one model carrying twice the channels in a *single* forward — never
   the pipeline run twice (that attempt was reverted).
@@ -130,8 +130,8 @@ bulk-rendered once in `setup`, not streamed seconds-ahead).
 > **Closed since earlier drafts of this doc** (do not re-open as "regressions"): gene
 > HP/LP `choice()` symptom, gene-driven efx delay/level, the vectorized-for-each default,
 > single-channel support, lean pattern prep, the compile-reuse/aggregation pool blocker,
-> and the PDSL-tick performance gap (the tick is now under budget). These were on this
-> list and are done.
+> the PDSL-tick performance gap (the tick is now under budget), and the a2 real-scene
+> batched-dispatch gap (validated 2026-06-26). These were on this list and are done.
 
 ## 6. Options that are moot
 

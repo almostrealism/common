@@ -227,7 +227,7 @@ the counters at production density.**
 
 ---
 
-## 4. State — proven vs. open
+## 4. State — proven and validated on real scenes
 
 ### 4.1 PROVEN — the synthetic sentinel path
 
@@ -252,31 +252,39 @@ budget**, **7.76 ms per tick** — are *reported M1 measurements*, not assertion
 thresholds. The enforced bounds are looser (5% RMS; merely *under* budget; > 2560
 dispatches). Cite the tight numbers as observed M1 behavior, not as contracts.
 
-### 4.2 OPEN — the real curated-library scene (the #1 blocker)
+### 4.2 RESOLVED — the real curated-library scene
 
-**`BatchedRealSceneRenderTest` is still `@Ignore`'d**
-(`studio/compose/.../pattern/test/BatchedRealSceneRenderTest.java:73-76`). The real-scene
-path does **not reliably fire batched dispatch** — some production note shapes render
-`peak=0.0` (silence) because an unhandled shape falls through. The test would assert
-`peak > 1e-3` and `batchedDispatchCount > 0` (`:176-177`) if enabled. This is the #1
-open item: batched dispatch must fire for **every** production note shape on the real
-path, not just the synthetic one.
+`BatchedRealSceneRenderTest` is **re-enabled** (the `@Ignore` is removed). On the real
+curated scene batched dispatch fires correctly and produces non-silent audio. Validated
+2026-06-26:
 
-**Correction — the `@Ignore` text names two blockers; one is now stale.** The annotation
-(`:73-76`, expanded in the class Javadoc `:62-71`) cites:
+- **Single melodic channel** (`singleMelodicChannelFullPipeline`, CellList mixdown):
+  `batchedDispatchCount=1388`, `fallbackCount=0`, `peak=0.51`. Every note on the channel
+  classifies as the melodic-SSS shape (`getBatchedInputs()` non-null) and dispatches; no
+  fallback.
+- **All six channels** (`allChannelsFullPipeline`, PDSL mixdown via
+  `-DAR_PDSL_MIXDOWN=enabled`): `batchedDispatchCount=2220`, `fallbackCount=4568`,
+  `peak=0.56`. Melodic channels batch; **percussive channels correctly fall back** to
+  per-note (they are bare layer-mode notes — `shapeOk=false`, no envelope wrapping — not
+  the melodic-SSS shape, so the fallback is by design, not a defect), and the mix is
+  non-silent.
+- **Warm steady-state** (`*WarmSteadyState`, PDSL mixdown) — both keep up with realtime
+  once warm: single melodic channel `ratio≈0.50` (warm tick ~39 ms vs the 92.9 ms budget
+  at 4096), all six channels `ratio≈0.97` (warm tick ~83 ms), each with clean batched
+  dispatch and non-silent output. The full 6-channel real scene renders at ratio-of-1.
 
-- **(a)** real-scene dispatch / `peak=0.0` gap — **STILL REAL.** This is the live blocker.
-- **(b)** argument-aggregation / `GeneratedOperation` kernel-pool exhaustion
-  ("aggregation-target buffers have no structural signature, so per-instance compilation
-  is not reused") — **NOW STALE.** The argument-aggregation subsystem was torn out and
-  rebuilt in June 2026: removed `5f0648eab` (2026-06-20, "Removed MemoryData argument
-  aggregation"); rebuilt `9732295ff` (2026-06-23, "A new approach to argument
-  aggregation", PR #317); aggregate-on-kernel-provider PR #318; enabled by default
-  `13ce711c5` (2026-06-23); perf `b4b23f0c5` (2026-06-24). The "null-signature defeats
-  kernel reuse" premise is gone, so the pool-exhaustion half of the ignore rationale no
-  longer applies. **The test's re-enablability should be re-checked.** (It also requires
-  the curated sample library at `/Users/Shared/Music/Samples` + `pattern-factory.json`,
-  which is not in CI or the repo, so it could not be verified by source audit.)
+Both halves of the old `@Ignore` rationale are gone: (a) the `GeneratedOperation`
+pool-exhaustion / compile-reuse blocker was fixed by the June-2026 argument-aggregation
+rebuild (removed `5f0648eab`; rebuilt `9732295ff` PR #317; `aggregate-on-kernel-provider`
+PR #318; enabled `13ce711c5`; perf `b4b23f0c5`); and (b) "batched dispatch does not fire /
+`peak=0.0`" is simply false now. The aggregation rebuild is what unblocked it — the a2
+note-classification path itself was unchanged since 2026-05-31.
+
+> **Caveat (a3, not a2):** `allChannelsFullPipeline` *times out* (>18 min cold) on the
+> legacy **CellList** mixdown — a3 mixdown cold-render speed, unrelated to a2 batching — so
+> the all-channels methods are run with the faster PDSL mixdown
+> (`-DAR_PDSL_MIXDOWN=enabled`). The single-channel methods pass on either path. (Note:
+> `AR_PDSL_MIXDOWN` takes the literal value `enabled`/`disabled`, not `true`/`false`.)
 
 ### 4.3 Adjacent state
 
@@ -293,19 +301,22 @@ path, not just the synthetic one.
 
 ---
 
-## 5. Where to start
+## 5. Status and next steps
 
-The single most important open item: **make batched dispatch fire —
-`batchedDispatchCount > 0`, `fallbackCount == 0`, non-silent — for EVERY production note
-shape on the real curated-library path.** Today some shapes fall through to `peak=0.0`.
+The real-scene dispatch gap is **resolved** (§4.2): batched dispatch fires correctly on the
+real curated scene for melodic channels, percussive channels fall back as designed, and
+`BatchedRealSceneRenderTest` is re-enabled. `AR_PATTERN_BATCHED` is still **off by default**
+(`PatternLayerManager.enableBatched`); the test sets it per-method.
 
-The natural first step: **re-check whether `BatchedRealSceneRenderTest` can now be
-re-enabled.** Half of its `@Ignore` rationale (the argument-aggregation / kernel-pool
-exhaustion) is gone as of the June 2026 aggregation rebuild (§4.2); only the real-scene
-dispatch/`peak=0.0` gap remains. Stand up the curated library locally
-(`/Users/Shared/Music/Samples` + `pattern-factory.json`), remove the `@Ignore`, run it,
-and read which note shape produces `peak=0.0` and falls through `getBatchedInputs() == null`
-in `BatchedPatternLayerRenderer.render`. That falling-through shape is the work.
+Reasonable next steps, in rough order:
+- **Validate the remaining methods** — the warm steady-state (`*WarmSteadyState`) and the
+  continuous render (`renderAllChannelsContinuousToFile`) methods, plus a broader genome
+  sweep — then **flip `AR_PATTERN_BATCHED` on by default**, since the mechanism is now
+  validated end-to-end on real audio.
+- **a1/a2/a3 ring decoupling** (the streaming shape in [STATE_OF_PLAY.md](STATE_OF_PLAY.md)
+  §3): run a2 on a worker K buffers ahead so pattern prep leaves the realtime critical path.
+- **a3 mixdown speed** for the all-channels **CellList** path is a separate workstream; the
+  PDSL mixdown already addresses it (see [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §7).
 
 ---
 
@@ -319,4 +330,4 @@ in `BatchedPatternLayerRenderer.render`. That falling-through shape is the work.
 - `engine/audio/.../notes/NoteAudioSourceAggregator.java` — merge strategies (`:52-69`)
 - `engine/audio/.../benchmark/PatternRenderingFloorBenchmark.java` — the §1 floor evidence
 - Tests: `BatchedDispatchSentinelTest`, `BatchedVsPerNoteRmsTest`, `BatchedRealtimeTickTest` (studio/music, active);
-  `BatchedRealSceneRenderTest` (studio/compose, `@Ignore`); `AudioScenePdslBenchmarkTest` (per-tick prep measurement)
+  `BatchedRealSceneRenderTest` (studio/compose, re-enabled, curated-library-gated); `AudioScenePdslBenchmarkTest` (per-tick prep measurement)
