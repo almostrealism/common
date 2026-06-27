@@ -131,6 +131,19 @@ message AudioLayer {
 
   // Unix epoch milliseconds at which this layer was produced.
   optional int64 created_at_millis = 8;
+
+  // Captured source pitch of this layer as a MIDI note number (0..127),
+  // when known. This is the authoritative, unambiguous pitch of the
+  // rendered audio — e.g. the exact MIDI note an AU chromatic capture
+  // rendered. It supersedes parsing the pitch out of `layer_id` display
+  // text (which is brittle: scientific-pitch spelling such as "C#4" does
+  // not match the WesternChromatic "CS4" naming, and a plugin-name prefix
+  // can contain spaces). Optional and additive: layers saved before this
+  // field existed simply omit it and remain valid; readers fall back to
+  // the legacy `layer_id` parse for those. MIDI is used (rather than a
+  // WesternChromatic key) so the full 0..127 range is representable; the
+  // read helper maps it to a KeyPosition for pitch delivery.
+  optional int32 root_midi_note = 10;
 }
 
 // LayerRef points at an AudioLayer by id, optionally narrowing to a subset
