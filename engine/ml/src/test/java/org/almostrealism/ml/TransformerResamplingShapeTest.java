@@ -19,6 +19,7 @@ package org.almostrealism.ml;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.metal.MetalDataContext;
 import org.junit.Assume;
 import org.junit.Test;
 
@@ -111,7 +112,7 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 	@Test(timeout = 120000)
 	public void encoderBlockDownsamplesShape() {
 		// TODO(0.76): Metal uninitialised-memory NaN in resampling block — re-enable on Metal once fixed.
-		assumeCpuBackend();
+		skipWhenMetalPresent();
 
 		ResamplingConfig config = smallConfig(true);
 		int length = 8;
@@ -132,7 +133,7 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 	@Test(timeout = 120000)
 	public void decoderBlockUpsamplesShape() {
 		// TODO(0.76): Metal uninitialised-memory NaN in resampling block — re-enable on Metal once fixed.
-		assumeCpuBackend();
+		skipWhenMetalPresent();
 
 		ResamplingConfig config = smallConfig(false);
 		int length = 4;
@@ -195,17 +196,27 @@ public class TransformerResamplingShapeTest extends SAMEResamplingTestBase {
 	}
 
 	/**
-	 * Skips the calling test unless the default compute backend is the CPU (JNI/native). The
-	 * learned-resampling block currently reads uninitialised device memory on the Metal backend and
-	 * produces {@code NaN}s in {@link #encoderBlockDownsamplesShape()} and
-	 * {@link #decoderBlockUpsamplesShape()}; that defect is deferred (see the {@code TODO(0.76)} markers
-	 * at the call sites). The tests still run — and must pass — on the Linux/CPU backend, where the
-	 * shape and finiteness contracts hold.
+	 * Skips the calling test when a Metal backend is present on this machine. The learned-resampling
+	 * block currently reads uninitialised device memory on the Metal backend and produces {@code NaN}s
+	 * in {@link #encoderBlockDownsamplesShape()} and {@link #decoderBlockUpsamplesShape()}; that defect
+	 * is deferred (see the {@code TODO(0.76)} markers at the call sites).
+	 *
+	 * <p>Presence is the right predicate — not {@code getComputeContext().isCPU()}. On a machine with
+	 * both backends (the macOS CI runner) the <em>default</em> compute context reports CPU even though
+	 * the resampling block is dispatched to Metal, so the old {@code isCPU()} guard let the test run on
+	 * Metal and hit the NaN. The block is favored onto Metal whenever Metal is available, so the
+	 * correct condition is simply whether a {@link MetalDataContext} was initialised on this hardware
+	 * (via {@link Hardware#getAllDataContexts()}). The tests still run — and must pass — on a
+	 * Metal-absent (e.g. Linux/CPU-only) machine, where the shape and finiteness contracts hold.</p>
 	 */
-	protected void assumeCpuBackend() {
-		Assume.assumeTrue(
-				"Skipped on the Metal/GPU backend pending the deferred 0.76 resampling NaN fix",
-				Hardware.getLocalHardware().getComputeContext().isCPU());
+	protected void skipWhenMetalPresent() {
+		boolean metalPresent = Hardware.getLocalHardware().getAllDataContexts().stream()
+				.anyMatch(context -> context instanceof MetalDataContext);
+		log("metalPresent=" + metalPresent
+				+ " defaultContextIsCPU=" + Hardware.getLocalHardware().getComputeContext().isCPU());
+		Assume.assumeFalse(
+				"Skipped because a Metal backend is present, pending the deferred 0.76 resampling NaN fix",
+				metalPresent);
 	}
 
 	/**
