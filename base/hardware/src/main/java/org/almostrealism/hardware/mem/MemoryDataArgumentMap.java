@@ -16,238 +16,187 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.NameProvider;
-import io.almostrealism.collect.CollectionScopeInputManager;
-import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.code.SupplierArgumentMap;
+import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.ProviderAwareArgumentMap;
-import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
- * Argument mapping for kernel compilation with automatic memory aggregation and provider adaptation.
+ * Argument mapping for kernel compilation with provider adaptation.
  *
  * <p>{@link MemoryDataArgumentMap} manages the conversion of {@link MemoryData} instances into
- * kernel arguments, automatically aggregating multiple small memory objects into a single argument
- * to reduce kernel invocation overhead and cross-provider transfer costs.</p>
- *
- * <h2>Memory Aggregation</h2>
- *
- * <p>When multiple small {@link MemoryData} arguments would require individual transfers from
- * incompatible providers, they are automatically aggregated into a single contiguous buffer:</p>
- * <pre>{@code
- * // Without aggregation: 3 separate kernel arguments
- * kernel(cpuMem1, cpuMem2, cpuMem3)  // 3 CPU->GPU transfers
- *
- * // With aggregation: Single aggregated argument
- * aggregated = aggregate(cpuMem1, cpuMem2, cpuMem3)
- * kernel(aggregated)  // 1 CPU->GPU transfer
- * }</pre>
- *
- * <h2>Configuration</h2>
- *
- * <p>Aggregation behavior is controlled via environment variables:</p>
+ * kernel arguments, recognizing when different argument suppliers represent the same underlying
+ * value so that a single kernel argument is shared:</p>
  * <ul>
- *   <li><b>AR_HARDWARE_ARGUMENT_AGGREGATION</b>: Enable/disable aggregation (default: true)</li>
- *   <li><b>AR_HARDWARE_OFF_HEAP_AGGREGATION</b>: Aggregate off-heap memory (default: false)</li>
- *   <li><b>AR_HARDWARE_AGGREGATE_MAX</b>: Max size for aggregation (default: 1MB)</li>
+ *   <li><b>PassThrough matching</b> &mdash; a {@link PassThroughProducer} key reuses an existing
+ *       argument with the same referenced argument index.</li>
+ *   <li><b>Provider value matching</b> &mdash; a {@link Provider} key reuses an existing argument
+ *       that provides the same value instance.</li>
+ *   <li><b>Root delegate handling</b> &mdash; views into the same underlying memory resolve to a
+ *       single kernel argument that delegates to the appropriate offset.</li>
  * </ul>
- *
- * <h2>Root Delegate Handling</h2>
- *
- * <p>Arguments that share a root delegate are automatically de-duplicated to avoid redundant
- * kernel arguments for views into the same underlying memory.</p>
- *
- * @param <S> Scope type
- * @param <A> Argument type
- * @see MemoryDataReplacementMap
- * @see MemoryReplacementManager
  */
-public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
-	/** If true, automatically detect and configure destination memory arguments for output. */
-	public static final boolean enableDestinationDetection = true;
-	/** If true, emit warning messages when aggregation constraints cannot be satisfied. */
-	public static boolean enableWarnings = false;
-
-	/** If true, aggregate multiple small off-heap arguments into a single kernel argument. Controlled by {@code AR_HARDWARE_ARGUMENT_AGGREGATION}. */
+public class MemoryDataArgumentMap extends SupplierArgumentMap {
+	/**
+	 * If true, fold eligible small arguments into a single aggregate kernel argument. Controlled by
+	 * {@code AR_HARDWARE_ARGUMENT_AGGREGATION}.
+	 *
+	 * <p>Defaults to {@code true}: the compile-time collapse keeps kernels under the compute
+	 * context's buffer-argument limit (e.g. Metal's ~31, and the native compiler's parameter
+	 * limit), which is required for fused kernels with many small inputs to evaluate at all. The
+	 * copy plan copies aggregated inputs IN before the kernel and copies written slices back OUT
+	 * afterward (skipping the slice that aliases an explicit {@code output}; see
+	 * {@link #getPostprocessData(MemoryData)}), and instruction reuse is aggregation-safe (each
+	 * reused operation gets its own aggregate buffer and the signature encodes the aggregate layout
+	 * -- see {@code AcceleratedComputationOperation.rebindAggregateForReuse} and
+	 * {@code CollectionProviderProducer.signature}). Set the env var to a disabled value to turn
+	 * the collapse off (e.g. for debugging a kernel without aggregation).</p>
+	 */
 	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(true);
-	/** If true, include non-JVM (off-heap native) memory in argument aggregation. Controlled by {@code AR_HARDWARE_OFF_HEAP_AGGREGATION}. */
-	public static boolean enableOffHeapAggregation = SystemUtils.isEnabled("AR_HARDWARE_OFF_HEAP_AGGREGATION").orElse(false);
-	/** Maximum element count for an argument to be eligible for aggregation. Controlled by {@code AR_HARDWARE_AGGREGATE_MAX}. */
-	public static int maxAggregateLength = SystemUtils.getInt("AR_HARDWARE_AGGREGATE_MAX").orElse(1 * 1024 * 1024);
 
-	/** The compute context providing language, memory, and kernel support for this argument map. */
-	private final ComputeContext<MemoryData> context;
-	/** Metadata for the operation being compiled, used for argument naming. */
-	private final OperationMetadata metadata;
+	/**
+	 * Maximum element count for an argument to be eligible for aggregation. Controlled by
+	 * {@code AR_HARDWARE_AGGREGATE_MAX}. Eligibility depends only on this size -- a
+	 * signature-stable structural property -- never on where the data currently lives.
+	 */
+	public static int maxAggregateLength = SystemUtils.getInt("AR_HARDWARE_AGGREGATE_MAX").orElse(1024);
+
+	/**
+	 * Controls whether aggregation copy-back runs when an operation is given an explicit output
+	 * destination via {@link org.almostrealism.hardware.AcceleratedOperation#apply}. When false
+	 * (default), supplying an explicit output suppresses aggregation copy-back entirely -- the
+	 * caller is taken to be declaring that side-effects to other aggregated buffers need not be
+	 * recorded. When true, copy-back runs even with an explicit output, except for the slice that
+	 * aliases that output (so an in-place {@code x = x + y} is not overwritten by the stale
+	 * read-copy of {@code x}). Controlled by {@code AR_HARDWARE_STRICT_SIDE_EFFECTS}.
+	 */
+	public static boolean enableStrictSideEffects = SystemUtils.isEnabled("AR_HARDWARE_STRICT_SIDE_EFFECTS").orElse(false);
 
 	/** Maps raw memory objects to the argument variables created for them. */
-	private final Map<Memory, ArrayVariable<A>> mems;
-	/** Maps memory data references to their offset position within the aggregate argument. */
-	private final Map<MemoryDataRef, Integer> aggregatePositions;
+	private final Map<Memory, ArrayVariable> mems;
 	/** All root delegate provider suppliers created by this map, for lifecycle management. */
 	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
-	/** True if this map is being used for kernel (parallel) evaluation; false for scalar evaluation. */
-	private final boolean kernel;
 
-	/** Manages pre/post-processing operations for memory replacement during aggregation. */
-	private MemoryDataReplacementMap replacementMap;
-	/** Factory function creating aggregate memory buffers of a given element count. */
-	private IntFunction<MemoryData> aggregateGenerator;
+	/** Factory creating the aggregate buffer of a given element count, or null to disable aggregation. */
+	private final IntFunction<MemoryData> aggregateGenerator;
+	/** Root delegates folded into the aggregate, paired with their offset within it. */
+	private final List<Replacement> replacements;
 	/** Total number of elements accumulated in the aggregate argument so far. */
 	private int aggregateLength;
 
-	/** Lazily created aggregate memory buffer that holds all aggregated argument data. */
+	/** Lazily created aggregate buffer holding all aggregated argument data. */
 	private MemoryData aggregateData;
 	/** Producer that provides the aggregate buffer to the kernel. */
 	private Producer<MemoryData> aggregateSupplier;
 	/** Argument variable for the aggregate buffer, created once and shared. */
-	private ArrayVariable<A> aggregateArgument;
+	private ArrayVariable aggregateArgument;
 
 	/**
-	 * Creates an argument map without argument aggregation support.
+	 * Creates an argument map without aggregation support.
 	 *
-	 * @param context Compute context providing language and memory services
-	 * @param metadata Operation metadata for argument naming
+	 * @param delegateProvider the argument provider used to create new argument variables
 	 */
-	public MemoryDataArgumentMap(ComputeContext<MemoryData> context,
-								 OperationMetadata metadata) { this(context, metadata, null); }
-
-	/**
-	 * Creates an argument map with aggregation enabled for kernel (parallel) evaluation.
-	 *
-	 * @param context Compute context providing language and memory services
-	 * @param metadata Operation metadata for argument naming
-	 * @param aggregateGenerator Factory function for creating aggregate memory buffers; may be null to disable
-	 */
-	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, OperationMetadata metadata,
-								 IntFunction<MemoryData> aggregateGenerator) {
-		this(context, metadata, aggregateGenerator, true); }
-
-	/**
-	 * Creates a fully configured argument map.
-	 *
-	 * @param context Compute context providing language and memory services
-	 * @param metadata Operation metadata for argument naming
-	 * @param aggregateGenerator Factory function for creating aggregate memory buffers; may be null
-	 * @param kernel True if used for kernel evaluation; false for scalar evaluation
-	 */
-	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
-		this.context = context;
-		this.metadata = metadata;
-
-		this.mems = new HashMap<>();
-		this.aggregatePositions = new HashMap<>();
-		this.rootDelegateSuppliers = new ArrayList<>();
-		this.kernel = kernel;
-
-		this.aggregateGenerator = aggregateGenerator;
-
-		if (enableArgumentAggregation) {
-			replacementMap = new MemoryDataReplacementMap();
-		}
+	public MemoryDataArgumentMap(ArgumentProvider delegateProvider) {
+		this(delegateProvider, null);
 	}
 
-	/** Returns the operation list that copies data into the aggregate buffer before kernel execution. */
-	public OperationList getPrepareData() { return replacementMap == null ? new OperationList() : replacementMap.getPreprocess(); }
-	/** Returns the operation list that copies results out of the aggregate buffer after kernel execution. */
-	public OperationList getPostprocessData() { return replacementMap == null ? new OperationList() : replacementMap.getPostprocess(); }
-
-	/** Returns the memory replacement map tracking all argument aggregation replacements, or null if aggregation is disabled. */
-	public MemoryDataReplacementMap getReplacementMap() { return replacementMap; }
-
-	/** Returns true if any memory replacements have been registered (i.e., at least one argument was aggregated). */
-	public boolean hasReplacements() { return replacementMap != null && !replacementMap.isEmpty(); }
+	/**
+	 * Creates an argument map.
+	 *
+	 * @param delegateProvider the argument provider used to create new argument variables
+	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
+	 */
+	public MemoryDataArgumentMap(ArgumentProvider delegateProvider, IntFunction<MemoryData> aggregateGenerator) {
+		super(delegateProvider);
+		this.mems = new HashMap<>();
+		this.rootDelegateSuppliers = new ArrayList<>();
+		this.aggregateGenerator = aggregateGenerator;
+		this.replacements = new ArrayList<>();
+	}
 
 	@Override
-	public ArrayVariable<A> get(Supplier key, NameProvider p) {
-		long start = System.nanoTime();
+	public ArrayVariable get(Supplier key) {
+		ArrayVariable arg = super.get(key);
+		if (arg != null) return arg;
 
-		try {
-			ArrayVariable<A> arg = super.get(key, p);
-			if (arg != null) return arg;
+		// A PassThroughProducer key reuses an existing argument that passes through
+		// the same referenced argument index.
+		if (key instanceof Delegated<?> && ((Delegated) key).getDelegate() instanceof PassThroughProducer<?>) {
+			PassThroughProducer param = (PassThroughProducer) ((Delegated) key).getDelegate();
 
-			MemoryData md;
+			Optional<ArrayVariable> passThrough = get(v -> {
+				if (!(v instanceof Delegated<?>)) return false;
+				if (!(((Delegated) v).getDelegate() instanceof PassThroughProducer)) return false;
+				return ((PassThroughProducer) ((Delegated) v).getDelegate()).getReferencedArgumentIndex() == param.getReferencedArgumentIndex();
+			});
 
-			boolean generateArg = false;
+			if (passThrough.isPresent()) return passThrough.get();
+		}
 
-			// A MemoryDataDestination carries information about how to produce
-			// the data in that destination, along with the MemoryData itself.
-			// There needs to be a way to return a delegated variable, as we do
-			// below, but not lose the knowledge that we rely on during the
-			// creation of required scopes, ie the knowledge of how that data
-			// is populated. The root delegate will have no logical way to do
-			// this because it may have many children produced in different
-			// ways, so it probably has to be stored with the Delegated variable,
-			// but it cannot be tracked using the delegate field because that
-			// is already used to point at the root delegate MemoryData
-			if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestinationProducer) {
-				Object dest = ((MemoryDataDestinationProducer) key).get().evaluate();
-				if (dest != null && !(dest instanceof MemoryData)) {
-					throw new RuntimeException();
-				}
+		Object provider = key.get();
+		if (!(provider instanceof Provider)) return null;
 
-				md = (MemoryData) dest;
-			} else {
-				Object provider = key.get();
-				if (!(provider instanceof Provider)) return null;
-				if (!(((Provider) provider).get() instanceof MemoryData)) return null;
+		Object value = ((Provider) provider).get();
 
-				md = (MemoryData) ((Provider) provider).get();
+		// Reuse an existing argument that provides the same value instance.
+		Optional<ArrayVariable> match = get(supplier -> {
+			Object v = supplier.get();
+			if (!(v instanceof Provider)) return false;
+			return ((Provider) v).get() == value;
+		});
 
-				// If the provider points to a MemoryData that is stored outside of device memory,
-				// it is a candidate for argument aggregation below
-				generateArg = md.getMem().getProvider() != context.getDataContext().getKernelMemoryProvider();
+		if (match.isPresent()) return match.get();
+
+		// Otherwise register the MemoryData by its root delegate so that views into the
+		// same underlying memory resolve to a single kernel argument.
+		if (!(value instanceof MemoryData)) return null;
+
+		MemoryData md = (MemoryData) value;
+		if (md.getMem() == null) {
+			throw new IllegalArgumentException();
+		}
+
+		if (mems.containsKey(md.getMem())) {
+			// If the root delegate already had an argument produced for it,
+			// return that
+			return delegateProvider.getArgument(key, mems.get(md.getMem()), md.getOffset());
+		} else {
+			ArrayVariable var = null;
+
+			// If aggregation is enabled and this root is small enough, fold it into the
+			// shared aggregate buffer instead of giving it its own kernel argument.
+			if (aggregateGenerator != null && isAggregationTarget(md.getRootDelegate())) {
+				var = aggregate(createDelegate(md), md.getRootDelegate());
 			}
 
-			if (md == null) return null;
-			if (md.getMem() == null) {
-				throw new IllegalArgumentException();
+			if (var == null) {
+				// Otherwise obtain a standalone array variable for the root delegate
+				var = delegateProvider.getArgument(createDelegate(md), null, -1);
 			}
 
-			if (mems.containsKey(md.getMem())) {
-				// If the root delegate already had an argument produced for it,
-				// return that
-				return delegateProvider.getArgument(p, key, mems.get(md.getMem()), md.getOffset());
-			} else {
-				ArrayVariable var = null;
+			// Record that this MemoryData has var as its root delegate
+			mems.put(md.getMem(), var);
 
-				if (generateArg) {
-					// If aggregation is desired for this MemoryData, try to
-					// generate the aggregate argument for the root delegate
-					var = generateArgument(p, createDelegate(md), md.getRootDelegate());
-				}
-
-				if (var == null) {
-					// Otherwise, just obtain the array variable for the root delegate
-					var = delegateProvider.getArgument(p, createDelegate(md), null, -1);
-				}
-
-				// Record that this MemoryData has var as its root delegate
-				mems.put(md.getMem(), var);
-
-				// Return an ArrayVariable that delegates to the correct position of the root delegate
-				return delegateProvider.getArgument(p, key, var, md.getOffset());
-			}
-		} finally {
-			if (MemoryDataReplacementMap.profile != null) {
-				MemoryDataReplacementMap.profile.recordDuration(null, metadata.appendShortDescription(" get"), System.nanoTime() - start);
-			}
+			// Return an ArrayVariable that delegates to the correct position of the root delegate
+			return delegateProvider.getArgument(key, var, md.getOffset());
 		}
 	}
 
@@ -263,36 +212,50 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return d;
 	}
 
-	@Override
-	public void destroy() {
-		super.destroy();
-		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
-		mems.forEach((k, v) -> v.destroy());
-		mems.clear();
-		aggregatePositions.clear();
-		if (replacementMap != null) replacementMap.destroy();
-		if (aggregateData != null) aggregateData.destroy();
-	}
-
 	/**
-	 * Returns the aggregate memory buffer, creating it on first access via the {@link #aggregateGenerator}.
+	 * Folds the given root delegate into the shared aggregate buffer, returning an argument
+	 * variable that delegates to the aggregate at the assigned offset.
 	 *
-	 * @return The aggregate {@link MemoryData}, or null if no elements have been aggregated
+	 * @param key  Supplier identifying the root delegate argument being created
+	 * @param root The root delegate {@link MemoryData} to aggregate
+	 * @return Argument variable delegating into the aggregate, or null if it cannot be aggregated
 	 */
-	protected MemoryData getAggregateData() {
-		if (aggregateLength > 0 && aggregateData == null) {
-			aggregateData = aggregateGenerator.apply(aggregateLength);
+	private ArrayVariable aggregate(Supplier key, MemoryData root) {
+		int pos = aggregateLength;
+
+		long tot = pos + (long) root.getMemLength();
+		if (tot > Integer.MAX_VALUE) {
+			// The aggregate would overflow; leave this argument on its own
+			return null;
 		}
 
-		return aggregateData;
+		// Record the root and its position so the data can be copied into and out of
+		// the aggregate around kernel execution.
+		replacements.add(new Replacement(root, pos));
+		aggregateLength += root.getMemLength();
+
+		return delegateProvider.getArgument(key, getAggregateArgument(), pos);
+	}
+
+	/** Returns the argument variable for the aggregate buffer, creating it on first access. */
+	private ArrayVariable getAggregateArgument() {
+		if (aggregateArgument == null) {
+			aggregateArgument = delegateProvider.getArgument((Supplier) getAggregateSupplier(), null, -1);
+		}
+
+		return aggregateArgument;
 	}
 
 	/**
-	 * Returns the producer that provides the aggregate buffer to the kernel, creating it on first access.
+	 * Returns the producer that provides this map's aggregate buffer to the kernel, creating it on
+	 * first access.
 	 *
-	 * @return Producer for the aggregate {@link MemoryData}
+	 * <p>Exposed so that a reused operation can bind the shared compiled scope's aggregate argument
+	 * to its own per-operation aggregate buffer (see {@code AcceleratedComputationOperation.load}).</p>
+	 *
+	 * @return Producer of this map's aggregate buffer
 	 */
-	protected Producer<MemoryData> getAggregateSupplier() {
+	public Producer<MemoryData> getAggregateSupplier() {
 		if (aggregateSupplier == null) {
 			aggregateSupplier = new AggregateProducer();
 		}
@@ -300,137 +263,184 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateSupplier;
 	}
 
-	/**
-	 * Returns the argument variable for the aggregate buffer, creating it on first access.
-	 *
-	 * @param p Name provider for generating the argument variable name
-	 * @return Argument variable for the aggregate buffer
-	 */
-	protected ArrayVariable<A> getAggregateArgument(NameProvider p) {
-		if (aggregateArgument == null) {
-			aggregateArgument = delegateProvider.getArgument(p, (Supplier) getAggregateSupplier(), null, -1);
+	/** Returns the aggregate buffer, creating it on first access via the aggregate generator. */
+	private MemoryData getAggregateData() {
+		if (aggregateLength > 0 && aggregateData == null) {
+			aggregateData = aggregateGenerator.apply(aggregateLength);
 		}
 
-		return aggregateArgument;
+		return aggregateData;
+	}
+
+	/** Returns true if at least one argument has been folded into the aggregate. */
+	public boolean hasReplacements() { return !replacements.isEmpty(); }
+
+	/** Returns the total number of elements folded into the aggregate buffer. */
+	public int getAggregateLength() { return aggregateLength; }
+
+	/** Returns a compact description of the aggregate layout (per-replacement offset:length). */
+	public String describeAggregate() {
+		StringBuilder b = new StringBuilder("len=").append(aggregateLength).append(" [");
+		for (Replacement r : replacements) {
+			b.append(r.getPosition()).append(':').append(r.getRoot().getMemLength()).append(',');
+		}
+		return b.append(']').toString();
 	}
 
 	/**
-	 * Generates an argument variable for the given memory data, or null if aggregation is not applicable.
+	 * Returns the operations that copy each aggregated root into the aggregate buffer before
+	 * kernel execution.
 	 *
-	 * <p>If aggregation has already occurred for this memory data, returns a delegating argument
-	 * pointing to the correct position in the aggregate. Otherwise, the first eligible memory data
-	 * triggers creation of a new aggregate.</p>
-	 *
-	 * @param p   Name provider for generating variable names
-	 * @param key Supplier used as the cache key for this argument
-	 * @param md  Memory data to generate an argument for
-	 * @return Argument variable, or null if aggregation is not applicable
+	 * @return Pre-execution copy operations
 	 */
-	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, MemoryData md) {
-		if (aggregateGenerator == null || !isAggregationTarget(md)) return null;
-
-		if (md.getMem().getProvider() == context.getDataContext().getKernelMemoryProvider())
-			return null;
-
-		if (aggregatePositions.containsKey(new MemoryDataRef(md))) {
-			// If aggregation has already occurred for this MemoryData,
-			// then return an argument that delegates to the correct position
-			// of the aggregated argument
-			return delegateProvider.getArgument(p, key, getAggregateArgument(p),
-						aggregatePositions.get(new MemoryDataRef(md)));
+	public OperationList getPrepareData() {
+		OperationList prep = new OperationList("MemoryDataArgumentMap Preprocess");
+		for (Replacement r : replacements) {
+			MemoryData root = r.getRoot();
+			int pos = r.getPosition();
+			int len = root.getMemLength();
+			prep.add(new MemoryDataCopy("Aggregate Prepare",
+					() -> root, () -> new Bytes(len, getAggregateData(), pos), len));
 		}
+		return prep;
+	}
 
+	/**
+	 * Returns the operations that copy every aggregated slice back to its source after kernel
+	 * execution.
+	 *
+	 * @return Post-execution copy operations
+	 */
+	public OperationList getPostprocessData() {
+		return getPostprocessData(null);
+	}
+
+	/**
+	 * Returns the operations that copy each aggregated slice back to its source after kernel
+	 * execution, omitting any slice whose source shares memory with {@code skipOutput}.
+	 *
+	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told
+	 * to use as its explicit output (the in-place {@code x = x + y} case, where the aggregated
+	 * read copy of {@code x} must not overwrite the freshly written {@code x}).</p>
+	 *
+	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to copy all
+	 * @return Post-execution copy operations
+	 */
+	public OperationList getPostprocessData(MemoryData skipOutput) {
+		Memory skip = skipOutput == null ? null : skipOutput.getRootDelegate().getMem();
+
+		OperationList post = new OperationList("MemoryDataArgumentMap Postprocess");
+		for (Replacement r : replacements) {
+			MemoryData root = r.getRoot();
+			if (skip != null && root.getRootDelegate().getMem() == skip) {
+				continue;
+			}
+			int pos = r.getPosition();
+			int len = root.getMemLength();
+			post.add(new MemoryDataCopy("Aggregate Postprocess",
+					() -> new Bytes(len, getAggregateData(), pos), () -> root, len));
+		}
+		return post;
+	}
+
+	@Override
+	public void destroy() {
+		super.destroy();
+		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
+		mems.forEach((k, v) -> v.destroy());
+		mems.clear();
+		replacements.clear();
 		if (aggregateData != null) {
-			throw new IllegalArgumentException("Cannot generate argument when aggregate data is already built");
-		}
-
-		int pos = aggregateLength;
-
-		// Remember the position of this MemoryData in the aggregate argument
-		// in case another attempt is made at aggregation for a different
-		// provider of the same underlying MemoryData
-		aggregatePositions.put(new MemoryDataRef(md), pos);
-
-		// Update the pre/post operations to move the data into and out of the aggregate argument data
-		replacementMap.addReplacement(md, getAggregateSupplier(), pos);
-
-		long tot = pos + (long) md.getMemLength();
-		if (tot > Integer.MAX_VALUE) {
-			throw new IllegalArgumentException("Argument aggregate is too large");
-		}
-
-		// Expand the required length of the aggregate argument
-		aggregateLength += md.getMemLength();
-
-		// Return a delegate to the aggregate argument
-		return delegateProvider.getArgument(p, key, getAggregateArgument(p), pos);
-	}
-
-	/**
-	 * Internal {@link Producer} that provides the lazily created aggregate buffer to the kernel.
-	 */
-	private class AggregateProducer implements Producer<MemoryData> {
-		@Override
-		public Evaluable<MemoryData> get() {
-			return new Provider<>(getAggregateData());
+			aggregateData.destroy();
+			aggregateData = null;
 		}
 	}
 
 	/**
-	 * Returns true if the value produced by the given producer is eligible for argument aggregation.
+	 * Returns true if the given {@link MemoryData} is eligible for aggregation.
 	 *
-	 * @param p Producer to test
-	 * @return True if the produced value is a {@link MemoryData} that can be aggregated
-	 */
-	public static boolean isAggregationTarget(Producer<?> p) {
-		Evaluable<?> eval = p.get();
-		if (!(eval instanceof Provider)) return false;
-
-		Object v = ((Provider<?>) eval).get();
-		return v instanceof MemoryData && isAggregationTarget((MemoryData) v);
-	}
-
-	/**
-	 * Returns true if the given {@link MemoryData} is eligible for argument aggregation.
-	 *
-	 * <p>A memory data is eligible when aggregation is enabled, its size does not exceed
-	 * {@link #maxAggregateLength}, and (if off-heap aggregation is disabled) it uses JVM heap memory.</p>
+	 * <p>Eligibility depends only on the argument's size -- a signature-stable structural
+	 * property -- so the same computation always makes the same decision. It deliberately does
+	 * <em>not</em> consider where the data currently lives (heap vs. device), because that is
+	 * mutable runtime state that would make the decision (and the resulting kernel) vary for no
+	 * semantic reason and break instruction-set reuse.</p>
 	 *
 	 * @param md Memory data to test
-	 * @return True if the memory data can be included in an aggregate argument
+	 * @return True if the memory data can be folded into an aggregate argument
 	 */
 	public static boolean isAggregationTarget(MemoryData md) {
-		if (!enableArgumentAggregation || md == null || md.getMem() == null)
-			return false;
+		return enableArgumentAggregation && md != null && md.getMem() != null
+				&& md.getMemLength() <= maxAggregateLength;
+	}
 
-		if (md.getMemLength() > maxAggregateLength) {
-			if (enableWarnings) {
-				Hardware.console.features(MemoryDataArgumentMap.class)
-						.log("Unable to aggregate " + md.getMem().getProvider().getName() +
-							" argument (" + md.getMemLength() + " > " + maxAggregateLength + ")");
-			}
+	/**
+	 * Returns true if the given argument variable is the synthesized aggregate buffer argument
+	 * produced by some {@link MemoryDataArgumentMap}.
+	 *
+	 * <p>The aggregate argument has no position in the {@link io.almostrealism.relation.Process}
+	 * tree, so it is identified by its producer type. A reused operation uses this to locate the
+	 * shared compiled scope's aggregate argument and rebind it to its own per-operation buffer.</p>
+	 *
+	 * @param arg The argument variable to test
+	 * @return True if the argument provides an aggregate buffer
+	 */
+	public static boolean isAggregateArgument(ArrayVariable<?> arg) {
+		Object producer = arg == null ? null : arg.getProducer();
+		return producer instanceof AggregateProducer;
+	}
 
-			return false;
-		}
-
-		if (!enableOffHeapAggregation && !(md.getMem().getProvider() instanceof JVMMemoryProvider))
-			return false;
-
-		return true;
+	/**
+	 * Creates and configures a {@link MemoryDataArgumentMap} without aggregation support.
+	 *
+	 * @return Fully configured {@link MemoryDataArgumentMap}
+	 */
+	public static MemoryDataArgumentMap create() {
+		return create(null);
 	}
 
 	/**
 	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider.
 	 *
-	 * @param context Compute context providing language and memory services
-	 * @param metadata Operation metadata for argument naming
-	 * @param aggregateGenerator Factory for creating aggregate buffers; may be null
-	 * @param kernel True if the map is used for kernel evaluation
+	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
-	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
-		MemoryDataArgumentMap map = new MemoryDataArgumentMap(context, metadata, aggregateGenerator, kernel);
-		map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));
-		return map;
+	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator) {
+		return new MemoryDataArgumentMap(
+				new DefaultScopeInputManager(
+						(name, input) -> CollectionVariable.create(name, (Supplier) input)),
+				aggregateGenerator);
+	}
+
+	/** Pairs an aggregated root delegate with its offset within the aggregate buffer. */
+	private static class Replacement {
+		/** The root delegate folded into the aggregate. */
+		private final MemoryData root;
+		/** The offset of this root within the aggregate buffer. */
+		private final int position;
+
+		/**
+		 * Creates a replacement record.
+		 *
+		 * @param root     The root delegate folded into the aggregate
+		 * @param position The offset of the root within the aggregate buffer
+		 */
+		public Replacement(MemoryData root, int position) {
+			this.root = root;
+			this.position = position;
+		}
+
+		/** Returns the root delegate folded into the aggregate. */
+		public MemoryData getRoot() { return root; }
+
+		/** Returns the offset of the root within the aggregate buffer. */
+		public int getPosition() { return position; }
+	}
+
+	/** {@link Producer} that provides the lazily created aggregate buffer to the kernel. */
+	private class AggregateProducer implements Producer<MemoryData> {
+		@Override
+		public Evaluable<MemoryData> get() {
+			return new Provider<>(getAggregateData());
+		}
 	}
 }

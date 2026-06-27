@@ -16,8 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -174,16 +173,6 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	}
 
 
-	/**
-	 * Prepares the argument map for kernel execution.
-	 * Delegates to the parent implementation to set up all necessary argument mappings.
-	 *
-	 * @param map The argument map for tracking kernel arguments
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-	}
 
 	/**
 	 * Prepares the scope for kernel compilation by setting up the target variable.
@@ -194,9 +183,9 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 * @param context The kernel structure context providing compilation information
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
-		targetVariable = (CollectionVariable<?>) manager.argumentForInput(getNameProvider()).apply((Supplier) target);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput().apply((Supplier) target);
 	}
 
 	/**

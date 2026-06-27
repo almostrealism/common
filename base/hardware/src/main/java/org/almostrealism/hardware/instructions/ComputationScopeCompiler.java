@@ -16,10 +16,8 @@
 
 package org.almostrealism.hardware.instructions;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -62,7 +60,6 @@ import java.util.stream.Collectors;
  *
  * <ol>
  *   <li><strong>Scope generation:</strong> Call {@code Computation.getScope()} to obtain AST</li>
- *   <li><strong>Argument preparation:</strong> Set up {@link io.almostrealism.code.ArgumentMap} for inputs</li>
  *   <li><strong>Scope simplification:</strong> Optimize and flatten the scope tree</li>
  *   <li><strong>Metadata enrichment:</strong> Add shape, signature, and traversal policy</li>
  *   <li><strong>Kernel structure support:</strong> Manage kernel series and traversal caching</li>
@@ -73,16 +70,11 @@ import java.util.stream.Collectors;
  * <pre>{@code
  * // Create compiler
  * Computation<Matrix> computation = add(a, b);
- * NameProvider nameProvider = () -> "add_operation";
  * ComputationScopeCompiler<Matrix> compiler =
- *     new ComputationScopeCompiler<>(computation, nameProvider);
- *
- * // Prepare arguments (optional, for Process trees)
- * ArgumentMap argMap = new ArgumentMap();
- * compiler.prepareArguments(argMap);
+ *     new ComputationScopeCompiler<>(computation);
  *
  * // Prepare scope inputs
- * ScopeInputManager inputManager = ...;
+ * ArgumentProvider inputManager = ...;
  * compiler.prepareScope(inputManager);
  *
  * // Compile to Scope
@@ -202,9 +194,6 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	/** The computation being compiled into a scope. */
 	private Computation<T> computation;
 
-	/** Provider for generating unique names during scope compilation. */
-	private NameProvider nameProvider;
-
 	/** Cache for kernel series data used in GPU optimization. */
 	private KernelSeriesCache kernelSeriesCache;
 
@@ -221,11 +210,9 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	 * Constructs a new compiler for the specified computation.
 	 *
 	 * @param computation  the computation to compile into a scope
-	 * @param nameProvider provider for generating unique argument names
 	 */
-	public ComputationScopeCompiler(Computation<T> computation, NameProvider nameProvider) {
+	public ComputationScopeCompiler(Computation<T> computation) {
 		this.computation = computation;
-		this.nameProvider = nameProvider;
 	}
 
 	/**
@@ -344,22 +331,11 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	}
 
 	/**
-	 * Prepares arguments for compilation by delegating to the underlying computation.
-	 *
-	 * @param map the argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		ScopeLifecycle.super.prepareArguments(map);
-		getComputation().prepareArguments(map);
-	}
-
-	/**
 	 * Prepares the scope inputs using this compiler as the kernel structure context.
 	 *
 	 * @param manager the scope input manager
 	 */
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ArgumentProvider manager) {
 		prepareScope(manager, this);
 	}
 
@@ -371,14 +347,14 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	 * @param context the kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.super.prepareScope(manager, context);
 		getComputation().prepareScope(manager, context);
 
 		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
-				data -> manager.argumentForInput(nameProvider).apply(() -> new Provider<>(data)));
+				data -> manager.argumentForInput().apply(() -> new Provider<>(data)));
 		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
-				data -> manager.argumentForInput(nameProvider).apply((Supplier) data));
+				data -> manager.argumentForInput().apply((Supplier) data));
 	}
 
 	/**

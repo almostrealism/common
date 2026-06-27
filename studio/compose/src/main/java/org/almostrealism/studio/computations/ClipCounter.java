@@ -17,8 +17,10 @@
 
 package org.almostrealism.studio.computations;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Producer;
@@ -28,13 +30,12 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * GPU-compatible operation that increments a clip counter whenever an audio sample
  * falls outside the configured minimum and maximum amplitude bounds.
  */
-public class ClipCounter extends OperationComputationAdapter<PackedCollection> {
+public class ClipCounter extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
 	/**
 	 * Creates a clip counter.
 	 *
@@ -62,14 +63,16 @@ public class ClipCounter extends OperationComputationAdapter<PackedCollection> {
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ClipCounter"));
 
-		String value = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
-		String min = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
-		String max = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
-		String count = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		Expression<Double> value = getArgument(2).valueAt(0);
+		Expression<Double> min = getArgument(1).valueAt(0);
+		Expression<Double> max = getArgument(1).valueAt(1);
+		Expression<Double> count = getArgument(0).valueAt(0);
+		Expression<?> incremented = count.add(e(1.0));
 
-		Consumer<String> code = scope.code();
-		code.accept("if (" + value + " >= " + max + " || " + value
-				+ " <= " + min + ") " + count + " = " + count + " + 1;\n");
+		// count = (value >= max || value <= min) ? count + 1 : count
+		scope.assign(getArgument(0).valueAt(0),
+				conditional(value.greaterThanOrEqual(max), incremented,
+						conditional(value.lessThanOrEqual(min), incremented, count)));
 		return scope;
 	}
 }

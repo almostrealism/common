@@ -16,10 +16,9 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationBase;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -391,28 +390,17 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	/**
-	 * Prepares arguments by adding this producer to the argument map.
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		map.add(this);
-	}
-
-	/**
 	 * Prepares scope by creating an argument variable for this pass-through.
 	 *
 	 * @param manager The scope input manager
 	 * @param context The kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
-		args.add(new Argument<>(manager.argumentForInput(getNameProvider()).apply((Supplier) this), Expectation.NOT_ALTERED));
+		args.add(new Argument<>(manager.argumentForInput().apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
 	}
 

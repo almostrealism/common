@@ -16,23 +16,24 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.Precision;
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Hardware-accelerated operation for purging old entries from an {@link AcceleratedTimeSeries}.
@@ -94,7 +95,8 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  */
-public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection> {
+public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection>
+		implements ExpressionFeatures {
 	/** The minimum wavelength (in samples) below which entries are considered stale and purged. */
 	private final double wavelength;
 
@@ -126,37 +128,72 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 		return new AcceleratedTimeSeriesPurge(wavelength, children.toArray(Producer[]::new));
 	}
 
+	/**
+	 * Builds the scope that purges stale entries from the time series by advancing its begin
+	 * cursor past every entry whose time precedes the purge cursor.
+	 *
+	 * <p><strong>Frequency throttling (currently disabled).</strong> Purge logic is emitted only
+	 * when {@code wavelength == 1.0} (purge on every call). The original C used an internal counter
+	 * and a {@code frequency < 1.0} gate to throttle purging, but that gate had a latent bug: its
+	 * condition {@code count = 0.0} was an assignment (always false in C), so no purge ran for
+	 * {@code frequency < 1.0}. The counter is private and unobservable, so the only observable
+	 * effect was that the series was left untouched; emitting purge only at {@code wavelength == 1.0}
+	 * preserves that. Throttling is still worthwhile (a purge is an O(n) scan of the live region).
+	 * To reintroduce it correctly, advance the counter each call
+	 * ({@code count = fmod(count + 1, wavelength)}) and guard the purge with a genuine comparison
+	 * ({@code count == 0}), leaving the counter intact rather than clobbering it inside the gate.</p>
+	 *
+	 * <p><strong>Operation-unique snapshot variable.</strong> The begin-cursor snapshot is declared
+	 * with an operation-unique name via {@link #getVariableName(int)}: the native (C) backend hoists
+	 * declared variables to function scope, so a hardcoded name collides ("redefinition") when
+	 * several purge operations are inlined into one kernel (loop indices need no such treatment, as
+	 * they are declared inside the for-statement). Because the hoisted declaration carries its
+	 * initializer with it, that initializer runs only once when this operation is inlined into an
+	 * enclosing per-sample loop; the snapshot must instead capture the current begin cursor on every
+	 * invocation, so it is declared with a throwaway value and reassigned as an in-loop statement.</p>
+	 *
+	 * <p><strong>Early-break emulation.</strong> {@link io.almostrealism.scope.Repeated} has no break
+	 * statement, so the early break of the original loop (stop at the first entry at or beyond the
+	 * cursor) is reproduced by the {@code cursor0 >= banki} term in the loop condition; without it the
+	 * loop scans the full live region every call (O(n) per sample, O(n^2) across a delay line). The
+	 * conjunction lowers to a bitwise {@code &} (no short-circuit), so {@code banki} is read even on
+	 * the terminating check; that read stays in bounds because the series allocates
+	 * {@code maxEntries + 1} slots and {@code add()} caps the end cursor at {@code maxEntries}.</p>
+	 *
+	 * @param context the kernel structure context
+	 * @return the purge scope
+	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		Expression i = new StaticReference(Integer.class, "i");
-		String left = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
-		String right = getArgument(0).valueAt(1).getSimpleExpression(getLanguage());
-		String banki = getArgument(0).reference(i.multiply(2)).getSimpleExpression(getLanguage());
-		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
-		String count = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
+		// Purge only when not throttled; throttling is currently disabled (see javadoc).
+		if (wavelength == 1.0) {
+			Expression left = getArgument(0).valueAt(0);
+			Expression right = getArgument(0).valueAt(1);
+			Expression cursor0 = getArgument(1).valueAt(0);
 
-		Precision p = getLanguage().getPrecision();
+			Scope<Void> guard = new Scope<>();
+			// Operation-unique name + per-invocation reassignment of the hoisted snapshot (see javadoc).
+			Expression start = guard.declareInteger(getVariableName(0), e(0).toInt());
+			guard.assign(start, left.add(e(1)).toInt());
 
-		Consumer<String> code = scope.code();
-		if (wavelength != 1.0) {
-			code.accept(count + " = fmod(" + count + " + " + p.stringForDouble(1.0) + ", " + p.stringForDouble(wavelength) + ");");
-			code.accept("if (" + count + " = " + p.stringForDouble(0.0) + ") {\n");
+			// Advance the begin cursor past entries older than the purge cursor; the loop
+			// condition emulates the original early break (see javadoc).
+			Repeated loop = new Repeated<>();
+			InstanceReference offset = Variable.integer("i").ref();
+			loop.setIndex(offset.getReferent());
+			Expression idx = start.add(offset);
+			Expression banki = getArgument(0).reference(idx.multiply(2));
+			loop.setCondition(idx.lessThan(right).and(cursor0.greaterThanOrEqual(banki)));
+			loop.setInterval(e(1));
+
+			loop.addCase(cursor0.greaterThan(banki), getArgument(0).reference(e(0)).assign(idx));
+
+			guard.add(loop);
+			scope.addCase(right.subtract(left).greaterThan(e(0)), guard);
 		}
 
-		code.accept("if (" + right + " - " + left + " > 0) {\n");
-		code.accept("for (int i = " + left + " + 1; i < " + right + "; i++) {\n");
-		code.accept("	if (" + cursor0 + " > " + banki + ") {\n");
-		code.accept("		" + left + " = i;\n");
-		code.accept("	}\n");
-		code.accept("	if (" + cursor0 + " < " + banki + ") {\n");
-		code.accept("		break;\n");
-		code.accept("	}\n");
-		code.accept("}\n");
-		code.accept("}\n");
-
-		if (wavelength != 1.0) code.accept("}\n");
 		return scope;
 	}
 }

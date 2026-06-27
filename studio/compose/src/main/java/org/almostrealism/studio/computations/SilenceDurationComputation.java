@@ -16,8 +16,10 @@
 
 package org.almostrealism.studio.computations;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.HybridScope;
@@ -26,14 +28,13 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * GPU-compatible operation that tracks the duration of consecutive silence in an audio
  * stream. The silence counter is incremented when the sample amplitude falls at or below
  * the configured minimum value, and reset to zero when the sample is audible.
  */
-public class SilenceDurationComputation extends OperationComputationAdapter<PackedCollection> {
+public class SilenceDurationComputation extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
 	/**
 	 * Creates a silence duration computation.
 	 *
@@ -60,13 +61,14 @@ public class SilenceDurationComputation extends OperationComputationAdapter<Pack
 	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		String value = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
-		String min = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
-		String duration = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		Expression<Double> value = getArgument(2).valueAt(0);
+		Expression<Double> min = getArgument(1).valueAt(0);
+		Expression<Double> duration = getArgument(0).valueAt(0);
 
-		Consumer<String> code = scope.code();
-		code.accept("if (" + value + " > " + min + ") " + duration + " = 0;\n");
-		code.accept("if (" + value + " <= " + min + ") " + duration + " = " + duration + " + 1;\n");
+		// duration = (value > min) ? 0 : (value <= min) ? duration + 1 : duration
+		scope.assign(getArgument(0).valueAt(0),
+				conditional(value.greaterThan(min), e(0.0),
+						conditional(value.lessThanOrEqual(min), duration.add(e(1.0)), duration)));
 		return scope;
 	}
 }

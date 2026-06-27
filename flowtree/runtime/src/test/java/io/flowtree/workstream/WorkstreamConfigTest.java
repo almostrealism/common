@@ -20,13 +20,18 @@ import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.SlackTokens;
 
@@ -1069,6 +1074,188 @@ public class WorkstreamConfigTest extends TestSuiteBase {
                 1, config.getWorkstreams().size());
         assertEquals("C0LATEONE",
                 config.getWorkstreams().get(0).getChannelId());
+    }
+
+    /**
+     * {@link WorkstreamConfig#addWorkstream} must be idempotent by
+     * {@code workstreamId}: re-adding a workstream with an ID that already
+     * has an entry replaces that entry in place rather than appending a
+     * second one. This is the guard against the unbounded duplicate
+     * accumulation that bloated the persisted YAML when a workstream was
+     * registered, lost from memory, and re-registered.
+     */
+    @Test(timeout = 10000)
+    public void testAddWorkstreamIsIdempotentByWorkstreamId() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-dup\"\n"
+            + "    channelId: \"C100\"\n"
+            + "    channelName: \"#dup\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals(1, config.getWorkstreams().size());
+
+        Workstream live = config.toWorkstreams().get(0);
+        live.setDefaultBranch("feature/updated");
+        config.addWorkstream(live);
+
+        assertEquals("addWorkstream must not append a duplicate workstreamId",
+                1, config.getWorkstreams().size());
+        assertEquals("feature/updated", config.getWorkstreams().get(0).getDefaultBranch());
+    }
+
+    /**
+     * Saving must collapse duplicate entries that share a
+     * {@code workstreamId}, keeping the last occurrence, so a YAML file that
+     * has already accumulated duplicates from historic unsynchronized
+     * append-then-save races self-heals to one entry per workstream on the
+     * next write.
+     */
+    @Test(timeout = 10000)
+    public void testSaveCollapsesDuplicateWorkstreamIdEntries() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-x\"\n"
+            + "    channelId: \"C200\"\n"
+            + "    channelName: \"#x-old\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "  - workstreamId: \"ws-y\"\n"
+            + "    channelId: \"C201\"\n"
+            + "    channelName: \"#y\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "  - workstreamId: \"ws-x\"\n"
+            + "    channelId: \"C200\"\n"
+            + "    channelName: \"#x-new\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals("fixture should load all three raw entries",
+                3, config.getWorkstreams().size());
+
+        File tempFile = File.createTempFile("workstreams-dedupe", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        assertEquals("save must collapse duplicate workstreamId entries",
+                2, reloaded.getWorkstreams().size());
+
+        boolean foundNew = false;
+        boolean foundOld = false;
+        for (WorkstreamConfig.WorkstreamEntry entry : reloaded.getWorkstreams()) {
+            if ("#x-new".equals(entry.getChannelName())) foundNew = true;
+            if ("#x-old".equals(entry.getChannelName())) foundOld = true;
+        }
+        assertTrue("the last duplicate must win", foundNew);
+        assertFalse("the stale duplicate must be removed", foundOld);
+    }
+
+    /**
+     * The atomic write must leave no temporary artifacts behind: the YAML is
+     * serialized to a sibling temp file and moved onto the target, and the
+     * temp file is always cleaned up. A leftover {@code .tmp} would indicate
+     * the move failed silently.
+     */
+    @Test(timeout = 10000)
+    public void testSaveToYamlLeavesNoTempArtifacts() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-z\"\n"
+            + "    channelId: \"C300\"\n"
+            + "    channelName: \"#z\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        File dir = Files.createTempDirectory("ws-atomic").toFile();
+        dir.deleteOnExit();
+        File target = new File(dir, "workstreams.yaml");
+        config.saveToYaml(target);
+
+        assertTrue("target file must exist after save", target.exists());
+        File[] leftovers = dir.listFiles((d, name) -> name.endsWith(".tmp"));
+        assertNotNull(leftovers);
+        assertEquals("atomic save must not leave .tmp files behind",
+                0, leftovers.length);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(target);
+        assertEquals(1, reloaded.getWorkstreams().size());
+        assertEquals("#z", reloaded.getWorkstreams().get(0).getChannelName());
+    }
+
+    /**
+     * Regression test for the archive-flag-loss defect: when a workstream
+     * still has duplicate YAML entries, {@link WorkstreamConfig#syncAndSave}
+     * must persist a flag flipped on the live workstream (here {@code
+     * archived}) so it survives a reload. The defect was that the sync
+     * updated the first matching entry while the save-time dedupe kept the
+     * last, silently dropping the flag and resurrecting the workstream on
+     * restart. {@code syncAndSave} now collapses duplicates before syncing.
+     */
+    @Test(timeout = 10000)
+    public void testSyncAndSavePersistsArchivedFlagDespiteDuplicates() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-arch\"\n"
+            + "    channelId: \"C400\"\n"
+            + "    channelName: \"#arch\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    archived: false\n"
+            + "  - workstreamId: \"ws-arch\"\n"
+            + "    channelId: \"C400\"\n"
+            + "    channelName: \"#arch\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    archived: false\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals("fixture should load both duplicate entries",
+                2, config.getWorkstreams().size());
+
+        // Archive the live workstream and persist through the combined path
+        // the controller's archive endpoint uses.
+        Workstream live = config.toWorkstreams().get(0);
+        live.setArchived(true);
+
+        File tempFile = File.createTempFile("workstreams-archive", ".yaml");
+        tempFile.deleteOnExit();
+        config.syncAndSave(Collections.singletonList(live), tempFile);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        assertEquals("duplicates must collapse to a single entry",
+                1, reloaded.getWorkstreams().size());
+        assertTrue("archived flag must survive persistence despite duplicates",
+                reloaded.getWorkstreams().get(0).isArchived());
+    }
+
+    /**
+     * The atomic write must preserve the destination file's permissions.
+     * {@link Files#createTempFile} creates the staging file as {@code 0600};
+     * without restoring the target's permissions, {@code ATOMIC_MOVE} would
+     * silently narrow a world-readable config to owner-only.
+     */
+    @Test(timeout = 10000)
+    public void testSaveToYamlPreservesFilePermissions() throws IOException {
+        Assume.assumeTrue("POSIX-only test", FileSystems.getDefault()
+                .supportedFileAttributeViews().contains("posix"));
+
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-perm\"\n"
+            + "    channelId: \"C500\"\n"
+            + "    channelName: \"#perm\"\n"
+            + "    defaultBranch: \"main\"\n";
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        File dir = Files.createTempDirectory("ws-perms").toFile();
+        dir.deleteOnExit();
+        File target = new File(dir, "workstreams.yaml");
+
+        // Create the file, then explicitly set 0644 so the next save has a
+        // world-readable destination to preserve.
+        config.saveToYaml(target);
+        Files.setPosixFilePermissions(target.toPath(),
+                PosixFilePermissions.fromString("rw-r--r--"));
+
+        config.saveToYaml(target);
+
+        Set<PosixFilePermission> perms = Files.getPosixFilePermissions(target.toPath());
+        assertEquals("rw-r--r--", PosixFilePermissions.toString(perms));
     }
 
     /**

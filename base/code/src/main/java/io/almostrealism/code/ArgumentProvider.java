@@ -45,13 +45,12 @@ public interface ArgumentProvider {
 	 * Creates an array variable for the given input producer.
 	 *
 	 * @param <T>            the type of value produced
-	 * @param p              the name provider for generating variable names
 	 * @param input          the input producer to create a variable for
 	 * @param delegate       optional delegate variable for memory sharing
 	 * @param delegateOffset offset into the delegate variable, or -1 if not delegating
 	 * @return the array variable representing the input
 	 */
-	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
+	<T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
 
 	/**
 	 * Returns a function that maps an input supplier to its argument variable using this provider.
@@ -60,15 +59,14 @@ public interface ArgumentProvider {
 	 * output variable post-processing when {@link #enableArgumentPostProcessing} is {@code true}.
 	 *
 	 * @param <T> the type of value produced by the inputs
-	 * @param p the name provider for generating variable names
 	 * @return a function from input supplier to array variable
 	 */
-	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {
+	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput() {
 		return input -> {
 			if (input == null) {
 				return null;
 			} else {
-				ArrayVariable<T> arg = getArgument(p, input, null, -1);
+				ArrayVariable<T> arg = getArgument(input, null, -1);
 				if (enableArgumentPostProcessing) processOutputVariableDelegation(arg);
 				return arg;
 			}

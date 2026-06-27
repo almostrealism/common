@@ -1325,6 +1325,25 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Builds the {@code 500} response returned when an operation mutated
+     * workstream config in memory but the YAML write failed. Centralised so
+     * endpoints can report a non-durable write identically — never as success —
+     * honouring the rule that an operation should not confirm completion
+     * before the workstreams file is written.
+     *
+     * @param operation a short label for the attempted operation (e.g. {@code "Archive"})
+     * @return an {@code ok:false} 500 response describing the failed persist
+     */
+    static Response persistFailureResponse(String operation) {
+        return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                "application/json",
+                "{\"ok\":false,\"error\":" + escapeJsonValue(operation
+                    + " applied in memory but the workstreams config could not be written to"
+                    + " disk; the change is not durable and would be lost on restart. Retry.")
+                + "}");
+    }
+
+    /**
      * Escapes a string as a JSON string value (with surrounding quotes).
      * Shared by every handler in this package so the JSON shape produced by
      * one endpoint is identical to the next.

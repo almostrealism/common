@@ -213,4 +213,14 @@ public interface LanguageOperations {
 	default String getStatementTerminator() {
 		return "";
 	}
+
+	/**
+	 * Returns the keyword that terminates execution of the current kernel or function
+	 * (e.g. {@code return} for C-family languages).
+	 *
+	 * @return the termination keyword
+	 */
+	default String getReturnKeyword() {
+		return "return";
+	}
 }

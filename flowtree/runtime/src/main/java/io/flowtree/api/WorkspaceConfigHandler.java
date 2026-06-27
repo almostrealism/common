@@ -220,8 +220,8 @@ final class WorkspaceConfigHandler {
             }
         }
 
-        if (listener != null) {
-            listener.persistConfig();
+        if (listener != null && !listener.persistConfig()) {
+            return FlowTreeApiEndpoint.persistFailureResponse("Workspace update");
         }
 
         log.accept("Updated workspace config via API: " + resolvedId

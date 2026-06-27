@@ -160,7 +160,7 @@ The computation framework provides the structure for building hardware-accelerat
 // Implement a computation
 public class MyComputation extends ComputationBase<Double> {
     @Override
-    public Scope<Double> getScope(NameProvider provider) {
+    public Scope<Double> getScope(KernelStructureContext context) {
         Scope<Double> scope = new Scope<>("compute", getMetadata());
         // Build scope...
         return scope;

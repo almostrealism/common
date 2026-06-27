@@ -172,6 +172,20 @@ public class Equals extends Comparison {
 			}
 		}
 
+		// Canonicalize to the form "terms == constant" by moving non-constant terms to the
+		// left and constants to the right. This is valuable because it exposes simplifications
+		// that are otherwise hard to detect -- e.g. A + B - B == 0 collapses to A == 0 -- and is
+		// sound in exact (integer) arithmetic.
+		//
+		// It carries a floating-point risk, however: rewriting "A == B" as "(A - B) == 0" is not
+		// bit-equivalent once a backend compiler is allowed to contract the subtraction of two
+		// products into a fused multiply-add (e.g. native clang with the default
+		// -ffp-contract=on), since the fused difference rounds differently than the
+		// separately-rounded operands of a direct comparison. NotEquals already avoids this for
+		// the not-equal case by emitting a literal "!=" rather than routing through here.
+		// Equality is intentionally left canonicalizing for now; if an FP "==" is found to drift,
+		// this is the point to gate the rewrite on the target ComputeContext (or a
+		// ComputeRequirements heuristic).
 		if (enableConsolidateConstants) {
 			List<Expression<?>> lTerms = extractTerms(left);
 			List<Expression<?>> rTerms = extractTerms(right);

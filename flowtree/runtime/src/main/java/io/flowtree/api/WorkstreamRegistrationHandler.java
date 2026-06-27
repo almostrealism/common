@@ -267,10 +267,34 @@ final class WorkstreamRegistrationHandler {
         // can opt in or out of tmux even when the workstream default is on.
         workstream.setUseTmux(defaultUseTmux);
 
+        boolean persisted;
         if (listener != null) {
-            listener.registerAndPersistWorkstream(workstream);
+            persisted = listener.registerAndPersistWorkstream(workstream);
         } else {
             targetNotifier.registerWorkstream(workstream);
+            persisted = true;
+        }
+        // Never confirm a registration whose record did not reach disk.
+        if (!persisted) {
+            log.accept("Registration persist failed for " + workstream.getWorkstreamId()
+                + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
+            return FlowTreeApiEndpoint.persistFailureResponse("Registration");
+        }
+
+        // Read the workstream back through the same view the list and context
+        // endpoints use (notifiers.allWorkstreams()) before reporting success.
+        // Registration mutates several in-memory maps and persists to YAML; if
+        // any step silently failed — or a concurrent reload raced the persist —
+        // this catches it so the caller gets an honest failure instead of a
+        // green ok:true for a workstream that cannot actually be used.
+        if (!notifiers.allWorkstreams().containsKey(workstream.getWorkstreamId())) {
+            log.accept("Registration read-back failed for " + workstream.getWorkstreamId()
+                + " (branch=" + defaultBranch + ", channel=" + channelName + ")"
+                + " — workstream not resolvable after register");
+            return NanoHTTPD.newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                "application/json",
+                "{\"ok\":false,\"error\":\"Workstream registered but not resolvable after"
+                + " persistence; registration is not durable. Retry.\"}");
         }
 
         log.accept("Registered workstream via API: " + workstream.getWorkstreamId()
@@ -393,8 +417,8 @@ final class WorkstreamRegistrationHandler {
                     JsonFieldExtractor.extractBoolean(body, "defaultUseTmux"));
         }
 
-        if (listener != null) {
-            listener.registerAndPersistWorkstream(workstream);
+        if (listener != null && !listener.registerAndPersistWorkstream(workstream)) {
+            return FlowTreeApiEndpoint.persistFailureResponse("Update");
         }
 
         log.accept("Updated workstream via API: " + workstreamId);
