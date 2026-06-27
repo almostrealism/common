@@ -249,8 +249,8 @@ public final class BatchedPatternLayerRenderer {
 		// dispatch when every overlapping note carries a melodic-SSS input record;
 		// a note continuing from an earlier tick is rendered from its within-note
 		// sampling offset (computed per note in dispatchBatched).
-		List<RenderedNoteAudio> overlapping = new ArrayList<>();
-		boolean allBatchable = true;
+		List<RenderedNoteAudio> batchNow = new ArrayList<>();
+		List<RenderedNoteAudio> perNote = new ArrayList<>();
 		for (RenderedNoteAudio note : destinations) {
 			int noteStart = note.getOffset();
 			if (note.getExpectedFrameCount() > 0) {
@@ -259,24 +259,26 @@ public final class BatchedPatternLayerRenderer {
 			} else if (noteStart >= endFrame) {
 				continue;
 			}
-			overlapping.add(note);
-			if (note.getBatchedInputs() == null) {
-				allBatchable = false;
+			// Batch only notes that START in this window (sampling offset == 0): their
+			// per-window kernel shape is fixed, so the compiled kernel is reused across ticks.
+			// A note continuing from an earlier window reads from a growing within-note offset,
+			// which changes the kernel's source-row length every tick and forces a recompile,
+			// so the few such (long) notes are rendered per-note instead.
+			if (note.getBatchedInputs() != null && noteStart >= startFrame) {
+				batchNow.add(note);
+			} else {
+				perNote.add(note);
 			}
 		}
 
-		if (allBatchable && !overlapping.isEmpty()) {
-			dispatchBatched(features, overlapping, startFrame, frameCount, destination);
+		if (!batchNow.isEmpty()) {
+			dispatchBatched(features, batchNow, startFrame, frameCount, destination);
 			batchedDispatchCount.incrementAndGet();
-			return;
 		}
-
-		// Fall back to the per-note path for any tick with an unsupported note.
-		if (!overlapping.isEmpty()) {
+		if (!perNote.isEmpty()) {
 			fallbackCount.incrementAndGet();
+			features.renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
 		}
-		features.renderPerNote(sceneContext, audioContext, elements, melodic, offset,
-				startFrame, frameCount, cache);
 	}
 
 	/**
@@ -333,6 +335,13 @@ public final class BatchedPatternLayerRenderer {
 	 */
 	private void dispatchWindow(PatternFeatures features, List<RenderedNoteAudio> notes, int windowStart,
 								int windowWidth, PackedCollection destination, int destBaseOffset) {
+		// A channel is homogeneous (all melodic OR all percussion), so the first note's
+		// kind classifies the whole window; percussion takes the strict-subset path.
+		if (notes.get(0).getBatchedInputs().isPercussion()) {
+			dispatchWindowPercussion(features, notes, windowStart, windowWidth, destination, destBaseOffset);
+			return;
+		}
+
 		int count = notes.size();
 		int bucketN = bucketFor(count);
 		int layers = BatchedNoteInputs.LAYERS;
@@ -429,6 +438,97 @@ public final class BatchedPatternLayerRenderer {
 		// it at the pipeline boundary and accumulates the window into the destination.
 		long evalStart = System.nanoTime();
 		features.accumulateBatchedOutput(renderer.sssDispatch(layers),
+				destination, destBaseOffset, targetLength);
+		evalNanos.addAndGet(System.nanoTime() - evalStart);
+	}
+
+	/**
+	 * Dispatches one bounded sub-window of percussion notes — the strict subset of
+	 * {@link #dispatchWindow}. Percussion notes carry no per-layer envelope and no
+	 * filter envelope, and a volume envelope only on the wet voicing, so this path
+	 * marshals only per-layer sources, pitch ratios, destination/sampling offsets,
+	 * and (when wet) the volume ADSR scalars into the renderer's percussion buffers,
+	 * then runs the fused percussion kernel sized to this window and accumulates the
+	 * placed, summed output into {@code destination}.
+	 *
+	 * @param features       the features instance providing the evaluate boundary
+	 * @param notes          the notes overlapping this sub-window (size {@code >= 1})
+	 * @param windowStart    the sub-window's absolute start frame
+	 * @param windowWidth    the sub-window's frame count (per-note row length)
+	 * @param destination    the per-tick destination buffer to accumulate into
+	 * @param destBaseOffset the frame offset into {@code destination} for this sub-window
+	 */
+	private void dispatchWindowPercussion(PatternFeatures features, List<RenderedNoteAudio> notes, int windowStart,
+										  int windowWidth, PackedCollection destination, int destBaseOffset) {
+		int count = notes.size();
+		int bucketN = bucketFor(count);
+		int layers = BatchedNoteInputs.LAYERS;
+		int startFrame = windowStart;
+		int targetLength = windowWidth;
+		boolean wet = notes.get(0).getBatchedInputs().isWet();
+
+		double[][] ratios = new double[layers][bucketN];
+		double[][] volumeAdsr = wet ? new double[5][bucketN] : null;
+		double[] destOffsets = new double[bucketN];
+		double[] samplingOffsets = new double[bucketN];
+
+		int sourceLength = sourceLengthFor(notes, count, layers, startFrame, targetLength);
+
+		BatchedPatternRenderer renderer = rendererFor(bucketN, sourceLength, targetLength);
+		renderer.percDispatch(layers, wet);
+
+		long marshalStart = System.nanoTime();
+
+		// Finite placeholder scalars for all rows; real rows overwrite below. The dry
+		// voicing has no volume envelope, so its rows need no defaults.
+		double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
+		for (int row = 0; row < bucketN; row++) {
+			for (int l = 0; l < layers; l++) ratios[l][row] = 1.0;
+			if (wet) {
+				for (int p = 0; p < 5; p++) volumeAdsr[p][row] = adsrDefaults[p];
+			}
+		}
+
+		// Zero the bound source buffers (full fixed shape, compiles once) so padded and
+		// previously-used rows contribute nothing, then copy each real note's source.
+		PackedCollection[] boundSources = renderer.getPercSources();
+		for (int l = 0; l < layers; l++) {
+			boundSources[l].clear();
+		}
+		for (int row = 0; row < count; row++) {
+			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
+			for (int l = 0; l < layers; l++) {
+				PackedCollection src = in.getSources()[l];
+				copyRow(boundSources[l], row * sourceLength, src,
+						Math.min(src.getMemLength(), sourceLength));
+				ratios[l][row] = in.getRatios()[l];
+			}
+			if (wet) {
+				for (int p = 0; p < 5; p++) volumeAdsr[p][row] = in.getVolumeAdsr()[p];
+			}
+			int noteStart = notes.get(row).getOffset();
+			destOffsets[row] = Math.max(0, noteStart - startFrame);
+			samplingOffsets[row] = Math.max(0, startFrame - noteStart);
+		}
+
+		// Write the assembled per-note scalar columns into the kernel's bound buffers.
+		PackedCollection[] boundRatios = renderer.getPercRatios();
+		for (int l = 0; l < layers; l++) {
+			writeColumn(boundRatios[l], ratios[l]);
+		}
+		if (wet) {
+			PackedCollection[] boundVolume = renderer.getPercVolumeAdsr();
+			for (int p = 0; p < 5; p++) {
+				writeColumn(boundVolume[p], volumeAdsr[p]);
+			}
+		}
+		writeColumn(renderer.getPercDestOffsets(), destOffsets);
+		writeColumn(renderer.getPercSamplingOffsets(), samplingOffsets);
+
+		marshalNanos.addAndGet(System.nanoTime() - marshalStart);
+
+		long evalStart = System.nanoTime();
+		features.accumulateBatchedOutput(renderer.percDispatch(layers, wet),
 				destination, destBaseOffset, targetLength);
 		evalNanos.addAndGet(System.nanoTime() - evalStart);
 	}

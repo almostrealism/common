@@ -3,9 +3,10 @@
 The authoritative inventory of every known difference between the legacy CellList mixdown
 path (`AudioSceneRealtimeRunner.createCellList`) and the PDSL mixdown path
 (`AudioSceneRealtimeRunner.createPdsl` driving `mixdown_master_wet` in
-`engine/ml/src/main/resources/pdsl/audio/mixdown_manager.pdsl`). It exists so the impact
-of flipping `MixdownManager.enablePdslMixdown` is fully understood before the swap is made
-the default. Each difference cites where the behavior is decided, so a later parity pass
+`engine/ml/src/main/resources/pdsl/audio/mixdown_manager.pdsl`). It exists so the
+differences introduced by the PDSL path — **now the default** (`MixdownManager.enablePdslMixdown`,
+on since 2026-06-26; set `AR_PDSL_MIXDOWN=disabled` for the legacy Java path) — are fully
+understood. Each difference cites where the behavior is decided, so a later parity pass
 can find the lever; where a difference has an audible symptom, it is given inline (this
 doc merges the former mechanism inventory and its listener companion).
 

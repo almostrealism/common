@@ -130,14 +130,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	public static boolean enableLogging = SystemUtils.isEnabled("AR_PATTERN_LOGGING").orElse(false);
 
 	/**
-	 * Phase 3 batched pattern rendering feature flag (off by default). When
-	 * enabled, {@link PatternFeatures#render} dispatches through the
-	 * {@link BatchedPatternLayerRenderer} bucket cache instead of the legacy
-	 * per-note path. See
-	 * {@link BatchedPatternLayerRenderer} javadoc for the current integration
-	 * scope.
+	 * Batched pattern rendering feature flag (on by default; set
+	 * {@code AR_PATTERN_BATCHED=disabled} to force the per-note path). When enabled,
+	 * {@link PatternFeatures#render} dispatches batchable (melodic-SSS) notes through the
+	 * {@link BatchedPatternLayerRenderer} bucket cache instead of the legacy per-note path;
+	 * non-batchable note shapes fall back to per-note automatically. See
+	 * {@link BatchedPatternLayerRenderer} javadoc for the dispatch model.
 	 */
-	public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(false);
+	public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(true);
 
 	/**
 	 * Default source-samples-per-note used when constructing a per-pattern

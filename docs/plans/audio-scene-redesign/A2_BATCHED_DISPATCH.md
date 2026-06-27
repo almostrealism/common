@@ -131,16 +131,17 @@ supporting files last moved `3edb59355` 2026-05-31 / `08bae4a89` 2026-05-30). Th
 is **flag → per-note-vs-batched dispatch → studio renderer → engine fused kernel**,
 guarded by two sentinel counters.
 
-### 3.1 The flag — default OFF
+### 3.1 The flag — on by default
 
 `PatternLayerManager.enableBatched` (`studio/music/.../PatternLayerManager.java:140`):
 
 ```java
-public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(false);
+public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(true);
 ```
 
-**Env `AR_PATTERN_BATCHED`, default OFF.** Production runs the per-note path unless
-explicitly enabled. Each pattern lazily builds one `BatchedPatternLayerRenderer`
+**Env `AR_PATTERN_BATCHED`, on by default** (since 2026-06-26; set `=disabled` to force the
+per-note path). Batchable melodic notes dispatch through the batched path; non-batchable
+note shapes fall back to per-note automatically. Each pattern lazily builds one `BatchedPatternLayerRenderer`
 (`getBatchedLayerRenderer()`, `:327`) so compiled kernels are shared across ticks of
 the same shape.
 
@@ -305,8 +306,9 @@ note-classification path itself was unchanged since 2026-05-31.
 
 The real-scene dispatch gap is **resolved** (§4.2): batched dispatch fires correctly on the
 real curated scene for melodic channels, percussive channels fall back as designed, and
-`BatchedRealSceneRenderTest` is re-enabled. `AR_PATTERN_BATCHED` is still **off by default**
-(`PatternLayerManager.enableBatched`); the test sets it per-method.
+`BatchedRealSceneRenderTest` is re-enabled. `AR_PATTERN_BATCHED` is **on by default**
+(`PatternLayerManager.enableBatched`, since 2026-06-26); the test still sets it explicitly
+per-method.
 
 Reasonable next steps, in rough order:
 - **Validate the remaining methods** — the warm steady-state (`*WarmSteadyState`) and the
@@ -323,7 +325,7 @@ Reasonable next steps, in rough order:
 ## Key files
 
 - `studio/music/.../PatternFeatures.java` — flag check + per-note/batched dispatch (`:97`), single evaluate boundary (`:155`)
-- `studio/music/.../PatternLayerManager.java` — `enableBatched` / `AR_PATTERN_BATCHED` default OFF (`:140`)
+- `studio/music/.../PatternLayerManager.java` — `enableBatched` / `AR_PATTERN_BATCHED` default ON (`:140`)
 - `studio/music/.../BatchedPatternLayerRenderer.java` — classify/gather/dispatch, sentinel counters (`:230-280`, `:124,127`)
 - `studio/music/.../BatchedNoteInputs.java`, `.../ScaleTraversalStrategy.java` — gather + melodic-SSS classification
 - `engine/audio/.../BatchedPatternRenderer.java` — fused melodic-SSS + scatter kernel

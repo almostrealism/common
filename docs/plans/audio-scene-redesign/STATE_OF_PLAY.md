@@ -86,7 +86,7 @@ pattern audio once in `setup` as today.
 ## 4. What has landed
 
 - **a3 DSP fully migrated to PDSL** — the complete mixdown/efx/reverb path runs as one
-  compiled per-buffer model behind `MixdownManager.enablePdslMixdown` (default off);
+  compiled per-buffer model behind `MixdownManager.enablePdslMixdown` (on by default since 2026-06-26);
   parity-validated by ear + windowed RMS on the 40 s real-scene A/B. Substrate:
   [PDSL_DSP_REFERENCE.md](PDSL_DSP_REFERENCE.md).
 - **Gene-driven efx feedback** — HP/LP filter selection (host-side blend; no `choice()`
@@ -109,15 +109,9 @@ pattern audio once in `setup` as today.
 
 ## 5. What's genuinely open
 
-- **Flip `AR_PATTERN_BATCHED` on by default.** a2 batched dispatch is now validated
-  end-to-end on real audio ([A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md) §4.2), but
-  `PatternLayerManager.enableBatched` is still off by default; flip it once the warm /
-  continuous real-scene methods and a broader genome sweep are confirmed clean.
 - **True stereo.** The PDSL path is dual-mono (one master duplicated to both writers).
   True stereo must be one model carrying twice the channels in a *single* forward — never
   the pipeline run twice (that attempt was reverted).
-- **Flip the default.** `enablePdslMixdown` is off by default; turning it on for production
-  awaits the swap-impact review ([PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §9) and CI.
 - **Live-swap filter-coeff staleness.** `wet_filter_coeffs` / `efx_filter_coeffs` are
   sampled at build and lag the genome until rebuild ([PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §6).
   Narrow — only matters for live genome-swap workflows.
@@ -130,8 +124,10 @@ pattern audio once in `setup` as today.
 > **Closed since earlier drafts of this doc** (do not re-open as "regressions"): gene
 > HP/LP `choice()` symptom, gene-driven efx delay/level, the vectorized-for-each default,
 > single-channel support, lean pattern prep, the compile-reuse/aggregation pool blocker,
-> the PDSL-tick performance gap (the tick is now under budget), and the a2 real-scene
-> batched-dispatch gap (validated 2026-06-26). These were on this list and are done.
+> the PDSL-tick performance gap (the tick is now under budget), the a2 real-scene
+> batched-dispatch gap (validated 2026-06-26), and the batched + PDSL-mixdown default flip
+> (both on by default since 2026-06-26 — a full CI pass over the audio/pattern tests is the
+> gate for the global default change). These were on this list and are done.
 
 ## 6. Options that are moot
 

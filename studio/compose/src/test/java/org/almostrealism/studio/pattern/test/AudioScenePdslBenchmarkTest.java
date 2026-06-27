@@ -17,6 +17,7 @@
 package org.almostrealism.studio.pattern.test;
 
 import io.almostrealism.profile.OperationProfileNode;
+import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
@@ -24,6 +25,7 @@ import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
+import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.util.TestDepth;
 import org.junit.Assert;
@@ -222,6 +224,9 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 		long seed = findWorkingGenomeSeed(scene, getSamplesDir());
 		Assert.assertTrue("No working genome found in the real arrangement", seed >= 0);
 		applyGenome(scene, seed);
+		for (int c = 0; c < AudioScene.DEFAULT_SOURCE_COUNT; c++) {
+			log("channelElements c=" + c + " elements=" + countElements(scene, c));
+		}
 
 		boolean previous = MixdownManager.enablePdslMixdown;
 		File scratch = new File("results/pdsl-cutover/benchmark_scratch.wav");
@@ -247,10 +252,12 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 			}
 
 			try {
-				for (int w = 0; w < WARMUP_TICKS; w++) {
+				for (int w = 0; w < 8; w++) {
 					stages.forEach(Runnable::run);
 				}
 
+				BatchedPatternLayerRenderer.resetCounters();
+				BatchedPatternRenderer.percCompileCount.set(0);
 				long[] stageNanos = new long[stages.size()];
 				for (int i = 0; i < PROFILE_TICKS; i++) {
 					for (int s = 0; s < stages.size(); s++) {
@@ -259,6 +266,10 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 						stageNanos[s] += System.nanoTime() - start;
 					}
 				}
+				log("batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount.get()
+						+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount.get()
+						+ " gatherMsPerTick=" + format(BatchedPatternLayerRenderer.gatherNanos.get() / 1e6 / PROFILE_TICKS)
+						+ " percCompilesDuringMeasured=" + BatchedPatternRenderer.percCompileCount.get());
 
 				double totalMs = 0;
 				for (int s = 0; s < stages.size(); s++) {

@@ -13,6 +13,7 @@ import org.almostrealism.hardware.OperatorPoolExhaustedException;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.DistributionMetric;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -227,6 +228,29 @@ public interface PatternFeatures extends CodeFeatures {
 	default void renderPerNote(AudioSceneContext sceneContext, NoteAudioContext audioContext,
 							   List<PatternElement> elements, boolean melodic, double offset,
 							   int startFrame, int frameCount, NoteAudioCache cache) {
+		List<RenderedNoteAudio> notes = new ArrayList<>();
+		for (PatternElement element : elements) {
+			notes.addAll(element.getNoteDestinations(melodic, offset, sceneContext, audioContext));
+		}
+		renderNotes(sceneContext, notes, startFrame, frameCount, cache);
+	}
+
+	/**
+	 * Renders a specific list of {@link RenderedNoteAudio} into the scene destination via the
+	 * per-note dispatch path. Shared by {@link #renderPerNote} (which gathers every element's
+	 * notes) and the batched dispatch site (which passes only the notes it cannot batch — those
+	 * not of a batchable shape, or continuing from an earlier window), so those notes render
+	 * per-note without falling the whole window back. The per-note body below is unchanged from
+	 * the original {@code renderPerNote} loop.
+	 *
+	 * @param sceneContext scene context containing the destination buffer
+	 * @param notes        the notes to render
+	 * @param startFrame   starting frame of the target range (absolute position)
+	 * @param frameCount   number of frames in the target range
+	 * @param cache        optional cache for evaluated note audio (may be null)
+	 */
+	default void renderNotes(AudioSceneContext sceneContext, List<RenderedNoteAudio> notes,
+							 int startFrame, int frameCount, NoteAudioCache cache) {
 		PackedCollection destination = sceneContext.getDestination();
 		if (destination == null) {
 			throw new IllegalArgumentException("Destination buffer is null");
@@ -235,10 +259,7 @@ public interface PatternFeatures extends CodeFeatures {
 		int endFrame = startFrame + frameCount;
 		int[] consecutiveFailures = {0};
 
-		elements.stream()
-				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
-				.flatMap(List::stream)
-				.forEach(note -> {
+		notes.forEach(note -> {
 					int noteStart = note.getOffset();
 
 					// Pre-filter: skip notes that cannot overlap the frame range
