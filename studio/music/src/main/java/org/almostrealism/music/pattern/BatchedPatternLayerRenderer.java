@@ -135,6 +135,9 @@ public final class BatchedPatternLayerRenderer {
 	/** Cumulative note-generation + per-note gather time (ns): {@code getNoteDestinations}. */
 	public static final AtomicLong gatherNanos = new AtomicLong();
 
+	/** Cumulative per-note fallback time (ns): {@code PatternFeatures.renderNotes} (cache slices + misses). */
+	public static final AtomicLong perNoteNanos = new AtomicLong();
+
 	/** Resets the dispatch instrumentation counters. */
 	public static void resetCounters() {
 		batchedDispatchCount.set(0);
@@ -142,6 +145,7 @@ public final class BatchedPatternLayerRenderer {
 		marshalNanos.set(0);
 		evalNanos.set(0);
 		gatherNanos.set(0);
+		perNoteNanos.set(0);
 	}
 
 	/** Finite placeholder note duration (seconds) for silent padded batch rows. */
@@ -277,7 +281,9 @@ public final class BatchedPatternLayerRenderer {
 		}
 		if (!perNote.isEmpty()) {
 			fallbackCount.incrementAndGet();
+			long perNoteStart = System.nanoTime();
 			features.renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
+			perNoteNanos.addAndGet(System.nanoTime() - perNoteStart);
 		}
 	}
 

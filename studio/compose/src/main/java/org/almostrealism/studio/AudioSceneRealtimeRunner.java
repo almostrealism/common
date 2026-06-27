@@ -87,6 +87,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	public static int pdslFilterOrder = 40;
 
 	/**
+	 * Number of buffers the a2 render-ahead ring holds, and the number rendered before playback
+	 * begins. The producer thread renders up to this many buffers ahead of the mixdown hot path,
+	 * smoothing per-buffer render bursts so the a3 consumer never waits on a render.
+	 */
+	public static int renderAheadSlots = 8;
+
+	/**
 	 * Static wet-bus send level supplied to the PDSL {@code mixdown_master} layer.
 	 * Wire-first default; the Java path derives this from genome state per buffer.
 	 */
@@ -285,6 +292,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private TemporalCellular createPdsl(MultiChannelAudioOutput output,
 										List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
+		// Render-ahead position (frames) for the a2 producer thread, distinct from the a3
+		// playback position above. The producer renders buffers ahead of playback into a ring;
+		// the hot path only consumes already-rendered buffers and never triggers a render.
+		final long[] renderFrame = {0};
 		int channelCount = channels.size();
 
 		// Frame index within the current buffer (0..bufferSize-1), driven by the
@@ -296,7 +307,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// CellList would only be compiled and discarded. prepareRenderBuffers reproduces the
 		// pattern-prepare side effects getCells relies on and returns just the setup.
 		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
-				() -> currentFrame[0]);
+				() -> (int) renderFrame[0]);
 
 		// Choose the DSP layer based on whether a separate WET voicing was rendered.
 		// AudioScene fills the consolidated buffer in the order
@@ -330,6 +341,24 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
 		PackedCollection pdslInput = consolidated.range(inputShape, 0);
 
+		// a2 render-ahead layer: a dedicated producer thread renders successive buffers into a
+		// ring so the a3 hot path (the tick below) only ever mixes already-rendered audio. The
+		// render cells created by prepareRenderBuffers fill pdslInput for the current renderFrame;
+		// renderOp runs that pattern-prepare once per buffer, off the hot path. Driving the render
+		// from the producer thread is safe and overlaps its Java orchestration with the consumer's
+		// GPU mixdown (the Metal command runner serializes the actual GPU dispatch).
+		// Render every cell (both stereo sides). Stereo is in scope: true stereo mixes both
+		// sides' pattern audio in a single forward, so the RIGHT-side render is a required input
+		// for that path — it must not be skipped as an a2 shortcut. a2's cost is reduced by
+		// making the render itself faster, not by rendering fewer channels.
+		OperationList renderOps = new OperationList("AudioScene a2 Pattern Render Ahead");
+		for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
+			renderOps.add(renderCell.prepareBatch());
+		}
+		Runnable renderOp = renderOps.get();
+		PatternRenderStream renderStream = new PatternRenderStream(
+				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
+
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
@@ -362,8 +391,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			@Override
 			public Supplier<Runnable> setup() {
 				OperationList setup = new OperationList("AudioScene PDSL RealTime Runner Setup");
+				// One-time render-cell setup (prepareRenderBuffers also renders the first buffer
+				// into the working input, which the producer harmlessly re-renders below).
 				setup.add(patternSetup);
 				setup.add(() -> () -> compiled.reset());
+				// Start the a2 producer thread and fill the ring ahead of playback. After this
+				// returns, the hot path is guaranteed to find each buffer already rendered.
+				setup.add(() -> () -> renderStream.start(renderAheadSlots));
 				return setup;
 			}
 
@@ -371,18 +405,23 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			public Supplier<Runnable> tick() {
 				OperationList tick = new OperationList("AudioScene PDSL RealTime Runner Tick");
 
-				// OUTSIDE LOOP: reset the per-buffer frame index and prepare pattern data
+				// HOT PATH — MIXDOWN ONLY. No pattern preparation happens here: the a2 producer
+				// thread (started in setup) renders every buffer ahead of time into the ring, so
+				// this tick never triggers a render. Reset the per-buffer frame index for output.
 				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
-				for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
-					tick.add(renderCell.prepareBatch());
-				}
 
 				// AUTOMATION: evaluate the clock-driven values (cutoffs, volume, sends) into
 				// their argument slots for this buffer's clock position.
 				tick.add(automationRefresh);
 
-				// DSP: run the whole-buffer PDSL forward pass (writes into masterOutput).
-				tick.add(() -> () -> compiled.forward(pdslInput));
+				// DSP: take the next already-rendered buffer from the a2 ring and run the
+				// whole-buffer PDSL mixdown forward pass over it (writes into masterOutput). This
+				// is the only per-buffer compute on the hot path.
+				tick.add(() -> () -> {
+					PackedCollection slot = renderStream.awaitSlot();
+					compiled.forward(slot);
+					renderStream.release();
+				});
 
 				// STREAM: drain masterOutput to both writers frame-by-frame
 				tick.add(loop(outputLoopBody, bufferSize));
@@ -395,14 +434,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				// trade-off versus the CellList path's per-frame automation.
 				tick.add(loop(scene.getTimeManager().tick(), bufferSize));
 
-				// AFTER: advance global frame position
+				// AFTER: advance global playback frame position
 				tick.add(() -> () -> currentFrame[0] += bufferSize);
 				return tick;
 			}
 
 			@Override
 			public void reset() {
+				renderStream.stop();
 				currentFrame[0] = 0;
+				renderFrame[0] = 0;
 				compiled.reset();
 				scene.getTimeManager().getClock().setFrame(0);
 			}
