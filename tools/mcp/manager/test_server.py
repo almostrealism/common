@@ -778,6 +778,38 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("retrospectiveEnabled", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_falsification_enabled_omitted_by_default(self, mock_post):
+        """falsification_enabled is opt-in (default false), so the wire payload
+        must omit falsificationEnabled when the caller did not pass it."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-fal1"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("falsificationEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_falsification_enabled_true_forwarded(self, mock_post):
+        """falsification_enabled=True must reach the controller as
+        falsificationEnabled=True so the controller can opt the job into the
+        falsification phase."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-fal2"}
+        server.workstream_submit_task(prompt="Task", falsification_enabled=True)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["falsificationEnabled"], True)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_falsification_enabled_false_omitted(self, mock_post):
+        """falsification_enabled=False is the default; the wire payload must
+        omit the key rather than forward an explicit false (matches the
+        retrospective_enabled behaviour)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-fal3"}
+        server.workstream_submit_task(prompt="Task", falsification_enabled=False)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("falsificationEnabled", payload)
+
+    @patch.object(server, "_controller_post")
     def test_submit_use_tmux_omitted_by_default(self, mock_post):
         """use_tmux uses presence semantics (default None), so the wire payload
         must omit useTmux when the caller did not pass it. The job then inherits

@@ -788,6 +788,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "retrospectiveEnabled"))
             factory.setRetrospectiveEnabled(
                     extractJsonBooleanField(body, "retrospectiveEnabled"));
+        // Falsification phase — disabled by default; opt in explicitly
+        if (extractJsonHasField(body, "falsificationEnabled"))
+            factory.setFalsificationEnabled(
+                    extractJsonBooleanField(body, "falsificationEnabled"));
         // tmux-backed agent launch — per-job use_tmux flag wins when the
         // request body sets it; otherwise the workstream's defaultUseTmux
         // setting applies. The body is parsed here so the schema-alignment
@@ -946,6 +950,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(factory.isEnforceOrganizationalPlacement());
         json.append(",\"retrospectiveEnabled\":")
                 .append(factory.isRetrospectiveEnabled());
+        json.append(",\"falsificationEnabled\":")
+                .append(factory.isFalsificationEnabled());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
         json.append("}");

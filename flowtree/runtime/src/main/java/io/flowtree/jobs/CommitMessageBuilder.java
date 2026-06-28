@@ -113,4 +113,51 @@ final class CommitMessageBuilder {
 
         return msg.toString();
     }
+
+    /**
+     * Captures the current {@code commit.txt} content so a correction session
+     * that leaves the file untouched does not lose the primary session's
+     * message. {@link CodingAgentJob#executeSingleRun()} deletes a stale
+     * {@code commit.txt} at startup, so a correction session would otherwise
+     * discard the primary message.
+     *
+     * @param job the orchestrator whose working directory holds {@code commit.txt}
+     * @return the saved commit message, or {@code null} when none was present or it could not be read
+     */
+    static String captureCommitTxt(CodingAgentJob job) {
+        Path commitFile = job.resolveWorkingPath("commit.txt");
+        if (commitFile != null && Files.exists(commitFile)) {
+            try {
+                return Files.readString(commitFile, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                job.warn("Could not read commit.txt: " + e.getMessage());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Restores a captured {@code commit.txt} only when the correction session
+     * did not write its own. A correction that wrote a fresh {@code commit.txt}
+     * describes the actual changes it made and must win; restoring the captured
+     * message in that case would resurrect a stale primary message.
+     *
+     * @param job          the orchestrator whose working directory holds {@code commit.txt}
+     * @param savedMessage the message captured by {@link #captureCommitTxt(CodingAgentJob)}; {@code null} restores nothing
+     */
+    static void restoreCommitTxtIfUnwritten(CodingAgentJob job, String savedMessage) {
+        if (savedMessage == null) {
+            return;
+        }
+        Path commitFile = job.resolveWorkingPath("commit.txt");
+        if (commitFile == null || Files.exists(commitFile)) {
+            return;
+        }
+        try {
+            Files.writeString(commitFile, savedMessage, StandardCharsets.UTF_8);
+            job.log("Restored primary commit message from commit.txt");
+        } catch (IOException e) {
+            job.warn("Could not restore commit.txt: " + e.getMessage());
+        }
+    }
 }

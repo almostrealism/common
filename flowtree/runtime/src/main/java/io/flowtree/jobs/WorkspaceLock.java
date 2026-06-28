@@ -94,6 +94,8 @@ class WorkspaceLock implements ConsoleFeatures {
             channel = FileChannel.open(lockFile,
                     StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             String host = hostname();
+            // TODO(review): bracket-label log pattern "[host] ..." violates BracketLabelInLog checkstyle rule;
+            //   rewrite as log("Acquiring workspace lock=" + lockFile + " host=" + host + " job=" + taskId + ...)
             log("[" + host + "] Acquiring workspace lock: " + lockFile
                     + " (job=" + taskId + ", repo=" + repoName + ")");
             lock = channel.lock();
@@ -111,6 +113,7 @@ class WorkspaceLock implements ConsoleFeatures {
         if (lock != null) {
             try {
                 lock.release();
+                // TODO(review): same BracketLabelInLog violation — rewrite without "[hostname]" prefix
                 log("[" + hostname() + "] Workspace lock released (job=" + taskId + ")");
             } catch (IOException e) {
                 warn("Failed to release workspace lock: " + e.getMessage());
