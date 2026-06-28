@@ -132,18 +132,43 @@ message AudioLayer {
   // Unix epoch milliseconds at which this layer was produced.
   optional int64 created_at_millis = 8;
 
-  // Captured source pitch of this layer as a MIDI note number (0..127),
-  // when known. This is the authoritative, unambiguous pitch of the
-  // rendered audio — e.g. the exact MIDI note an AU chromatic capture
-  // rendered. It supersedes parsing the pitch out of `layer_id` display
-  // text (which is brittle: scientific-pitch spelling such as "C#4" does
-  // not match the WesternChromatic "CS4" naming, and a plugin-name prefix
-  // can contain spaces). Optional and additive: layers saved before this
-  // field existed simply omit it and remain valid; readers fall back to
-  // the legacy `layer_id` parse for those. MIDI is used (rather than a
-  // WesternChromatic key) so the full 0..127 range is representable; the
-  // read helper maps it to a KeyPosition for pitch delivery.
-  optional int32 root_midi_note = 10;
+  // Captured source pitch of this layer expressed in the project's internal
+  // pitch model (a KeyPosition), when known. This is the authoritative,
+  // unambiguous pitch of the rendered audio — e.g. the exact note an AU
+  // chromatic capture rendered. KeyPosition is deliberately more general than
+  // a MIDI note number: the (system, position) pair can express pitch systems
+  // a 12-TET MIDI integer cannot, which is why the captured pitch is anchored
+  // here on KeyPosition rather than on a MIDI note. It supersedes parsing the
+  // pitch out of `layer_id` display text (which is brittle: scientific-pitch
+  // spelling such as "C#4" does not match the WesternChromatic "CS4" naming,
+  // and a plugin-name prefix can contain spaces). Optional and additive:
+  // layers saved without it remain valid, and readers fall back to the legacy
+  // `layer_id` parse for those. See AudioLayerPitch for the read/write mapping.
+  optional KeyPositionData captured_pitch = 10;
+}
+
+// The persisted form of an org.almostrealism.audio.tone.KeyPosition — a
+// position within one of the project's pitch systems. KeyPosition is more
+// general than a MIDI note number; `system` names the pitch system and
+// `position` is that system's own zero-based coordinate (the value of
+// KeyPosition.position()), so reconstruction never collapses through a MIDI
+// integer. For WESTERN_CHROMATIC, `position` numbers the 88-key piano
+// chromatically from A0 = 0 (so C4 = 39, A4 = 48, C8 = 87) and reconstructs
+// via WesternChromatic.scale().valueAt(position).
+message KeyPositionData {
+  // The pitch system `position` is expressed in. Additional systems (e.g.
+  // microtonal or just-intonation scales that MIDI cannot represent) slot in
+  // as new enum values without disturbing existing data.
+  enum PitchSystem {
+    PITCH_SYSTEM_UNSPECIFIED = 0;
+    WESTERN_CHROMATIC = 1;
+  }
+
+  // Which pitch system `position` is expressed in.
+  PitchSystem system = 1;
+
+  // Zero-based position within the system's scale (KeyPosition.position()).
+  int32 position = 2;
 }
 
 // LayerRef points at an AudioLayer by id, optionally narrowing to a subset

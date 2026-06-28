@@ -16,61 +16,62 @@
 
 package org.almostrealism.studio.persistence.test;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.studio.persistence.AudioLayerPitch;
 import org.junit.Test;
 
-import java.util.OptionalInt;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests for {@link AudioLayerPitch}, the single accessor for a layer's
- * captured pitch.
+ * captured pitch — modelled on the internal {@link KeyPosition} type rather
+ * than on a MIDI note number.
  */
 public class AudioLayerPitchTest {
+
+	/** Builds a layer carrying {@code position} as its structured captured pitch. */
+	private static Audio.AudioLayer layerWithPitch(String layerId, KeyPosition<?> position) {
+		return Audio.AudioLayer.newBuilder()
+				.setLayerId(layerId)
+				.setCapturedPitch(AudioLayerPitch.toKeyPositionData(position))
+				.build();
+	}
 
 	/** The structured field wins when it disagrees with the display text. */
 	@Test
 	public void prefersStructuredFieldOverLayerId() {
-		/* layer_id text says C4 (60) but the structured field says 61 —
-		   the structured field is authoritative and must win. */
-		Audio.AudioLayer layer = Audio.AudioLayer.newBuilder()
-				.setLayerId("DLSMusicDevice C4")
-				.setRootMidiNote(61)
-				.build();
-
-		assertEquals(OptionalInt.of(61), AudioLayerPitch.capturedMidiNote(layer));
+		/* layer_id text says C4 but the structured field says CS4 (C#4) —
+		   the structured KeyPosition is authoritative and must win. */
+		Audio.AudioLayer layer = layerWithPitch("DLSMusicDevice C4", WesternChromatic.CS4);
 		assertSame(WesternChromatic.CS4, AudioLayerPitch.capturedKeyPosition(layer));
 	}
 
-	/** Presence-tracking distinguishes a set 0 from an unset field. */
+	/** The structured KeyPosition survives a real protobuf serialize/parse cycle. */
 	@Test
-	public void readsStructuredFieldAtZero() {
-		/* MIDI note 0 is a valid note (C-1); proto presence-tracking must
-		   distinguish it from an unset field. */
-		Audio.AudioLayer layer = Audio.AudioLayer.newBuilder()
-				.setLayerId("Plugin C-1")
-				.setRootMidiNote(0)
-				.build();
-
-		assertEquals(OptionalInt.of(0), AudioLayerPitch.capturedMidiNote(layer));
+	public void structuredKeyPositionSurvivesProtoRoundTrip() throws InvalidProtocolBufferException {
+		for (WesternChromatic key : WesternChromatic.values()) {
+			Audio.AudioLayer layer = layerWithPitch("Plugin " + key, key);
+			Audio.AudioLayer reparsed = Audio.AudioLayer.parseFrom(layer.toByteArray());
+			assertSame("KeyPosition must survive proto write + read for " + key,
+					key, AudioLayerPitch.capturedKeyPosition(reparsed));
+		}
 	}
 
 	/** Legacy layers without the field recover pitch from the display text. */
 	@Test
 	public void fallsBackToLayerIdParseForLegacyLayers() {
-		/* A layer saved before root_midi_note existed: pitch lives only in
+		/* A layer saved before captured_pitch existed: pitch lives only in
 		   the trailing token of the display name. */
 		Audio.AudioLayer layer = Audio.AudioLayer.newBuilder()
 				.setLayerId("DLSMusicDevice C#4")
 				.build();
-
-		assertEquals(OptionalInt.of(61), AudioLayerPitch.capturedMidiNote(layer));
 		assertSame(WesternChromatic.CS4, AudioLayerPitch.capturedKeyPosition(layer));
 	}
 
@@ -80,25 +81,80 @@ public class AudioLayerPitchTest {
 		Audio.AudioLayer layer = Audio.AudioLayer.newBuilder()
 				.setLayerId("My Fancy Synth A4")
 				.build();
-
-		assertEquals(OptionalInt.of(69), AudioLayerPitch.capturedMidiNote(layer));
 		assertSame(WesternChromatic.A4, AudioLayerPitch.capturedKeyPosition(layer));
 	}
 
-	/** No structured field and no parseable note name yields empty/null. */
+	/** No structured field and no parseable note name yields null. */
 	@Test
-	public void returnsEmptyWhenNoPitchRecoverable() {
+	public void returnsNullWhenNoPitchRecoverable() {
 		Audio.AudioLayer noPitch = Audio.AudioLayer.newBuilder()
 				.setLayerId("Recording without a note name")
 				.build();
-		assertEquals(OptionalInt.empty(), AudioLayerPitch.capturedMidiNote(noPitch));
 		assertNull(AudioLayerPitch.capturedKeyPosition(noPitch));
-
-		assertEquals(OptionalInt.empty(), AudioLayerPitch.capturedMidiNote(null));
 		assertNull(AudioLayerPitch.capturedKeyPosition(null));
 	}
 
-	/** MIDI-to-key-position mapping anchors against known reference notes. */
+	/**
+	 * A structured field that cannot be reconstructed (out-of-range position)
+	 * falls back to the legacy display-text parse rather than reporting no
+	 * pitch outright.
+	 */
+	@Test
+	public void unreconstructableStructuredFieldFallsBackToLayerId() {
+		Audio.KeyPositionData outOfRange = Audio.KeyPositionData.newBuilder()
+				.setSystem(Audio.KeyPositionData.PitchSystem.WESTERN_CHROMATIC)
+				.setPosition(-1)
+				.build();
+		Audio.AudioLayer layer = Audio.AudioLayer.newBuilder()
+				.setLayerId("Plugin C#4")
+				.setCapturedPitch(outOfRange)
+				.build();
+		assertSame(WesternChromatic.CS4, AudioLayerPitch.capturedKeyPosition(layer));
+	}
+
+	/** toKeyPositionData / fromKeyPositionData round-trips every WesternChromatic key. */
+	@Test
+	public void keyPositionDataRoundTripsEveryWesternChromatic() {
+		for (WesternChromatic key : WesternChromatic.values()) {
+			Audio.KeyPositionData data = AudioLayerPitch.toKeyPositionData(key);
+			assertSame(Audio.KeyPositionData.PitchSystem.WESTERN_CHROMATIC, data.getSystem());
+			assertEquals(key.position(), data.getPosition());
+			assertSame("Round-trip must recover the identical key for " + key,
+					key, AudioLayerPitch.fromKeyPositionData(data));
+		}
+	}
+
+	/** Writing a null or unsupported KeyPosition is a programming error. */
+	@Test
+	public void toKeyPositionDataRejectsNull() {
+		try {
+			AudioLayerPitch.toKeyPositionData(null);
+			fail("Expected IllegalArgumentException for a null KeyPosition");
+		} catch (IllegalArgumentException expected) {
+			/* The contract: a null position is a caller error, not a no-op. */
+		}
+	}
+
+	/** fromKeyPositionData reports null for null, unspecified, or out-of-range input. */
+	@Test
+	public void fromKeyPositionDataHandlesUnknownInput() {
+		assertNull(AudioLayerPitch.fromKeyPositionData(null));
+
+		Audio.KeyPositionData unspecified = Audio.KeyPositionData.newBuilder()
+				.setPosition(39)
+				.build();
+		assertNull("An unspecified pitch system is not reconstructable",
+				AudioLayerPitch.fromKeyPositionData(unspecified));
+
+		Audio.KeyPositionData tooHigh = Audio.KeyPositionData.newBuilder()
+				.setSystem(Audio.KeyPositionData.PitchSystem.WESTERN_CHROMATIC)
+				.setPosition(88)
+				.build();
+		assertNull("Position 88 is past C8 (87)",
+				AudioLayerPitch.fromKeyPositionData(tooHigh));
+	}
+
+	/** MIDI-to-key-position bridge anchors against known reference notes. */
 	@Test
 	public void mapsMidiToWesternChromaticPositions() {
 		/* WesternChromatic positions: A0 = 0 (MIDI 21), C4 = 39 (MIDI 60),
@@ -116,9 +172,13 @@ public class AudioLayerPitchTest {
 		   that have no key position even though they are valid MIDI. */
 		assertNull("MIDI 20 is below A0", AudioLayerPitch.midiToKeyPosition(20));
 		assertNull("MIDI 109 is above C8", AudioLayerPitch.midiToKeyPosition(109));
+	}
 
-		KeyPosition<?> belowRange = AudioLayerPitch.capturedKeyPosition(
-				Audio.AudioLayer.newBuilder().setRootMidiNote(0).build());
-		assertNull("MIDI 0 (C-1) is below the WesternChromatic range", belowRange);
+	/** Sanity: the structured form never collapses through a MIDI integer. */
+	@Test
+	public void capturedPitchHasNoMidiField() {
+		Audio.AudioLayer layer = layerWithPitch("Plugin C4", WesternChromatic.C4);
+		assertTrue(layer.hasCapturedPitch());
+		assertEquals(39, layer.getCapturedPitch().getPosition());
 	}
 }
