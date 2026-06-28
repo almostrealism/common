@@ -55,7 +55,9 @@ public enum Phase {
     /** Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch. */
     PUSH_CONFLICT_RESOLUTION("push-conflict-resolution", "Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch."),
     /** Retrospective session — analyzes the primary phase transcript for improvement opportunities. */
-    RETROSPECTIVE("retrospective", "Retrospective session — analyzes the primary phase transcript for improvement opportunities.");
+    RETROSPECTIVE("retrospective", "Retrospective session — analyzes the primary phase transcript for improvement opportunities."),
+    /** Falsification session — extracts load-bearing behavioural claims and bounces to primary when captured evidence refutes them. */
+    FALSIFICATION("falsification", "Falsification session — extracts load-bearing behavioural claims and bounces to primary when captured evidence refutes them.");
 
     /** Canonical kebab-case identifier used on the wire. */
     private final String wireName;
@@ -194,7 +196,36 @@ public enum Phase {
             case "post-completion-command":    return POST_COMPLETION;
             case "commit-message":             return COMMIT_MESSAGE;
             case "retrospective":               return RETROSPECTIVE;
+            case "falsification":               return FALSIFICATION;
             default:                            return null;
+        }
+    }
+
+    /**
+     * Resolves the {@link Phase} a session is running as from its activity tag.
+     *
+     * <p>An empty or null tag means the primary session ({@link #PRIMARY}). A
+     * non-empty tag is either an {@code EnforcementRule} name (tried first via
+     * {@link #fromRuleName(String)}) or a phase {@linkplain #wireName() wire
+     * name} from a restart path (tried via {@link #fromWireName(String)}). An
+     * unrecognised tag falls back to {@link #PRIMARY} so a stray value never
+     * breaks dispatch.</p>
+     *
+     * @param activity the activity tag of the current session; may be {@code null}
+     * @return the resolved phase; never {@code null}
+     */
+    public static Phase fromActivity(String activity) {
+        if (activity == null || activity.isEmpty()) {
+            return PRIMARY;
+        }
+        Phase ruleMatch = fromRuleName(activity);
+        if (ruleMatch != null) {
+            return ruleMatch;
+        }
+        try {
+            return fromWireName(activity);
+        } catch (IllegalArgumentException e) {
+            return PRIMARY;
         }
     }
 }

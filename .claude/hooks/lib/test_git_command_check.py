@@ -15,7 +15,7 @@ directly and also drive the CLI entry points (argv mode and
 and .ts adapters.
 
 Coverage:
-  - 25+ decide() cases across the three policies (block, allow, warn)
+  - decide() cases across the four policies (block, allow, warn)
   - --stdin mode cases (verifies the Claude Code adapter contract)
   - argv mode cases (verifies the .ts adapter contract)
   - 1 bit-for-bit equivalence test: the new core's decision matches
@@ -224,6 +224,138 @@ class WarnGitLogTests(unittest.TestCase):
         self.assertEqual(d["action"], "allow")
 
 
+class BlockBranchTrackMasterTests(unittest.TestCase):
+    """block-branch-track-master: refuse non-master branches that track or push to remote master/main."""
+
+    def setUp(self):
+        self.core = _load_core()
+
+    def _action(self, command):
+        return self.core.decide(command, "block-branch-track-master")["action"]
+
+    # --- the exact recurring footgun: branch off a remote master/main ref ---
+    def test_checkout_b_off_origin_master_blocks(self):
+        d = self.core.decide("git checkout -b feature/x origin/master", "block-branch-track-master")
+        self.assertEqual(d["action"], "block")
+        self.assertIn("BLOCKED", d["reason"])
+        self.assertIn("--no-track", d["reason"])
+        self.assertIn("feature/x", d["reason"])
+
+    def test_checkout_b_off_origin_main_blocks(self):
+        self.assertEqual(self._action("git checkout -b feature origin/main"), "block")
+
+    def test_checkout_capital_b_off_origin_master_blocks(self):
+        self.assertEqual(self._action("git checkout -B feature origin/master"), "block")
+
+    def test_switch_c_off_origin_master_blocks(self):
+        self.assertEqual(self._action("git switch -c feature origin/master"), "block")
+
+    def test_switch_create_long_off_origin_master_blocks(self):
+        self.assertEqual(self._action("git switch --create feature origin/master"), "block")
+
+    def test_branch_off_origin_master_blocks(self):
+        self.assertEqual(self._action("git branch feature origin/master"), "block")
+
+    def test_off_upstream_master_blocks(self):
+        self.assertEqual(self._action("git checkout -b feature upstream/master"), "block")
+
+    def test_compound_cd_then_checkout_blocks(self):
+        self.assertEqual(self._action("cd /repo && git checkout -b feature origin/master"), "block")
+
+    def test_git_dash_c_path_global_option_blocks(self):
+        self.assertEqual(self._action("git -C /repo checkout -b feature origin/master"), "block")
+
+    # --- correct forms are allowed ---
+    def test_no_track_form_allows(self):
+        self.assertEqual(self._action("git checkout -b feature --no-track origin/master"), "allow")
+
+    def test_checkout_b_no_start_point_allows(self):
+        self.assertEqual(self._action("git checkout -b feature"), "allow")
+
+    def test_off_local_master_allows(self):
+        self.assertEqual(self._action("git checkout -b feature master"), "allow")
+
+    def test_recreate_master_from_origin_master_allows(self):
+        self.assertEqual(self._action("git checkout -b master origin/master"), "allow")
+
+    def test_branch_name_with_master_suffix_allows(self):
+        self.assertEqual(self._action("git checkout -b feature/master"), "allow")
+
+    def test_plain_checkout_allows(self):
+        self.assertEqual(self._action("git checkout master"), "allow")
+
+    def test_switch_existing_allows(self):
+        self.assertEqual(self._action("git switch develop"), "allow")
+
+    def test_branch_list_allows(self):
+        self.assertEqual(self._action("git branch -a"), "allow")
+
+    def test_branch_delete_allows(self):
+        self.assertEqual(self._action("git branch -d feature"), "allow")
+
+    # --- set-upstream to remote master/main ---
+    def test_set_upstream_eq_origin_master_blocks(self):
+        self.assertEqual(self._action("git branch --set-upstream-to=origin/master"), "block")
+
+    def test_set_upstream_space_origin_master_blocks(self):
+        self.assertEqual(self._action("git branch --set-upstream-to origin/master feature"), "block")
+
+    def test_set_upstream_short_u_blocks(self):
+        self.assertEqual(self._action("git branch -u origin/master feature"), "block")
+
+    def test_set_upstream_for_master_allows(self):
+        self.assertEqual(self._action("git branch --set-upstream-to=origin/master master"), "allow")
+
+    def test_set_upstream_to_feature_allows(self):
+        self.assertEqual(self._action("git branch --set-upstream-to=origin/feature mybranch"), "allow")
+
+    # --- pushes that overwrite a protected branch ---
+    def test_push_head_to_master_blocks(self):
+        self.assertEqual(self._action("git push origin HEAD:master"), "block")
+
+    def test_push_branch_to_master_blocks(self):
+        self.assertEqual(self._action("git push origin feature:master"), "block")
+
+    def test_push_delete_master_blocks(self):
+        self.assertEqual(self._action("git push origin :master"), "block")
+        self.assertEqual(self._action("git push origin --delete master"), "block")
+
+    def test_push_head_to_main_blocks(self):
+        self.assertEqual(self._action("git push origin HEAD:main"), "block")
+
+    def test_force_push_to_master_blocks(self):
+        self.assertEqual(self._action("git push --force origin develop:master"), "block")
+
+    def test_push_master_to_master_allows(self):
+        self.assertEqual(self._action("git push origin master"), "allow")
+
+    def test_push_master_to_main_blocks(self):
+        self.assertEqual(self._action("git push origin master:main"), "block")
+
+    def test_push_main_to_master_blocks(self):
+        self.assertEqual(self._action("git push origin main:master"), "block")
+
+    def test_push_feature_to_own_name_allows(self):
+        self.assertEqual(self._action("git push -u origin feature"), "allow")
+
+    def test_push_same_name_refspec_allows(self):
+        self.assertEqual(self._action("git push origin feature:feature"), "allow")
+
+    def test_bare_push_allows(self):
+        # not visible from the command string; covered by the config layer
+        self.assertEqual(self._action("git push"), "allow")
+
+    # --- unrelated commands ---
+    def test_git_status_allows(self):
+        self.assertEqual(self._action("git status"), "allow")
+
+    def test_ls_allows(self):
+        self.assertEqual(self._action("ls -la"), "allow")
+
+    def test_empty_allows(self):
+        self.assertEqual(self._action(""), "allow")
+
+
 class UnknownPolicyTests(unittest.TestCase):
     """Unknown policies are allowed (defensive) but log to stderr."""
 
@@ -293,6 +425,19 @@ class StdinModeTests(unittest.TestCase):
         self.assertEqual(r.stdout, "")
         self.assertEqual(r.stderr, "")
 
+    def test_block_branch_track_master_exits_2_with_stderr(self):
+        r = self._run_stdin("block-branch-track-master", "git checkout -b feature origin/master")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("BLOCKED", r.stderr)
+        self.assertIn("--no-track", r.stderr)
+        self.assertEqual(r.stdout, "")
+
+    def test_block_branch_track_master_allow_exits_0_silently(self):
+        r = self._run_stdin("block-branch-track-master", "git checkout -b feature --no-track origin/master")
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout, "")
+        self.assertEqual(r.stderr, "")
+
     def test_malformed_json_exits_0_silently(self):
         r = subprocess.run(
             ["python3", CORE_PATH, "--stdin", "block-git-commit"],
@@ -346,6 +491,14 @@ class ArgvModeTests(unittest.TestCase):
         self.assertEqual(obj["action"], "allow")
         self.assertEqual(obj["reason"], "")
         self.assertEqual(obj["context"], "")
+
+    def test_block_branch_track_master_returns_block_json(self):
+        r = self._run_argv("block-branch-track-master", "git checkout -b feature origin/master")
+        self.assertEqual(r.returncode, 0)
+        obj = json.loads(r.stdout)
+        self.assertEqual(obj["action"], "block")
+        self.assertIn("BLOCKED", obj["reason"])
+        self.assertEqual(r.stderr, "")
 
 
 class BitForBitEquivalenceTests(unittest.TestCase):

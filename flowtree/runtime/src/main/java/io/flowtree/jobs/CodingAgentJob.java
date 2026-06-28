@@ -29,7 +29,6 @@ import org.almostrealism.util.KeyUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -55,9 +54,6 @@ import java.util.Map;
  * @see GitManagedJob
  * @see CodingAgentJobFactory
  */
-// TODO(review): CodingAgentJob is 1558 lines (soft limit 1500). Next split: extract enforcement-rule
-// orchestration (EnforcementRunner loop) and MCP/harness config (configureMcpBuilder, toolsDownloader)
-// into separate classes; consider whether CodingAgentJobCodec can absorb more of encode/set.
 public class CodingAgentJob extends GitManagedJob {
     /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
@@ -143,6 +139,8 @@ public class CodingAgentJob extends GitManagedJob {
     private String currentActivity;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
+    /** Comma-separated invalid ({@code .bin}) files detected during this job. */
+    private String invalidFilesViolation;
     /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
     private int maxInactivityRestarts = 3;
     /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
@@ -188,6 +186,13 @@ public class CodingAgentJob extends GitManagedJob {
     private boolean retrospectiveEnabled = false;
     /** Owns retrospective-phase state and execution. Reset at the top of each {@link #doWork()} call. */
     private final RetrospectivePhase retrospective = new RetrospectivePhase();
+
+    /** When {@code true}, the falsification phase runs after primary and before enforcement. Default {@code false}; opt in per-job. */
+    private boolean falsificationEnabled = false;
+    /** Owns falsification-phase state and execution. Reset at the top of each {@link #doWork()} call. */
+    private final FalsificationPhase falsification = new FalsificationPhase();
+    /** Refutation findings prepended to the next primary context across a falsification bounce; read by {@link #buildInstructionPrompt()}. */
+    private String falsificationFindings;
 
     /**
      * Sensitive-file protection flag (default {@code true}): the harness-side
@@ -661,6 +666,19 @@ public class CodingAgentJob extends GitManagedJob {
     /** Sets whether the retrospective phase is active for this job; {@code true} to enable retrospective analysis. */
     public void setRetrospectiveEnabled(boolean retrospectiveEnabled) { this.retrospectiveEnabled = retrospectiveEnabled; }
 
+    /** Returns whether the falsification phase is active for this job; default {@code false}. */
+    public boolean isFalsificationEnabled() { return falsificationEnabled; }
+    /** Sets whether the falsification phase is active for this job; {@code true} to enable claim falsification after primary. */
+    public void setFalsificationEnabled(boolean falsificationEnabled) { this.falsificationEnabled = falsificationEnabled; }
+    /**
+     * Sets the refutation findings block prepended to the next primary context
+     * by the falsification bounce. Package-private; set and cleared by
+     * {@link FalsificationPhase#bounceToPrimary(CodingAgentJob, String)}.
+     *
+     * @param findings the findings block, or {@code null} to clear it
+     */
+    void setFalsificationFindings(String findings) { this.falsificationFindings = findings; }
+
     /** Returns whether the per-job sensitive-file protections are active; default {@code true}. */
     public boolean isSensitiveFileProtectionEnabled() { return sensitiveFileProtectionEnabled; }
 
@@ -722,6 +740,9 @@ public class CodingAgentJob extends GitManagedJob {
     /** Sets the active review rule (or null); used by {@link EnforcementRunner} when assembling rules. */
     void setActiveReviewRule(ReviewRule activeReviewRule) { this.activeReviewRule = activeReviewRule; }
 
+    /** Returns the active {@link ReviewRule} for the current review session, or {@code null}. */
+    ReviewRule getActiveReviewRule() { return activeReviewRule; }
+
     /** Marks that the post-completion command rule hit its retry cap. */
     void setPostCompletionCapHit(boolean postCompletionCapHit) { this.postCompletionCapHit = postCompletionCapHit; }
 
@@ -742,18 +763,10 @@ public class CodingAgentJob extends GitManagedJob {
     boolean isPostCompletionCapHit() { return postCompletionCapHit; }
     /** Returns the instant at which {@link #doWork()} began. Package-private for event population. */
     Instant getSessionStartedAt() { return sessionStartedAt; }
-    /** Returns whether the retrospective phase ran. Package-private for event population. */
-    boolean isRetrospectiveRan() { return retrospective.ran(); }
-    /** Returns the retrospective phase's USD cost. Package-private for event population. */
-    double getRetrospectiveCostUsd() { return retrospective.costUsd(); }
-    /** Returns whether the retrospective found a primary-phase transcript. Package-private for event population. */
-    boolean isRetrospectiveTranscriptFound() { return retrospective.transcriptFound(); }
-    /** Returns the number of improvement findings from the retrospective. Package-private for event population. */
-    int getRetrospectiveFindingsCount() { return retrospective.findingsCount(); }
-    /** Returns the retrospective's upfront token estimate. Package-private for event population. */
-    int getRetrospectiveContextUpfrontTokenEstimate() { return retrospective.contextUpfrontTokenEstimate(); }
-    /** Returns the retrospective's context-pressure event count. Package-private for event population. */
-    int getRetrospectiveContextPressureEvents() { return retrospective.contextPressureEvents(); }
+    /** Returns the retrospective phase collaborator, which owns its own telemetry. Package-private for event population. */
+    RetrospectivePhase retrospectivePhase() { return retrospective; }
+    /** Returns the falsification phase collaborator, which owns its own telemetry. Package-private for event population. */
+    FalsificationPhase falsificationPhase() { return falsification; }
 
     /**
      * Records the inactivity-kill flag for the last session. Used by
@@ -994,7 +1007,9 @@ public class CodingAgentJob extends GitManagedJob {
                 .setDependentRepoPaths(getDependentRepoPaths())
                 .setGitHubMcpEnabled(true)
                 .setGitTamperingViolation(gitTamperingViolation)
+                .setInvalidFilesViolation(invalidFilesViolation)
                 .setInactivityRestartAttempt(inactivityRestartAttempt)
+                .setFalsificationFindings(falsificationFindings)
                 .build();
     }
 
@@ -1061,6 +1076,13 @@ public class CodingAgentJob extends GitManagedJob {
         // overwrites exitCode with a successful result.
         primaryPhaseHardFailed = isHardPrimaryFailure();
 
+        // Falsification runs after primary and before enforcement so review/dedup
+        // see the redone tree; skipped when primary hard-failed (nothing sound to falsify).
+        falsification.reset();
+        if (falsificationEnabled && !primaryPhaseHardFailed) {
+            runFalsificationPhase();
+        }
+
         // Git integrity violations handled by onGitTampering in GitManagedJob.
         if (!hasAgentCommitted()) {
             runEnforcementRules();
@@ -1105,51 +1127,30 @@ public class CodingAgentJob extends GitManagedJob {
         retrospective.run(this);
     }
 
+    /**
+     * Runs the falsification phase after primary and before
+     * {@link #runEnforcementRules()}; delegates to
+     * {@link FalsificationPhase#run(CodingAgentJob)}. Package-private so test
+     * spies can override it to suppress real session dispatch.
+     */
+    void runFalsificationPhase() {
+        falsification.run(this);
+    }
+
     /** Returns the cumulative cost for {@code modelKey}; used by {@link RetrospectivePhase} to isolate session cost. */
     double getCostForModel(String modelKey) {
         return costTracker.costForModel(modelKey);
     }
 
     /**
-     * Runs a correction session tagged with {@code activity} (the rule name)
-     * via {@code AR_AGENT_ACTIVITY} so {@code send_message} calls are labelled.
+     * Runs a correction session via {@link CorrectionSession}.
+     * Overridable so test spies can suppress real dispatch.
      *
      * @param correctionPrompt prompt for this session
-     * @param activity         rule name used as the activity tag
+     * @param activity         the rule/phase name used as the activity tag
      */
     protected void runCorrectionSession(String correctionPrompt, String activity) {
-        String originalPrompt = this.prompt;
-        String previousActivity = this.currentActivity;
-        this.currentActivity = activity;
-        // Snapshot commit.txt so executeSingleRun() (which deletes it at startup)
-        // cannot discard the primary session's message.
-        Path savedCommitFile = resolveWorkingPath("commit.txt");
-        String savedCommitMessage = null;
-        if (savedCommitFile != null && Files.exists(savedCommitFile)) {
-            try { savedCommitMessage = Files.readString(savedCommitFile, StandardCharsets.UTF_8); }
-            catch (IOException e) { warn("Could not read commit.txt: " + e.getMessage()); }
-        }
-        boolean reviewing = "review".equals(activity) && activeReviewRule != null;
-        if (reviewing) activeReviewRule.captureBefore(this);
-        try {
-            this.prompt = correctionPrompt;
-            executeSingleRun();
-            if (reviewing) activeReviewRule.recordOutcome(this);
-        } finally {
-            this.prompt = originalPrompt;
-            this.currentActivity = previousActivity;
-            // Restore primary-session commit.txt only when the correction session did not
-            // write its own; if it did, that message describes the actual changes made.
-            boolean correctionWroteCommit = savedCommitFile != null && Files.exists(savedCommitFile);
-            if (!correctionWroteCommit && savedCommitMessage != null && savedCommitFile != null) {
-                try {
-                    Files.writeString(savedCommitFile, savedCommitMessage, StandardCharsets.UTF_8);
-                    log("Restored primary commit message from commit.txt");
-                } catch (IOException e) {
-                    warn("Could not restore commit.txt: " + e.getMessage());
-                }
-            }
-        }
+        CorrectionSession.run(this, correctionPrompt, activity);
     }
 
     /**
@@ -1187,27 +1188,48 @@ public class CodingAgentJob extends GitManagedJob {
         harnessStatus().unusual("Git tampering detected (" + violation
             + ") — destroying changes and restarting session");
 
-        // Set the violation message so buildInstructionPrompt() includes
-        // the warning in the restarted session's prompt.
+        // The GIT_TAMPERING_RESTART phase lets the per-phase runner map route
+        // this restart to a more conservative agent than the primary work.
         gitTamperingViolation = violation;
+        restartAfterViolation(Phase.GIT_TAMPERING_RESTART, () -> gitTamperingViolation = null);
+        return true;
+    }
 
-        // Tag the restart with the GIT_TAMPERING_RESTART phase so the
-        // per-phase runner map can route it to a different runner than the
-        // primary work (e.g., a more conservative agent that won't repeat
-        // the tampering).
+    @Override
+    protected boolean onInvalidFilesDetected(List<String> invalidFiles) {
+        String violation = String.join(", ", invalidFiles);
+        warn("Agent left binary files in the working tree: " + violation
+            + " -- restarting session to clean up");
+        harnessStatus().unusual("Binary file litter detected (" + violation
+            + ") — restarting session to remove it");
+
+        invalidFilesViolation = violation;
+        restartAfterViolation(null, () -> invalidFilesViolation = null);
+        return true;
+    }
+
+    /**
+     * Restarts the primary agent session after a {@link GitManagedJob} guardrail
+     * tripped (git tampering, binary-file litter), restoring the prior activity
+     * tag and clearing the violation afterward so its prompt warning does not
+     * bleed into later retries. The caller sets the violation field whose
+     * warning {@link #buildInstructionPrompt()} prepends before calling this.
+     *
+     * @param restartPhase   phase tag routing the restart to a runner, or
+     *                       {@code null} to restart in the natural phase
+     * @param clearViolation resets the violation field once the session returns
+     */
+    private void restartAfterViolation(Phase restartPhase, Runnable clearViolation) {
         String previousActivity = currentActivity;
-        currentActivity = Phase.GIT_TAMPERING_RESTART.wireName();
+        if (restartPhase != null) {
+            currentActivity = restartPhase.wireName();
+        }
         try {
-            // Re-run the session. The prompt will now include a stern warning
-            // about the violation and the consequences of repeating it.
             executeSingleRun();
         } finally {
             currentActivity = previousActivity;
-            // Clear the violation so it doesn't persist into further retries.
-            gitTamperingViolation = null;
+            clearViolation.run();
         }
-
-        return true;
     }
 
     /**
@@ -1317,23 +1339,7 @@ public class CodingAgentJob extends GitManagedJob {
      * @return the resolved phase, never {@code null}
      */
     Phase resolveCurrentPhase() {
-        if (currentActivity == null || currentActivity.isEmpty()) {
-            return Phase.PRIMARY;
-        }
-        // currentActivity uses either the rule getName() value (e.g.
-        // "no-maven-dependency-changes") or a phase wire name from the
-        // git-tampering restart path. Try the rule mapping first, then the
-        // wire-name lookup, then fall back to PRIMARY so an unrecognised tag
-        // never breaks dispatch.
-        Phase ruleMatch = Phase.fromRuleName(currentActivity);
-        if (ruleMatch != null) {
-            return ruleMatch;
-        }
-        try {
-            return Phase.fromWireName(currentActivity);
-        } catch (IllegalArgumentException e) {
-            return Phase.PRIMARY;
-        }
+        return Phase.fromActivity(currentActivity);
     }
 
     /**
@@ -1453,16 +1459,11 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Checks whether the primary repository or any dependent repository has
-     * uncommitted changes (excluding files in the standard exclusion patterns).
+     * Returns {@code true} when the primary or any dependent repo has
+     * uncommitted changes to non-excluded files; checked by the enforcement
+     * loop to verify the agent produced meaningful changes.
      *
-     * <p>Used by the enforcement loop to determine whether the agent produced
-     * any meaningful code changes during its session. Dependent repos are
-     * checked so that agents whose only changes land in a dependent repo are
-     * not falsely flagged as having produced no output.</p>
-     *
-     * @return true if there are uncommitted changes to non-excluded files
-     *         in the primary repo or any dependent repo
+     * @return true if uncommitted changes exist
      */
     boolean hasUncommittedChanges() {
         if (GitOperations.hasUncommittedChanges(getWorkingDirectory())) {

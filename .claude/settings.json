@@ -91,6 +91,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-git-log.sh",
             "description": "Warn on `git log` \u2014 workstream narrative lives in memory_branch_context, not commit titles"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-branch-track-master.sh",
+            "description": "Block creating/tracking/pushing a non-master branch against remote master/main (the 'branch tracks origin/master' footgun) \u2014 use --no-track or branch off local master"
           }
         ]
       },
