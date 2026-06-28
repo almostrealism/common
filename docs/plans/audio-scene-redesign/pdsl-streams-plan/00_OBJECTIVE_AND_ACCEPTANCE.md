@@ -52,17 +52,29 @@ that trades one of these away to hit a number is **cheating**, not progress.
 3. **Gains must come from more GPU parallelism or a better PDSL platform — not from doing less
    work.** Skipping right-channel prep, disabling reverb/efx in the "measured" path, or
    reducing element fidelity to make the ratio are disqualifying.
-4. **Acoustic parity with the released system is in scope.** The PDSL mixdown must remain
-   perceptually faithful to the last released (CellList) sound. Parity is judged by ear plus
-   structural measures, **never** by a coarse windowed-RMS ratio alone. (Scope note: confirm
-   with the owner whether parity work is part of *this* plan's delivery or tracked alongside;
-   either way it is an acceptance dimension, not a thing to silently drop.)
+4. **Do not preclude acoustic parity** — but it is a **separate effort, not a gate here**
+   (owner decision Q1). The goal of *this* work is a *working* three-layer version, not perfect
+   parity with the released CellList sound. Stay attentive to design choices that would make
+   future parity impossible (e.g. structurally dropping the wet/reverb path), but do not block
+   progress chasing it. When parity *is* later judged, it is judged by ear plus structural
+   measures, never by a coarse windowed-RMS ratio alone.
 
 ## 3. The performance bar
 
 The headline target is **~5× real-time**: end-to-end compute per tick ≤ **0.2×** the audio
-duration of that tick. At 44.1 kHz that is **≤ 37.2 ms** for an 8192-frame tick (audio duration
-185.8 ms) and **≤ 18.6 ms** for 4096.
+duration of that tick.
+
+**Buffer size (owner decision Q3): prefer 4096; default 8192; never above 8192.**
+- **4096 is preferred** *if it is not a performance problem* — audio duration 92.9 ms, so
+  ratio-1 is ≤ 92.9 ms and the 5× bar is **≤ 18.6 ms**.
+- **8192 is an acceptable default** — audio duration 185.8 ms, ratio-1 ≤ 185.8 ms, 5× bar
+  **≤ 37.2 ms**.
+- **Above 8192 is out of bounds** — 37 ms latency is already large for the near-future goal of
+  live controller-driven automation during playback; growing the buffer to hit a number is the
+  opposite of what we need. (This reinforces constraint #2: buffer growth is not a lever.)
+
+Design and benchmark to **4096 first**; fall back to 8192 only if 4096 proves infeasible after
+the real fix, and say so explicitly.
 
 **Frame 5× correctly.** 5× is not an independent goal to be chased by tuning; it is the expected
 *consequence* of implementing the design to spec. If each element's audio is rendered once and
@@ -83,10 +95,10 @@ configuration** (default driver/flags, real samples, `AudioScene.defaultSettings
 | G2 | **a3 never triggers a render.** The hot path contains only the mixdown forward + output streaming + clock advance. | The render counter asserts **zero** synthesis dispatches occur on the consumer/clock thread during steady-state ticks. |
 | G3 | **Sustained 2-minute real-time render, all channels, real samples, non-silent.** | A test renders ≥ 2 min on every channel from the curated library, asserts `realTime=YES`, `silent=NO`, and a non-silence floor per channel (not just the master). |
 | G4 | **Effects ON and stereo ON during the proving run.** | The 2-minute proving test runs with `enableEfx=true` and true-stereo output; a separate assertion confirms L and R are not bit-identical (i.e., stereo is real, not dual-mono). |
-| G5 | **~5× end-to-end at the production buffer size.** | The benchmark reports the *end-to-end* per-tick ratio (compute / audio-duration) at 8192 and asserts ≤ 0.2, distinct from any DSP-in-isolation figure. |
+| G5 | **~5× end-to-end at the production buffer size (4096 preferred, 8192 acceptable).** | The benchmark reports the *end-to-end* per-tick ratio (compute / audio-duration) and asserts ≤ 0.2, distinct from any DSP-in-isolation figure. |
 | G6 | **Consistency across runs.** Similar results across ≥ 3 runs of the same pinned scene; no per-tick outlier that breaks real-time (kernel compile spikes must be pre-warmed away, not absorbed-and-ignored). | The benchmark runs ≥ 3 times; asserts the p100 per-tick (after warmup) stays under budget and run-to-run variance is bounded. |
 | G7 | **Determinism / pinned scene.** The proving scene is fully pinned: fixed genome seed **and** committed `pattern-factory.json` **and** a seeded/committed arrangement — no unseeded `Math.random`, no reliance on an un-committed local `scene-settings.json`. | A harness asserts the same pinned inputs produce the same element set across runs. |
-| G8 | **Acoustic parity.** The PDSL render is perceptually faithful to the released CellList render for the same pinned scene. | A/B render pair produced for owner listening + structural diff; the gate is owner sign-off, recorded with date. |
+| ~~G8~~ | **Acoustic parity — DEMOTED to a non-blocking awareness check (owner Q1).** Parity is a separate effort; this work delivers a *working* version. | Not a gate. The design review confirms no choice *structurally precludes* future parity (e.g. the wet/reverb path still exists); an A/B pair may be produced for the owner's information, but its result does not block "done." |
 
 ### What is explicitly *inadmissible* as evidence (anti-patterns from history)
 

@@ -101,14 +101,24 @@ is the count of per-note placement dispatches the Java assembly loop issues.
 > construct (03): a2 becomes a stream that produces the assembled per-channel buffer, each
 > element scatter-placed once.
 
-### What is still a MEASUREMENT, not an inference (G1 / Phase 1)
+### MEASURED (2026-06-27) — a2 is real per-window work, but it is NOT the tick bottleneck
 
-The source *structure* above predicts placement dominates, but the **cost attribution is not
-yet measured** — and the Prime Directive forbids building on an unmeasured causal story. Phase 1
-profiles the a2 per-buffer cost on the dense scene and attributes it across {synthesis (existing
-`cacheHits`/`cacheMisses`/`cachePuts` counters), placement (count of `sumToDestination`
-dispatches), gather, marshal}. The fix is committed only after the profile confirms which term
-dominates. The existing counters make this cheap.
+The structural prediction above ("placement is the suspected a2 wall") was *half right and
+half wrong*, and the measurement ([04 §0](04_FEASIBILITY_GATE.md), `PdslHotPathBreakdownTest`)
+settles it:
+
+- **Right:** a2's per-buffer placement is per-active-note (perNote 7–10 ms on the dense scene);
+  synthesis is render-once (cacheMisses 5–12 vs hits 221–278). The structure is as described.
+- **Wrong as a *tick* bottleneck:** a2 runs on its own thread and **the a3 tick never waits on
+  it** — measured `hotAwait ≈ 0.01 ms`. a2 (16–35 ms) stays hidden behind the a3 forward. So the
+  per-window placement cost, while real, does **not** gate the real-time tick.
+- **The tick is the a3 mixdown forward** (`compiled.forward`): 36.9 ms @4096, 57.5 ms @8192 —
+  the whole budget. It scales sub-linearly with frames (fixed dispatch overhead).
+
+So the a2 placement batching (`buildScatterAdd`, 03 §4) is a *secondary* optimization (a2
+headroom), and the **primary 5× lever is the a3 mixdown-forward dispatch overhead**. This is the
+measured pivot; build on it, not on the older "a2-bound" framing. The Prime Directive held: the
+fix target was set by measurement, not by the prior docs' (false) causal story.
 
 Call chain (firsthand):
 

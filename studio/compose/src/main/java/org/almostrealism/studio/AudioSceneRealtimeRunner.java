@@ -38,6 +38,7 @@ import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -104,6 +105,25 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * feedback/delay stage. Wire-first default chosen to make the reverb tail audible.
 	 */
 	public static int pdslDelaySamples = 6500;
+
+	/**
+	 * Diagnostic: cumulative nanoseconds the hot-path tick spends in
+	 * {@code renderStream.awaitSlot()} (blocking until the a2 producer has a buffer ready).
+	 * A large value means a2 cannot stay ahead of a3; a small value means a3 is not waiting.
+	 */
+	public static final AtomicLong hotAwaitNanos = new AtomicLong();
+
+	/**
+	 * Diagnostic: cumulative nanoseconds the hot-path tick spends in {@code compiled.forward(slot)}
+	 * (the a3 PDSL mixdown forward pass itself), isolated from the a2 wait.
+	 */
+	public static final AtomicLong hotForwardNanos = new AtomicLong();
+
+	/** Resets the hot-path diagnostic timers ({@link #hotAwaitNanos}, {@link #hotForwardNanos}). */
+	public static void resetHotPathTimers() {
+		hotAwaitNanos.set(0);
+		hotForwardNanos.set(0);
+	}
 
 	/** The scene this runner drives. */
 	private final AudioScene<?> scene;
@@ -418,8 +438,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				// whole-buffer PDSL mixdown forward pass over it (writes into masterOutput). This
 				// is the only per-buffer compute on the hot path.
 				tick.add(() -> () -> {
+					long awaitStart = System.nanoTime();
 					PackedCollection slot = renderStream.awaitSlot();
+					long forwardStart = System.nanoTime();
+					hotAwaitNanos.addAndGet(forwardStart - awaitStart);
 					compiled.forward(slot);
+					hotForwardNanos.addAndGet(System.nanoTime() - forwardStart);
 					renderStream.release();
 				});
 

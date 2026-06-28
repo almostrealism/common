@@ -27,6 +27,27 @@ fact" that an entire edifice was then built on. The claim-verification ledger
 If you are a later session reading this: the moment you catch a load-bearing claim here with no
 receipt, that is the failure happening. Re-derive it or delete it.
 
+## Owner decisions (2026-06-27) — authoritative
+
+These answers from the owner override anything in the docs they touch:
+
+- **Q1 — Acoustic parity is a SEPARATE effort, not a gate.** The goal now is *a working version
+  of some kind*, not perfect parity. Be attentive to choices that would *preclude* future parity,
+  but do not block progress on it. (00 §2.4 and the old G8 are demoted accordingly.)
+- **Q3 — Buffer size: prefer 4096, default 8192, never above 8192.** 4096 (≤ 18.6 ms ratio-1) is
+  preferred *if it is not a performance problem*; 8192 (≤ 37.2 ms) is an acceptable default;
+  anything **above 8192 is out of bounds** — 37 ms is already large for the future goal of live
+  controller-driven automation during playback.
+- **Q2 — Incremental-behind-a-flag is fine, but NOT an excuse for timidity.** "We are replacing a
+  system here; substantial change is inevitable. Do not let backwards compatibility turn into a
+  blocker for progress." The flag exists to de-risk parity comparison, not to preserve the old
+  path at the cost of doing the real work.
+- **On the `stream` idioms (03):** the owner is skeptical of an elaborate new top-level
+  `stream`/`realtime`/`ahead..by` language and notes a layer already "runs ahead" of the layers
+  below it — so a **simpler annotation/wrapper** (`stream(a)`, `use_stream(a, …)`, a buffered-edge
+  marker) may generalize better. Lead with the simplest spec that works; let the implementation be
+  the judge. Watch for chances to make the PDSL language spec *clearer*, not heavier.
+
 ## Reading order
 
 | # | Doc | What it is |
@@ -40,11 +61,14 @@ receipt, that is the failure happening. Re-derive it or delete it.
 | 06 | [06_RISKS_AND_OPEN_QUESTIONS.md](06_RISKS_AND_OPEN_QUESTIONS.md) | The up-front issue register: every hard problem named now, with a decided approach or a resolution plan. |
 | 07 | [07_TOOLING_AND_GUARDRAILS.md](07_TOOLING_AND_GUARDRAILS.md) | The tooling that keeps the work honest: the pinned CI-identical harness, the render-once counter assertion, the mechanical acceptance gate, anti-drift measures. |
 
-## The one-sentence thesis
+## The one-sentence thesis (updated by measurement, 2026-06-27)
 
-The current a2 layer is decoupled onto a thread but still does **per-buffer-window** work
-(it clears a one-buffer output and re-sums every overlapping note each window — receipt in 02),
-so a note that lasts K buffers is touched K times; the fix is to render **each element's audio
-once** and make "produce-ahead-and-reuse" a first-class PDSL stream construct, at which point
-the per-tick cost collapses to mixing pre-rendered audio and the real-time target should follow
-**by construction** rather than by tuning.
+**Measured:** the a1/a2/a3 ring decoupling already works — the real-time tick *never* waits on a2
+(`hotAwait ≈ 0.01 ms`), so a2 is **not** the bottleneck and the prior "a2-bound / 5× needs an a2
+kernel redesign" framing is false; the entire tick is the **a3 PDSL mixdown forward** (36.9 ms
+@4096 / 57.5 ms @8192), which exceeds the 5× budget and scales sub-linearly with frame count —
+the signature of **fixed per-buffer dispatch overhead**. So the 5× lever is **reducing the a3
+mixdown-forward's dispatch/encoding overhead by fusing the PDSL mixdown graph into fewer kernels**
+(a better-PDSL-platform gain), with the run-ahead-stream construct as the durable home for the
+already-working decoupling. Receipts: [04 §0](04_FEASIBILITY_GATE.md),
+[02](02_GROUND_TRUTH_ARCHITECTURE.md), via `PdslHotPathBreakdownTest`.

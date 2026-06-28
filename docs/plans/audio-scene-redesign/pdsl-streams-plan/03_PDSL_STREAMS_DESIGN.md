@@ -25,12 +25,44 @@ invariant *a3 is the only clock-bound layer; a1/a2 run ahead and never block a3*
 property the construct **guarantees**, not something re-implemented and re-verified per attempt
 (it is currently hand-built in `PatternRenderStream` and unverified — see 01/02).
 
-## 2. The construct, in real PDSL grammar
+## 2. Surface: prefer the smallest thing that works (owner steer)
 
-PDSL's existing top-level declarations are `state NAME { … }`, `layer NAME(params) -> [shape] {
-body }`, `model`, `config`, `data`. **`stream` is a new top-level declaration** parsed into
-`PdslNode.Program` alongside them. Illustrative — the exact surface syntax is part of the design
-review, but it must be a *declaration of decoupling*, not hand-coded scheduling:
+The owner is **skeptical of an elaborate new top-level `stream`/`realtime`/`ahead..by`
+language**, and the skepticism is well-founded: *a layer already runs ahead of the layers below
+it* — the dependency structure PDSL needs is already present in how layers compose. So the
+preferred surface is **the lightest possible marker on an existing composition edge**, not a new
+sub-language. Two candidate shapes, simplest first:
+
+```
+// (A) PREFERRED — a wrapper/annotation marking one sub-computation as buffered & run-ahead.
+//     "wrap the `rendered` computation so the runtime runs it ahead into a ring of depth 8."
+out = mixdown_master_wet( stream(rendered, ahead: 8), ... )    // or:  use_stream(rendered, 8)
+```
+
+```
+// (B) FALLBACK — explicit top-level stream/lead declarations, only if (A) cannot express the
+//     a1/a2/a3 lead relationships cleanly.
+stream rendered = render_ahead(patterns)
+realtime out
+ahead rendered by 8 buffers
+```
+
+The semantics are identical either way (below); the *spec choice* is deferred to the
+implementation, which is the natural judge of which reads clearly and generalizes. **Bias toward
+(A):** one primitive/annotation that any layer-edge can carry generalizes past audio, keeps the
+PDSL spec *clearer rather than heavier*, and avoids inventing three keywords where one wrapper
+will do. Whichever wins, the goal is a clearer PDSL language, not a bigger one — watch for that
+as the work proceeds.
+
+### Semantics (independent of surface)
+
+A buffered/run-ahead edge means: the wrapped computation runs **ahead** of its consumer on its
+own cadence, its output deposited in a runtime-owned ring; the consumer takes an
+already-produced slot and never blocks on it. Exactly one computation is the **sink** (the
+top-level model / the real-time clock). Whether expressed as wrapper (A) or declaration (B), the
+invariant *the sink is the only clock-bound layer; upstreams run ahead and never block it*
+becomes a property the construct **guarantees**, replacing the hand-built, unverified
+`PatternRenderStream` wiring (02). The illustrative declaration form, for reference:
 
 ```
 // a1: which elements exist on the timeline. Cheap; produces an element schedule, not audio.
@@ -85,8 +117,21 @@ per window**. `render_ahead` replaces that with two batched ops per produced buf
 2. **Scatter-place-all (batched placement):** all elements active in the buffer window are placed
    into the output in **one** scatter-add kernel over `[elements, overlap]` — GPU parallelism
    over elements — instead of N per-note Java-dispatched sums. This is the operation the current
-   path does serially; collapsing it to one batched op is the "more GPU parallelism, not less
-   work" gain the objective requires (constraint #3).
+   *continuing-note* path does serially; collapsing it to one batched op is the "more GPU
+   parallelism, not less work" gain the objective requires (constraint #3).
+   - **The batched-placement primitive already exists and is the literal replacement.**
+     `BatchedPatternRenderer.buildScatterAdd(rows, destOffsets, noteCount, rowLength,
+     windowWidth)` (`engine/audio/.../BatchedPatternRenderer.java:910`, core `scatterAddFlat`
+     `:930`) places N note rows into a `[windowWidth]` output at per-note offsets in one compiled
+     dispatch. Its own javadoc (`:881`): *"This is the batched form of the per-note ranged
+     accumulate performed today by `PatternFeatures.sumToDestination`."* The **starting-note**
+     (`batchNow`) path already uses it (`dispatchBatched` → `accumulateBatchedOutput`,
+     `BatchedPatternLayerRenderer.java:371,515`); only the **continuing-note** (`perNote`) path
+     still falls back to the per-note `renderNotes` `sumToDestination` loop
+     (`:339-351`). So the fix is: route the continuing notes' cached clips through
+     `buildScatterAdd` too — a wiring change reusing existing infrastructure, **not** a kernel
+     redesign. (Still gated on the Phase-1 measurement confirming continuing-note placement is
+     the dominant term.)
 
 The per-buffer a2 GPU cost becomes **O(1) dispatches** (one synth-batch + one place-batch),
 parallel over elements, regardless of how many notes are active — which is what should make a2

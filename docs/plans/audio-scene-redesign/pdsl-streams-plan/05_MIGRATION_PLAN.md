@@ -31,31 +31,48 @@ five terms (synth/place/gather/marshal/mix) with date/machine/flags. No claim ab
   the production buffer size. Confirm render-once empirically: synthesis misses ≈ distinct
   elements, **not** ≈ active-notes × windows.
 - Compute the ceiling (04 §3) and record the gate verdict.
-**Exit gate (one of):**
-- **PASS — placement is the dominant removable term** (02's prediction): irreducible core
-  (render-once synth + batched place + mix) ≤ 37.2 ms @ 8192 in the ceiling computation → proceed
-  to Phase 2.
-- **PIVOT — mix (a3 DSP) alone exceeds budget** → re-scope to the a3 forward; Phases 2–3 change
-  target. (Re-measure the `mixdown_master_wet` claim first — it is `unverified`, 01.)
-- **PIVOT — synth alone exceeds budget even amortized** → genuine kernel-redesign finding; only
-  here does the prior "5× needs a redesign" framing earn its receipt, and the plan adopts it
-  *with* the measurement.
-**This gate is the project's central decision.** It is recorded with its receipts and is the
-thing a future session re-checks before trusting any direction here.
+**Exit gate — DONE (2026-06-27): PIVOT to the a3 forward.** The measurement
+([04 §0](04_FEASIBILITY_GATE.md)) showed `hotAwait ≈ 0.01 ms` (a3 never waits on a2 — a2 is **not**
+the bottleneck) and the entire tick is the **a3 mixdown forward** (36.9 ms @4096, 57.5 ms @8192),
+which exceeds the 5× budget at both sizes and scales sub-linearly with frame count (fixed
+dispatch overhead). So the gate took the **"mix alone exceeds budget → re-scope to the a3
+forward"** branch. The decoupling invariant is *measured*, not just asserted; the prior
+"a2-bound / 5× needs an a2 kernel redesign" framing is refuted. **a2 placement batching is
+demoted to a secondary optimization; the primary 5× lever is reducing the a3 forward's per-buffer
+dispatch/encoding overhead (PDSL kernel fusion).** This gate was the project's central decision
+and is now recorded with its receipts (`PdslHotPathBreakdownTest`).
 
-## Phase 2 — `render_ahead`: batched placement + structural render-once (behind a flag)
+## Phase 2 — Reduce the a3 mixdown-forward dispatch overhead (the primary 5× lever)
 
-**Entry:** Phase 1 = PASS (placement dominant).
+**Entry:** Phase 1 = PIVOT to a3 forward (done).
 **Work:**
-- Implement the batched placement: replace the per-note `renderNotes` `forEach`/`sumToDestination`
-  fan-out with **one** scatter-add over `[elements, overlap]` per produced buffer (03 §4),
-  GPU-parallel over elements; keep render-once synthesis (the existing cache, promoted to
-  content-keyed element identity — R6, no melodic/percussion special-casing — R3).
-- Keep it behind a flag; the legacy path stays for A/B.
-**Exit gate:** on the pinned dense scene, the measured `place` term collapses to ~one batched
-dispatch's cost (not O(active notes)); the a2 end-to-end term meets the Phase-1 ceiling; G1
-(render-once) and G2 (no synth on the clock thread) counters pass; **bit/`windowed-RMS` parity
-with the legacy path holds** (no audible change); build validator + relevant tests green in CI.
+- **2a — Profile the forward. DONE (2026-06-27).** Two run-time points give a linear fit:
+  **`forward ≈ 16.3 ms fixed dispatch overhead + 0.005 ms/frame`** (frame-proportional DSP =
+  20.6 ms @4096, 41.2 ms @8192). The `pdslTickProfile` graph has **48,767 operation nodes** and
+  takes ~22 s to **compile** (one-time; the profile's durations are compile-dominated — cross-
+  checked because "PDSL Automation Refresh" reads 28% there but only 0.45 ms/tick at run). The
+  heaviest forward subtrees are the **per-channel FIR convolutions** (`multiOrderFilter`,
+  "fir layer (6,8192)") and the **reverb `delay_network`**. Two consequences:
+  - **At 4096 (preferred), the fixed 16.3 ms dispatch overhead alone is ~88% of the 18.6 ms 5×
+    budget** ⇒ cutting the per-buffer **dispatch count** (graph fusion) is *mandatory* for 4096,
+    independent of the FIR.
+  - **At 8192, the frame-proportional FIR cost (41 ms) dominates** ⇒ optimizing/fusing
+    `multiOrderFilter` matters most there.
+  - The 22 s compile of the 48,767-node graph is a one-time spike ⇒ kernel pre-warm (R4) for
+    run-to-run consistency, separate from the steady-state run cost.
+- **2b — Fuse / reduce dispatches.** Cut the per-buffer dispatch count: fuse channel-uniform
+  stages (vectorized `for each channel` is already on — verify it actually collapses to one
+  kernel), fuse adjacent elementwise stages (clip→fir→scale), and reduce the
+  `delay_network`/`feedback` per-line dispatch fan-out. These are PDSL-platform / compiled-model
+  improvements ("more GPU parallelism / better PDSL platform"), **not** "do less DSP."
+- Keep changes behind a flag; the legacy forward stays for A/B.
+**Exit gate:** on the pinned dense scene (efx+reverb ON), `hotForward` drops below the 5× budget
+(≤18.6 ms @4096 / ≤37.2 ms @8192) — or, if it lands between ratio-1 and 5×, the *measured*
+remaining gap is attributed and the next reducible dispatch is named; **same-output correctness**
+holds (the refactor must not change the rendered audio — a regression check, distinct from
+acoustic parity); build validator + relevant tests green in CI. Secondary: optionally batch a2
+continuing-note placement via `buildScatterAdd` (03 §4) to widen a2 headroom, but only if a2
+ever threatens to stop hiding behind the forward.
 
 ## Phase 3 — The PDSL `stream` construct + migrate a1/a2/a3 onto it (behind a flag)
 
@@ -80,8 +97,9 @@ retired only after parity is signed off.
 - True stereo as the sink shape (per-channel pan in `out`, one forward — R9); efx on; per-buffer
   automation verified audibly adequate (R7) or upgraded to a finer automation stream if parity
   (G8) demands.
-**Exit gate:** the 2-minute proving run passes with **efx ON and stereo ON** (G4 — L≠R asserted);
-acoustic parity A/B pair produced and owner-signed (G8, dated).
+**Exit gate:** the 2-minute proving run passes with **efx ON and stereo ON** (G4 — L≠R asserted).
+No acoustic-parity sign-off is required here (owner Q1); the design review only confirms the
+wet/reverb/stereo paths still *exist* so future parity is not precluded.
 
 ## Phase 5 — 5× + consistency (close out the acceptance suite)
 
@@ -90,16 +108,23 @@ acoustic parity A/B pair produced and owner-signed (G8, dated).
 - Kernel pre-warm for the (few, enumerable) stream kernel shapes in setup, eliminating the
   first-encounter compile spike (R4).
 - Run the full acceptance suite on the pinned dense scene through CI.
-**Exit gate:** **G1–G8 all green** (07/00): render-once, a3-clean, 2-min all-channel non-silent,
-efx+stereo on, **≤ 0.2 end-to-end at 8192**, consistent across ≥3 runs (no per-tick outlier over
-budget after warmup), determinism, owner parity sign-off. Done = this gate, in CI, on the exact
-commit.
+**Exit gate:** **G1–G7 all green** (07/00; G8 parity is demoted, owner Q1): render-once,
+a3-clean, 2-min all-channel non-silent, efx+stereo on, **≤ 0.2 end-to-end at the production
+buffer (4096 preferred, 8192 acceptable)**, consistent across ≥3 runs (no per-tick outlier over
+budget after warmup), determinism. Done = this gate, in CI, on the exact commit.
 
 ## Cross-phase rules
 
-- **Behind flags throughout**; legacy path retained for A/B until the final cutover.
-- **Parity is checked every phase**, not deferred to the end (the prior "rewrote docs to say
-  parity" failure).
+- **Substantial change is expected; flags de-risk, they do not preserve (owner Q2).** We are
+  replacing a system. The flag exists so we can A/B the new path against the old during
+  development — **not** so we tiptoe around the old structure. If doing the real work means
+  significantly rewriting `PatternRenderStream` / `createPdsl` / the per-note assembly, do it. The
+  named failure mode to avoid here is *timidity*: declining the necessary change to protect
+  backwards compatibility. Backwards compatibility is never a reason to not do the work.
+- **Acoustic parity is NOT a per-phase gate (owner Q1).** Phases 2–3 carry a *same-output
+  correctness* check (the refactor must not change what the existing path produces — a
+  regression check, cheap and legitimate), but perceptual parity with the *released* sound is a
+  separate effort; do not let it gate progress, and do not rewrite docs to claim it.
 - **No base-branch test edits, no CI-gate weakening, no forced-driver/forced-flag "passes"**
   (07/T8). A phase gate that "passes" only under a diagnostic config has not passed.
 - **The ledger (01) and these docs update in the same commit as the code** they describe.

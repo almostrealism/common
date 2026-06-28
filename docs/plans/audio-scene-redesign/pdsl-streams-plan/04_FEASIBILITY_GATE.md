@@ -8,6 +8,50 @@
 > would be the exact failure this gate exists to prevent. It specifies the one decomposition
 > measurement that produces the verdict, and the decision rule that consumes it.
 
+## 0. PHASE-1 MEASURED RESULT (2026-06-27) — the gate has run
+
+The decomposition was measured (M1, local hybrid Metal, fresh full-closure build, depth 2, **efx
++ reverb ON**, real curated library, densest curated genome seed=58 / 1126 elements) via the new
+`PdslHotPathBreakdownTest`, which reads `AudioSceneRealtimeRunner.hotAwaitNanos` /
+`hotForwardNanos` (added counters around `awaitSlot` / `compiled.forward`):
+
+| Buffer | budget | tick | **hotAwait** | **hotForward (a3 mixdown)** | a2 total (producer) | realtime× |
+|---|---|---|---|---|---|---|
+| 4096 | 92.88 ms | 37.78 ms | **0.01 ms** | **36.91 ms** | 16.27 ms | 2.46× |
+| 8192 | 185.76 ms | 58.68 ms | **0.01 ms** | **57.52 ms** | 35.03 ms | 3.17× |
+
+Render-once confirmed (cacheMisses 5–12 vs cacheHits 221–278).
+
+**Verdict: PIVOT — the a3 mixdown forward is the bottleneck; a2 is not.**
+
+- **`hotAwait ≈ 0.01 ms` at both sizes ⇒ a3 never waits on a2.** The ring decoupling already
+  works; a2 runs ahead and never blocks a3. **a2 is not on the critical path.** This *measures*
+  the decoupling invariant the prior docs only asserted — and it refutes "the system is
+  a2-bound."
+- **The entire tick is the a3 mixdown forward** (37–58 ms). It **exceeds the 5× budget** at both
+  sizes (need ≤18.6 ms @4096, ≤37.2 ms @8192). Per the decision rule below, *mix alone exceeds
+  budget → re-scope to the a3 forward.*
+- **The forward scales sub-linearly with frame count** (2× frames → only 1.56× forward) — the
+  signature of **fixed per-forward dispatch/encoding overhead**, not frame-proportional GPU
+  compute (consistent with the existing benchmark's note that compiled-op GPU time is "almost
+  none of the tick wall"). So the gap is **incidental dispatch overhead, reducible by fusing the
+  PDSL mixdown graph into fewer/larger kernels** — a *better-PDSL-platform* gain, exactly the
+  objective's allowed lever. The gate **passes** in the sense that the structure can reach the
+  target by reducing dispatch overhead; it **pivots** in the sense that the target is the a3
+  forward, not a2 placement.
+
+**Consequence for the prior plan:** the a2 placement batching (03 §4) is now a *secondary*
+optimization (it gives a2 headroom but does not reduce the tick, since a2 is already hidden
+behind the forward). The primary 5× work is the **a3 mixdown-forward dispatch reduction**. The
+remaining open sub-question (what specifically makes the forward 37–58 ms — op count, the reverb
+`delay_network`, the per-channel FIRs) is the immediate Phase-2 profiling step.
+
+> Caveat held honestly: this is a local M1 measurement (not CI) and **dual-mono** (true stereo
+> will *add* forward cost — R9). It is reproducible via `PdslHotPathBreakdownTest`; CI on the
+> exact commit remains the acceptance authority.
+
+---
+
 ## 1. The core question
 
 > Is the gap to ~5× a **constant factor within the right structure**, or is the **structure
