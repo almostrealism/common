@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -198,6 +199,17 @@ class FalsificationPhase {
         // executeSingleRun() deletes commit.txt at startup; save/restore so the
         // primary session's commit message survives a no-bounce falsification pass.
         String savedCommitMessage = CommitMessageBuilder.captureCommitTxt(job);
+        // Delete any stale results file so a session that crashed or timed out
+        // in a prior iteration cannot be read as fresh output by classifyResults().
+        // A missing file is the safe/correct signal that analysis did not complete.
+        Path staleResults = job.resolveWorkingPath(RESULTS_FILE);
+        if (staleResults != null) {
+            try {
+                Files.deleteIfExists(staleResults);
+            } catch (IOException e) {
+                job.warn("Could not delete stale " + RESULTS_FILE + ": " + e.getMessage());
+            }
+        }
         job.setCurrentActivity(Phase.FALSIFICATION.wireName());
         try {
             job.setPrompt(FalsificationPromptBuilder.build(job));

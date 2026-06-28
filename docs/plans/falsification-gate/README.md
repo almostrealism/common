@@ -1,7 +1,7 @@
 # Falsification Gate
 
-**Status:** Planning (design + experiment). No harness/controller code in this
-work — design and experiment only.
+**Status:** Implemented (v1, artifact-settleable; probes deferred). The branch
+contains the runtime FalsificationPhase, gate logic, API flag wiring, and tests.
 **Branch:** `feature/falsification-gate`
 
 ## The problem this addresses

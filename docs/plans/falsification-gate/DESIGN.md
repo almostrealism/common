@@ -1,6 +1,6 @@
 # Falsification Gate — Part B: The Mechanism
 
-**Status:** Planning / design
+**Status:** Implemented (v1, artifact-settleable; probes deferred)
 **Branch:** `feature/falsification-gate`
 **Document version:** 1
 **Gated by:** [EXPERIMENT.md §5](EXPERIMENT.md) — verdict **PASS** (predicate
@@ -8,10 +8,12 @@ catches 3/3, conditional on the disjunctive P3 and on the mechanism enforcing
 genuine entailment). This document carries the entailment obligation and the
 REFUTED-vs-UNSETTLED distinction as first-class requirements.
 
-**Scope of this job:** design + experiment only. **No harness/controller code is
-written.** Every integration point below is *mapped and cited*, not modified. All
-file:line citations were read from the working tree on this branch; where a fact
-was inferred rather than directly read, it is flagged **[INFERRED]**.
+**Scope of this job:** v1 implementation complete. The runtime
+`FalsificationPhase` and supporting gate, verdict, and claim classes are
+implemented; `falsificationEnabled` is wired through the job API, codec,
+factory, server.py, and FlowTreeApiEndpoint. Probe emission is deferred to v2.
+Original integration-point citations below remain for reference; items marked
+**[INFERRED]** were inferred from the working tree at design time.
 
 ---
 
