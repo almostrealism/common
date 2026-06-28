@@ -91,14 +91,14 @@ public final class BatchedPatternLayerRenderer {
 	 * with variable N. Each tick's note count is ceiling-rounded to the next
 	 * bucket and the unused rows pad with silent (zero) inputs.
 	 */
-	public static final int[] BUCKETS = {16, 32, 64, 128, 256, 512};
+	public static final int[] BUCKETS = {64, 128, 256, 512};
 
 	/**
 	 * Granularity to which the per-dispatch source length is rounded up so a small
 	 * set of compiled kernels is shared across windows whose source requirements
 	 * differ only slightly.
 	 */
-	public static final int SOURCE_BUCKET = 1024;
+	public static final int SOURCE_BUCKET = 16384;
 
 	/**
 	 * Maximum per-dispatch render window in frames. A render call wider than this is
@@ -138,6 +138,18 @@ public final class BatchedPatternLayerRenderer {
 	/** Cumulative per-note fallback time (ns): {@code PatternFeatures.renderNotes} (cache slices + misses). */
 	public static final AtomicLong perNoteNanos = new AtomicLong();
 
+	/** Cumulative count of real note-rows submitted to the batched kernel (before bucket padding). */
+	public static final AtomicLong dispatchedRows = new AtomicLong();
+
+	/** Cumulative count of padded note-rows actually evaluated by the batched kernel (bucket size). */
+	public static final AtomicLong dispatchedBucketRows = new AtomicLong();
+
+	/** Cumulative output frames evaluated by the batched kernel: sum of {@code bucketN * windowWidth}. */
+	public static final AtomicLong dispatchedRowFrames = new AtomicLong();
+
+	/** Cumulative count of distinct (bucket, sourceLength, targetLength) kernels compiled (rendererCache misses). */
+	public static final AtomicLong rendererCompileCount = new AtomicLong();
+
 	/** Resets the dispatch instrumentation counters. */
 	public static void resetCounters() {
 		batchedDispatchCount.set(0);
@@ -146,6 +158,10 @@ public final class BatchedPatternLayerRenderer {
 		evalNanos.set(0);
 		gatherNanos.set(0);
 		perNoteNanos.set(0);
+		dispatchedRows.set(0);
+		dispatchedBucketRows.set(0);
+		dispatchedRowFrames.set(0);
+		rendererCompileCount.set(0);
 	}
 
 	/** Finite placeholder note duration (seconds) for silent padded batch rows. */
@@ -195,9 +211,11 @@ public final class BatchedPatternLayerRenderer {
 	 * @return the renderer compiled for that shape
 	 */
 	public BatchedPatternRenderer rendererFor(int bucket, int sourceLength, int targetLength) {
-		return rendererCache.computeIfAbsent(List.of(bucket, sourceLength, targetLength), k ->
-				new BatchedPatternRenderer(bucket, sourceLength, targetLength,
-						sampleRate, filterOrder));
+		return rendererCache.computeIfAbsent(List.of(bucket, sourceLength, targetLength), k -> {
+			rendererCompileCount.incrementAndGet();
+			return new BatchedPatternRenderer(bucket, sourceLength, targetLength,
+					sampleRate, filterOrder);
+		});
 	}
 
 	/** Returns the configured audio sample rate in Hz. */
@@ -350,6 +368,9 @@ public final class BatchedPatternLayerRenderer {
 
 		int count = notes.size();
 		int bucketN = bucketFor(count);
+		dispatchedRows.addAndGet(count);
+		dispatchedBucketRows.addAndGet(bucketN);
+		dispatchedRowFrames.addAndGet((long) bucketN * windowWidth);
 		int layers = BatchedNoteInputs.LAYERS;
 		int startFrame = windowStart;
 		int targetLength = windowWidth;
@@ -468,6 +489,9 @@ public final class BatchedPatternLayerRenderer {
 										  int windowWidth, PackedCollection destination, int destBaseOffset) {
 		int count = notes.size();
 		int bucketN = bucketFor(count);
+		dispatchedRows.addAndGet(count);
+		dispatchedBucketRows.addAndGet(bucketN);
+		dispatchedRowFrames.addAndGet((long) bucketN * windowWidth);
 		int layers = BatchedNoteInputs.LAYERS;
 		int startFrame = windowStart;
 		int targetLength = windowWidth;

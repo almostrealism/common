@@ -19,6 +19,8 @@ package org.almostrealism.studio.pattern.test;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.data.WaveData;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
@@ -253,7 +255,7 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 			}
 
 			try {
-				for (int w = 0; w < 8; w++) {
+				for (int w = 0; w < 24; w++) {
 					stages.forEach(Runnable::run);
 				}
 
@@ -278,6 +280,10 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 				log("marshalMsPerTick=" + format(BatchedPatternLayerRenderer.marshalNanos.get() / 1e6 / PROFILE_TICKS)
 						+ " evalMsPerTick=" + format(BatchedPatternLayerRenderer.evalNanos.get() / 1e6 / PROFILE_TICKS)
 						+ " perNoteMsPerTick=" + format(BatchedPatternLayerRenderer.perNoteNanos.get() / 1e6 / PROFILE_TICKS));
+				log("dispatchedRowsPerTick=" + format(BatchedPatternLayerRenderer.dispatchedRows.get() / (double) PROFILE_TICKS)
+						+ " bucketRowsPerTick=" + format(BatchedPatternLayerRenderer.dispatchedBucketRows.get() / (double) PROFILE_TICKS)
+						+ " rowFramesPerTick=" + (BatchedPatternLayerRenderer.dispatchedRowFrames.get() / PROFILE_TICKS));
+				log("rendererCompilesDuringMeasured=" + BatchedPatternLayerRenderer.rendererCompileCount.get());
 
 				double totalMs = 0;
 				for (int s = 0; s < stages.size(); s++) {
@@ -287,12 +293,45 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 							+ " perTickMs=" + format(perTickMs));
 				}
 				log("stageTotalPerTickMs=" + format(totalMs));
+
+				// Anti-cheat: a fast render is worthless if it is silent. Flush the streamed
+				// master and assert the decoupled PDSL render actually produced audio on this
+				// deterministic working scene — timing is only meaningful over real output.
+				out.write().get().run();
+				double renderedPeak = peakAmplitude(scratch.getPath());
+				log("renderedPeakAmplitude=" + format(renderedPeak));
+				Assert.assertTrue("decoupled PDSL render produced silence (peak=" + renderedPeak + ")",
+						renderedPeak > 1e-3);
 			} finally {
 				out.reset();
 				runner.reset();
 			}
 		} finally {
 			MixdownManager.enablePdslMixdown = previous;
+		}
+	}
+
+	/**
+	 * Returns the peak absolute sample over channel 0 of a rendered WAV — used to assert
+	 * a measured render is non-silent (a fast render of silence is not progress).
+	 *
+	 * @param wavPath path to the rendered WAV
+	 * @return the peak absolute sample value in [0, 1]
+	 * @throws IOException if the WAV cannot be read
+	 */
+	private double peakAmplitude(String wavPath) throws IOException {
+		WaveData data = WaveData.load(new File(wavPath));
+		try {
+			PackedCollection channel = data.getChannelData(0);
+			double peak = 0.0;
+			int n = channel.getShape().getTotalSize();
+			for (int i = 0; i < n; i++) {
+				double v = Math.abs(channel.valueAt(i));
+				if (v > peak) peak = v;
+			}
+			return peak;
+		} finally {
+			data.destroy();
 		}
 	}
 
