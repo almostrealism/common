@@ -32,7 +32,7 @@ import static org.junit.Assert.assertTrue;
 public class MidiNotesTest {
 
 	/** Spot-checks representative notes across the MIDI range. */
-	@Test
+	@Test(timeout = 30000)
 	public void parsesKnownNotes() {
 		assertEquals(OptionalInt.of(60), MidiNotes.parseNoteName("C4"));
 		assertEquals(OptionalInt.of(61), MidiNotes.parseNoteName("C#4"));
@@ -43,7 +43,7 @@ public class MidiNotesTest {
 	}
 
 	/** parseNoteName must round-trip every MIDI note that noteName emits. */
-	@Test
+	@Test(timeout = 30000)
 	public void roundTripsEveryMidiNote() {
 		for (int midi = MidiNotes.MIN_NOTE; midi <= MidiNotes.MAX_NOTE; midi++) {
 			String name = MidiNotes.noteName(midi);
@@ -55,13 +55,13 @@ public class MidiNotesTest {
 	}
 
 	/** Leading and trailing whitespace must not defeat the parse. */
-	@Test
+	@Test(timeout = 30000)
 	public void toleratesSurroundingWhitespace() {
 		assertEquals(OptionalInt.of(60), MidiNotes.parseNoteName("  C4 "));
 	}
 
 	/** Null, blank, mis-spelled, and out-of-range inputs return empty. */
-	@Test
+	@Test(timeout = 30000)
 	public void rejectsMalformedOrOutOfRange() {
 		assertFalse(MidiNotes.parseNoteName(null).isPresent());
 		assertFalse(MidiNotes.parseNoteName("").isPresent());

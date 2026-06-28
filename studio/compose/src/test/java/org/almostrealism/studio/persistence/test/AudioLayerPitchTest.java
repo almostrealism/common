@@ -45,7 +45,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** The structured field wins when it disagrees with the display text. */
-	@Test
+	@Test(timeout = 30000)
 	public void prefersStructuredFieldOverLayerId() {
 		/* layer_id text says C4 but the structured field says CS4 (C#4) —
 		   the structured KeyPosition is authoritative and must win. */
@@ -54,7 +54,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** The structured KeyPosition survives a real protobuf serialize/parse cycle. */
-	@Test
+	@Test(timeout = 30000)
 	public void structuredKeyPositionSurvivesProtoRoundTrip() throws InvalidProtocolBufferException {
 		for (WesternChromatic key : WesternChromatic.values()) {
 			Audio.AudioLayer layer = layerWithPitch("Plugin " + key, key);
@@ -65,7 +65,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** Legacy layers without the field recover pitch from the display text. */
-	@Test
+	@Test(timeout = 30000)
 	public void fallsBackToLayerIdParseForLegacyLayers() {
 		/* A layer saved before captured_pitch existed: pitch lives only in
 		   the trailing token of the display name. */
@@ -76,7 +76,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** Only the trailing token is parsed, so spaced plugin names are fine. */
-	@Test
+	@Test(timeout = 30000)
 	public void fallbackHandlesMultiWordPluginName() {
 		Audio.AudioLayer layer = Audio.AudioLayer.newBuilder()
 				.setLayerId("My Fancy Synth A4")
@@ -85,7 +85,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** No structured field and no parseable note name yields null. */
-	@Test
+	@Test(timeout = 30000)
 	public void returnsNullWhenNoPitchRecoverable() {
 		Audio.AudioLayer noPitch = Audio.AudioLayer.newBuilder()
 				.setLayerId("Recording without a note name")
@@ -99,7 +99,7 @@ public class AudioLayerPitchTest {
 	 * falls back to the legacy display-text parse rather than reporting no
 	 * pitch outright.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void unreconstructableStructuredFieldFallsBackToLayerId() {
 		Audio.KeyPositionData outOfRange = Audio.KeyPositionData.newBuilder()
 				.setSystem(Audio.KeyPositionData.PitchSystem.WESTERN_CHROMATIC)
@@ -113,7 +113,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** toKeyPositionData / fromKeyPositionData round-trips every WesternChromatic key. */
-	@Test
+	@Test(timeout = 30000)
 	public void keyPositionDataRoundTripsEveryWesternChromatic() {
 		for (WesternChromatic key : WesternChromatic.values()) {
 			Audio.KeyPositionData data = AudioLayerPitch.toKeyPositionData(key);
@@ -125,7 +125,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** Writing a null or unsupported KeyPosition is a programming error. */
-	@Test
+	@Test(timeout = 30000)
 	public void toKeyPositionDataRejectsNull() {
 		try {
 			AudioLayerPitch.toKeyPositionData(null);
@@ -136,7 +136,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** fromKeyPositionData reports null for null, unspecified, or out-of-range input. */
-	@Test
+	@Test(timeout = 30000)
 	public void fromKeyPositionDataHandlesUnknownInput() {
 		assertNull(AudioLayerPitch.fromKeyPositionData(null));
 
@@ -155,7 +155,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** MIDI-to-key-position bridge anchors against known reference notes. */
-	@Test
+	@Test(timeout = 30000)
 	public void mapsMidiToWesternChromaticPositions() {
 		/* WesternChromatic positions: A0 = 0 (MIDI 21), C4 = 39 (MIDI 60),
 		   A4 = 48 (MIDI 69), C8 = 87 (MIDI 108). */
@@ -166,7 +166,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** Valid MIDI notes outside A0..C8 have no WesternChromatic position. */
-	@Test
+	@Test(timeout = 30000)
 	public void returnsNullForNotesOutsideWesternChromaticRange() {
 		/* WesternChromatic spans MIDI 21 (A0) .. 108 (C8); notes outside
 		   that have no key position even though they are valid MIDI. */
@@ -175,7 +175,7 @@ public class AudioLayerPitchTest {
 	}
 
 	/** Sanity: the structured form never collapses through a MIDI integer. */
-	@Test
+	@Test(timeout = 30000)
 	public void capturedPitchHasNoMidiField() {
 		Audio.AudioLayer layer = layerWithPitch("Plugin C4", WesternChromatic.C4);
 		assertTrue(layer.hasCapturedPitch());
