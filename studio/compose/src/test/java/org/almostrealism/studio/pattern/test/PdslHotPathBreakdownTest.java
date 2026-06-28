@@ -33,6 +33,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 
 /**
  * Attributes the real-time PDSL tick's hot-path wall time on a dense curated scene into its
@@ -56,10 +57,10 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	private static final int BENCH_MEASURES = 64;
 
 	/** Ticks rendered (and discarded) after the runner is built, before measurement begins. */
-	private static final int WARMUP_TICKS = 8;
+	private static final int WARMUP_TICKS = 24;
 
-	/** Steady-state ticks timed for the breakdown. */
-	private static final int PROFILE_TICKS = 8;
+	/** Steady-state ticks timed for the breakdown (a sustained sample: 200 ticks ~ 37 s at 8192). */
+	private static final int PROFILE_TICKS = 200;
 
 	/** Buffer sizes to measure: the preferred (4096) and the default (8192). */
 	private static final int[] BUFFER_SIZES = { 4096, 8192 };
@@ -104,8 +105,15 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 		Assert.assertTrue("No viable genome found", densestSeed >= 0 && densestElements > 0);
 		log("densestSeed=" + densestSeed + " densestElements=" + densestElements);
 
+		// A deeper render-ahead ring absorbs transient a2 stalls so a3 waits less (hotAwait). If
+		// a2 keeps up on average, this drives the sustained tick toward the per-tick minimum.
+		AudioSceneRealtimeRunner.renderAheadSlots = 24;
+		log("renderAheadSlots=" + AudioSceneRealtimeRunner.renderAheadSlots);
+
+		// Single config (full efx+reverb), per-tick logging, generous warmup: diagnose whether
+		// the forward STABILIZES (warmup/compile) or DRIFTS (thermal) and find the true warm value.
 		for (int bufferSize : BUFFER_SIZES) {
-			measure(scene, densestSeed, bufferSize);
+			measure(scene, densestSeed, bufferSize, true);
 		}
 	}
 
@@ -116,15 +124,21 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	 * @param scene      the shared curated scene
 	 * @param seed       the genome seed to render
 	 * @param bufferSize frames per buffer
+	 * @param efx        when true the full {@code mixdown_master_wet} (main+efx+reverb) is used;
+	 *                   when false the simpler main-bus-only {@code mixdown_master}
 	 */
-	private void measure(AudioScene<?> scene, long seed, int bufferSize) throws IOException {
+	private void measure(AudioScene<?> scene, long seed, int bufferSize, boolean efx) throws IOException {
 		applyGenome(scene, seed);
 
 		File scratch = new File("results/pdsl-cutover/hotpath_scratch.wav");
 		WaveOutput out = new WaveOutput(() -> scratch, 24, true);
 
 		boolean previous = MixdownManager.enablePdslMixdown;
+		boolean previousEfx = MixdownManager.enableEfx;
+		boolean previousReverb = MixdownManager.enableReverb;
 		MixdownManager.enablePdslMixdown = true;
+		MixdownManager.enableEfx = efx;
+		MixdownManager.enableReverb = efx;
 		try {
 			TemporalCellular runner = scene.runnerRealTime(
 					new MultiChannelAudioOutput(out), null, bufferSize);
@@ -142,11 +156,27 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				AudioSceneRealtimeRunner.resetHotPathTimers();
 
 				double totalTickMs = 0;
+				double[] ticks = new double[PROFILE_TICKS];
 				for (int i = 0; i < PROFILE_TICKS; i++) {
 					long start = System.nanoTime();
 					tick.run();
-					totalTickMs += (System.nanoTime() - start) / 1e6;
+					double ms = (System.nanoTime() - start) / 1e6;
+					totalTickMs += ms;
+					ticks[i] = ms;
 				}
+				double[] sorted = ticks.clone();
+				Arrays.sort(sorted);
+				double budget = 1000.0 * bufferSize / SAMPLE_RATE;
+				double p50 = sorted[PROFILE_TICKS / 2];
+				double p95 = sorted[(int) (PROFILE_TICKS * 0.95)];
+				double maxMs = sorted[PROFILE_TICKS - 1];
+				int overBudget = 0;
+				for (double t : ticks) if (t > budget) overBudget++;
+				log("buffer=" + bufferSize + " SUSTAINED ticks=" + PROFILE_TICKS
+						+ " p50Ms=" + fmt(p50) + " p95Ms=" + fmt(p95) + " maxMs=" + fmt(maxMs)
+						+ " p50ratio=" + fmt(p50 / budget) + " p95ratio=" + fmt(p95 / budget)
+						+ " overBudgetTicks=" + overBudget + "/" + PROFILE_TICKS
+						+ " rendererCompilesDuringRun=" + BatchedPatternLayerRenderer.rendererCompileCount.get());
 
 				double budgetMs = 1000.0 * bufferSize / SAMPLE_RATE;
 				double tickMs = totalTickMs / PROFILE_TICKS;
@@ -157,10 +187,10 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				double a2PerNoteMs = BatchedPatternLayerRenderer.perNoteNanos.get() / 1e6 / PROFILE_TICKS;
 				double a2MarshalMs = BatchedPatternLayerRenderer.marshalNanos.get() / 1e6 / PROFILE_TICKS;
 
-				log("buffer=" + bufferSize + " budgetMs=" + fmt(budgetMs)
+				log("efx=" + efx + " buffer=" + bufferSize + " budgetMs=" + fmt(budgetMs)
 						+ " tickMs=" + fmt(tickMs) + " realtimeX=" + fmt(budgetMs / tickMs)
 						+ " ratioToRealtime=" + fmt(tickMs / budgetMs));
-				log("buffer=" + bufferSize + " HOTPATH hotAwaitMs=" + fmt(awaitMs)
+				log("efx=" + efx + " buffer=" + bufferSize + " HOTPATH hotAwaitMs=" + fmt(awaitMs)
 						+ " hotForwardMs=" + fmt(forwardMs));
 				log("buffer=" + bufferSize + " A2 gatherMs=" + fmt(a2GatherMs)
 						+ " evalMs=" + fmt(a2EvalMs) + " perNoteMs=" + fmt(a2PerNoteMs)
@@ -182,6 +212,8 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 			}
 		} finally {
 			MixdownManager.enablePdslMixdown = previous;
+			MixdownManager.enableEfx = previousEfx;
+			MixdownManager.enableReverb = previousReverb;
 		}
 	}
 

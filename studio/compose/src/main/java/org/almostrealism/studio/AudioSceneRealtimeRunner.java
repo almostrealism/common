@@ -91,8 +91,30 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * Number of buffers the a2 render-ahead ring holds, and the number rendered before playback
 	 * begins. The producer thread renders up to this many buffers ahead of the mixdown hot path,
 	 * smoothing per-buffer render bursts so the a3 consumer never waits on a render.
+	 *
+	 * <p>The a2 producer and a3 consumer share the single Metal command runner, so a2's per-buffer
+	 * render time varies (GPU contention, occasional kernel/cache misses). When the ring is shallow
+	 * those transient stalls drain it and a3 blocks (measured: ~21&nbsp;ms/tick of wait at 8192 with
+	 * depth&nbsp;8). A deeper ring absorbs the variance — a2 keeps up on average, so a3 stops waiting
+	 * (wait fell to ~0, raising sustained throughput from ~3.2x to ~4.6x at 8192). The cost is render
+	 * latency for pattern/genome changes (≈ {@code depth × bufferSize / sampleRate}; automation/efx
+	 * is unaffected — it is applied just-in-time in the a3 mixdown) and ring memory
+	 * ({@code depth × inputChannels × bufferSize}). Tune down if pattern-swap latency matters more
+	 * than render headroom.
 	 */
-	public static int renderAheadSlots = 8;
+	public static int renderAheadSlots = 24;
+
+	/**
+	 * Kernel pre-warm (see {@link #createPdsl} setup): the a2 batched renderer compiles a kernel
+	 * per {@code (bucket, sourceLength, targetLength)} shape lazily, so a shape first encountered
+	 * mid-stream triggers a multi-second compile that stalls real-time playback (measured: a ~29 s
+	 * spike at 8192 → a guaranteed dropout). Before the clock starts, the runner render-sweeps the
+	 * <em>whole arrangement</em> once (a2 only — clock-neutral), forcing every kernel shape to
+	 * compile off the real-time clock. (An early stop on "no new shape for a while" is unsafe here:
+	 * pattern density varies, so a quiet stretch does not mean all shapes have been seen.) This is a
+	 * one-time setup cost. Set to {@code <= 0} to disable the sweep; the cap bounds it for safety.
+	 */
+	public static double preWarmMaxSeconds = 300.0;
 
 	/**
 	 * Static wet-bus send level supplied to the PDSL {@code mixdown_master} layer.
@@ -415,6 +437,24 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				// into the working input, which the producer harmlessly re-renders below).
 				setup.add(patternSetup);
 				setup.add(() -> () -> compiled.reset());
+				// Kernel pre-warm: render-sweep the whole arrangement once (a2 only — renderOp does
+				// not advance the playback clock or touch a3 state), forcing every lazily-compiled
+				// (bucket, sourceLength, targetLength) a2 kernel to compile NOW, off the real-time
+				// clock, instead of stalling a buffer mid-stream. Bounded by the seconds cap.
+				if (preWarmMaxSeconds > 0) {
+					setup.add(() -> () -> {
+						double arrangementFrames = scene.getTotalMeasures() * 4.0 * 60.0
+								* scene.getSampleRate() / scene.getBPM();
+						int sweepBuffers = (int) Math.min(
+								Math.ceil(arrangementFrames / bufferSize),
+								Math.ceil(preWarmMaxSeconds * scene.getSampleRate() / bufferSize));
+						for (int b = 0; b < sweepBuffers; b++) {
+							renderFrame[0] = b * (long) bufferSize;
+							renderOp.run();
+						}
+						renderFrame[0] = 0;
+					});
+				}
 				// Start the a2 producer thread and fill the ring ahead of playback. After this
 				// returns, the hot path is guaranteed to find each buffer already rendered.
 				setup.add(() -> () -> renderStream.start(renderAheadSlots));
@@ -503,9 +543,17 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private CompiledModel compileMixdownModel(PdslLoader loader, PdslNode.Program program,
 											  String layerName, TraversalPolicy inputShape,
 											  Map<String, Object> args) {
+		// The mixdown model is inference-only: every tick calls forward() over the whole buffer and
+		// no backward pass ever runs. Compile with backprop=false so CompiledModel disables per-layer
+		// input tracking (each stage's entry cell passes input straight through, dropping one
+		// input-record copy dispatch per layer) and skips building the unused backward graph. That
+		// per-layer input copy is pure backprop bookkeeping and measurably dominates the forward cost
+		// (it roughly halved the per-buffer forward time at 8192 in profiling). Output tracking stays
+		// on: branch/merge blocks (accum_blocks, route) and the model-output capture read each
+		// stage's materialized output buffer.
 		Block block = loader.buildLayer(program, layerName, inputShape, args);
 		Model model = new Model(inputShape);
 		model.add(block);
-		return model.compile();
+		return model.compile(false);
 	}
 }

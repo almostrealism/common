@@ -8,7 +8,36 @@
 > would be the exact failure this gate exists to prevent. It specifies the one decomposition
 > measurement that produces the verdict, and the decision rule that consumes it.
 
-## 0. PHASE-1 MEASURED RESULT (2026-06-27) — the gate has run
+## 0b. CORRECTION (2026-06-28) — short-warmup masked a2; sustained is ~2×, both layers bind
+
+**The §0 result below (8-tick warmup) was an artifact and overstated headroom.** Re-measured with
+24-tick warmup + 12 profile ticks (`PdslHotPathBreakdownTest`, same densest seed=58, efx+reverb
+ON), draining the 8-slot render-ahead ring toward the *sustained 2-minute* regime the goal
+actually requires:
+
+| Buffer | sustained tick | ratio | realtime× | hotAwait (a3 waits a2) | hotForward |
+|---|---|---|---|---|---|
+| 4096 | ~44.6 ms | 0.48 | **2.08×** | **3.16 ms** | 40.5 ms |
+| 8192 | ~93.8 ms | 0.50 | **1.98×** | **23.5 ms** | 69.3 ms |
+
+Per-tick at 8192 swings **60–125 ms** (severe variance — the consistency requirement is at risk).
+
+**What this corrects:** the §0 claim "hotAwait ≈ 0.01 ms, a2 never blocks, a3 is the whole
+bottleneck" was true only for a *short* window where the prefilled ring hid a2's throughput
+deficit. In sustained operation a2 and a3 **share the single Metal command runner**, so the
+per-buffer wall is bounded by *total* GPU work (a2 + a3); a2 is slightly slower than a3 consumes,
+the ring empties, and a3 waits a2 (3 ms @4096, 23 ms @8192). **Both layers are binding in
+sustained operation**, and the system is **~2× realtime, not the ~2.5–3.2× the short run
+suggested.** Reaching 5× needs ~2.4–2.5× off *total* per-buffer GPU work **and** variance control.
+
+**Epistemic note (the project's core failure mode, caught here):** a short-warmup throughput
+benchmark with a prefilled ring *lies* — it hides the producer deficit. Always warm past ring
+depth, or run the full duration. The §0 numbers are retained below as the cautionary record, not
+as the operative result.
+
+---
+
+## 0. PHASE-1 MEASURED RESULT (2026-06-27, SHORT WARMUP — see 0b correction) — the gate has run
 
 The decomposition was measured (M1, local hybrid Metal, fresh full-closure build, depth 2, **efx
 + reverb ON**, real curated library, densest curated genome seed=58 / 1126 elements) via the new
