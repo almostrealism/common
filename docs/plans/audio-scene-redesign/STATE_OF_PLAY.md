@@ -2,8 +2,11 @@
 
 > The single big-picture document for the **audio scene redesign / real-time playback /
 > PDSL DSP** effort. Read this first; the other docs in this folder are evidence and
-> reference for what is asserted here. Current as of 2026-06-26 against `master` — the
-> PDSL mixdown cutover is **merged**. Performance figures are M1 measurements (the dev
+> reference for what is asserted here. Current as of 2026-06-27. The PDSL mixdown cutover is
+> **merged to `master`**; the **a1/a2/a3 ring decoupling and the a2 ~12× render speedups are on
+> branch `feature/pattern-batched-dispatch`** (decoupling committed `81ab873b4`; the a2 perf
+> changes — coarse single render kernel, gather window-filter, melodic gather cache — staged but
+> uncommitted there). Performance figures are M1 measurements (the dev
 > machine moved M4 → M1; numbers from the M4 are labelled *historical*). Benchmark
 > figures come from `AudioScenePdslBenchmarkTest`, whose `results/` output is git-ignored,
 > so they are reproducible-locally, not committed evidence.
@@ -29,16 +32,24 @@ tick. At 44.1 kHz the budget is **~92.9 ms** for a 4096-frame tick, **~185.8 ms*
 ## 2. Where we are now
 
 The a3 DSP/mixdown is **migrated to PDSL, parity-validated by ear, and runs under the
-realtime budget** (faster than the legacy CellList tick). The efx-feedback parity has since
-closed its three biggest character gaps, and a2 batched pattern dispatch is now validated
-on real scenes. What remains for the full real-time vision is **true stereo**, flipping the
-batched/PDSL defaults, and the a1/a2/a3 ring decoupling.
+realtime budget** (faster than the legacy CellList tick). The batched/PDSL defaults are
+flipped on. **The a1/a2/a3 ring decoupling is implemented and verified** (2026-06-27):
+`PatternRenderStream` runs a2 ahead on its own producer thread into a ring of rendered
+buffers, and the a3 tick is mixdown-only — the original spec violation (a2 re-rendering
+inside the mixdown tick) is fixed. It sustained a **2-minute all-channel non-silent
+real-time render** (`AudioSceneRealTimeCorrectnessTest.realTimeTwoMinuteRender`, realTime=YES).
+a2 was optimized **~12×** (single shared render kernel, future-side gather filter, melodic
+gather cache), so the **densest curated scene runs at 2.34× real-time, sparser scenes ~3.2×**,
+all parity-verified. What remains: the **~5× target** (requires an a2 kernel redesign — §5),
+**true stereo** (still dual-mono), and pre-warming kernels to harden run-to-run consistency.
 
 | Concern | Status |
 |---|---|
 | **a2 batching — the mechanism** (per-note rendering was ~89% of cost, ~99.4% JNI dispatch) | **PROVEN** on the synthetic sentinel path: dispatch fires, matches per-note within the enforced RMS bound, 3000 sustained dispatches, well under the per-tick budget for the pattern layer in isolation. → [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md). |
 | **a2 batching — real-scene integration** | **RESOLVED (2026-06-26).** On the full curated-library scene batched dispatch fires correctly and renders non-silent audio: single melodic channel `batchedDispatchCount=1388 / fallback=0 / peak=0.51`; all six channels `2220 / 4568(percussive fall back by design) / peak=0.56`. `BatchedRealSceneRenderTest` is re-enabled. Unblocked by the argument-aggregation rebuild; the a2 classification path was unchanged. → [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md). |
 | **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL, parity by ear, under budget.** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). Default (vectorized) tick 66–139 ms vs the 185.8 ms budget at 8192 (1.34–2.81×), faster than the CellList tick (298–373 ms). Accepted approximations: [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md). |
+| **a1/a2/a3 ring decoupling** | **IMPLEMENTED + VERIFIED (2026-06-27).** `PatternRenderStream` (new) runs a2 ahead on a producer thread filling a bounded ring; the a3 `createPdsl` tick is mixdown-only. 2-minute all-channel non-silent real-time render verified (realTime=YES). The invariant "a2 runs ahead, never blocks a3" holds. |
+| **a2 render speed** | **OPTIMIZED ~12× (0.18×→2.34× dense; ~3.2× sparse), but NOT 5×.** Wins: one shared render kernel (eval 761→28 ms — the cost was Metal pipeline-state thrash across many distinct kernels, not the FIR), future-side gather window-filter, melodic-only gather cache. All parity-verified, non-silent, no crash. The 5× bar needs an a2 kernel redesign (§5). |
 | **efx-feedback parity** | **THREE of four character gaps CLOSED** (gene HP/LP filter, gene-driven feedback delay, gene-driven feedback level — commit `4992598a3`). Only the block-rate re-entry remains. [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §2/§3.1. |
 | **Metal dispatch ceiling** (host wedged past ~2300–2560 cumulative dispatches) | **SOLVED** — 3000+ sustained dispatches, regression-guarded. [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §8.3. |
 | **Compile-reuse / argument-aggregation pool exhaustion** | **RESOLVED** — the aggregation subsystem was torn out and rebuilt; the null-signature-defeats-reuse premise is gone, so structurally-identical rebuilds reuse cached kernels. [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §8.1. |
@@ -77,11 +88,12 @@ own clock:
    INVARIANT: a3 is the only layer bound to the real-time clock; a1/a2 run AHEAD, never block a3.
 ```
 
-**Where we are vs. the target:** the a2 batching collapsed the N per-note dispatches into
-one (the proven win, now validated on real scenes), and a3 is now a fast compiled PDSL
-model. What remains to reach the full streaming shape: **decouple a1/a2/a3 onto independent
-clocks via rolling buffers** — run a2 seconds-ahead of a3, rather than bulk-rendering the
-pattern audio once in `setup` as today.
+**Where we are vs. the target:** the streaming shape is now in place — a2 batching collapsed
+the N per-note dispatches into one, a3 is a fast compiled PDSL model, and a2 runs **seconds
+ahead of a3 on its own thread** (`PatternRenderStream`), no longer bulk-rendered in `setup`.
+The system sustains real time with **2.3–3.2× headroom**, verified over a 2-minute all-channel
+render. The gap to the **~5× target** is purely a2 render cost on the densest material, and it
+is a *kernel redesign*, not a tuning knob (§5).
 
 ## 4. What has landed
 
@@ -106,6 +118,20 @@ pattern audio once in `setup` as today.
   [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §8.
 - **Real-time streaming substrate** — `AudioSceneRealtimeRunner`, `BufferedOutputScheduler`
   (gap/back-pressure/degraded-mode), `warmNoteCache`. The output side is largely solved.
+- **a1/a2/a3 ring decoupling (2026-06-27)** — `PatternRenderStream` (new, studio/compose) runs
+  a2 ahead on a producer thread filling a bounded ring; `AudioSceneRealtimeRunner.createPdsl`'s
+  tick consumes the ring and runs only the mixdown. Verified: 2-minute all-channel non-silent
+  real-time render (`realTimeTwoMinuteRender`, realTime=YES). Safe to drive rendering from the
+  producer thread because the Metal command runner serializes GPU encoding through one executor.
+- **a2 render ~12× faster (2026-06-27)** — three safe, parity-verified wins: (1) one *shared*
+  batched render kernel — coarse `BUCKETS`/`SOURCE_BUCKET` so all dispatches reuse one compiled
+  kernel (eval 761→28 ms; the real cost was Metal pipeline-state switching across many distinct
+  kernels, NOT the FIR or frame count); (2) a future-side gather window-filter (skip elements
+  whose earliest note starts past the window — provably can't drop an overlapping note);
+  (3) a melodic-only gather cache (melodic note sources are stable raw-sample refs, so the
+  gathered destinations memoize safely across ticks; percussion uses per-gather `fit()` copies
+  that are freed between ticks, so it is excluded and re-gathers fresh). Densest curated scene:
+  a2 946→~80 ms/buffer = **2.34× real-time** (sparser ~3.2×).
 
 ## 5. What's genuinely open
 
@@ -117,9 +143,22 @@ pattern audio once in `setup` as today.
   Narrow — only matters for live genome-swap workflows.
 - **Per-frame automation** (only if ever audible). Per-buffer steps are inaudible at
   production envelope rates.
-- **a1/a2/a3 ring decoupling** (to reach the streaming shape) — make `PatternAudioBuffer`
-  rolling, run a2 on a worker K buffers ahead, point a3 at the PDSL `Block` pumped by
-  `BufferedOutputScheduler`.
+- **~5× real-time on the densest scene — needs an a2 kernel redesign (the main open item).**
+  The decoupling holds and the system is 2.34× on the densest curated scene, but the ~5×
+  (compute ≤ 0.2× audio) bar is not met there. The *actual GPU render* (eval) is already ~24 ms
+  (under the 37 ms budget); the gap is per-buffer overhead — perNote ~31 ms (continuing-note
+  full renders) and marshal ~18 ms (host input write). The structural blocker is that the
+  batched kernel **shares one `sourceLength`/row length across all rows of a dispatch**: batching
+  continuing notes to remove perNote bloats that shared length (measured net loss, reverted), and
+  removing marshal needs the kernel to read scattered per-note sources instead of one contiguous
+  buffer. So 5× requires a kernel redesign — *per-row-independent source lengths* and/or *in-kernel
+  source gather / GPU-side input generation* — exactly the "more GPU parallelism" direction, but a
+  redesign, not a tuning knob. (Incremental tuning is exhausted: single-kernel + future-filter +
+  melodic gather cache already took a2 0.18×→2.34×.)
+- **Kernel pre-warm for run-to-run consistency.** The coarse single kernel is large and slow to
+  first-compile (~26 s on first encounter of a new shape). Render-ahead absorbs it over a 2-minute
+  run (realTime=YES), but the per-tick benchmark shows it as a one-off spike. Pre-compiling the
+  (few) coarse kernel shapes in `setup` would harden "consistently across runs". Correctness-neutral.
 
 > **Closed since earlier drafts of this doc** (do not re-open as "regressions"): gene
 > HP/LP `choice()` symptom, gene-driven efx delay/level, the vectorized-for-each default,

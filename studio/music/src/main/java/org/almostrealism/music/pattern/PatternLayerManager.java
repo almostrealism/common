@@ -235,6 +235,18 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	}
 
 	/**
+	 * Returns the current note-audio cache epoch, bumped by {@link #invalidateCaches()} on
+	 * genome/arrangement swap. Consumers that memoize genome-dependent derived data (the
+	 * batched renderer's melodic gathered note destinations) include it so a swap discards
+	 * stale entries.
+	 *
+	 * @return the current cache epoch
+	 */
+	static int currentCacheEpoch() {
+		return cacheEpoch.get();
+	}
+
+	/**
 	 * Per-pattern batched dispatch site. Lazily constructed on first access from
 	 * {@link #getBatchedLayerRenderer()} so the bucket cache only materialises
 	 * when {@link #enableBatched} routes through it.
