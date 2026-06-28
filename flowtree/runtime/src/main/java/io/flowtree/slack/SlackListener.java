@@ -30,11 +30,11 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -227,7 +227,7 @@ public class SlackListener implements ConsoleFeatures {
      * Called by {@link FlowTreeController#reloadConfig()} before re-registering
      * so removed or relocated workstreams do not remain active after reload.
      */
-    public void clearWorkstreams() {
+    public synchronized void clearWorkstreams() {
         channelToWorkstream.clear();
         if (notifier != null) notifier.clearWorkstreams();
         for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.clearWorkstreams();
@@ -239,7 +239,7 @@ public class SlackListener implements ConsoleFeatures {
      *
      * @param workstream the workstream to register
      */
-    public void registerWorkstream(Workstream workstream) {
+    public synchronized void registerWorkstream(Workstream workstream) {
         resolveNotifier(workstream.getWorkspaceId()).registerWorkstream(workstream);
         if (workstream.getChannelId() != null) {
             channelToWorkstream.put(channelKey(workstream.getWorkspaceId(),
@@ -249,27 +249,46 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
+     * Atomically clears every registered workstream and re-registers the
+     * supplied set under a single lock. Used by the controller when
+     * (re)loading the YAML configuration so a concurrent registration or
+     * persist cannot observe — or write to disk — the empty intermediate
+     * state that a separate clear-then-register loop would briefly expose.
+     *
+     * @param workstreams the full set of workstreams to register
+     */
+    public synchronized void reregisterWorkstreams(Collection<Workstream> workstreams) {
+        clearWorkstreams();
+        for (Workstream workstream : workstreams) {
+            registerWorkstream(workstream);
+        }
+    }
+
+    /**
      * Registers a workstream and persists the configuration to the YAML file.
      * Intended for programmatic registration via the HTTP API.
      *
      * @param workstream the workstream to register and persist
+     * @return {@code true} when the config was durably persisted (see
+     *         {@link #persistConfig()}); {@code false} when the write failed
      */
-    public void registerAndPersistWorkstream(Workstream workstream) {
+    public synchronized boolean registerAndPersistWorkstream(Workstream workstream) {
         registerWorkstream(workstream);
         if (workstreamConfig != null) workstreamConfig.addWorkstream(workstream);
-        persistConfig();
+        return persistConfig();
     }
 
     /** Removes a workstream from all notifiers and {@link #channelToWorkstream} entries
-     *  and from the persisted YAML config; does not touch Slack. */
-    public void unregisterAndPersistWorkstream(Workstream w) {
-        if (w == null) return;
+     *  and from the persisted YAML config; does not touch Slack. Returns whether the
+     *  resulting config was durably persisted ({@code false} when the write failed). */
+    public synchronized boolean unregisterAndPersistWorkstream(Workstream w) {
+        if (w == null) return false;
         String id = w.getWorkstreamId();
         if (notifier != null) notifier.removeWorkstream(id);
         for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.removeWorkstream(id);
         channelToWorkstream.values().removeIf(ws -> id.equals(ws.getWorkstreamId()));
         if (workstreamConfig != null) workstreamConfig.getWorkstreams().removeIf(e -> id.equals(e.getWorkstreamId()));
-        persistConfig();
+        return persistConfig();
     }
 
     /**
@@ -805,7 +824,7 @@ public class SlackListener implements ConsoleFeatures {
                 String oldUrl = existing.getRepoUrl();
                 existing.setRepoUrl(location);
                 existing.setDefaultBranch(branch);
-                persistConfig();
+                if (!persistOrWarn(ctx)) return;
                 ctx.respond(":white_check_mark: *Workstream updated*\n"
                     + "   Repo URL: `" + (oldUrl != null ? oldUrl : "(none)") + "` \u2192 `" + location + "`\n"
                     + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
@@ -813,7 +832,7 @@ public class SlackListener implements ConsoleFeatures {
                 String oldDir = existing.getWorkingDirectory();
                 existing.setWorkingDirectory(location);
                 existing.setDefaultBranch(branch);
-                persistConfig();
+                if (!persistOrWarn(ctx)) return;
                 ctx.respond(":white_check_mark: *Workstream updated*\n"
                     + "   Working directory: `" + (oldDir != null ? oldDir : "(none)") + "` \u2192 `" + location + "`\n"
                     + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
@@ -832,7 +851,7 @@ public class SlackListener implements ConsoleFeatures {
             if (workstreamConfig != null) {
                 workstreamConfig.addWorkstream(ws);
             }
-            persistConfig();
+            if (!persistOrWarn(ctx)) return;
 
             String locationLabel = isRepoUrl ? "Repo URL" : "Working directory";
             ctx.respond(":white_check_mark: *Workstream created*\n"
@@ -1045,7 +1064,7 @@ public class SlackListener implements ConsoleFeatures {
 
         if (value == null) {
             // Show single setting
-            String currentValue = getConfigValue(ws, key);
+            String currentValue = ws.describeSetting(key);
             if (currentValue == null) {
                 ctx.respond(":warning: Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
@@ -1058,11 +1077,10 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         // Update setting
-        String result = setConfigValue(ws, key, value);
+        String result = ws.applySetting(key, value);
         if (result != null) {
             ctx.respond(":warning: " + result);
-        } else {
-            persistConfig();
+        } else if (persistOrWarn(ctx)) {
             ctx.respond(":white_check_mark: Updated `" + key + "` = " + value);
         }
     }
@@ -1131,105 +1149,6 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Returns the current string value of a named workstream configuration key.
-     *
-     * <p>Returns {@code "(not set)"} for optional fields that have not been
-     * assigned, and {@code null} if the key is not recognized.</p>
-     *
-     * @param ws  the workstream to read from
-     * @param key the setting name (e.g., {@code "maxBudgetUsd"}, {@code "defaultBranch"})
-     * @return the string representation of the current value, or {@code null} if unknown
-     */
-    private String getConfigValue(Workstream ws, String key) {
-        switch (key) {
-            case "maxBudgetUsd": return String.format("%.2f", ws.getMaxBudgetUsd());
-            case "maxTurns": return String.valueOf(ws.getMaxTurns());
-            case "defaultBranch": return ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)";
-            case "baseBranch": return ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)";
-            case "repoUrl": return ws.getRepoUrl() != null ? ws.getRepoUrl() : "(not set)";
-            case "workingDirectory": return ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)";
-            case "pushToOrigin": return String.valueOf(ws.isPushToOrigin());
-            case "allowedTools": return ws.getAllowedTools();
-            case "gitUserName": return ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)";
-            case "gitUserEmail": return ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)";
-            case "planningDocument": return ws.getPlanningDocument() != null ? ws.getPlanningDocument() : "(not set)";
-            case "workstreamId": return ws.getWorkstreamId();
-            case "channelId": return ws.getChannelId();
-            case "channelName": return ws.getChannelName();
-            default: return null;
-        }
-    }
-
-    /**
-     * Applies a new value to a named workstream configuration key.
-     *
-     * <p>Read-only keys ({@code workstreamId}, {@code channelId},
-     * {@code channelName}) return an error message. Numeric keys
-     * ({@code maxBudgetUsd}, {@code maxTurns}) return an error if the
-     * value cannot be parsed. The caller is responsible for persisting
-     * the change to YAML after a successful update.</p>
-     *
-     * @param ws    the workstream to update
-     * @param key   the setting name
-     * @param value the new value as a string
-     * @return an error message if the update failed, or {@code null} on success
-     */
-    private String setConfigValue(Workstream ws, String key, String value) {
-        switch (key) {
-            case "maxBudgetUsd":
-                try {
-                    ws.setMaxBudgetUsd(Double.parseDouble(value));
-                } catch (NumberFormatException e) {
-                    return "Invalid number: `" + value + "`";
-                }
-                return null;
-            case "maxTurns":
-                try {
-                    ws.setMaxTurns(Integer.parseInt(value));
-                } catch (NumberFormatException e) {
-                    return "Invalid integer: `" + value + "`";
-                }
-                return null;
-            case "defaultBranch":
-                ws.setDefaultBranch(value);
-                return null;
-            case "baseBranch":
-                ws.setBaseBranch(value);
-                return null;
-            case "repoUrl":
-                ws.setRepoUrl(value);
-                return null;
-            case "workingDirectory":
-                ws.setWorkingDirectory(value);
-                return null;
-            case "pushToOrigin":
-                ws.setPushToOrigin(Boolean.parseBoolean(value));
-                return null;
-            case "allowedTools":
-                ws.setAllowedTools(value);
-                return null;
-            case "gitUserName":
-                ws.setGitUserName(value);
-                return null;
-            case "gitUserEmail":
-                ws.setGitUserEmail(value);
-                return null;
-            case "planningDocument":
-                ws.setPlanningDocument(value);
-                return null;
-            case "workstreamId":
-            case "channelId":
-            case "channelName":
-                return "`" + key + "` is read-only and cannot be modified.";
-            default:
-                return "Unknown setting: `" + key + "`\n"
-                    + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `repoUrl`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
-                    + "`gitUserName`, `gitUserEmail`, `planningDocument`";
-        }
-    }
-
-    /**
      * Handles {@code /flowtree stats [global]}. Shows weekly job statistics.
      *
      * <p>Without arguments, shows stats for the current channel's workstream.
@@ -1273,9 +1192,9 @@ public class SlackListener implements ConsoleFeatures {
 
             StringBuilder sb = new StringBuilder();
             sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
-            sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
+            sb.append(thisWeek.toSlackMrkdwn("This Week", thisWeekStart));
             sb.append("\n");
-            sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+            sb.append(lastWeek.toSlackMrkdwn("Last Week", lastWeekStart));
 
             ctx.respond(sb.toString());
         } else {
@@ -1295,9 +1214,9 @@ public class SlackListener implements ConsoleFeatures {
             // Global totals
             JobStatsStore.WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
             JobStatsStore.WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
-            sb.append(formatWeeklyStats("This Week (total)", thisWeekStart, thisWeekTotal));
+            sb.append(thisWeekTotal.toSlackMrkdwn("This Week (total)", thisWeekStart));
             sb.append("\n");
-            sb.append(formatWeeklyStats("Last Week (total)", lastWeekStart, lastWeekTotal));
+            sb.append(lastWeekTotal.toSlackMrkdwn("Last Week (total)", lastWeekStart));
 
             // Per-workstream breakdown for this week
             Map<String, JobStatsStore.WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
@@ -1483,69 +1402,67 @@ public class SlackListener implements ConsoleFeatures {
             workstreamConfig.setDefaultChannel(channel);
         }
 
-        persistConfig();
+        if (!persistOrWarn(ctx)) return;
 
         ctx.respond(":white_check_mark: Default channel set to `" + channel + "`\n"
             + "Messages without a configured workstream channel will now fall back here.");
     }
 
     /**
-     * Formats a week's statistics as a Slack mrkdwn block for display.
-     *
-     * <p>Outputs a header line with the label and date range, followed by
-     * total wall-clock time, job counts by status, total USD cost, and
-     * total agent turns.</p>
-     *
-     * @param label     display label for the block (e.g., "This Week")
-     * @param weekStart the Monday that begins this week
-     * @param stats     the aggregated statistics for the week
-     * @return a formatted mrkdwn string ready for posting to Slack
-     */
-    private String formatWeeklyStats(String label, LocalDate weekStart,
-                                      JobStatsStore.WeeklyStats stats) {
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US);
-        LocalDate weekEnd = weekStart.plusDays(6);
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("*").append(label).append("* (");
-        sb.append(weekStart.format(fmt)).append(" \u2014 ").append(weekEnd.format(fmt)).append(")\n");
-        sb.append("  :clock1: Total time: ").append(HarnessStatusReporter.formatDuration(stats.totalWallClockMs)).append("\n");
-        sb.append("  :hammer: Jobs: ").append(stats.jobCount);
-        sb.append(" (:white_check_mark: ").append(stats.successCount);
-        sb.append("  :x: ").append(stats.failedCount);
-        sb.append("  :no_entry_sign: ").append(stats.cancelledCount).append(")\n");
-        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd));
-        sb.append(JobStatsStore.formatCostBreakdown(stats.costByRunner));
-        sb.append(JobStatsStore.formatCostBreakdown(stats.costByModel));
-        sb.append("\n");
-        sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", stats.totalTurns)).append("\n");
-        return sb.toString();
-    }
-
-    /**
      * Persists the current in-memory workstream state back to the YAML config file.
      *
      * <p>Syncs all {@link #channelToWorkstream} entries into the {@link #workstreamConfig}
-     * model via {@link WorkstreamConfig#syncFromWorkstreams} and then writes the
+     * model via {@link WorkstreamConfig#syncAndSave} and then writes the
      * updated config to {@link #configFile}. If either is {@code null} (e.g., when
      * the controller was configured programmatically without a file), changes
-     * are runtime-only and a warning is logged.</p>
+     * are runtime-only.</p>
+     *
+     * @return {@code true} when the state is durable — written to the config
+     *         file, or intentionally runtime-only with no file configured;
+     *         {@code false} only when a file is configured but the write failed,
+     *         in which case callers must not report success
      */
-    public void persistConfig() {
+    public synchronized boolean persistConfig() {
         if (workstreamConfig == null || configFile == null) {
             log("No config file loaded - changes are runtime-only");
-            return;
+            return true;
         }
 
-        // Sync in-memory workstream state back to config entries
-        workstreamConfig.syncFromWorkstreams(channelToWorkstream.values());
-
+        // Snapshot EVERY registered workstream, not just channel-bound ones:
+        // a workstream with a null channelId is absent from channelToWorkstream,
+        // so syncing only that map would drop its state changes (e.g. an archive
+        // flag). The per-notifier by-id maps hold them all. Snapshotting also
+        // lets the sync-and-save run as one atomic step a reload cannot split.
+        Map<String, Workstream> registered = new HashMap<>();
+        if (notifier != null) registered.putAll(notifier.getWorkstreams());
+        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) {
+            registered.putAll(wsNotifier.getWorkstreams());
+        }
+        Collection<Workstream> snapshot = new ArrayList<>(registered.values());
         try {
-            workstreamConfig.saveToYaml(configFile);
+            workstreamConfig.syncAndSave(snapshot, configFile);
             log("Persisted config to " + configFile.getName());
+            return true;
         } catch (IOException e) {
             warn("Failed to persist config: " + e.getMessage());
+            return false;
         }
+    }
+
+    /**
+     * Persists the config and, when the write fails, notifies the slash-command
+     * invoker that the change was not saved. Returns whether the persist
+     * succeeded so the caller can suppress its own success message otherwise.
+     *
+     * @param ctx the responder for the originating slash command
+     * @return {@code true} when the config was durably persisted
+     * @throws IOException if the failure notice cannot be delivered to Slack
+     */
+    private boolean persistOrWarn(SlashCommandResponder ctx) throws IOException {
+        if (persistConfig()) return true;
+        ctx.respond(":warning: The change was applied in memory but could not be"
+            + " saved to disk; it will be lost when the controller restarts. Please retry.");
+        return false;
     }
 
     /**

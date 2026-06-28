@@ -256,35 +256,63 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
 		}
 
+		return layer("sequenceRotaryEmbedding", inputShape, inputShape,
+				input -> applyRotaryPositionEmbedding(c(input), invFreq), List.of());
+	}
+
+	/**
+	 * Applies rotary positional embedding to a full sequence, returning a {@link CollectionProducer}
+	 * rather than a {@link CellularLayer}.
+	 *
+	 * <p>This is the producer-level form of {@link #applyRotaryPositionEmbedding(TraversalPolicy,
+	 * PackedCollection)}: it builds the same rotation graph (rotate the first {@code rotaryDim}
+	 * feature dimensions, pass the remainder through unchanged) but composes directly into a larger
+	 * {@link CollectionProducer} computation without an intervening {@link CellularLayer}. The
+	 * {@link CellularLayer} overload delegates here, so the two implementations cannot drift. It is
+	 * used by attention variants (such as the learned-resampling transformer block) that build their
+	 * query/key rotation inline rather than as a standalone layer.</p>
+	 *
+	 * @param input   input of shape {@code (batchSize, heads, seqLen, dimHead)}
+	 * @param invFreq inverse frequency tensor; {@code rotaryDim = 2 * invFreq.length}
+	 * @return the rotated sequence, with the same shape as {@code input}
+	 * @throws IllegalArgumentException if {@code input} is not 4-dimensional or {@code rotaryDim}
+	 *                                  exceeds {@code dimHead}
+	 */
+	default CollectionProducer applyRotaryPositionEmbedding(CollectionProducer input, PackedCollection invFreq) {
+		TraversalPolicy inputShape = input.getShape();
+		if (inputShape.getDimensions() != 4) {
+			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
+		}
+
 		int batchSize = inputShape.length(0);
 		int heads = inputShape.length(1);
 		int seqLen = inputShape.length(2);
 		int dimHead = inputShape.length(3);
 
-		// Precompute the frequency tensor
 		CollectionProducer freqs = computeRotaryFreqs(seqLen, invFreq);
 		int rotaryDim = freqs.getShape().length(1);
 		if (freqs.getShape().length(0) != seqLen) {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("computeRotaryFreqs returned "
+					+ freqs.getShape().length(0) + " time steps but expected " + seqLen);
+		}
+		if (rotaryDim > dimHead) {
+			throw new IllegalArgumentException("rotaryDim " + rotaryDim + " exceeds dimHead " + dimHead);
 		}
 
-		return layer("sequenceRotaryEmbedding", inputShape, inputShape, input -> {
-			// Extract the rotary part (first rotaryDim dimensions)
-			CollectionProducer rotaryPart =
-					c(input).subset(shape(batchSize, heads, seqLen, rotaryDim), 0, 0, 0, 0);
+		// Rotate the first rotaryDim feature dimensions.
+		CollectionProducer rotaryPart =
+				input.subset(shape(batchSize, heads, seqLen, rotaryDim), 0, 0, 0, 0);
+		CollectionProducer rotated =
+				applyRotaryTransform(rotaryPart, freqs, batchSize, heads, seqLen, rotaryDim);
 
-			// Extract the non-rotary part (remaining dimensions)
-			CollectionProducer nonRotaryPart =
-					c(input).subset(shape(batchSize, heads, seqLen, dimHead - rotaryDim),
-							0, 0, 0, rotaryDim);
+		if (rotaryDim == dimHead) {
+			return rotated;
+		}
 
-			// Apply rotation to the rotary part
-			CollectionProducer rotated = applyRotaryTransform(
-					rotaryPart, freqs, batchSize, heads, seqLen, rotaryDim);
-
-			// Concatenate rotated and non-rotary parts along dimension 3
-			return concat(3, rotated, nonRotaryPart);
-		}, List.of());
+		// Pass the remaining (non-rotary) dimensions through unchanged.
+		CollectionProducer nonRotaryPart =
+				input.subset(shape(batchSize, heads, seqLen, dimHead - rotaryDim), 0, 0, 0, rotaryDim);
+		return concat(3, rotated, nonRotaryPart);
 	}
 
 	/**

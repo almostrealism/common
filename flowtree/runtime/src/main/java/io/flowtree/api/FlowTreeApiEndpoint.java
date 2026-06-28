@@ -788,6 +788,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "retrospectiveEnabled"))
             factory.setRetrospectiveEnabled(
                     extractJsonBooleanField(body, "retrospectiveEnabled"));
+        // Falsification phase — disabled by default; opt in explicitly
+        if (extractJsonHasField(body, "falsificationEnabled"))
+            factory.setFalsificationEnabled(
+                    extractJsonBooleanField(body, "falsificationEnabled"));
         // tmux-backed agent launch — per-job use_tmux flag wins when the
         // request body sets it; otherwise the workstream's defaultUseTmux
         // setting applies. The body is parsed here so the schema-alignment
@@ -946,6 +950,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(factory.isEnforceOrganizationalPlacement());
         json.append(",\"retrospectiveEnabled\":")
                 .append(factory.isRetrospectiveEnabled());
+        json.append(",\"falsificationEnabled\":")
+                .append(factory.isFalsificationEnabled());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
         json.append("}");
@@ -1322,6 +1328,25 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             effective.putAll(submissionAgentEnv);
         }
         return effective;
+    }
+
+    /**
+     * Builds the {@code 500} response returned when an operation mutated
+     * workstream config in memory but the YAML write failed. Centralised so
+     * endpoints can report a non-durable write identically — never as success —
+     * honouring the rule that an operation should not confirm completion
+     * before the workstreams file is written.
+     *
+     * @param operation a short label for the attempted operation (e.g. {@code "Archive"})
+     * @return an {@code ok:false} 500 response describing the failed persist
+     */
+    static Response persistFailureResponse(String operation) {
+        return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                "application/json",
+                "{\"ok\":false,\"error\":" + escapeJsonValue(operation
+                    + " applied in memory but the workstreams config could not be written to"
+                    + " disk; the change is not durable and would be lost on restart. Retry.")
+                + "}");
     }
 
     /**

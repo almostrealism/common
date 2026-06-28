@@ -865,6 +865,50 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("feature/new", newEntry.getDefaultBranch());
     }
 
+    /**
+     * Regression test for the null-channel archive-persistence defect. A
+     * workstream with no channelId is absent from {@code channelToWorkstream},
+     * so the old {@code persistConfig} — which synced only that map — never
+     * wrote the workstream's state changes (such as an archive). It now
+     * snapshots every registered workstream, so the archived flag is durable.
+     */
+    @Test(timeout = 10000)
+    public void testArchivePersistsForNullChannelWorkstream() throws IOException {
+        File tempFile = File.createTempFile("workstreams-nullchan", ".yaml");
+        tempFile.deleteOnExit();
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-nochan\"\n"
+            + "    channelName: \"#no-channel\"\n"
+            + "    defaultBranch: \"main\"\n";
+        Files.write(tempFile.toPath(), yaml.getBytes());
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYaml(tempFile);
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+        listener.setWorkstreamConfig(config, tempFile);
+        for (Workstream ws : config.toWorkstreams()) {
+            listener.registerWorkstream(ws);
+        }
+
+        Workstream live = notifier.getWorkstream("ws-nochan");
+        assertNotNull("fixture workstream must be registered", live);
+        assertNull("fixture must have no channelId", live.getChannelId());
+        live.setArchived(true);
+        assertTrue("persist must report success", listener.persistConfig());
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkstreamEntry entry = null;
+        for (WorkstreamConfig.WorkstreamEntry e : reloaded.getWorkstreams()) {
+            if ("ws-nochan".equals(e.getWorkstreamId())) {
+                entry = e;
+                break;
+            }
+        }
+        assertNotNull(entry);
+        assertTrue("archived flag must persist for a channel-less workstream",
+                entry.isArchived());
+    }
+
     /** SlackNotifier tracks and updates job lifecycle events per workstream. */
     @Test(timeout = 10000)
     public void testNotifierJobTracking() {

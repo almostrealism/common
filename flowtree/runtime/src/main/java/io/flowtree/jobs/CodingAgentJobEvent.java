@@ -101,6 +101,17 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /** Number of times the primary session had to compact or summarize context. */
     private int reflectionContextPressureEvents;
 
+    /** {@code true} when the falsification phase ran (falsificationEnabled was true and doWork ran it). */
+    private boolean falsificationRan;
+    /** Number of load-bearing behavioural claims the falsification phase extracted and assessed. */
+    private int falsificationClaimsExtracted;
+    /** Number of claims the falsification phase assessed as refuted. */
+    private int falsificationRefutedCount;
+    /** Number of times the falsification phase bounced the job back to primary. */
+    private int falsificationBounceCount;
+    /** USD cost of the falsification analysis sessions. */
+    private double falsificationCostUsd;
+
     /**
      * Creates a new Claude Code job completion event.
      *
@@ -524,6 +535,41 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     public int getReflectionContextPressureEvents() { return reflectionContextPressureEvents; }
 
     /**
+     * Records falsification-phase telemetry on this event.
+     *
+     * @param ran             whether the falsification phase ran
+     * @param claimsExtracted number of load-bearing claims extracted and assessed
+     * @param refutedCount    number of claims assessed as refuted
+     * @param bounceCount     number of times the job was bounced back to primary
+     * @param costUsd         USD cost of the falsification analysis sessions
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withFalsificationInfo(boolean ran, int claimsExtracted,
+                                                     int refutedCount, int bounceCount, double costUsd) {
+        this.falsificationRan = ran;
+        this.falsificationClaimsExtracted = claimsExtracted;
+        this.falsificationRefutedCount = refutedCount;
+        this.falsificationBounceCount = bounceCount;
+        this.falsificationCostUsd = costUsd;
+        return this;
+    }
+
+    /** Returns whether the falsification phase ran during this job. */
+    public boolean isFalsificationRan() { return falsificationRan; }
+
+    /** Returns the number of load-bearing claims the falsification phase extracted and assessed. */
+    public int getFalsificationClaimsExtracted() { return falsificationClaimsExtracted; }
+
+    /** Returns the number of claims the falsification phase assessed as refuted. */
+    public int getFalsificationRefutedCount() { return falsificationRefutedCount; }
+
+    /** Returns the number of times the falsification phase bounced the job back to primary. */
+    public int getFalsificationBounceCount() { return falsificationBounceCount; }
+
+    /** Returns the USD cost of the falsification analysis sessions. */
+    public double getFalsificationCostUsd() { return falsificationCostUsd; }
+
+    /**
      * Creates the appropriate completion event for the given job outcome.
      *
      * <p>Encapsulates the terminal-state logic previously in
@@ -593,12 +639,19 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
             withReviewInfo(true, job.getReviewFilesModified(),
                     job.getReviewMemoriesStored(), job.isReviewExitedCleanly());
         }
-        if (job.isRetrospectiveRan()) {
-            withReflectionInfo(true, job.getRetrospectiveCostUsd(),
-                    job.isRetrospectiveTranscriptFound(), job.getRetrospectiveFindingsCount());
+        RetrospectivePhase retrospective = job.retrospectivePhase();
+        if (retrospective.ran()) {
+            withReflectionInfo(true, retrospective.costUsd(),
+                    retrospective.transcriptFound(), retrospective.findingsCount());
             withReflectionContextUsage(
-                    job.getRetrospectiveContextUpfrontTokenEstimate(),
-                    job.getRetrospectiveContextPressureEvents());
+                    retrospective.contextUpfrontTokenEstimate(),
+                    retrospective.contextPressureEvents());
+        }
+        FalsificationPhase falsification = job.falsificationPhase();
+        if (falsification.ran()) {
+            withFalsificationInfo(true, falsification.claimsExtracted(),
+                    falsification.refutedCount(), falsification.bounceCount(),
+                    falsification.costUsd());
         }
     }
 }

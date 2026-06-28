@@ -16,6 +16,7 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -29,10 +30,12 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import io.flowtree.api.FlowTreeApiEndpoint;
@@ -1133,5 +1136,36 @@ public class JobStatsStore implements ConsoleFeatures {
          * data is recorded.
          */
         public Map<String, Double> costByModel = Collections.emptyMap();
+
+        /**
+         * Formats this week's statistics as a Slack mrkdwn block for display.
+         *
+         * <p>Outputs a header line with the label and date range, followed by
+         * total wall-clock time, job counts by status, total USD cost (with
+         * per-runner and per-model breakdowns), and total agent turns.</p>
+         *
+         * @param label     display label for the block (e.g., "This Week")
+         * @param weekStart the Monday that begins this week
+         * @return a formatted mrkdwn string ready for posting to Slack
+         */
+        public String toSlackMrkdwn(String label, LocalDate weekStart) {
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US);
+            LocalDate weekEnd = weekStart.plusDays(6);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("*").append(label).append("* (");
+            sb.append(weekStart.format(fmt)).append(" — ").append(weekEnd.format(fmt)).append(")\n");
+            sb.append("  :clock1: Total time: ").append(HarnessStatusReporter.formatDuration(totalWallClockMs)).append("\n");
+            sb.append("  :hammer: Jobs: ").append(jobCount);
+            sb.append(" (:white_check_mark: ").append(successCount);
+            sb.append("  :x: ").append(failedCount);
+            sb.append("  :no_entry_sign: ").append(cancelledCount).append(")\n");
+            sb.append("  :moneybag: Cost: $").append(String.format("%.2f", totalCostUsd));
+            sb.append(formatCostBreakdown(costByRunner));
+            sb.append(formatCostBreakdown(costByModel));
+            sb.append("\n");
+            sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", totalTurns)).append("\n");
+            return sb.toString();
+        }
     }
 }

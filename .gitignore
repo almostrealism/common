@@ -18,6 +18,11 @@ commands/**
 **/docs/apidocs
 **.class
 
+# Binary artifacts — must never be committed. Code that generates .bin files
+# must delete them or write them outside the repository working tree.
+*.bin
+**/*.bin
+
 # Testing and Monitoring
 **/*.hwcache/**
 **/*.hprof

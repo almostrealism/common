@@ -34,6 +34,12 @@ catches up.
 - **JDK 17**: `brew install --cask temurin@17`
 - **Maven**: `brew install maven`
 - **jq**: `brew install jq`
+- **Full Xcode** (NOT just the Command Line Tools) — required for jobs that build
+  the macOS app via `xcodebuild`. Install from the App Store or with
+  `brew install xcodes && xcodes install --latest`. Note the install path: the
+  App Store gives `/Applications/Xcode.app`, while `xcodes` gives a versioned
+  `/Applications/Xcode-<version>.app`. Select the actual path:
+  `sudo xcode-select -s /Applications/Xcode-<version>.app/Contents/Developer`
 - **GitHub Personal Access Token** with `repo` + `admin:org` scopes
 
 ## Quick Start
@@ -109,6 +115,64 @@ nohup ./runner.sh > runner.log 2>&1 &
 tmux new-session -d -s ar-runner './runner.sh'
 ```
 
+### Restarting After Editing `.env`
+
+`.env` is read **once**, when `runner.sh` starts. The re-registration that
+happens between jobs does **not** re-read it, so changes (e.g. `RUNNER_SCOPE`,
+`RUNNER_CPU_LIMIT`, labels) only take effect after the wrapper script itself is
+restarted — restarting just the runner agent is not enough.
+
+Do this while the runner is **Idle** (not mid-job) so you don't interrupt a build:
+
+```bash
+# 1. See what's running, with PID and parent PID. Match on the script name
+#    (NOT a full path) — when started via `cd ... && nohup ./runner.sh` the
+#    command line is just `bash ./runner.sh`, so a path-prefixed pattern misses
+#    it. Note `runner\.sh` does not match the agent's `run.sh`.
+ps -Ao pid,ppid,command | grep -Ei 'runner\.sh|run\.sh|Runner\.Listener' | grep -v grep
+
+# If more than one `runner.sh` appears you have multiple wrappers running (e.g.
+# nohup was started more than once). Kill them ALL — concurrent wrappers default
+# to the same RUNNER_NAME and clobber each other's registration.
+
+# 2. Stop gracefully — signal BOTH the wrapper loop and the runner agent.
+#    The wrapper's SIGINT trap then deregisters the runner from GitHub.
+pkill -INT -f 'runner\.sh'
+pkill -INT -f 'Runner\.Listener'
+
+# 3. Confirm everything is gone (should print nothing)
+pgrep -fl 'runner\.sh|run\.sh|Runner\.Listener'
+
+# 4. Relaunch ONE instance with the new .env
+nohup ./runner.sh > runner.log 2>&1 &
+
+# 5. Watch startup — the banner echoes the active scope/settings
+tail -f runner.log
+```
+
+Signal **both** processes: the wrapper is normally blocked waiting on the runner
+agent (`Runner.Listener`), so signaling the agent lets that foreground command
+return, after which the wrapper's `cleanup` trap fires and deregisters cleanly.
+Signaling only the agent would just make the loop re-register with the *old*
+in-memory configuration.
+
+A wrapper with parent PID `1` was orphaned by `nohup` (its launching shell
+exited) — that is normal and does **not** mean it is supervised. Only an actual
+launchd service (see below) respawns the runner automatically; if you used
+launchd, stop it with `launchctl bootout` instead of `pkill`, or it will
+relaunch instantly.
+
+Avoid `kill -9` — it bypasses the deregister trap and leaves a stale offline
+runner in GitHub. It is not fatal (the script calls `remove_runner` before
+re-registering, and ephemeral runners are cleaned up server-side), but a graceful
+stop is tidier.
+
+> When switching a runner from repo to org scope (`RUNNER_SCOPE=org`), the
+> graceful stop above deregisters it from its old repo-level registration (the
+> dying process still holds the old env), and the fresh start registers it at the
+> org level. Make sure the runner group grants the relevant repositories access
+> first, or jobs will queue.
+
 ### launchd Service (Auto-Start on Boot)
 
 To start the runner automatically on login, create a launchd plist:
@@ -151,12 +215,51 @@ All configuration is via the `.env` file (see `.env.example`).
 | Variable | Default | Description |
 |---|---|---|
 | `GITHUB_PAT` | *(required)* | GitHub personal access token |
+| `RUNNER_SCOPE` | `repo` | `repo` (single repository) or `org` (shared across the org) |
 | `GITHUB_OWNER` | `almostrealism` | GitHub org or user |
-| `GITHUB_REPO` | `common` | Repository name |
+| `GITHUB_REPO` | `common` | Repository name (required for `repo` scope, ignored for `org`) |
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `RUNNER_WORKDIR` | `~/actions-runner/_work` | Job working directory |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
+
+## Sharing Runners Across Repositories (Org-Level)
+
+A repository-scoped runner only serves the one repo it registered against. To
+let several repos in the `almostrealism` org (e.g. `common` and `ringsdesktop`)
+share the same physical Macs, register the runners at the **organization**
+level instead:
+
+```bash
+# In .env
+RUNNER_SCOPE=org
+GITHUB_OWNER=almostrealism
+# GITHUB_REPO is ignored in org scope
+```
+
+Then, **once per org**, grant the relevant repositories access to the runner
+group the runners join (the script uses `RUNNER_GROUP`, default `Default`):
+
+**Org Settings -> Actions -> Runner groups -> (group) -> Repository access** —
+select "All repositories" or add `common` and `ringsdesktop` explicitly.
+
+Workflows continue to target the runners by label
+(`runs-on: [self-hosted, macos, ar-ci]`); nothing in the workflow files needs to
+change. The PAT needs the `admin:org` scope (classic) or the organization
+"Self-hosted runners" administration permission (fine-grained).
+
+> **Security note:** GitHub recommends against using self-hosted runners with
+> **public** repositories, because a pull request from a fork can execute
+> arbitrary code on the runner host. If any repo sharing the group is public,
+> restrict the group to private repositories and/or require approval for
+> fork-PR workflow runs.
+
+Verify org-level runners:
+
+```bash
+gh api orgs/almostrealism/actions/runners \
+    --jq '.runners[] | select(.labels[].name == "ar-ci") | {name, status, labels: [.labels[].name]}'
+```
 
 ## CPU Limiting
 
@@ -214,6 +317,29 @@ gh api repos/almostrealism/common/actions/runners \
   auto-detected library directory is writable. `AR_HARDWARE_LIBS` is
   auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` should be
   left unset to auto-detect the best available backend.
+
+### `xcodebuild requires Xcode` / wrong developer directory
+
+Jobs that build the macOS app invoke `xcodebuild`, which needs the **full Xcode**
+app — the Command Line Tools alone are not enough. The error
+`tool 'xcodebuild' requires Xcode, but active developer directory
+'/Library/Developer/CommandLineTools' is a command line tools instance` means
+either Xcode is not installed or `xcode-select` points at the CLT.
+
+1. Check what is active: `xcode-select -p`
+2. Confirm Xcode is installed and note its exact path: `ls -d /Applications/Xcode*.app`
+   (if absent, install via the App Store, `xcodes install --latest`, or a manual
+   download from developer.apple.com). `xcodes` installs a versioned
+   `Xcode-<version>.app`, not a plain `Xcode.app`.
+3. Point the toolchain at that exact path (one-time, system-wide):
+   `sudo xcode-select -s /Applications/Xcode-<version>.app/Contents/Developer`
+4. Accept the license and finish first-launch setup:
+   `sudo xcodebuild -license accept && sudo xcodebuild -runFirstLaunch`
+5. Verify: `xcodebuild -version`
+
+The runner picks up the system-wide selection automatically — no restart needed.
+Without sudo, set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` in
+the runner's environment instead; `xcodebuild` honors it over `xcode-select`.
 
 ### JDK not found after setup
 

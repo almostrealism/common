@@ -30,6 +30,12 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -761,136 +767,6 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Configuration entry for an agent endpoint.
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class AgentEntry {
-        /** The agent hostname or IP address (default: {@code "localhost"}). */
-        private String host = "localhost";
-        /** The port the agent's FlowTree node listens on (default: 7766). */
-        private int port = 7766;
-
-        /** No-arg constructor for Jackson deserialization. */
-        public AgentEntry() {}
-
-        /**
-         * Creates a new agent entry with the specified host and port.
-         *
-         * @param host the agent hostname or IP address
-         * @param port the agent port number
-         */
-        public AgentEntry(String host, int port) {
-            this.host = host;
-            this.port = port;
-        }
-
-        /** Returns the agent hostname or IP address. */
-        public String getHost() { return host; }
-        /** Sets the agent hostname or IP address. */
-        public void setHost(String host) { this.host = host; }
-
-        /** Returns the agent port number. */
-        public int getPort() { return port; }
-        /** Sets the agent port number. */
-        public void setPort(int port) { this.port = port; }
-    }
-
-    /**
-     * Configuration entry for a centralized MCP server.
-     *
-     * <p>When present in the YAML configuration, the controller starts
-     * each server as an HTTP process and agents connect over HTTP
-     * instead of stdio.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class McpServerEntry {
-        /** Python source file path relative to the project root (for managed servers). */
-        private String source;
-        /** HTTP port the managed server process listens on. */
-        private int port;
-        /** URL of an already-running external server; when set, no subprocess is launched. */
-        private String url;
-        /** Explicit tool names exposed by this server; required when {@code url} is set. */
-        private List<String> tools;
-
-        /** Returns the Python source file path (relative to project root). */
-        public String getSource() { return source; }
-        /** Sets the Python source file path (relative to project root). */
-        public void setSource(String source) { this.source = source; }
-
-        /** Returns the HTTP port to listen on. */
-        public int getPort() { return port; }
-        /** Sets the HTTP port for the managed MCP server process. */
-        public void setPort(int port) { this.port = port; }
-
-        /**
-         * Returns the URL of an already-running centralized server.
-         * When set, the controller does not launch a subprocess —
-         * it simply passes the URL through to agents.
-         */
-        public String getUrl() { return url; }
-        /** Sets the URL of an already-running external MCP server. */
-        public void setUrl(String url) { this.url = url; }
-
-        /**
-         * Returns the explicit tool names for this server.
-         * Required when {@code url} is set (no source file to discover from).
-         */
-        public List<String> getTools() { return tools; }
-        /** Sets the explicit tool names exposed by this server. */
-        public void setTools(List<String> tools) { this.tools = tools; }
-
-        /** Returns true if this entry references an external server by URL. */
-        public boolean isExternal() {
-            return url != null && !url.isEmpty();
-        }
-    }
-
-    /**
-     * Configuration entry for a pushed MCP tool.
-     *
-     * <p>Pushed tools are served as files by the controller and downloaded
-     * into dev containers on first use. Unlike centralized servers (which
-     * run as HTTP processes on the controller), pushed tools run locally
-     * inside each container via stdio.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class PushedToolEntry {
-        /** Python source file path relative to the config directory. */
-        private String source;
-        /** Per-tool environment variables injected into the agent's MCP stdio config. */
-        private Map<String, String> env;
-
-        /** Returns the Python source file path (relative to config directory). */
-        public String getSource() { return source; }
-        /** Sets the Python source file path (relative to config directory). */
-        public void setSource(String source) { this.source = source; }
-
-        /** Returns per-tool environment variables to inject into the MCP stdio config. */
-        public Map<String, String> getEnv() { return env; }
-        /** Sets per-tool environment variables for the MCP stdio config. */
-        public void setEnv(Map<String, String> env) { this.env = env; }
-    }
-
-    /**
-     * Configuration entry for a GitHub organization token.
-     *
-     * <p>Maps an organization name to a GitHub personal access token.
-     * When a workstream specifies a {@code githubOrg}, the controller
-     * proxy selects the matching token for GitHub API calls.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class GitHubOrgEntry {
-        /** The GitHub personal access token for authenticating as this organization. */
-        private String token;
-
-        /** Returns the GitHub personal access token for this organization. */
-        public String getToken() { return token; }
-        /** Sets the GitHub personal access token for this organization. */
-        public void setToken(String token) { this.token = token; }
-    }
-
-    /**
      * Returns the global default workspace path for repo checkouts.
      *
      * <p>When a workstream specifies {@code repoUrl} but no
@@ -1401,11 +1277,27 @@ public class WorkstreamConfig {
      * state and appends it to the workstreams list. Used by {@code /flowtree setup}
      * when creating a workstream from Slack.</p>
      *
+     * <p>Idempotent by {@code workstreamId}: when an entry with the same
+     * non-null ID already exists it is replaced in place rather than a
+     * second entry being appended. This prevents the unbounded duplicate
+     * accumulation that occurs when a workstream is registered, lost from
+     * memory, and re-registered (each prior registration having appended
+     * its own entry).</p>
+     *
      * @param ws the workstream to add
      */
-    public void addWorkstream(Workstream ws) {
+    public synchronized void addWorkstream(Workstream ws) {
         WorkstreamEntry entry = new WorkstreamEntry();
         populateEntry(entry, ws);
+        String id = entry.getWorkstreamId();
+        if (id != null) {
+            for (int i = 0; i < workstreams.size(); i++) {
+                if (id.equals(workstreams.get(i).getWorkstreamId())) {
+                    workstreams.set(i, entry);
+                    return;
+                }
+            }
+        }
         workstreams.add(entry);
     }
 
@@ -1507,7 +1399,7 @@ public class WorkstreamConfig {
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
-    public void syncFromWorkstreams(Collection<Workstream> activeWorkstreams) {
+    public synchronized void syncFromWorkstreams(Collection<Workstream> activeWorkstreams) {
         for (Workstream ws : activeWorkstreams) {
             WorkstreamEntry entry = findEntryToSync(ws);
             if (entry == null) {
@@ -1516,6 +1408,69 @@ public class WorkstreamConfig {
             }
             populateEntry(entry, ws);
         }
+    }
+
+    /**
+     * Synchronizes the in-memory workstream state into the configuration
+     * entries and writes the result to {@code file} as a single atomic
+     * critical section. Holding one lock across both steps prevents a
+     * concurrent registration or a controller reload from interleaving
+     * between the sync and the save — the interleaving that otherwise lets
+     * a half-written file or a stale snapshot drop a just-registered
+     * workstream.
+     *
+     * <p>Duplicate entries are collapsed <em>before</em> the sync, not just at
+     * save time. This matters because {@link #findEntryToSync} updates the
+     * first entry matching a {@code workstreamId} while the save-time dedupe
+     * keeps the last: with duplicates still present, a field the sync writes
+     * (for example an {@code archived} flag flipped by an archive request)
+     * would land on the first entry and then be discarded when the last
+     * survives. Collapsing first guarantees the sync updates the single entry
+     * that is persisted.</p>
+     *
+     * @param activeWorkstreams the current in-memory workstreams
+     * @param file              the target YAML file
+     * @throws IOException if the file cannot be written
+     */
+    public synchronized void syncAndSave(Collection<Workstream> activeWorkstreams,
+                                         File file) throws IOException {
+        dedupeWorkstreamsKeepingLast();
+        syncFromWorkstreams(activeWorkstreams);
+        saveToYaml(file);
+    }
+
+    /**
+     * Removes duplicate {@link WorkstreamEntry} instances that share a
+     * {@code workstreamId}, keeping the last occurrence (the most recently
+     * appended state). Entries with a {@code null} ID are left untouched.
+     * Idempotent: a list with no duplicate IDs is unchanged.
+     *
+     * <p>Run before every save so a YAML file that has already accumulated
+     * duplicate entries — from historic unsynchronized append-then-save
+     * races — self-heals to a single entry per workstream on the next
+     * write.</p>
+     *
+     * @return the number of duplicate entries removed
+     */
+    synchronized int dedupeWorkstreamsKeepingLast() {
+        Set<String> seen = new HashSet<>();
+        List<WorkstreamEntry> deduped = new ArrayList<>(workstreams.size());
+        // Walk back-to-front so the LAST occurrence of each id survives,
+        // then restore the original ordering of the survivors.
+        for (int i = workstreams.size() - 1; i >= 0; i--) {
+            WorkstreamEntry entry = workstreams.get(i);
+            String id = entry.getWorkstreamId();
+            if (id == null || seen.add(id)) {
+                deduped.add(entry);
+            }
+        }
+        Collections.reverse(deduped);
+        int removed = workstreams.size() - deduped.size();
+        if (removed > 0) {
+            workstreams.clear();
+            workstreams.addAll(deduped);
+        }
+        return removed;
     }
 
     /**
@@ -1548,14 +1503,52 @@ public class WorkstreamConfig {
      * <p>Uses {@link JsonInclude.Include#NON_EMPTY} to omit null fields
      * and empty collections, keeping the output readable.</p>
      *
+     * <p>The write is atomic: the YAML is serialized to a temporary file in
+     * the same directory and then moved onto the target with
+     * {@link StandardCopyOption#ATOMIC_MOVE}. A reader (such as a concurrent
+     * controller reload) therefore always observes either the complete prior
+     * file or the complete new one, never a half-written file. Duplicate
+     * entries are collapsed first so a previously corrupted file self-heals.</p>
+     *
      * @param file the target YAML file
      * @throws IOException if the file cannot be written
      */
-    public void saveToYaml(File file) throws IOException {
+    public synchronized void saveToYaml(File file) throws IOException {
+        dedupeWorkstreamsKeepingLast();
         migrateLegacyConfigToPhaseConfig();
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
         mapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
-        mapper.writeValue(file, this);
+
+        Path target = file.toPath();
+        Path directory = target.toAbsolutePath().getParent();
+        Path temp = Files.createTempFile(directory, file.getName() + ".", ".tmp");
+        try {
+            mapper.writeValue(temp.toFile(), this);
+            // Files.createTempFile makes the temp file 0600, and ATOMIC_MOVE
+            // would impose that on the destination — silently narrowing a
+            // previously world-readable config. Carry the destination's own
+            // permissions onto the temp file first (or a sane default for a
+            // brand-new file). No-op on non-POSIX filesystems.
+            try {
+                if (Files.exists(target)) {
+                    Files.setPosixFilePermissions(temp, Files.getPosixFilePermissions(target));
+                }
+            } catch (UnsupportedOperationException ignored) {
+                // Non-POSIX filesystem; permissions are managed by the OS.
+            }
+            try {
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                // Filesystem does not support atomic moves; fall back to a
+                // best-effort replace. Still far better than writing the
+                // target in place because the serialization itself completed
+                // against the temp file.
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temp);
+        }
     }
 
     /**
