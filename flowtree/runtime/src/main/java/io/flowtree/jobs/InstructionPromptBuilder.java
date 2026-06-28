@@ -106,6 +106,13 @@ public class InstructionPromptBuilder {
     private String gitTamperingViolation;
 
     /**
+     * Comma-separated list of invalid files (currently {@code .bin} files) left
+     * in the working tree by a prior session. When set, a warning is prepended
+     * above all content instructing the agent to remove the litter.
+     */
+    private String invalidFilesViolation;
+
+    /**
      * Number of times the current job has had to relaunch the Claude
      * subprocess after an inactivity-triggered kill.  When greater than zero,
      * a warning is prepended explaining that the prior attempt produced no
@@ -332,6 +339,23 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the description of invalid files left behind by a previous session.
+     *
+     * <p>When set, the prompt will include a prominent warning explaining that
+     * the previous session was blocked because it left binary ({@code .bin})
+     * files in the working tree, and instructing the agent to remove them or
+     * generate them outside the repository.</p>
+     *
+     * @param violation the comma-separated list of invalid files that were
+     *                  detected, or null if none were found
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setInvalidFilesViolation(String violation) {
+        this.invalidFilesViolation = violation;
+        return this;
+    }
+
+    /**
      * Sets the number of times the current job has been relaunched after an
      * inactivity-triggered kill of the Claude subprocess.
      *
@@ -435,6 +459,33 @@ public class InstructionPromptBuilder {
             sb.append("**Consequences:** This is your LAST chance. If you tamper with git ");
             sb.append("again, ALL your changes will be destroyed and this session will be ");
             sb.append("terminated with no further retries. Your work will be lost entirely.\n\n");
+            sb.append("---\n\n");
+        }
+
+        // Invalid (binary) file litter warning -- prepended when the prior
+        // session left *.bin files in the working tree.  Their presence fails
+        // the job whether or not they were staged, because other components
+        // commit whatever is present and poison the repository.
+        if (invalidFilesViolation != null && !invalidFilesViolation.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- BINARY FILE LITTER !!\n\n");
+            sb.append("Your previous session was BLOCKED and your changes were discarded ");
+            sb.append("because you left binary (`.bin`) files in the repository working ");
+            sb.append("tree.\n\n");
+            sb.append("**Files detected:** ").append(invalidFilesViolation).append("\n\n");
+            sb.append("It does not matter whether you committed or staged them — leaving ");
+            sb.append("`.bin` files lying around poisons the repository. Other components ");
+            sb.append("stage and commit whatever is present, so binary litter inevitably ");
+            sb.append("ends up in the repo history once you leave it behind.\n\n");
+            sb.append("**The rules:**\n");
+            sb.append("- Do NOT write any code that generates `.bin` files unless that same ");
+            sb.append("code also deletes them before it returns, or writes them to a ");
+            sb.append("location OUTSIDE the repository working tree (a temp directory or an ");
+            sb.append("explicitly ignored path elsewhere).\n");
+            sb.append("- Clean up after yourself. Generated binary artifacts are litter, ");
+            sb.append("not deliverables.\n\n");
+            sb.append("**Consequences:** Remove every `.bin` file (or relocate where it is ");
+            sb.append("generated) before you finish. If binary files remain in the working ");
+            sb.append("tree, the job fails.\n\n");
             sb.append("---\n\n");
         }
 
