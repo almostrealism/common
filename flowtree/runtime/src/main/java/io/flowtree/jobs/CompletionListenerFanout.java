@@ -699,6 +699,12 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         factory.setMaxTurns(listener.getMaxTurns());
         factory.setMaxBudgetUsd(listener.getMaxBudgetUsd());
         factory.setPushToOrigin(listener.isPushToOrigin());
+        if (listener.getDefaultBranch() != null) {
+            factory.setTargetBranch(listener.getDefaultBranch());
+        }
+        if (listener.getBaseBranch() != null) {
+            factory.setBaseBranch(listener.getBaseBranch());
+        }
         if (listener.getWorkingDirectory() != null) {
             factory.setWorkingDirectory(listener.getWorkingDirectory());
         }
