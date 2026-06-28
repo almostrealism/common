@@ -318,6 +318,7 @@ class BlockBranchTrackMasterTests(unittest.TestCase):
 
     def test_push_delete_master_blocks(self):
         self.assertEqual(self._action("git push origin :master"), "block")
+        self.assertEqual(self._action("git push origin --delete master"), "block")
 
     def test_push_head_to_main_blocks(self):
         self.assertEqual(self._action("git push origin HEAD:main"), "block")
@@ -327,6 +328,12 @@ class BlockBranchTrackMasterTests(unittest.TestCase):
 
     def test_push_master_to_master_allows(self):
         self.assertEqual(self._action("git push origin master"), "allow")
+
+    def test_push_master_to_main_blocks(self):
+        self.assertEqual(self._action("git push origin master:main"), "block")
+
+    def test_push_main_to_master_blocks(self):
+        self.assertEqual(self._action("git push origin main:master"), "block")
 
     def test_push_feature_to_own_name_allows(self):
         self.assertEqual(self._action("git push -u origin feature"), "allow")

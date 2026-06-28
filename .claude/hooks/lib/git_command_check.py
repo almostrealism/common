@@ -308,7 +308,16 @@ def _push_violation(args):
     """Reason if this push would overwrite a remote master/main from another ref."""
     force = any(a in ("-f", "--force", "--force-with-lease") for a in args) or any(
         a.startswith("--force-with-lease=") or a.startswith("--force=") for a in args)
+    delete = any(a in ("-d", "--delete") for a in args)
     positionals = [a for a in args if not a.startswith("-")]
+
+    if delete:
+        targets = positionals[1:] if len(positionals) >= 2 else positionals
+        for t in targets:
+            t_name = t[len("refs/heads/"):] if t.startswith("refs/heads/") else t
+            if t_name in PROTECTED_BRANCHES:
+                return PUSH_TO_MASTER_REASON.format(dst=t_name)
+        return ""
 
     if len(positionals) >= 2:
         refspecs = positionals[1:]
@@ -324,7 +333,10 @@ def _push_violation(args):
         else:
             src, dst = body, body
         dst_name = dst[len("refs/heads/"):] if dst.startswith("refs/heads/") else dst
-        if dst_name in PROTECTED_BRANCHES and not _ref_is_protected(src):
+        src_name = src[1:] if src.startswith("+") else src
+        if src_name.startswith("refs/heads/"):
+            src_name = src_name[len("refs/heads/"):]
+        if dst_name in PROTECTED_BRANCHES and src_name != dst_name:
             return PUSH_TO_MASTER_REASON.format(dst=dst_name)
         if dst_name in PROTECTED_BRANCHES and force:
             return FORCE_PUSH_TO_MASTER_REASON.format(dst=dst_name)
