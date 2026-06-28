@@ -33,7 +33,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -141,12 +140,14 @@ public class CodingAgentJob extends GitManagedJob {
     private String gitTamperingViolation;
     /** Comma-separated invalid ({@code .bin}) files detected during this job. */
     private String invalidFilesViolation;
-    /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
-    private int maxInactivityRestarts = 3;
-    /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
-    private int inactivityRestartAttempt;
-    /** Set by the monitor when it kills the Claude subprocess; consumed by the retry loop. */
-    private volatile boolean wasKilledForInactivity;
+    /**
+     * Single authority over launching, relaunching, and stopping agent sessions
+     * for this job: the global session cap, the job-wide dollar and turn
+     * budgets, and the inactivity-restart relaunch loop all live here so no
+     * restart path can run away. Consulted at the {@link #executeSingleRun()}
+     * chokepoint and by {@link EnforcementRunner}.
+     */
+    private final RestartGovernor restartGovernor = new RestartGovernor(this);
     /** When {@code true}, launch the agent subprocess inside a tmux session (real tty); runner also honours {@code AR_AGENT_USE_TMUX}. */
     private boolean useTmux;
     /**
@@ -239,29 +240,12 @@ public class CodingAgentJob extends GitManagedJob {
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
 
     /**
-     * Legacy single-runner field retained for backwards source compatibility.
-     *
-     * <p>Mirrors {@link #defaultRunner}. {@link #setRunnerName(String)} updates
-     * the default runner so that pre-Phase-2 callers continue to work without
-     * any awareness of the per-phase map.</p>
+     * Per-phase agent-runner and model configuration. Owns the lockstep between
+     * the legacy {@code defaultRunner}/{@code runnerByPhase} fields and the
+     * {@link PhaseConfigBundle}; this job exposes the same public API by
+     * delegating to it.
      */
-    private String runnerName = AgentRunnerRegistry.CLAUDE;
-
-    /** Default {@link AgentRunner} name used when a phase has no explicit override. */
-    private String defaultRunner = AgentRunnerRegistry.CLAUDE;
-
-    /** Per-phase {@link AgentRunner} overrides; empty when only the default applies. */
-    private final Map<Phase, String> runnerByPhase = new EnumMap<>(Phase.class);
-
-    /**
-     * Unified per-phase configuration bundle holding the default
-     * {@link PhaseConfig} plus per-phase overrides for runner / model /
-     * effort / provider. This is the sole source of model, effort, and
-     * provider; the runner-resolution fields {@link #defaultRunner} and
-     * {@link #runnerByPhase} are kept in lockstep with it by
-     * {@link #setPhaseConfigBundle(PhaseConfigBundle)}.
-     */
-    private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
+    private final PhaseRunnerConfig phaseRunnerConfig = new PhaseRunnerConfig();
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. Package private so the same-package pushed-tools test can assert propagated state without reflection. */
     final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
@@ -774,161 +758,93 @@ public class CodingAgentJob extends GitManagedJob {
      * {@link #executeSingleRun()}; package-private so test spies that drive
      * {@link #executeSingleRun()} directly can mirror the production wiring.
      */
-    void setWasKilledForInactivity(boolean killed) { this.wasKilledForInactivity = killed; }
+    void setWasKilledForInactivity(boolean killed) { restartGovernor.setWasKilledForInactivity(killed); }
 
     /** Returns the custom enforcement rules registered via {@link #addEnforcementRule}. */
     List<EnforcementRule> getCustomEnforcementRules() { return customEnforcementRules; }
 
     /**
-     * Returns the name of the {@link AgentRunner} dispatching this job's
-     * sessions when no per-phase override is set. Defaults to
-     * {@link AgentRunnerRegistry#CLAUDE}.
-     *
-     * <p>Equivalent to {@link #getDefaultRunner()}; retained as a legacy alias
-     * so that pre-Phase-2 callers continue to compile.</p>
+     * Returns the legacy default-runner alias; equivalent to
+     * {@link #getDefaultRunner()}. Delegates to {@link PhaseRunnerConfig}.
      *
      * @return the runner identifier
      */
-    public String getRunnerName() { return runnerName; }
+    public String getRunnerName() { return phaseRunnerConfig.getRunnerName(); }
 
     /**
-     * Sets the name of the {@link AgentRunner} that will dispatch this job's
-     * sessions when no per-phase override is configured. The value is
-     * validated against {@link AgentRunnerRegistry#available()} so
-     * misconfiguration fails at the caller rather than during dispatch.
+     * Sets the default runner (legacy alias for {@link #setDefaultRunner(String)}).
+     * Delegates to {@link PhaseRunnerConfig}.
      *
-     * <p>Equivalent to {@link #setDefaultRunner(String)}; retained as a legacy
-     * alias. Updating one updates the other so {@link #getRunnerForPhase}
-     * falls back consistently.</p>
-     *
-     * @param runnerName a registered runner identifier (e.g.
-     *                   {@link AgentRunnerRegistry#CLAUDE}); {@code null} or empty
-     *                   resets to the Claude runner
+     * @param runnerName a registered runner identifier; {@code null}/empty resets
+     *                   to {@link AgentRunnerRegistry#CLAUDE}
      * @throws IllegalArgumentException when the runner is not registered
      */
-    public void setRunnerName(String runnerName) {
-        String resolved = (runnerName == null || runnerName.isEmpty())
-                ? AgentRunnerRegistry.CLAUDE : runnerName;
-        if (runnerName != null && !runnerName.isEmpty()) {
-            AgentRunnerRegistry.validateName(runnerName);
-        }
-        this.runnerName = resolved;
-        this.defaultRunner = resolved;
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultRunner(
-                (runnerName == null || runnerName.isEmpty()) ? null : runnerName);
-    }
+    public void setRunnerName(String runnerName) { phaseRunnerConfig.setRunnerName(runnerName); }
 
     /**
-     * Returns the default runner used when {@link #getRunnerForPhase(Phase)}
-     * has no explicit override for a phase.
+     * Returns the default runner used when a phase has no override. Delegates to
+     * {@link PhaseRunnerConfig}.
      *
      * @return the default runner identifier, never {@code null}
      */
-    public String getDefaultRunner() { return defaultRunner; }
+    public String getDefaultRunner() { return phaseRunnerConfig.getDefaultRunner(); }
 
     /**
-     * Alias for {@link #setRunnerName(String)} that emphasises this is the
-     * default runner applied when {@link #getRunnerForPhase(Phase)} has no
-     * explicit override.
+     * Sets the default runner. Delegates to {@link PhaseRunnerConfig}.
      *
-     * @param runnerName a registered runner identifier; {@code null}/empty
-     *                   resets to {@link AgentRunnerRegistry#CLAUDE}
+     * @param runnerName a registered runner identifier; {@code null}/empty resets
+     *                   to {@link AgentRunnerRegistry#CLAUDE}
      * @throws IllegalArgumentException when the runner is not registered
      */
-    public void setDefaultRunner(String runnerName) {
-        String name = (runnerName == null) ? null : runnerName.trim();
-        setRunnerName(name);
-    }
+    public void setDefaultRunner(String runnerName) { phaseRunnerConfig.setDefaultRunner(runnerName); }
 
     /**
-     * Returns the {@link AgentRunner} name to use for {@code phase}. Falls
-     * back to {@link #getDefaultRunner()} when no override is set.
+     * Returns the runner to use for {@code phase}, falling back to the default.
+     * Delegates to {@link PhaseRunnerConfig}.
      *
      * @param phase the lifecycle phase being dispatched
      * @return the runner identifier; never {@code null}
      */
-    public String getRunnerForPhase(Phase phase) {
-        if (phase == null) return defaultRunner;
-        return runnerByPhase.getOrDefault(phase, defaultRunner);
-    }
+    public String getRunnerForPhase(Phase phase) { return phaseRunnerConfig.getRunnerForPhase(phase); }
 
     /**
-     * Sets the runner used for {@code phase}, overriding the default. Passing
-     * a {@code null}/empty runner clears any existing override and lets the
-     * default take effect.
+     * Sets the runner override for {@code phase}. Delegates to
+     * {@link PhaseRunnerConfig}.
      *
      * @param phase      the phase to configure
-     * @param runnerName a registered runner identifier, or {@code null}/empty
-     *                   to clear the override
+     * @param runnerName a registered runner identifier, or {@code null}/empty to
+     *                   clear the override
      * @throws IllegalArgumentException when {@code phase} is {@code null} or
      *                                  {@code runnerName} is not registered
      */
     public void setRunnerForPhase(Phase phase, String runnerName) {
-        if (phase == null) throw new IllegalArgumentException("phase must not be null");
-        if (runnerName == null || runnerName.isEmpty()) {
-            runnerByPhase.remove(phase);
-            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
-            if (existing != null) {
-                phaseConfigBundle = phaseConfigBundle.withPhase(phase, existing.withRunner(null));
-            }
-            return;
-        }
-        AgentRunnerRegistry.validateName(runnerName);
-        runnerByPhase.put(phase, runnerName);
-        PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
-        PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
-                .withRunner(runnerName);
-        phaseConfigBundle = phaseConfigBundle.withPhase(phase, updated);
+        phaseRunnerConfig.setRunnerForPhase(phase, runnerName);
     }
 
     /**
-     * Returns an immutable snapshot of the per-phase runner overrides.
+     * Returns an immutable snapshot of the per-phase runner overrides. Delegates
+     * to {@link PhaseRunnerConfig}.
      *
      * @return the override map; empty when no overrides are set
      */
-    public Map<Phase, String> getRunnerByPhase() {
-        return new EnumMap<>(runnerByPhase);
-    }
+    public Map<Phase, String> getRunnerByPhase() { return phaseRunnerConfig.getRunnerByPhase(); }
 
     /**
-     * Returns the unified per-phase configuration bundle for this job.
-     *
-     * <p>Reflects the latest state of {@code defaultRunner},
-     * {@code runnerByPhase}, {@code model}, and {@code effort}; legacy
-     * setters keep it in sync. Phase 2 callers (the orchestrator's
-     * per-phase {@link AgentRunRequest} builder) read directly from this
-     * bundle.</p>
+     * Returns the unified per-phase configuration bundle for this job. Delegates
+     * to {@link PhaseRunnerConfig}.
      *
      * @return the bundle, never {@code null}
      */
-    public PhaseConfigBundle getPhaseConfigBundle() {
-        return phaseConfigBundle;
-    }
+    public PhaseConfigBundle getPhaseConfigBundle() { return phaseRunnerConfig.getPhaseConfigBundle(); }
 
     /**
-     * Replaces the per-phase configuration bundle. Updates the legacy runner
-     * fields ({@link #defaultRunner}, {@link #runnerByPhase}) to reflect the
-     * new bundle so that runner-resolution callers see consistent state.
+     * Replaces the per-phase configuration bundle. Delegates to
+     * {@link PhaseRunnerConfig}, which resyncs the legacy runner fields.
      *
      * @param bundle the new bundle; {@code null} resets to
      *               {@link PhaseConfigBundle#EMPTY}
      */
-    public void setPhaseConfigBundle(PhaseConfigBundle bundle) {
-        this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
-        PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
-        // Resync legacy runner fields, bypassing the bundle update path that the
-        // public setters would otherwise trigger.
-        String r = def.runner();
-        this.defaultRunner = (r != null && !r.isEmpty()) ? r : AgentRunnerRegistry.CLAUDE;
-        this.runnerName = this.defaultRunner;
-        this.runnerByPhase.clear();
-        for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
-            String phaseRunner = e.getValue().runner();
-            if (phaseRunner != null && !phaseRunner.isEmpty()) {
-                this.runnerByPhase.put(e.getKey(), phaseRunner);
-            }
-        }
-    }
+    public void setPhaseConfigBundle(PhaseConfigBundle bundle) { phaseRunnerConfig.setPhaseConfigBundle(bundle); }
 
     /**
      * Registers an additional enforcement rule to run after the agent completes
@@ -1008,7 +924,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .setGitHubMcpEnabled(true)
                 .setGitTamperingViolation(gitTamperingViolation)
                 .setInvalidFilesViolation(invalidFilesViolation)
-                .setInactivityRestartAttempt(inactivityRestartAttempt)
+                .setInactivityRestartAttempt(restartGovernor.getInactivityRestartAttempt())
                 .setFalsificationFindings(falsificationFindings)
                 .build();
     }
@@ -1234,10 +1150,21 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Executes a single agent session via the configured {@link AgentRunner},
-     * retrying up to {@link #maxInactivityRestarts} times on inactivity kills.
-     * Package-private to allow test subclasses to override.
+     * retrying on inactivity kills through {@link RestartGovernor}.
+     *
+     * <p>Refuses to launch — returning without running anything — when the
+     * {@link RestartGovernor} reports a stop condition (global session cap,
+     * dollar budget, or turn budget exhausted). This is the single chokepoint
+     * through which every restart path passes, so no path can run away.
+     * Package-private to allow test subclasses to override.</p>
      */
     void executeSingleRun() {
+        if (!restartGovernor.beginSession()) {
+            warn("Agent session not launched -- " + restartGovernor.blockReason());
+            harnessStatus().unusual("Agent session not launched -- " + restartGovernor.blockReason());
+            return;
+        }
+
         Path staleCommitFile = resolveWorkingPath("commit.txt");
         if (staleCommitFile != null && Files.exists(staleCommitFile)) {
             try {
@@ -1273,27 +1200,14 @@ public class CodingAgentJob extends GitManagedJob {
         String modelKey = effective.toModelKey();
 
         accumulator.setOutput("");
-        AgentRunResult finalResult = null;
-        for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
-            inactivityRestartAttempt = attempt;
-            wasKilledForInactivity = false;
+        AgentRunResult finalResult = restartGovernor.runWithInactivityRetries(runner.getName(), attempt -> {
             AgentRunRequest request = buildRunRequest(
                     composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
             AgentRunResult result = runner.run(request, this);
             accumulator.setOutput(result.rawOutput());
-            wasKilledForInactivity = result.killedForInactivity();
-            if (wasKilledForInactivity) costTracker.markIncomplete();
-            finalResult = result;
-            if (!wasKilledForInactivity) break;
-            harnessStatus().inactivitySuspended(runner.getName(), attempt, maxInactivityRestarts);
-            if (attempt == maxInactivityRestarts) {
-                warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning agent session");
-            } else {
-                log("Relaunching agent after inactivity timeout (attempt "
-                        + (attempt + 2) + " of " + (maxInactivityRestarts + 1) + ")");
-            }
-        }
-        inactivityRestartAttempt = 0;
+            if (result.killedForInactivity()) costTracker.markIncomplete();
+            return result;
+        });
 
         if (finalResult != null) {
             absorbResult(finalResult);
@@ -1309,23 +1223,13 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Resolves the {@link AgentRunner} to use for {@code phase}.
-     *
-     * <p>Consults {@link #resolveEffectivePhaseConfig(Phase)} first (per-phase
-     * bundle override overlaid on the bundle default, which itself layers the
-     * legacy {@code defaultRunner} field). When the resolved {@link PhaseConfig}
-     * carries no runner, falls back to {@link #getRunnerForPhase(Phase)}. The
-     * name is then resolved through {@link AgentRunnerRegistry}, defaulting
-     * to {@link AgentRunnerRegistry#CLAUDE}.</p>
+     * Resolves the {@link AgentRunner} to use for {@code phase}. Delegates to
+     * {@link PhaseRunnerConfig#resolveRunner(Phase)}.
      *
      * @param phase the lifecycle phase being dispatched; may be {@code null}
      * @return the runner, never {@code null}
      */
-    AgentRunner resolveRunner(Phase phase) {
-        String name = resolveEffectivePhaseConfig(phase).runner();
-        if (name == null || name.isEmpty()) name = getRunnerForPhase(phase);
-        return AgentRunnerRegistry.get(name != null ? name : AgentRunnerRegistry.CLAUDE);
-    }
+    AgentRunner resolveRunner(Phase phase) { return phaseRunnerConfig.resolveRunner(phase); }
 
     /**
      * Identifies which {@link Phase} is currently being dispatched.
@@ -1346,7 +1250,7 @@ public class CodingAgentJob extends GitManagedJob {
      * Builds the {@link AgentRunRequest} for the current session, snapshotting
      * the instruction prompt and the orchestrator-owned MCP and tool policy.
      *
-     * <p>Reads per-phase model and effort from {@link #phaseConfigBundle} via
+     * <p>Reads per-phase model and effort via
      * {@link #resolveEffectivePhaseConfig(Phase)} so that mixed-phase jobs
      * dispatch each phase with its own resolved {@code (model, effort)}
      * pair. Runner selection still goes through {@link #resolveRunner(Phase)}
@@ -1386,8 +1290,7 @@ public class CodingAgentJob extends GitManagedJob {
         // falls back to the default runner; model/effort/provider come solely
         // from the phase config (null means "use the runner's CLI default").
         Phase phase = resolveCurrentPhase();
-        PhaseConfig effective = phaseConfigBundle.forPhase(phase)
-                .overlayOn(new PhaseConfig(defaultRunner, null, null));
+        PhaseConfig effective = resolveEffectivePhaseConfig(phase);
         return AgentRunRequest.builder()
                 .prompt(buildInstructionPrompt())
                 .workingDirectory(workDir)
@@ -1401,7 +1304,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .maxBudgetUsd(maxBudgetUsd)
                 .inactivityTimeoutMillis(resolveRunner(phase).defaultInactivityTimeoutMillis())
                 .inactivityRestartAttempt(attempt)
-                .maxInactivityRestarts(maxInactivityRestarts)
+                .maxInactivityRestarts(restartGovernor.getMaxInactivityRestarts())
                 .taskId(getTaskId())
                 .activityTag(currentActivity)
                 .outputCapturePath(outputCapturePath)
@@ -1409,10 +1312,9 @@ public class CodingAgentJob extends GitManagedJob {
                 .build();
     }
 
-    /** Effective {@link PhaseConfig} for {@code phase}: bundle overlay over the default runner. */
+    /** Effective {@link PhaseConfig} for {@code phase}; delegates to {@link PhaseRunnerConfig}. */
     PhaseConfig resolveEffectivePhaseConfig(Phase phase) {
-        return phaseConfigBundle.forPhase(phase)
-                .overlayOn(new PhaseConfig(defaultRunner, null, null));
+        return phaseRunnerConfig.resolveEffectivePhaseConfig(phase);
     }
 
     /** Returns the lazily-created harness status reporter (no-op when no workstream URL is set). */
@@ -1434,6 +1336,28 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
+     * Returns this job's {@link RestartGovernor} — the single authority that
+     * decides whether another agent session may be launched. Consulted by
+     * {@link EnforcementRunner} and exposed for tests.
+     *
+     * @return this job's restart governor
+     */
+    RestartGovernor restartGovernor() {
+        return restartGovernor;
+    }
+
+    /**
+     * Returns this job's {@link JobSessionAccumulator}, whose cumulative cost
+     * and turn totals the {@link RestartGovernor} reads to enforce the job-wide
+     * dollar and turn budgets.
+     *
+     * @return this job's session accumulator
+     */
+    JobSessionAccumulator sessionAccumulator() {
+        return accumulator;
+    }
+
+    /**
      * Returns whether the most recent {@link #executeSingleRun()} call ended
      * in a hard failure: non-zero exit, 0s wall-clock duration, not killed by
      * the inactivity watchdog. This is the "failed (exit N) in 0s" signature
@@ -1443,7 +1367,8 @@ public class CodingAgentJob extends GitManagedJob {
      * before any enforcement retry can absorb a new, successful result.</p>
      */
     boolean isHardPrimaryFailure() {
-        return accumulator.getExitCode() != 0 && accumulator.getDurationMs() == 0L && !wasKilledForInactivity;
+        return accumulator.getExitCode() != 0 && accumulator.getDurationMs() == 0L
+                && !restartGovernor.wasKilledForInactivity();
     }
 
     /**
@@ -1572,19 +1497,12 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Replaces the per-phase runner overrides with the decoded contents of
      * {@code wireValue}. Called by {@link CodingAgentJobCodec} for the
-     * {@code runners} wire key. Syncs both {@link #runnerByPhase} and
-     * {@link #phaseConfigBundle} so {@link #resolveRunner(Phase)} sees them.
+     * {@code runners} wire key; delegates to {@link PhaseRunnerConfig}.
+     *
+     * @param wireValue the encoded runner map
      */
     void applyRunnerMap(String wireValue) {
-        runnerByPhase.clear();
-        Map<Phase, String> decoded = Phase.decodeRunnerMap(wireValue, this::warn);
-        runnerByPhase.putAll(decoded);
-        for (Map.Entry<Phase, String> entry : decoded.entrySet()) {
-            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(entry.getKey());
-            PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
-                    .withRunner(entry.getValue());
-            phaseConfigBundle = phaseConfigBundle.withPhase(entry.getKey(), updated);
-        }
+        phaseRunnerConfig.applyRunnerMap(wireValue, this::warn);
     }
 
     /** Backward-compatible alias for {@link CodingAgentJobFactory}; new code should use that class directly. */
