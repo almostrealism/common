@@ -217,6 +217,16 @@ class PhaseRunnerConfig {
         runnerByPhase.clear();
         Map<Phase, String> decoded = Phase.decodeRunnerMap(wireValue, warn);
         runnerByPhase.putAll(decoded);
+
+        // Ensure the bundle's runner overrides match the decoded map.
+        for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
+            Phase phase = e.getKey();
+            String runner = e.getValue().runner();
+            if (!decoded.containsKey(phase) && runner != null && !runner.isEmpty()) {
+                phaseConfigBundle = phaseConfigBundle.withPhase(phase, e.getValue().withRunner(null));
+            }
+        }
+
         for (Map.Entry<Phase, String> entry : decoded.entrySet()) {
             PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(entry.getKey());
             PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)

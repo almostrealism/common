@@ -135,8 +135,8 @@ class RestartGovernor {
     /**
      * Returns whether another agent session may be launched right now without
      * tripping any stop condition. The first session of a job is always
-     * permitted. Does not mutate state; {@link #beginSession()} is the method
-     * that actually claims a launch slot.
+     * permitted. Does not claim a launch slot; {@link #beginSession()} is the
+     * method that actually records a launch.
      *
      * @return {@code true} if a session may launch; {@code false} if a ceiling
      *         has been reached (see {@link #blockReason()})
