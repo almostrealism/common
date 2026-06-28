@@ -29,7 +29,6 @@ import org.almostrealism.util.KeyUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -143,6 +142,8 @@ public class CodingAgentJob extends GitManagedJob {
     private String currentActivity;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
+    /** Comma-separated invalid ({@code .bin}) files detected during this job. */
+    private String invalidFilesViolation;
     /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
     private int maxInactivityRestarts = 3;
     /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
@@ -722,6 +723,9 @@ public class CodingAgentJob extends GitManagedJob {
     /** Sets the active review rule (or null); used by {@link EnforcementRunner} when assembling rules. */
     void setActiveReviewRule(ReviewRule activeReviewRule) { this.activeReviewRule = activeReviewRule; }
 
+    /** Returns the active {@link ReviewRule} for the current review session, or {@code null}. */
+    ReviewRule getActiveReviewRule() { return activeReviewRule; }
+
     /** Marks that the post-completion command rule hit its retry cap. */
     void setPostCompletionCapHit(boolean postCompletionCapHit) { this.postCompletionCapHit = postCompletionCapHit; }
 
@@ -994,6 +998,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .setDependentRepoPaths(getDependentRepoPaths())
                 .setGitHubMcpEnabled(true)
                 .setGitTamperingViolation(gitTamperingViolation)
+                .setInvalidFilesViolation(invalidFilesViolation)
                 .setInactivityRestartAttempt(inactivityRestartAttempt)
                 .build();
     }
@@ -1113,43 +1118,14 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Runs a correction session tagged with {@code activity} (the rule name)
      * via {@code AR_AGENT_ACTIVITY} so {@code send_message} calls are labelled.
+     * Delegates to {@link CorrectionSession}; overridable so test spies can
+     * intercept the agent invocation.
      *
      * @param correctionPrompt prompt for this session
      * @param activity         rule name used as the activity tag
      */
     protected void runCorrectionSession(String correctionPrompt, String activity) {
-        String originalPrompt = this.prompt;
-        String previousActivity = this.currentActivity;
-        this.currentActivity = activity;
-        // Snapshot commit.txt so executeSingleRun() (which deletes it at startup)
-        // cannot discard the primary session's message.
-        Path savedCommitFile = resolveWorkingPath("commit.txt");
-        String savedCommitMessage = null;
-        if (savedCommitFile != null && Files.exists(savedCommitFile)) {
-            try { savedCommitMessage = Files.readString(savedCommitFile, StandardCharsets.UTF_8); }
-            catch (IOException e) { warn("Could not read commit.txt: " + e.getMessage()); }
-        }
-        boolean reviewing = "review".equals(activity) && activeReviewRule != null;
-        if (reviewing) activeReviewRule.captureBefore(this);
-        try {
-            this.prompt = correctionPrompt;
-            executeSingleRun();
-            if (reviewing) activeReviewRule.recordOutcome(this);
-        } finally {
-            this.prompt = originalPrompt;
-            this.currentActivity = previousActivity;
-            // Restore primary-session commit.txt only when the correction session did not
-            // write its own; if it did, that message describes the actual changes made.
-            boolean correctionWroteCommit = savedCommitFile != null && Files.exists(savedCommitFile);
-            if (!correctionWroteCommit && savedCommitMessage != null && savedCommitFile != null) {
-                try {
-                    Files.writeString(savedCommitFile, savedCommitMessage, StandardCharsets.UTF_8);
-                    log("Restored primary commit message from commit.txt");
-                } catch (IOException e) {
-                    warn("Could not restore commit.txt: " + e.getMessage());
-                }
-            }
-        }
+        CorrectionSession.run(this, correctionPrompt, activity);
     }
 
     /**
@@ -1187,27 +1163,48 @@ public class CodingAgentJob extends GitManagedJob {
         harnessStatus().unusual("Git tampering detected (" + violation
             + ") — destroying changes and restarting session");
 
-        // Set the violation message so buildInstructionPrompt() includes
-        // the warning in the restarted session's prompt.
+        // The GIT_TAMPERING_RESTART phase lets the per-phase runner map route
+        // this restart to a more conservative agent than the primary work.
         gitTamperingViolation = violation;
+        restartAfterViolation(Phase.GIT_TAMPERING_RESTART, () -> gitTamperingViolation = null);
+        return true;
+    }
 
-        // Tag the restart with the GIT_TAMPERING_RESTART phase so the
-        // per-phase runner map can route it to a different runner than the
-        // primary work (e.g., a more conservative agent that won't repeat
-        // the tampering).
+    @Override
+    protected boolean onInvalidFilesDetected(List<String> invalidFiles) {
+        String violation = String.join(", ", invalidFiles);
+        warn("Agent left binary files in the working tree: " + violation
+            + " -- restarting session to clean up");
+        harnessStatus().unusual("Binary file litter detected (" + violation
+            + ") — restarting session to remove it");
+
+        invalidFilesViolation = violation;
+        restartAfterViolation(null, () -> invalidFilesViolation = null);
+        return true;
+    }
+
+    /**
+     * Restarts the primary agent session after a {@link GitManagedJob} guardrail
+     * tripped (git tampering, binary-file litter), restoring the prior activity
+     * tag and clearing the violation afterward so its prompt warning does not
+     * bleed into later retries. The caller sets the violation field whose
+     * warning {@link #buildInstructionPrompt()} prepends before calling this.
+     *
+     * @param restartPhase   phase tag routing the restart to a runner, or
+     *                       {@code null} to restart in the natural phase
+     * @param clearViolation resets the violation field once the session returns
+     */
+    private void restartAfterViolation(Phase restartPhase, Runnable clearViolation) {
         String previousActivity = currentActivity;
-        currentActivity = Phase.GIT_TAMPERING_RESTART.wireName();
+        if (restartPhase != null) {
+            currentActivity = restartPhase.wireName();
+        }
         try {
-            // Re-run the session. The prompt will now include a stern warning
-            // about the violation and the consequences of repeating it.
             executeSingleRun();
         } finally {
             currentActivity = previousActivity;
-            // Clear the violation so it doesn't persist into further retries.
-            gitTamperingViolation = null;
+            clearViolation.run();
         }
-
-        return true;
     }
 
     /**

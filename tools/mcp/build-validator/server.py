@@ -17,6 +17,7 @@ Available checks:
   duplicate_code- No blocks of 10+ identical lines across different files
   javadoc       - All non-private classes and methods have Javadoc documentation
   errorprone    - Java compiler ErrorProne checks (MissingOverride, UnusedVariable, etc.)
+  invalid_files - No invalid binary (*.bin) files present anywhere in the repo
 
 For running the actual test suite use mcp__ar-test-runner__start_test_run.
 
@@ -70,7 +71,23 @@ BUILD_REQUIRED_CHECKS = frozenset({"code_policy", "test_timeouts", "duplicate_co
 # cause a duplicate compile when the errorprone check also runs mvn compile.
 COMPILE_REQUIRED_CHECKS = frozenset()
 
-DEFAULT_CHECKS = ["checkstyle", "code_policy", "test_timeouts", "duplicate_code"]
+DEFAULT_CHECKS = ["checkstyle", "code_policy", "test_timeouts", "duplicate_code",
+                  "invalid_files"]
+
+# Pure-Python checks: scanned by this server directly, never via Maven. They
+# need neither a build nor a subprocess, so they always run regardless of
+# skip_build or a failed build step.
+PYTHON_NATIVE_CHECKS = frozenset({"invalid_files"})
+
+# Extension (including the dot) of files treated as invalid binary litter, and
+# the directory name excluded from the invalid-file scan.
+INVALID_FILE_EXTENSION = ".bin"
+SCAN_EXCLUDED_DIR = ".git"
+
+# Full set of recognized check names, used to validate requests in one place.
+VALID_CHECKS = frozenset({"checkstyle", "code_policy", "test_timeouts",
+                          "duplicate_code", "javadoc", "errorprone",
+                          "invalid_files"})
 
 # Run statuses that mean a validation has finished (used by the blocking
 # get_validation_status mode to decide when to stop waiting).
@@ -404,15 +421,21 @@ class BuildValidator:
                     except Exception:
                         pass
 
-                cmd = self._build_command(check_name)
-                check_start = datetime.now()
-                exit_code = self._run_subprocess(cmd, output_file, run_id)
-                duration = (datetime.now() - check_start).total_seconds()
+                # Pure-Python checks scan the tree directly — no Maven, no
+                # subprocess. They produce their violations inline.
+                if check_name in PYTHON_NATIVE_CHECKS:
+                    check_start = datetime.now()
+                    exit_code, violations = self._run_native_check(check_name, output_file)
+                    duration = (datetime.now() - check_start).total_seconds()
+                else:
+                    cmd = self._build_command(check_name)
+                    check_start = datetime.now()
+                    exit_code = self._run_subprocess(cmd, output_file, run_id)
+                    duration = (datetime.now() - check_start).total_seconds()
 
-                # Extract the output produced by this check only
-                check_output = self._read_from_offset(output_file, offset_before)
-
-                violations = self._parse_violations(check_name, check_output)
+                    # Extract the output produced by this check only
+                    check_output = self._read_from_offset(output_file, offset_before)
+                    violations = self._parse_violations(check_name, check_output)
                 metadata["checks"][i].update({
                     "status": "passed" if exit_code == 0 else "failed",
                     "completed_at": datetime.now().isoformat(),
@@ -469,6 +492,67 @@ class BuildValidator:
                 "-DAR_HARDWARE_DRIVER=native",
             ]
         raise ValueError(f"Unknown check: {check_name!r}")
+
+    # ──────────────────────────────────────────────────────────────────
+    # Native (pure-Python) checks
+    # ──────────────────────────────────────────────────────────────────
+
+    def _run_native_check(self, check_name: str, output_file: Path) -> tuple:
+        """Run a pure-Python check, appending findings to output_file.
+
+        Returns a (exit_code, violations) tuple where exit_code is non-zero
+        when the check found at least one violation.
+        """
+        if check_name == "invalid_files":
+            return self._check_invalid_files(output_file)
+        raise ValueError(f"Unknown native check: {check_name!r}")
+
+    def _check_invalid_files(self, output_file: Path) -> tuple:
+        """Fail when any invalid binary (*.bin) file exists anywhere in the repo.
+
+        Binary litter must never be present: other tooling stages and commits
+        whatever is on disk, so a stray .bin file inevitably ends up in history.
+        The scan walks the filesystem directly (not git) so it catches .bin
+        files even though .gitignore now ignores them — an ignored file is still
+        litter. The git metadata directory is skipped.
+        """
+        invalid = self._scan_invalid_files()
+        if invalid:
+            self._append(output_file,
+                f"Found {len(invalid)} invalid binary (.bin) file(s) in the repository:\n")
+            for rel in invalid:
+                self._append(output_file, f"[ERROR] {rel}: invalid binary (.bin) file present in repository\n")
+        else:
+            self._append(output_file, "No invalid binary (.bin) files found.\n")
+
+        violations = [
+            {
+                "file": rel,
+                "message": (
+                    "Invalid binary (.bin) file present in the repository. Remove it, "
+                    "or generate it outside the repository working tree."
+                ),
+            }
+            for rel in invalid
+        ]
+        return (1 if invalid else 0), violations
+
+    @staticmethod
+    def _scan_invalid_files() -> list:
+        """Return repo-relative paths of every *.bin file, skipping .git."""
+        invalid = []
+        for dirpath, dirnames, filenames in os.walk(PROJECT_ROOT):
+            if SCAN_EXCLUDED_DIR in dirnames:
+                dirnames.remove(SCAN_EXCLUDED_DIR)
+            for name in filenames:
+                if name.endswith(INVALID_FILE_EXTENSION):
+                    full = Path(dirpath) / name
+                    try:
+                        rel = str(full.relative_to(PROJECT_ROOT))
+                    except ValueError:
+                        rel = str(full)
+                    invalid.append(rel)
+        return sorted(invalid)
 
     # ──────────────────────────────────────────────────────────────────
     # Violation parsers
@@ -885,17 +969,19 @@ async def list_tools():
                                 "duplicate_code",
                                 "javadoc",
                                 "errorprone",
+                                "invalid_files",
                             ],
                         },
                         "description": (
                             "Checks to run. Defaults to: checkstyle, code_policy, "
-                            "test_timeouts, duplicate_code.\n"
+                            "test_timeouts, duplicate_code, invalid_files.\n"
                             "  checkstyle     — style rules (no var, no @SuppressWarnings, etc.)\n"
                             "  code_policy    — Producer pattern, GPU memory model, naming conventions\n"
                             "  test_timeouts  — all @Test annotations must have a timeout parameter\n"
                             "  duplicate_code — no 10+ identical lines across different files\n"
                             "  javadoc        — all non-private types/methods have Javadoc\n"
-                            "  errorprone     — Java compiler ErrorProne static analysis"
+                            "  errorprone     — Java compiler ErrorProne static analysis\n"
+                            "  invalid_files  — no invalid binary (*.bin) files anywhere in the repo"
                         ),
                     },
                     "skip_build": {
@@ -1035,12 +1121,10 @@ async def call_tool(name: str, arguments: dict):
     try:
         if name == "start_validation":
             checks = arguments.get("checks", list(DEFAULT_CHECKS))
-            valid = {"checkstyle", "code_policy", "test_timeouts",
-                     "duplicate_code", "javadoc", "errorprone"}
-            bad = [c for c in checks if c not in valid]
+            bad = [c for c in checks if c not in VALID_CHECKS]
             if bad:
                 return [TextContent(type="text",
-                    text=json.dumps({"error": f"Unknown checks: {bad}. Valid: {sorted(valid)}"}))]
+                    text=json.dumps({"error": f"Unknown checks: {bad}. Valid: {sorted(VALID_CHECKS)}"}))]
 
             config = ValidationConfig(
                 checks=checks,
