@@ -1805,6 +1805,7 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
     retrospective_enabled: bool = False,
+    falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
     sensitive_file_protection_enabled: bool = True,
     review_enabled: bool = True,
@@ -1913,6 +1914,18 @@ def workstream_submit_task(
             or stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
             ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
+        falsification_enabled: When ``True``, activates the falsification phase
+            after the primary session and before the enforcement rules. A
+            separate agent session extracts the primary attempt's load-bearing
+            behavioural claims and the captured evidence bearing on each; the
+            controller then settles each claim mechanically and BOUNCES the job
+            back to a fresh primary run when captured evidence refutes a claim
+            (bounded by a bounce budget). v1 settles claims only from captured
+            artifacts and source — it does not emit probes, so a claim that can
+            only be settled by running something on an unavailable configuration
+            is reported UNSETTLED rather than confirmed. Disabled by default.
+            Configure the analysis model via
+            ``phase_configs='{"falsification":{"model":"claude-sonnet-4-7"}}'``.
         use_tmux: Per-job override for tmux-backed launch, using presence
             semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
@@ -2228,6 +2241,8 @@ def workstream_submit_task(
         payload["enforceOrganizationalPlacement"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
+    if falsification_enabled:
+        payload["falsificationEnabled"] = True
     # Presence semantics: forward useTmux only when explicitly set so an
     # explicit False reaches the controller and overrides the workstream
     # default (the controller distinguishes absent from false via hasField).

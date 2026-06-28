@@ -164,6 +164,9 @@ final class CodingAgentJobCodec {
         if (job.isRetrospectiveEnabled()) {
             sb.append("::retrospectiveEnabled:=true");
         }
+        if (job.isFalsificationEnabled()) {
+            sb.append("::falsificationEnabled:=true");
+        }
         // sensitiveFileProtectionEnabled defaults to TRUE; emit only when false.
         if (!job.isSensitiveFileProtectionEnabled()) {
             sb.append("::sensitiveFileProtectionEnabled:=false");
@@ -266,6 +269,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "retrospectiveEnabled":
                 job.setRetrospectiveEnabled(Boolean.parseBoolean(value));
+                return true;
+            case "falsificationEnabled":
+                job.setFalsificationEnabled(Boolean.parseBoolean(value));
                 return true;
             case "sensitiveFileProtectionEnabled":
                 job.setSensitiveFileProtectionEnabled(Boolean.parseBoolean(value));

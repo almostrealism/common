@@ -115,6 +115,14 @@ public class InstructionPromptBuilder {
     private int inactivityRestartAttempt;
 
     /**
+     * Refutation findings from the falsification phase. When non-empty, a
+     * warning is prepended above all content telling the restarted primary
+     * session that a load-bearing claim it relied on was refuted, with the
+     * captured evidence, so the correction is proximate to the redone decision.
+     */
+    private String falsificationFindings;
+
+    /**
      * When {@code true}, the prompt is for an enforcement-rule correction
      * session rather than the primary work session.  The outer job's
      * {@code enforceChanges} pressure and any enforcement-attempt retry
@@ -349,6 +357,23 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the falsification refutation findings to prepend above all content
+     * when the falsification phase bounces the job back to primary.
+     *
+     * <p>When non-empty, a warning is prepended explaining that a load-bearing
+     * claim the prior attempt relied on was refuted by captured evidence, with
+     * the claim, the dependent hunk, the evidence, and the configuration — so
+     * the correction is proximate to the decision being re-made.</p>
+     *
+     * @param findings the findings block, or {@code null}/empty when not bouncing
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setFalsificationFindings(String findings) {
+        this.falsificationFindings = findings;
+        return this;
+    }
+
+    /**
      * Marks this prompt as belonging to an enforcement-rule correction
      * session rather than the primary work session.
      *
@@ -487,6 +512,23 @@ public class InstructionPromptBuilder {
             sb.append("Leave the changes uncommitted — the harness commits them.\n\n");
             sb.append("Simply stating that you do not see a problem, or that tests seem to ");
             sb.append("pass in your view, is not acceptable. Produce code changes.\n\n");
+            sb.append("---\n\n");
+        }
+
+        // Falsification refutation warning -- prepended when the falsification
+        // phase bounced the job because a load-bearing behavioural claim the
+        // prior attempt relied on was refuted (or left unsettled) by the
+        // captured evidence.  Delivered at the very top so the correction is
+        // proximate to the decision being re-made.
+        if (falsificationFindings != null && !falsificationFindings.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- A LOAD-BEARING CLAIM WAS REFUTED !!\n\n");
+            sb.append("A claim your previous attempt relied on was checked against the ");
+            sb.append("evidence captured during that attempt and did NOT hold up. The ");
+            sb.append("code that depends on it is therefore unsound. Details:\n\n");
+            sb.append(falsificationFindings);
+            sb.append("\nDo NOT re-assert this claim without capturing evidence that ");
+            sb.append("entails it on the configuration the decision runs under. ");
+            sb.append("Reconcile your approach with the evidence above before proceeding.\n\n");
             sb.append("---\n\n");
         }
 

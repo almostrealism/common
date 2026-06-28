@@ -144,6 +144,14 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean retrospectiveEnabled = false;
 
     /**
+     * When {@code true}, jobs created by this factory activate the falsification
+     * phase — a post-primary session that extracts load-bearing behavioural
+     * claims and bounces the job back to primary when captured evidence refutes
+     * one. Defaults to {@code false}; opt in per-job.
+     */
+    private boolean falsificationEnabled = false;
+
+    /**
      * When {@code true} (the default), jobs created by this factory activate the
      * sensitive-file protections: the harness-side {@link FileStager} refuses to
      * stage test files that exist on the base branch, {@link CodingAgentJob#validateChanges()}
@@ -632,6 +640,17 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns the serialized agent-environment JSON, or {@code null} when none
+     * was set. Used by {@link CodingAgentJobConfigurer} to propagate the
+     * environment onto a created job.
+     *
+     * @return the agent-environment JSON object string, or {@code null}
+     */
+    String getAgentEnvJson() {
+        return agentEnvJson;
+    }
+
+    /**
      * Returns the planning document path for jobs.
      */
     public String getPlanningDocument() {
@@ -864,6 +883,25 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setRetrospectiveEnabled(boolean retrospectiveEnabled) {
         this.retrospectiveEnabled = retrospectiveEnabled;
         set("retrospectiveEnabled", String.valueOf(retrospectiveEnabled));
+    }
+
+    /**
+     * Returns whether the falsification phase is active for jobs created by this factory.
+     *
+     * @return {@code true} when falsification is enabled; {@code false} by default
+     */
+    public boolean isFalsificationEnabled() {
+        return falsificationEnabled;
+    }
+
+    /**
+     * Sets whether the falsification phase is active for jobs created by this factory.
+     *
+     * @param falsificationEnabled {@code true} to enable claim falsification after primary work
+     */
+    public void setFalsificationEnabled(boolean falsificationEnabled) {
+        this.falsificationEnabled = falsificationEnabled;
+        set("falsificationEnabled", String.valueOf(falsificationEnabled));
     }
 
     /**
@@ -1301,122 +1339,8 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         List<String> p = getPrompts();
         if (index >= p.size()) return null;
 
-        String workingDirectory = getWorkingDirectory();
-        String repoUrl = getRepoUrl();
-        String defaultWorkspacePath = getDefaultWorkspacePath();
-        String targetBranch = getTargetBranch();
-        String baseBranch = getBaseBranch();
-        String gitUserName = getGitUserName();
-        String gitUserEmail = getGitUserEmail();
-        String workstreamUrl = getWorkstreamUrl();
-
         CodingAgentJob job = new CodingAgentJob(getTaskId(), p.get(index++));
-        job.setAllowedTools(allowedTools);
-        job.setWorkingDirectory(workingDirectory);
-        job.setMaxTurns(maxTurns);
-        job.setMaxBudgetUsd(maxBudgetUsd);
-
-        // Runner, model, effort, and provider are all carried by the
-        // phaseConfigBundle and propagated together via setPhaseConfigBundle
-        // below; no separate scalar runner/model/effort propagation is needed.
-
-        String desc = getDescription();
-        if (desc != null) {
-            job.setDescription(desc);
-        }
-
-        if (repoUrl != null) {
-            job.setRepoUrl(repoUrl);
-        }
-        if (defaultWorkspacePath != null) {
-            job.setDefaultWorkspacePath(defaultWorkspacePath);
-        }
-
-        if (targetBranch != null) {
-            job.setTargetBranch(targetBranch);
-            job.setPushToOrigin(isPushToOrigin());
-        }
-        if (baseBranch != null) {
-            job.setBaseBranch(baseBranch);
-        }
-        if (gitUserName != null) {
-            job.setGitUserName(gitUserName);
-        }
-        if (gitUserEmail != null) {
-            job.setGitUserEmail(gitUserEmail);
-        }
-
-        if (workstreamUrl != null) {
-            job.setWorkstreamUrl(workstreamUrl);
-        }
-
-        if (arManagerUrl != null) {
-            job.setArManagerUrl(arManagerUrl);
-        }
-        if (arManagerToken != null) {
-            job.setArManagerToken(arManagerToken);
-        }
-        job.setDispatchCapable(isDispatchCapable());
-        if (pushedToolsConfig != null) {
-            job.setPushedToolsConfig(pushedToolsConfig);
-        } else {
-            warn("no pushedToolsConfig to propagate to " + job.getTaskId());
-        }
-
-        if (agentEnvJson != null) {
-            job.setAgentEnv(JsonFieldExtractor.parseStringObject(agentEnvJson));
-        }
-
-        if (planningDocument != null) {
-            job.setPlanningDocument(planningDocument);
-        }
-
-        job.setProtectTestFiles(isProtectTestFiles());
-        job.setEnforceChanges(isEnforceChanges());
-        job.setDeduplicationMode(deduplicationMode);
-        job.setMaxDeduplicationPasses(maxDeduplicationPasses);
-        job.setEnforceMavenDependencies(enforceMavenDependencies);
-        job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
-        job.setUseTmux(useTmux);
-        job.setReviewEnabled(reviewEnabled);
-        job.setMaxReviewPasses(maxReviewPasses);
-        job.setRetrospectiveEnabled(retrospectiveEnabled);
-        job.setSensitiveFileProtectionEnabled(sensitiveFileProtectionEnabled);
-        job.setSensitiveFileBypassSignature(sensitiveFileBypassSignature);
-        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
-            job.setPostCompletionCommand(postCompletionCommand);
-            if (postCompletionWorkingDir != null) {
-                job.setPostCompletionWorkingDir(postCompletionWorkingDir);
-            }
-            if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
-                job.setPostCompletionTimeoutSeconds(postCompletionTimeoutSeconds);
-            }
-            if (maxPostCompletionPasses != CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES) {
-                job.setMaxPostCompletionPasses(maxPostCompletionPasses);
-            }
-        }
-
-        String pyReqs = getPythonRequirements();
-        if (pyReqs != null) {
-            job.setPythonRequirements(pyReqs);
-        }
-
-        List<String> depRepos = getDependentRepos();
-        if (depRepos != null && !depRepos.isEmpty()) {
-            job.setDependentRepos(depRepos);
-        }
-
-        for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {
-            job.setRequiredLabel(entry.getKey(), entry.getValue());
-        }
-
-        // Propagate the full per-phase config bundle: it is the single source
-        // of runner, model, effort, and provider (default and per-phase).
-        // setPhaseConfigBundle re-derives the runner-resolution fields from it.
-        if (!phaseConfigBundle.isEmpty()) {
-            job.setPhaseConfigBundle(phaseConfigBundle);
-        }
-
+        CodingAgentJobConfigurer.applyConfiguration(this, job);
         return job;
     }
 
@@ -1554,6 +1478,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "retrospectiveEnabled":
                 this.retrospectiveEnabled = Boolean.parseBoolean(value);
+                return;
+            case "falsificationEnabled":
+                this.falsificationEnabled = Boolean.parseBoolean(value);
                 return;
             case "sensitiveFileProtectionEnabled":
                 this.sensitiveFileProtectionEnabled = Boolean.parseBoolean(value);
