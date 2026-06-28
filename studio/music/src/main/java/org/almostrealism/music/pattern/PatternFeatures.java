@@ -70,15 +70,15 @@ public interface PatternFeatures extends CodeFeatures {
 	 * {@link PatternLayerManager#enableBatched} feature flag
 	 * ({@code AR_PATTERN_BATCHED}):</p>
 	 * <ul>
-	 *   <li><strong>Per-note path</strong> (flag off, default): the legacy
-	 *       sequential per-note dispatch via {@link #renderPerNote}. One
-	 *       {@code evaluate()} per note; the existing acoustic baseline.</li>
-	 *   <li><strong>Batched path</strong> (flag on): the Phase 3 integration via
+	 *   <li><strong>Batched path</strong> (flag on, default): the integration via
 	 *       {@link BatchedPatternLayerRenderer#render}. Per-tick gathers notes
 	 *       into bucket-N tensors and dispatches through
-	 *       {@link org.almostrealism.audio.BatchedPatternRenderer}. The batched
-	 *       path falls back to the per-note path for cases its input gather
-	 *       cannot yet handle.</li>
+	 *       {@link org.almostrealism.audio.BatchedPatternRenderer}. Non-batchable
+	 *       note shapes and continuing notes fall back to the per-note path by
+	 *       design.</li>
+	 *   <li><strong>Per-note path</strong> (flag off): the legacy
+	 *       sequential per-note dispatch via {@link #renderPerNote}. One
+	 *       {@code evaluate()} per note; the existing acoustic baseline.</li>
 	 * </ul>
 	 *
 	 * <p>See {@link #renderPerNote} for the per-note rendering semantics.</p>

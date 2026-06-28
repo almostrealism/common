@@ -107,9 +107,9 @@ import java.util.stream.Stream;
  *
  * <h2>Real-Time Considerations</h2>
  *
- * <p><strong>Current Limitation:</strong> The {@link #sum} method renders all pattern
- * repetitions at once. For real-time rendering, frame range parameters would need
- * to be added to render only elements within the current buffer window.</p>
+ * <p>The {@link #sum} method accepts {@code startFrame} and {@code frameCount}
+ * parameters and renders only the pattern repetitions that overlap the requested
+ * frame window, so it serves both offline and real-time (per-buffer) rendering.</p>
  *
  * @see PatternSystemManager
  * @see PatternLayer
@@ -138,20 +138,6 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * {@link BatchedPatternLayerRenderer} javadoc for the dispatch model.
 	 */
 	public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(true);
-
-	/**
-	 * Default source-samples-per-note used when constructing a per-pattern
-	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
-	 * by the batched-chain benchmarks.
-	 */
-	public static final int BATCHED_SOURCE_LENGTH = 2048;
-
-	/**
-	 * Default target-samples-per-note used when constructing a per-pattern
-	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
-	 * by the batched-chain benchmarks.
-	 */
-	public static final int BATCHED_TARGET_LENGTH = 1024;
 
 	/** The audio channel index for this pattern. */
 	private int channel;

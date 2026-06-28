@@ -4,9 +4,11 @@
 > exists (a benchmark floor that was 99.4% JNI dispatch), **what** it renders
 > (a tiny closed set of note shapes, not an arbitrary graph), **how** it is
 > wired today (flag-gated, classify-and-dispatch, sentinel-guarded), and **what
-> is proven vs. open**. The a2 production source is unchanged since 2026-05-31
-> (`39d7f57b9`); the wiring below is current. Bottleneck has since moved
-> downstream to the a3 DSP/mixdown loop — see [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md).
+> is proven vs. open**. a2 was reworked substantially on
+> `feature/pattern-batched-dispatch` (shared-kernel buckets, batched percussion,
+> in-kernel envelopes); the wiring below is current. The system is now
+> **a2-bound** (~2.34× realtime on a dense scene) — see
+> [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md).
 
 ---
 
@@ -52,6 +54,13 @@ kernel, so there is no O(N) intermediate or Java-side post-sum.
 The conclusion (per-note JNI dispatch is the cost; graph-batching removes ~99.4% of
 it; the win is ~100–1500× depending on chain and density) is what justified building
 a2. It is now built and wired.
+
+**Scope:** the 99.4%-dispatch figure is the **synthetic** benchmark floor. On the real
+curated scene the dominant a2 cost turned out to be a different one — Metal **pipeline-state
+switching** across many distinct compiled kernels, not the arithmetic, the FIR, or the
+frame count. Collapsing the dispatch onto one shared kernel (coarse note-count `BUCKETS`
+plus a single `SOURCE_BUCKET`) cut batched eval from ~761 ms to ~28 ms. See §4.2 /
+[`STATE_OF_PLAY.md`](STATE_OF_PLAY.md).
 
 ---
 
@@ -126,10 +135,10 @@ defeating the point.
 
 ## 3. Current wiring — verified against source
 
-The whole a2 path is unchanged since 2026-05-31 (`39d7f57b9` "Code cleanup."; the two
-supporting files last moved `3edb59355` 2026-05-31 / `08bae4a89` 2026-05-30). The flow
-is **flag → per-note-vs-batched dispatch → studio renderer → engine fused kernel**,
-guarded by two sentinel counters.
+The a2 path was reworked on `feature/pattern-batched-dispatch` (shared-kernel buckets,
+batched percussion, in-kernel envelope generation); the description below is verified
+against current source. The flow is **flag → per-note-vs-batched dispatch → studio
+renderer → engine fused kernel**, guarded by two sentinel counters.
 
 ### 3.1 The flag — on by default
 
@@ -260,19 +269,21 @@ curated scene batched dispatch fires correctly and produces non-silent audio. Va
 2026-06-26:
 
 - **Single melodic channel** (`singleMelodicChannelFullPipeline`, CellList mixdown):
-  `batchedDispatchCount=1388`, `fallbackCount=0`, `peak=0.51`. Every note on the channel
-  classifies as the melodic-SSS shape (`getBatchedInputs()` non-null) and dispatches; no
-  fallback.
+  `fallbackCount=0`. Every note on the channel classifies as the melodic-SSS shape
+  (`getBatchedInputs()` non-null) and dispatches; no fallback. (The test uses a random
+  `realGenome()`, so the peak amplitude is seed-dependent and flaky — it can be `0.0` on
+  some seeds; do not treat a specific peak as a fixture.)
 - **All six channels** (`allChannelsFullPipeline`, PDSL mixdown via
-  `-DAR_PDSL_MIXDOWN=enabled`): `batchedDispatchCount=2220`, `fallbackCount=4568`,
-  `peak=0.56`. Melodic channels batch; **percussive channels correctly fall back** to
-  per-note (they are bare layer-mode notes — `shapeOk=false`, no envelope wrapping — not
-  the melodic-SSS shape, so the fallback is by design, not a defect), and the mix is
-  non-silent.
-- **Warm steady-state** (`*WarmSteadyState`, PDSL mixdown) — both keep up with realtime
-  once warm: single melodic channel `ratio≈0.50` (warm tick ~39 ms vs the 92.9 ms budget
-  at 4096), all six channels `ratio≈0.97` (warm tick ~83 ms), each with clean batched
-  dispatch and non-silent output. The full 6-channel real scene renders at ratio-of-1.
+  `-DAR_PDSL_MIXDOWN=enabled`): both melodic **and** percussion channels batch — percussion
+  now classifies (`BatchedNoteInputs.isPercussionSssShape`) and dispatches through
+  `BatchedPatternLayerRenderer.dispatchWindowPercussion` →
+  `BatchedPatternRenderer.buildBatchedPercussionChainPlaced`; only continuing notes and
+  non-batchable shapes fall to per-note. The mix is non-silent. (Peak is seed-dependent —
+  see the single-channel note above.)
+- **Warm steady-state** (`*WarmSteadyState`, PDSL mixdown) — clean batched dispatch and
+  non-silent output once warm. (The earlier warm-tick ratios here predate the a2
+  shared-kernel rework; for current perf the system is a2-bound at ~2.34× dense — see
+  [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md).)
 
 Both halves of the old `@Ignore` rationale are gone: (a) the `GeneratedOperation`
 pool-exhaustion / compile-reuse blocker was fixed by the June-2026 argument-aggregation
@@ -311,12 +322,12 @@ real curated scene for melodic channels, percussive channels fall back as design
 per-method.
 
 Reasonable next steps, in rough order:
-- **Validate the remaining methods** — the warm steady-state (`*WarmSteadyState`) and the
-  continuous render (`renderAllChannelsContinuousToFile`) methods, plus a broader genome
-  sweep — then **flip `AR_PATTERN_BATCHED` on by default**, since the mechanism is now
-  validated end-to-end on real audio.
-- **a1/a2/a3 ring decoupling** (the streaming shape in [STATE_OF_PLAY.md](STATE_OF_PLAY.md)
-  §3): run a2 on a worker K buffers ahead so pattern prep leaves the realtime critical path.
+- **5× — the a2 kernel redesign.** The system is now a2-bound (~2.34× dense); reaching 5×
+  needs the batched eval kernel reworked (the shared-`sourceLength` and host marshal cost
+  are the open structural items). This is the headline remaining work — see
+  [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md) §5.
+- **Validate a broader genome sweep** of `BatchedRealSceneRenderTest` (its single-channel
+  method is flaky on random genomes).
 - **a3 mixdown speed** for the all-channels **CellList** path is a separate workstream; the
   PDSL mixdown already addresses it (see [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §7).
 

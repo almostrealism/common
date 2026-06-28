@@ -214,9 +214,9 @@ current default tick is the vectorized row:
 The PDSL tick is **faster than the CellList tick everywhere**, after the `delay_network`
 ring update was de-fragmented into single-expression computations (1382 ms → 3 ms) and
 channel-uniform bodies were vectorized (`mixdown_master_wet` forward 77 ms → 21 ms). The
-remaining per-tick cost is dominated by per-note pattern preparation (~64 ms, one busy
-channel ≈ half) — the open **a2** batched-dispatch integration, tracked in
-[A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
+remaining per-tick cost is dominated by **a2** pattern rendering (now batched — both
+melodic and percussion; ~2.34× realtime on a dense scene, so the system is a2-bound),
+tracked in [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
 
 ---
 

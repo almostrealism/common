@@ -55,9 +55,15 @@ import java.util.Random;
  */
 public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFeatures, RGBFeatures, AudioTestFeatures {
 
-	/** Path to the Samples directory relative to the compose module. */
+	/**
+	 * Curated sample library location, overridable via {@code AR_RINGS_LIBRARY}. Defaults to
+	 * the absolute curated-library path (the same directory that holds {@link #PATTERN_FACTORY}).
+	 * Kept absolute so no repo-root symlink to an out-of-repo location is required; when the
+	 * library is absent (e.g. on CI) {@link #getSamplesDir()} returns {@code null} and synthetic
+	 * fallback samples are used.
+	 */
 	protected static final String SAMPLES_PATH =
-			SystemUtils.getProperty("AR_RINGS_LIBRARY", "../../Samples");
+			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples");
 
 	/**
 	 * Returns the Samples directory if it exists, or {@code null} if it

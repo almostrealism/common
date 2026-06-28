@@ -16,7 +16,6 @@
 
 package org.almostrealism.music.pattern;
 
-import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -30,57 +29,43 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Production integration boundary for the Phase 3 batched pattern rendering path.
+ * Production dispatch site for the batched pattern rendering path.
  *
- * <p>This class is the alongside-the-per-note-path dispatch site activated by the
+ * <p>This class is the batched dispatch boundary activated by the
  * {@code AR_PATTERN_BATCHED} feature flag (see
- * {@link PatternLayerManager#enableBatched}). It collects all rendered notes for
- * a single {@code render} call (one per pattern repetition per
- * {@link org.almostrealism.music.notes.NoteAudioChoice}), buckets the note count
- * to a fixed set of {@link #BUCKETS}, and dispatches through
- * {@link BatchedPatternRenderer} when the underlying per-note inputs
- * (source buffer, pitch ratio, per-sample envelopes) are available.</p>
- *
- * <h2>Bucket caching</h2>
- *
- * <p>The compiled batched kernel is fixed-N at construction time. To avoid
- * per-tick recompilation, note counts are ceiling-rounded to one of
- * {@link #BUCKETS} = {@code {16, 32, 64, 128, 256, 512}}, and compiled renderers
- * are cached per bucket. Variable-N within a bucket is handled by padding
- * unused rows with silent (zero) inputs so they contribute nothing to the
- * accumulate-reduce kernel's output.</p>
- *
- * <h2>Java-side gather (B1)</h2>
- *
- * <p>For each note, the chain needs:</p>
+ * {@link PatternLayerManager#enableBatched}, on by default). For a single
+ * {@code render} call it gathers the overlapping notes, classifies them, and
+ * dispatches the batchable ones through {@link BatchedPatternRenderer}:</p>
  * <ul>
- *   <li>{@code [N, sourceLength]} source audio (per-note source via {@code System.arraycopy})</li>
- *   <li>{@code [N]} pitch ratios</li>
- *   <li>{@code [N, targetLength]} per-sample filter cutoff envelopes</li>
- *   <li>{@code [N, targetLength]} per-sample volume envelopes</li>
+ *   <li><strong>Melodic SSS</strong> notes go through {@link #dispatchWindow}
+ *       and {@link BatchedPatternRenderer#buildBatchedSssChainPlacedFromScalars}.</li>
+ *   <li><strong>Percussion</strong> notes go through
+ *       {@link #dispatchWindowPercussion} and
+ *       {@link BatchedPatternRenderer#buildBatchedPercussionChainPlaced}.</li>
  * </ul>
  *
- * <p>Per the Phase 3 design's §1.7, B1 (per-note {@code System.arraycopy} from
- * cached resampled source buffers) is the gather strategy and was measured at
- * {@code ~5 ms} per tick at 64 notes/m on Mac/macOS-aarch64 — well below the
- * realtime threshold.</p>
+ * <p>Only continuing notes (within-note sampling offset {@code > 0}) and
+ * non-batchable note shapes fall to the per-note path
+ * ({@link PatternFeatures#renderPerNote}) by design.</p>
  *
- * <h2>Current integration status</h2>
+ * <h2>Shared compiled kernel</h2>
  *
- * <p>The per-note producer factory used by
- * {@link RenderedNoteAudio#getProducer(int)} encapsulates the full
- * resample → filter envelope → volume envelope chain as one
- * {@link Producer}, so the underlying inputs ({@code [N, sourceLength]} source
- * buffers, {@code [N]} pitch ratios, {@code [N, ...]} per-row ADSR/envelope
- * tensors) are not yet surfaced at this dispatch boundary. Until that plumbing
- * lands (designated as a follow-on of the §5.8 / §1.7 Phase 3 work), this
- * renderer's {@code render} method falls back to the per-note evaluation path
- * while still exercising the bucket-cache lookup and the
- * {@link BatchedPatternRenderer} instantiation per bucket.</p>
+ * <p>The compiled batched kernel is fixed-shape at construction time. To share
+ * one kernel across ticks, note counts are ceiling-rounded to one of
+ * {@link #BUCKETS} = {@code {64, 128, 256, 512}} and per-dispatch source
+ * lengths are rounded up to {@link #SOURCE_BUCKET}, so every tick reuses the
+ * same compiled renderer (cached per resulting shape). Variable-N within a
+ * bucket is handled by padding unused rows with silent (zero) inputs so they
+ * contribute nothing to the accumulate-reduce kernel's output.</p>
  *
- * <p>When the per-note input plumbing lands, the fallback is replaced by a
- * single {@link BatchedPatternRenderer#buildBatchedChain} dispatch on the
- * gathered tensors — no signature changes at this dispatch boundary.</p>
+ * <h2>Gather and envelopes</h2>
+ *
+ * <p>Melodic gathers are memoized ({@link #gatherCache}) because their note
+ * sources are stable raw sample references. Percussion is not cached — each
+ * gather builds {@code fit()} source copies that are freed between ticks — so
+ * percussion re-gathers fresh on every tick with a future-side window filter.
+ * Per-row ADSR envelopes are generated in-kernel from {@code [N]} ADSR scalar
+ * columns (filter and volume); there are no per-sample envelope inputs.</p>
  *
  * @see BatchedPatternRenderer
  * @see PatternLayerManager#enableBatched
@@ -263,11 +248,14 @@ public final class BatchedPatternLayerRenderer {
 	 * is set. The {@code features} argument supplies the per-note fallback path
 	 * via {@link PatternFeatures#renderPerNote}.</p>
 	 *
-	 * <p>Bucket-cache priming: each render call counts the destination notes
-	 * after the standard {@link PatternElement#getNoteDestinations} flatMap and
-	 * forces creation of the bucket's compiled renderer. The actual
-	 * {@link BatchedPatternRenderer#buildBatchedChain} dispatch is gated on
-	 * the per-note input plumbing — see the class javadoc.</p>
+	 * <p>Each render call gathers the destination notes via the standard
+	 * {@link PatternElement#getNoteDestinations} flatMap, classifies the notes
+	 * overlapping the window, and dispatches the batchable ones through the
+	 * shared compiled kernel (melodic via
+	 * {@link BatchedPatternRenderer#buildBatchedSssChainPlacedFromScalars},
+	 * percussion via
+	 * {@link BatchedPatternRenderer#buildBatchedPercussionChainPlaced}) — see
+	 * the class javadoc.</p>
 	 *
 	 * @param features     the {@link PatternFeatures} instance providing the
 	 *                     fallback per-note path

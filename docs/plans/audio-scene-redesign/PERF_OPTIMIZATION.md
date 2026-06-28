@@ -15,21 +15,23 @@ against the deterministic curated scene (persisted `scene-settings.json`, seed 5
 | Tick component | Cost | Verdict |
 |---|---|---|
 | **PDSL mixdown forward** (`mixdown_master_wet`) | **~34 ms** @ 8192 | **Already ≈5× realtime.** Not the bottleneck. |
-| **a2 pattern prep — one dense percussion channel** | **~3.8 s** (94% of the tick) | **The wall.** |
+| **a2 pattern prep — one dense percussion channel** | ~3.8 s (94% of the tick) | **Was the wall — now resolved** (percussion batches, lever 1 below); this profile predates it. |
 | gather (build note destinations) | ~156 ms/tick | Secondary, a2 |
 | automation refresh / streaming / clock | < 5 ms | Negligible |
 
-**The 3.8 s is Java-side per-note graph building, not GPU compute.** The captured
-profile has `compiled_operations=0`, ~67 k nodes, and recorded kernel time is a
-rounding error. A dense window renders `getProducer().evaluate()` **per percussion
-hit** (hundreds of notes → ~67 k-node graph).
+**The 3.8 s was Java-side per-note graph building, not GPU compute.** The captured
+profile had `compiled_operations=0`, ~67 k nodes, and recorded kernel time a rounding
+error: a dense window rendered `getProducer().evaluate()` **per percussion hit**
+(hundreds of notes → ~67 k-node graph).
 
-**Why:** the a2 batched-dispatch path only ever handled the **melodic-SSS** note shape.
-Percussion notes never classify, so they fall to the per-note path. The curated
-`pattern-factory.json` is **11/14 percussion** (Kicks, Hats, Toms, Claps, Percs, Rise,
-…) vs 3 melodic (Chord/Lead/Bass), and **each channel is exclusively one type — there
-is no mixing of melodic and percussion on a channel.** So a percussion channel is 100%
-per-note today.
+**Why (the original diagnosis):** at the time, the a2 batched-dispatch path only handled
+the **melodic-SSS** note shape, so percussion notes never classified and fell to the
+per-note path. The curated `pattern-factory.json` is **11/14 percussion** (Kicks, Hats,
+Toms, Claps, Percs, Rise, …) vs 3 melodic (Chord/Lead/Bass), and **each channel is
+exclusively one type**, so a dense percussion channel was 100% per-note. **This is now
+resolved — percussion batches** (`BatchedNoteInputs.isPercussionSssShape` +
+`BatchedPatternLayerRenderer.dispatchWindowPercussion`); the 3.8 s wall is closed and the
+system is a2-bound at ~2.34× dense.
 
 ## Levers (ranked by impact × reusability)
 
@@ -100,7 +102,11 @@ whole-bank op (one `[C]` assign per scalar slot; one `[C,taps]` gather for coeff
   change the percussion stage cost (so the bottleneck is not a cache miss).
 
 ## Status
-- Profiling complete; bottleneck = a2 percussion per-note rendering.
+- Profiling complete; the original bottleneck (a2 percussion per-note rendering) is
+  **resolved** — percussion now batches (lever 1, done).
 - Partial batching (mixed-window split) was tried and reverted — overkill, since channels
   are homogeneous.
-- Next: implement the batched percussion path (lever 1), measure against the harness.
+- Current state: the system is **a2-bound at ~2.34× dense**; reaching the ≥5× goal needs
+  the a2 batched eval kernel redesigned (shared-`sourceLength` and host marshal are the
+  open structural costs). See [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md) §5 for the current
+  source of truth.

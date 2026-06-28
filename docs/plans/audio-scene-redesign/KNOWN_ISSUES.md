@@ -5,8 +5,8 @@
 > acting — entries reflect what was true when written. Referenced from
 > [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder.
 >
-> §1–§7 are **live**. §8 is a **resolved-issues record** kept so the fixes are not
-> re-litigated or re-broken.
+> §1–§5 and §7 are **live**. §6 and §8 are a **resolved-issues record** kept so the
+> fixes are not re-litigated or re-broken.
 
 ---
 
@@ -93,23 +93,19 @@ Two runtime constraints remain live for callers:
   the file is actually written. True stereo is outstanding (see
   [STATE_OF_PLAY.md](STATE_OF_PLAY.md) §5).
 
-## 6. a2 batched dispatch does not fire for the full real-scene pattern path (the open blocker)
+## 6. a2 batched dispatch on the full real-scene pattern path — RESOLVED
 
-The batched-pattern *mechanism* is correctness-validated on the **synthetic** sentinel
-path (`studio/music`: `BatchedDispatchSentinelTest`, `BatchedVsPerNoteRmsTest`,
-`BatchedRealtimeTickTest` — all passing). On the **full curated-library scene**, batched
-dispatch does not reliably fire — some methods render `peak=0.0` (silence). The a1→a2
-seam is "classify-and-dispatch" over a closed set of note shapes; an unhandled real shape
-falls through to silence rather than erroring, so the fix is to ensure every production
-note shape is classified and dispatched. `studio/compose/.../pattern/test/BatchedRealSceneRenderTest.java`
-is `@Ignore`d for this reason.
-
-> **Re-check the ignore rationale.** That `@Ignore` text *also* cites the old
-> argument-aggregation / `GeneratedOperation`-pool blocker as a co-reason. That half is
-> now **resolved** (§8.1), so the test is closer to re-enablable than its annotation
-> reads — but it could not be verified by audit because it needs the curated library
-> (§7), which is absent from CI/the repo. Full treatment of this item:
-> [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
+The batched-pattern *mechanism* was first correctness-validated on the **synthetic**
+sentinel path (`studio/music`: `BatchedDispatchSentinelTest`, `BatchedVsPerNoteRmsTest`,
+`BatchedRealtimeTickTest`). It now also fires on the **full curated-library scene**: both
+melodic-SSS and percussion note shapes are classified and dispatched
+(`BatchedPatternLayerRenderer.dispatchWindow` / `dispatchWindowPercussion`), so the
+earlier `peak=0.0` silence on unhandled shapes is gone, and the old argument-aggregation /
+`GeneratedOperation`-pool co-blocker is itself resolved (§8.1).
+`studio/compose/.../pattern/test/BatchedRealSceneRenderTest.java` is **re-enabled** (no
+longer `@Ignore`d); its `singleMelodicChannelFullPipeline` uses a random `realGenome()` and
+is therefore flaky (peak can be `0.0` on some seeds). Full treatment:
+[A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
 
 ## 7. Real-scene tests depend on the absolute-path curated library
 
