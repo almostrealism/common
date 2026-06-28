@@ -667,18 +667,60 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 		if (weight != null) params.add(weight);
 		if (bias != null) params.add(bias);
 
+		return layer("dynamicTanh", shape, shape,
+				input -> dynamicTanh(c(input), alpha, weight, bias), params, requirements);
+	}
+
+	/**
+	 * {@code DynamicTanh} (DyT) normalization as a {@link CollectionProducer} rather than a
+	 * {@link CellularLayer}.
+	 *
+	 * <p>Computes {@code y = weight ⊙ tanh(alpha · x) + bias} over the trailing feature axis, the
+	 * producer-level form of {@link #dynamicTanh(TraversalPolicy, PackedCollection, PackedCollection,
+	 * PackedCollection, ComputeRequirement...)}. The {@link CellularLayer} overload delegates here so
+	 * the two cannot drift; this form is used by computations that compose DyT inline (for example the
+	 * query/key normalization inside the learned-resampling transformer block) rather than as a
+	 * standalone trainable layer.</p>
+	 *
+	 * @param input  the input producer; the affine parameters apply over its trailing feature axis
+	 * @param alpha  the learnable scale applied inside {@code tanh}; a scalar ({@code [1]}) or one
+	 *               value per feature
+	 * @param weight the learnable per-feature output scale (may be {@code null} for no scale)
+	 * @param bias   the learnable per-feature output shift (may be {@code null} for no shift)
+	 * @return the normalized producer, with the same shape as {@code input}
+	 */
+	default CollectionProducer dynamicTanh(CollectionProducer input,
+										   PackedCollection alpha,
+										   PackedCollection weight,
+										   PackedCollection bias) {
+		if (alpha == null) {
+			throw new IllegalArgumentException("DynamicTanh requires a learnable alpha");
+		}
+
+		if ((weight != null && weight.getShape().getDimensions() != 1) ||
+				(bias != null && bias.getShape().getDimensions() != 1)) {
+			throw new IllegalArgumentException("DynamicTanh weight and bias must be 1-dimensional");
+		}
+
+		TraversalPolicy shape = input.getShape();
+		int size = weight != null ? weight.getShape().getTotalSize()
+				: bias != null ? bias.getShape().getTotalSize()
+				: shape.length(shape.getDimensions() - 1);
+
+		int alphaSize = alpha.getShape().getTotalSize();
+		if (alphaSize != 1 && alphaSize != size) {
+			throw new IllegalArgumentException("DynamicTanh alpha must be a scalar or match the feature size");
+		}
+
 		PackedCollection a = alpha.flatten();
 		PackedCollection w = weight == null ? null : weight.flatten();
 		PackedCollection b = bias == null ? null : bias.flatten();
 
-		return layer("dynamicTanh", shape, shape, input -> {
-			CollectionProducer in = c(input).reshape(-1, size).traverse(1);
-			CollectionProducer out = tanh(in.multiply(cp(a)));
+		CollectionProducer in = input.reshape(-1, size).traverse(1);
+		CollectionProducer out = tanh(in.multiply(cp(a)));
+		if (w != null) out = out.multiply(cp(w));
+		if (b != null) out = out.add(cp(b));
 
-			if (w != null) out = out.multiply(cp(w));
-			if (b != null) out = out.add(cp(b));
-
-			return out.reshape(shape);
-		}, params, requirements);
+		return out.reshape(shape);
 	}
 }
