@@ -3,7 +3,7 @@
 > Live constraints relevant to the audio-scene-redesign / real-time / PDSL DSP work.
 > The PDSL mixdown path is merged to `master`. Verify against current code before
 > acting — entries reflect what was true when written. Referenced from
-> [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder.
+> [NEXT_STEP.md](NEXT_STEP.md) and the other docs in this folder.
 >
 > §1–§5 and §7 are **live**. §6 and §8 are a **resolved-issues record** kept so the
 > fixes are not re-litigated or re-broken.
@@ -91,7 +91,7 @@ Two runtime constraints remain live for callers:
 - **Stereo write gating.** `WaveOutput.write` gates on the *minimum* frame count across
   channels; the mono master output is streamed to **both** stereo writers (dual-mono) so
   the file is actually written. True stereo is outstanding (see
-  [STATE_OF_PLAY.md](STATE_OF_PLAY.md) §5).
+  [NEXT_STEP.md](NEXT_STEP.md)).
 
 ## 6. a2 batched dispatch on the full real-scene pattern path — RESOLVED
 
@@ -193,4 +193,4 @@ The full durable model lives in
 [docs/internals/backend-compilation-and-dispatch.md](../../internals/backend-compilation-and-dispatch.md).
 This fix unblocked Metal as a *sustained* backend; it did not by itself make rendering
 real-time (that was the DSP/mixdown loop, since migrated to PDSL — see
-[STATE_OF_PLAY.md](STATE_OF_PLAY.md)).
+[NEXT_STEP.md](NEXT_STEP.md)).

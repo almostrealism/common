@@ -6,9 +6,15 @@
 > wired today (flag-gated, classify-and-dispatch, sentinel-guarded), and **what
 > is proven vs. open**. a2 was reworked substantially on
 > `feature/pattern-batched-dispatch` (shared-kernel buckets, batched percussion,
-> in-kernel envelopes); the wiring below is current. The system is now
-> **a2-bound** (~2.34× realtime on a dense scene) — see
-> [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md).
+> in-kernel envelopes); the wiring below is current.
+>
+> **CORRECTION (2026-06-28):** the "system is now a2-bound (~2.34×), 5× needs an a2 kernel
+> redesign" claim (here and in §5) is **superseded by measurement.** With the a2 decoupling in
+> place the steady-state bottleneck is the **a3 mixdown forward** (fixed per-dispatch encode/arg-bind
+> overhead); a2 runs ahead and only gates at 8192. a2's *mechanism* documented below is current and
+> correct — only its *bottleneck framing* is wrong. Authoritative now:
+> [`pdsl-streams-plan/`](pdsl-streams-plan/) (`04 §0b`, `05` Phase 2) and the claim ledger. Measured
+> steady-state ~2–2.4× realtime.
 
 ---
 
@@ -60,7 +66,7 @@ curated scene the dominant a2 cost turned out to be a different one — Metal **
 switching** across many distinct compiled kernels, not the arithmetic, the FIR, or the
 frame count. Collapsing the dispatch onto one shared kernel (coarse note-count `BUCKETS`
 plus a single `SOURCE_BUCKET`) cut batched eval from ~761 ms to ~28 ms. See §4.2 /
-[`STATE_OF_PLAY.md`](STATE_OF_PLAY.md).
+[`NEXT_STEP.md`](NEXT_STEP.md).
 
 ---
 
@@ -283,7 +289,7 @@ curated scene batched dispatch fires correctly and produces non-silent audio. Va
 - **Warm steady-state** (`*WarmSteadyState`, PDSL mixdown) — clean batched dispatch and
   non-silent output once warm. (The earlier warm-tick ratios here predate the a2
   shared-kernel rework; for current perf the system is a2-bound at ~2.34× dense — see
-  [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md).)
+  [`NEXT_STEP.md`](NEXT_STEP.md).)
 
 Both halves of the old `@Ignore` rationale are gone: (a) the `GeneratedOperation`
 pool-exhaustion / compile-reuse blocker was fixed by the June-2026 argument-aggregation
@@ -308,7 +314,7 @@ note-classification path itself was unchanged since 2026-05-31.
   measurement** (from `AudioScenePdslBenchmarkTest`, `BENCH_MEASURES=64`), **not** a
   CI-gated or source-verifiable number.
 - The downstream a3 DSP/mixdown migration to PDSL is its own workstream — see
-  [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md) and
+  [`NEXT_STEP.md`](NEXT_STEP.md) and
   [`PDSL_DIFFERENCES.md`](PDSL_DIFFERENCES.md).
 
 ---
@@ -325,7 +331,7 @@ Reasonable next steps, in rough order:
 - **5× — the a2 kernel redesign.** The system is now a2-bound (~2.34× dense); reaching 5×
   needs the batched eval kernel reworked (the shared-`sourceLength` and host marshal cost
   are the open structural items). This is the headline remaining work — see
-  [`STATE_OF_PLAY.md`](STATE_OF_PLAY.md) §5.
+  [`NEXT_STEP.md`](NEXT_STEP.md).
 - **Validate a broader genome sweep** of `BatchedRealSceneRenderTest` (its single-channel
   method is flaky on random genomes).
 - **a3 mixdown speed** for the all-channels **CellList** path is a separate workstream; the

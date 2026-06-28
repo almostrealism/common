@@ -7,7 +7,7 @@ rest of the project; the audio primitives add stateful and multi-channel block f
 top of the interpreter core.
 
 For broader context on the audio path this substrate backs, see
-[STATE_OF_PLAY.md](STATE_OF_PLAY.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+[NEXT_STEP.md](NEXT_STEP.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 ## Where the code lives
 

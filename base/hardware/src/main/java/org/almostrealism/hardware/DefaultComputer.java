@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.ArrayDeque;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -384,6 +385,27 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
 
 	/**
+	 * Diagnostic counter: total kernel-signature lookups against {@link #instructionsCache},
+	 * one per call to {@code getScopeInstructionsManager}. Cache hits equal this value minus
+	 * {@link #instructionCacheMisses}.
+	 */
+	public static final AtomicLong instructionCacheLookups = new AtomicLong();
+
+	/**
+	 * Diagnostic counter: lookups that missed and constructed a new {@link ScopeInstructionsManager}
+	 * — a structurally distinct kernel encountered for the first time, or re-encountered after
+	 * eviction, which must be compiled rather than reused.
+	 */
+	public static final AtomicLong instructionCacheMisses = new AtomicLong();
+
+	/**
+	 * Diagnostic counter: managers evicted from {@link #instructionsCache} on capacity overflow.
+	 * Each eviction destroys the manager's compiled native kernel, so a later lookup of the same
+	 * signature misses and recompiles.
+	 */
+	public static final AtomicLong instructionCacheEvictions = new AtomicLong();
+
+	/**
 	 * Constructs a new DefaultComputer associated with the given hardware instance.
 	 * Initializes all caches and sets up eviction listeners for resource cleanup.
 	 *
@@ -394,7 +416,21 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		this.requirements = ThreadLocal.withInitial(ArrayDeque::new);
 		this.instructionsCache = new FrequencyCache<>(500, 0.4);
 		this.instructionsCache.setEvictionListener(
-				(key, mgr) -> mgr.destroy());
+				(key, mgr) -> {
+					instructionCacheEvictions.incrementAndGet();
+					mgr.destroy();
+				});
+	}
+
+	/**
+	 * Resets the diagnostic instruction-cache counters ({@link #instructionCacheLookups},
+	 * {@link #instructionCacheMisses}, {@link #instructionCacheEvictions}) to zero. Intended for
+	 * measurement harnesses that attribute kernel compilation to a specific phase or scene.
+	 */
+	public static void resetCacheCounters() {
+		instructionCacheLookups.set(0);
+		instructionCacheMisses.set(0);
+		instructionCacheEvictions.set(0);
 	}
 
 	/**
@@ -532,6 +568,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		// per thread, which let a reused kernel encode into a command buffer the executing
 		// thread never committed; MetalDataContext now shares one context.)
 		String cacheKey = Objects.requireNonNull(signature);
+		instructionCacheLookups.incrementAndGet();
 
 		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
 				accessListener =mgr -> {
@@ -544,6 +581,8 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 		return instructionsCache.computeIfAbsent(cacheKey,
 				() -> {
+					instructionCacheMisses.incrementAndGet();
+
 					ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
 							new ScopeInstructionsManager<>(context, scope, accessListener);
 

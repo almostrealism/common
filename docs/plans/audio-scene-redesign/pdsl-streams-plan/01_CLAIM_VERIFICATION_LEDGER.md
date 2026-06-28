@@ -12,6 +12,12 @@
 > load-bearing entries were spot-checked firsthand (see [02](02_GROUND_TRUTH_ARCHITECTURE.md));
 > it remains living — update an entry in the same change that changes the underlying code.
 
+> **Source docs deleted (2026-06-28).** Three of the sibling docs this ledger adjudicates —
+> `STATE_OF_PLAY.md`, `PERF_OPTIMIZATION.md`, `PDSL_STREAMS.md` — were removed as outdated once their
+> claims were resolved (see the measurement update below); their full text remains in git history,
+> and the current status / next step now lives in [`../NEXT_STEP.md`](../NEXT_STEP.md). Entries below
+> that cite them by `source:` are therefore historical origin records, not live links.
+
 ## The headline result
 
 | Status | Count | Meaning for the plan |
@@ -38,6 +44,40 @@ batched kernel; vectorized `for each channel` is on by default; and the per-note
 fan-out described in [02](02_GROUND_TRUTH_ARCHITECTURE.md). Note the asymmetry: the *mechanisms*
 the prior work added are real and verified; the *performance numbers and causal stories* it
 attached to them are not.
+
+---
+
+## 2026-06-28 measurement update (much of the performance narrative is now measured)
+
+The performance claims below marked `unverified-needs-measurement` were the whole reason this
+ledger existed. They have since been **measured** through the pinned harness — recorded with
+receipts in [04 §0b](04_FEASIBILITY_GATE.md) and [05 Phase 2](05_MIGRATION_PLAN.md), and
+re-confirmed by an independent 2026-06-28 session (runs `c87241fb`, `074fecbf`, `f4ac91ad`,
+`68bfcc17`). Status changes, overriding the per-entry status further down:
+
+- **→ `verified-false` (corrected): "the system is a2-bound" / "the remaining per-tick cost is a2
+  pattern prep, not the DSP."** Measured opposite: the a3 mixdown `compiled.forward` is ~98% of the
+  steady-state tick (stage timing, run `074fecbf`); `hotAwait` is small (a3 rarely waits on a2). The
+  system is **a3-bound** at 4096; a2 only gates at 8192. (Sources: STATE_OF_PLAY §2/§4/§5,
+  PERF_OPTIMIZATION, PDSL_DIFFERENCES §7.)
+- **→ `verified-false` (corrected): "the a3 PDSL forward is ~34 ms, already ≈5× and not the
+  bottleneck; gather ~156 ms/tick."** Measured: forward ~40 ms @4096 / ~45–52 ms @8192 (the
+  bottleneck); gather ~6 ms @4096 / ~17 ms @8192. (Source: PERF_OPTIMIZATION.)
+- **→ `verified-true` (measured): the a3 forward is fixed per-dispatch overhead, not GPU compute.**
+  `forward = F + k·N` with F ≈ 21 ms buffer-size-independent; the real DSP kernels run ~10–20 µs
+  (compile-vs-run proof, 05 Phase 2), localized to `MetalCommandRunner` per-dispatch encoder-create
+  + arg-bind. The prior "5× needs an a2 kernel redesign" conclusion is **withdrawn**; the 5× lever
+  is the a3 forward's per-dispatch overhead.
+- **→ `verified-true` (measured): steady-state ratio is ~2–2.4×** (4096 p50 ~2.1–2.4×, 8192
+  ~2.4–3.0×) — confirming the "2.34× dense" order of magnitude as a measured, not asserted, value.
+- **→ `verified-false` (caching detour): "the cross-scene kernel cache is broken / pool exhaustion
+  blocks reuse."** `HANDOFF_2026-06-28` raised this; it is false. `Hardware` is a JVM singleton →
+  one `DefaultComputer.instructionsCache`; a second `AudioScene` recompiles **zero** kernels
+  (`instrMisses=0`, `instrEvictions=0`; ~30 distinct kernels ≪ the 500 cap; run `68bfcc17`). This
+  reinforces the verified-true "compile-reuse / pool-exhaustion resolved" entry below. (See HANDOFF §8.)
+
+The remaining `unverified-needs-measurement` entries (parity A/B, native-vs-hybrid ratios, the
+per-note floor micro-benchmarks) are unaffected and still need their named runs.
 
 ---
 

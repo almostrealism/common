@@ -20,11 +20,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 /**
- * An interface for objects that can produce a unique string signature representing their identity.
+ * An interface for objects that can produce a string signature representing their <em>structural</em>
+ * identity — what the object represents or computes, not which instance it happens to be.
  *
- * <p>This interface provides a standardized way for objects to generate signatures that uniquely
- * identify their state, configuration, or structure. Signatures are used for caching, deduplication,
- * identity checking, and optimization in computational graphs.</p>
+ * <p>This interface provides a standardized way for objects to generate signatures that identify
+ * their structure or configuration. Signatures are used for caching, deduplication, identity
+ * checking, and optimization in computational graphs.</p>
  *
  * <h2>Purpose</h2>
  * <p>{@code Signature} is designed for:</p>
@@ -38,11 +39,31 @@ import java.security.NoSuchAlgorithmException;
  * <h2>Signature Properties</h2>
  * <p>A good signature should be:</p>
  * <ul>
- *   <li><strong>Unique:</strong> Different objects should produce different signatures (ideally)</li>
- *   <li><strong>Deterministic:</strong> Same object state always produces the same signature</li>
- *   <li><strong>Stable:</strong> Signature doesn't change unless object identity changes</li>
+ *   <li><strong>Structural:</strong> Two objects produce the <em>same</em> signature whenever they
+ *       are structurally/semantically equivalent — i.e. they represent the same computation or
+ *       value shape — <em>even when they are distinct instances built over different input
+ *       objects</em>. Conversely, structurally different objects produce different signatures.</li>
+ *   <li><strong>Deterministic:</strong> The same structure always produces the same signature</li>
  *   <li><strong>Compact:</strong> Reasonably short for efficient comparison and storage</li>
  * </ul>
+ *
+ * <h2>What a signature is NOT</h2>
+ * <p>A signature is <strong>not</strong> a per-instance identity token. Read every use of the word
+ * "identity" in this interface as <em>structural</em> identity — what the object represents or
+ * computes — and <strong>never</strong> as JVM object identity, a memory address, or
+ * {@link System#identityHashCode(Object)}. Two separately-allocated objects that are structurally
+ * equivalent <strong>must</strong> produce <em>equal</em> signatures. That is the entire purpose:
+ * it is what lets the instruction cache reuse one compiled kernel across distinct computations of
+ * the same shape.</p>
+ *
+ * <p>Concretely: {@code add(cp(a), cp(b))} and {@code add(cp(c), cp(d))} — where {@code a},
+ * {@code b}, {@code c}, {@code d} are <em>different</em> constant collection inputs of the same
+ * shape — produce the <em>same</em> signature; the constant <em>instances</em> do not enter it.
+ * Only the structure does, so {@code subtract(cp(a), cp(b))} produces a <em>different</em>
+ * signature. (Verified by {@code ConstantInputSignatureTest}.) Do <strong>not</strong> infer from
+ * "represents their identity" that signatures are unique per instance — an implementation whose
+ * signature varied from one instance to another structurally-equivalent instance would silently
+ * defeat caching, and is a bug, not the contract.</p>
  *
  * <h2>Default Implementation</h2>
  * <p>The default {@link #signature()} implementation throws {@link UnsupportedOperationException},

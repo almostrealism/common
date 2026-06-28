@@ -127,7 +127,7 @@ The PDSL runner renders ONE master (from the LEFT-region voicings) and streams i
 stereo writers. Since no per-channel pan exists in either path, both are effectively mono
 on current content. **Cost:** none audible; **benefit:** half the DSP work. A true stereo
 image requires a pan stage — new capability, not parity (tracked in
-[STATE_OF_PLAY.md](STATE_OF_PLAY.md) §5).
+[NEXT_STEP.md](NEXT_STEP.md)).
 
 ---
 
@@ -214,9 +214,12 @@ current default tick is the vectorized row:
 The PDSL tick is **faster than the CellList tick everywhere**, after the `delay_network`
 ring update was de-fragmented into single-expression computations (1382 ms → 3 ms) and
 channel-uniform bodies were vectorized (`mixdown_master_wet` forward 77 ms → 21 ms). The
-remaining per-tick cost is dominated by **a2** pattern rendering (now batched — both
-melodic and percussion; ~2.34× realtime on a dense scene, so the system is a2-bound),
-tracked in [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
+remaining per-tick cost is the **a3 mixdown forward** (fixed per-dispatch encode/arg-bind
+overhead; ~2–2.4× realtime steady-state) — *not* a2, which runs ahead and only gates at 8192.
+(The earlier "a2-bound" aside here is **superseded by measurement** — see
+[NEXT_STEP.md](NEXT_STEP.md) and the
+[claim ledger](pdsl-streams-plan/01_CLAIM_VERIFICATION_LEDGER.md).)
+a2 batching (melodic + percussion) is tracked in [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
 
 ---
 

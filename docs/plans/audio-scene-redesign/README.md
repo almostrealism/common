@@ -4,25 +4,35 @@
 > swap, all DSP defined in PDSL, acoustic parity with the released system, at/under
 > ratio-of-1 (~92.9 ms/tick at 44.1 kHz / 4096 frames).
 >
-> **Where it stands (2026-06-27, `feature/pattern-batched-dispatch`):** the a3 DSP/mixdown
+> **Where it stands (updated 2026-06-28, `feature/pattern-batched-dispatch`):** the a3 DSP/mixdown
 > is migrated to PDSL, parity-validated by ear, and runs under the realtime budget by
 > default (faster than the legacy CellList path); the efx-feedback parity has closed its
 > three biggest character gaps. a2 batched pattern dispatch now fires on real scenes
 > (melodic and percussion), `enablePdslMixdown` is default-on, and the a1/a2/a3 ring
-> decoupling is implemented. The remaining headline work is **5×** (the system is a2-bound
-> at ~2.34× dense and needs an a2 kernel redesign), then true stereo, and kernel pre-warm
-> for consistent latency. See STATE_OF_PLAY for the full status.
+> decoupling is implemented and **measured to work** (a2 runs ahead, rarely blocks a3). The
+> system is ~2–2.4× realtime steady-state; the remaining headline work is **5×**, then true
+> stereo and kernel pre-warm. **The 5× bottleneck is the a3 mixdown `compiled.forward`'s fixed
+> per-dispatch encode/arg-bind overhead — NOT a2.** The earlier "a2-bound / needs an a2 kernel
+> redesign" framing is **superseded by measurement** — see [NEXT_STEP.md](NEXT_STEP.md) and
+> `pdsl-streams-plan/04 §0b` / `05` Phase 2.
+>
+> **Authoritative current plan: [`pdsl-streams-plan/`](pdsl-streams-plan/)** (claim-ledger-gated,
+> measurement-first); the single current next step is **[NEXT_STEP.md](NEXT_STEP.md)**. The other
+> docs here are reference (a2 mechanism, PDSL differences, DSP substrate, known issues) and the
+> evidence the ledger adjudicates.
 
 ## Read in this order
 
-1. **[STATE_OF_PLAY.md](STATE_OF_PLAY.md)** — the big picture: goal, current status, the
-   a1/a2/a3 layers, what landed, what's open. **Start here.**
-2. **[A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md)** — the a2 per-note batching
-   subsystem (note model, why batching, wiring). a2 now dispatches melodic and percussion
-   on real scenes; the remaining work is the 5× a2 kernel redesign.
-3. **[PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md)** — the complete PDSL-vs-CellList
-   signal-path difference inventory, the perceptual symptom→cause→lever map, and the
-   swap-impact triage. Read before flipping `enablePdslMixdown`.
+1. **[NEXT_STEP.md](NEXT_STEP.md)** — **the single, current next step**: reduce the a3 mixdown
+   forward's per-dispatch Metal overhead, with the evidence, what's already ruled out, and the
+   acceptance bar. **Start here.**
+2. **[pdsl-streams-plan/](pdsl-streams-plan/)** — the authoritative plan: objective + acceptance,
+   the claim-verification ledger, ground-truth architecture, the run-ahead-stream design, the
+   feasibility gate, the phased migration, risks, tooling, and the dated handoff.
+3. **[A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md)** — the a2 per-note batching subsystem (note
+   model, why batching, wiring) — a settled, working subsystem kept as mechanism reference.
+4. **[PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md)** — the PDSL-vs-CellList signal-path difference
+   inventory and parity triage (parity is a separate effort). Read before flipping `enablePdslMixdown`.
 
 ## Reference
 

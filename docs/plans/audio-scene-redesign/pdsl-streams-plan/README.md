@@ -72,3 +72,10 @@ mixdown-forward's dispatch/encoding overhead by fusing the PDSL mixdown graph in
 (a better-PDSL-platform gain), with the run-ahead-stream construct as the durable home for the
 already-working decoupling. Receipts: [04 §0](04_FEASIBILITY_GATE.md),
 [02](02_GROUND_TRUTH_ARCHITECTURE.md), via `PdslHotPathBreakdownTest`.
+
+> **Confirmed + narrowed (2026-06-28).** An independent session re-measured this thesis (a3
+> `compiled.forward` = ~98% of the steady-state tick, fixed per-dispatch overhead; runs `c87241fb`
+> / `074fecbf` / `f4ac91ad`) and **ruled out** a "cross-scene kernel cache is broken" theory raised
+> mid-stream (cache reuse is flawless — a second scene recompiles zero kernels; run `68bfcc17`, see
+> `HANDOFF_2026-06-28.md §8`). The 5× lever is unchanged: cut the a3 forward's per-dispatch
+> encode/arg-bind overhead — [05 Phase 2](05_MIGRATION_PLAN.md) localizes it to `MetalCommandRunner`.
