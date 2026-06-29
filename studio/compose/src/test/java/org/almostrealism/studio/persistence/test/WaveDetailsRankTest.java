@@ -77,7 +77,7 @@ public class WaveDetailsRankTest extends TestSuiteBase {
 	}
 
 	/** A freshly-created WaveDetails has no rank assigned. */
-	@Test
+	@Test(timeout = 10000)
 	public void rankAbsentByDefault() {
 		WaveDetails details = completeDetails("id-default");
 		Assert.assertFalse(details.hasRank());
@@ -85,7 +85,7 @@ public class WaveDetailsRankTest extends TestSuiteBase {
 	}
 
 	/** A set rank survives a protobuf encode/decode round-trip. */
-	@Test
+	@Test(timeout = 10000)
 	public void rankRoundTripsThroughProto() {
 		WaveDetails details = completeDetails("id-proto");
 		details.setRank(3.5);
@@ -100,7 +100,7 @@ public class WaveDetailsRankTest extends TestSuiteBase {
 	}
 
 	/** An unranked WaveDetails encodes without a rank and decodes as unranked. */
-	@Test
+	@Test(timeout = 10000)
 	public void absentRankRoundTripsThroughProto() {
 		WaveDetails details = completeDetails("id-proto-absent");
 
