@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -27,6 +28,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertFalse;
@@ -182,9 +185,60 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.hasUncommittedChanges(depRepo.toString()));
     }
 
+    /**
+     * Tests that {@link GitOperations#listFilesOnRef} returns the files tracked
+     * on a ref, filtered by suffix, and ignores untracked working-tree files.
+     */
+    @Test(timeout = 10000)
+    public void listFilesOnRefFiltersBySuffix() throws Exception {
+        Path repo = initRepo();
+        Files.writeString(repo.resolve("model.bin"), "x");
+        Files.createDirectories(repo.resolve("sub"));
+        Files.writeString(repo.resolve("sub/weights.bin"), "y");
+        Files.writeString(repo.resolve("README.md"), "docs");
+        gitRun(repo, "add", "model.bin", "sub/weights.bin", "README.md");
+        gitRun(repo, "commit", "-m", "seed");
+        // Publish HEAD as the base-branch remote-tracking ref without a remote.
+        gitRun(repo, "update-ref", "refs/remotes/origin/master", "HEAD");
+
+        // An untracked .bin must NOT appear -- only what is tracked on the ref.
+        Files.writeString(repo.resolve("untracked.bin"), "z");
+
+        Set<String> binFiles = GitOperations.listFilesOnRef(
+                repo.toString(), "origin/master", ".bin", warn());
+        Assert.assertEquals("Expected exactly the two committed .bin files",
+                Set.of("model.bin", "sub/weights.bin"), binFiles);
+
+        Set<String> allFiles = GitOperations.listFilesOnRef(
+                repo.toString(), "origin/master", null, warn());
+        assertTrue("Null suffix returns every tracked file",
+                allFiles.containsAll(Set.of("model.bin", "sub/weights.bin", "README.md")));
+    }
+
+    /**
+     * Tests that {@link GitOperations#listFilesOnRef} fails safe with an empty
+     * set when the ref cannot be resolved.
+     */
+    @Test(timeout = 10000)
+    public void listFilesOnRefReturnsEmptyForUnknownRef() throws Exception {
+        Path repo = initRepo();
+        Files.writeString(repo.resolve("seed.txt"), "seed");
+        gitRun(repo, "add", "seed.txt");
+        gitRun(repo, "commit", "-m", "seed");
+
+        Set<String> files = GitOperations.listFilesOnRef(
+                repo.toString(), "origin/does-not-exist", ".bin", warn());
+        assertTrue("Unknown ref must yield an empty set", files.isEmpty());
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    /** A warning consumer that discards messages, for tests that do not assert on them. */
+    private static Consumer<String> warn() {
+        return message -> { /* ignored in tests */ };
+    }
 
     /**
      * Initialises a new git repository in a temp directory and returns the path.

@@ -496,21 +496,30 @@ public class InstructionPromptBuilder {
             sb.append("Your previous session was BLOCKED and your changes were discarded ");
             sb.append("because you left binary (`.bin`) files in the repository working ");
             sb.append("tree.\n\n");
-            sb.append("**Files detected:** ").append(invalidFilesViolation).append("\n\n");
+            sb.append("**Files you must delete** (these were created during your run; ");
+            sb.append("`.bin` files already present on the base branch are NOT in this list ");
+            sb.append("and must be left alone):\n\n");
+            sb.append(invalidFilesViolation).append("\n\n");
             sb.append("It does not matter whether you committed or staged them — leaving ");
             sb.append("`.bin` files lying around poisons the repository. Other components ");
             sb.append("stage and commit whatever is present, so binary litter inevitably ");
-            sb.append("ends up in the repo history once you leave it behind.\n\n");
-            sb.append("**The rules:**\n");
+            sb.append("ends up in the repo history once you leave it behind. A path prefixed ");
+            sb.append("with a repository name (e.g. `other-repo/model.bin`) is litter in a ");
+            sb.append("dependent repository checked out beside this one — clean those too.\n\n");
+            sb.append("**Do this FIRST, before anything else:** delete exactly the files ");
+            sb.append("listed above. From the working tree you can find and remove every ");
+            sb.append("uncommitted `.bin` file with:\n\n");
+            sb.append("```\nfind . -name '*.bin' -not -path './.git/*' -print -delete\n```\n\n");
+            sb.append("**The rules going forward:**\n");
             sb.append("- Do NOT write any code that generates `.bin` files unless that same ");
             sb.append("code also deletes them before it returns, or writes them to a ");
             sb.append("location OUTSIDE the repository working tree (a temp directory or an ");
             sb.append("explicitly ignored path elsewhere).\n");
             sb.append("- Clean up after yourself. Generated binary artifacts are litter, ");
             sb.append("not deliverables.\n\n");
-            sb.append("**Consequences:** Remove every `.bin` file (or relocate where it is ");
-            sb.append("generated) before you finish. If binary files remain in the working ");
-            sb.append("tree, the job fails.\n\n");
+            sb.append("**Consequences:** Remove every newly created `.bin` file (or relocate ");
+            sb.append("where it is generated) before you finish. If binary litter remains in ");
+            sb.append("the working tree, the job fails.\n\n");
             sb.append("---\n\n");
         }
 
