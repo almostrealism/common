@@ -173,7 +173,7 @@ class InvalidFileDetector implements ConsoleFeatures {
                     .map(repo.root::relativize)
                     .filter(relative -> !baseBranchLitter.contains(toGitPath(relative)))
                     .map(relative -> repo.label == null
-                            ? relative.toString() : repo.label + "/" + relative)
+                            ? relative.toString() : repo.label + File.separator + relative)
                     .collect(Collectors.toList());
         } catch (IOException e) {
             throw new UncheckedIOException(

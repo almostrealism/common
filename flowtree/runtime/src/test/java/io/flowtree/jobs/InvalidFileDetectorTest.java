@@ -60,9 +60,10 @@ public class InvalidFileDetectorTest extends TestSuiteBase {
 		ProcessBuilder pb = new ProcessBuilder(cmd);
 		pb.directory(workDir.toFile());
 		pb.redirectErrorStream(true);
+		pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
 		GitOperations.augmentPath(pb);
-		pb.start().waitFor();
-	}
+		int exit = pb.start().waitFor();
+		if (exit != 0) throw new IOException("git command failed (exit " + exit + "): " + String.join(" ", cmd));
 
 	/** Recursively deletes a temporary directory tree, ignoring failures. */
 	private static void deleteTree(Path root) {
@@ -159,7 +160,7 @@ public class InvalidFileDetectorTest extends TestSuiteBase {
 
 			assertTrue("Litter in either repo must be detected", detector.isDetected());
 			List<String> found = detector.getInvalidFiles();
-			String depPrefixed = dependent.getFileName().toString() + "/weights.bin";
+			String depPrefixed = dependent.getFileName().toString() + File.separator + "weights.bin";
 			assertEquals("Both primary and dependent litter expected", 2, found.size());
 			assertTrue("Primary litter reported relative to its root: " + found,
 					found.contains("model.bin"));

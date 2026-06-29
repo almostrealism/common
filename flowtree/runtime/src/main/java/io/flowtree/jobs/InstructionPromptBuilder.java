@@ -507,9 +507,8 @@ public class InstructionPromptBuilder {
             sb.append("with a repository name (e.g. `other-repo/model.bin`) is litter in a ");
             sb.append("dependent repository checked out beside this one — clean those too.\n\n");
             sb.append("**Do this FIRST, before anything else:** delete exactly the files ");
-            sb.append("listed above. From the working tree you can find and remove every ");
-            sb.append("uncommitted `.bin` file with:\n\n");
-            sb.append("```\nfind . -name '*.bin' -not -path './.git/*' -print -delete\n```\n\n");
+            sb.append("listed above. From the working tree you can *list* `.bin` files with (do NOT bulk-delete; remove ONLY the files listed above):\n\n");
+            sb.append("```\nfind . -name '*.bin' -not -path './.git/*' -print\n```\n\n");
             sb.append("**The rules going forward:**\n");
             sb.append("- Do NOT write any code that generates `.bin` files unless that same ");
             sb.append("code also deletes them before it returns, or writes them to a ");
