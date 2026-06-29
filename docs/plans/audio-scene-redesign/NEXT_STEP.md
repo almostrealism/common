@@ -1,5 +1,15 @@
 # Next Step — Reduce the a3 Mixdown Forward's Per-Dispatch Metal Overhead
 
+> **SUPERSEDED (2026-06-28).** The per-dispatch cost this document attributes to Metal
+> encoder-create + argument-bind has since been **measured** to be dominated by host
+> `MemoryDataCopy` copies forcing a per-op `waitFor`. Commit-cause split on the pinned scene: 100 %
+> completion-driven commits, `cDependency=0`, `cMaxOpen=0`, `meanDispatchesPerCommit ≈ 1.07` (the
+> encoder/arg-bind attribution was the unverified hypothesis `pdsl-streams-plan/HANDOFF_2026-06-28.md`
+> §3 already flagged). **The next step is the `MemoryDataCopy` → `Assignment` migration, not a Metal
+> encoder rewrite** — see [`../ASSIGNMENT_COPY_MIGRATION.md`](../ASSIGNMENT_COPY_MIGRATION.md) and
+> [`BATCHED_AGGREGATE_COPY.md`](BATCHED_AGGREGATE_COPY.md). The content below is retained for its
+> measurements and ruled-out list only.
+
 > **This is the single actionable next step for the AudioScene real-time effort** — deliberately
 > surfaced here instead of buried in the migration plan. The full trail is in
 > [pdsl-streams-plan/05_MIGRATION_PLAN.md](pdsl-streams-plan/05_MIGRATION_PLAN.md) Phase 2 and the

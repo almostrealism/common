@@ -1,5 +1,11 @@
 # Expansion Width Optimization
 
+> **Related (2026-06-28).** The `MemoryDataCopy` ↔ `Assignment` interactions discussed here feed the
+> separate **`MemoryDataCopy` → `Assignment` copy migration**, whose canonical plan is
+> [`ASSIGNMENT_COPY_MIGRATION.md`](ASSIGNMENT_COPY_MIGRATION.md). Expansion-width optimization is
+> **not** a prerequisite for that migration (owner-confirmed); the two were merely committed together
+> (`06b1dd32d`).
+
 ## Context and Origin (why this plan exists)
 
 The MIDI model test suites (`MoonbeamMidiTest`, `MidiTrainingTest`,

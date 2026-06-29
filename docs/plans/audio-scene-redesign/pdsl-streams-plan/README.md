@@ -1,5 +1,14 @@
 # PDSL Run-Ahead Streams — Implementation Plan (from-scratch replan)
 
+> **ROOT-CAUSE UPDATE (2026-06-28).** The steady-state batching collapse analysed across this plan set
+> is now root-caused (measured) to host `MemoryDataCopy` copies forcing a per-op `waitFor`: 100 %
+> completion-driven Metal commits, `meanDispatchesPerCommit ≈ 1.07`, `cDependency=0`. The active
+> effort is the `MemoryDataCopy` → `Assignment` migration —
+> [`../../ASSIGNMENT_COPY_MIGRATION.md`](../../ASSIGNMENT_COPY_MIGRATION.md) (canonical) and
+> [`../BATCHED_AGGREGATE_COPY.md`](../BATCHED_AGGREGATE_COPY.md). Treat the "a3 forward dispatch
+> overhead" framing here as **superseded for the cause**; the measurements and mechanism notes remain
+> valid.
+
 > **Status:** planning, opened 2026-06-27. Authored as a deliberately separate document set
 > from the older `../*.md` files in this folder, because those older docs were written by the
 > prior (failed) attempt and **must be treated as untrusted claims, not facts** (see the Prime

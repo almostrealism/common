@@ -1,5 +1,16 @@
 # AudioScene Redesign — Plan Index
 
+> **ROOT-CAUSE UPDATE (2026-06-28) — read before `NEXT_STEP.md`.** The steady-state batching
+> bottleneck has been **measured and root-caused**: Metal command-buffer batching collapses
+> (`meanDispatchesPerCommit ≈ 1.07`; 100 % of commits are host-`waitFor` completions; `withDep=0`,
+> `cMaxOpen=0`) because **host `MemoryDataCopy` copies force a per-op `waitFor`** — *not* the
+> per-dispatch Metal encoder/arg-bind overhead [`NEXT_STEP.md`](NEXT_STEP.md) hypothesised. The active
+> effort is therefore the general **`MemoryDataCopy` → `Assignment` (kernel) copy migration**:
+> canonical plan → [`../ASSIGNMENT_COPY_MIGRATION.md`](../ASSIGNMENT_COPY_MIGRATION.md); audio
+> all-Metal sub-case → [`BATCHED_AGGREGATE_COPY.md`](BATCHED_AGGREGATE_COPY.md). `NEXT_STEP.md` and the
+> "a3 forward dispatch overhead" framing in `pdsl-streams-plan/` are **superseded for the root cause**
+> (their measurements and ruled-out lists remain on record).
+
 > **Goal:** a real-time `AudioScene` pipeline — batched pattern rendering with live genome
 > swap, all DSP defined in PDSL, acoustic parity with the released system, at/under
 > ratio-of-1 (~92.9 ms/tick at 44.1 kHz / 4096 frames).
