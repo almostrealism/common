@@ -132,7 +132,9 @@ final class FalsificationPromptBuilder {
     /** Appends the results-file schema the analysis session must write. */
     private static void appendResultsFile(StringBuilder sb) {
         sb.append("WRITE THE RESULTS FILE\n\n");
-        sb.append("Write exactly one file, ").append(FalsificationPhase.RESULTS_FILE).append(", with:\n\n");
+        sb.append("Write exactly one file, ")
+                .append(FlowtreeArtifacts.inDirectory(FalsificationPhase.RESULTS_FILE))
+                .append(", with:\n\n");
         sb.append("  {\n");
         sb.append("    \"claimsExtracted\": <N>,\n");
         sb.append("    \"claims\": [\n");
@@ -167,7 +169,7 @@ final class FalsificationPromptBuilder {
         sb.append("  - No commits — the harness commits at session end.\n");
         sb.append("  - No new commands or probes to settle runtime claims (out of scope for v1).\n");
         sb.append("  - EXCEPT: you MAY write one file: ")
-                .append(FalsificationPhase.RESULTS_FILE).append("\n\n");
+                .append(FlowtreeArtifacts.inDirectory(FalsificationPhase.RESULTS_FILE)).append("\n\n");
     }
 
     /**

@@ -69,7 +69,12 @@ import java.util.List;
  */
 class FalsificationPhase {
 
-    /** Result file written by the falsification analysis session. */
+    /**
+     * Bare name of the result file written by the falsification analysis session.
+     * It is written and read under {@link FlowtreeArtifacts#DIRECTORY} (see
+     * {@link FlowtreeArtifacts#inDirectory(String)}); the bare name is retained as
+     * the canonical identifier used in the prompt and read paths.
+     */
     static final String RESULTS_FILE = "falsification-results.json";
 
     /**
@@ -202,7 +207,7 @@ class FalsificationPhase {
         // Delete any stale results file so a session that crashed or timed out
         // in a prior iteration cannot be read as fresh output by classifyResults().
         // A missing file is the safe/correct signal that analysis did not complete.
-        Path staleResults = job.resolveWorkingPath(RESULTS_FILE);
+        Path staleResults = job.resolveWorkingPath(FlowtreeArtifacts.inDirectory(RESULTS_FILE));
         if (staleResults != null) {
             try {
                 Files.deleteIfExists(staleResults);
@@ -280,7 +285,7 @@ class FalsificationPhase {
      */
     private List<ClaimAssessment> classifyResults(CodingAgentJob job) {
         List<ClaimAssessment> assessments = new ArrayList<>();
-        Path resultsFile = job.resolveWorkingPath(RESULTS_FILE);
+        Path resultsFile = job.resolveWorkingPath(FlowtreeArtifacts.inDirectory(RESULTS_FILE));
         if (resultsFile == null || !Files.exists(resultsFile)) return assessments;
         try {
             String json = Files.readString(resultsFile, StandardCharsets.UTF_8);
