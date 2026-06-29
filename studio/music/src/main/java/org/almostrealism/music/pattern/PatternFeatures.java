@@ -113,7 +113,7 @@ public interface PatternFeatures extends CodeFeatures {
 	 * features instance, or {@code null} when no batched dispatch site is
 	 * available.
 	 *
-	 * <p>Implementations that participate in the Phase 3 batched rendering path
+	 * <p>Implementations that participate in the batched rendering path
 	 * (currently {@link PatternLayerManager}) return their per-pattern bucket
 	 * cache so the {@code AR_PATTERN_BATCHED} flag can route through it. The
 	 * default implementation returns {@code null}, which keeps the

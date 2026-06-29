@@ -23,11 +23,9 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 
-import java.util.concurrent.atomic.AtomicLong;
-
 /**
  * Batched pattern renderer implementing the four-kernel chain used by
- * the Phase 3 pattern rendering architecture:
+ * the batched pattern rendering path:
  * <ol>
  *   <li><b>Resample</b> — per-row linear interpolation gather from
  *       {@code [N, sourceLength]} source using {@code [N]} pitch ratios →
@@ -209,9 +207,6 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	/** Bound per-note sampling offsets for the percussion dispatch, {@code [n]}. */
 	private PackedCollection percSamplingOffsets;
 
-	/** Diagnostic: count of percussion-kernel compiles (should stay small if shapes reuse). */
-	public static final AtomicLong percCompileCount = new AtomicLong();
-
 	/**
 	 * Allocates the percussion input buffers on first use, sized to this renderer's
 	 * fixed shape. Shared by the dry and wet percussion dispatches: both read the
@@ -253,14 +248,12 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		ensurePercBuffers(layers);
 		if (wet) {
 			if (percDispatchWet == null) {
-				percCompileCount.incrementAndGet();
 				percDispatchWet = buildBatchedPercussionChainPlaced(percSources, percRatios,
 						percVolumeAdsr, percDestOffsets, percSamplingOffsets, targetLength).get();
 			}
 			return percDispatchWet;
 		}
 		if (percDispatchDry == null) {
-			percCompileCount.incrementAndGet();
 			percDispatchDry = buildBatchedPercussionChainPlaced(percSources, percRatios,
 					null, percDestOffsets, percSamplingOffsets, targetLength).get();
 		}
@@ -429,8 +422,8 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * volume-envelope stage, but the per-note {@code [targetLength]} voiced rows
 	 * are scattered into a {@code [windowWidth]} output at their per-note
 	 * destination offsets (the same mechanism as {@link #buildScatterAdd})
-	 * instead of being summed in alignment. This is the full first-cut real-time
-	 * a2 form: one fused kernel from three source layers to a placed, summed
+	 * instead of being summed in alignment. This is the full real-time pattern
+	 * render form: one fused kernel from three source layers to a placed, summed
 	 * output window. No intermediate buffer is materialized between the chain and
 	 * the placement.
 	 *

@@ -65,48 +65,26 @@ public class MetalCommandRunner {
 	 */
 	private static final int MAX_OPEN = 256;
 
-	/**
-	 * Why an open command buffer was committed — used only to attribute the diagnostic
-	 * commit-cause counters; does not affect commit behaviour.
-	 */
-	private enum CommitCause { MAX_OPEN, DEPENDENCY, COMPLETE, DESTROY }
-
-	/** Total dispatches encoded across all runners since the last counter reset (diagnostic). */
-	public static final AtomicLong diagDispatches = new AtomicLong();
-	/** Dispatches submitted with a same-runner {@link MetalSemaphore} dependency present. */
-	public static final AtomicLong diagDispatchesWithDep = new AtomicLong();
-	/** Commits that fired because the open buffer reached {@link #MAX_OPEN} (batching at the cap). */
-	public static final AtomicLong diagCommitsMaxOpen = new AtomicLong();
-	/** Commits forced because a dispatch depended on the still-open buffer (cross-buffer ordering). */
-	public static final AtomicLong diagCommitsDependency = new AtomicLong();
-	/** Commits driven by a host wait ({@link MetalSemaphore#waitFor()} / completion). */
-	public static final AtomicLong diagCommitsComplete = new AtomicLong();
-	/** Commits performed while destroying the runner. */
-	public static final AtomicLong diagCommitsDestroy = new AtomicLong();
-	/** Running sum of the open-buffer dispatch count at each commit (mean-batch-size numerator). */
-	public static final AtomicLong diagDispatchesAtCommit = new AtomicLong();
-	/** Dispatches issued through {@code AcceleratedOperation.apply()} (diagnostic). */
-	public static final AtomicLong diagApplyDispatches = new AtomicLong();
-	/** apply() host-waits where {@code processing} (cross-provider replacement) was set. */
-	public static final AtomicLong diagApplyProcessingWaits = new AtomicLong();
-	/** apply() host-waits where {@code aggregateCopyOut} (argument aggregation) was set. */
-	public static final AtomicLong diagApplyAggregateWaits = new AtomicLong();
+	/** Total dispatches encoded across all runners since the last reset. */
+	public static final AtomicLong dispatchCount = new AtomicLong();
+	/** Total command-buffer commits across all runners since the last reset. */
+	public static final AtomicLong commitCount = new AtomicLong();
 
 	/**
-	 * Resets the diagnostic commit-cause counters. Intended for performance harnesses measuring a
-	 * bounded window; behaviour-neutral.
+	 * Returns the mean number of dispatches per committed command buffer (the effective GPU batch
+	 * size) since the last {@link #resetBatchSizeCounters()}, or {@code 0} when nothing has committed.
+	 *
+	 * @return mean dispatches per commit
 	 */
-	public static void resetDiagnosticCounters() {
-		diagDispatches.set(0);
-		diagDispatchesWithDep.set(0);
-		diagCommitsMaxOpen.set(0);
-		diagCommitsDependency.set(0);
-		diagCommitsComplete.set(0);
-		diagCommitsDestroy.set(0);
-		diagDispatchesAtCommit.set(0);
-		diagApplyDispatches.set(0);
-		diagApplyProcessingWaits.set(0);
-		diagApplyAggregateWaits.set(0);
+	public static double meanBatchSize() {
+		long commits = commitCount.get();
+		return commits == 0 ? 0 : dispatchCount.get() / (double) commits;
+	}
+
+	/** Resets the batch-size counters; behaviour-neutral. */
+	public static void resetBatchSizeCounters() {
+		dispatchCount.set(0);
+		commitCount.set(0);
 	}
 
 	/** Single-threaded executor that serializes all command-buffer operations. */
@@ -173,12 +151,10 @@ public class MetalCommandRunner {
 					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
 							? (MetalSemaphore) dependsOn : null;
 
-			if (dependency != null) diagDispatchesWithDep.incrementAndGet();
-
 			// Order a dependent dispatch after its dependency across buffers: commit the open buffer
 			// (so the dependency's signal lands in an earlier, committed buffer) then wait its value.
 			if (dependency != null && dependency.getCommandBuffer() == openBuffer) {
-				commitOpenOnExecutor(CommitCause.DEPENDENCY);
+				commitOpenOnExecutor();
 			}
 
 			ensureOpenBuffer();
@@ -192,13 +168,13 @@ public class MetalCommandRunner {
 			signaled++;
 			openBuffer.encodeSignalEvent(event, signaled);
 			openCount++;
-			diagDispatches.incrementAndGet();
+			dispatchCount.incrementAndGet();
 			if (onComplete != null) openOnComplete.add(onComplete);
 
 			result.add(new MetalSemaphore(null, this, openBuffer, event, signaled));
 
 			if (openCount >= MAX_OPEN) {
-				commitOpenOnExecutor(CommitCause.MAX_OPEN);
+				commitOpenOnExecutor();
 			}
 		})));
 
@@ -257,26 +233,10 @@ public class MetalCommandRunner {
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
 	 * completion. Must run on the executor thread.
 	 */
-	private void commitOpenOnExecutor(CommitCause cause) {
+	private void commitOpenOnExecutor() {
 		if (openBuffer == null) return;
 
-		diagDispatchesAtCommit.addAndGet(openCount);
-		switch (cause) {
-			case MAX_OPEN:
-				diagCommitsMaxOpen.incrementAndGet();
-				break;
-			case DEPENDENCY:
-				diagCommitsDependency.incrementAndGet();
-				break;
-			case COMPLETE:
-				diagCommitsComplete.incrementAndGet();
-				break;
-			case DESTROY:
-				diagCommitsDestroy.incrementAndGet();
-				break;
-			default:
-				break;
-		}
+		commitCount.incrementAndGet();
 
 		openBuffer.commit();
 		bufferOpen = false;
@@ -292,7 +252,7 @@ public class MetalCommandRunner {
 	 * buffer to complete, running their callbacks in order. Must run on the executor thread.
 	 */
 	private void completeOnExecutor(MTLCommandBuffer target) {
-		if (target == openBuffer) commitOpenOnExecutor(CommitCause.COMPLETE);
+		if (target == openBuffer) commitOpenOnExecutor();
 
 		int index = -1;
 		for (int i = 0; i < committed.size(); i++) {
@@ -331,7 +291,7 @@ public class MetalCommandRunner {
 	public void destroy() {
 		if (executor != null) {
 			await(executor.submit(() -> runInPool(() -> {
-				commitOpenOnExecutor(CommitCause.DESTROY);
+				commitOpenOnExecutor();
 				while (!committed.isEmpty()) {
 					CommittedBuffer c = committed.remove(0);
 					c.buffer.waitUntilCompleted();

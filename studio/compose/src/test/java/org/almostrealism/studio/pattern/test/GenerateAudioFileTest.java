@@ -33,18 +33,18 @@ import java.io.File;
 import java.io.IOException;
 
 /**
- * Renders two minutes of audio through the current real-time {@link AudioScene} PDSL pipeline
- * (a1 pattern generation, a2 batched render-ahead, a3 PDSL mixdown with full efx + reverb) to a
+ * Renders {@link #TARGET_SECONDS} of audio through the current real-time {@link AudioScene} PDSL
+ * pipeline (pattern generation, batched render-ahead, PDSL mixdown with full efx + reverb) to a
  * single listenable WAV file, and reports the wall time it took to generate — broken into the
  * one-time setup (scene load + kernel pre-warm) and the steady per-buffer generation loop — along
  * with the realtime multiple (audio seconds produced per wall-clock second).
  */
-public class Generate2MinAudioTest extends AudioSceneTestBase {
+public class GenerateAudioFileTest extends AudioSceneTestBase {
 
 	/** Tempo for the rendered arrangement. */
 	private static final double BENCH_BPM = 120.0;
 
-	/** Total measures in the arrangement (64 measures at 120 BPM is ~128 s, covering the 2 min). */
+	/** Total measures in the arrangement (64 measures at 120 BPM is ~128 s of audio). */
 	private static final int BENCH_MEASURES = 64;
 
 	/** Genome seed: the dense curated genome the breakdown harness renders (~1126 elements). */
@@ -57,18 +57,18 @@ public class Generate2MinAudioTest extends AudioSceneTestBase {
 	private static final double TARGET_SECONDS = 120.0;
 
 	/**
-	 * Generates two minutes of audio to {@code results/generated-2min.wav} and logs the generation
-	 * time. Asserts the render is non-silent so a fast render of silence cannot pass as success.
+	 * Generates audio to {@code results/generated-audio.wav} and logs the generation time. Asserts
+	 * the render is non-silent so a fast render of silence cannot pass as success.
 	 *
 	 * @throws IOException if the curated scene cannot be loaded or the WAV cannot be written
 	 */
 	@Test(timeout = 900_000)
 	@TestDepth(1)
-	public void generateTwoMinutes() throws IOException {
+	public void generateAudioFile() throws IOException {
 		File library = getSamplesDir();
 		File patternFactory = new File(PATTERN_FACTORY);
 		if (library == null || !patternFactory.exists()) {
-			log("Skipping generateTwoMinutes - need the curated library (" + SAMPLES_PATH
+			log("Skipping generateAudioFile - need the curated library (" + SAMPLES_PATH
 					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
 			return;
 		}
@@ -86,7 +86,7 @@ public class Generate2MinAudioTest extends AudioSceneTestBase {
 		log("scene elements=" + countElements(scene) + " seed=" + GENOME_SEED
 				+ " bpm=" + BENCH_BPM + " measures=" + BENCH_MEASURES);
 
-		File outFile = new File("results/generated-2min.wav");
+		File outFile = new File("results/generated-audio.wav");
 		outFile.getParentFile().mkdirs();
 		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
 

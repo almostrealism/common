@@ -25,16 +25,16 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * The pattern-element rendering layer (a2) of the real-time audio pipeline, running
- * <em>independently</em> of the mixdown hot path (a3).
+ * Renders pattern audio <em>ahead</em> of playback on a dedicated producer thread so the
+ * real-time mixdown never has to wait on a render.
  *
- * <p>In the three-layer just-in-time design, pattern-element creation (a1) produces the
- * notes, this layer renders those notes to audio (a2), and the mixdown (a3) consumes the
- * rendered audio per buffer. The defining property is that the a3 hot path contains
- * <em>only</em> the mixdown: it must never trigger a render. To guarantee that, this class
- * renders successive buffers <em>ahead</em> of playback on a dedicated producer thread,
- * depositing each rendered buffer into a bounded ring. The consumer (a3) only ever takes an
- * already-rendered slot, mixes it, and releases it.</p>
+ * <p>The real-time pipeline is staged: note generation produces the notes, pattern rendering
+ * turns those notes into audio, and the mixdown consumes the rendered audio per buffer. This
+ * class owns the pattern-rendering stage. The defining property is that the mixdown hot path
+ * contains <em>only</em> the mixdown: it must never trigger a render. To guarantee that, this
+ * class renders successive buffers ahead of playback on a producer thread, depositing each
+ * rendered buffer into a bounded ring. The mixdown consumer only ever takes an already-rendered
+ * slot, mixes it, and releases it.</p>
  *
  * <h2>Why a separate thread is correct and fast</h2>
  * <p>The Metal backend shares one {@code MetalComputeContext} across threads and serializes
@@ -136,7 +136,7 @@ class PatternRenderStream implements Destroyable {
 		int target = Math.min(prefill, slots);
 		running = true;
 		producerError = null;
-		producer = new Thread(this::produceLoop, "a2-pattern-render-ahead");
+		producer = new Thread(this::produceLoop, "pattern-render-ahead");
 		producer.setDaemon(true);
 		producer.start();
 

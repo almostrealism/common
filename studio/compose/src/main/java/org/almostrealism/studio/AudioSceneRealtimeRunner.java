@@ -38,7 +38,6 @@ import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -88,28 +87,29 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	public static int pdslFilterOrder = 40;
 
 	/**
-	 * Number of buffers the a2 render-ahead ring holds, and the number rendered before playback
+	 * Number of buffers the pattern render-ahead ring holds, and the number rendered before playback
 	 * begins. The producer thread renders up to this many buffers ahead of the mixdown hot path,
-	 * smoothing per-buffer render bursts so the a3 consumer never waits on a render.
+	 * smoothing per-buffer render bursts so the mixdown consumer never waits on a render.
 	 *
-	 * <p>The a2 producer and a3 consumer share the single Metal command runner, so a2's per-buffer
-	 * render time varies (GPU contention, occasional kernel/cache misses). When the ring is shallow
-	 * those transient stalls drain it and a3 blocks (measured: ~21&nbsp;ms/tick of wait at 8192 with
-	 * depth&nbsp;8). A deeper ring absorbs the variance — a2 keeps up on average, so a3 stops waiting
-	 * (wait fell to ~0, raising sustained throughput from ~3.2x to ~4.6x at 8192). The cost is render
-	 * latency for pattern/genome changes (≈ {@code depth × bufferSize / sampleRate}; automation/efx
-	 * is unaffected — it is applied just-in-time in the a3 mixdown) and ring memory
+	 * <p>The render producer and mixdown consumer share the single Metal command runner, so the
+	 * producer's per-buffer render time varies (GPU contention, occasional kernel/cache misses). When
+	 * the ring is shallow those transient stalls drain it and the consumer blocks (measured: ~21&nbsp;ms/tick
+	 * of wait at 8192 with depth&nbsp;8). A deeper ring absorbs the variance — the producer keeps up on
+	 * average, so the consumer stops waiting (wait fell to ~0, raising sustained throughput from ~3.2x
+	 * to ~4.6x at 8192). The cost is render latency for pattern/genome changes
+	 * (≈ {@code depth × bufferSize / sampleRate}; automation/efx is unaffected — it is applied
+	 * just-in-time in the mixdown) and ring memory
 	 * ({@code depth × inputChannels × bufferSize}). Tune down if pattern-swap latency matters more
 	 * than render headroom.
 	 */
 	public static int renderAheadSlots = 24;
 
 	/**
-	 * Kernel pre-warm (see {@link #createPdsl} setup): the a2 batched renderer compiles a kernel
+	 * Kernel pre-warm (see {@link #createPdsl} setup): the batched pattern renderer compiles a kernel
 	 * per {@code (bucket, sourceLength, targetLength)} shape lazily, so a shape first encountered
 	 * mid-stream triggers a multi-second compile that stalls real-time playback (measured: a ~29 s
 	 * spike at 8192 → a guaranteed dropout). Before the clock starts, the runner render-sweeps the
-	 * <em>whole arrangement</em> once (a2 only — clock-neutral), forcing every kernel shape to
+	 * <em>whole arrangement</em> once (pattern render only — clock-neutral), forcing every kernel shape to
 	 * compile off the real-time clock. (An early stop on "no new shape for a while" is unsafe here:
 	 * pattern density varies, so a quiet stretch does not mean all shapes have been seen.) This is a
 	 * one-time setup cost. Set to {@code <= 0} to disable the sweep; the cap bounds it for safety.
@@ -127,25 +127,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * feedback/delay stage. Wire-first default chosen to make the reverb tail audible.
 	 */
 	public static int pdslDelaySamples = 6500;
-
-	/**
-	 * Diagnostic: cumulative nanoseconds the hot-path tick spends in
-	 * {@code renderStream.awaitSlot()} (blocking until the a2 producer has a buffer ready).
-	 * A large value means a2 cannot stay ahead of a3; a small value means a3 is not waiting.
-	 */
-	public static final AtomicLong hotAwaitNanos = new AtomicLong();
-
-	/**
-	 * Diagnostic: cumulative nanoseconds the hot-path tick spends in {@code compiled.forward(slot)}
-	 * (the a3 PDSL mixdown forward pass itself), isolated from the a2 wait.
-	 */
-	public static final AtomicLong hotForwardNanos = new AtomicLong();
-
-	/** Resets the hot-path diagnostic timers ({@link #hotAwaitNanos}, {@link #hotForwardNanos}). */
-	public static void resetHotPathTimers() {
-		hotAwaitNanos.set(0);
-		hotForwardNanos.set(0);
-	}
 
 	/** The scene this runner drives. */
 	private final AudioScene<?> scene;
@@ -334,7 +315,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private TemporalCellular createPdsl(MultiChannelAudioOutput output,
 										List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
-		// Render-ahead position (frames) for the a2 producer thread, distinct from the a3
+		// Render-ahead position (frames) for the render producer thread, distinct from the
 		// playback position above. The producer renders buffers ahead of playback into a ring;
 		// the hot path only consumes already-rendered buffers and never triggers a render.
 		final long[] renderFrame = {0};
@@ -383,17 +364,17 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
 		PackedCollection pdslInput = consolidated.range(inputShape, 0);
 
-		// a2 render-ahead layer: a dedicated producer thread renders successive buffers into a
-		// ring so the a3 hot path (the tick below) only ever mixes already-rendered audio. The
+		// Pattern render-ahead layer: a dedicated producer thread renders successive buffers into a
+		// ring so the mixdown hot path (the tick below) only ever mixes already-rendered audio. The
 		// render cells created by prepareRenderBuffers fill pdslInput for the current renderFrame;
 		// renderOp runs that pattern-prepare once per buffer, off the hot path. Driving the render
 		// from the producer thread is safe and overlaps its Java orchestration with the consumer's
 		// GPU mixdown (the Metal command runner serializes the actual GPU dispatch).
 		// Render every cell (both stereo sides). Stereo is in scope: true stereo mixes both
 		// sides' pattern audio in a single forward, so the RIGHT-side render is a required input
-		// for that path — it must not be skipped as an a2 shortcut. a2's cost is reduced by
+		// for that path — it must not be skipped as a render shortcut. Render cost is reduced by
 		// making the render itself faster, not by rendering fewer channels.
-		OperationList renderOps = new OperationList("AudioScene a2 Pattern Render Ahead");
+		OperationList renderOps = new OperationList("AudioScene Pattern Render Ahead");
 		for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
 			renderOps.add(renderCell.prepareBatch());
 		}
@@ -437,10 +418,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				// into the working input, which the producer harmlessly re-renders below).
 				setup.add(patternSetup);
 				setup.add(() -> () -> compiled.reset());
-				// Kernel pre-warm: render-sweep the whole arrangement once (a2 only — renderOp does
-				// not advance the playback clock or touch a3 state), forcing every lazily-compiled
-				// (bucket, sourceLength, targetLength) a2 kernel to compile NOW, off the real-time
-				// clock, instead of stalling a buffer mid-stream. Bounded by the seconds cap.
+				// Kernel pre-warm: render-sweep the whole arrangement once (pattern render only —
+				// renderOp does not advance the playback clock or touch mixdown state), forcing every
+				// lazily-compiled (bucket, sourceLength, targetLength) pattern kernel to compile NOW,
+				// off the real-time clock, instead of stalling a buffer mid-stream. Bounded by the
+				// seconds cap.
 				if (preWarmMaxSeconds > 0) {
 					setup.add(() -> () -> {
 						double arrangementFrames = scene.getTotalMeasures() * 4.0 * 60.0
@@ -455,7 +437,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 						renderFrame[0] = 0;
 					});
 				}
-				// Start the a2 producer thread and fill the ring ahead of playback. After this
+				// Start the render producer thread and fill the ring ahead of playback. After this
 				// returns, the hot path is guaranteed to find each buffer already rendered.
 				setup.add(() -> () -> renderStream.start(renderAheadSlots));
 				return setup;
@@ -465,7 +447,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			public Supplier<Runnable> tick() {
 				OperationList tick = new OperationList("AudioScene PDSL RealTime Runner Tick");
 
-				// HOT PATH — MIXDOWN ONLY. No pattern preparation happens here: the a2 producer
+				// HOT PATH — MIXDOWN ONLY. No pattern preparation happens here: the render producer
 				// thread (started in setup) renders every buffer ahead of time into the ring, so
 				// this tick never triggers a render. Reset the per-buffer frame index for output.
 				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
@@ -474,16 +456,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				// their argument slots for this buffer's clock position.
 				tick.add(automationRefresh);
 
-				// DSP: take the next already-rendered buffer from the a2 ring and run the
+				// DSP: take the next already-rendered buffer from the render ring and run the
 				// whole-buffer PDSL mixdown forward pass over it (writes into masterOutput). This
 				// is the only per-buffer compute on the hot path.
 				tick.add(() -> () -> {
-					long awaitStart = System.nanoTime();
 					PackedCollection slot = renderStream.awaitSlot();
-					long forwardStart = System.nanoTime();
-					hotAwaitNanos.addAndGet(forwardStart - awaitStart);
 					compiled.forward(slot);
-					hotForwardNanos.addAndGet(System.nanoTime() - forwardStart);
 					renderStream.release();
 				});
 

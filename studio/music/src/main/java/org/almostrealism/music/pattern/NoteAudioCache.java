@@ -20,7 +20,6 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Cache for evaluated note audio across consecutive buffer ticks.
@@ -39,22 +38,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author Michael Murray
  */
 public class NoteAudioCache {
-	/** Diagnostic counter: cache lookups that returned cached audio (hits). */
-	public static final AtomicLong cacheHits = new AtomicLong();
-	/** Diagnostic counter: cache lookups that missed and forced a re-render. */
-	public static final AtomicLong cacheMisses = new AtomicLong();
-	/** Diagnostic counter: note audio results stored into the cache. */
-	public static final AtomicLong cachePuts = new AtomicLong();
-
 	/** Map from absolute frame offset to cached audio data. */
 	private final Map<Integer, PackedCollection> cache = new HashMap<>();
-
-	/** Resets the diagnostic hit/miss/put counters across all instances. */
-	public static void resetCounters() {
-		cacheHits.set(0);
-		cacheMisses.set(0);
-		cachePuts.set(0);
-	}
 
 	/**
 	 * Returns cached audio for a note at the given offset, or null if not cached.
@@ -63,13 +48,7 @@ public class NoteAudioCache {
 	 * @return the cached audio, or null
 	 */
 	public PackedCollection get(int noteOffset) {
-		PackedCollection result = cache.get(noteOffset);
-		if (result != null) {
-			cacheHits.incrementAndGet();
-		} else {
-			cacheMisses.incrementAndGet();
-		}
-		return result;
+		return cache.get(noteOffset);
 	}
 
 	/**
@@ -79,7 +58,6 @@ public class NoteAudioCache {
 	 * @param audio the evaluated audio data
 	 */
 	public void put(int noteOffset, PackedCollection audio) {
-		cachePuts.incrementAndGet();
 		// Destroy any previously cached audio displaced at this offset. Multiple
 		// notes can share a frame offset (chords, layered voices); each cached entry is
 		// a standalone copy owned by the cache (renderPerNote copies the evaluated note
