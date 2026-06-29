@@ -836,4 +836,55 @@ public class GitOperations implements ConsoleFeatures {
         }
         return new ArrayList<>(seen);
     }
+
+    /**
+     * Returns the set of files tracked on the given ref, optionally restricted
+     * to those whose path ends with {@code suffix}. Paths are returned exactly
+     * as git reports them — relative to the repository root and always
+     * forward-slash separated, regardless of platform.
+     *
+     * <p>Implemented with {@code git ls-tree -r --name-only <ref>}. The
+     * extension filter is applied in Java rather than via a pathspec, because
+     * {@code git ls-tree} pathspecs do not perform glob matching across
+     * directories on all git versions.</p>
+     *
+     * <p>Fails safe by returning an empty set whenever the ref cannot be read
+     * (unknown ref, not a repository, fetch not yet performed). Standard error
+     * is kept separate from standard output so a git failure can never be
+     * mis-parsed as a tracked path.</p>
+     *
+     * @param workDir the repository working directory, or {@code null}
+     * @param ref     the ref to list (e.g. {@code "origin/master"})
+     * @param suffix  a path suffix to filter by (e.g. {@code ".bin"}), or
+     *                {@code null} to return every tracked file
+     * @param warn    consumer for warning messages
+     * @return the matching tracked paths on the ref; never {@code null}
+     */
+    public static Set<String> listFilesOnRef(String workDir, String ref,
+                                             String suffix, Consumer<String> warn) {
+        Set<String> files = new LinkedHashSet<>();
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    resolveGitCommand(), "ls-tree", "-r", "--name-only", ref);
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+            augmentPath(pb);
+            Process p = pb.start();
+            String listing = new String(
+                    p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (p.waitFor() == 0) {
+                for (String path : listing.split("\n")) {
+                    String trimmed = path.trim();
+                    if (trimmed.isEmpty()) continue;
+                    if (suffix == null || trimmed.endsWith(suffix)) files.add(trimmed);
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Failed to list files on " + ref + ": " + e.getMessage());
+        } catch (IOException e) {
+            warn.accept("Failed to list files on " + ref + ": " + e.getMessage());
+        }
+        return files;
+    }
 }
