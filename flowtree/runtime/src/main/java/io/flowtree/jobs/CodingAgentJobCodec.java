@@ -106,6 +106,13 @@ final class CodingAgentJobCodec {
         sb.append("::tools:=").append(GitManagedJob.base64Encode(job.getAllowedTools()));
         sb.append("::maxTurns:=").append(job.getMaxTurns());
         sb.append("::maxBudget:=").append(job.getMaxBudgetUsd());
+        // Job-wide restart ceilings; emitted only when overridden so the wire stays minimal.
+        if (job.restartGovernor().getMaxTotalSessions() != RestartGovernor.DEFAULT_MAX_TOTAL_SESSIONS) {
+            sb.append("::maxTotalSessions:=").append(job.restartGovernor().getMaxTotalSessions());
+        }
+        if (job.restartGovernor().getMaxTotalTurns() != RestartGovernor.DEFAULT_MAX_TOTAL_TURNS) {
+            sb.append("::maxTotalTurns:=").append(job.restartGovernor().getMaxTotalTurns());
+        }
         // Runner identity. Model, effort, and provider are NOT separate wire
         // keys — they travel only inside phaseConfigBundle below, whose decode
         // (setPhaseConfigBundle) applies them without per-key validation.
@@ -218,6 +225,12 @@ final class CodingAgentJobCodec {
                 return true;
             case "tools":
                 job.setAllowedTools(GitManagedJob.base64Decode(value));
+                return true;
+            case "maxTotalSessions":
+                job.restartGovernor().setMaxTotalSessions(Integer.parseInt(value));
+                return true;
+            case "maxTotalTurns":
+                job.restartGovernor().setMaxTotalTurns(Integer.parseInt(value));
                 return true;
             case "maxTurns":
                 job.setMaxTurns(Integer.parseInt(value));
