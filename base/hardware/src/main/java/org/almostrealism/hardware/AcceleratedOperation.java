@@ -40,6 +40,7 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.hardware.metal.MTLBuffer;
+import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
@@ -583,6 +584,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Run the operator, chaining on the prior operation's completion when provided
 			Semaphore nextSemaphore = operator.accept(input, dependsOn);
+			MetalCommandRunner.diagApplyDispatches.incrementAndGet();
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
@@ -602,6 +604,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				if (nextSemaphore != null) {
 					// TODO  result in a new Semaphore that performs the postprocessing when the
 					// TODO  original semaphore finishes, rather than blocking the host here
+					if (processing) MetalCommandRunner.diagApplyProcessingWaits.incrementAndGet();
+					if (aggregateCopyOut) MetalCommandRunner.diagApplyAggregateWaits.incrementAndGet();
 					nextSemaphore.waitFor();
 				}
 

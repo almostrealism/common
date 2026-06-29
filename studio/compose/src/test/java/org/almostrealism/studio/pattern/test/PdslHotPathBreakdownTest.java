@@ -19,6 +19,8 @@ package org.almostrealism.studio.pattern.test;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.NoteAudioCache;
@@ -118,6 +120,73 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	}
 
 	/**
+	 * Sweeps the argument-aggregation length threshold
+	 * ({@link MemoryDataArgumentMap#maxAggregateLength}, default 1024) across the values in the
+	 * {@code AR_AGG_SWEEP} system property (comma separated; default {@code 2,4,8,32,128,512,1024})
+	 * on the densest curated scene at 4096 frames, logging the batching and per-tick metrics at each
+	 * so the performance impact of the aggregation condition can be mapped. Lowering the threshold
+	 * aggregates fewer arguments — fewer per-op aggregation copy-out host waits, but more bound
+	 * buffers per kernel (risking Metal's 31-buffer limit and a native fallback). A shallow
+	 * render-ahead ring keeps each iteration's setup affordable; the comparison across thresholds is
+	 * the result, not the absolute ratio. Each threshold is isolated so one failure still maps the rest.
+	 *
+	 * @throws IOException if the curated scene cannot be loaded
+	 */
+	@Test(timeout = 1_080_000)
+	@TestDepth(2)
+	public void aggregationThresholdSweep() throws IOException {
+		File library = getSamplesDir();
+		File patternFactory = new File(PATTERN_FACTORY);
+		if (library == null || !patternFactory.exists()) {
+			log("Skipping aggregationThresholdSweep - need the curated library (" + SAMPLES_PATH
+					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
+			return;
+		}
+
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableReverb = true;
+		PatternSystemManager.enableWarnings = false;
+
+		AudioScene<?> scene = loadCuratedScene(library, patternFactory, BENCH_BPM, BENCH_MEASURES);
+
+		long densestSeed = -1;
+		int densestElements = -1;
+		for (int attempt = 0; attempt < MAX_GENOME_ATTEMPTS; attempt++) {
+			long seed = 42 + attempt;
+			applyGenome(scene, seed);
+			int elements = countElements(scene);
+			if (elements > densestElements) {
+				densestElements = elements;
+				densestSeed = seed;
+			}
+		}
+		Assert.assertTrue("No viable genome found", densestSeed >= 0 && densestElements > 0);
+		log("densestSeed=" + densestSeed + " densestElements=" + densestElements);
+
+		AudioSceneRealtimeRunner.renderAheadSlots = 8;
+
+		String spec = System.getProperty("AR_AGG_SWEEP", "2,4,8,32,128,512,1024");
+		int original = MemoryDataArgumentMap.maxAggregateLength;
+		try {
+			for (String part : spec.split(",")) {
+				int threshold = Integer.parseInt(part.trim());
+				MemoryDataArgumentMap.maxAggregateLength = threshold;
+				log("threshold=" + threshold + " aggregationSweep begin (enableAggregation="
+						+ MemoryDataArgumentMap.enableArgumentAggregation + ")");
+				try {
+					measure(scene, densestSeed, 4096, true);
+				} catch (Throwable ex) {
+					log("threshold=" + threshold + " aggregationSweep failed " + ex);
+				}
+			}
+		} finally {
+			MemoryDataArgumentMap.maxAggregateLength = original;
+		}
+	}
+
+	/**
 	 * Builds the runner at one buffer size, warms it, then times {@link #PROFILE_TICKS} steady
 	 * ticks and logs the attributed breakdown plus the realtime ratio.
 	 *
@@ -154,6 +223,7 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				BatchedPatternLayerRenderer.resetCounters();
 				NoteAudioCache.resetCounters();
 				AudioSceneRealtimeRunner.resetHotPathTimers();
+				MetalCommandRunner.resetDiagnosticCounters();
 
 				double totalTickMs = 0;
 				double[] ticks = new double[PROFILE_TICKS];
@@ -200,6 +270,31 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 						+ " cacheMisses=" + NoteAudioCache.cacheMisses.get()
 						+ " batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount.get()
 						+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount.get());
+
+				long metalDispatches = MetalCommandRunner.diagDispatches.get();
+				long metalDispatchesWithDep = MetalCommandRunner.diagDispatchesWithDep.get();
+				long cMaxOpen = MetalCommandRunner.diagCommitsMaxOpen.get();
+				long cDependency = MetalCommandRunner.diagCommitsDependency.get();
+				long cComplete = MetalCommandRunner.diagCommitsComplete.get();
+				long cDestroy = MetalCommandRunner.diagCommitsDestroy.get();
+				long metalCommits = cMaxOpen + cDependency + cComplete + cDestroy;
+				long metalDispatchesAtCommit = MetalCommandRunner.diagDispatchesAtCommit.get();
+				double meanBatch = metalCommits == 0 ? 0.0 : metalDispatchesAtCommit / (double) metalCommits;
+				log("buffer=" + bufferSize + " METAL dispatches=" + metalDispatches
+						+ " withDep=" + metalDispatchesWithDep
+						+ " dispatchesPerTick=" + fmt(metalDispatches / (double) PROFILE_TICKS)
+						+ " commitsPerTick=" + fmt(metalCommits / (double) PROFILE_TICKS)
+						+ " meanDispatchesPerCommit=" + fmt(meanBatch)
+						+ " cMaxOpen=" + cMaxOpen + " cDependency=" + cDependency
+						+ " cComplete=" + cComplete + " cDestroy=" + cDestroy);
+
+				long applyDispatches = MetalCommandRunner.diagApplyDispatches.get();
+				long applyProcWaits = MetalCommandRunner.diagApplyProcessingWaits.get();
+				long applyAggWaits = MetalCommandRunner.diagApplyAggregateWaits.get();
+				log("buffer=" + bufferSize + " APPLY dispatches=" + applyDispatches
+						+ " processingWaits=" + applyProcWaits + " aggregateWaits=" + applyAggWaits
+						+ " procPerTick=" + fmt(applyProcWaits / (double) PROFILE_TICKS)
+						+ " aggPerTick=" + fmt(applyAggWaits / (double) PROFILE_TICKS));
 
 				out.write().get().run();
 				double peak = peakAmplitude(scratch.getPath());
