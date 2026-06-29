@@ -64,6 +64,7 @@ public class InvalidFileDetectorTest extends TestSuiteBase {
 		GitOperations.augmentPath(pb);
 		int exit = pb.start().waitFor();
 		if (exit != 0) throw new IOException("git command failed (exit " + exit + "): " + String.join(" ", cmd));
+	}
 
 	/** Recursively deletes a temporary directory tree, ignoring failures. */
 	private static void deleteTree(Path root) {

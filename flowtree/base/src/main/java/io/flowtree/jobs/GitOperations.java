@@ -869,6 +869,7 @@ public class GitOperations implements ConsoleFeatures {
             if (workDir != null) pb.directory(new File(workDir));
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             augmentPath(pb);
+            Process p = pb.start();
             String listing = new String(
                     p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             if (p.waitFor() == 0) {
