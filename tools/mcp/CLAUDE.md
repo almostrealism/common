@@ -107,11 +107,12 @@ data through string-typed parameters that the tool then parses locally:
   "effort": "medium", "provider": "openrouter"}'`
 - `phase_configs: str = ""` — JSON object mapping
   [`Phase`](../../flowtree/agents/src/main/java/io/flowtree/jobs/agent/Phase.java)
-  wire names (`"primary"`, `"review"`, `"deduplication"`,
-  `"organizational-placement"`, `"enforce-changes"`,
-  `"maven-dependency-protection"`, `"post-completion"`, `"commit-message"`,
-  `"git-tampering-restart"`) to objects with `runner`, `model`, `effort`,
-  and `provider` keys (all optional). Each named phase overrides
+  wire names (`"primary"`, `"enforce-changes"`, `"review"`, `"deduplication"`,
+  `"organizational-placement"`, `"maven-dependency-protection"`,
+  `"post-completion"`, `"commit-message"`, `"git-tampering-restart"`,
+  `"push-conflict-resolution"`, `"retrospective"`, `"falsification"`) to
+  objects with `runner`, `model`, `effort`, and `provider` keys (all
+  optional). Each named phase overrides
   `default_phase_config` field-by-field. Parsed by
   `_parse_phase_configs_json` with the same per-field validation as
   `default_phase_config`. Example:
