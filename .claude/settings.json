@@ -91,6 +91,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-git-log.sh",
             "description": "Warn on `git log` \u2014 workstream narrative lives in memory_branch_context, not commit titles"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/steer-generated-code-read.sh",
+            "description": "Block raw shell reads (find/grep/cat/ls) of generated compiler output \u2014 instruction-set dumps, *.metal/*.cl kernels, OperationProfile XML \u2014 and steer to the ar-profile-analyzer MCP tool (list_profiles/search_operations/get_source)"
           }
         ]
       },
