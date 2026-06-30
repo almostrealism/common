@@ -51,6 +51,11 @@ message WaveDetailData {
 
   map<string, double> similarities = 11;
 
+  // Persistent sort rank for the library tree. A double so a new item can be
+  // inserted between two existing ranks by averaging, without renumbering.
+  // Absent when the item has not yet been ranked (sorts to the end).
+  optional double rank = 20;
+
   reserved 1;
 }
 
