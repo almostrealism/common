@@ -196,6 +196,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected MemoryDataArgumentMap argumentMap;
 
 	/**
+	 * Guards the aggregation batch-split warning so it is emitted at most once per operation rather
+	 * than on every dispatch that straddles a provider command-buffer boundary.
+	 */
+	private boolean aggregateBatchSplitWarned;
+
+	/**
 	 * Creates a new accelerated operation within the specified compute context.
 	 *
 	 * @param context The {@link ComputeContext} for compilation and execution (OpenCL, Metal, JNI, etc.)
@@ -576,9 +582,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// own. The kernel is submitted immediately after and reads the aggregate the copies just
 			// wrote; the provider's in-buffer hazard tracking orders the kernel after the copies
 			// without an explicit semaphore (an explicit dependency would force a commit and break
-			// batching — see MetalCommandRunner.submit). Nothing blocks here.
+			// batching — see MetalCommandRunner.submit). Nothing blocks here. The first copy's
+			// completion is kept as the anchor of the dispatch group for the split check below.
+			Semaphore groupAnchor = null;
 			if (aggregating) {
-				submitBatched(argumentMap.getPrepareOperations());
+				List<Submittable> prepare = argumentMap.getPrepareOperations();
+				for (int i = 0; i < prepare.size(); i++) {
+					Semaphore copyIn = prepare.get(i).submit(null);
+					if (i == 0) groupAnchor = copyIn;
+				}
 			}
 
 			boolean processing = !process.isEmpty();
@@ -590,6 +602,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Run the operator, chaining on the caller's prior completion when one was provided.
 			Semaphore nextSemaphore = operator.accept(input, dependsOn);
+
+			// When there was no copy-in, the kernel is itself the start of the group.
+			if (groupAnchor == null) {
+				groupAnchor = nextSemaphore;
+			}
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
@@ -625,6 +642,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 			}
 
+			// The aggregation copy-in -> kernel -> copy-out group relies on sharing one provider
+			// command buffer so in-buffer hazard tracking orders it; warn if it was split across
+			// buffers (see warnIfAggregateBatchSplit).
+			warnIfAggregateBatchSplit(groupAnchor, completion);
+
 			// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
 			// the process completion so callers wait on (and can chain via dependsOn) the actual end
 			// of the operation rather than the host-readiness latch. When the operator returns null
@@ -639,6 +661,42 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		});
 
 		return process;
+	}
+
+	/**
+	 * Warns (at most once per operation) when the aggregation copy-in &rarr; kernel &rarr; copy-out
+	 * dispatch group was split across more than one provider command buffer.
+	 *
+	 * <p>The group is submitted with null dependencies and relies on the provider's <em>in-buffer</em>
+	 * hazard tracking to order its read-after-write dependencies on the aggregate buffer. That
+	 * ordering does not cross a command-buffer boundary, so if the provider forced a commit partway
+	 * through the group (e.g. the group exceeded the per-buffer dispatch limit), the de-aggregation
+	 * may read a buffer the kernel had not finished writing and the result may be wrong. This is a
+	 * known, currently-unmitigated limitation; the detector exists so it surfaces loudly rather than
+	 * as silent corruption. Because dispatches are assigned to buffers in submission order, the whole
+	 * group occupies one buffer exactly when its first dispatch ({@code groupStart}) and its last
+	 * ({@code groupEnd}) share a {@link Semaphore#getBatch() batch token}.</p>
+	 *
+	 * @param groupStart completion of the first dispatch in the group (first copy-in, else the kernel)
+	 * @param groupEnd   completion of the last dispatch in the group (last copy-out, else the kernel)
+	 */
+	private void warnIfAggregateBatchSplit(Semaphore groupStart, Semaphore groupEnd) {
+		if (aggregateBatchSplitWarned || groupStart == null || groupEnd == null || groupStart == groupEnd) {
+			return;
+		}
+
+		Object start = groupStart.getBatch();
+		Object end = groupEnd.getBatch();
+		if (start == null || end == null || start.equals(end)) {
+			return;
+		}
+
+		aggregateBatchSplitWarned = true;
+		warn("aggregation copy-in/kernel/copy-out for " + getMetadata().getDisplayName()
+				+ " spanned more than one compute command buffer; the provider forced a commit "
+				+ "mid-group, so its in-buffer hazard tracking no longer orders the whole group and "
+				+ "results for this operation may be incorrect. This is only reached by very large "
+				+ "aggregated dispatch groups and is a known unmitigated limitation.");
 	}
 
 	/**
