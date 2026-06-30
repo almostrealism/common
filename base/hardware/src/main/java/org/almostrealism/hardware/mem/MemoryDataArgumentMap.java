@@ -303,16 +303,17 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Returns the kernels that copy each aggregated root into the aggregate buffer before kernel
-	 * execution, in replacement order.
+	 * Returns the copy operations that move each aggregated root into the aggregate buffer before
+	 * kernel execution, in replacement order.
 	 *
-	 * <p>Each copy is a compiled {@link Assignment} (a genuine kernel program, not a host-mediated
-	 * {@link MemoryDataCopy}), so {@code AcceleratedOperation.apply} can submit it to the compute
-	 * provider alongside the kernel it feeds — a prerequisite for Metal operation batching — rather
-	 * than forcing a host round-trip through {@code toArray}/{@code setMem}. The kernels are compiled
-	 * once and reused (see {@link #ensureCopyOperations()}).</p>
+	 * <p>Each is an {@link Assignment} between two {@link Provider}s, so it compiles (via
+	 * {@code Assignment.Runner}) into a unit that, at run time, lets the
+	 * {@link io.almostrealism.code.ComputeContext} choose how to perform the copy: a batching provider
+	 * (e.g. Metal, for memory it owns) queues a kernel that rides the command buffer alongside the
+	 * operation it feeds, while any other context performs a direct memory copy. The operations are
+	 * built once and reused (see {@link #ensureCopyOperations()}).</p>
 	 *
-	 * @return compiled pre-execution copy kernels, in replacement order
+	 * @return the pre-execution copy operations, in replacement order
 	 */
 	public List<Submittable> getPrepareOperations() {
 		ensureCopyOperations();
@@ -320,8 +321,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Returns the kernels that copy each aggregated slice back to its source after kernel execution,
-	 * omitting any slice whose source shares memory with {@code skipOutput}.
+	 * Returns the copy operations that move each aggregated slice back to its source after kernel
+	 * execution, omitting any slice whose source shares memory with {@code skipOutput}.
 	 *
 	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told to
 	 * use as its explicit output (the in-place {@code x = x + y} case, where the aggregated read copy
@@ -329,7 +330,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * the full, cached copy-out list is returned directly.</p>
 	 *
 	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to copy all
-	 * @return compiled post-execution copy kernels, in replacement order
+	 * @return the post-execution copy operations, in replacement order
 	 */
 	public List<Submittable> getPostprocessOperations(MemoryData skipOutput) {
 		ensureCopyOperations();
@@ -350,13 +351,11 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Compiles the copy-in and copy-out kernels for every replacement, once.
+	 * Builds the copy-in and copy-out operations for every replacement, once.
 	 *
-	 * <p>The copies bind the same root buffers and the same lazily-created aggregate buffer on every
-	 * invocation (aggregated roots are {@link Provider}-backed, fixed memory, and the aggregate is
-	 * created once), so a single compiled kernel is valid for the lifetime of this map. Compiling
-	 * here — rather than rebuilding per {@code apply} — is what removes the per-dispatch
-	 * recompilation that an {@link Assignment} with a {@code null} signature would otherwise incur.</p>
+	 * <p>Each copy binds fixed memory — the replacement's root and a {@link Bytes} view of the
+	 * aggregate at the replacement's offset — so a single built operation is valid for the lifetime
+	 * of this map and is reused across every {@code apply} rather than rebuilt per dispatch.</p>
 	 */
 	private void ensureCopyOperations() {
 		if (copyInOperations != null) {
@@ -368,44 +367,35 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 		for (Replacement r : replacements) {
 			MemoryData root = r.getRoot();
-			int pos = r.getPosition();
 			int len = root.getMemLength();
+			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 
-			copyInOperations.add((Submittable) aggregateCopy(
-					() -> root, () -> new Bytes(len, getAggregateData(), pos), len).get());
-			copyOutOperations.add((Submittable) aggregateCopy(
-					() -> new Bytes(len, getAggregateData(), pos), () -> root, len).get());
+			copyInOperations.add((Submittable) aggregateCopy(root, slice, len).get());
+			copyOutOperations.add((Submittable) aggregateCopy(slice, root, len).get());
 		}
 	}
 
 	/**
-	 * Creates a copy of {@code length} elements from {@code source} into {@code target}, expressed
-	 * as an {@link Assignment} so it compiles to a genuine kernel program.
+	 * Creates a copy of {@code length} elements from {@code source} into {@code target}, expressed as
+	 * an {@link Assignment} between two {@link Provider}s.
 	 *
-	 * <p>This is the kernel-based counterpart to {@link MemoryDataCopy}: where {@code MemoryDataCopy}
-	 * performs a host-mediated {@code target.setMem(source.toArray(...))} round-trip, the
-	 * {@link Assignment} produced here is a {@link Submittable} kernel that
-	 * {@code AcceleratedOperation.apply} encodes onto the provider's command buffer (with a null
-	 * dependency, so it batches and is ordered against the surrounding kernel by the provider's
-	 * hazard tracking) rather than forcing a per-operation host synchronization.</p>
+	 * <p>Wrapping both operands in {@link MemoryDataProviderProducer} (so they report as providers)
+	 * is what routes the assignment through {@code Assignment.Runner}: the compiled copy kernel is
+	 * available when a context wants to queue it (e.g. Metal batching), but a context that prefers a
+	 * direct memory copy gets one instead, with no kernel dispatched. Because the operands are
+	 * providers, the copy also opts out of argument aggregation (see
+	 * {@link Assignment#isArgumentAggregationSupported()}), so it does not recursively fold its own
+	 * operands.</p>
 	 *
-	 * <p>The {@code source} and {@code target} are wrapped as plain lambda {@link Producer}s (not
-	 * {@link Provider}s) for two reasons: so that {@link Assignment#get()} does not take its provider
-	 * short-circuit and instead compiles the assignment {@link io.almostrealism.scope.Scope} into a
-	 * kernel; and so that the copy's own arguments are not themselves folded into an aggregate (only
-	 * {@link Provider}-valued arguments are aggregation candidates — see {@link #get(Supplier)}),
-	 * which would otherwise recurse.</p>
-	 *
-	 * @param source supplier of the memory to copy from
-	 * @param target supplier of the memory to copy into
+	 * @param source the memory to copy from
+	 * @param target the memory to copy into
 	 * @param length number of elements to copy
-	 * @return an {@link Assignment} that performs the copy when compiled and submitted
+	 * @return an {@link Assignment} that performs the copy when run or submitted
 	 */
-	private static Assignment<MemoryData> aggregateCopy(Supplier<MemoryData> source,
-														Supplier<MemoryData> target, int length) {
+	private static Assignment<MemoryData> aggregateCopy(MemoryData source, MemoryData target, int length) {
 		return new Assignment<>(length,
-				() -> (Evaluable<MemoryData>) args -> target.get(),
-				() -> (Evaluable<MemoryData>) args -> source.get());
+				new MemoryDataProviderProducer(target),
+				new MemoryDataProviderProducer(source));
 	}
 
 	@Override

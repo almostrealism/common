@@ -40,6 +40,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
 import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
@@ -306,6 +307,18 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public boolean isFixedCount() {
 		return !(getComputation() instanceof Countable) || ((Countable) getComputation()).isFixedCount();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Defers to the wrapped {@link Assignment} when present, so a pure memory-to-memory copy can
+	 * opt out of folding its two operands into a nested aggregate.</p>
+	 */
+	@Override
+	protected boolean isArgumentAggregationSupported() {
+		return !(getComputation() instanceof Assignment)
+				|| ((Assignment<?>) getComputation()).isArgumentAggregationSupported();
 	}
 
 	/**

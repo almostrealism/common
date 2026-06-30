@@ -24,6 +24,8 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -39,10 +41,12 @@ import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.DestinationEvaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.jvm.JVMMemory;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -379,10 +383,17 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			}
 
 
-			// DestinationEvaluable can be used for AccelerationOperations and Providers
-			boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
+			// When both the destination and the source are Providers, defer the choice between a
+			// direct memory copy and the compiled kernel to run time (see Runner): the right answer
+			// depends on the ComputeContext and the Memory the providers resolve to, neither of which
+			// is reliably known until then. The kernel is compiled lazily (only if a context wants
+			// it), so a context that performs a direct copy never compiles one.
+			if (ev instanceof Provider<?>) {
+				return new Runner(this::compileKernel, (Supplier) out, (Supplier) in);
+			}
 
-			if (shortCircuit) {
+			// An AcceleratedOperation source still uses DestinationEvaluable.
+			if (ev instanceof AcceleratedOperation<?>) {
 				return new DestinationEvaluable(ev, destination);
 			}
 
@@ -393,6 +404,17 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		// TODO  handles the evaluation of Producers which do not directly support
 		// TODO  kernel evaluation differently than ProcessDetailsFactory (which is
 		// TODO  sometimes not ideal - see DestinationEvaluable.evaluate)
+		return super.get();
+	}
+
+	/**
+	 * Compiles this assignment into its kernel form (the scope-based {@link AcceleratedOperation}),
+	 * bypassing the provider short-circuit in {@link #get()}. Used by {@link Runner} to obtain the
+	 * kernel on demand.
+	 *
+	 * @return the compiled assignment kernel
+	 */
+	private Runnable compileKernel() {
 		return super.get();
 	}
 
@@ -478,5 +500,130 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	@Override
 	public String describe() {
 		return getMetadata().getShortDescription() + " (" + getCount() + "x" + memLength + ")";
+	}
+
+	/**
+	 * Returns whether this assignment's arguments may be folded into an aggregate kernel argument.
+	 *
+	 * <p>A pure memory-to-memory copy — both the destination and the source are {@link Provider}s,
+	 * which is exactly the case {@link #get()} runs via {@link Runner} — has only two arguments and
+	 * gains nothing from aggregation; aggregating it would instead fold its own operands into a
+	 * nested aggregate and emit pointless copy kernels (and, for small operands, recurse). Such a
+	 * copy therefore opts out. Every other assignment (whose source is a real computation) aggregates
+	 * normally.</p>
+	 *
+	 * @return {@code false} for a pure Provider-to-Provider copy, {@code true} otherwise
+	 */
+	public boolean isArgumentAggregationSupported() {
+		return !(Computable.provider(getInputs().get(0)) && Computable.provider(getInputs().get(1)));
+	}
+
+	/**
+	 * The {@link Runnable} (and {@link Submittable}) returned by {@link Assignment#get()} when both
+	 * the destination and the source are {@link Provider}s. It carries both ways of performing the
+	 * assignment and defers the choice between them to run time.
+	 *
+	 * <p>It holds the destination/source {@link Provider}s and a factory for the compiled kernel,
+	 * compiling the kernel only if it is actually needed: at run time the providers are resolved to
+	 * their current {@link MemoryData}, and the {@link io.almostrealism.code.ComputeContext} decides
+	 * via {@link io.almostrealism.code.ComputeContext#isDirectMemoryAssignment(io.almostrealism.code.Memory, io.almostrealism.code.Memory)}
+	 * whether to perform a direct {@link MemoryDataCopy} (a {@code setMem}, no kernel) or to compile
+	 * and submit the kernel (which a batching context such as Metal can queue onto its command
+	 * buffer). A context that always prefers a direct copy therefore never compiles a kernel at all.
+	 * This lets {@link Assignment} be the single tool for memory-to-memory assignment everywhere,
+	 * while the context picks the mechanism that suits the actual memory.</p>
+	 *
+	 * <p>If either side does not resolve to a {@link Provider} value at run time (an escape hatch for
+	 * variations this may be extended to support later), the compiled kernel is used.</p>
+	 */
+	public static class Runner implements Runnable, Submittable {
+		/** Factory that compiles the assignment kernel; invoked at most once, when the kernel is needed. */
+		private final Supplier<Runnable> kernelFactory;
+		/** Producer of the destination; resolved to its current {@link MemoryData} at run time. */
+		private final Supplier<Evaluable<? extends MemoryData>> destination;
+		/** Producer of the source; resolved to its current {@link MemoryData} at run time. */
+		private final Supplier<Evaluable<? extends MemoryData>> source;
+
+		/** The compiled assignment kernel, lazily created from {@link #kernelFactory} on first need. */
+		private Submittable kernel;
+
+		/**
+		 * Creates a runner over the given kernel factory and the destination/source producers.
+		 *
+		 * @param kernelFactory factory that compiles the assignment kernel on demand
+		 * @param destination   producer of the destination memory
+		 * @param source        producer of the source memory
+		 */
+		protected Runner(Supplier<Runnable> kernelFactory,
+						 Supplier<Evaluable<? extends MemoryData>> destination,
+						 Supplier<Evaluable<? extends MemoryData>> source) {
+			this.kernelFactory = kernelFactory;
+			this.destination = destination;
+			this.source = source;
+		}
+
+		@Override
+		public void run() {
+			Semaphore complete = submit(null);
+			if (complete != null) complete.waitFor();
+		}
+
+		@Override
+		public Semaphore submit(Semaphore dependsOn) {
+			MemoryData dst = resolve(destination);
+			MemoryData src = resolve(source);
+
+			// Direct copy when the context prefers it for this memory (and both sides resolved to a
+			// Provider value); otherwise — including the escape hatch where one side is not a Provider
+			// — compile (on first need) and submit the kernel.
+			if (dst != null && src != null
+					&& Hardware.getLocalHardware().getComputeContext().isDirectMemoryAssignment(src.getMem(), dst.getMem())) {
+				if (dependsOn != null) dependsOn.waitFor();
+
+				new MemoryDataCopy("Assignment Direct Copy",
+						() -> src, () -> dst, dst.getMemLength()).get().run();
+				return null;
+			}
+
+			return kernel().submit(dependsOn);
+		}
+
+		/**
+		 * Returns the compiled assignment kernel, compiling it on first call and caching it.
+		 *
+		 * @return the compiled kernel as a {@link Submittable}
+		 */
+		private Submittable kernel() {
+			if (kernel == null) {
+				Runnable compiled = kernelFactory.get();
+
+				if (!(compiled instanceof Submittable)) {
+					throw new UnsupportedOperationException(
+							"Assignment kernel is not submittable: " + compiled.getClass());
+				}
+
+				kernel = (Submittable) compiled;
+			}
+
+			return kernel;
+		}
+
+		/**
+		 * Resolves the given producer to its current {@link MemoryData}, or null when it does not
+		 * resolve to a {@link Provider} value.
+		 *
+		 * @param producer the producer to resolve
+		 * @return the current {@link MemoryData}, or null
+		 */
+		private static MemoryData resolve(Supplier<Evaluable<? extends MemoryData>> producer) {
+			Evaluable<? extends MemoryData> evaluable = producer.get();
+
+			if (evaluable instanceof Provider) {
+				Object value = ((Provider<?>) evaluable).get();
+				if (value instanceof MemoryData) return (MemoryData) value;
+			}
+
+			return null;
+		}
 	}
 }

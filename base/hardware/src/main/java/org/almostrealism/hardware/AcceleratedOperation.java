@@ -308,10 +308,24 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		// Provide an aggregate-buffer factory so that small input arguments can be folded into
 		// a single kernel argument (keeping the kernel's argument count under the compute
-		// context's limit). Eligibility is decided per argument by size inside the map.
-		argumentMap = MemoryDataArgumentMap.create(i -> createAggregatedInput(i, i));
+		// context's limit). Eligibility is decided per argument by size inside the map. Operations
+		// that opt out (see isArgumentAggregationSupported) get a map with no aggregation.
+		argumentMap = MemoryDataArgumentMap.create(
+				isArgumentAggregationSupported() ? i -> createAggregatedInput(i, i) : null);
 
 		prepareScope(argumentMap);
+	}
+
+	/**
+	 * Returns whether this operation's small input arguments may be folded into a single aggregate
+	 * kernel argument. Defaults to {@code true}; an operation whose arguments must not be aggregated
+	 * (for example a pure memory-to-memory copy, which has only two arguments and would otherwise
+	 * fold its own operands into a nested aggregate) overrides this to return {@code false}.
+	 *
+	 * @return {@code true} if argument aggregation is permitted for this operation
+	 */
+	protected boolean isArgumentAggregationSupported() {
+		return true;
 	}
 
 	/**
@@ -571,19 +585,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Two memory mechanisms may wrap the kernel (see method javadoc): compile-time argument
 			// aggregation (aggregating) and cross-provider replacement (processing). The aggregation
-			// copy-in/copy-out are now genuine kernels submitted to the provider; cross-provider
-			// replacement remains host-mediated.
+			// copy-in/copy-out are Assignments between providers, each of which the ComputeContext
+			// resolves at run time (via Assignment.Runner) into either a queued kernel — batched onto
+			// the provider's command buffer alongside the operation it wraps — or a direct memory
+			// copy. Cross-provider replacement remains host-mediated.
 			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
 			boolean aggregateCopyOut = aggregating
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 
-			// Copy-in (originals -> aggregate): submit each copy with a null dependency so it
-			// accumulates into the provider's open command buffer rather than committing one of its
-			// own. The kernel is submitted immediately after and reads the aggregate the copies just
-			// wrote; the provider's in-buffer hazard tracking orders the kernel after the copies
-			// without an explicit semaphore (an explicit dependency would force a commit and break
-			// batching — see MetalCommandRunner.submit). Nothing blocks here. The first copy's
-			// completion is kept as the anchor of the dispatch group for the split check below.
+			// Copy-in (originals -> aggregate): submit each copy with a null dependency. A batching
+			// provider accumulates the copy onto the open command buffer, ordered against the kernel by
+			// in-buffer hazard tracking (an explicit dependency would force a commit and break
+			// batching — see MetalCommandRunner.submit); a direct-copy context performs the copy
+			// synchronously here. Keep the first copy's completion as the group anchor for the split
+			// check below (null on a direct-copy context, where there is nothing to split).
 			Semaphore groupAnchor = null;
 			if (aggregating) {
 				List<Submittable> prepare = argumentMap.getPrepareOperations();
@@ -603,7 +618,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// Run the operator, chaining on the caller's prior completion when one was provided.
 			Semaphore nextSemaphore = operator.accept(input, dependsOn);
 
-			// When there was no copy-in, the kernel is itself the start of the group.
+			// When the copy-in produced no deferred completion (a direct-copy context, or no
+			// aggregation), the kernel is itself the start of the group.
 			if (groupAnchor == null) {
 				groupAnchor = nextSemaphore;
 			}
@@ -615,10 +631,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			Semaphore completion = nextSemaphore;
 
 			// Cross-provider replacement copy-out remains host-mediated: it reads the kernel's result
-			// back across providers, so it still waits for the kernel here. Per the reverse-order
-			// unwind (see javadoc), the replacement copy-back (temp->aggregate) MUST precede the
-			// aggregation de-aggregation (aggregate->originals) below, which it does because this runs
-			// first and synchronously.
+			// across providers, so it must wait for the kernel here. Per the reverse-order unwind (see
+			// javadoc), this replacement copy-back (temp->aggregate) MUST precede the aggregation
+			// de-aggregation (aggregate->originals) below, which holds because it runs first and
+			// synchronously.
 			if (processing) {
 				if (nextSemaphore != null) {
 					nextSemaphore.waitFor();
@@ -628,11 +644,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			// Aggregation copy-out (de-aggregation, aggregate -> originals): submit each copy with a
-			// null dependency so it accumulates into the same command buffer after the kernel,
-			// ordered against it by hazard tracking. The completion is the last copy's semaphore,
-			// which (sharing the buffer) only signals once the whole group has run — so callers wait
-			// on the actual end of the operation, deferred to the genuine boundary (a top-level
-			// run()/evaluate() or the OperationList runner) instead of blocking here.
+			// null dependency, the same way as copy-in. On a batching provider these accumulate into
+			// the same command buffer after the kernel (ordered by hazard tracking) and the completion
+			// is the last copy's semaphore, which only signals once the shared buffer has run — so
+			// callers wait on the actual end of the operation, deferred to the genuine boundary. On a
+			// direct-copy context they run synchronously and the kernel completion remains the
+			// completion.
 			if (aggregateCopyOut) {
 				Semaphore copyOut = submitBatched(output == null ?
 						argumentMap.getPostprocessOperations(null) :
@@ -642,9 +659,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 			}
 
-			// The aggregation copy-in -> kernel -> copy-out group relies on sharing one provider
-			// command buffer so in-buffer hazard tracking orders it; warn if it was split across
-			// buffers (see warnIfAggregateBatchSplit).
+			// When the aggregation copies are queued as kernels, the copy-in -> kernel -> copy-out
+			// group relies on sharing one provider command buffer so in-buffer hazard tracking orders
+			// it; warn if it was split across buffers (see warnIfAggregateBatchSplit). A direct-copy
+			// context leaves group anchor and completion equal, so the check is a no-op there.
 			warnIfAggregateBatchSplit(groupAnchor, completion);
 
 			// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
