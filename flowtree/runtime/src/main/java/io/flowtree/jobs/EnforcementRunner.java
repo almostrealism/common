@@ -117,6 +117,13 @@ class EnforcementRunner implements ConsoleFeatures {
         // and is bounded by the global total-attempt cap instead.
         Set<String> exhaustedRules = new HashSet<>();
         do {
+            // The RestartGovernor is the universal stop: once the global session
+            // cap or the job-wide dollar/turn budget is exhausted, no further
+            // correction sessions may launch regardless of per-rule caps.
+            if (!job.restartGovernor().canLaunchSession()) {
+                warn("Enforcement halted before completion -- " + job.restartGovernor().blockReason());
+                break;
+            }
             anyRuleCorrectionRan = false;
             for (EnforcementRule rule : rules) {
                 String ruleName = rule.getName();
@@ -140,7 +147,8 @@ class EnforcementRunner implements ConsoleFeatures {
                 while (attempts < ruleCap
                         && rule.isViolated(job)
                         && !job.hasAgentCommitted()
-                        && totalAttempts < CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+                        && totalAttempts < CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+                        && job.restartGovernor().canLaunchSession()) {
                     attempts++;
                     totalAttempts++;
                     anyRuleCorrectionRan = true;

@@ -106,6 +106,13 @@ public class InstructionPromptBuilder {
     private String gitTamperingViolation;
 
     /**
+     * Comma-separated list of invalid files (currently {@code .bin} files) left
+     * in the working tree by a prior session. When set, a warning is prepended
+     * above all content instructing the agent to remove the litter.
+     */
+    private String invalidFilesViolation;
+
+    /**
      * Number of times the current job has had to relaunch the Claude
      * subprocess after an inactivity-triggered kill.  When greater than zero,
      * a warning is prepended explaining that the prior attempt produced no
@@ -113,6 +120,14 @@ public class InstructionPromptBuilder {
      * to avoid the polling pattern that hung the previous attempt.
      */
     private int inactivityRestartAttempt;
+
+    /**
+     * Refutation findings from the falsification phase. When non-empty, a
+     * warning is prepended above all content telling the restarted primary
+     * session that a load-bearing claim it relied on was refuted, with the
+     * captured evidence, so the correction is proximate to the redone decision.
+     */
+    private String falsificationFindings;
 
     /**
      * When {@code true}, the prompt is for an enforcement-rule correction
@@ -332,6 +347,23 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the description of invalid files left behind by a previous session.
+     *
+     * <p>When set, the prompt will include a prominent warning explaining that
+     * the previous session was blocked because it left binary ({@code .bin})
+     * files in the working tree, and instructing the agent to remove them or
+     * generate them outside the repository.</p>
+     *
+     * @param violation the comma-separated list of invalid files that were
+     *                  detected, or null if none were found
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setInvalidFilesViolation(String violation) {
+        this.invalidFilesViolation = violation;
+        return this;
+    }
+
+    /**
      * Sets the number of times the current job has been relaunched after an
      * inactivity-triggered kill of the Claude subprocess.
      *
@@ -345,6 +377,23 @@ public class InstructionPromptBuilder {
      */
     public InstructionPromptBuilder setInactivityRestartAttempt(int attempt) {
         this.inactivityRestartAttempt = attempt;
+        return this;
+    }
+
+    /**
+     * Sets the falsification refutation findings to prepend above all content
+     * when the falsification phase bounces the job back to primary.
+     *
+     * <p>When non-empty, a warning is prepended explaining that a load-bearing
+     * claim the prior attempt relied on was refuted by captured evidence, with
+     * the claim, the dependent hunk, the evidence, and the configuration — so
+     * the correction is proximate to the decision being re-made.</p>
+     *
+     * @param findings the findings block, or {@code null}/empty when not bouncing
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setFalsificationFindings(String findings) {
+        this.falsificationFindings = findings;
         return this;
     }
 
@@ -438,6 +487,41 @@ public class InstructionPromptBuilder {
             sb.append("---\n\n");
         }
 
+        // Invalid (binary) file litter warning -- prepended when the prior
+        // session left *.bin files in the working tree.  Their presence fails
+        // the job whether or not they were staged, because other components
+        // commit whatever is present and poison the repository.
+        if (invalidFilesViolation != null && !invalidFilesViolation.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- BINARY FILE LITTER !!\n\n");
+            sb.append("Your previous session was BLOCKED and your changes were discarded ");
+            sb.append("because you left binary (`.bin`) files in the repository working ");
+            sb.append("tree.\n\n");
+            sb.append("**Files you must delete** (these were created during your run; ");
+            sb.append("`.bin` files already present on the base branch are NOT in this list ");
+            sb.append("and must be left alone):\n\n");
+            sb.append(invalidFilesViolation).append("\n\n");
+            sb.append("It does not matter whether you committed or staged them — leaving ");
+            sb.append("`.bin` files lying around poisons the repository. Other components ");
+            sb.append("stage and commit whatever is present, so binary litter inevitably ");
+            sb.append("ends up in the repo history once you leave it behind. A path prefixed ");
+            sb.append("with a repository name (e.g. `other-repo/model.bin`) is litter in a ");
+            sb.append("dependent repository checked out beside this one — clean those too.\n\n");
+            sb.append("**Do this FIRST, before anything else:** delete exactly the files ");
+            sb.append("listed above. From the working tree you can *list* `.bin` files with (do NOT bulk-delete; remove ONLY the files listed above):\n\n");
+            sb.append("```\nfind . -name '*.bin' -not -path './.git/*' -print\n```\n\n");
+            sb.append("**The rules going forward:**\n");
+            sb.append("- Do NOT write any code that generates `.bin` files unless that same ");
+            sb.append("code also deletes them before it returns, or writes them to a ");
+            sb.append("location OUTSIDE the repository working tree (a temp directory or an ");
+            sb.append("explicitly ignored path elsewhere).\n");
+            sb.append("- Clean up after yourself. Generated binary artifacts are litter, ");
+            sb.append("not deliverables.\n\n");
+            sb.append("**Consequences:** Remove every newly created `.bin` file (or relocate ");
+            sb.append("where it is generated) before you finish. If binary litter remains in ");
+            sb.append("the working tree, the job fails.\n\n");
+            sb.append("---\n\n");
+        }
+
         // Inactivity restart warning -- prepended when the prior Claude
         // subprocess was killed for going too long without producing any
         // stdout (typically because the agent invoked a bash polling loop
@@ -487,6 +571,23 @@ public class InstructionPromptBuilder {
             sb.append("Leave the changes uncommitted — the harness commits them.\n\n");
             sb.append("Simply stating that you do not see a problem, or that tests seem to ");
             sb.append("pass in your view, is not acceptable. Produce code changes.\n\n");
+            sb.append("---\n\n");
+        }
+
+        // Falsification refutation warning -- prepended when the falsification
+        // phase bounced the job because a load-bearing behavioural claim the
+        // prior attempt relied on was refuted (or left unsettled) by the
+        // captured evidence.  Delivered at the very top so the correction is
+        // proximate to the decision being re-made.
+        if (falsificationFindings != null && !falsificationFindings.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- A LOAD-BEARING CLAIM DID NOT PASS FALSIFICATION !!\n\n");
+            sb.append("A claim your previous attempt relied on was checked against the ");
+            sb.append("evidence captured during that attempt and was not confirmed. The ");
+            sb.append("code that depends on it is therefore unsound. Details:\n\n");
+            sb.append(falsificationFindings);
+            sb.append("\nDo NOT re-assert this claim without capturing evidence that ");
+            sb.append("entails it on the configuration the decision runs under. ");
+            sb.append("Reconcile your approach with the evidence above before proceeding.\n\n");
             sb.append("---\n\n");
         }
 

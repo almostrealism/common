@@ -180,7 +180,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 			int inputSize = batchSize * heads * seqLen * rotaryDim;
 			log("Expected: (" + outputSize + ", " + inputSize + ")");
 			assertEquals(outputSize * inputSize, output.getMemLength());
-		}, true, true, true);
+		}, false, false, true);
 
 		profile.save("results/" + name + ".xml");
 		log("Profile saved to results/" + name + ".xml");
@@ -235,7 +235,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 			log("Output shape: " + output.getShape());
 			int totalSize = batchSize * heads * seqLen * rotaryDim;
 			assertEquals(totalSize * totalSize, output.getMemLength());
-		}, true, true, true);
+		}, false, false, true);
 
 		profile.save("results/" + name + ".xml");
 		log("Profile saved to results/" + name + ".xml");
@@ -290,7 +290,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 			log("Output shape: " + output.getShape());
 			int totalSize = batchSize * heads * seqLen * rotaryDim;
 			assertEquals(totalSize * totalSize, output.getMemLength());
-		}, true, true, true);
+		}, false, false, true);
 
 		profile.save("results/" + name + ".xml");
 		log("Profile saved to results/" + name + ".xml");
@@ -346,7 +346,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 			log("Output shape: " + output.getShape());
 			int totalSize = batchSize * heads * seqLen * rotaryDim;
 			assertEquals(totalSize * totalSize, output.getMemLength());
-		}, true, true, true);
+		}, false, false, true);
 
 		profile.save("results/" + name + ".xml");
 		log("Profile saved to results/" + name + ".xml");
@@ -399,7 +399,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 			int outputSize = batchSize * heads * seqLen * halfDim;
 			int inputSize = batchSize * heads * seqLen * dim;
 			assertEquals(outputSize * inputSize, output.getMemLength());
-		}, true, true, true);
+		}, false, false, true);
 
 		profile.save("results/" + name + ".xml");
 		log("Profile saved to results/" + name + ".xml");
@@ -451,7 +451,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 			log("Output shape: " + output.getShape());
 			int totalSize = batchSize * heads * seqLen * fullDim;
 			assertEquals(totalSize * totalSize, output.getMemLength());
-		}, true, true, true);
+		}, false, false, true);
 
 		profile.save("results/" + name + ".xml");
 		log("Profile saved to results/" + name + ".xml");

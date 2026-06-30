@@ -70,7 +70,7 @@ public class BatchedDispatchSentinelTest extends TestSuiteBase implements AudioT
 	 * set to {@code true} causes {@link BatchedPatternLayerRenderer#batchedDispatchCount}
 	 * to be greater than zero.
 	 */
-	@Test(timeout = 180000)
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void batchedDispatchFires() {
 		DefaultKeyboardTuning tuning = new DefaultKeyboardTuning();

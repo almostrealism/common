@@ -29,16 +29,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.InetAddress;
 import java.net.URL;
-import java.net.UnknownHostException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -215,20 +207,6 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     private String workstreamUrl;
 
-    /**
-     * Channel held open for the duration of the job to back {@link #workspaceLock}.
-     * Closed unconditionally in the {@code finally} block of {@link #run()}.
-     */
-    private FileChannel workspaceLockChannel;
-
-    /**
-     * Exclusive OS-level lock on {@code <parent>/.flowtree-locks/<repoName>.lock},
-     * placed outside the git working tree so {@code git stash --include-untracked}
-     * cannot unlink it mid-job. Prevents concurrent {@link GitManagedJob}
-     * instances on the same working directory.
-     */
-    private FileLock workspaceLock;
-
     // ---- Per-run helper instances ----
 
     /**
@@ -325,6 +303,32 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
+     * Called when invalid files (currently any {@code .bin} file) are found left
+     * behind in the working tree after {@link #doWork()}.
+     *
+     * <p>Their mere presence fails the job, whether or not they were staged:
+     * binary litter poisons the repository because other components stage and
+     * commit whatever is present. This hook is the corrective mechanism — the
+     * default implementation logs a warning and returns {@code false} (no
+     * correction), so the job fails. Subclasses backed by an agent (e.g.
+     * {@link CodingAgentJob}) override this to restart the session with a prompt
+     * instructing the agent to remove the litter or generate it outside the
+     * repository, giving the agent one chance to clean up.</p>
+     *
+     * <p>When this method returns {@code true}, the caller re-scans the working
+     * tree. If invalid files persist, the job still fails.</p>
+     *
+     * @param invalidFiles working-tree-relative paths of the offending files
+     * @return {@code true} if the subclass attempted a corrective cleanup and
+     *         wants the working tree re-scanned
+     */
+    protected boolean onInvalidFilesDetected(List<String> invalidFiles) {
+        warn("Invalid files left in working tree but no corrective handler "
+            + "configured -- failing job. Files: " + String.join(", ", invalidFiles));
+        return false;
+    }
+
+    /**
      * Returns the commit message for changes made by this job.
      * Subclasses should override to provide a descriptive message.
      *
@@ -382,6 +386,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     @Override
     public final void run() {
         Exception error = null;
+        WorkspaceLock workspaceLock = new WorkspaceLock(taskId);
 
         try {
             if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
@@ -405,7 +410,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 String lockTarget = workingDirectory != null && !workingDirectory.isEmpty()
                     ? workingDirectory
                     : WorkspaceResolver.resolve(defaultWorkspacePath, repoUrl);
-                acquireWorkspaceLock(lockTarget);
+                workspaceLock.acquire(lockTarget);
                 repoSetup = new GitRepositorySetup(this);
                 workingDirectory = repoSetup.resolveAndClone();
             }
@@ -461,6 +466,13 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                     }
                 }
 
+                // Fail the job if binary litter (*.bin) was left in the working
+                // tree, even if it was never staged. Other components stage and
+                // commit whatever is present, so leaving it behind poisons the
+                // repository. The subclass gets one chance to clean up via
+                // onInvalidFilesDetected(); if litter persists, the job fails.
+                enforceNoInvalidFiles();
+
                 if (validateChanges()) {
                     commitHandler = new GitCommitHandler(this);
                     commitHandler.handle(repoSetup.hasMergeConflicts());
@@ -475,80 +487,47 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             warn("Error: " + e.getMessage(), e);
             error = e;
         } finally {
-            releaseWorkspaceLock();
+            workspaceLock.release();
             fireJobCompleted(error);
             future.complete(null);
         }
     }
 
     /**
-     * Acquires an exclusive OS-level lock on
-     * {@code <parent>/.flowtree-locks/<repoName>.lock}. The lock file is
-     * placed outside the git working tree so {@code git stash
-     * --include-untracked} cannot unlink it mid-job — POSIX advisory locks
-     * ({@link FileLock}) are per-inode, and unlink-recreate breaks them
-     * silently. On shared filesystems
-     * the lock serialises sibling containers targeting the same repository.
-     * Blocks until available; failures are logged but do not abort the job.
+     * Fails the job when invalid files (currently any {@code .bin} file) are
+     * present in the working tree of the primary repo or any dependent repo.
      *
-     * @param workspacePath the git repository root
+     * <p>Scans each working tree directly (not via git, so {@code .gitignore} is
+     * deliberately bypassed — ignored litter is still litter), excluding any
+     * {@code .bin} file that already exists on that repo's base branch, which is
+     * pre-existing content the job did not create. If any invalid file remains,
+     * {@link #onInvalidFilesDetected(List)} is invoked to give a subclass one
+     * chance to clean up, then the trees are re-scanned. If invalid files remain
+     * after that — or no corrective handler is configured — an exception is
+     * thrown so the whole job is marked failed and no git operations occur.</p>
+     *
+     * @throws IllegalStateException if invalid files remain after correction
      */
-    private void acquireWorkspaceLock(String workspacePath) {
-        try {
-            Path repoRoot = Paths.get(workspacePath);
-            Path parentDir = repoRoot.getParent();
-            if (parentDir == null) {
-                warn("Cannot resolve parent of workspace " + workspacePath
-                        + " -- workspace lock skipped");
-                return;
-            }
-            Path repoNamePath = repoRoot.getFileName();
-            String repoName = repoNamePath != null ? repoNamePath.toString() : "unknown";
-            Path lockDir = parentDir.resolve(".flowtree-locks");
-            Files.createDirectories(lockDir);
-            Path lockFile = lockDir.resolve(repoName + ".lock");
-            workspaceLockChannel = FileChannel.open(lockFile,
-                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            String host = hostname();
-            log("[" + host + "] Acquiring workspace lock: " + lockFile
-                    + " (job=" + taskId + ", repo=" + repoName + ")");
-            workspaceLock = workspaceLockChannel.lock();
-            log("[" + host + "] Workspace lock acquired: " + lockFile);
-        } catch (IOException e) {
-            warn("Failed to acquire workspace lock for " + workspacePath + ": " + e.getMessage());
+    private void enforceNoInvalidFiles() {
+        List<String> dependentRepoPaths = repoSetup != null
+                ? repoSetup.getDependentRepoPaths() : Collections.emptyList();
+        InvalidFileDetector detector = new InvalidFileDetector(this, dependentRepoPaths);
+        detector.detect();
+        if (!detector.isDetected()) {
+            return;
         }
-    }
 
-    /** Returns the local hostname for log diagnostics, or {@code "unknown"} on failure. */
-    private static String hostname() {
-        try {
-            return InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException e) {
-            return "unknown";
+        warn("Invalid files detected in working tree: " + detector.getDescription());
+        if (onInvalidFilesDetected(detector.getInvalidFiles())) {
+            detector.detect();
         }
-    }
 
-    /**
-     * Releases the workspace lock acquired by {@link #acquireWorkspaceLock(String)}.
-     * Safe to call when no lock is held.
-     */
-    private void releaseWorkspaceLock() {
-        if (workspaceLock != null) {
-            try {
-                workspaceLock.release();
-                log("[" + hostname() + "] Workspace lock released (job=" + taskId + ")");
-            } catch (IOException e) {
-                warn("Failed to release workspace lock: " + e.getMessage());
-            }
-            workspaceLock = null;
-        }
-        if (workspaceLockChannel != null) {
-            try {
-                workspaceLockChannel.close();
-            } catch (IOException e) {
-                warn("Failed to close workspace lock channel: " + e.getMessage());
-            }
-            workspaceLockChannel = null;
+        if (detector.isDetected()) {
+            throw new IllegalStateException(
+                "Job failed: invalid files left in the repository working tree: "
+                    + detector.getDescription()
+                    + ". Binary (.bin) files must never be left behind — remove them "
+                    + "or generate them outside the repository.");
         }
     }
 
@@ -1455,42 +1434,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     public String encode() {
         StringBuilder sb = new StringBuilder();
         sb.append(this.getClass().getName());
-        sb.append("::taskId:=").append(taskId);
-        if (targetBranch != null) {
-            sb.append("::branch:=").append(base64Encode(targetBranch));
-        }
-        if (baseBranch != null && !"master".equals(baseBranch)) {
-            sb.append("::baseBranch:=").append(base64Encode(baseBranch));
-        }
-        if (workingDirectory != null) {
-            sb.append("::workDir:=").append(base64Encode(workingDirectory));
-        }
-        if (repoUrl != null) {
-            sb.append("::repoUrl:=").append(base64Encode(repoUrl));
-        }
-        if (defaultWorkspacePath != null) {
-            sb.append("::defaultWsPath:=").append(base64Encode(defaultWorkspacePath));
-        }
-        sb.append("::maxFileSize:=").append(maxFileSizeBytes);
-        sb.append("::push:=").append(pushToOrigin);
-        sb.append("::createBranch:=").append(createBranchIfMissing);
-        sb.append("::dryRun:=").append(dryRun);
-        sb.append("::protectTests:=").append(protectTestFiles);
-        if (gitUserName != null) {
-            sb.append("::gitUserName:=").append(base64Encode(gitUserName));
-        }
-        if (gitUserEmail != null) {
-            sb.append("::gitUserEmail:=").append(base64Encode(gitUserEmail));
-        }
-        if (workstreamUrl != null) {
-            sb.append("::workstreamUrl:=").append(base64Encode(workstreamUrl));
-        }
-        if (dependentRepos != null && !dependentRepos.isEmpty()) {
-            sb.append("::depRepos:=").append(base64Encode(String.join(",", dependentRepos)));
-        }
-        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
-            sb.append("::req.").append(entry.getKey()).append(":=").append(entry.getValue());
-        }
+        GitManagedJobCodec.appendEncoded(sb, this);
         sb.append(encodeEnvironmentProperties());
         return sb.toString();
     }
@@ -1511,67 +1455,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     @Override
     public void set(String key, String value) {
-        switch (key) {
-            case "taskId":
-                this.taskId = value;
-                break;
-            case "workDir":
-                this.workingDirectory = base64Decode(value);
-                break;
-            case "repoUrl":
-                this.repoUrl = base64Decode(value);
-                break;
-            case "defaultWsPath":
-                this.defaultWorkspacePath = base64Decode(value);
-                break;
-            case "branch":
-                this.targetBranch = base64Decode(value);
-                break;
-            case "baseBranch":
-                this.baseBranch = base64Decode(value);
-                break;
-            case "push":
-                this.pushToOrigin = Boolean.parseBoolean(value);
-                break;
-            case "workstreamUrl":
-                this.workstreamUrl = base64Decode(value);
-                break;
-            case "gitUserName":
-                this.gitUserName = base64Decode(value);
-                break;
-            case "gitUserEmail":
-                this.gitUserEmail = base64Decode(value);
-                break;
-            case "protectTests":
-                this.protectTestFiles = Boolean.parseBoolean(value);
-                break;
-            case "maxFileSize":
-                this.maxFileSizeBytes = Long.parseLong(value);
-                break;
-            case "createBranch":
-                this.createBranchIfMissing = Boolean.parseBoolean(value);
-                break;
-            case "dryRun":
-                this.dryRun = Boolean.parseBoolean(value);
-                break;
-            case "depRepos":
-                String decodedRepos = base64Decode(value);
-                List<String> repoList = new ArrayList<>();
-                for (String r : decodedRepos.split(",")) {
-                    String trimmed = r.trim();
-                    if (!trimmed.isEmpty()) {
-                        repoList.add(trimmed);
-                    }
-                }
-                this.dependentRepos = repoList;
-                break;
-            default:
-                if (key.startsWith("req.")) {
-                    requiredLabels.put(key.substring(4), value);
-                } else {
-                    setEnvironmentProperty(key, value);
-                }
-                break;
+        if (!GitManagedJobCodec.applySetting(this, key, value)) {
+            setEnvironmentProperty(key, value);
         }
     }
 }

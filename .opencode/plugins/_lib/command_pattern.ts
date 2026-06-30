@@ -50,7 +50,11 @@ export interface Decision {
   stderr: string
 }
 
-export type PolicyId = "block-git-commit" | "block-git-worktree" | "warn-git-log"
+export type PolicyId =
+  | "block-git-commit"
+  | "block-git-worktree"
+  | "warn-git-log"
+  | "block-branch-track-master"
 
 // Module-level callID → Decision cache. Populated in tool.execute.before,
 // consumed-and-deleted in tool.execute.after for the same callID. This
