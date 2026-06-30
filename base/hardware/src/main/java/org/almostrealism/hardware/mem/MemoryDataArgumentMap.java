@@ -21,13 +21,14 @@ import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.SystemUtils;
@@ -65,7 +66,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * limit), which is required for fused kernels with many small inputs to evaluate at all. The
 	 * copy plan copies aggregated inputs IN before the kernel and copies written slices back OUT
 	 * afterward (skipping the slice that aliases an explicit {@code output}; see
-	 * {@link #getPostprocessData(MemoryData)}), and instruction reuse is aggregation-safe (each
+	 * {@link #getPostprocessOperations(MemoryData)}), and instruction reuse is aggregation-safe (each
 	 * reused operation gets its own aggregate buffer and the signature encodes the aggregate layout
 	 * -- see {@code AcceleratedComputationOperation.rebindAggregateForReuse} and
 	 * {@code CollectionProviderProducer.signature}). Set the env var to a disabled value to turn
@@ -109,6 +110,19 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	private Producer<MemoryData> aggregateSupplier;
 	/** Argument variable for the aggregate buffer, created once and shared. */
 	private ArrayVariable aggregateArgument;
+
+	/**
+	 * Compiled copy-in kernels (originals &rarr; aggregate), one per replacement, in replacement
+	 * order. Built once on first use and reused across every {@code apply}, so the copies are not
+	 * recompiled per dispatch. Null until {@link #ensureCopyOperations()} runs.
+	 */
+	private List<Submittable> copyInOperations;
+	/**
+	 * Compiled copy-out kernels (aggregate &rarr; originals), one per replacement, in replacement
+	 * order (aligned with {@link #copyInOperations} and {@link #replacements}). Reused across every
+	 * {@code apply}. Null until {@link #ensureCopyOperations()} runs.
+	 */
+	private List<Submittable> copyOutOperations;
 
 	/**
 	 * Creates an argument map without aggregation support.
@@ -289,64 +303,79 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Returns the operations that copy each aggregated root into the aggregate buffer before
-	 * kernel execution.
+	 * Returns the kernels that copy each aggregated root into the aggregate buffer before kernel
+	 * execution, in replacement order.
 	 *
-	 * <p>Each copy is an {@link Assignment}, so it compiles to a genuine kernel program rather
-	 * than a host-mediated {@link MemoryDataCopy}. This lets the copy-in be submitted to (and
-	 * ordered within) the compute provider alongside the kernel it feeds — a prerequisite for
-	 * Metal operation batching — instead of forcing a host round-trip through
-	 * {@code toArray}/{@code setMem}. The operations are chained via completion semaphores by
-	 * {@code AcceleratedOperation.apply}, not executed inline here.</p>
+	 * <p>Each copy is a compiled {@link Assignment} (a genuine kernel program, not a host-mediated
+	 * {@link MemoryDataCopy}), so {@code AcceleratedOperation.apply} can submit it to the compute
+	 * provider alongside the kernel it feeds — a prerequisite for Metal operation batching — rather
+	 * than forcing a host round-trip through {@code toArray}/{@code setMem}. The kernels are compiled
+	 * once and reused (see {@link #ensureCopyOperations()}).</p>
 	 *
-	 * @return Pre-execution copy operations
+	 * @return compiled pre-execution copy kernels, in replacement order
 	 */
-	public OperationList getPrepareData() {
-		OperationList prep = new OperationList("MemoryDataArgumentMap Preprocess");
-		for (Replacement r : replacements) {
-			MemoryData root = r.getRoot();
-			int pos = r.getPosition();
-			int len = root.getMemLength();
-			prep.add(aggregateCopy(() -> root, () -> new Bytes(len, getAggregateData(), pos), len));
-		}
-		return prep;
+	public List<Submittable> getPrepareOperations() {
+		ensureCopyOperations();
+		return copyInOperations;
 	}
 
 	/**
-	 * Returns the operations that copy every aggregated slice back to its source after kernel
-	 * execution.
+	 * Returns the kernels that copy each aggregated slice back to its source after kernel execution,
+	 * omitting any slice whose source shares memory with {@code skipOutput}.
 	 *
-	 * @return Post-execution copy operations
-	 */
-	public OperationList getPostprocessData() {
-		return getPostprocessData(null);
-	}
-
-	/**
-	 * Returns the operations that copy each aggregated slice back to its source after kernel
-	 * execution, omitting any slice whose source shares memory with {@code skipOutput}.
-	 *
-	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told
-	 * to use as its explicit output (the in-place {@code x = x + y} case, where the aggregated
-	 * read copy of {@code x} must not overwrite the freshly written {@code x}).</p>
+	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told to
+	 * use as its explicit output (the in-place {@code x = x + y} case, where the aggregated read copy
+	 * of {@code x} must not overwrite the freshly written {@code x}). When {@code skipOutput} is null
+	 * the full, cached copy-out list is returned directly.</p>
 	 *
 	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to copy all
-	 * @return Post-execution copy operations
+	 * @return compiled post-execution copy kernels, in replacement order
 	 */
-	public OperationList getPostprocessData(MemoryData skipOutput) {
-		Memory skip = skipOutput == null ? null : skipOutput.getRootDelegate().getMem();
+	public List<Submittable> getPostprocessOperations(MemoryData skipOutput) {
+		ensureCopyOperations();
 
-		OperationList post = new OperationList("MemoryDataArgumentMap Postprocess");
-		for (Replacement r : replacements) {
-			MemoryData root = r.getRoot();
-			if (skip != null && root.getRootDelegate().getMem() == skip) {
+		if (skipOutput == null) {
+			return copyOutOperations;
+		}
+
+		Memory skip = skipOutput.getRootDelegate().getMem();
+		List<Submittable> result = new ArrayList<>(copyOutOperations.size());
+		for (int i = 0; i < replacements.size(); i++) {
+			if (replacements.get(i).getRoot().getRootDelegate().getMem() == skip) {
 				continue;
 			}
+			result.add(copyOutOperations.get(i));
+		}
+		return result;
+	}
+
+	/**
+	 * Compiles the copy-in and copy-out kernels for every replacement, once.
+	 *
+	 * <p>The copies bind the same root buffers and the same lazily-created aggregate buffer on every
+	 * invocation (aggregated roots are {@link Provider}-backed, fixed memory, and the aggregate is
+	 * created once), so a single compiled kernel is valid for the lifetime of this map. Compiling
+	 * here — rather than rebuilding per {@code apply} — is what removes the per-dispatch
+	 * recompilation that an {@link Assignment} with a {@code null} signature would otherwise incur.</p>
+	 */
+	private void ensureCopyOperations() {
+		if (copyInOperations != null) {
+			return;
+		}
+
+		copyInOperations = new ArrayList<>(replacements.size());
+		copyOutOperations = new ArrayList<>(replacements.size());
+
+		for (Replacement r : replacements) {
+			MemoryData root = r.getRoot();
 			int pos = r.getPosition();
 			int len = root.getMemLength();
-			post.add(aggregateCopy(() -> new Bytes(len, getAggregateData(), pos), () -> root, len));
+
+			copyInOperations.add((Submittable) aggregateCopy(
+					() -> root, () -> new Bytes(len, getAggregateData(), pos), len).get());
+			copyOutOperations.add((Submittable) aggregateCopy(
+					() -> new Bytes(len, getAggregateData(), pos), () -> root, len).get());
 		}
-		return post;
 	}
 
 	/**
@@ -355,10 +384,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 *
 	 * <p>This is the kernel-based counterpart to {@link MemoryDataCopy}: where {@code MemoryDataCopy}
 	 * performs a host-mediated {@code target.setMem(source.toArray(...))} round-trip, the
-	 * {@link Assignment} produced here is submittable to a compute provider and can be ordered,
-	 * via completion semaphores, relative to the operations it surrounds — which is what allows the
-	 * aggregated copy-in/copy-out to participate in Metal operation batching rather than forcing a
-	 * per-operation host synchronization.</p>
+	 * {@link Assignment} produced here is a {@link Submittable} kernel that
+	 * {@code AcceleratedOperation.apply} encodes onto the provider's command buffer (with a null
+	 * dependency, so it batches and is ordered against the surrounding kernel by the provider's
+	 * hazard tracking) rather than forcing a per-operation host synchronization.</p>
 	 *
 	 * <p>The {@code source} and {@code target} are wrapped as plain lambda {@link Producer}s (not
 	 * {@link Provider}s) for two reasons: so that {@link Assignment#get()} does not take its provider
@@ -382,6 +411,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	@Override
 	public void destroy() {
 		super.destroy();
+		destroyCopyOperations(copyInOperations);
+		destroyCopyOperations(copyOutOperations);
+		copyInOperations = null;
+		copyOutOperations = null;
 		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
 		mems.forEach((k, v) -> v.destroy());
 		mems.clear();
@@ -389,6 +422,24 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		if (aggregateData != null) {
 			aggregateData.destroy();
 			aggregateData = null;
+		}
+	}
+
+	/**
+	 * Destroys the compiled copy kernels in the given list, releasing the operator/kernel resources
+	 * they hold. No-op when the list is null (the copies were never built).
+	 *
+	 * @param operations the cached copy kernels to destroy, or null
+	 */
+	private static void destroyCopyOperations(List<Submittable> operations) {
+		if (operations == null) {
+			return;
+		}
+
+		for (Submittable op : operations) {
+			if (op instanceof Destroyable) {
+				((Destroyable) op).destroy();
+			}
 		}
 	}
 

@@ -565,19 +565,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Two memory mechanisms may wrap the kernel (see method javadoc): compile-time argument
 			// aggregation (aggregating) and cross-provider replacement (processing). The aggregation
-			// copy-in/copy-out are now genuine kernels submitted to the provider and ordered by
-			// completion semaphores (so they ride the same command stream as the kernel rather than
-			// forcing a host round-trip); cross-provider replacement remains host-mediated.
+			// copy-in/copy-out are now genuine kernels submitted to the provider; cross-provider
+			// replacement remains host-mediated.
 			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
 			boolean aggregateCopyOut = aggregating
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 
-			// Copy-in (originals -> aggregate): submit the copies as a chained group, beginning the
-			// chain on the caller's prior completion. The kernel then depends on the last copy-in
-			// rather than on a completed host copy — nothing blocks here.
-			Semaphore kernelDependency = dependsOn;
+			// Copy-in (originals -> aggregate): submit each copy with a null dependency so it
+			// accumulates into the provider's open command buffer rather than committing one of its
+			// own. The kernel is submitted immediately after and reads the aggregate the copies just
+			// wrote; the provider's in-buffer hazard tracking orders the kernel after the copies
+			// without an explicit semaphore (an explicit dependency would force a commit and break
+			// batching — see MetalCommandRunner.submit). Nothing blocks here.
 			if (aggregating) {
-				kernelDependency = submitChain(argumentMap.getPrepareData(), kernelDependency);
+				submitBatched(argumentMap.getPrepareOperations());
 			}
 
 			boolean processing = !process.isEmpty();
@@ -587,9 +588,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				process.getPrepare().get().run();
 			}
 
-			// Run the operator, chaining on the copy-in completion (or the caller's prior completion
-			// when not aggregating).
-			Semaphore nextSemaphore = operator.accept(input, kernelDependency);
+			// Run the operator, chaining on the caller's prior completion when one was provided.
+			Semaphore nextSemaphore = operator.accept(input, dependsOn);
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
@@ -610,13 +610,19 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				process.getPostprocess().get().run();
 			}
 
-			// Aggregation copy-out (de-aggregation, aggregate -> originals): submit as a chained group
-			// depending on the kernel's completion, deferring the wait to the genuine boundary
-			// (a top-level run()/evaluate() or the OperationList runner) instead of blocking here.
+			// Aggregation copy-out (de-aggregation, aggregate -> originals): submit each copy with a
+			// null dependency so it accumulates into the same command buffer after the kernel,
+			// ordered against it by hazard tracking. The completion is the last copy's semaphore,
+			// which (sharing the buffer) only signals once the whole group has run — so callers wait
+			// on the actual end of the operation, deferred to the genuine boundary (a top-level
+			// run()/evaluate() or the OperationList runner) instead of blocking here.
 			if (aggregateCopyOut) {
-				completion = submitChain(output == null ?
-						argumentMap.getPostprocessData() :
-						argumentMap.getPostprocessData((MemoryData) output), completion);
+				Semaphore copyOut = submitBatched(output == null ?
+						argumentMap.getPostprocessOperations(null) :
+						argumentMap.getPostprocessOperations((MemoryData) output));
+				if (copyOut != null) {
+					completion = copyOut;
+				}
 			}
 
 			// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
@@ -636,41 +642,33 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
-	 * Submits each operation in {@code operations} to its compute provider, chaining them with
-	 * completion {@link Semaphore}s so that each runs after the previous one without blocking the
-	 * host or the {@code ComputeContext} executor thread.
+	 * Submits each operation in {@code operations} to its compute provider with a {@code null}
+	 * dependency, so the dispatches accumulate into the provider's open command buffer and stay
+	 * batched, and returns the last one's completion {@link Semaphore}.
 	 *
-	 * <p>This is the kernel-program counterpart to running the operations inline. A host-mediated
-	 * copy invoked here would either block the executor (and throw, when the copy is itself an
-	 * accelerated operation whose {@code run()} waits) or force a per-operation host
-	 * synchronization; submitting each operation instead encodes it onto the provider's command
-	 * stream and carries its completion forward as the next operation's dependency. The first
-	 * operation depends on {@code dependsOn}; the returned semaphore is the completion of the last
-	 * operation (or {@code dependsOn} itself when {@code operations} is empty), suitable as a
-	 * downstream dependency.</p>
+	 * <p>Passing {@code null} rather than chaining each operation on the previous one's completion is
+	 * deliberate: a real dependency forces the provider to commit (split) the open command buffer
+	 * before the dependent dispatch (see {@code MetalCommandRunner.submit}), which defeats batching.
+	 * The operations are submitted in order on a single provider executor thread, so they are encoded
+	 * in order; the provider's in-buffer hazard tracking then serializes any read-after-write
+	 * dependency between them (and between them and the surrounding kernel) without an explicit
+	 * semaphore. The returned semaphore is the last operation's completion which — because the group
+	 * shares one command buffer — only signals once the whole group has run, making it a sound
+	 * completion handle for the caller to wait on or chain from.</p>
 	 *
-	 * <p>Every operation produced for aggregation copy-in/copy-out compiles to a {@link Submittable}
-	 * kernel; the synchronous {@code run()} fallback exists only for completeness should a
-	 * non-submittable operation ever appear.</p>
+	 * <p>Submitting never blocks the host or the {@code ComputeContext} executor thread.</p>
 	 *
 	 * @param operations the operations to submit, in order
-	 * @param dependsOn  the prior completion the first operation should wait on, or null to begin a chain
-	 * @return the completion of the last submitted operation, or {@code dependsOn} when empty
+	 * @return the completion of the last submitted operation, or null when {@code operations} is empty
 	 */
-	protected static Semaphore submitChain(OperationList operations, Semaphore dependsOn) {
-		Semaphore pending = dependsOn;
+	protected static Semaphore submitBatched(List<Submittable> operations) {
+		Semaphore last = null;
 
 		for (int i = 0; i < operations.size(); i++) {
-			Runnable r = operations.get(i).get();
-
-			if (r instanceof Submittable) {
-				pending = ((Submittable) r).submit(pending);
-			} else {
-				r.run();
-			}
+			last = operations.get(i).submit(null);
 		}
 
-		return pending;
+		return last;
 	}
 
 	/**
