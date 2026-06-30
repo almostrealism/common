@@ -370,14 +370,22 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			int len = root.getMemLength();
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 
-			copyInOperations.add((Submittable) aggregateCopy(root, slice, len).get());
-			copyOutOperations.add((Submittable) aggregateCopy(slice, root, len).get());
+			copyInOperations.add((Submittable) aggregateCopy(root, slice).get());
+			copyOutOperations.add((Submittable) aggregateCopy(slice, root).get());
 		}
 	}
 
 	/**
-	 * Creates a copy of {@code length} elements from {@code source} into {@code target}, expressed as
-	 * an {@link Assignment} between two {@link Provider}s.
+	 * Copies {@code source} into {@code target} element-by-element, expressed as an {@link Assignment}
+	 * between two {@link Provider}s.
+	 *
+	 * <p>The assignment uses a {@code memLength} of {@code 1}: it is a single-statement copy
+	 * {@code dest[i] = src[i]} dispatched over one work item per element. The element count comes from
+	 * the operands' {@link MemoryDataProviderProducer#getCountLong() count}, so the generated
+	 * {@link io.almostrealism.scope.Scope} contains exactly one statement regardless of how large the
+	 * memory is — rather than {@code length} unrolled statements, which would produce a distinct kernel
+	 * per length and could exceed the {@link io.almostrealism.scope.ScopeSettings} statement limit. The
+	 * single compiled program is therefore reused across copies of every size.</p>
 	 *
 	 * <p>Wrapping both operands in {@link MemoryDataProviderProducer} (so they report as providers)
 	 * is what routes the assignment through {@code Assignment.Runner}: the compiled copy kernel is
@@ -389,11 +397,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 *
 	 * @param source the memory to copy from
 	 * @param target the memory to copy into
-	 * @param length number of elements to copy
 	 * @return an {@link Assignment} that performs the copy when run or submitted
 	 */
-	private static Assignment<MemoryData> aggregateCopy(MemoryData source, MemoryData target, int length) {
-		return new Assignment<>(length,
+	private static Assignment<MemoryData> aggregateCopy(MemoryData source, MemoryData target) {
+		return new Assignment<>(1,
 				new MemoryDataProviderProducer(target),
 				new MemoryDataProviderProducer(source));
 	}

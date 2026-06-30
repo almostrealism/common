@@ -17,7 +17,9 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.mem.MemoryDataProviderProducer;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -56,5 +58,42 @@ public class AssignmentRunnerTest extends TestSuiteBase {
 		for (int i = 0; i < n; i++) {
 			assertEquals(src.toDouble(i), dst.toDouble(i));
 		}
+	}
+
+	/**
+	 * A provider-to-provider copy (the form {@code MemoryDataArgumentMap} builds for aggregate
+	 * copy-in/copy-out) must be a single-statement assignment: {@code memLength == 1}, with the entire
+	 * size carried by the {@code count}. This guards against sizing the copy with
+	 * {@code memLength == length}, which would unroll one statement per element — a distinct, larger
+	 * {@link io.almostrealism.scope.Scope} per length (capped by {@link io.almostrealism.scope.ScopeSettings})
+	 * instead of one reused program. Because {@code memLength} is always {@code 1}, the
+	 * {@link Assignment#signature() signature} is size-independent, so a single compiled program serves
+	 * copies of every length.
+	 */
+	@Test(timeout = 60000)
+	public void providerCopyIsSingleStatement() {
+		int[] sizes = {1, 17, 256, 4096};
+		String signature = null;
+
+		for (int n : sizes) {
+			PackedCollection src = new PackedCollection(n);
+			PackedCollection dst = new PackedCollection(n);
+
+			Assignment<MemoryData> copy = new Assignment<>(1,
+					new MemoryDataProviderProducer(dst),
+					new MemoryDataProviderProducer(src));
+
+			// describe() is "{shortDescription} ({count}x{memLength})": memLength must be 1 (a single
+			// statement) and the count must carry the full element count.
+			Assert.assertTrue("expected a single-statement copy (count " + n + ", memLength 1), got "
+					+ copy.describe(), copy.describe().endsWith("(" + n + "x1)"));
+
+			// The signature must not depend on the length, so one compiled program is reused.
+			if (signature == null) signature = copy.signature();
+			Assert.assertEquals("provider-to-provider copy signature must be size-independent",
+					signature, copy.signature());
+		}
+
+		Assert.assertEquals("assign1->memoryDataProvider", signature);
 	}
 }
