@@ -35,8 +35,13 @@ Usage::
         --sa3-src /path/to/stable-audio-3 \
         --config  /path/to/SAME-S/model_config.json \
         --weights /path/to/SAME-S/model.safetensors \
-        --out     ../src/test/resources/same-s-references \
         --seed 1234 --samples 24576
+
+``--out`` defaults to the git-ignored build-output directory
+``engine/ml/target/test-classes/same-s-references`` (one of the locations the
+Java ``SAMEResamplingParityTest`` searches). These dumps are regenerable
+artifacts: never write them into a tracked source path such as
+``src/test/resources/same-s-references`` — doing so leaks them into commits.
 """
 
 import argparse
@@ -52,6 +57,17 @@ from einops import rearrange
 # Block E serializer (same directory).
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import safetensors_extractor as core
+
+# Default output directory: a NON-tracked, build-output location under the
+# engine/ml module's target/ tree. These reference dumps are regenerable
+# artifacts and must NEVER be written into a tracked source path
+# (src/test/resources/...) — doing so leaks them into commits when the working
+# tree is swept. target/test-classes/same-s-references is wiped by `mvn clean`,
+# is git-ignored, and is one of the locations SAMEResamplingParityTest searches
+# (REFERENCE_DIRS), so the parity test still finds freshly-generated references.
+DEFAULT_OUT = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "target", "test-classes", "same-s-references"))
 
 
 def build_same_autoencoder(sa3_src, config_path, weights_path):
@@ -302,7 +318,11 @@ def main():
     parser.add_argument("--sa3-src", required=True, help="Path to the stable-audio-3 source clone")
     parser.add_argument("--config", required=True, help="Path to SAME-S model_config.json")
     parser.add_argument("--weights", required=True, help="Path to SAME-S model.safetensors")
-    parser.add_argument("--out", required=True, help="Output directory for reference .bin files")
+    parser.add_argument("--out", default=DEFAULT_OUT,
+                        help="Output directory for the reference dumps. Defaults to the git-ignored "
+                             "build-output path %(default)s. Do NOT point this at a tracked source "
+                             "path such as src/test/resources/same-s-references — those dumps are "
+                             "regenerable artifacts and must never be committed.")
     parser.add_argument("--seed", type=int, default=1234, help="Torch seed for the fixed input")
     parser.add_argument("--samples", type=int, default=24576,
                         help="Input length in samples (multiple of downsampling_ratio 4096)")
