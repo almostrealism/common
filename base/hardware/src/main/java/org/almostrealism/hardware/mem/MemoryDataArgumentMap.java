@@ -29,6 +29,7 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
@@ -291,6 +292,13 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * Returns the operations that copy each aggregated root into the aggregate buffer before
 	 * kernel execution.
 	 *
+	 * <p>Each copy is an {@link Assignment}, so it compiles to a genuine kernel program rather
+	 * than a host-mediated {@link MemoryDataCopy}. This lets the copy-in be submitted to (and
+	 * ordered within) the compute provider alongside the kernel it feeds — a prerequisite for
+	 * Metal operation batching — instead of forcing a host round-trip through
+	 * {@code toArray}/{@code setMem}. The operations are chained via completion semaphores by
+	 * {@code AcceleratedOperation.apply}, not executed inline here.</p>
+	 *
 	 * @return Pre-execution copy operations
 	 */
 	public OperationList getPrepareData() {
@@ -299,8 +307,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			MemoryData root = r.getRoot();
 			int pos = r.getPosition();
 			int len = root.getMemLength();
-			prep.add(new MemoryDataCopy("Aggregate Prepare",
-					() -> root, () -> new Bytes(len, getAggregateData(), pos), len));
+			prep.add(aggregateCopy(() -> root, () -> new Bytes(len, getAggregateData(), pos), len));
 		}
 		return prep;
 	}
@@ -337,10 +344,39 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			}
 			int pos = r.getPosition();
 			int len = root.getMemLength();
-			post.add(new MemoryDataCopy("Aggregate Postprocess",
-					() -> new Bytes(len, getAggregateData(), pos), () -> root, len));
+			post.add(aggregateCopy(() -> new Bytes(len, getAggregateData(), pos), () -> root, len));
 		}
 		return post;
+	}
+
+	/**
+	 * Creates a copy of {@code length} elements from {@code source} into {@code target}, expressed
+	 * as an {@link Assignment} so it compiles to a genuine kernel program.
+	 *
+	 * <p>This is the kernel-based counterpart to {@link MemoryDataCopy}: where {@code MemoryDataCopy}
+	 * performs a host-mediated {@code target.setMem(source.toArray(...))} round-trip, the
+	 * {@link Assignment} produced here is submittable to a compute provider and can be ordered,
+	 * via completion semaphores, relative to the operations it surrounds — which is what allows the
+	 * aggregated copy-in/copy-out to participate in Metal operation batching rather than forcing a
+	 * per-operation host synchronization.</p>
+	 *
+	 * <p>The {@code source} and {@code target} are wrapped as plain lambda {@link Producer}s (not
+	 * {@link Provider}s) for two reasons: so that {@link Assignment#get()} does not take its provider
+	 * short-circuit and instead compiles the assignment {@link io.almostrealism.scope.Scope} into a
+	 * kernel; and so that the copy's own arguments are not themselves folded into an aggregate (only
+	 * {@link Provider}-valued arguments are aggregation candidates — see {@link #get(Supplier)}),
+	 * which would otherwise recurse.</p>
+	 *
+	 * @param source supplier of the memory to copy from
+	 * @param target supplier of the memory to copy into
+	 * @param length number of elements to copy
+	 * @return an {@link Assignment} that performs the copy when compiled and submitted
+	 */
+	private static Assignment<MemoryData> aggregateCopy(Supplier<MemoryData> source,
+														Supplier<MemoryData> target, int length) {
+		return new Assignment<>(length,
+				() -> (Evaluable<MemoryData>) args -> target.get(),
+				() -> (Evaluable<MemoryData>) args -> source.get());
 	}
 
 	@Override

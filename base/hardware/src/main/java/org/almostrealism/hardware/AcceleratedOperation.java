@@ -563,64 +563,114 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// Prepare the operator
 			Execution operator = setupOperator(process);
 
-			// Two host-mediated memory mechanisms may wrap the kernel (see method javadoc):
-			// compile-time argument aggregation (aggregating) and cross-provider replacement
-			// (processing). They are set up here and unwound in reverse order after the kernel runs.
+			// Two memory mechanisms may wrap the kernel (see method javadoc): compile-time argument
+			// aggregation (aggregating) and cross-provider replacement (processing). The aggregation
+			// copy-in/copy-out are now genuine kernels submitted to the provider and ordered by
+			// completion semaphores (so they ride the same command stream as the kernel rather than
+			// forcing a host round-trip); cross-provider replacement remains host-mediated.
 			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
 			boolean aggregateCopyOut = aggregating
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 
+			// Copy-in (originals -> aggregate): submit the copies as a chained group, beginning the
+			// chain on the caller's prior completion. The kernel then depends on the last copy-in
+			// rather than on a completed host copy — nothing blocks here.
+			Semaphore kernelDependency = dependsOn;
 			if (aggregating) {
-				argumentMap.getPrepareData().get().run();
+				kernelDependency = submitChain(argumentMap.getPrepareData(), kernelDependency);
 			}
 
 			boolean processing = !process.isEmpty();
 
-			// Preprocessing
+			// Cross-provider replacement copy-in (host-mediated) is unchanged.
 			if (processing) {
 				process.getPrepare().get().run();
 			}
 
-			// Run the operator, chaining on the prior operation's completion when provided
-			Semaphore nextSemaphore = operator.accept(input, dependsOn);
+			// Run the operator, chaining on the copy-in completion (or the caller's prior completion
+			// when not aggregating).
+			Semaphore nextSemaphore = operator.accept(input, kernelDependency);
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
 			Heap.addPendingKernel(nextSemaphore);
 
-			// Adopt the operator's device-completion semaphore as the process completion so
-			// callers wait on (and can chain via dependsOn) the actual kernel completion
-			// rather than the host-readiness latch. When the operator returns null (fully
-			// synchronous providers) the host latch remains the completion — behavior is
-			// unchanged.
-			process.setSemaphore(nextSemaphore);
+			Semaphore completion = nextSemaphore;
 
-			// Postprocessing runs only for ops that need it (cross-provider replacement and/or
-			// aggregation copy-out); plain ops stay batched. The per-op wait ensures the kernel has
-			// completed before the host-mediated copy-backs read its results.
-			if (processing || aggregateCopyOut) {
+			// Cross-provider replacement copy-out remains host-mediated: it reads the kernel's result
+			// back across providers, so it still waits for the kernel here. Per the reverse-order
+			// unwind (see javadoc), the replacement copy-back (temp->aggregate) MUST precede the
+			// aggregation de-aggregation (aggregate->originals) below, which it does because this runs
+			// first and synchronously.
+			if (processing) {
 				if (nextSemaphore != null) {
-					// TODO  result in a new Semaphore that performs the postprocessing when the
-					// TODO  original semaphore finishes, rather than blocking the host here
 					nextSemaphore.waitFor();
 				}
 
-				// Reverse-order unwind (see javadoc): the replacement copy-back (temp->aggregate) MUST
-				// precede aggregation's de-aggregation (aggregate->originals), or the de-aggregation
-				// reads a stale aggregate and the result reads as zero.
-				if (processing) {
-					process.getPostprocess().get().run();
-				}
+				process.getPostprocess().get().run();
+			}
 
-				if (aggregateCopyOut) {
-					(output == null ?
-							argumentMap.getPostprocessData() :
-							argumentMap.getPostprocessData((MemoryData) output)).get().run();
-				}
+			// Aggregation copy-out (de-aggregation, aggregate -> originals): submit as a chained group
+			// depending on the kernel's completion, deferring the wait to the genuine boundary
+			// (a top-level run()/evaluate() or the OperationList runner) instead of blocking here.
+			if (aggregateCopyOut) {
+				completion = submitChain(output == null ?
+						argumentMap.getPostprocessData() :
+						argumentMap.getPostprocessData((MemoryData) output), completion);
+			}
+
+			// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
+			// the process completion so callers wait on (and can chain via dependsOn) the actual end
+			// of the operation rather than the host-readiness latch. When the operator returns null
+			// (fully synchronous providers) the host latch remains the completion — behavior is
+			// unchanged.
+			process.setSemaphore(completion);
+
+			if (completion != null && completion != nextSemaphore) {
+				// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
+				Heap.addPendingKernel(completion);
 			}
 		});
 
 		return process;
+	}
+
+	/**
+	 * Submits each operation in {@code operations} to its compute provider, chaining them with
+	 * completion {@link Semaphore}s so that each runs after the previous one without blocking the
+	 * host or the {@code ComputeContext} executor thread.
+	 *
+	 * <p>This is the kernel-program counterpart to running the operations inline. A host-mediated
+	 * copy invoked here would either block the executor (and throw, when the copy is itself an
+	 * accelerated operation whose {@code run()} waits) or force a per-operation host
+	 * synchronization; submitting each operation instead encodes it onto the provider's command
+	 * stream and carries its completion forward as the next operation's dependency. The first
+	 * operation depends on {@code dependsOn}; the returned semaphore is the completion of the last
+	 * operation (or {@code dependsOn} itself when {@code operations} is empty), suitable as a
+	 * downstream dependency.</p>
+	 *
+	 * <p>Every operation produced for aggregation copy-in/copy-out compiles to a {@link Submittable}
+	 * kernel; the synchronous {@code run()} fallback exists only for completeness should a
+	 * non-submittable operation ever appear.</p>
+	 *
+	 * @param operations the operations to submit, in order
+	 * @param dependsOn  the prior completion the first operation should wait on, or null to begin a chain
+	 * @return the completion of the last submitted operation, or {@code dependsOn} when empty
+	 */
+	protected static Semaphore submitChain(OperationList operations, Semaphore dependsOn) {
+		Semaphore pending = dependsOn;
+
+		for (int i = 0; i < operations.size(); i++) {
+			Runnable r = operations.get(i).get();
+
+			if (r instanceof Submittable) {
+				pending = ((Submittable) r).submit(pending);
+			} else {
+				r.run();
+			}
+		}
+
+		return pending;
 	}
 
 	/**
