@@ -1,52 +1,87 @@
 # AudioScene Redesign — Plan Index
 
-> **The goal:** render an `AudioScene` at ratio-of-1 (render time per tick ≤ the audio
-> duration of that tick; ~92.9 ms/tick at 44.1 kHz / 4096 frames).
+> **ROOT-CAUSE UPDATE (2026-06-28) — read before `NEXT_STEP.md`.** The steady-state batching
+> bottleneck has been **measured and root-caused**: Metal command-buffer batching collapses
+> (`meanDispatchesPerCommit ≈ 1.07`; 100 % of commits are host-`waitFor` completions; `withDep=0`,
+> `cMaxOpen=0`) because **host `MemoryDataCopy` copies force a per-op `waitFor`** — *not* the
+> per-dispatch Metal encoder/arg-bind overhead [`NEXT_STEP.md`](NEXT_STEP.md) hypothesised. The active
+> effort is therefore the general **`MemoryDataCopy` → `Assignment` (kernel) copy migration**:
+> canonical plan → [`../ASSIGNMENT_COPY_MIGRATION.md`](../ASSIGNMENT_COPY_MIGRATION.md); audio
+> all-Metal sub-case → [`BATCHED_AGGREGATE_COPY.md`](BATCHED_AGGREGATE_COPY.md). `NEXT_STEP.md` and the
+> "a3 forward dispatch overhead" framing in `pdsl-streams-plan/` are **superseded for the root cause**
+> (their measurements and ruled-out lists remain on record).
+
+> **Goal:** a real-time `AudioScene` pipeline — batched pattern rendering with live genome
+> swap, all DSP defined in PDSL, acoustic parity with the released system, at/under
+> ratio-of-1 (~92.9 ms/tick at 44.1 kHz / 4096 frames).
 >
-> **Where it stands (2026-06-12, `feature/audio-scene-pdsl`):** the **a3 DSP/mixdown
-> migration to PDSL is done, parity-validated by ear, and well under the realtime budget** — the full
-> mixdown/efx/reverb path runs as one compiled PDSL model per buffer behind the
-> `MixdownManager.enablePdslMixdown` A/B flag (default off), ticking at 0.81–1.15×
-> realtime at 8192 frames by default and 1.34–2.81× with opt-in vectorized for-each
-> (faster than the CellList path either way) after the dispatch-fragmentation fixes.
-> What remains: the instruction-rebinding fix that lets vectorization default on,
-> true stereo, and the accepted-difference review before flipping the default.
-> See STATE_OF_PLAY §5 for the to-do list and PDSL_SIGNAL_PATH_DIFFERENCES for the
-> swap impact.
+> **Where it stands (updated 2026-06-28, `feature/pattern-batched-dispatch`):** the a3 DSP/mixdown
+> is migrated to PDSL, parity-validated by ear, and runs under the realtime budget by
+> default (faster than the legacy CellList path); the efx-feedback parity has closed its
+> three biggest character gaps. a2 batched pattern dispatch now fires on real scenes
+> (melodic and percussion), `enablePdslMixdown` is default-on, and the a1/a2/a3 ring
+> decoupling is implemented and **measured to work** (a2 runs ahead, rarely blocks a3). The
+> system is ~2–2.4× realtime steady-state; the remaining headline work is **5×**, then true
+> stereo and kernel pre-warm. **The 5× bottleneck is the a3 mixdown `compiled.forward`'s fixed
+> per-dispatch encode/arg-bind overhead — NOT a2.** The earlier "a2-bound / needs an a2 kernel
+> redesign" framing is **superseded by measurement** — see [NEXT_STEP.md](NEXT_STEP.md) and
+> `pdsl-streams-plan/04 §0b` / `05` Phase 2.
+>
+> **Authoritative current plan: [`pdsl-streams-plan/`](pdsl-streams-plan/)** (claim-ledger-gated,
+> measurement-first); the single current next step is **[NEXT_STEP.md](NEXT_STEP.md)**. The other
+> docs here are reference (a2 mechanism, PDSL differences, DSP substrate, known issues) and the
+> evidence the ledger adjudicates.
 
-## Start here
+## Read in this order
 
-1. **[STATE_OF_PLAY.md](STATE_OF_PLAY.md)** — the big picture: goal, current status, the
-   a1/a2/a3 layers, what landed, and what is outstanding. **Read first.**
-2. **[PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md)** — the complete
-   inventory of expected differences between the PDSL and legacy signal paths; the
-   impact assessment for flipping `enablePdslMixdown`.
-3. **[PERCEPTUAL_MAP.md](PERCEPTUAL_MAP.md)** — the listener's companion to the inventory:
-   what each difference *sounds like* (symptom → cause → lever), with triage for which to
-   chase toward the legacy sound vs accept. Open this during an A/B listening session.
+1. **[NEXT_STEP.md](NEXT_STEP.md)** — **the single, current next step**: reduce the a3 mixdown
+   forward's per-dispatch Metal overhead, with the evidence, what's already ruled out, and the
+   acceptance bar. **Start here.**
+2. **[pdsl-streams-plan/](pdsl-streams-plan/)** — the authoritative plan: objective + acceptance,
+   the claim-verification ledger, ground-truth architecture, the run-ahead-stream design, the
+   feasibility gate, the phased migration, risks, tooling, and the dated handoff.
+3. **[A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md)** — the a2 per-note batching subsystem (note
+   model, why batching, wiring) — a settled, working subsystem kept as mechanism reference.
+4. **[PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md)** — the PDSL-vs-CellList signal-path difference
+   inventory and parity triage (parity is a separate effort). Read before flipping `enablePdslMixdown`.
 
 ## Reference
 
 | Document | Purpose |
-|----------|---------|
-| [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) | Done-record of the DSP parity work: the parity standard, the six masking defects, durable lessons. |
-| [PDSL_AUDIO_DSP.md](PDSL_AUDIO_DSP.md) | The PDSL DSP substrate reference: capabilities, the row-by-row `MixdownManager` migration map, the producer-valued-argument model. Largely historical now that the migration is complete. |
-| [NOTE_GRAPH_SHAPES.md](NOTE_GRAPH_SHAPES.md) | The production note model and how a2 batching works, as built (absorbs the former variable-note-scheduling and integration-design notes). |
-| [PATTERN_RENDERING_FLOOR.md](PATTERN_RENDERING_FLOOR.md) | The benchmark evidence that justified a2 batching (the 100–1500× speedup; 99.4%-is-JNI-dispatch finding). |
-| [METAL_SUSTAINED_DISPATCH.md](METAL_SUSTAINED_DISPATCH.md) | The resolved Metal dispatch-ceiling fix — done-record with the durable invariants and failure lessons. |
-| [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Live platform constraints: hybrid-routing requirement, Metal 31-buffer limit, `floor()` resample ambiguity, `AR_PATTERN_CACHE_PERSIST`, compile-reuse pool. |
-| [SINGLE_CHANNEL_PDSL_AND_DOC_PARITY.md](SINGLE_CHANNEL_PDSL_AND_DOC_PARITY.md) | Handoff request (from ringsdesktop's "Combine" tab): give the PDSL path single-channel support, drop the unused `getCells` mixdown CellList on the PDSL path, and correct the stale efx/reverb parity claims in the code/docs. |
+|---|---|
+| [PDSL_DSP_REFERENCE.md](PDSL_DSP_REFERENCE.md) | The PDSL audio DSP substrate: primitive catalog, multi-channel constructs, the producer-valued-argument model. |
+| [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Live platform constraints (hybrid routing / Metal 31-buffer limit, cache-persist, `floor()` resample) + resolved-issue records (a2 real-scene dispatch, aggregation/compile-reuse, instruction-set reuse, Metal sustained dispatch). |
 
 ## Related, elsewhere (out of scope for this folder)
 
-- `../AUDIO_SCENE_BENCHMARK_INVESTIGATION.md` — a separate, still-live heap-retention
-  (Phenomenon X/Y) workstream on the optimizer, not the render-pipeline redesign.
-- `docs/internals/celllist-realtime-streaming.md`, `docs/internals/features-pattern.md`
-  — stable framework references the redesign builds on.
+- `../AUDIO_SCENE_BENCHMARK_INVESTIGATION.md` — a separate heap-retention workstream on the
+  optimizer, not the render-pipeline redesign.
+- `docs/internals/celllist-realtime-streaming.md`, `features-pattern.md`,
+  `backend-compilation-and-dispatch.md` — stable framework references the redesign builds on.
+
+## Keeping these current
+
+These are planning docs, not API reference — they drift the moment the code moves, and this
+set has been stale before. When you touch this area, keep them honest:
+
+- **Verify against source + `git log`, not memory or the consultant index.** Both lag
+  reality: a recent recall still described the a2 real-scene gap and the
+  argument-aggregation pool blocker as open *after both were resolved*, and asserted
+  nothing was outdated. Treat any claim here — and any recalled memory — as something to
+  re-check against current code before relying on it.
+- **Update the doc in the same change that changes the claim.** The recurring failure was
+  fixing code (or learning a fact) and leaving the doc behind.
+- **Date and qualify empirical claims.** Benchmark/validation numbers carry the date,
+  machine, and flags (e.g. `AR_PDSL_MIXDOWN`), because they do not reproduce identically
+  across hardware or genomes.
+- **Name symbols, not just line numbers.** Prefer `Class.method` / a stable constant name
+  over a bare `:NNN`; line numbers rot fastest.
 
 ## History
 
-Superseded design/investigation docs (Phase-3 design, envelope investigation, the prior
-zero-note postmortem, the loop-optimization and redesign journals, and the original
-phased master plan) were distilled into the documents above and removed; their full text
-remains in git history.
+This folder was consolidated from a larger set of phase/investigation docs. Superseded
+material — the original phased plan, the EfxManager→PDSL parity done-record, the
+note-graph-shapes and pattern-rendering-floor studies, the single-channel / doc-parity
+handoff, the Metal-sustained-dispatch and argument-aggregation-gap records, and the
+mechanism/perceptual split of the differences inventory — was distilled into the documents
+above and removed; their full text remains in git history.

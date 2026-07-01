@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
@@ -63,6 +64,28 @@ public class MetalCommandRunner {
 	 * accumulate), not a behavioural switch — correctness does not depend on its value.
 	 */
 	private static final int MAX_OPEN = 256;
+
+	/** Total dispatches encoded across all runners since the last reset. */
+	public static final AtomicLong dispatchCount = new AtomicLong();
+	/** Total command-buffer commits across all runners since the last reset. */
+	public static final AtomicLong commitCount = new AtomicLong();
+
+	/**
+	 * Returns the mean number of dispatches per committed command buffer (the effective GPU batch
+	 * size) since the last {@link #resetBatchSizeCounters()}, or {@code 0} when nothing has committed.
+	 *
+	 * @return mean dispatches per commit
+	 */
+	public static double meanBatchSize() {
+		long commits = commitCount.get();
+		return commits == 0 ? 0 : dispatchCount.get() / (double) commits;
+	}
+
+	/** Resets the batch-size counters; behaviour-neutral. */
+	public static void resetBatchSizeCounters() {
+		dispatchCount.set(0);
+		commitCount.set(0);
+	}
 
 	/** Single-threaded executor that serializes all command-buffer operations. */
 	private ExecutorService executor;
@@ -145,6 +168,7 @@ public class MetalCommandRunner {
 			signaled++;
 			openBuffer.encodeSignalEvent(event, signaled);
 			openCount++;
+			dispatchCount.incrementAndGet();
 			if (onComplete != null) openOnComplete.add(onComplete);
 
 			result.add(new MetalSemaphore(null, this, openBuffer, event, signaled));
@@ -211,6 +235,8 @@ public class MetalCommandRunner {
 	 */
 	private void commitOpenOnExecutor() {
 		if (openBuffer == null) return;
+
+		commitCount.incrementAndGet();
 
 		openBuffer.commit();
 		bufferOpen = false;

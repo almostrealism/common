@@ -343,7 +343,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 	private BatchedNoteInputs gatherBatchedInputs(PatternElement element, ElementVoicingDetails details,
 												  double durationSec, NoteAudioContext audioContext) {
 		PatternNote note = element.getNote(details.getVoicing());
-		if (note == null || !BatchedNoteInputs.isMelodicSssShape(note)) return null;
+		if (note == null) return null;
 
 		double automationLevel = 1.0;
 		PackedCollection automation = element.getAutomationParameters();
@@ -353,7 +353,18 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 
 		// Keep the full resampled source; the dispatch sizes the per-note row to the
 		// render window once it is known (the gather does not know the window width).
-		return BatchedNoteInputs.from(note, details.getTarget(),
+		// A channel is homogeneous: melodic notes take the full SSS shape (per-layer
+		// envelope + filter envelope + pitch); percussion notes take the strict subset
+		// (unity pitch, no per-layer or filter envelope, volume only on the wet voicing).
+		if (details.isMelodic()) {
+			if (!BatchedNoteInputs.isMelodicSssShape(note)) return null;
+			return BatchedNoteInputs.from(note, details.getTarget(),
+					details.getStereoChannel().getIndex(), durationSec, automationLevel,
+					audioContext.getAudioSelection());
+		}
+
+		if (!BatchedNoteInputs.isPercussionSssShape(note)) return null;
+		return BatchedNoteInputs.fromPercussion(note,
 				details.getStereoChannel().getIndex(), durationSec, automationLevel,
 				audioContext.getAudioSelection());
 	}

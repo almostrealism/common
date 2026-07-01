@@ -18,12 +18,15 @@ package org.almostrealism.studio.pattern.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.data.WaveData;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
+import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.util.TestDepth;
 import org.junit.Assert;
@@ -222,6 +225,9 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 		long seed = findWorkingGenomeSeed(scene, getSamplesDir());
 		Assert.assertTrue("No working genome found in the real arrangement", seed >= 0);
 		applyGenome(scene, seed);
+		for (int c = 0; c < AudioScene.DEFAULT_SOURCE_COUNT; c++) {
+			log("channelElements c=" + c + " elements=" + countElements(scene, c));
+		}
 
 		boolean previous = MixdownManager.enablePdslMixdown;
 		File scratch = new File("results/pdsl-cutover/benchmark_scratch.wav");
@@ -247,10 +253,11 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 			}
 
 			try {
-				for (int w = 0; w < WARMUP_TICKS; w++) {
+				for (int w = 0; w < 24; w++) {
 					stages.forEach(Runnable::run);
 				}
 
+				BatchedPatternLayerRenderer.resetCounters();
 				long[] stageNanos = new long[stages.size()];
 				for (int i = 0; i < PROFILE_TICKS; i++) {
 					for (int s = 0; s < stages.size(); s++) {
@@ -259,6 +266,11 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 						stageNanos[s] += System.nanoTime() - start;
 					}
 				}
+				log("batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount.get()
+						+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount.get()
+						+ " gatherMsPerTick=" + format(BatchedPatternLayerRenderer.gatherNanos.get() / 1e6 / PROFILE_TICKS));
+				log("marshalMsPerTick=" + format(BatchedPatternLayerRenderer.marshalNanos.get() / 1e6 / PROFILE_TICKS)
+						+ " evalMsPerTick=" + format(BatchedPatternLayerRenderer.evalNanos.get() / 1e6 / PROFILE_TICKS));
 
 				double totalMs = 0;
 				for (int s = 0; s < stages.size(); s++) {
@@ -268,12 +280,45 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 							+ " perTickMs=" + format(perTickMs));
 				}
 				log("stageTotalPerTickMs=" + format(totalMs));
+
+				// Anti-cheat: a fast render is worthless if it is silent. Flush the streamed
+				// master and assert the decoupled PDSL render actually produced audio on this
+				// deterministic working scene — timing is only meaningful over real output.
+				out.write().get().run();
+				double renderedPeak = peakAmplitude(scratch.getPath());
+				log("renderedPeakAmplitude=" + format(renderedPeak));
+				Assert.assertTrue("decoupled PDSL render produced silence (peak=" + renderedPeak + ")",
+						renderedPeak > 1e-3);
 			} finally {
 				out.reset();
 				runner.reset();
 			}
 		} finally {
 			MixdownManager.enablePdslMixdown = previous;
+		}
+	}
+
+	/**
+	 * Returns the peak absolute sample over channel 0 of a rendered WAV — used to assert
+	 * a measured render is non-silent (a fast render of silence is not progress).
+	 *
+	 * @param wavPath path to the rendered WAV
+	 * @return the peak absolute sample value in [0, 1]
+	 * @throws IOException if the WAV cannot be read
+	 */
+	private double peakAmplitude(String wavPath) throws IOException {
+		WaveData data = WaveData.load(new File(wavPath));
+		try {
+			PackedCollection channel = data.getChannelData(0);
+			double peak = 0.0;
+			int n = channel.getShape().getTotalSize();
+			for (int i = 0; i < n; i++) {
+				double v = Math.abs(channel.valueAt(i));
+				if (v > peak) peak = v;
+			}
+			return peak;
+		} finally {
+			data.destroy();
 		}
 	}
 

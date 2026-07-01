@@ -1,5 +1,11 @@
 # Qwen3 Inference Performance Analysis
 
+> **Cross-ref (2026-06-28).** The "`Assignment` in place of `MemoryDataCopy` via
+> `enableAssignmentCopy`" lever noted below is now its own consolidated effort:
+> [`ASSIGNMENT_COPY_MIGRATION.md`](ASSIGNMENT_COPY_MIGRATION.md). The flag is now runtime-configurable
+> (`AR_HARDWARE_ASSIGNMENT_COPY`, default **enabled**). Qwen's copy cost (≈ 17.8 %: `copy_4864` +
+> `copy_896`) is one of that migration's motivating cases.
+
 > **Status (as of 2026-04-29): Continue with revisions.**
 >
 > Objective 1 (inference-mode tracking elimination) is **complete** and landed on

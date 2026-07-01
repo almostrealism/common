@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.function.Supplier;
 
@@ -139,18 +140,19 @@ public interface MemoryDataFeatures {
 	 * Controls whether {@link #copy} methods use {@link Assignment} (true) or
 	 * {@link MemoryDataCopy} (false).
 	 *
-	 * <p>Default: {@code true}. {@link Assignment} is a {@link ParallelProcess}
+	 * <p>Default: {@code false}. {@link Assignment} is a {@link ParallelProcess}
 	 * and therefore participates in the optimization cascade, whereas
 	 * {@link MemoryDataCopy} is a plain {@link Process} whose internal
 	 * producer tree is invisible to strategies. Routing {@link #copy} through
 	 * {@code Assignment} is a prerequisite for any isolation strategy that
 	 * needs to see the producer tree being copied into a destination.</p>
 	 *
-	 * <p>As an interface field this is {@code public static final} and therefore
-	 * a compile-time switch, not a runtime one. Flipping it requires a
-	 * rebuild.</p>
+	 * <p>Runtime-configurable via the {@code AR_HARDWARE_ASSIGNMENT_COPY} system property
+	 * (enabled/disabled), defaulting to disabled. As an interface field it is
+	 * {@code public static final}, so the value is resolved once at class initialization;
+	 * consumers compiled against a prior constant value must be rebuilt to observe a change.</p>
 	 */
-	boolean enableAssignmentCopy = false;
+	boolean enableAssignmentCopy = SystemUtils.isEnabled("AR_HARDWARE_ASSIGNMENT_COPY").orElse(false);
 
 	/**
 	 * Creates an {@link Assignment} operation that assigns the value producer's output to the result producer.
