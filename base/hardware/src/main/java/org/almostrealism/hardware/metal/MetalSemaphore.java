@@ -76,16 +76,6 @@ public class MetalSemaphore implements Semaphore {
 	public OperationMetadata getRequester() { return requester; }
 
 	/**
-	 * Returns the command buffer this dispatch was encoded into as the batch token. Dispatches that
-	 * accumulated into the same open command buffer share the same instance; a forced commit (e.g.
-	 * the per-buffer limit) starts a new buffer, so a later dispatch returns a different instance.
-	 *
-	 * @return the {@link MTLCommandBuffer} this dispatch was encoded into
-	 */
-	@Override
-	public Object getBatch() { return commandBuffer; }
-
-	/**
 	 * Blocks until the dispatch's command buffer is committed and has completed on the GPU.
 	 */
 	@Override

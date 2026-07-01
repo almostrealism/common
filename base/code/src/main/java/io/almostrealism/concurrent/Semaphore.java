@@ -49,25 +49,6 @@ public interface Semaphore {
 	Semaphore withRequester(OperationMetadata requester);
 
 	/**
-	 * Returns an opaque token identifying the provider submission batch this completion was encoded
-	 * into — for example a Metal command buffer or an OpenCL command-queue marker — or {@code null}
-	 * when the provider exposes no such grouping (e.g. fully synchronous execution, where there is
-	 * nothing to batch).
-	 *
-	 * <p>Two semaphores whose batch tokens are both non-null and not {@link Object#equals equal}
-	 * were encoded into different batches. This lets a caller that submitted a group of dispatches
-	 * which must share a batch — so the provider's in-batch hazard tracking can order their
-	 * read-after-write dependencies — detect after the fact that the group was split across batches
-	 * (e.g. because it exceeded the provider's per-batch limit), in which case that ordering is no
-	 * longer guaranteed.</p>
-	 *
-	 * @return an opaque batch token, or {@code null} if the provider exposes no batch grouping
-	 */
-	default Object getBatch() {
-		return null;
-	}
-
-	/**
 	 * Registers a callback to be invoked on a background thread once the guarded
 	 * operation has completed.
 	 *

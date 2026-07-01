@@ -42,6 +42,7 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.Aggregatable;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
@@ -190,7 +191,7 @@ import java.util.stream.Collectors;
  * @see DestinationEvaluable
  * @see TraversableExpression
  */
-public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
+public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> implements Aggregatable {
 	/** Controls automatic adjustment of memory length to match kernel parallelism. */
 	public static boolean enableAdaptiveMemLength = true;
 
@@ -541,6 +542,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 *
 	 * @return {@code false} for a pure Provider-to-Provider copy, {@code true} otherwise
 	 */
+	@Override
 	public boolean isArgumentAggregationSupported() {
 		return !(Computable.provider(getInputs().get(0)) && Computable.provider(getInputs().get(1)));
 	}
@@ -560,7 +562,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 */
 	public static class Runner implements Runnable, Submittable {
 		/** The context whose {@code copy} moves the memory. */
-		private final ComputeContext<?> context;
+		private final ComputeContext<MemoryData> context;
 		/** Producer of the destination; resolved to its current {@link MemoryData} at run time. */
 		private final Supplier<Evaluable<? extends MemoryData>> destination;
 		/** Producer of the source; resolved to its current {@link MemoryData} at run time. */
@@ -573,7 +575,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		 * @param destination producer of the destination memory
 		 * @param source      producer of the source memory
 		 */
-		protected Runner(ComputeContext<?> context,
+		protected Runner(ComputeContext<MemoryData> context,
 						 Supplier<Evaluable<? extends MemoryData>> destination,
 						 Supplier<Evaluable<? extends MemoryData>> source) {
 			this.context = context;
@@ -592,10 +594,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			MemoryData dst = resolve(destination);
 			MemoryData src = resolve(source);
 
-			if (dependsOn != null) dependsOn.waitFor();
-
-			return context.copy(src.getMem(), src.getOffset(),
-					dst.getMem(), dst.getOffset(), dst.getMemLength());
+			return context.copy(src, dst, dependsOn);
 		}
 
 		/**

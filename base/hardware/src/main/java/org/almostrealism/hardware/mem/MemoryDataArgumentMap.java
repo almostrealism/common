@@ -101,10 +101,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	private final IntFunction<MemoryData> aggregateGenerator;
 	/**
 	 * The {@link ComputeContext} of the {@link org.almostrealism.hardware.AcceleratedOperation} this map
-	 * prepares arguments for, or null when unknown. The aggregate copy-in/copy-out run through its
-	 * {@link ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy}
-	 * (see {@link #ensureCopyOperations()}), so the context the kernel program runs on chooses how the
-	 * copy is performed.
+	 * prepares arguments for. The aggregate copy-in/copy-out run through its
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy} (see
+	 * {@link #ensureCopyOperations()}), so the context the kernel program runs on chooses how the copy
+	 * is performed and how it is ordered.
 	 */
 	private final ComputeContext<MemoryData> context;
 	/** Root delegates folded into the aggregate, paired with their offset within it. */
@@ -133,33 +133,14 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	private List<Submittable> copyOutOperations;
 
 	/**
-	 * Creates an argument map without aggregation support.
+	 * Creates an argument map bound to the {@link ComputeContext} of the operation it prepares
+	 * arguments for.
 	 *
-	 * @param delegateProvider the argument provider used to create new argument variables
-	 */
-	public MemoryDataArgumentMap(ArgumentProvider delegateProvider) {
-		this(delegateProvider, null, null);
-	}
-
-	/**
-	 * Creates an argument map.
-	 *
+	 * @param context the {@link ComputeContext} the aggregate copies run through
 	 * @param delegateProvider the argument provider used to create new argument variables
 	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
 	 */
-	public MemoryDataArgumentMap(ArgumentProvider delegateProvider, IntFunction<MemoryData> aggregateGenerator) {
-		this(delegateProvider, null, aggregateGenerator);
-	}
-
-	/**
-	 * Creates an argument map.
-	 *
-	 * @param delegateProvider the argument provider used to create new argument variables
-	 * @param context the {@link ComputeContext} of the operation this map prepares arguments for, or
-	 *                null to let the aggregate copies select a context when compiled
-	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
-	 */
-	public MemoryDataArgumentMap(ArgumentProvider delegateProvider, ComputeContext<MemoryData> context,
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, ArgumentProvider delegateProvider,
 								 IntFunction<MemoryData> aggregateGenerator) {
 		super(delegateProvider);
 		this.mems = new HashMap<>();
@@ -399,34 +380,24 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	/**
 	 * Builds a {@link Submittable} that copies all of {@code source} into {@code target} through the
 	 * serving {@link #context}'s
-	 * {@link ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy},
-	 * letting the context choose the mechanism: a batching context (e.g. Metal) queues the copy onto its
-	 * command buffer so it is ordered against the surrounding kernel by in-buffer hazard tracking and
-	 * returns a pending completion semaphore; any other context performs a direct {@code setMem} and
-	 * returns {@code null}. The submit's completion is that returned semaphore, so callers wait on the
-	 * actual end of the copy.
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy}, letting
+	 * the context choose the mechanism and the sequencing: a batching context (e.g. Metal) queues the
+	 * copy onto its command buffer, orders it after {@code dependsOn}, and returns a pending completion
+	 * semaphore; any other context waits for {@code dependsOn}, performs a direct copy, and returns
+	 * {@code null}. The submit's completion is that returned semaphore, so callers wait on the actual
+	 * end of the copy.
 	 *
-	 * <p>The offsets are read from the actual memories and passed on every call, so a copy into one
-	 * aggregate slice is never confused with a copy into another &mdash; the key difference from a
-	 * compiled copy kernel, whose signature-keyed reuse could bind the wrong destination offset when one
-	 * program served aggregate slices at different positions.</p>
+	 * <p>The {@link MemoryData} regions (and therefore their offsets) are passed on every call, so a
+	 * copy into one aggregate slice is never confused with a copy into another &mdash; the key
+	 * difference from a compiled copy kernel, whose signature-keyed reuse could bind the wrong
+	 * destination offset when one program served aggregate slices at different positions.</p>
 	 *
 	 * @param source the memory to copy from
 	 * @param target the memory to copy into
 	 * @return a submittable copy operation
 	 */
 	private Submittable copyOperation(MemoryData source, MemoryData target) {
-		int length = source.getMemLength();
-
-		return dependsOn -> {
-			if (context != null) {
-				return context.copy(source.getMem(), source.getOffset(),
-						target.getMem(), target.getOffset(), length);
-			}
-
-			target.setMem(0, source, 0, length);
-			return null;
-		};
+		return dependsOn -> context.copy(source, target, dependsOn);
 	}
 
 	@Override
@@ -498,39 +469,19 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Creates and configures a {@link MemoryDataArgumentMap} without aggregation support.
-	 *
-	 * @return Fully configured {@link MemoryDataArgumentMap}
-	 */
-	public static MemoryDataArgumentMap create() {
-		return create(null, null);
-	}
-
-	/**
-	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider.
-	 *
-	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
-	 * @return Fully configured {@link MemoryDataArgumentMap}
-	 */
-	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator) {
-		return create(null, aggregateGenerator);
-	}
-
-	/**
 	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider,
 	 * bound to the {@link ComputeContext} of the operation it prepares arguments for.
 	 *
-	 * @param context the {@link ComputeContext} the aggregate copies are compiled against, or null to
-	 *                let them select a context when compiled
+	 * @param context the {@link ComputeContext} the aggregate copies run through
 	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
 	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context,
 											   IntFunction<MemoryData> aggregateGenerator) {
-		return new MemoryDataArgumentMap(
+		return new MemoryDataArgumentMap(context,
 				new DefaultScopeInputManager(
 						(name, input) -> CollectionVariable.create(name, (Supplier) input)),
-				context, aggregateGenerator);
+				aggregateGenerator);
 	}
 
 	/** Pairs an aggregated root delegate with its offset within the aggregate buffer. */

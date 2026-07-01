@@ -18,14 +18,13 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.Memory;
-import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -204,35 +203,42 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public boolean isCPU() { return false; }
 
 	/**
-	 * Copies between two {@link MetalMemory} buffers by queuing a blit onto the command buffer (via the
-	 * {@link MetalCommandRunner}), so the copy batches with — and is ordered against — the surrounding
-	 * kernel dispatches by Metal's in-buffer hazard tracking, and returns its completion semaphore. When
-	 * either side is not Metal memory (e.g. a host or off-heap region) there is nothing to batch, so the
-	 * default direct {@code setMem} copy is used.
+	 * Copies all of {@code source} into {@code destination} by queuing a blit onto the command buffer
+	 * (via the {@link MetalCommandRunner}), so the copy batches with the surrounding kernel dispatches,
+	 * and returns its completion semaphore.
 	 *
-	 * @param source            the memory to copy from
-	 * @param sourceOffset      the element offset within {@code source} to copy from
-	 * @param destination       the memory to copy into
-	 * @param destinationOffset the element offset within {@code destination} to copy into
-	 * @param length            the number of elements to copy
+	 * <p>{@code dependsOn} is honored the same way {@link MetalOperator#accept} honors it: a dependency
+	 * produced by this context's runner is passed through so the runner orders the blit after it on the
+	 * GPU (no host stall, and Metal's in-buffer hazard tracking covers a dependency still in the open
+	 * buffer); any other dependency is waited on the host first. When either side is not Metal memory
+	 * there is nothing to queue, so the {@link AbstractComputeContext#copy(MemoryData, MemoryData,
+	 * Semaphore) inherited} direct {@code setMem} copy is used.</p>
+	 *
+	 * @param source      the memory region to copy from
+	 * @param destination the memory region to copy into
+	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
 	 * @return the blit's completion semaphore, or {@code null} for the direct-copy fallback
 	 */
 	@Override
-	public Semaphore copy(Memory source, int sourceOffset, Memory destination, int destinationOffset, int length) {
-		if (source instanceof MetalMemory && destination instanceof MetalMemory) {
-			MetalMemory src = (MetalMemory) source;
-			MetalMemory dst = (MetalMemory) destination;
+	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
+		if (source.getMem() instanceof MetalMemory && destination.getMem() instanceof MetalMemory) {
+			MetalMemory src = (MetalMemory) source.getMem();
+			MetalMemory dst = (MetalMemory) destination.getMem();
 			long elementSize = src.getProvider().getNumberSize();
+			long sourceOffset = source.getOffset() * elementSize;
+			long destinationOffset = destination.getOffset() * elementSize;
+			long size = source.getMemLength() * elementSize;
+
+			boolean ordered = dependsOn instanceof MetalSemaphore
+					&& ((MetalSemaphore) dependsOn).getRunner() == runner;
+			if (dependsOn != null && !ordered) dependsOn.waitFor();
 
 			return runner.submit(
-					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset * elementSize,
-							dst.getMem(), destinationOffset * elementSize, length * elementSize),
-					null, null);
+					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset, dst.getMem(), destinationOffset, size),
+					ordered ? dependsOn : null, null);
 		}
 
-		((MemoryProvider) destination.getProvider())
-				.setMem(destination, destinationOffset, source, sourceOffset, length);
-		return null;
+		return super.copy(source, destination, dependsOn);
 	}
 
 	/**

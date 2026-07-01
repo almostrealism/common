@@ -71,8 +71,8 @@ import java.util.List;
  * <pre>{@code
  * // When scope is prepared:
  * prepareScope() {
- *     // Creates MemoryDataArgumentMap
- *     argumentMap = MemoryDataArgumentMap.create();
+ *     // Creates MemoryDataArgumentMap bound to this operation's ComputeContext
+ *     argumentMap = MemoryDataArgumentMap.create(getComputeContext(), aggregateGenerator);
  * }
  * }</pre>
  *
@@ -170,7 +170,7 @@ import java.util.List;
  * @see AcceleratedProcessDetails
  */
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
-							implements Runnable, Submittable, ScopeLifecycle, Countable, HardwareFeatures {
+							implements Runnable, Submittable, ScopeLifecycle, Countable, Aggregatable, HardwareFeatures {
 
 	/** Console for logging accelerated operation events. */
 	public static Console console = Computation.console.child();
@@ -194,12 +194,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Handles input/output buffer preparation and automatic garbage collection.
 	 */
 	protected MemoryDataArgumentMap argumentMap;
-
-	/**
-	 * Guards the aggregation batch-split warning so it is emitted at most once per operation rather
-	 * than on every dispatch that straddles a provider command-buffer boundary.
-	 */
-	private boolean aggregateBatchSplitWarned;
 
 	/**
 	 * Creates a new accelerated operation within the specified compute context.
@@ -314,18 +308,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				isArgumentAggregationSupported() ? i -> createAggregatedInput(i, i) : null);
 
 		prepareScope(argumentMap);
-	}
-
-	/**
-	 * Returns whether this operation's small input arguments may be folded into a single aggregate
-	 * kernel argument. Defaults to {@code true}; an operation whose arguments must not be aggregated
-	 * (for example a pure memory-to-memory copy, which has only two arguments and would otherwise
-	 * fold its own operands into a nested aggregate) overrides this to return {@code false}.
-	 *
-	 * @return {@code true} if argument aggregation is permitted for this operation
-	 */
-	protected boolean isArgumentAggregationSupported() {
-		return true;
 	}
 
 	/**
@@ -585,26 +567,19 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Two memory mechanisms may wrap the kernel (see method javadoc): compile-time argument
 			// aggregation (aggregating) and cross-provider replacement (processing). The aggregation
-			// copy-in/copy-out are Assignments between providers, each of which the ComputeContext
-			// resolves at run time (via Assignment.Runner) into either a queued kernel — batched onto
-			// the provider's command buffer alongside the operation it wraps — or a direct memory
-			// copy. Cross-provider replacement remains host-mediated.
+			// copy-in/copy-out run through the ComputeContext's copy (see MemoryDataArgumentMap), each
+			// carrying the completion it must be ordered after, so the context queues it onto its
+			// command buffer or performs a direct copy. Cross-provider replacement remains host-mediated.
 			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
 			boolean aggregateCopyOut = aggregating
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 
-			// Copy-in (originals -> aggregate): submit each copy with a null dependency. A batching
-			// context (e.g. Metal) queues the copy onto its open command buffer, ordered against the
-			// kernel by in-buffer hazard tracking (an explicit dependency would force a commit and split
-			// the batch); a direct-copy context performs it synchronously here. Keep the first copy's
-			// completion (null on a direct-copy context) as the group anchor for the split check below.
-			Semaphore groupAnchor = null;
+			// Copy-in (originals -> aggregate): each copy depends on the caller's prior completion, so
+			// it is ordered after whatever produced the originals. The kernel reads the aggregate these
+			// copies wrote and is ordered after them by the provider (in-buffer hazard tracking on a
+			// batching context, synchronous completion otherwise).
 			if (aggregating) {
-				List<Submittable> prepare = argumentMap.getPrepareOperations();
-				for (int i = 0; i < prepare.size(); i++) {
-					Semaphore copyIn = prepare.get(i).submit(null);
-					if (i == 0) groupAnchor = copyIn;
-				}
+				Submittable.submit(argumentMap.getPrepareOperations(), dependsOn);
 			}
 
 			boolean processing = !process.isEmpty();
@@ -616,12 +591,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Run the operator, chaining on the caller's prior completion when one was provided.
 			Semaphore nextSemaphore = operator.accept(input, dependsOn);
-
-			// When the copy-in produced no deferred completion (a direct-copy context, or no
-			// aggregation), the kernel is itself the start of the group.
-			if (groupAnchor == null) {
-				groupAnchor = nextSemaphore;
-			}
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
@@ -642,27 +611,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				process.getPostprocess().get().run();
 			}
 
-			// Aggregation copy-out (de-aggregation, aggregate -> originals): submit each copy with a
-			// null dependency, the same way as copy-in. On a batching provider these accumulate into
-			// the same command buffer after the kernel (ordered by hazard tracking) and the completion
-			// is the last copy's semaphore, which only signals once the shared buffer has run — so
-			// callers wait on the actual end of the operation, deferred to the genuine boundary. On a
-			// direct-copy context they run synchronously and the kernel completion remains the
-			// completion.
+			// Aggregation copy-out (de-aggregation, aggregate -> originals): each copy depends on the
+			// kernel completion, so the provider orders it after the kernel (and a batching context
+			// groups the copies into one command buffer that only signals once it has run). The last
+			// copy's completion becomes the operation's completion, deferred to the genuine boundary.
 			if (aggregateCopyOut) {
-				Semaphore copyOut = submitBatched(output == null ?
+				Semaphore copyOut = Submittable.submit(output == null ?
 						argumentMap.getPostprocessOperations(null) :
-						argumentMap.getPostprocessOperations((MemoryData) output));
+						argumentMap.getPostprocessOperations((MemoryData) output), nextSemaphore);
 				if (copyOut != null) {
 					completion = copyOut;
 				}
 			}
-
-			// When the aggregation copies are queued as kernels, the copy-in -> kernel -> copy-out
-			// group relies on sharing one provider command buffer so in-buffer hazard tracking orders
-			// it; warn if it was split across buffers (see warnIfAggregateBatchSplit). A direct-copy
-			// context leaves group anchor and completion equal, so the check is a no-op there.
-			warnIfAggregateBatchSplit(groupAnchor, completion);
 
 			// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
 			// the process completion so callers wait on (and can chain via dependsOn) the actual end
@@ -678,66 +638,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		});
 
 		return process;
-	}
-
-	/**
-	 * Warns (at most once per operation) when the aggregation copy-in &rarr; kernel &rarr; copy-out
-	 * dispatch group was split across more than one provider command buffer.
-	 *
-	 * <p>The group is submitted with null dependencies and relies on the provider's <em>in-buffer</em>
-	 * hazard tracking to order its read-after-write dependencies on the aggregate buffer. That
-	 * ordering does not cross a command-buffer boundary, so if the provider forced a commit partway
-	 * through the group (e.g. the group exceeded the per-buffer dispatch limit), the de-aggregation
-	 * may read a buffer the kernel had not finished writing and the result may be wrong. This is a
-	 * known, currently-unmitigated limitation; the detector exists so it surfaces loudly rather than
-	 * as silent corruption. Because dispatches are assigned to buffers in submission order, the whole
-	 * group occupies one buffer exactly when its first dispatch ({@code groupStart}) and its last
-	 * ({@code groupEnd}) share a {@link Semaphore#getBatch() batch token}.</p>
-	 *
-	 * @param groupStart completion of the first dispatch in the group (first copy-in, else the kernel)
-	 * @param groupEnd   completion of the last dispatch in the group (last copy-out, else the kernel)
-	 */
-	private void warnIfAggregateBatchSplit(Semaphore groupStart, Semaphore groupEnd) {
-		if (aggregateBatchSplitWarned || groupStart == null || groupEnd == null || groupStart == groupEnd) {
-			return;
-		}
-
-		Object start = groupStart.getBatch();
-		Object end = groupEnd.getBatch();
-		if (start == null || end == null || start.equals(end)) {
-			return;
-		}
-
-		aggregateBatchSplitWarned = true;
-		warn("aggregation copy-in/kernel/copy-out for " + getMetadata().getDisplayName()
-				+ " spanned more than one compute command buffer; the provider forced a commit "
-				+ "mid-group, so its in-buffer hazard tracking no longer orders the whole group and "
-				+ "results for this operation may be incorrect. This is only reached by very large "
-				+ "aggregated dispatch groups and is a known unmitigated limitation.");
-	}
-
-	/**
-	 * Submits each operation in {@code operations} to its compute provider with a null dependency, and
-	 * returns the last one's completion {@link Semaphore}.
-	 *
-	 * <p>The aggregation copy-out operations read the aggregate the kernel just wrote. A batching
-	 * context (e.g. Metal) queues each copy onto the same open command buffer as the kernel, where
-	 * in-buffer hazard tracking orders the copy after the kernel; the returned semaphore only signals
-	 * once that buffer has run, so it is a sound completion handle. A direct-copy context runs each copy
-	 * synchronously (the kernel is already complete by then). Either way, no explicit dependency is
-	 * needed — and passing one would force the batching context to commit (split) the buffer.</p>
-	 *
-	 * @param operations  the operations to submit, in order
-	 * @return the completion of the last submitted operation, or null when {@code operations} is empty
-	 */
-	protected static Semaphore submitBatched(List<Submittable> operations) {
-		Semaphore last = null;
-
-		for (int i = 0; i < operations.size(); i++) {
-			last = operations.get(i).submit(null);
-		}
-
-		return last;
 	}
 
 	/**

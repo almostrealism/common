@@ -112,32 +112,25 @@ public interface ComputeContext<MEM> {
 	boolean isCPU();
 
 	/**
-	 * Copies {@code length} elements from {@code source} (starting at {@code sourceOffset}) into
-	 * {@code destination} (starting at {@code destinationOffset}), using whatever mechanism this
-	 * context prefers for a plain memory-to-memory copy.
+	 * Copies all of {@code source} into {@code destination} &mdash; each carrying its own offset and
+	 * length &mdash; using whatever mechanism this context prefers for a plain memory-to-memory copy,
+	 * and sequencing the copy after {@code dependsOn}.
 	 *
-	 * <p>The default performs a direct copy via the destination's {@link MemoryProvider#setMem}, which
-	 * lets the provider move the bytes however it sees fit, and returns {@code null} (the copy is
-	 * complete on return). A context that has a better way to move memory it owns &mdash; for example
-	 * queuing the copy onto its own command buffer so it batches with, and is ordered against, the
-	 * surrounding work &mdash; may override this and return the copy's completion {@link Semaphore}
-	 * (which may still be pending). This is the single tool {@code Assignment}/{@code MemoryDataArgumentMap}
-	 * use for a copy between two {@link Memory} regions, so the mechanism is chosen by the context rather
-	 * than baked into a compiled kernel; the offsets are applied per call, so a copy to one region is
-	 * never confused with a copy to another.</p>
+	 * <p>This is the single tool {@code Assignment}/{@code MemoryDataArgumentMap} use for a copy
+	 * between two memory regions, so the mechanism <em>and</em> the sequencing are chosen by the
+	 * context rather than baked into a compiled kernel. A context that can move memory it owns
+	 * asynchronously &mdash; for example by queuing the copy onto its own command buffer so it batches
+	 * with, and is ordered against, the surrounding work &mdash; decides how to honor {@code dependsOn}
+	 * (a native ordering primitive, a host wait, or in-batch hazard tracking) and returns the copy's
+	 * completion {@link Semaphore} (which may still be pending). A context with no asynchronous
+	 * mechanism waits on {@code dependsOn}, performs a direct copy, and returns {@code null}.</p>
 	 *
-	 * @param source            the memory to copy from
-	 * @param sourceOffset      the element offset within {@code source} to copy from
-	 * @param destination       the memory to copy into
-	 * @param destinationOffset the element offset within {@code destination} to copy into
-	 * @param length            the number of elements to copy
+	 * @param source      the memory region to copy from
+	 * @param destination the memory region to copy into
+	 * @param dependsOn    the completion this copy must be ordered after, or {@code null}
 	 * @return the copy's completion semaphore, or {@code null} when the copy completed synchronously
 	 */
-	default Semaphore copy(Memory source, int sourceOffset, Memory destination, int destinationOffset, int length) {
-		((MemoryProvider) destination.getProvider())
-				.setMem(destination, destinationOffset, source, sourceOffset, length);
-		return null;
-	}
+	Semaphore copy(MEM source, MEM destination, Semaphore dependsOn);
 
 	/**
 	 * Checks if profiling is enabled for this compute context.
