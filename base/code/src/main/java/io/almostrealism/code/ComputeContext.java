@@ -16,8 +16,12 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
+
+import java.util.List;
+import java.util.Optional;
 
 /**
  * {@link ComputeContext} represents an execution environment for computations in the
@@ -111,24 +115,28 @@ public interface ComputeContext<MEM> {
 	boolean isCPU();
 
 	/**
-	 * Determines whether an assignment (copy) between the two given {@link Memory} regions should be
-	 * performed as a direct memory copy (via {@link MemoryProvider#setMem}) rather than by running a
-	 * compiled kernel program.
+	 * Returns the {@link ComputeRequirement}s an {@link io.almostrealism.code.Computation Assignment}
+	 * (copy) between the two given {@link Memory} regions must be compiled with when this context needs
+	 * that copy to prepare or post-process the arguments of one of its kernel programs, or an empty
+	 * {@link Optional} when the copy should instead be performed as a direct memory copy (via
+	 * {@link MemoryProvider#setMem}).
 	 *
-	 * <p>Returns {@code true} by default: most contexts have no reason to compile and dispatch a
-	 * kernel for a plain copy, so a direct {@code setMem} is both simpler and faster. A context that
-	 * benefits from expressing the copy as a kernel &mdash; for example to queue it onto a command
-	 * buffer so it batches with the surrounding operations on memory the context owns &mdash; returns
-	 * {@code false} for those regions, and the caller runs the compiled assignment instead. This lets
-	 * a single tool ({@code Assignment}) be used everywhere while the context picks the mechanism that
-	 * suits the actual memory at run time.</p>
+	 * <p>An empty result is the default: most contexts have no reason to compile and dispatch a kernel
+	 * for a plain copy, so a direct {@code setMem} is both simpler and faster. A context that benefits
+	 * from expressing the copy as a kernel &mdash; for example to queue it onto a command buffer so it
+	 * batches with the surrounding operations on memory the context owns &mdash; returns the
+	 * requirements that copy kernel must be built with. The caller compiles the copy {@code Assignment}
+	 * with exactly those requirements: this both selects the correct backend for the copy and, because
+	 * the requirements are folded into the {@code Assignment}'s signature, keeps the compiled copy
+	 * kernel distinct from one a different backend would use &mdash; so a copy compiled for one context
+	 * is never reused (via the signature-keyed instruction cache) to feed a kernel on another.</p>
 	 *
 	 * @param source      the memory being copied from
 	 * @param destination the memory being copied into
-	 * @return {@code true} to perform a direct {@code setMem} copy; {@code false} to run a kernel
+	 * @return the requirements to compile the copy {@code Assignment} with, or empty for a direct copy
 	 */
-	default boolean isDirectMemoryAssignment(Memory source, Memory destination) {
-		return true;
+	default Optional<List<ComputeRequirement>> getAssignmentComputeRequirements(Memory source, Memory destination) {
+		return Optional.empty();
 	}
 
 	/**

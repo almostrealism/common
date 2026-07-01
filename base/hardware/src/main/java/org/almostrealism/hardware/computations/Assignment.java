@@ -19,6 +19,7 @@ package org.almostrealism.hardware.computations;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -51,9 +52,11 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * {@link OperationComputationAdapter} that assigns computed values to a destination memory location.
@@ -214,8 +217,30 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * @throws IllegalArgumentException if memLength exceeds {@link ScopeSettings#maxStatements}
 	 */
 	public Assignment(int memLength, Producer<T> result, Producer<T> value) {
+		this(memLength, result, value, null);
+	}
+
+	/**
+	 * Creates a new assignment operation compiled with the given {@link ComputeRequirement}s.
+	 *
+	 * <p>The requirements are applied before {@link #init()} builds the metadata, so they are folded
+	 * into the {@link #signature() signature} at construction (see {@link ComputeContext#getAssignmentComputeRequirements})
+	 * — this is what keeps a copy compiled for one backend distinct, in the signature-keyed instruction
+	 * cache, from one another backend would use.</p>
+	 *
+	 * @param memLength    the number of values each kernel thread processes
+	 * @param result       the destination producer where values will be written
+	 * @param value        the source producer providing values to assign
+	 * @param requirements the compute requirements to compile with, or null for none
+	 * @throws IllegalArgumentException if memLength exceeds {@link ScopeSettings#maxStatements}
+	 */
+	public Assignment(int memLength, Producer<T> result, Producer<T> value,
+					  List<ComputeRequirement> requirements) {
 		super(result, value);
 		this.memLength = memLength;
+		if (requirements != null) {
+			setComputeRequirements(requirements);
+		}
 		init();
 
 		if (memLength > ScopeSettings.maxStatements) {
@@ -498,7 +523,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
 
-		Assignment result = new Assignment<>(memLength, (Producer) children.get(0), (Producer) children.get(1));
+		Assignment result = new Assignment<>(memLength,
+				(Producer) children.get(0), (Producer) children.get(1), getComputeRequirements());
 
 		if (getMetadata().getShortDescription() != null) {
 			result.getMetadata().setShortDescription(getMetadata().getShortDescription());
@@ -510,7 +536,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	/**
 	 * Returns a unique signature for this assignment operation.
 	 *
-	 * <p>Format: "assign{memLength}->{valueSignature}"</p>
+	 * <p>Format: {@code "assign{memLength}{requirements}->{valueSignature}"}. The
+	 * {@link #getComputeRequirements() compute requirements} are folded in (as other
+	 * {@link io.almostrealism.code.ProducerComputationBase#signature() computations} do) so that a copy
+	 * compiled for one backend is never reused, via the signature-keyed instruction cache, to feed a
+	 * kernel on another: a Metal copy ({@code [MTL]}) and a copy with no requirements have distinct
+	 * signatures and therefore distinct compiled kernels.</p>
 	 *
 	 * @return the signature string, or null if destination or value lacks a signature
 	 */
@@ -526,7 +557,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		String signature = Signature.of(getInputs().get(1));
 		if (signature == null || memLength == 0) return null;
 
-		return "assign" + memLength + "->" + signature;
+		String requirements = Optional.ofNullable(getComputeRequirements())
+				.map(r -> r.stream().map(ComputeRequirement::name)
+						.distinct().sorted().collect(Collectors.toList()).toString())
+				.orElse("");
+
+		return "assign" + memLength + requirements + "->" + signature;
 	}
 
 	/**
@@ -564,11 +600,11 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * run time the providers are resolved to their current {@link MemoryData}, and the kernel's own
 	 * {@link io.almostrealism.code.ComputeContext} (the one the assignment was compiled against, not
 	 * the ambient/global context) decides via
-	 * {@link io.almostrealism.code.ComputeContext#isDirectMemoryAssignment(io.almostrealism.code.Memory, io.almostrealism.code.Memory)}
-	 * whether to perform a direct {@link MemoryDataCopy} (a {@code setMem}, no kernel) or to submit
-	 * the kernel (which a batching context such as Metal can queue onto its command buffer). This lets
-	 * {@link Assignment} be the single tool for memory-to-memory assignment everywhere, while the
-	 * context picks the mechanism that suits the actual memory.</p>
+	 * {@link io.almostrealism.code.ComputeContext#getAssignmentComputeRequirements(io.almostrealism.code.Memory, io.almostrealism.code.Memory)}
+	 * whether to perform a direct {@link MemoryDataCopy} (an empty result — a {@code setMem}, no kernel)
+	 * or to submit the kernel (which a batching context such as Metal can queue onto its command
+	 * buffer). This lets {@link Assignment} be the single tool for memory-to-memory assignment
+	 * everywhere, while the context picks the mechanism that suits the actual memory.</p>
 	 *
 	 * <p>If either side does not resolve to a {@link Provider} value at run time (an escape hatch for
 	 * variations this may be extended to support later), the compiled kernel is used.</p>
@@ -607,13 +643,15 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			MemoryData dst = resolve(destination);
 			MemoryData src = resolve(source);
 
-			// Direct copy only when the kernel's OWN ComputeContext prefers it for this memory (and
-			// both sides resolved to a Provider value). The context queried is the one the assignment
-			// was compiled against (kernel.getComputeContext()) — NOT the ambient/global context, which
-			// may be a different context whose default would wrongly choose a host copy and read the
-			// memory before this context's queued kernel has run.
+			// Direct copy when the kernel's OWN ComputeContext declares no assignment requirements for
+			// this memory (and both sides resolved to a Provider value) — an empty result means a plain
+			// setMem. The context queried is the one the assignment was compiled against
+			// (kernel.getComputeContext()), which the copy kernel was also compiled with those same
+			// requirements (see MemoryDataArgumentMap), so its signature — and therefore its cached
+			// compiled kernel — is distinct per context and never reused across backends.
 			if (dst != null && src != null
-					&& kernel.getComputeContext().isDirectMemoryAssignment(src.getMem(), dst.getMem())) {
+					&& kernel.getComputeContext()
+							.getAssignmentComputeRequirements(src.getMem(), dst.getMem()).isEmpty()) {
 				if (dependsOn != null) dependsOn.waitFor();
 
 				new MemoryDataCopy("Assignment Direct Copy",

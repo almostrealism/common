@@ -19,6 +19,7 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Memory;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * {@link io.almostrealism.code.ComputeContext} for Apple Metal shader compilation and execution.
@@ -201,19 +203,23 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public boolean isCPU() { return false; }
 
 	/**
-	 * Prefers a queued kernel for a copy between two buffers this context owns, so the copy batches
-	 * onto the command buffer alongside the surrounding operations; for any other memory (e.g. host
-	 * or off-heap regions) there is no batching to gain, so a direct copy is preferred.
+	 * Prefers a queued Metal kernel for a copy between two buffers this context owns, so the copy
+	 * batches onto the command buffer alongside the surrounding operations; for any other memory
+	 * (e.g. host or off-heap regions) there is no batching to gain, so a direct copy is preferred.
 	 *
 	 * @param source      the memory being copied from
 	 * @param destination the memory being copied into
-	 * @return {@code false} when both regions are backed by a {@link MetalMemoryProvider}, otherwise
-	 *         {@code true}
+	 * @return {@code [MTL]} when both regions are backed by a {@link MetalMemoryProvider} (compile the
+	 *         copy as a Metal kernel), otherwise empty (perform a direct copy)
 	 */
 	@Override
-	public boolean isDirectMemoryAssignment(Memory source, Memory destination) {
-		return !(source.getProvider() instanceof MetalMemoryProvider
-				&& destination.getProvider() instanceof MetalMemoryProvider);
+	public Optional<List<ComputeRequirement>> getAssignmentComputeRequirements(Memory source, Memory destination) {
+		if (source.getProvider() instanceof MetalMemoryProvider
+				&& destination.getProvider() instanceof MetalMemoryProvider) {
+			return Optional.of(List.of(ComputeRequirement.MTL));
+		}
+
+		return Optional.empty();
 	}
 
 	/**

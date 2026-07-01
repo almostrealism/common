@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.concurrent.Submittable;
@@ -417,14 +418,27 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * {@link Assignment#isArgumentAggregationSupported()}), so it does not recursively fold its own
 	 * operands.</p>
 	 *
+	 * <p>The copy is constructed with the {@link ComputeRequirement}s the serving {@link #context}
+	 * declares for it (via {@link ComputeContext#getAssignmentComputeRequirements(Memory, Memory)}), so
+	 * those requirements are folded into the copy's {@link Assignment#signature() signature} at
+	 * construction. This keeps a copy compiled for one backend (e.g. Metal, {@code [MTL]}) distinct, in
+	 * the signature-keyed instruction cache, from one another backend would use — so a copy that
+	 * prepares a Metal kernel's arguments is never served by a kernel compiled for a different
+	 * context. An empty result leaves the copy with no requirements: it performs a direct
+	 * {@code setMem} at run time (see {@link Assignment.Runner}).</p>
+	 *
 	 * @param source the memory to copy from
 	 * @param target the memory to copy into
 	 * @return an {@link Assignment} that performs the copy when run or submitted
 	 */
-	private static Assignment<MemoryData> aggregateCopy(MemoryData source, MemoryData target) {
+	private Assignment<MemoryData> aggregateCopy(MemoryData source, MemoryData target) {
+		List<ComputeRequirement> requirements = context == null ? null
+				: context.getAssignmentComputeRequirements(source.getMem(), target.getMem()).orElse(null);
+
 		return new Assignment<>(1,
 				new MemoryDataProviderProducer(target),
-				new MemoryDataProviderProducer(source));
+				new MemoryDataProviderProducer(source),
+				requirements);
 	}
 
 	@Override
