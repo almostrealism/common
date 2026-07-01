@@ -19,7 +19,8 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Memory;
-import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
@@ -203,23 +204,35 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public boolean isCPU() { return false; }
 
 	/**
-	 * Prefers a queued Metal kernel for a copy between two buffers this context owns, so the copy
-	 * batches onto the command buffer alongside the surrounding operations; for any other memory
-	 * (e.g. host or off-heap regions) there is no batching to gain, so a direct copy is preferred.
+	 * Copies between two {@link MetalMemory} buffers by queuing a blit onto the command buffer (via the
+	 * {@link MetalCommandRunner}), so the copy batches with — and is ordered against — the surrounding
+	 * kernel dispatches by Metal's in-buffer hazard tracking, and returns its completion semaphore. When
+	 * either side is not Metal memory (e.g. a host or off-heap region) there is nothing to batch, so the
+	 * default direct {@code setMem} copy is used.
 	 *
-	 * @param source      the memory being copied from
-	 * @param destination the memory being copied into
-	 * @return {@code [MTL]} when both regions are backed by a {@link MetalMemoryProvider} (compile the
-	 *         copy as a Metal kernel), otherwise empty (perform a direct copy)
+	 * @param source            the memory to copy from
+	 * @param sourceOffset      the element offset within {@code source} to copy from
+	 * @param destination       the memory to copy into
+	 * @param destinationOffset the element offset within {@code destination} to copy into
+	 * @param length            the number of elements to copy
+	 * @return the blit's completion semaphore, or {@code null} for the direct-copy fallback
 	 */
 	@Override
-	public Optional<List<ComputeRequirement>> getAssignmentComputeRequirements(Memory source, Memory destination) {
-		if (source.getProvider() instanceof MetalMemoryProvider
-				&& destination.getProvider() instanceof MetalMemoryProvider) {
-			return Optional.of(List.of(ComputeRequirement.MTL));
+	public Semaphore copy(Memory source, int sourceOffset, Memory destination, int destinationOffset, int length) {
+		if (source instanceof MetalMemory && destination instanceof MetalMemory) {
+			MetalMemory src = (MetalMemory) source;
+			MetalMemory dst = (MetalMemory) destination;
+			long elementSize = src.getProvider().getNumberSize();
+
+			return runner.submit(
+					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset * elementSize,
+							dst.getMem(), destinationOffset * elementSize, length * elementSize),
+					null, null);
 		}
 
-		return Optional.empty();
+		((MemoryProvider) destination.getProvider())
+				.setMem(destination, destinationOffset, source, sourceOffset, length);
+		return null;
 	}
 
 	/**

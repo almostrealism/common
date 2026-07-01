@@ -594,11 +594,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 
 			// Copy-in (originals -> aggregate): submit each copy with a null dependency. A batching
-			// provider accumulates the copy onto the open command buffer, ordered against the kernel by
-			// in-buffer hazard tracking (an explicit dependency would force a commit and break
-			// batching — see MetalCommandRunner.submit); a direct-copy context performs the copy
-			// synchronously here. Keep the first copy's completion as the group anchor for the split
-			// check below (null on a direct-copy context, where there is nothing to split).
+			// context (e.g. Metal) queues the copy onto its open command buffer, ordered against the
+			// kernel by in-buffer hazard tracking (an explicit dependency would force a commit and split
+			// the batch); a direct-copy context performs it synchronously here. Keep the first copy's
+			// completion (null on a direct-copy context) as the group anchor for the split check below.
 			Semaphore groupAnchor = null;
 			if (aggregating) {
 				List<Submittable> prepare = argumentMap.getPrepareOperations();
@@ -718,23 +717,17 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
-	 * Submits each operation in {@code operations} to its compute provider with a {@code null}
-	 * dependency, so the dispatches accumulate into the provider's open command buffer and stay
-	 * batched, and returns the last one's completion {@link Semaphore}.
+	 * Submits each operation in {@code operations} to its compute provider with a null dependency, and
+	 * returns the last one's completion {@link Semaphore}.
 	 *
-	 * <p>Passing {@code null} rather than chaining each operation on the previous one's completion is
-	 * deliberate: a real dependency forces the provider to commit (split) the open command buffer
-	 * before the dependent dispatch (see {@code MetalCommandRunner.submit}), which defeats batching.
-	 * The operations are submitted in order on a single provider executor thread, so they are encoded
-	 * in order; the provider's in-buffer hazard tracking then serializes any read-after-write
-	 * dependency between them (and between them and the surrounding kernel) without an explicit
-	 * semaphore. The returned semaphore is the last operation's completion which — because the group
-	 * shares one command buffer — only signals once the whole group has run, making it a sound
-	 * completion handle for the caller to wait on or chain from.</p>
+	 * <p>The aggregation copy-out operations read the aggregate the kernel just wrote. A batching
+	 * context (e.g. Metal) queues each copy onto the same open command buffer as the kernel, where
+	 * in-buffer hazard tracking orders the copy after the kernel; the returned semaphore only signals
+	 * once that buffer has run, so it is a sound completion handle. A direct-copy context runs each copy
+	 * synchronously (the kernel is already complete by then). Either way, no explicit dependency is
+	 * needed — and passing one would force the batching context to commit (split) the buffer.</p>
 	 *
-	 * <p>Submitting never blocks the host or the {@code ComputeContext} executor thread.</p>
-	 *
-	 * @param operations the operations to submit, in order
+	 * @param operations  the operations to submit, in order
 	 * @return the completion of the last submitted operation, or null when {@code operations} is empty
 	 */
 	protected static Semaphore submitBatched(List<Submittable> operations) {

@@ -41,15 +41,13 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Signature;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.DestinationEvaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.jvm.JVMMemory;
-import org.almostrealism.hardware.mem.Heap;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 import java.util.List;
 import java.util.Optional;
@@ -198,15 +196,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 	/** Number of values each kernel thread processes. */
 	private final int memLength;
-
-	/**
-	 * The {@link ComputeContext} to compile this assignment's kernel against, or {@code null} to let
-	 * the compiler select one. Set via {@link #get(ComputeContext)} by the {@link AcceleratedOperation}
-	 * whose argument preparation this assignment performs, so the copy — and therefore {@link Runner}'s
-	 * direct-copy-vs-kernel decision — runs under the SAME context as the kernel program it feeds,
-	 * rather than an independently selected one.
-	 */
-	private ComputeContext<MemoryData> computeContext;
 
 	/**
 	 * Creates a new assignment operation.
@@ -419,15 +408,15 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			}
 
 
-			// When both the destination and the source are Providers, defer the choice between a
-			// direct memory copy and the compiled kernel to run time (see Runner): the right answer
-			// depends on the Memory the providers resolve to, which is not reliably known until then.
-			// The decision is made against THIS assignment's own compiled kernel and its
-			// ComputeContext — pinned via compileKernel() to the context of the AcceleratedOperation
-			// this copy prepares arguments for (see get(ComputeContext)), not the ambient/global
-			// context, which may not be the one that operation was compiled for.
+			// When both the destination and the source are Providers, the assignment is a plain
+			// memory-to-memory copy: short-circuit to the ComputeContext's copy() (see Runner), which
+			// moves the memory however the context prefers (a direct setMem, through the destination's
+			// MemoryProvider, by default). No kernel is compiled, so there is nothing to reuse — the
+			// offsets are read from the resolved memories on every run, so a copy into one region is
+			// never confused with a copy into another.
 			if (ev instanceof Provider<?>) {
-				return new Runner(compileKernel(), (Supplier) out, (Supplier) in);
+				return new Runner(Hardware.getLocalHardware().getComputeContext(),
+						(Supplier) out, (Supplier) in);
 			}
 
 			// An AcceleratedOperation source still uses DestinationEvaluable.
@@ -443,41 +432,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		// TODO  kernel evaluation differently than ProcessDetailsFactory (which is
 		// TODO  sometimes not ideal - see DestinationEvaluable.evaluate)
 		return super.get();
-	}
-
-	/**
-	 * Compiles this assignment against the given {@link ComputeContext} and returns the runnable, as
-	 * {@link #get()} does but pinning the compilation — and therefore {@link Runner}'s direct-copy-vs-
-	 * kernel decision — to {@code context} rather than a compiler-selected one.
-	 *
-	 * <p>This is how {@link org.almostrealism.hardware.mem.MemoryDataArgumentMap} makes an aggregate
-	 * copy run under the {@link ComputeContext} of the {@link AcceleratedOperation} whose arguments it
-	 * prepares, so the copy and the kernel program it feeds share a single context.</p>
-	 *
-	 * @param context the ComputeContext to compile against, or null to select one as {@link #get()} does
-	 * @return the compiled runnable
-	 */
-	public Runnable get(ComputeContext<MemoryData> context) {
-		this.computeContext = context;
-		return get();
-	}
-
-	/**
-	 * Compiles this assignment into its kernel operation, honouring {@link #computeContext} when one
-	 * has been set (see {@link #get(ComputeContext)}). When no context has been set, defers to the
-	 * standard {@link OperationComputationAdapter#get() compilation}, which selects a context.
-	 *
-	 * @return the compiled kernel operation, carrying the ComputeContext it was compiled against
-	 */
-	private AcceleratedOperation<?> compileKernel() {
-		if (computeContext == null) {
-			return (AcceleratedOperation<?>) super.get();
-		}
-
-		AcceleratedComputationOperation<Void> kernel =
-				Heap.addCompiled(new AcceleratedComputationOperation<>(computeContext, this));
-		kernel.load();
-		return kernel;
 	}
 
 	/**
@@ -592,42 +546,37 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	/**
-	 * The {@link Runnable} (and {@link Submittable}) returned by {@link Assignment#get()} when both
-	 * the destination and the source are {@link Provider}s. It carries both ways of performing the
-	 * assignment and defers the choice between them to run time.
+	 * The {@link Runnable} (and {@link Submittable}) returned by {@link Assignment#get()} when both the
+	 * destination and the source are {@link Provider}s. It performs a plain memory-to-memory copy via
+	 * the {@link io.almostrealism.code.ComputeContext}'s
+	 * {@link io.almostrealism.code.ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy},
+	 * which moves the memory however the context prefers (a direct {@code setMem} through the
+	 * destination's {@link io.almostrealism.code.MemoryProvider} by default).
 	 *
-	 * <p>It holds the destination/source {@link Provider}s and this assignment's compiled kernel: at
-	 * run time the providers are resolved to their current {@link MemoryData}, and the kernel's own
-	 * {@link io.almostrealism.code.ComputeContext} (the one the assignment was compiled against, not
-	 * the ambient/global context) decides via
-	 * {@link io.almostrealism.code.ComputeContext#getAssignmentComputeRequirements(io.almostrealism.code.Memory, io.almostrealism.code.Memory)}
-	 * whether to perform a direct {@link MemoryDataCopy} (an empty result — a {@code setMem}, no kernel)
-	 * or to submit the kernel (which a batching context such as Metal can queue onto its command
-	 * buffer). This lets {@link Assignment} be the single tool for memory-to-memory assignment
-	 * everywhere, while the context picks the mechanism that suits the actual memory.</p>
-	 *
-	 * <p>If either side does not resolve to a {@link Provider} value at run time (an escape hatch for
-	 * variations this may be extended to support later), the compiled kernel is used.</p>
+	 * <p>The destination/source {@link Provider}s are resolved to their current {@link MemoryData} at
+	 * run time and their offsets are read then, so no compiled kernel — and therefore no signature-keyed
+	 * instruction reuse — is involved, and a copy into one region is never confused with a copy into
+	 * another.</p>
 	 */
 	public static class Runner implements Runnable, Submittable {
-		/** The compiled assignment kernel, carrying the ComputeContext it was compiled for. */
-		private final AcceleratedOperation<?> kernel;
+		/** The context whose {@code copy} moves the memory. */
+		private final ComputeContext<?> context;
 		/** Producer of the destination; resolved to its current {@link MemoryData} at run time. */
 		private final Supplier<Evaluable<? extends MemoryData>> destination;
 		/** Producer of the source; resolved to its current {@link MemoryData} at run time. */
 		private final Supplier<Evaluable<? extends MemoryData>> source;
 
 		/**
-		 * Creates a runner over the given compiled kernel and the destination/source producers.
+		 * Creates a runner over the given context and the destination/source producers.
 		 *
-		 * @param kernel        the compiled assignment kernel
-		 * @param destination   producer of the destination memory
-		 * @param source        producer of the source memory
+		 * @param context     the context whose {@code copy} performs the assignment
+		 * @param destination producer of the destination memory
+		 * @param source      producer of the source memory
 		 */
-		protected Runner(AcceleratedOperation<?> kernel,
+		protected Runner(ComputeContext<?> context,
 						 Supplier<Evaluable<? extends MemoryData>> destination,
 						 Supplier<Evaluable<? extends MemoryData>> source) {
-			this.kernel = kernel;
+			this.context = context;
 			this.destination = destination;
 			this.source = source;
 		}
@@ -643,23 +592,10 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			MemoryData dst = resolve(destination);
 			MemoryData src = resolve(source);
 
-			// Direct copy when the kernel's OWN ComputeContext declares no assignment requirements for
-			// this memory (and both sides resolved to a Provider value) — an empty result means a plain
-			// setMem. The context queried is the one the assignment was compiled against
-			// (kernel.getComputeContext()), which the copy kernel was also compiled with those same
-			// requirements (see MemoryDataArgumentMap), so its signature — and therefore its cached
-			// compiled kernel — is distinct per context and never reused across backends.
-			if (dst != null && src != null
-					&& kernel.getComputeContext()
-							.getAssignmentComputeRequirements(src.getMem(), dst.getMem()).isEmpty()) {
-				if (dependsOn != null) dependsOn.waitFor();
+			if (dependsOn != null) dependsOn.waitFor();
 
-				new MemoryDataCopy("Assignment Direct Copy",
-						() -> src, () -> dst, dst.getMemLength()).get().run();
-				return null;
-			}
-
-			return kernel.submit(dependsOn);
+			return context.copy(src.getMem(), src.getOffset(),
+					dst.getMem(), dst.getOffset(), dst.getMemLength());
 		}
 
 		/**

@@ -20,7 +20,6 @@ import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
-import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.concurrent.Submittable;
@@ -32,7 +31,6 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
@@ -103,9 +101,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	private final IntFunction<MemoryData> aggregateGenerator;
 	/**
 	 * The {@link ComputeContext} of the {@link org.almostrealism.hardware.AcceleratedOperation} this map
-	 * prepares arguments for, or null when unknown. The aggregate copy {@link Assignment}s are compiled
-	 * against it (see {@link #ensureCopyOperations()}) so a copy runs under the same context as the
-	 * kernel program it feeds, rather than an independently selected one.
+	 * prepares arguments for, or null when unknown. The aggregate copy-in/copy-out run through its
+	 * {@link ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy}
+	 * (see {@link #ensureCopyOperations()}), so the context the kernel program runs on chooses how the
+	 * copy is performed.
 	 */
 	private final ComputeContext<MemoryData> context;
 	/** Root delegates folded into the aggregate, paired with their offset within it. */
@@ -329,12 +328,11 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * Returns the copy operations that move each aggregated root into the aggregate buffer before
 	 * kernel execution, in replacement order.
 	 *
-	 * <p>Each is an {@link Assignment} between two {@link Provider}s, so it compiles (via
-	 * {@code Assignment.Runner}) into a unit that, at run time, lets the
-	 * {@link io.almostrealism.code.ComputeContext} choose how to perform the copy: a batching provider
-	 * (e.g. Metal, for memory it owns) queues a kernel that rides the command buffer alongside the
-	 * operation it feeds, while any other context performs a direct memory copy. The operations are
-	 * built once and reused (see {@link #ensureCopyOperations()}).</p>
+	 * <p>Each runs through the serving {@link io.almostrealism.code.ComputeContext}'s
+	 * {@link io.almostrealism.code.ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy}
+	 * (see {@link #copyOperation}), so the context chooses how to move the memory it owns (a direct
+	 * {@code setMem} by default). The operations are built once and reused (see
+	 * {@link #ensureCopyOperations()}).</p>
 	 *
 	 * @return the pre-execution copy operations, in replacement order
 	 */
@@ -393,52 +391,42 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			int len = root.getMemLength();
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 
-			copyInOperations.add((Submittable) aggregateCopy(root, slice).get(context));
-			copyOutOperations.add((Submittable) aggregateCopy(slice, root).get(context));
+			copyInOperations.add(copyOperation(root, slice));
+			copyOutOperations.add(copyOperation(slice, root));
 		}
 	}
 
 	/**
-	 * Copies {@code source} into {@code target} element-by-element, expressed as an {@link Assignment}
-	 * between two {@link Provider}s.
+	 * Builds a {@link Submittable} that copies all of {@code source} into {@code target} through the
+	 * serving {@link #context}'s
+	 * {@link ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy},
+	 * letting the context choose the mechanism: a batching context (e.g. Metal) queues the copy onto its
+	 * command buffer so it is ordered against the surrounding kernel by in-buffer hazard tracking and
+	 * returns a pending completion semaphore; any other context performs a direct {@code setMem} and
+	 * returns {@code null}. The submit's completion is that returned semaphore, so callers wait on the
+	 * actual end of the copy.
 	 *
-	 * <p>The assignment uses a {@code memLength} of {@code 1}: it is a single-statement copy
-	 * {@code dest[i] = src[i]} dispatched over one work item per element. The element count comes from
-	 * the operands' {@link MemoryDataProviderProducer#getCountLong() count}, so the generated
-	 * {@link io.almostrealism.scope.Scope} contains exactly one statement regardless of how large the
-	 * memory is — rather than {@code length} unrolled statements, which would produce a distinct kernel
-	 * per length and could exceed the {@link io.almostrealism.scope.ScopeSettings} statement limit. The
-	 * single compiled program is therefore reused across copies of every size.</p>
-	 *
-	 * <p>Wrapping both operands in {@link MemoryDataProviderProducer} (so they report as providers)
-	 * is what routes the assignment through {@code Assignment.Runner}: the compiled copy kernel is
-	 * available when a context wants to queue it (e.g. Metal batching), but a context that prefers a
-	 * direct memory copy gets one instead, with no kernel dispatched. Because the operands are
-	 * providers, the copy also opts out of argument aggregation (see
-	 * {@link Assignment#isArgumentAggregationSupported()}), so it does not recursively fold its own
-	 * operands.</p>
-	 *
-	 * <p>The copy is constructed with the {@link ComputeRequirement}s the serving {@link #context}
-	 * declares for it (via {@link ComputeContext#getAssignmentComputeRequirements(Memory, Memory)}), so
-	 * those requirements are folded into the copy's {@link Assignment#signature() signature} at
-	 * construction. This keeps a copy compiled for one backend (e.g. Metal, {@code [MTL]}) distinct, in
-	 * the signature-keyed instruction cache, from one another backend would use — so a copy that
-	 * prepares a Metal kernel's arguments is never served by a kernel compiled for a different
-	 * context. An empty result leaves the copy with no requirements: it performs a direct
-	 * {@code setMem} at run time (see {@link Assignment.Runner}).</p>
+	 * <p>The offsets are read from the actual memories and passed on every call, so a copy into one
+	 * aggregate slice is never confused with a copy into another &mdash; the key difference from a
+	 * compiled copy kernel, whose signature-keyed reuse could bind the wrong destination offset when one
+	 * program served aggregate slices at different positions.</p>
 	 *
 	 * @param source the memory to copy from
 	 * @param target the memory to copy into
-	 * @return an {@link Assignment} that performs the copy when run or submitted
+	 * @return a submittable copy operation
 	 */
-	private Assignment<MemoryData> aggregateCopy(MemoryData source, MemoryData target) {
-		List<ComputeRequirement> requirements = context == null ? null
-				: context.getAssignmentComputeRequirements(source.getMem(), target.getMem()).orElse(null);
+	private Submittable copyOperation(MemoryData source, MemoryData target) {
+		int length = source.getMemLength();
 
-		return new Assignment<>(1,
-				new MemoryDataProviderProducer(target),
-				new MemoryDataProviderProducer(source),
-				requirements);
+		return dependsOn -> {
+			if (context != null) {
+				return context.copy(source.getMem(), source.getOffset(),
+						target.getMem(), target.getOffset(), length);
+			}
+
+			target.setMem(0, source, 0, length);
+			return null;
+		};
 	}
 
 	@Override

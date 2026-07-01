@@ -136,6 +136,22 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_computeCommand
     return (jlong) enc;
 }
 
+// Encodes a buffer-to-buffer copy onto the command buffer via a blit command encoder, so the copy is
+// queued alongside the surrounding compute dispatches and ordered against them by Metal's in-buffer
+// hazard tracking. Offsets and size are in bytes.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_blitCopy(JNIEnv* env, jclass cls, jlong cmdBuffer,
+                                                                          jlong sourceBuffer, jlong sourceOffset,
+                                                                          jlong destinationBuffer, jlong destinationOffset,
+                                                                          jlong size) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::BlitCommandEncoder* enc = buf->blitCommandEncoder();
+    enc->copyFromBuffer((MTL::Buffer*) sourceBuffer, (NS::UInteger) sourceOffset,
+                        (MTL::Buffer*) destinationBuffer, (NS::UInteger) destinationOffset,
+                        (NS::UInteger) size);
+    enc->endEncoding();
+}
+
 extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setComputePipelineState(JNIEnv* env, jclass cls, jlong cmdEnc, jlong pipeline) {
     MTL::ComputeCommandEncoder* enc = (MTL::ComputeCommandEncoder*) cmdEnc;

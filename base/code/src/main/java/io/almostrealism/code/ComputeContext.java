@@ -16,12 +16,9 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
-
-import java.util.List;
-import java.util.Optional;
 
 /**
  * {@link ComputeContext} represents an execution environment for computations in the
@@ -115,28 +112,31 @@ public interface ComputeContext<MEM> {
 	boolean isCPU();
 
 	/**
-	 * Returns the {@link ComputeRequirement}s an {@link io.almostrealism.code.Computation Assignment}
-	 * (copy) between the two given {@link Memory} regions must be compiled with when this context needs
-	 * that copy to prepare or post-process the arguments of one of its kernel programs, or an empty
-	 * {@link Optional} when the copy should instead be performed as a direct memory copy (via
-	 * {@link MemoryProvider#setMem}).
+	 * Copies {@code length} elements from {@code source} (starting at {@code sourceOffset}) into
+	 * {@code destination} (starting at {@code destinationOffset}), using whatever mechanism this
+	 * context prefers for a plain memory-to-memory copy.
 	 *
-	 * <p>An empty result is the default: most contexts have no reason to compile and dispatch a kernel
-	 * for a plain copy, so a direct {@code setMem} is both simpler and faster. A context that benefits
-	 * from expressing the copy as a kernel &mdash; for example to queue it onto a command buffer so it
-	 * batches with the surrounding operations on memory the context owns &mdash; returns the
-	 * requirements that copy kernel must be built with. The caller compiles the copy {@code Assignment}
-	 * with exactly those requirements: this both selects the correct backend for the copy and, because
-	 * the requirements are folded into the {@code Assignment}'s signature, keeps the compiled copy
-	 * kernel distinct from one a different backend would use &mdash; so a copy compiled for one context
-	 * is never reused (via the signature-keyed instruction cache) to feed a kernel on another.</p>
+	 * <p>The default performs a direct copy via the destination's {@link MemoryProvider#setMem}, which
+	 * lets the provider move the bytes however it sees fit, and returns {@code null} (the copy is
+	 * complete on return). A context that has a better way to move memory it owns &mdash; for example
+	 * queuing the copy onto its own command buffer so it batches with, and is ordered against, the
+	 * surrounding work &mdash; may override this and return the copy's completion {@link Semaphore}
+	 * (which may still be pending). This is the single tool {@code Assignment}/{@code MemoryDataArgumentMap}
+	 * use for a copy between two {@link Memory} regions, so the mechanism is chosen by the context rather
+	 * than baked into a compiled kernel; the offsets are applied per call, so a copy to one region is
+	 * never confused with a copy to another.</p>
 	 *
-	 * @param source      the memory being copied from
-	 * @param destination the memory being copied into
-	 * @return the requirements to compile the copy {@code Assignment} with, or empty for a direct copy
+	 * @param source            the memory to copy from
+	 * @param sourceOffset      the element offset within {@code source} to copy from
+	 * @param destination       the memory to copy into
+	 * @param destinationOffset the element offset within {@code destination} to copy into
+	 * @param length            the number of elements to copy
+	 * @return the copy's completion semaphore, or {@code null} when the copy completed synchronously
 	 */
-	default Optional<List<ComputeRequirement>> getAssignmentComputeRequirements(Memory source, Memory destination) {
-		return Optional.empty();
+	default Semaphore copy(Memory source, int sourceOffset, Memory destination, int destinationOffset, int length) {
+		((MemoryProvider) destination.getProvider())
+				.setMem(destination, destinationOffset, source, sourceOffset, length);
+		return null;
 	}
 
 	/**
