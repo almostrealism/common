@@ -310,7 +310,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		// a single kernel argument (keeping the kernel's argument count under the compute
 		// context's limit). Eligibility is decided per argument by size inside the map. Operations
 		// that opt out (see isArgumentAggregationSupported) get a map with no aggregation.
-		argumentMap = MemoryDataArgumentMap.create(
+		argumentMap = MemoryDataArgumentMap.create(getComputeContext(),
 				isArgumentAggregationSupported() ? i -> createAggregatedInput(i, i) : null);
 
 		prepareScope(argumentMap);

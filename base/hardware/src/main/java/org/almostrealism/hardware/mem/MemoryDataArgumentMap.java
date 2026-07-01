@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.SupplierArgumentMap;
@@ -99,6 +100,13 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 	/** Factory creating the aggregate buffer of a given element count, or null to disable aggregation. */
 	private final IntFunction<MemoryData> aggregateGenerator;
+	/**
+	 * The {@link ComputeContext} of the {@link org.almostrealism.hardware.AcceleratedOperation} this map
+	 * prepares arguments for, or null when unknown. The aggregate copy {@link Assignment}s are compiled
+	 * against it (see {@link #ensureCopyOperations()}) so a copy runs under the same context as the
+	 * kernel program it feeds, rather than an independently selected one.
+	 */
+	private final ComputeContext<MemoryData> context;
 	/** Root delegates folded into the aggregate, paired with their offset within it. */
 	private final List<Replacement> replacements;
 	/** Total number of elements accumulated in the aggregate argument so far. */
@@ -130,7 +138,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * @param delegateProvider the argument provider used to create new argument variables
 	 */
 	public MemoryDataArgumentMap(ArgumentProvider delegateProvider) {
-		this(delegateProvider, null);
+		this(delegateProvider, null, null);
 	}
 
 	/**
@@ -140,9 +148,23 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
 	 */
 	public MemoryDataArgumentMap(ArgumentProvider delegateProvider, IntFunction<MemoryData> aggregateGenerator) {
+		this(delegateProvider, null, aggregateGenerator);
+	}
+
+	/**
+	 * Creates an argument map.
+	 *
+	 * @param delegateProvider the argument provider used to create new argument variables
+	 * @param context the {@link ComputeContext} of the operation this map prepares arguments for, or
+	 *                null to let the aggregate copies select a context when compiled
+	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
+	 */
+	public MemoryDataArgumentMap(ArgumentProvider delegateProvider, ComputeContext<MemoryData> context,
+								 IntFunction<MemoryData> aggregateGenerator) {
 		super(delegateProvider);
 		this.mems = new HashMap<>();
 		this.rootDelegateSuppliers = new ArrayList<>();
+		this.context = context;
 		this.aggregateGenerator = aggregateGenerator;
 		this.replacements = new ArrayList<>();
 	}
@@ -370,8 +392,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			int len = root.getMemLength();
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 
-			copyInOperations.add((Submittable) aggregateCopy(root, slice).get());
-			copyOutOperations.add((Submittable) aggregateCopy(slice, root).get());
+			copyInOperations.add((Submittable) aggregateCopy(root, slice).get(context));
+			copyOutOperations.add((Submittable) aggregateCopy(slice, root).get(context));
 		}
 	}
 
@@ -479,7 +501,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
 	public static MemoryDataArgumentMap create() {
-		return create(null);
+		return create(null, null);
 	}
 
 	/**
@@ -489,10 +511,24 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
 	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator) {
+		return create(null, aggregateGenerator);
+	}
+
+	/**
+	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider,
+	 * bound to the {@link ComputeContext} of the operation it prepares arguments for.
+	 *
+	 * @param context the {@link ComputeContext} the aggregate copies are compiled against, or null to
+	 *                let them select a context when compiled
+	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
+	 * @return Fully configured {@link MemoryDataArgumentMap}
+	 */
+	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context,
+											   IntFunction<MemoryData> aggregateGenerator) {
 		return new MemoryDataArgumentMap(
 				new DefaultScopeInputManager(
 						(name, input) -> CollectionVariable.create(name, (Supplier) input)),
-				aggregateGenerator);
+				context, aggregateGenerator);
 	}
 
 	/** Pairs an aggregated root delegate with its offset within the aggregate buffer. */

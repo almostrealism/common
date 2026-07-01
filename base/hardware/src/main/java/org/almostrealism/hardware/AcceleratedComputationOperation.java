@@ -538,7 +538,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		// Replay the fold over this operation's own inputs to obtain a per-operation copy plan and
 		// aggregate buffer laid out identically to the shared scope (aggregation is signature-stable).
 		MemoryDataArgumentMap perOperation =
-				MemoryDataArgumentMap.create(length -> createAggregatedInput(length, length));
+				MemoryDataArgumentMap.create(getComputeContext(), length -> createAggregatedInput(length, length));
 		getCompiler().prepareScope(perOperation);
 		this.argumentMap = perOperation;
 
