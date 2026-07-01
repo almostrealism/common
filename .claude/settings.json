@@ -35,6 +35,16 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-askuserquestion.sh",
+            "description": "Block the AskUserQuestion multiple-choice tool — broken in the current Claude Code version; ask in plain text instead"
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {
