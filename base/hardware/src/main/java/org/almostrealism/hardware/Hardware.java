@@ -166,7 +166,7 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_OFF_HEAP_SIZE</h3>
  * <p><strong>Purpose:</strong> Off-heap buffer size in bytes.</p>
- * <p><strong>Default:</strong> 1024</p>
+ * <p><strong>Default:</strong> 0</p>
  *
  * <h3>AR_HARDWARE_EPSILON_64</h3>
  * <p><strong>Purpose:</strong> Use full FP64 epsilon precision.</p>
@@ -1109,7 +1109,7 @@ public final class Hardware implements ConsoleFeatures {
 	/**
 	 * Returns the off-heap buffer size for the specified backend.
 	 *
-	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable (default: 1024 bytes).</p>
+	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable (default: 0 bytes).</p>
 	 *
 	 * @param type The backend type (currently unused)
 	 * @return The off-heap buffer size in bytes
@@ -1118,7 +1118,7 @@ public final class Hardware implements ConsoleFeatures {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 1024;
+			return 0;
 		}
 	}
 

@@ -229,6 +229,22 @@ public class NativeExecution extends HardwareOperator {
 
 		MemoryData data[] = prepareArguments(argCount, args);
 
+		if (enableVerboseLog) {
+			StringBuilder desc = new StringBuilder();
+			for (MemoryData d : data) {
+				if (desc.length() > 0) desc.append(",");
+				desc.append(d.getMem().getClass().getSimpleName())
+						.append("@").append(System.identityHashCode(d.getMem()))
+						.append("+").append(d.getOffset())
+						.append("x").append(d.getMemLength())
+						.append("=").append(d.toDouble(0));
+			}
+
+			log(getName() + " workSize=" + getGlobalWorkSize() +
+					" dependsOn=" + (dependsOn == null ? "none" : dependsOn.getClass().getSimpleName()) +
+					" args=" + desc);
+		}
+
 		if (getGlobalWorkSize() > Integer.MAX_VALUE ||
 				inst.getParallelism() != 1 && getGlobalWorkOffset() != 0) {
 			throw new UnsupportedOperationException();
@@ -272,6 +288,10 @@ public class NativeExecution extends HardwareOperator {
 			}
 		} finally {
 			KernelMemoryGuard.releaseFor(guard, data);
+		}
+
+		if (enableVerboseLog) {
+			log(getName() + " result0=" + data[0].toDouble(0));
 		}
 
 		Reference.reachabilityFence(data);

@@ -71,8 +71,8 @@ import java.util.List;
  * <pre>{@code
  * // When scope is prepared:
  * prepareScope() {
- *     // Creates MemoryDataArgumentMap
- *     argumentMap = MemoryDataArgumentMap.create();
+ *     // Creates MemoryDataArgumentMap bound to this operation's ComputeContext
+ *     argumentMap = MemoryDataArgumentMap.create(getComputeContext(), aggregateGenerator);
  * }
  * }</pre>
  *
@@ -170,7 +170,7 @@ import java.util.List;
  * @see AcceleratedProcessDetails
  */
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
-							implements Runnable, Submittable, ScopeLifecycle, Countable, HardwareFeatures {
+							implements Runnable, Submittable, ScopeLifecycle, Countable, Aggregatable, HardwareFeatures {
 
 	/** Console for logging accelerated operation events. */
 	public static Console console = Computation.console.child();
@@ -302,8 +302,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		// Provide an aggregate-buffer factory so that small input arguments can be folded into
 		// a single kernel argument (keeping the kernel's argument count under the compute
-		// context's limit). Eligibility is decided per argument by size inside the map.
-		argumentMap = MemoryDataArgumentMap.create(i -> createAggregatedInput(i, i));
+		// context's limit). Eligibility is decided per argument by size inside the map. Operations
+		// that opt out (see isArgumentAggregationSupported) get a map with no aggregation.
+		argumentMap = MemoryDataArgumentMap.create(getComputeContext(),
+				isArgumentAggregationSupported() ? i -> createAggregatedInput(i, i) : null);
 
 		prepareScope(argumentMap);
 	}
@@ -563,60 +565,75 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// Prepare the operator
 			Execution operator = setupOperator(process);
 
-			// Two host-mediated memory mechanisms may wrap the kernel (see method javadoc):
-			// compile-time argument aggregation (aggregating) and cross-provider replacement
-			// (processing). They are set up here and unwound in reverse order after the kernel runs.
+			// Two memory mechanisms may wrap the kernel (see method javadoc): compile-time argument
+			// aggregation (aggregating) and cross-provider replacement (processing). The aggregation
+			// copy-in/copy-out run through the ComputeContext's copy (see MemoryDataArgumentMap), each
+			// carrying the completion it must be ordered after, so the context queues it onto its
+			// command buffer or performs a direct copy. Cross-provider replacement remains host-mediated.
 			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
 			boolean aggregateCopyOut = aggregating
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 
+			// Copy-in (originals -> aggregate): each copy depends on the caller's prior completion, so
+			// it is ordered after whatever produced the originals. The kernel reads the aggregate these
+			// copies wrote and is ordered after them by the provider (in-buffer hazard tracking on a
+			// batching context, synchronous completion otherwise).
 			if (aggregating) {
-				argumentMap.getPrepareData().get().run();
+				Submittable.submit(argumentMap.getPrepareOperations(), dependsOn);
 			}
 
 			boolean processing = !process.isEmpty();
 
-			// Preprocessing
+			// Cross-provider replacement copy-in (host-mediated) is unchanged.
 			if (processing) {
 				process.getPrepare().get().run();
 			}
 
-			// Run the operator, chaining on the prior operation's completion when provided
+			// Run the operator, chaining on the caller's prior completion when one was provided.
 			Semaphore nextSemaphore = operator.accept(input, dependsOn);
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
 			Heap.addPendingKernel(nextSemaphore);
 
-			// Adopt the operator's device-completion semaphore as the process completion so
-			// callers wait on (and can chain via dependsOn) the actual kernel completion
-			// rather than the host-readiness latch. When the operator returns null (fully
-			// synchronous providers) the host latch remains the completion — behavior is
-			// unchanged.
-			process.setSemaphore(nextSemaphore);
+			Semaphore completion = nextSemaphore;
 
-			// Postprocessing runs only for ops that need it (cross-provider replacement and/or
-			// aggregation copy-out); plain ops stay batched. The per-op wait ensures the kernel has
-			// completed before the host-mediated copy-backs read its results.
-			if (processing || aggregateCopyOut) {
+			// Cross-provider replacement copy-out remains host-mediated: it reads the kernel's result
+			// across providers, so it must wait for the kernel here. Per the reverse-order unwind (see
+			// javadoc), this replacement copy-back (temp->aggregate) MUST precede the aggregation
+			// de-aggregation (aggregate->originals) below, which holds because it runs first and
+			// synchronously.
+			if (processing) {
 				if (nextSemaphore != null) {
-					// TODO  result in a new Semaphore that performs the postprocessing when the
-					// TODO  original semaphore finishes, rather than blocking the host here
 					nextSemaphore.waitFor();
 				}
 
-				// Reverse-order unwind (see javadoc): the replacement copy-back (temp->aggregate) MUST
-				// precede aggregation's de-aggregation (aggregate->originals), or the de-aggregation
-				// reads a stale aggregate and the result reads as zero.
-				if (processing) {
-					process.getPostprocess().get().run();
-				}
+				process.getPostprocess().get().run();
+			}
 
-				if (aggregateCopyOut) {
-					(output == null ?
-							argumentMap.getPostprocessData() :
-							argumentMap.getPostprocessData((MemoryData) output)).get().run();
+			// Aggregation copy-out (de-aggregation, aggregate -> originals): each copy depends on the
+			// kernel completion, so the provider orders it after the kernel (and a batching context
+			// groups the copies into one command buffer that only signals once it has run). The last
+			// copy's completion becomes the operation's completion, deferred to the genuine boundary.
+			if (aggregateCopyOut) {
+				Semaphore copyOut = Submittable.submit(output == null ?
+						argumentMap.getPostprocessOperations(null) :
+						argumentMap.getPostprocessOperations((MemoryData) output), nextSemaphore);
+				if (copyOut != null) {
+					completion = copyOut;
 				}
+			}
+
+			// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
+			// the process completion so callers wait on (and can chain via dependsOn) the actual end
+			// of the operation rather than the host-readiness latch. When the operator returns null
+			// (fully synchronous providers) the host latch remains the completion — behavior is
+			// unchanged.
+			process.setSemaphore(completion);
+
+			if (completion != null && completion != nextSemaphore) {
+				// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
+				Heap.addPendingKernel(completion);
 			}
 		});
 
