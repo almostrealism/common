@@ -204,22 +204,62 @@ on `OperationSemaphoreTests` / `OperationDispatchBatchingTests`, and it is why
 4.2 (orchestrator chaining) must land first — otherwise making JNI truly async
 would surface every latent `submit(null)` ordering hole at once.
 
-### 4.4 Copies become `Submittable` through `ComputeContext.copy`
+### 4.4 Copies chain — by retiring `MemoryDataCopy`, not by improving it
 
-- `MemoryDataCopy` implements `Submittable` by resolving its source/target and
-  delegating to the owning context's `copy(src, dst, dependsOn)` — mirroring
-  `Assignment.Runner` (`Assignment.java:563-598`). Optimized lists then chain
-  through copies instead of draining at them.
-- `MemoryReplacementManager`'s prepare/postprocess `OperationList`s become
-  submittable copy chains, allowing `AcceleratedOperation.apply` to replace the
-  `nextSemaphore.waitFor()` + synchronous postprocess (`:606-612`) with
-  `copyOut = Submittable.submit(postprocess, nextSemaphore)` — the same shape
-  the aggregation copy-out already has (`:618-625`).
-- Chain the aggregation copy-in result into the kernel:
+The original draft of this step made `MemoryDataCopy` `Submittable`. The better
+move (owner direction, confirmed by experiment) is to *reduce its use* until it
+can be deprecated: `Assignment` is the tool for assigning one value to another,
+and it already recognizes the plain-memory-copy case (the provider-to-provider
+short-circuit through `ComputeContext.copy` in `Assignment.Runner`,
+`Assignment.java:563-598`) — a chaining-correct copy with none of
+`MemoryDataCopy`'s opacity.
+
+The migration switches already exist, at three levels:
+- `MemoryDataFeatures.enableAssignmentCopy` (`MemoryDataFeatures.java:153`)
+  routes the `copy(...)` helpers to `Assignment`. Note it is an *interface
+  field* — implicitly `public static final`, a compile-time switch — and its
+  javadoc says "Default: true" while the value is `false`: it was evidently
+  flipped back after an earlier breakage, leaving the doc stale.
+- `CodeFeatures.copy` (`domain/graph`, `CodeFeatures.java:300-318`) overrides
+  it shape-aware (`traverseEach` both sides, `Assignment(1, target, source)`).
+- `DefaultCellularLayer.enableMemoryDataCopy` (`DefaultCellularLayer.java:61`,
+  mutable, default `true`) selects copy-vs-assignment for layer input recording
+  via `LayerFeatures.into` (`LayerFeatures.java:466-495`) — the coupling that
+  historically broke ML tests when the flip was attempted.
+
+**Experiment (2026-07-01, this branch):** with both switches flipped
+(`enableAssignmentCopy=true`, `enableMemoryDataCopy=false`),
+`SyntheticDenseTrainingTest`, `ProductDeltaIsolationTest`, and the semaphore /
+collection regression set pass under `AR_HARDWARE_DRIVER=*` — 90 tests, 0
+failures. The historical isolation/optimization breakage did not reproduce with
+today's `Assignment`. This was a 7-class sample; the flip itself must ride its
+own PR through the full matrix (`engine/ml` groups especially) before being
+trusted.
+
+Revised sub-steps:
+- **4.4a** Flip both switches in their own PR (full matrix, all drivers, mac
+  jobs). On green: mark `MemoryDataCopy` and the `MemoryDataCopy`-returning
+  branches of the `copy(...)` helpers `@Deprecated`, and fix the stale
+  `enableAssignmentCopy` javadoc.
+- **4.4b** Migrate the direct construction sites that bypass the helpers —
+  `PackedCollection` copy-constructor (`PackedCollection.java:229`),
+  `CollectionProvider.into` (`CollectionProvider.java:163`),
+  `WaveOutput.export` (`WaveOutput.java:359`), `FilterEnvelopeProcessor`
+  (`:150-152`), `DefaultChannelSectionFactory` (`:315-317`) — to `Assignment`
+  (or direct `ComputeContext.copy` where both sides are resolved `MemoryData`).
+- **4.4c** `MemoryReplacementManager`'s Temp Prep/Post copies
+  (`MemoryReplacementManager.java:289-290`) become chained submittables via
+  `ComputeContext.copy(…, dependsOn)`, letting `AcceleratedOperation.apply`
+  replace the `nextSemaphore.waitFor()` + synchronous postprocess (`:606-612`)
+  with `copyOut = Submittable.submit(postprocess, nextSemaphore)` — the same
+  shape the aggregation copy-out already has (`:618-625`).
+- **4.4d** Chain the aggregation copy-in result into the kernel:
   `Semaphore copyIn = Submittable.submit(prepareOps, dependsOn);` then
   `operator.accept(input, copyIn != null ? copyIn : dependsOn)` (`:581-593`).
   Free on Metal after 4.1 (same open buffer); converts an invariant-by-comment
   into an invariant-by-construction.
+- Once 4.4a-b hold, `MemoryDataCopy` has no callers outside 4.4c's internal
+  machinery; when 4.4c lands it can be removed outright.
 
 ### 4.5 The argument pipeline carries semaphores
 
@@ -361,7 +401,7 @@ This also satisfies the standing file-length advisory on `OperationList.java`.
 | 1 | Metal same-open-buffer dependency = no-op; extract `OperationList.Runner` to its own file | S | everything |
 | 2 | Runner chains `pending` → `submit(dependsOn)` | S | mixed-context lists correct |
 | 3 | CL consumes + returns semaphores; JNI single honest async span; External returns fired semaphore | M | uniform backend contract |
-| 4 | `MemoryDataCopy` + replacement prepare/postprocess via `ComputeContext.copy(…, dependsOn)`; chain aggregation copy-in into `accept` | M | `apply` loses its internal `waitFor` |
+| 4 | Retire `MemoryDataCopy` use (flag flip + deprecation + direct-site migration); replacement prepare/postprocess via `ComputeContext.copy(…, dependsOn)`; chain aggregation copy-in into `accept` | M | `apply` loses its internal `waitFor`; `MemoryDataCopy` becomes removable |
 | 5 | Argument pipeline carries `(value, Semaphore)`; `Semaphore.all(...)`; shared `onComplete` executor | M/L | retires the stale-zeros bug class; de-risks deleting `DestinationEvaluable` |
 | 6 | `DROP_OPERATION_OUTPUT_ARG` plan (its own phased steps) | L | single dispatch path `apply(args, dependsOn)` |
 | 7 | Destination-factory elimination (hybrid destination producer) | L | slot-0 convention, no special destination machinery |

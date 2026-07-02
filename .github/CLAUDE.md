@@ -158,6 +158,18 @@ Runs audio/music/studio tests on a self-hosted runner.
 Skipped when none of studio/extern/engine/domain/compute/base change.
 Uploads `coverage-media`.
 
+### What the `test-cl` and `test-media-cl` jobs cover
+
+OpenCL-backend duplicates of `test-mac` and `test-media-mac`, running on the
+same self-hosted macOS runners with `AR_HARDWARE_DRIVER=native,cl` instead of
+`*` — under `*`, Metal always wins GPU context selection, so the CL backend is
+otherwise never exercised by CI. Each runs after its Metal counterpart
+(`test-cl` needs `test-mac`; `test-media-cl` needs `test-media-mac`), tolerating
+a skipped predecessor, with the same layer gates so all four skip together.
+Steps that the mac jobs pin to `native` (the compose tests) stay pinned in the
+CL variants. Neither job uploads coverage, so neither appears in `analysis`
+needs; both are part of the `all-checks` gate.
+
 ### What the `analysis` job does
 
 Waits for `build`, `test`, `test-flowtree`, and `test-media` (any may be

@@ -1134,6 +1134,83 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
+  test-cl:
+    needs: [changes, build, test, test-mac]
+    # Duplicate of test-mac exercising the OpenCL backend: AR_HARDWARE_DRIVER
+    # is native,cl (rather than *) so Metal is excluded and GPU-eligible work
+    # routes through CL. Runs after test-mac (success or skipped tolerated;
+    # the layer gate below matches test-mac's, so both skip together).
+    if: >-
+      needs.build.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, macos, ar-ci]
+    concurrency:
+      group: test-cl-${{ github.ref }}-${{ matrix.group }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: true
+      matrix:
+        group: [0, 1, 2]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      - name: Run Utils Tests (Group ${{ matrix.group }})
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=3
+
+      - name: Run ML Tests (Group ${{ matrix.group }})
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=3
+
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
   test-media-mac:
     needs: [changes, build, test-media, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: studio tests run when any layer is modified.
@@ -1193,6 +1270,71 @@ jobs:
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      - name: Run Compose Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
+  test-media-cl:
+    needs: [changes, build, test-media, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # Duplicate of test-media-mac exercising the OpenCL backend: steps that ran
+    # with AR_HARDWARE_DRIVER=* (Metal preferred) run with native,cl instead.
+    # The compose step stays CPU-pinned (native), matching test-media-mac.
+    # Runs after test-media-mac (success or skipped tolerated; the layer gate
+    # below matches, so both skip together).
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, macos, ar-ci]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Run Audio Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Run Music Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
+           -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
@@ -1885,6 +2027,8 @@ jobs:
       - test-media
       - test-mac
       - test-media-mac
+      - test-cl
+      - test-media-cl
       - analysis
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -1909,6 +2053,8 @@ jobs:
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
           TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
+          TEST_CL_RESULT: ${{ needs.test-cl.result }}
+          TEST_MEDIA_CL_RESULT: ${{ needs.test-media-cl.result }}
           ANALYSIS_RESULT: ${{ needs.analysis.result }}
         run: |
           FAILED=""
@@ -1945,6 +2091,8 @@ jobs:
           check_job "test-media"              "$TEST_MEDIA_RESULT"
           check_job "test-mac"                "$TEST_MAC_RESULT"
           check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
+          check_job "test-cl"                 "$TEST_CL_RESULT"
+          check_job "test-media-cl"           "$TEST_MEDIA_CL_RESULT"
           check_job "analysis"                "$ANALYSIS_RESULT"
 
           # checkstyle now fails hard (no continue-on-error), so its job result
@@ -1981,4 +2129,6 @@ jobs:
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-cl | ${{ needs.test-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media-cl | ${{ needs.test-media-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
