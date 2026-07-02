@@ -266,10 +266,10 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		MoonbeamMidiGenerator autoregressive = new MoonbeamMidiGenerator(model);
 
 		autoregressive.setTemperature(0.7);
-		Assert.assertEquals(0.7, autoregressive.getTemperature(), 1e-10);
+		assertEquals(0.7, autoregressive.getTemperature());
 
 		autoregressive.setTopP(0.9);
-		Assert.assertEquals(0.9, autoregressive.getTopP(), 1e-10);
+		assertEquals(0.9, autoregressive.getTopP());
 	}
 
 	/**
