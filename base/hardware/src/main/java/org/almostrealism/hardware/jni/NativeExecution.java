@@ -183,6 +183,16 @@ public class NativeExecution extends HardwareOperator {
 	/** Shared thread pool sized to the available CPU parallelism for concurrent kernel execution. */
 	private static ExecutorService executor = Executors.newFixedThreadPool(KernelPreferences.getCpuParallelism());
 
+	/**
+	 * Executor for dispatch coordination: each {@link #accept(Object[], Semaphore)} runs its
+	 * dependency wait, worker submission, and completion bookkeeping on one of these threads so
+	 * the submitting thread never blocks. Kept separate from the fixed-size {@link #executor}
+	 * worker pool because coordinators block on their latch &mdash; running them on the worker
+	 * pool could occupy every thread with waiting coordinators and starve the workers they wait
+	 * for.
+	 */
+	private static ExecutorService dispatchExecutor = Executors.newCachedThreadPool();
+
 	/** The native instruction set providing access to the compiled JNI function. */
 	private NativeInstructionSet inst;
 	/** Number of {@link io.almostrealism.code.MemoryData} arguments expected by the native function. */
@@ -223,10 +233,23 @@ public class NativeExecution extends HardwareOperator {
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Dispatches the native kernel and returns its completion {@link Semaphore} without
+	 * blocking the submitting thread.
+	 *
+	 * <p>When {@link #enableExecutor} is true, a coordinator task (on the
+	 * {@link #dispatchExecutor}) waits for {@code dependsOn}, submits the parallel worker
+	 * tasks, and releases the dispatch's memory guard once every worker has finished; the
+	 * returned latch fires at that point, so a caller (or a dependent operation receiving it
+	 * as {@code dependsOn}) waits on genuine completion. When {@link #enableExecutor} is
+	 * false, execution is fully synchronous and the returned latch has already fired.</p>
+	 *
+	 * @param args      the kernel arguments
+	 * @param dependsOn the completion this dispatch must be ordered after, or {@code null}
+	 * @return the dispatch's completion semaphore
+	 */
 	@Override
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
-		if (dependsOn != null) dependsOn.waitFor(); // TODO  We can do better than forcing this method to block
-
 		MemoryData data[] = prepareArguments(argCount, args);
 
 		if (enableVerboseLog) {
@@ -256,47 +279,85 @@ public class NativeExecution extends HardwareOperator {
 
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
-		try {
-			if (enableExecutor) {
-				recordDuration(latch, () -> {
-					for (int i = 0; i < p; i++) {
-						int id = i;
+		if (enableExecutor) {
+			dispatchExecutor.submit(() -> coordinate(data, args, dependsOn, guard, latch, p));
+		} else {
+			try {
+				if (dependsOn != null) dependsOn.waitFor();
 
-						executor.submit(() -> {
-							try {
-								inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-							} catch (Exception e) {
-								warn("Operation " + id + " of " +
-										getGlobalWorkSize() + " failed", e);
-							} finally {
-								latch.countDown();
-							}
-						});
-					}
-
-					// TODO  The user of the semaphore should decide when to wait
-					// TODO  rather than it happening proactively here
-					latch.waitFor();
-				});
-			} else {
 				recordDuration(latch, () -> {
 					for (int i = 0; i < inst.getParallelism(); i++) {
 						inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
 						latch.countDown();
 					}
 				});
+			} finally {
+				KernelMemoryGuard.releaseFor(guard, data);
 			}
-		} finally {
-			KernelMemoryGuard.releaseFor(guard, data);
+
+			Reference.reachabilityFence(data);
+			Reference.reachabilityFence(args);
 		}
 
-		if (enableVerboseLog) {
-			log(getName() + " result0=" + data[0].toDouble(0));
+		return latch;
+	}
+
+	/**
+	 * Coordinates one dispatch on a {@link #dispatchExecutor} thread: waits for the dispatch's
+	 * dependency, submits the parallel worker tasks, waits for them all, and releases the
+	 * memory guard. The latch always reaches zero &mdash; workers count down in their own
+	 * finally blocks, and any workers that could not be submitted are counted down here &mdash;
+	 * so no waiter can hang on a failed dispatch.
+	 *
+	 * @param data      the resolved kernel arguments
+	 * @param args      the original arguments (retained so backing memory stays reachable)
+	 * @param dependsOn the completion this dispatch is ordered after, or {@code null}
+	 * @param guard     the memory guard held for the duration of the dispatch
+	 * @param latch     the dispatch's completion latch
+	 * @param p         the number of parallel worker tasks
+	 */
+	private void coordinate(MemoryData[] data, Object[] args, Semaphore dependsOn,
+							KernelMemoryGuard guard, DefaultLatchSemaphore latch, int p) {
+		int submitted = 0;
+
+		try {
+			if (dependsOn != null) dependsOn.waitFor();
+
+			recordDuration(latch, () -> {
+				for (int i = 0; i < p; i++) {
+					int id = i;
+
+					executor.submit(() -> {
+						try {
+							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
+						} catch (Exception e) {
+							warn("Operation " + id + " of " +
+									getGlobalWorkSize() + " failed", e);
+						} finally {
+							latch.countDown();
+						}
+					});
+				}
+
+				latch.waitFor();
+			});
+
+			submitted = p;
+
+			if (enableVerboseLog) {
+				log(getName() + " result0=" + data[0].toDouble(0));
+			}
+		} catch (Exception e) {
+			warn(getName() + " dispatch failed", e);
+		} finally {
+			for (int i = submitted; i < p; i++) {
+				latch.countDown();
+			}
+
+			KernelMemoryGuard.releaseFor(guard, data);
 		}
 
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
-
-		return latch;
 	}
 }

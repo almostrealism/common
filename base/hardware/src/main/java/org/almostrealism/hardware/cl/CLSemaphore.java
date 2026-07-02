@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,25 +21,24 @@ import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.cl_event;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
  * {@link Semaphore} implementation backed by OpenCL {@link cl_event}.
  *
  * <p>Enables synchronization between OpenCL operations by wrapping {@link cl_event}
- * and waiting for event completion with optional profiling.</p>
+ * and waiting for event completion with optional profiling. A dependent OpenCL
+ * dispatch orders itself after this one <em>inside the provider</em> by placing the
+ * event in its enqueue wait-list (via {@link #whileValid(Consumer)}) rather than
+ * blocking the host.</p>
  *
- * <h2>Basic Usage</h2>
- *
- * <pre>{@code
- * cl_event event = new cl_event();
- * CL.clEnqueueNDRangeKernel(..., event);
- *
- * CLSemaphore sem = new CLSemaphore(metadata, context, event, profile);
- *
- * // Wait for kernel completion
- * sem.waitFor();  // Calls processEvent(event, profile)
- * }</pre>
+ * <p>{@link #waitFor()} is idempotent and may be invoked by multiple parties (a chain's
+ * final wait, {@link org.almostrealism.hardware.mem.Heap} lifecycle draining, a direct
+ * caller): the first wait processes and releases the event; later waits return
+ * immediately. The event of a semaphore that is never waited is released only when the
+ * OpenCL context is torn down, so completions should ultimately be waited at a genuine
+ * boundary.</p>
  *
  * @see CLComputeContext#processEvent(cl_event, Consumer)
  * @see Semaphore
@@ -58,6 +57,21 @@ public class CLSemaphore implements Semaphore {
 	private Consumer<RunData> profile;
 
 	/**
+	 * Whether the event has been processed (and therefore released). Shared across
+	 * {@link #withRequester(OperationMetadata)} copies, and used as the monitor
+	 * guarding every use of {@link #event} so a wait-list reference can never race
+	 * a concurrent waiter's release.
+	 */
+	private AtomicBoolean processed;
+
+	/**
+	 * Callback invoked exactly once, after the event has been processed &mdash; e.g. the
+	 * dispatch's released-memory bookkeeping. Shared across
+	 * {@link #withRequester(OperationMetadata)} copies; may be {@code null}.
+	 */
+	private Runnable onProcessed;
+
+	/**
 	 * Constructs a new CLSemaphore for the specified OpenCL event.
 	 *
 	 * @param requester the metadata identifying the requesting operation
@@ -67,14 +81,49 @@ public class CLSemaphore implements Semaphore {
 	 */
 	public CLSemaphore(OperationMetadata requester, CLComputeContext context,
 					   cl_event event, Consumer<RunData> profile) {
+		this(requester, context, event, profile, null, new AtomicBoolean(false));
+	}
+
+	/**
+	 * Constructs a new CLSemaphore for the specified OpenCL event, with a callback that
+	 * runs once the event has been processed.
+	 *
+	 * @param requester   the metadata identifying the requesting operation
+	 * @param context     the compute context for event processing
+	 * @param event       the OpenCL event to synchronize on
+	 * @param profile     optional consumer for profiling data, or {@code null}
+	 * @param onProcessed callback invoked once after the event completes, or {@code null}
+	 */
+	public CLSemaphore(OperationMetadata requester, CLComputeContext context,
+					   cl_event event, Consumer<RunData> profile, Runnable onProcessed) {
+		this(requester, context, event, profile, onProcessed, new AtomicBoolean(false));
+	}
+
+	/**
+	 * Constructs a semaphore sharing processing state with an existing instance, used by
+	 * {@link #withRequester(OperationMetadata)} so copies never double-release the event.
+	 *
+	 * @param requester   the metadata identifying the requesting operation
+	 * @param context     the compute context for event processing
+	 * @param event       the OpenCL event to synchronize on
+	 * @param profile     optional consumer for profiling data, or {@code null}
+	 * @param onProcessed callback invoked once after the event completes, or {@code null}
+	 * @param processed   the shared processing state
+	 */
+	protected CLSemaphore(OperationMetadata requester, CLComputeContext context,
+						  cl_event event, Consumer<RunData> profile,
+						  Runnable onProcessed, AtomicBoolean processed) {
 		this.requester = requester;
 		this.context = context;
 		this.event = event;
 		this.profile = profile;
+		this.onProcessed = onProcessed;
+		this.processed = processed;
 	}
 
 	/**
-	 * Returns the underlying OpenCL event.
+	 * Returns the underlying OpenCL event. Prefer {@link #whileValid(Consumer)} for any
+	 * use that must not race a concurrent {@link #waitFor()} releasing the event.
 	 *
 	 * @return the OpenCL event
 	 */
@@ -85,20 +134,49 @@ public class CLSemaphore implements Semaphore {
 	public OperationMetadata getRequester() { return requester; }
 
 	/**
-	 * Blocks until the OpenCL event completes.
-	 * If a profile consumer was provided, it receives profiling data after completion.
+	 * Invokes {@code action} with the underlying event while holding this semaphore's
+	 * processing lock, or with {@code null} when the event has already been processed
+	 * (and released) by {@link #waitFor()} — in which case the operation this semaphore
+	 * guards is complete and no ordering constraint remains. This lets a dependent
+	 * enqueue place the event in its wait-list without racing a concurrent waiter.
+	 *
+	 * @param action the action to run with the still-valid event, or with {@code null}
 	 */
-	@Override
-	public void waitFor() { context.processEvent(event, profile); }
+	public void whileValid(Consumer<cl_event> action) {
+		synchronized (processed) {
+			action.accept(processed.get() ? null : event);
+		}
+	}
 
 	/**
-	 * Creates a new semaphore with the same event but different requester metadata.
+	 * Blocks until the OpenCL event completes, releasing the event afterward. Idempotent:
+	 * only the first wait processes the event; subsequent (or concurrent) waits return
+	 * once processing has finished. If a profile consumer was provided, it receives
+	 * profiling data after completion.
+	 */
+	@Override
+	public void waitFor() {
+		synchronized (processed) {
+			if (processed.get()) return;
+
+			context.processEvent(event, profile);
+			processed.set(true);
+
+			if (onProcessed != null) {
+				onProcessed.run();
+			}
+		}
+	}
+
+	/**
+	 * Creates a new semaphore with the same event (and shared processing state) but
+	 * different requester metadata.
 	 *
 	 * @param requester the new requester metadata
 	 * @return a new CLSemaphore with the updated requester
 	 */
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
-		return new CLSemaphore(requester, context, event, profile);
+		return new CLSemaphore(requester, context, event, profile, onProcessed, processed);
 	}
 }
