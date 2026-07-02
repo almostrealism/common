@@ -58,7 +58,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 * Flag to enable memory-copy-based input/output recording.
 	 * When false, assignment-based recording is used instead.
 	 */
-	public static boolean enableMemoryDataCopy = true;
+	public static boolean enableMemoryDataCopy = false;
 
 	/** The expected input shape, set during {@link #init(TraversalPolicy, boolean, boolean)}. */
 	private TraversalPolicy inputShape;

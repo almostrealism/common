@@ -150,7 +150,7 @@ public interface MemoryDataFeatures {
 	 * a compile-time switch, not a runtime one. Flipping it requires a
 	 * rebuild.</p>
 	 */
-	boolean enableAssignmentCopy = false;
+	boolean enableAssignmentCopy = true;
 
 	/**
 	 * Creates an {@link Assignment} operation that assigns the value producer's output to the result producer.

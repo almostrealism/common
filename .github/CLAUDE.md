@@ -166,9 +166,11 @@ same self-hosted macOS runners with `AR_HARDWARE_DRIVER=native,cl` instead of
 otherwise never exercised by CI. Each runs after its Metal counterpart
 (`test-cl` needs `test-mac`; `test-media-cl` needs `test-media-mac`), tolerating
 a skipped predecessor, with the same layer gates so all four skip together.
-Steps that the mac jobs pin to `native` (the compose tests) stay pinned in the
-CL variants. Neither job uploads coverage, so neither appears in `analysis`
-needs; both are part of the `all-checks` gate.
+Every step in the CL variants uses `native,cl` where its counterpart uses `*`
+(the compose step in `test-media-mac` was formerly pinned to `native`; it now
+runs under `*` so GPU coverage is not silently excluded there either). Neither
+job uploads coverage, so neither appears in `analysis` needs; both are part of
+the `all-checks` gate.
 
 ### What the `analysis` job does
 

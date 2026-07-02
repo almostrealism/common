@@ -1276,16 +1276,16 @@ jobs:
       - name: Run Compose Tests
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
-           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
 
   test-media-cl:
     needs: [changes, build, test-media, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    # Duplicate of test-media-mac exercising the OpenCL backend: steps that ran
-    # with AR_HARDWARE_DRIVER=* (Metal preferred) run with native,cl instead.
-    # The compose step stays CPU-pinned (native), matching test-media-mac.
+    # Duplicate of test-media-mac exercising the OpenCL backend: every step runs
+    # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal
+    # preferred), so GPU-eligible work routes through CL.
     # Runs after test-media-mac (success or skipped tolerated; the layer gate
     # below matches, so both skip together).
     if: >-
@@ -1341,7 +1341,7 @@ jobs:
       - name: Run Compose Tests
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
-           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
