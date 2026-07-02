@@ -138,9 +138,20 @@ import java.util.function.Supplier;
  * }</pre>
  *
  * @see MemoryData
- * @see MemoryReplacementManager
  * @see Process
+ *
+ * @deprecated {@link org.almostrealism.hardware.computations.Assignment} is the tool for
+ * assigning one value to another, and it recognizes the plain-memory-copy case (routing it
+ * through the {@link io.almostrealism.code.ComputeContext}'s copy, which chains on the
+ * {@link io.almostrealism.concurrent.Semaphore} mechanism like every other operation).
+ * For two already-resolved {@link MemoryData} regions, use
+ * {@link MemoryData#copyFrom(MemoryData)}; for producer-backed copies, use the
+ * {@code copy(...)} helpers on {@code MemoryDataFeatures} (which produce {@code Assignment}).
+ * {@link MemoryDataCopy} is a plain {@link Process} whose internal producer tree is invisible
+ * to optimization strategies and whose execution neither accepts nor publishes a completion
+ * {@link io.almostrealism.concurrent.Semaphore}.
  */
+@Deprecated
 public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Runnable>, OperationInfo, ConsoleFeatures {
 	/** If true, logs each copy operation to stdout including source, target, and length. */
 	public static boolean enableVerbose = false;

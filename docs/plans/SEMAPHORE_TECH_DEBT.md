@@ -28,6 +28,33 @@ target invariants, maps intersections with the two related cleanups
 (`DROP_OPERATION_OUTPUT_ARG.md` and destination-factory elimination), and
 recommends a sequencing.
 
+## Progress
+
+- **Steps 1-2 (§4.1-4.2)**: done — `OperationListRunner` extracted and chaining;
+  Metal same-open-buffer dependency is a no-op (`SemaphoreChainBatchingTest`).
+- **Step 3 (§4.3)**: done — CL consumes (wait-list) and returns `CLSemaphore`
+  (idempotent, guard-releasing); JNI dispatches from a coordinator without
+  blocking the caller.
+- **Step 4 (§4.4)**: done except the default flip — `MemoryDataCopy` deprecated
+  and its direct construction sites migrated to `MemoryData.copyFrom` or the
+  `copy(...)` helpers (4.4b); `MemoryReplacementManager` copies are chained
+  `ComputeContext.copy` submittables and `AcceleratedOperation.apply` no longer
+  contains any `waitFor` (4.4c); the aggregation and replacement copy-ins chain
+  into `operator.accept` (4.4d). The 4.4a flag flip was landed and then
+  **reverted to the safe defaults**: assignment-based layer input recording
+  diverges `GradientDescentTests.linear2/linear4` (loss increases) even though
+  `SyntheticDenseTrainingTest` passes — the
+  `a(traverse(axis, out), traverse(axis, in))` recording route is not
+  universally safe, and `MemoryDataCopy`'s opacity to optimization strategies
+  is apparently load-bearing for correctness in some training graphs. The flip
+  is blocked on root-causing that divergence (note
+  `DefaultCellularLayer.enableMemoryDataCopy` is runtime-mutable, so the
+  failing route can be reproduced in a test without a rebuild).
+- **Step 5 (§4.5)**: primitives in place — `Semaphore.all(...)` merge and the
+  shared `onComplete` callback executor (`SemaphoreCompositionTest`); the
+  argument pipeline itself (delivering `(value, Semaphore)` downstream) remains.
+- **Step 4.6 / 6 / 7**: not started.
+
 ---
 
 ## 1. Target invariants

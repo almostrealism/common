@@ -22,7 +22,6 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 /**
  * A specialized {@link Provider} for {@link PackedCollection}s that provides efficient
@@ -30,7 +29,7 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  *
  * <p>This class extends {@link Provider} to handle {@link PackedCollection} values with
  * optimized memory operations. Unlike general providers, {@link CollectionProvider} uses
- * {@link MemoryDataCopy} for efficient hardware-accelerated copying of collection data
+ * the {@link org.almostrealism.hardware.MemoryData#copyFrom(org.almostrealism.hardware.MemoryData) ComputeContext copy} for efficient hardware-accelerated copying of collection data
  * to destination buffers.</p>
  *
  * <h2>Purpose and Usage</h2>
@@ -45,7 +44,7 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  * </ul>
  *
  * <h2>Memory Efficiency</h2>
- * <p>The {@link #into(Object)} method creates a {@link MemoryDataCopy} operation that
+ * <p>The {@link #into(Object)} method produces an {@link Evaluable} that
  * performs direct memory transfer between the source collection and destination buffer.
  * This avoids unnecessary intermediate copies and enables hardware-accelerated data movement.</p>
  *
@@ -92,7 +91,7 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  * <h2>Performance Characteristics</h2>
  * <ul>
  *   <li><strong>Memory:</strong> Stores one copy of the source collection</li>
- *   <li><strong>Copy Operation:</strong> O(n) using {@link MemoryDataCopy} (hardware-accelerated)</li>
+ *   <li><strong>Copy Operation:</strong> O(n) via the ComputeContext copy (hardware-accelerated)</li>
  *   <li><strong>Destination Creation:</strong> O(1) allocation (data copied on evaluation)</li>
  *   <li><strong>Thread Safety:</strong> Safe for concurrent reads if source collection is immutable</li>
  * </ul>
@@ -101,7 +100,6 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  *
  * @see Provider
  * @see CollectionProviderProducer
- * @see MemoryDataCopy
  * @see PackedCollection
  *
  * @author Michael Murray
@@ -142,7 +140,7 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 * Creates an {@link Evaluable} that efficiently copies the provided collection into
 	 * the specified destination buffer.
 	 *
-	 * <p>This method uses {@link MemoryDataCopy} to perform hardware-accelerated memory
+	 * <p>This method uses the ComputeContext copy to perform hardware-accelerated memory
 	 * transfer from the source collection to the destination. The copy operation is
 	 * created once and can be evaluated multiple times efficiently.</p>
 	 *
@@ -160,10 +158,8 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
-		Runnable copy = new MemoryDataCopy("CollectionProvider Evaluate Into",
-				this::get, () -> (MemoryData) destination, shape(get()).getTotalSize()).get();
 		return args -> {
-			copy.run();
+			((MemoryData) destination).copyFrom(get());
 			return (T) destination;
 		};
 	}

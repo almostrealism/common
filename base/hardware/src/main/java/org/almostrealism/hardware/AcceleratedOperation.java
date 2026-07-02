@@ -421,7 +421,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return A new {@link MemoryReplacementManager} configured for this operation
 	 */
 	protected MemoryReplacementManager createMemoryReplacementManager() {
-		return new MemoryReplacementManager(
+		return new MemoryReplacementManager(getComputeContext(),
 				getComputeContext().getDataContext().getKernelMemoryProvider(),
 				this::createAggregatedInput);
 	}
@@ -514,20 +514,23 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * {@link AcceleratedProcessDetails#getSemaphore() completion semaphore} is this
 	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.</p>
 	 *
-	 * <p><strong>Execution model.</strong> Two independent host-mediated memory mechanisms may wrap
-	 * the kernel, and they unwind in reverse order of how they are set up:</p>
+	 * <p><strong>Execution model.</strong> Two independent memory mechanisms may wrap
+	 * the kernel, and they unwind in reverse order of how they are set up. Every copy on both
+	 * sides is a {@link Submittable} over the operation's
+	 * {@link io.almostrealism.code.ComputeContext#copy(Object, Object, Semaphore) ComputeContext copy},
+	 * chained on the completion it must be ordered after — nothing in this method blocks the
+	 * host; the operation's completion semaphore is the tail of the chain, waited only at a
+	 * genuine boundary (the {@code OperationList} runner's trailing wait, or a top-level
+	 * {@code run()}/{@code evaluate()}):</p>
 	 * <ul>
 	 *   <li><strong>Cross-provider replacement</strong> (active when {@code !process.isEmpty()};
 	 *   managed by {@link org.almostrealism.hardware.mem.MemoryReplacementManager}). Arguments not
 	 *   already on the kernel's provider are reserved into a provider-owned temp:
-	 *   {@code process.getPrepare()} copies them in, {@code process.getPostprocess()} copies the
-	 *   results back. That copy-back crosses providers, so it must run only after the kernel has
-	 *   actually completed — which forces a per-operation completion wait (and, on Metal, a per-op
-	 *   command-buffer commit). Operations that need no replacement do NOT wait here: their dispatch
-	 *   accumulates into the provider's open command buffer and is committed once at the genuine
-	 *   boundary (the {@code OperationList} runner's trailing wait, or a top-level
-	 *   {@code run()}/{@code evaluate()}) — this is where Metal command-buffer batching happens, so
-	 *   only the replaced op pays the per-op commit.</li>
+	 *   {@code process.getPrepareOperations()} copies them in before the kernel (chained ahead of
+	 *   it), {@code process.getPostprocessOperations()} copies the results back chained on the
+	 *   kernel's completion. A context with no asynchronous copy mechanism waits for the kernel
+	 *   inside the copy's submit, so behavior degrades to the previous per-operation wait only
+	 *   where the hardware cannot do better.</li>
 	 *   <li><strong>Compile-time argument aggregation</strong> (active when the argument map has
 	 *   replacements; managed by {@link MemoryDataArgumentMap}). Small inputs are folded into one
 	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
@@ -566,31 +569,34 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			Execution operator = setupOperator(process);
 
 			// Two memory mechanisms may wrap the kernel (see method javadoc): compile-time argument
-			// aggregation (aggregating) and cross-provider replacement (processing). The aggregation
-			// copy-in/copy-out run through the ComputeContext's copy (see MemoryDataArgumentMap), each
-			// carrying the completion it must be ordered after, so the context queues it onto its
-			// command buffer or performs a direct copy. Cross-provider replacement remains host-mediated.
+			// aggregation (aggregating) and cross-provider replacement (processing). Every copy on
+			// both sides runs through the ComputeContext's copy (see MemoryDataArgumentMap and
+			// MemoryReplacementManager), each carrying the completion it must be ordered after, so the
+			// context queues it onto its command buffer or waits and performs a direct copy. No copy
+			// blocks this method.
 			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
 			boolean aggregateCopyOut = aggregating
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
-
-			// Copy-in (originals -> aggregate): each copy depends on the caller's prior completion, so
-			// it is ordered after whatever produced the originals. The kernel reads the aggregate these
-			// copies wrote and is ordered after them by the provider (in-buffer hazard tracking on a
-			// batching context, synchronous completion otherwise).
-			if (aggregating) {
-				Submittable.submit(argumentMap.getPrepareOperations(), dependsOn);
-			}
-
 			boolean processing = !process.isEmpty();
 
-			// Cross-provider replacement copy-in (host-mediated) is unchanged.
-			if (processing) {
-				process.getPrepare().get().run();
+			// Copy-in: aggregation (originals -> aggregate) first, then cross-provider replacement
+			// (originals -> temps), each group chaining on what came before, with the kernel chained
+			// on the final copy-in completion. The provider therefore orders the kernel after every
+			// copy it reads from, without a host wait.
+			Semaphore ready = dependsOn;
+
+			if (aggregating) {
+				Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
+				if (prepared != null) ready = prepared;
 			}
 
-			// Run the operator, chaining on the caller's prior completion when one was provided.
-			Semaphore nextSemaphore = operator.accept(input, dependsOn);
+			if (processing) {
+				Semaphore prepared = Submittable.submit(process.getPrepareOperations(), ready);
+				if (prepared != null) ready = prepared;
+			}
+
+			// Run the operator, chaining on the last copy-in (or the caller's prior completion).
+			Semaphore nextSemaphore = operator.accept(input, ready);
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
@@ -598,27 +604,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			Semaphore completion = nextSemaphore;
 
-			// Cross-provider replacement copy-out remains host-mediated: it reads the kernel's result
-			// across providers, so it must wait for the kernel here. Per the reverse-order unwind (see
-			// javadoc), this replacement copy-back (temp->aggregate) MUST precede the aggregation
-			// de-aggregation (aggregate->originals) below, which holds because it runs first and
-			// synchronously.
+			// Copy-out unwinds in reverse order (see javadoc): the replacement copy-back
+			// (temp -> aggregate/originals) chains on the kernel, and the aggregation de-aggregation
+			// (aggregate -> originals) chains on that, so the ordering invariant holds without a host
+			// wait. A synchronous context completes each copy inside submit (waiting its dependency
+			// first), so a null completion from a group means that group has already finished.
 			if (processing) {
-				if (nextSemaphore != null) {
-					nextSemaphore.waitFor();
-				}
-
-				process.getPostprocess().get().run();
+				Semaphore copyBack = Submittable.submit(process.getPostprocessOperations(), completion);
+				if (copyBack != null) completion = copyBack;
 			}
 
-			// Aggregation copy-out (de-aggregation, aggregate -> originals): each copy depends on the
-			// kernel completion, so the provider orders it after the kernel (and a batching context
-			// groups the copies into one command buffer that only signals once it has run). The last
-			// copy's completion becomes the operation's completion, deferred to the genuine boundary.
 			if (aggregateCopyOut) {
 				Semaphore copyOut = Submittable.submit(output == null ?
 						argumentMap.getPostprocessOperations(null) :
-						argumentMap.getPostprocessOperations((MemoryData) output), nextSemaphore);
+						argumentMap.getPostprocessOperations((MemoryData) output), completion);
 				if (copyOut != null) {
 					completion = copyOut;
 				}

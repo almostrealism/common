@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,12 @@ package io.almostrealism.concurrent;
 
 import io.almostrealism.profile.OperationMetadata;
 
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+
 /**
  * A synchronization primitive used to coordinate completion of asynchronous hardware
  * executions with their waiting callers.
@@ -26,6 +32,17 @@ import io.almostrealism.profile.OperationMetadata;
  * operation waiting on it, enabling diagnostic attribution of blocked threads.</p>
  */
 public interface Semaphore {
+	/**
+	 * Shared executor for {@link #onComplete(Runnable)} callbacks. Each callback occupies
+	 * a thread only while it waits for its semaphore and runs, and idle threads are
+	 * reclaimed, so registering many callbacks does not accumulate threads the way a
+	 * thread-per-callback approach would. Callbacks must not block on work that can only
+	 * progress on this same pool's caller (the pool is unbounded, so ordinary waits on
+	 * device completions are safe).
+	 */
+	ExecutorService CALLBACK_EXECUTOR = Executors.newCachedThreadPool(r ->
+			new Thread(r, "Semaphore onComplete"));
+
 	/**
 	 * Returns the metadata describing the operation that is waiting on this semaphore,
 	 * or {@code null} if no requester metadata is available.
@@ -55,9 +72,37 @@ public interface Semaphore {
 	 * @param r the callback to invoke after {@link #waitFor()} returns
 	 */
 	default void onComplete(Runnable r) {
-		new Thread(() -> {
+		CALLBACK_EXECUTOR.execute(() -> {
 			waitFor();
 			r.run();
-		}, "Semaphore onComplete").start();
+		});
+	}
+
+	/**
+	 * Returns a {@link Semaphore} that completes once every one of the given semaphores
+	 * has completed &mdash; the merge primitive for an operation that depends on several
+	 * prior completions (multiple asynchronously evaluated arguments, a group of copies,
+	 * a join across parallel work).
+	 *
+	 * <p>Null entries (fully synchronous work that published no completion handle) are
+	 * ignored. When nothing remains, {@code null} is returned &mdash; everything already
+	 * completed. A single remaining semaphore is returned directly, so the composite
+	 * costs nothing in the common one-dependency case.</p>
+	 *
+	 * @param requester  the metadata of the operation that will wait on the composite
+	 * @param semaphores the completions to merge; may contain nulls
+	 * @return a semaphore completing after all of the given semaphores, or {@code null}
+	 *         when there is nothing to wait for
+	 */
+	static Semaphore all(OperationMetadata requester, List<Semaphore> semaphores) {
+		List<Semaphore> pending = semaphores == null ? List.of() :
+				semaphores.stream().filter(Objects::nonNull).collect(Collectors.toList());
+
+		if (pending.isEmpty()) return null;
+		if (pending.size() == 1) return pending.get(0);
+
+		DefaultLatchSemaphore combined = new DefaultLatchSemaphore(requester, pending.size());
+		pending.forEach(s -> s.onComplete(combined::countDown));
+		return combined;
 	}
 }

@@ -29,7 +29,6 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.DataInputStream;
@@ -226,7 +225,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public PackedCollection(PackedCollection src) {
 		this(src.getShape(), src.getShape().getTraversalAxis(), src.supply);
-		new MemoryDataCopy("PackedCollection constructor", src, this).get().run();
+		copyFrom(src);
 	}
 
 	/**
