@@ -168,9 +168,21 @@ otherwise never exercised by CI. Each runs after its Metal counterpart
 a skipped predecessor, with the same layer gates so all four skip together.
 Every step in the CL variants uses `native,cl` where its counterpart uses `*`
 (the compose step in `test-media-mac` was formerly pinned to `native`; it now
-runs under `*` so GPU coverage is not silently excluded there either). Neither
-job uploads coverage, so neither appears in `analysis` needs; both are part of
-the `all-checks` gate.
+runs under `*` so GPU coverage is not silently excluded there either).
+
+`test-cl` uses a 7-group matrix (vs. `test-mac`'s 3): the CL backend hits its
+memory ceiling under the larger per-group loads even at
+`AR_HARDWARE_MEMORY_SCALE=7` (the highest scale used anywhere — the scale is
+exponential, so raising it further is not an option), so the same tests are
+spread across more JVMs instead.
+
+Neither job uploads coverage, so neither appears in `analysis` needs — and
+**neither is part of the `all-checks` merge gate**: the CL backend has not been
+a focus for some time and carries known flakiness/timeouts predating this
+coverage, so the jobs are informational. They report their own pass/fail status
+on the PR as independent checks; they just do not decide mergeability. Restore
+them to `all-checks` (needs + env + `check_job` + summary lines) once the CL
+backend is considered stable again.
 
 ### What the `analysis` job does
 

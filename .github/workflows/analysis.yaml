@@ -1155,7 +1155,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        group: [0, 1, 2]
+        # More groups than test-mac (7 vs 3): the CL backend reaches its memory
+        # ceiling under the larger per-group test loads (AR_HARDWARE_MEMORY_SCALE
+        # is already at 7, the highest scale used anywhere), so the same tests are
+        # spread across more JVMs instead.
+        group: [0, 1, 2, 3, 4, 5, 6]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1191,7 +1195,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=7
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -1201,7 +1205,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=7
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -2027,8 +2031,6 @@ jobs:
       - test-media
       - test-mac
       - test-media-mac
-      - test-cl
-      - test-media-cl
       - analysis
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -2053,8 +2055,6 @@ jobs:
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
           TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
-          TEST_CL_RESULT: ${{ needs.test-cl.result }}
-          TEST_MEDIA_CL_RESULT: ${{ needs.test-media-cl.result }}
           ANALYSIS_RESULT: ${{ needs.analysis.result }}
         run: |
           FAILED=""
@@ -2091,8 +2091,6 @@ jobs:
           check_job "test-media"              "$TEST_MEDIA_RESULT"
           check_job "test-mac"                "$TEST_MAC_RESULT"
           check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
-          check_job "test-cl"                 "$TEST_CL_RESULT"
-          check_job "test-media-cl"           "$TEST_MEDIA_CL_RESULT"
           check_job "analysis"                "$ANALYSIS_RESULT"
 
           # checkstyle now fails hard (no continue-on-error), so its job result
@@ -2129,6 +2127,4 @@ jobs:
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| test-cl | ${{ needs.test-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| test-media-cl | ${{ needs.test-media-cl.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
