@@ -23,7 +23,6 @@ import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.sequence.Index;
-import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
@@ -754,22 +753,6 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 */
 	default void setMem(int offset, MemoryData src) {
 		setMem(offset, src, 0, src.getMemLength());
-	}
-
-	/**
-	 * Copies all of {@code source} into this {@link MemoryData} via the current
-	 * {@link io.almostrealism.code.ComputeContext}'s
-	 * {@link io.almostrealism.code.ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy},
-	 * waiting for the copy to complete before returning. The context chooses the copy
-	 * mechanism (a direct transfer through the destination's provider, or a batched
-	 * device-side copy), so this is the preferred way to move data between two resolved
-	 * {@link MemoryData} regions from a synchronous caller.
-	 *
-	 * @param source the memory to copy from
-	 */
-	default void copyFrom(MemoryData source) {
-		Semaphore done = Hardware.getLocalHardware().getComputeContext().copy(source, this, null);
-		if (done != null) done.waitFor();
 	}
 
 	/**

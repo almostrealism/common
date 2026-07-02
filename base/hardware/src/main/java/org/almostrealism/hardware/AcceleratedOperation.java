@@ -94,7 +94,7 @@ import java.util.List;
  * <pre>{@code
  * @Override
  * public InstructionSetManager getInstructionSetManager() {
- *     return Hardware.getLocalHardware().getComputeContext().getKernelManager();
+ *     return getComputeContext().getKernelManager();  // The context this operation was created with
  * }
  *
  * @Override
@@ -137,10 +137,10 @@ import java.util.List;
  * <h3>Creating a Kernel Operation</h3>
  * <pre>{@code
  * public class VectorAddOperation extends AcceleratedComputationOperation {
- *     public VectorAddOperation(Producer<PackedCollection> a,
- *                               Producer<PackedCollection> b) {
- *         super(Hardware.getLocalHardware().getComputeContext(), true,
- *               a.get().evaluate(), b.get().evaluate());
+ *     public VectorAddOperation(Computation<Void> computation) {
+ *         // The Computer selects the context from the computation's characteristics;
+ *         // never reach for the ambient/default context to make this choice
+ *         super(Hardware.getLocalHardware().getComputer().getContext(computation), computation);
  *     }
  *
  *     @Override

@@ -69,9 +69,9 @@ import java.util.function.Supplier;
  * // Create computation
  * Computation<PackedCollection> multiply = c -> c.multiply(2.0);
  *
- * // Wrap for acceleration
+ * // Wrap for acceleration; the Computer selects the context for the computation
  * AcceleratedComputationOperation op = new AcceleratedComputationOperation(
- *     Hardware.getLocalHardware().getComputeContext(),
+ *     Hardware.getLocalHardware().getComputer().getContext(multiply),
  *     multiply
  * );
  *
@@ -163,9 +163,9 @@ import java.util.function.Supplier;
  * // Define computation
  * Computation<PackedCollection> normalize = c -> c.divide(c.max());
  *
- * // Wrap for GPU execution
+ * // Wrap for execution; the Computer selects the context for the computation
  * AcceleratedComputationOperation normalizeOp = new AcceleratedComputationOperation(
- *     Hardware.getLocalHardware().getComputeContext(),
+ *     Hardware.getLocalHardware().getComputer().getContext(normalize),
  *     normalize
  * );
  * }</pre>

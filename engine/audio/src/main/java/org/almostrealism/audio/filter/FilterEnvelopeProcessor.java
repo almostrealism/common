@@ -21,6 +21,7 @@ import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 /**
  * A low-pass filter with ADSR-controlled cutoff frequency.
@@ -146,8 +147,8 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 		// TODO  This can be done without the copy to input
 		// TODO  by just using a Provider that can be made to
 		// TODO  refer to the provided data collection directly.
-		this.input.copyFrom(input);
+		new MemoryDataCopy("FilterEnvelopeProcessor input", input, this.input).get().run();
 		process.run();
-		output.copyFrom(this.output.range(shape(output.getMemLength())));
+		new MemoryDataCopy("FilterEnvelopeProcessor output", this.output.range(shape(output.getMemLength())), output).get().run();
 	}
 }

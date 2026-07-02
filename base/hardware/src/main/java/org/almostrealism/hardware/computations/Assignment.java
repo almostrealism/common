@@ -414,9 +414,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			// moves the memory however the context prefers (a direct setMem, through the destination's
 			// MemoryProvider, by default). No kernel is compiled, so there is nothing to reuse — the
 			// offsets are read from the resolved memories on every run, so a copy into one region is
-			// never confused with a copy into another.
+			// never confused with a copy into another. The Runner selects the context managing the
+			// destination's memory at run time; the context provided here is only its fallback, and
+			// is the Computer's selection for this Assignment so it matches what compilation would
+			// have targeted.
 			if (ev instanceof Provider<?>) {
-				return new Runner(Hardware.getLocalHardware().getComputeContext(),
+				return new Runner(Hardware.getLocalHardware().getComputer().getContext(this),
 						(Supplier) out, (Supplier) in);
 			}
 
@@ -561,7 +564,13 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * another.</p>
 	 */
 	public static class Runner implements Runnable, Submittable {
-		/** The context whose {@code copy} moves the memory. */
+		/**
+		 * Fallback context for the copy: the {@link io.almostrealism.code.Computer}'s
+		 * selection for the {@link Assignment} this runner was created from, matching what
+		 * compilation would have targeted. Used only when the destination's memory is not
+		 * managed by any configured {@link io.almostrealism.code.DataContext} (see
+		 * {@link #contextFor(MemoryData)}).
+		 */
 		private final ComputeContext<MemoryData> context;
 		/** Producer of the destination; resolved to its current {@link MemoryData} at run time. */
 		private final Supplier<Evaluable<? extends MemoryData>> destination;
@@ -594,7 +603,25 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			MemoryData dst = resolve(destination);
 			MemoryData src = resolve(source);
 
-			return context.copy(src, dst, dependsOn);
+			return contextFor(dst).copy(src, dst, dependsOn);
+		}
+
+		/**
+		 * Returns the {@link ComputeContext} that should perform the copy into the given
+		 * destination: the context of the {@link io.almostrealism.code.DataContext} that
+		 * manages the destination's memory, since that backend is the one able to move
+		 * memory it owns (for example, queuing the copy onto its own command buffer). The
+		 * destination is not resolved until run time, so this decision cannot be made when
+		 * the runner is created; when no configured context manages the memory, the
+		 * {@link #context fallback} selected at creation is used.
+		 *
+		 * @param destination the resolved destination memory
+		 * @return the context that should perform the copy
+		 */
+		private ComputeContext<MemoryData> contextFor(MemoryData destination) {
+			ComputeContext<MemoryData> managing = destination == null ? null :
+					Hardware.getLocalHardware().getComputeContext(destination.getMem());
+			return managing == null ? context : managing;
 		}
 
 		/**

@@ -22,6 +22,7 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 /**
  * A specialized {@link Provider} for {@link PackedCollection}s that provides efficient
@@ -29,7 +30,7 @@ import org.almostrealism.hardware.MemoryData;
  *
  * <p>This class extends {@link Provider} to handle {@link PackedCollection} values with
  * optimized memory operations. Unlike general providers, {@link CollectionProvider} uses
- * the {@link org.almostrealism.hardware.MemoryData#copyFrom(org.almostrealism.hardware.MemoryData) ComputeContext copy} for efficient hardware-accelerated copying of collection data
+ * {@link MemoryDataCopy} for efficient hardware-accelerated copying of collection data
  * to destination buffers.</p>
  *
  * <h2>Purpose and Usage</h2>
@@ -158,8 +159,10 @@ public class CollectionProvider<T extends PackedCollection> extends Provider<T> 
 	 */
 	@Override
 	public Evaluable<T> into(Object destination) {
+		Runnable copy = new MemoryDataCopy("CollectionProvider Evaluate Into",
+				this::get, () -> (MemoryData) destination, shape(get()).getTotalSize()).get();
 		return args -> {
-			((MemoryData) destination).copyFrom(get());
+			copy.run();
 			return (T) destination;
 		};
 	}

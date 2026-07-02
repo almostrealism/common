@@ -173,6 +173,11 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	 */
 	@Override
 	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
+		// TODO  Rather than blocking here, this should schedule an operation that happens
+		// TODO  after dependsOn (plain Java threading is always available for chaining even
+		// TODO  when there is no native queueing mechanism) and return that operation's own
+		// TODO  Semaphore. Blocking should only ever occur because the end user demanded a
+		// TODO  result, never inside internal machinery like this fallback.
 		if (dependsOn != null) dependsOn.waitFor();
 
 		destination.setMem(0, source, 0, source.getMemLength());
