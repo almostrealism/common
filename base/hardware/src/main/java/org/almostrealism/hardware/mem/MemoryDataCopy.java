@@ -316,10 +316,8 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 					Hardware.getLocalHardware().getComputeContext(target.getMem());
 
 			if (context == null) {
-				// The target's memory is not managed by any configured DataContext
-				// (plain JVM heap, for example), so no backend can move it; fall back
-				// to a host-mediated transfer.
-				target.setMem(targetPosition, source.toArray(sourcePosition, length));
+				// Unmanaged memory (plain JVM heap, for example); host-mediated transfer
+				target.setMem(targetPosition, source, sourcePosition, length);
 			} else {
 				Semaphore done = context.copy(
 						new Bytes(length, source, sourcePosition),

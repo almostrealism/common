@@ -166,7 +166,7 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_OFF_HEAP_SIZE</h3>
  * <p><strong>Purpose:</strong> Off-heap buffer size in bytes.</p>
- * <p><strong>Default:</strong> 0</p>
+ * <p><strong>Default:</strong> {@value #DEFAULT_OFF_HEAP_SIZE}</p>
  *
  * <h3>AR_HARDWARE_EPSILON_64</h3>
  * <p><strong>Purpose:</strong> Use full FP64 epsilon precision.</p>
@@ -469,6 +469,9 @@ public final class Hardware implements ConsoleFeatures {
 	/** Root console for hardware-layer logging and timing metrics. */
 	public static Console console = Console.root().child()
 			.addFilter(ConsoleFeatures.duplicateFilter(10 * 60 * 1000L));
+
+	/** Default value for {@code AR_HARDWARE_OFF_HEAP_SIZE} (see {@link #getOffHeapSize(ComputeRequirement)}). */
+	public static final int DEFAULT_OFF_HEAP_SIZE = 0;
 
 	/** Memory scale factor: {@code MEMORY_SCALE=N} sets max memory to {@code 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
@@ -1120,7 +1123,8 @@ public final class Hardware implements ConsoleFeatures {
 	/**
 	 * Returns the off-heap buffer size for the specified backend.
 	 *
-	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable (default: 0 bytes).</p>
+	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable
+	 * (default: {@value #DEFAULT_OFF_HEAP_SIZE} bytes).</p>
 	 *
 	 * @param type The backend type (currently unused)
 	 * @return The off-heap buffer size in bytes
@@ -1129,7 +1133,7 @@ public final class Hardware implements ConsoleFeatures {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 0;
+			return DEFAULT_OFF_HEAP_SIZE;
 		}
 	}
 

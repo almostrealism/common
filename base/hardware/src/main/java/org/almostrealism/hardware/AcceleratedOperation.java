@@ -22,6 +22,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.concurrent.Submittable;
@@ -562,77 +563,79 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
+		// Requirements are thread-local, and the listener below may run on another
+		// thread when dispatch is asynchronous; capture them here to re-establish there
+		List<ComputeRequirement> activeRequirements =
+				Hardware.getLocalHardware().getComputer().getActiveRequirements();
+
 		process.whenReady(() -> {
-			MemoryData input[] = process.getArguments(MemoryData[]::new);
-
-			// Prepare the operator
-			Execution operator = setupOperator(process);
-
-			// Two memory mechanisms may wrap the kernel (see method javadoc): compile-time argument
-			// aggregation (aggregating) and cross-provider replacement (processing). Every copy on
-			// both sides runs through the ComputeContext's copy (see MemoryDataArgumentMap and
-			// MemoryReplacementManager), each carrying the completion it must be ordered after, so the
-			// context queues it onto its command buffer or waits and performs a direct copy. No copy
-			// blocks this method.
-			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
-			boolean aggregateCopyOut = aggregating
-					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
-			boolean processing = !process.isEmpty();
-
-			// Copy-in: aggregation (originals -> aggregate) first, then cross-provider replacement
-			// (originals -> temps), each group chaining on what came before, with the kernel chained
-			// on the final copy-in completion. The provider therefore orders the kernel after every
-			// copy it reads from, without a host wait.
-			Semaphore ready = dependsOn;
-
-			if (aggregating) {
-				Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
-				if (prepared != null) ready = prepared;
+			if (!activeRequirements.isEmpty()) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(activeRequirements);
 			}
 
-			if (processing) {
-				Semaphore prepared = Submittable.submit(process.getPrepareOperations(), ready);
-				if (prepared != null) ready = prepared;
-			}
+			try {
+				MemoryData input[] = process.getArguments(MemoryData[]::new);
 
-			// Run the operator, chaining on the last copy-in (or the caller's prior completion).
-			Semaphore nextSemaphore = operator.accept(input, ready);
+				// Prepare the operator
+				Execution operator = setupOperator(process);
 
-			// Register kernel semaphore with the active heap stage so
-			// that pop() waits for kernel completion before destroying memory
-			Heap.addPendingKernel(nextSemaphore);
+				boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
+				boolean aggregateCopyOut = aggregating
+						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
+				boolean processing = !process.isEmpty();
 
-			Semaphore completion = nextSemaphore;
+				// Copy-in groups chain on one another, and the kernel chains on the last of them
+				Semaphore ready = dependsOn;
 
-			// Copy-out unwinds in reverse order (see javadoc): the replacement copy-back
-			// (temp -> aggregate/originals) chains on the kernel, and the aggregation de-aggregation
-			// (aggregate -> originals) chains on that, so the ordering invariant holds without a host
-			// wait. A synchronous context completes each copy inside submit (waiting its dependency
-			// first), so a null completion from a group means that group has already finished.
-			if (processing) {
-				Semaphore copyBack = Submittable.submit(process.getPostprocessOperations(), completion);
-				if (copyBack != null) completion = copyBack;
-			}
-
-			if (aggregateCopyOut) {
-				Semaphore copyOut = Submittable.submit(output == null ?
-						argumentMap.getPostprocessOperations(null) :
-						argumentMap.getPostprocessOperations((MemoryData) output), completion);
-				if (copyOut != null) {
-					completion = copyOut;
+				if (aggregating) {
+					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
+					if (prepared != null) ready = prepared;
 				}
-			}
 
-			// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
-			// the process completion so callers wait on (and can chain via dependsOn) the actual end
-			// of the operation rather than the host-readiness latch. When the operator returns null
-			// (fully synchronous providers) the host latch remains the completion — behavior is
-			// unchanged.
-			process.setSemaphore(completion);
+				if (processing) {
+					Semaphore prepared = Submittable.submit(process.getPrepareOperations(), ready);
+					if (prepared != null) ready = prepared;
+				}
 
-			if (completion != null && completion != nextSemaphore) {
-				// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
-				Heap.addPendingKernel(completion);
+				// Run the operator, chaining on the last copy-in (or the caller's prior completion).
+				Semaphore nextSemaphore = operator.accept(input, ready);
+
+				// Register kernel semaphore with the active heap stage so
+				// that pop() waits for kernel completion before destroying memory
+				Heap.addPendingKernel(nextSemaphore);
+
+				Semaphore completion = nextSemaphore;
+
+				// Copy-out unwinds in reverse order; see the method javadoc
+				if (processing) {
+					Semaphore copyBack = Submittable.submit(process.getPostprocessOperations(), completion);
+					if (copyBack != null) completion = copyBack;
+				}
+
+				if (aggregateCopyOut) {
+					Semaphore copyOut = Submittable.submit(output == null ?
+							argumentMap.getPostprocessOperations(null) :
+							argumentMap.getPostprocessOperations((MemoryData) output), completion);
+					if (copyOut != null) {
+						completion = copyOut;
+					}
+				}
+
+				// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
+				// the process completion so callers wait on (and can chain via dependsOn) the actual end
+				// of the operation rather than the host-readiness latch. When the operator returns null
+				// (fully synchronous providers) the host latch remains the completion — behavior is
+				// unchanged.
+				process.setSemaphore(completion);
+
+				if (completion != null && completion != nextSemaphore) {
+					// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
+					Heap.addPendingKernel(completion);
+				}
+			} finally {
+				if (!activeRequirements.isEmpty()) {
+					Hardware.getLocalHardware().getComputer().popRequirements();
+				}
 			}
 		});
 

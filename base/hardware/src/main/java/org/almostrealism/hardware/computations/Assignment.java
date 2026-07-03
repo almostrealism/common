@@ -409,15 +409,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			}
 
 
-			// When both the destination and the source are Providers, the assignment is a plain
-			// memory-to-memory copy: short-circuit to the ComputeContext's copy() (see Runner), which
-			// moves the memory however the context prefers (a direct setMem, through the destination's
-			// MemoryProvider, by default). No kernel is compiled, so there is nothing to reuse — the
-			// offsets are read from the resolved memories on every run, so a copy into one region is
-			// never confused with a copy into another. The Runner selects the context managing the
-			// destination's memory at run time; the context provided here is only its fallback, and
-			// is the Computer's selection for this Assignment so it matches what compilation would
-			// have targeted.
+			// Provider-to-provider assignment is a plain memory copy; see Runner
 			if (ev instanceof Provider<?>) {
 				return new Runner(Hardware.getLocalHardware().getComputer().getContext(this),
 						(Supplier) out, (Supplier) in);

@@ -85,6 +85,21 @@ public class OperationListRunner implements Runnable, Destroyable, OperationInfo
 
 	/**
 	 * Executes all operations in sequence with compute requirements and timing.
+	 *
+	 * <p>{@link Submittable} members are issued without a host wait, each chaining on the
+	 * previous member's completion {@link Semaphore}, so ordering holds even when
+	 * consecutive members execute on different compute contexts (a Metal member followed
+	 * by a native member, for example, where issue order alone guarantees nothing). A
+	 * provider that already orders same-context work treats a same-batch dependency as
+	 * free &mdash; Metal's in-buffer hazard tracking covers a dependency still in the open
+	 * command buffer without a commit or an event wait &mdash; so chaining does not defeat
+	 * batching, and a foreign dependency is honored by the receiving provider. A single
+	 * wait covers the whole group, taken at the end of the list or before a
+	 * non-submittable member (which requires everything ahead of it to be complete).</p>
+	 *
+	 * <p>The compute requirements pushed here are thread-local; each member's dispatch
+	 * captures them on this thread and re-establishes them on whatever thread performs
+	 * the asynchronous work (see {@code AcceleratedOperation.apply}).</p>
 	 */
 	@Override
 	public void run() {
@@ -99,16 +114,7 @@ public class OperationListRunner implements Runnable, Destroyable, OperationInfo
 				Runnable r = run.get(i);
 
 				if (r instanceof Submittable) {
-					// Issue the dispatch without waiting, chaining it on the previous member's
-					// completion so ordering holds even when consecutive members execute on
-					// different ComputeContexts (a Metal member followed by a native member,
-					// for example, where issue order alone guarantees nothing). A provider that
-					// already orders same-context work treats a same-batch dependency as free —
-					// Metal's in-buffer hazard tracking covers a dependency still in the open
-					// command buffer without a commit or an event wait — so chaining does not
-					// defeat batching; a foreign dependency is honored by the receiving
-					// provider inside accept. A single wait at the end (or before the next
-					// non-submittable member) covers the whole group.
+					// Chain on the prior member; see the method javadoc
 					Submittable s = (Submittable) r;
 
 					if (timingListener == null) {
@@ -121,8 +127,7 @@ public class OperationListRunner implements Runnable, Destroyable, OperationInfo
 						pending = completion[0];
 					}
 				} else {
-					// Non-submittable member: complete any outstanding group first to preserve
-					// sequential ordering, then run synchronously.
+					// Non-submittable members require everything ahead of them to be complete
 					if (pending != null) {
 						pending.waitFor();
 						pending = null;
