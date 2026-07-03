@@ -21,6 +21,7 @@ import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalFeatures;
 
 /**
@@ -165,6 +166,31 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	/** Returns the bound per-layer source buffers for the SSS dispatch. */
 	public PackedCollection[] getSssSources() { return sssSources; }
 
+	/** Compile-once batched zero of all {@link #sssSources}, reused across ticks; built on first {@link #clearSssSources()}. */
+	private Runnable sssSourcesClear;
+
+	/**
+	 * Zeroes all {@link #getSssSources() SSS source buffers} in one batched, compile-once pass so
+	 * that padded and previously-used rows contribute nothing. This replaces per-buffer
+	 * {@link PackedCollection#clear()} calls — each a synchronous host wait that forced its own Metal
+	 * command-buffer commit — with a single assignment-based {@link OperationList} whose members batch
+	 * into one command buffer and commit once. The buffers are fixed for a cached renderer, so the
+	 * assignment compiles once and is re-run every tick.
+	 */
+	public void clearSssSources() {
+		if (sssSources == null) return;
+
+		if (sssSourcesClear == null) {
+			OperationList clear = new OperationList("sssSourcesClear");
+			for (PackedCollection source : sssSources) {
+				clear.add(a(traverseEach(cp(source)), c(0.0)));
+			}
+			sssSourcesClear = clear.get();
+		}
+
+		sssSourcesClear.run();
+	}
+
 	/** Returns the bound per-layer pitch-ratio buffers for the SSS dispatch. */
 	public PackedCollection[] getSssRatios() { return sssRatios; }
 
@@ -262,6 +288,29 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 
 	/** Returns the bound per-layer source buffers for the percussion dispatch. */
 	public PackedCollection[] getPercSources() { return percSources; }
+
+	/** Compile-once batched zero of all {@link #percSources}, reused across ticks; built on first {@link #clearPercSources()}. */
+	private Runnable percSourcesClear;
+
+	/**
+	 * Zeroes all {@link #getPercSources() percussion source buffers} in one batched, compile-once
+	 * pass so that padded and previously-used rows contribute nothing. As with
+	 * {@link #clearSssSources()}, this replaces per-buffer {@link PackedCollection#clear()} calls with
+	 * a single assignment-based {@link OperationList} that batches into one command-buffer commit.
+	 */
+	public void clearPercSources() {
+		if (percSources == null) return;
+
+		if (percSourcesClear == null) {
+			OperationList clear = new OperationList("percSourcesClear");
+			for (PackedCollection source : percSources) {
+				clear.add(a(traverseEach(cp(source)), c(0.0)));
+			}
+			percSourcesClear = clear.get();
+		}
+
+		percSourcesClear.run();
+	}
 
 	/** Returns the bound per-layer pitch-ratio buffers for the percussion dispatch. */
 	public PackedCollection[] getPercRatios() { return percRatios; }

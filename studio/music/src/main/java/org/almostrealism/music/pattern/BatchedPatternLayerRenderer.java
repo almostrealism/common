@@ -437,13 +437,11 @@ public final class BatchedPatternLayerRenderer {
 		// nothing, then copy each real note's source into its row. The clear spans the
 		// full [bucketN, sourceLength] buffer deliberately: bucketN and sourceLength are
 		// fixed for a cached renderer, so this clear compiles once and is reused every
-		// tick. A partial clear sized to the (unbucketed, per-tick-varying) note count
-		// would recompile the zeroing kernel on every dispatch — far costlier than the
-		// extra padded-row zeroing it would save.
+		// tick. It is batched across all layers into one compile-once assignment
+		// (renderer.clearSssSources) so the per-layer zeroing shares a single Metal
+		// command-buffer commit instead of forcing one synchronous host wait per layer.
 		PackedCollection[] boundSources = renderer.getSssSources();
-		for (int l = 0; l < layers; l++) {
-			boundSources[l].clear();
-		}
+		renderer.clearSssSources();
 		for (int row = 0; row < count; row++) {
 			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 			for (int l = 0; l < layers; l++) {
@@ -539,10 +537,10 @@ public final class BatchedPatternLayerRenderer {
 
 		// Zero the bound source buffers (full fixed shape, compiles once) so padded and
 		// previously-used rows contribute nothing, then copy each real note's source.
+		// Batched across layers into one compile-once assignment (renderer.clearPercSources)
+		// so the zeroing shares a single command-buffer commit instead of one host wait per layer.
 		PackedCollection[] boundSources = renderer.getPercSources();
-		for (int l = 0; l < layers; l++) {
-			boundSources[l].clear();
-		}
+		renderer.clearPercSources();
 		for (int row = 0; row < count; row++) {
 			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 			for (int l = 0; l < layers; l++) {
