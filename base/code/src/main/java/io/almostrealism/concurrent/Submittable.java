@@ -16,6 +16,8 @@
 
 package io.almostrealism.concurrent;
 
+import java.util.List;
+
 /**
  * An executable operation that can be submitted for asynchronous execution, chaining on a
  * prior operation's completion and yielding its own completion {@link Semaphore} without
@@ -49,4 +51,30 @@ public interface Submittable {
 	 *         publishes no completion handle (fully synchronous execution)
 	 */
 	Semaphore submit(Semaphore dependsOn);
+
+	/**
+	 * Submits a group of independent operations that share a single upstream dependency, returning
+	 * the completion of the last one.
+	 *
+	 * <p>Every operation is submitted with the same {@code dependsOn}: the group members do not
+	 * depend on one another, only on the work {@code dependsOn} represents. A provider that batches
+	 * dispatches is therefore free to group them (they carry no ordering constraint between
+	 * themselves), while their shared dependency is still honored. On a serial provider the returned
+	 * completion stands in for the whole group &mdash; waiting on it waits on every earlier
+	 * submission &mdash; so a caller can treat it as the group's completion.</p>
+	 *
+	 * @param operations the operations to submit, in order
+	 * @param dependsOn  the completion the whole group depends on, or {@code null} to begin a chain
+	 * @return the completion of the last submitted operation, or {@code null} when {@code operations}
+	 *         is empty (or every submission published no completion handle)
+	 */
+	static Semaphore submit(List<Submittable> operations, Semaphore dependsOn) {
+		Semaphore last = null;
+
+		for (Submittable operation : operations) {
+			last = operation.submit(dependsOn);
+		}
+
+		return last;
+	}
 }

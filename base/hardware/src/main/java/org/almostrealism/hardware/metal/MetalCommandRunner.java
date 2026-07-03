@@ -66,9 +66,9 @@ public class MetalCommandRunner {
 	private static final int MAX_OPEN = 256;
 
 	/** Total dispatches encoded across all runners since the last reset. */
-	public static final AtomicLong dispatchCount = new AtomicLong();
+	public static final AtomicLong totalDispatchCount = new AtomicLong();
 	/** Total command-buffer commits across all runners since the last reset. */
-	public static final AtomicLong commitCount = new AtomicLong();
+	public static final AtomicLong totalCommitCount = new AtomicLong();
 
 	/**
 	 * Returns the mean number of dispatches per committed command buffer (the effective GPU batch
@@ -77,14 +77,14 @@ public class MetalCommandRunner {
 	 * @return mean dispatches per commit
 	 */
 	public static double meanBatchSize() {
-		long commits = commitCount.get();
-		return commits == 0 ? 0 : dispatchCount.get() / (double) commits;
+		long commits = totalCommitCount.get();
+		return commits == 0 ? 0 : totalDispatchCount.get() / (double) commits;
 	}
 
 	/** Resets the batch-size counters; behaviour-neutral. */
 	public static void resetBatchSizeCounters() {
-		dispatchCount.set(0);
-		commitCount.set(0);
+		totalDispatchCount.set(0);
+		totalCommitCount.set(0);
 	}
 
 	/** Single-threaded executor that serializes all command-buffer operations. */
@@ -101,6 +101,8 @@ public class MetalCommandRunner {
 
 	/** The open (encoded, not yet committed) command buffer, or {@code null}. Executor-thread only. */
 	private MTLCommandBuffer openBuffer;
+	/** Total command-buffer commits. Written on the executor thread; volatile for diagnostic reads. */
+	private volatile long commitCount;
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -133,9 +135,13 @@ public class MetalCommandRunner {
 	/**
 	 * Encodes a dispatch into the open command buffer and returns its completion semaphore.
 	 *
-	 * <p>When {@code dependsOn} is a {@link MetalSemaphore} from this runner, the open buffer is
-	 * committed first and the dispatch encodes a GPU wait for that dependency's event value, so the
-	 * dependent runs after the dependency without the host blocking. (A foreign dependency must be
+	 * <p>When {@code dependsOn} is a {@link MetalSemaphore} from this runner, ordering costs
+	 * nothing or almost nothing: a dependency still in the open command buffer is already
+	 * ordered ahead of this dispatch by Metal's hazard tracking (every buffer is allocated
+	 * with default tracking; see {@code MTL.cpp}), so it is simply dropped; a dependency in
+	 * an earlier, committed buffer is honored by encoding a GPU wait for its event value.
+	 * Neither case blocks the host or forces a commit, so chaining completion semaphores
+	 * through a sequence of dispatches preserves batching. (A foreign dependency must be
 	 * waited by the caller before calling this method.)</p>
 	 *
 	 * @param command   encodes the kernel into the supplied command buffer
@@ -151,10 +157,10 @@ public class MetalCommandRunner {
 					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
 							? (MetalSemaphore) dependsOn : null;
 
-			// Order a dependent dispatch after its dependency across buffers: commit the open buffer
-			// (so the dependency's signal lands in an earlier, committed buffer) then wait its value.
+			// A dependency encoded into the still-open buffer is already ordered ahead of this
+			// dispatch by in-buffer hazard tracking; no commit and no event wait are needed.
 			if (dependency != null && dependency.getCommandBuffer() == openBuffer) {
-				commitOpenOnExecutor();
+				dependency = null;
 			}
 
 			ensureOpenBuffer();
@@ -168,7 +174,7 @@ public class MetalCommandRunner {
 			signaled++;
 			openBuffer.encodeSignalEvent(event, signaled);
 			openCount++;
-			dispatchCount.incrementAndGet();
+			totalDispatchCount.incrementAndGet();
 			if (onComplete != null) openOnComplete.add(onComplete);
 
 			result.add(new MetalSemaphore(null, this, openBuffer, event, signaled));
@@ -230,13 +236,23 @@ public class MetalCommandRunner {
 	}
 
 	/**
+	 * Returns the number of command buffers this runner has committed. Batching diagnostics:
+	 * a group of dispatches that was expected to share one command buffer can be checked by
+	 * comparing this count before and after the group is issued.
+	 *
+	 * @return the total number of command-buffer commits so far
+	 */
+	public long getCommitCount() { return commitCount; }
+
+	/**
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
 	 * completion. Must run on the executor thread.
 	 */
 	private void commitOpenOnExecutor() {
 		if (openBuffer == null) return;
 
-		commitCount.incrementAndGet();
+		totalCommitCount.incrementAndGet();
+		commitCount++;
 
 		openBuffer.commit();
 		bufferOpen = false;

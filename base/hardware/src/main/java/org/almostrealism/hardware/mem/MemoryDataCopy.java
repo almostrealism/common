@@ -1,11 +1,14 @@
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -113,18 +116,13 @@ import java.util.function.Supplier;
  *
  * <h2>Implementation Details</h2>
  *
- * <p>Current implementation uses {@code toArray()} for copying, which may be inefficient for
- * same-provider transfers:</p>
- * <pre>
- * // Current: Always goes through Java array
- * double[] data = source.toArray(sourcePos, length);
- * target.setMem(targetPos, data);
- *
- * // TODO: Direct provider copy for same-provider transfers
- * if (source.getMem().getProvider() == target.getMem().getProvider()) {
- *     provider.directCopy(source, target, length);  // Faster
- * }
- * </pre>
+ * <p>The copy is performed by the {@link io.almostrealism.code.ComputeContext} of the
+ * {@link io.almostrealism.code.DataContext} that manages the target's memory (identified
+ * via its {@link io.almostrealism.code.MemoryProvider} &mdash; see
+ * {@link org.almostrealism.hardware.Hardware#getComputeContext(io.almostrealism.code.Memory)}),
+ * so the backend that owns the memory chooses the mechanism. When no configured context
+ * manages the memory (plain JVM heap, for example), a host-mediated {@code toArray}/
+ * {@code setMem} transfer is used instead.</p>
  *
  * <h2>Verbose Logging</h2>
  *
@@ -138,9 +136,21 @@ import java.util.function.Supplier;
  * }</pre>
  *
  * @see MemoryData
- * @see MemoryReplacementManager
  * @see Process
+ *
+ * @deprecated {@link org.almostrealism.hardware.computations.Assignment} is the tool for
+ * assigning one value to another, and it recognizes the plain-memory-copy case (routing it
+ * through the {@link io.almostrealism.code.ComputeContext}'s copy, which chains on the
+ * {@link io.almostrealism.concurrent.Semaphore} mechanism like every other operation).
+ * Prefer {@code Assignment} (directly, or via the {@code copy(...)} helpers on
+ * {@code MemoryDataFeatures}) wherever it can be used. Where it cannot yet take this class's
+ * place, keep using {@link MemoryDataCopy} rather than open-coding a replacement &mdash; it
+ * keeps every reference to the fallback path in one place, and it already targets the
+ * {@link io.almostrealism.code.ComputeContext} that manages the memory being written.
+ * {@link MemoryDataCopy} remains a plain {@link Process} whose execution neither accepts nor
+ * publishes a completion {@link io.almostrealism.concurrent.Semaphore}.
  */
+@Deprecated
 public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Runnable>, OperationInfo, ConsoleFeatures {
 	/** If true, logs each copy operation to stdout including source, target, and length. */
 	public static boolean enableVerbose = false;
@@ -302,8 +312,18 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 				throw new UnsupportedOperationException(getMetadata().getDisplayName());
 			}
 
-			// TODO  This can be done faster if the source and target are on the same MemoryProvider
-			target.setMem(targetPosition, source.toArray(sourcePosition, length));
+			ComputeContext<MemoryData> context =
+					Hardware.getLocalHardware().getComputeContext(target.getMem());
+
+			if (context == null) {
+				// Unmanaged memory (plain JVM heap, for example); host-mediated transfer
+				target.setMem(targetPosition, source, sourcePosition, length);
+			} else {
+				Semaphore done = context.copy(
+						new Bytes(length, source, sourcePosition),
+						new Bytes(length, target, targetPosition), null);
+				if (done != null) done.waitFor();
+			}
 		});
 	}
 

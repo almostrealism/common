@@ -17,17 +17,19 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.io.SystemUtils;
 
@@ -64,7 +66,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * limit), which is required for fused kernels with many small inputs to evaluate at all. The
 	 * copy plan copies aggregated inputs IN before the kernel and copies written slices back OUT
 	 * afterward (skipping the slice that aliases an explicit {@code output}; see
-	 * {@link #getPostprocessData(MemoryData)}), and instruction reuse is aggregation-safe (each
+	 * {@link #getPostprocessOperations(MemoryData)}), and instruction reuse is aggregation-safe (each
 	 * reused operation gets its own aggregate buffer and the signature encodes the aggregate layout
 	 * -- see {@code AcceleratedComputationOperation.rebindAggregateForReuse} and
 	 * {@code CollectionProviderProducer.signature}). Set the env var to a disabled value to turn
@@ -97,6 +99,14 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 	/** Factory creating the aggregate buffer of a given element count, or null to disable aggregation. */
 	private final IntFunction<MemoryData> aggregateGenerator;
+	/**
+	 * The {@link ComputeContext} of the {@link org.almostrealism.hardware.AcceleratedOperation} this map
+	 * prepares arguments for. The aggregate copy-in/copy-out run through its
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy} (see
+	 * {@link #ensureCopyOperations()}), so the context the kernel program runs on chooses how the copy
+	 * is performed and how it is ordered.
+	 */
+	private final ComputeContext<MemoryData> context;
 	/** Root delegates folded into the aggregate, paired with their offset within it. */
 	private final List<Replacement> replacements;
 	/** Total number of elements accumulated in the aggregate argument so far. */
@@ -110,24 +120,32 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	private ArrayVariable aggregateArgument;
 
 	/**
-	 * Creates an argument map without aggregation support.
-	 *
-	 * @param delegateProvider the argument provider used to create new argument variables
+	 * Compiled copy-in kernels (originals &rarr; aggregate), one per replacement, in replacement
+	 * order. Built once on first use and reused across every {@code apply}, so the copies are not
+	 * recompiled per dispatch. Null until {@link #ensureCopyOperations()} runs.
 	 */
-	public MemoryDataArgumentMap(ArgumentProvider delegateProvider) {
-		this(delegateProvider, null);
-	}
+	private List<Submittable> copyInOperations;
+	/**
+	 * Compiled copy-out kernels (aggregate &rarr; originals), one per replacement, in replacement
+	 * order (aligned with {@link #copyInOperations} and {@link #replacements}). Reused across every
+	 * {@code apply}. Null until {@link #ensureCopyOperations()} runs.
+	 */
+	private List<Submittable> copyOutOperations;
 
 	/**
-	 * Creates an argument map.
+	 * Creates an argument map bound to the {@link ComputeContext} of the operation it prepares
+	 * arguments for.
 	 *
+	 * @param context the {@link ComputeContext} the aggregate copies run through
 	 * @param delegateProvider the argument provider used to create new argument variables
 	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
 	 */
-	public MemoryDataArgumentMap(ArgumentProvider delegateProvider, IntFunction<MemoryData> aggregateGenerator) {
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, ArgumentProvider delegateProvider,
+								 IntFunction<MemoryData> aggregateGenerator) {
 		super(delegateProvider);
 		this.mems = new HashMap<>();
 		this.rootDelegateSuppliers = new ArrayList<>();
+		this.context = context;
 		this.aggregateGenerator = aggregateGenerator;
 		this.replacements = new ArrayList<>();
 	}
@@ -288,64 +306,107 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Returns the operations that copy each aggregated root into the aggregate buffer before
-	 * kernel execution.
+	 * Returns the copy operations that move each aggregated root into the aggregate buffer before
+	 * kernel execution, in replacement order.
 	 *
-	 * @return Pre-execution copy operations
+	 * <p>Each runs through the serving {@link io.almostrealism.code.ComputeContext}'s
+	 * {@link io.almostrealism.code.ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy}
+	 * (see {@link #copyOperation}), so the context chooses how to move the memory it owns (a direct
+	 * {@code setMem} by default). The operations are built once and reused (see
+	 * {@link #ensureCopyOperations()}).</p>
+	 *
+	 * @return the pre-execution copy operations, in replacement order
 	 */
-	public OperationList getPrepareData() {
-		OperationList prep = new OperationList("MemoryDataArgumentMap Preprocess");
-		for (Replacement r : replacements) {
-			MemoryData root = r.getRoot();
-			int pos = r.getPosition();
-			int len = root.getMemLength();
-			prep.add(new MemoryDataCopy("Aggregate Prepare",
-					() -> root, () -> new Bytes(len, getAggregateData(), pos), len));
-		}
-		return prep;
+	public List<Submittable> getPrepareOperations() {
+		ensureCopyOperations();
+		return copyInOperations;
 	}
 
 	/**
-	 * Returns the operations that copy every aggregated slice back to its source after kernel
-	 * execution.
-	 *
-	 * @return Post-execution copy operations
-	 */
-	public OperationList getPostprocessData() {
-		return getPostprocessData(null);
-	}
-
-	/**
-	 * Returns the operations that copy each aggregated slice back to its source after kernel
+	 * Returns the copy operations that move each aggregated slice back to its source after kernel
 	 * execution, omitting any slice whose source shares memory with {@code skipOutput}.
 	 *
-	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told
-	 * to use as its explicit output (the in-place {@code x = x + y} case, where the aggregated
-	 * read copy of {@code x} must not overwrite the freshly written {@code x}).</p>
+	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told to
+	 * use as its explicit output (the in-place {@code x = x + y} case, where the aggregated read copy
+	 * of {@code x} must not overwrite the freshly written {@code x}). When {@code skipOutput} is null
+	 * the full, cached copy-out list is returned directly.</p>
 	 *
 	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to copy all
-	 * @return Post-execution copy operations
+	 * @return the post-execution copy operations, in replacement order
 	 */
-	public OperationList getPostprocessData(MemoryData skipOutput) {
-		Memory skip = skipOutput == null ? null : skipOutput.getRootDelegate().getMem();
+	public List<Submittable> getPostprocessOperations(MemoryData skipOutput) {
+		ensureCopyOperations();
 
-		OperationList post = new OperationList("MemoryDataArgumentMap Postprocess");
-		for (Replacement r : replacements) {
-			MemoryData root = r.getRoot();
-			if (skip != null && root.getRootDelegate().getMem() == skip) {
+		if (skipOutput == null) {
+			return copyOutOperations;
+		}
+
+		Memory skip = skipOutput.getRootDelegate().getMem();
+		List<Submittable> result = new ArrayList<>(copyOutOperations.size());
+		for (int i = 0; i < replacements.size(); i++) {
+			if (replacements.get(i).getRoot().getRootDelegate().getMem() == skip) {
 				continue;
 			}
-			int pos = r.getPosition();
-			int len = root.getMemLength();
-			post.add(new MemoryDataCopy("Aggregate Postprocess",
-					() -> new Bytes(len, getAggregateData(), pos), () -> root, len));
+			result.add(copyOutOperations.get(i));
 		}
-		return post;
+		return result;
+	}
+
+	/**
+	 * Builds the copy-in and copy-out operations for every replacement, once.
+	 *
+	 * <p>Each copy binds fixed memory — the replacement's root and a {@link Bytes} view of the
+	 * aggregate at the replacement's offset — so a single built operation is valid for the lifetime
+	 * of this map and is reused across every {@code apply} rather than rebuilt per dispatch.</p>
+	 */
+	private void ensureCopyOperations() {
+		if (copyInOperations != null) {
+			return;
+		}
+
+		copyInOperations = new ArrayList<>(replacements.size());
+		copyOutOperations = new ArrayList<>(replacements.size());
+
+		for (Replacement r : replacements) {
+			MemoryData root = r.getRoot();
+			int len = root.getMemLength();
+			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
+
+			copyInOperations.add(copyOperation(root, slice));
+			copyOutOperations.add(copyOperation(slice, root));
+		}
+	}
+
+	/**
+	 * Builds a {@link Submittable} that copies all of {@code source} into {@code target} through the
+	 * serving {@link #context}'s
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy}, letting
+	 * the context choose the mechanism and the sequencing: a batching context (e.g. Metal) queues the
+	 * copy onto its command buffer, orders it after {@code dependsOn}, and returns a pending completion
+	 * semaphore; any other context waits for {@code dependsOn}, performs a direct copy, and returns
+	 * {@code null}. The submit's completion is that returned semaphore, so callers wait on the actual
+	 * end of the copy.
+	 *
+	 * <p>The {@link MemoryData} regions (and therefore their offsets) are passed on every call, so a
+	 * copy into one aggregate slice is never confused with a copy into another &mdash; the key
+	 * difference from a compiled copy kernel, whose signature-keyed reuse could bind the wrong
+	 * destination offset when one program served aggregate slices at different positions.</p>
+	 *
+	 * @param source the memory to copy from
+	 * @param target the memory to copy into
+	 * @return a submittable copy operation
+	 */
+	private Submittable copyOperation(MemoryData source, MemoryData target) {
+		return dependsOn -> context.copy(source, target, dependsOn);
 	}
 
 	@Override
 	public void destroy() {
 		super.destroy();
+		destroyCopyOperations(copyInOperations);
+		destroyCopyOperations(copyOutOperations);
+		copyInOperations = null;
+		copyOutOperations = null;
 		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
 		mems.forEach((k, v) -> v.destroy());
 		mems.clear();
@@ -353,6 +414,24 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		if (aggregateData != null) {
 			aggregateData.destroy();
 			aggregateData = null;
+		}
+	}
+
+	/**
+	 * Destroys the compiled copy kernels in the given list, releasing the operator/kernel resources
+	 * they hold. No-op when the list is null (the copies were never built).
+	 *
+	 * @param operations the cached copy kernels to destroy, or null
+	 */
+	private static void destroyCopyOperations(List<Submittable> operations) {
+		if (operations == null) {
+			return;
+		}
+
+		for (Submittable op : operations) {
+			if (op instanceof Destroyable) {
+				((Destroyable) op).destroy();
+			}
 		}
 	}
 
@@ -390,22 +469,16 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Creates and configures a {@link MemoryDataArgumentMap} without aggregation support.
+	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider,
+	 * bound to the {@link ComputeContext} of the operation it prepares arguments for.
 	 *
-	 * @return Fully configured {@link MemoryDataArgumentMap}
-	 */
-	public static MemoryDataArgumentMap create() {
-		return create(null);
-	}
-
-	/**
-	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider.
-	 *
+	 * @param context the {@link ComputeContext} the aggregate copies run through
 	 * @param aggregateGenerator factory for the aggregate buffer, or null to disable aggregation
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
-	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator) {
-		return new MemoryDataArgumentMap(
+	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context,
+											   IntFunction<MemoryData> aggregateGenerator) {
+		return new MemoryDataArgumentMap(context,
 				new DefaultScopeInputManager(
 						(name, input) -> CollectionVariable.create(name, (Supplier) input)),
 				aggregateGenerator);

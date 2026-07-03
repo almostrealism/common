@@ -254,8 +254,8 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 						+ " batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount.get()
 						+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount.get());
 
-				long metalDispatches = MetalCommandRunner.dispatchCount.get();
-				long metalCommits = MetalCommandRunner.commitCount.get();
+				long metalDispatches = MetalCommandRunner.totalDispatchCount.get();
+				long metalCommits = MetalCommandRunner.totalCommitCount.get();
 				log("buffer=" + bufferSize + " METAL dispatches=" + metalDispatches
 						+ " commits=" + metalCommits
 						+ " dispatchesPerTick=" + fmt(metalDispatches / (double) PROFILE_TICKS)

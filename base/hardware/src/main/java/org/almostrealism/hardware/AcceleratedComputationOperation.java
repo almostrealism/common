@@ -69,9 +69,9 @@ import java.util.function.Supplier;
  * // Create computation
  * Computation<PackedCollection> multiply = c -> c.multiply(2.0);
  *
- * // Wrap for acceleration
+ * // Wrap for acceleration; the Computer selects the context for the computation
  * AcceleratedComputationOperation op = new AcceleratedComputationOperation(
- *     Hardware.getLocalHardware().getComputeContext(),
+ *     Hardware.getLocalHardware().getComputer().getContext(multiply),
  *     multiply
  * );
  *
@@ -163,9 +163,9 @@ import java.util.function.Supplier;
  * // Define computation
  * Computation<PackedCollection> normalize = c -> c.divide(c.max());
  *
- * // Wrap for GPU execution
+ * // Wrap for execution; the Computer selects the context for the computation
  * AcceleratedComputationOperation normalizeOp = new AcceleratedComputationOperation(
- *     Hardware.getLocalHardware().getComputeContext(),
+ *     Hardware.getLocalHardware().getComputer().getContext(normalize),
  *     normalize
  * );
  * }</pre>
@@ -306,6 +306,17 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	public boolean isFixedCount() {
 		return !(getComputation() instanceof Countable) || ((Countable) getComputation()).isFixedCount();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Defers to the wrapped computation when it is {@link Aggregatable}, so a computation whose
+	 * arguments must not be aggregated (for example a pure memory-to-memory copy) can opt out.</p>
+	 */
+	@Override
+	public boolean isArgumentAggregationSupported() {
+		return Aggregatable.isArgumentAggregationSupported(getComputation());
 	}
 
 	/**
@@ -525,7 +536,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		// Replay the fold over this operation's own inputs to obtain a per-operation copy plan and
 		// aggregate buffer laid out identically to the shared scope (aggregation is signature-stable).
 		MemoryDataArgumentMap perOperation =
-				MemoryDataArgumentMap.create(length -> createAggregatedInput(length, length));
+				MemoryDataArgumentMap.create(getComputeContext(), length -> createAggregatedInput(length, length));
 		getCompiler().prepareScope(perOperation);
 		this.argumentMap = perOperation;
 

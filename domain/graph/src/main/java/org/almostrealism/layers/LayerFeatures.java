@@ -486,7 +486,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 			}
 		} else {
 			if (!DefaultCellularLayer.enableMemoryDataCopy)
-				warn("Using MemoryDataCopy instead of Assignment for " + name);
+				warn("Copy requested for " + name + " even though memory copy recording is disabled");
 			op.add(Ops.o().copy(name, in, out, shape.getTotalSize()));
 		}
 

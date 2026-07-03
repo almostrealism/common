@@ -33,7 +33,6 @@ import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.io.Console;
 
 import java.io.File;
@@ -356,7 +355,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 			len = shape.getTotalSize();
 
 		Evaluable<PackedCollection> d = getChannelData(channel).get();
-		return new MemoryDataCopy("WaveOutput Export", d::evaluate, () -> destination, len);
+		return copy("WaveOutput Export", d::evaluate, () -> destination, len);
 	}
 
 	/**
