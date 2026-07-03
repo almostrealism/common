@@ -327,6 +327,15 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * destination bank to {@link #downstream} upon completion. Only supported for
 	 * {@link AcceleratedOperation} kernels.</p>
 	 *
+	 * <p>The dispatch must be awaited via
+	 * {@link AcceleratedProcessDetails#awaitReady() awaitReady} before its completion is
+	 * read: until the operation's ready listener has run, {@code getSemaphore()} returns
+	 * the host-readiness latch, which fires when the kernel is <em>encoded</em> rather
+	 * than when its command buffer completes. Delivering the destination downstream on
+	 * that latch would let a consumer on another {@code ComputeContext} read a
+	 * deferred/uncommitted result as stale zeros. The same wait appears in
+	 * {@link #evaluate(Object...)} and in {@code AcceleratedComputationEvaluable.request}.</p>
+	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
 	 * destEval.setDownstream(result -> processResult(result));
@@ -341,6 +350,8 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		if (operation instanceof AcceleratedOperation) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
 					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+			// Required before getSemaphore(); see the method javadoc
+			details.awaitReady();
 			details.getSemaphore().onComplete(() -> downstream.accept((T) destination));
 		} else {
 			throw new UnsupportedOperationException();

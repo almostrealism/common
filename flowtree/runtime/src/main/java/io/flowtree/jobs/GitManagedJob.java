@@ -495,20 +495,23 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Fails the job when invalid files (currently any {@code .bin} file) are
-     * present in the working tree.
+     * present in the working tree of the primary repo or any dependent repo.
      *
-     * <p>Scans the working tree directly (not via git, so {@code .gitignore} is
-     * deliberately bypassed — ignored litter is still litter). If any invalid
-     * file is found, {@link #onInvalidFilesDetected(List)} is invoked to give a
-     * subclass one chance to clean up, then the tree is re-scanned. If invalid
-     * files remain after that — or no corrective handler is configured — an
-     * exception is thrown so the whole job is marked failed and no git
-     * operations occur.</p>
+     * <p>Scans each working tree directly (not via git, so {@code .gitignore} is
+     * deliberately bypassed — ignored litter is still litter), excluding any
+     * {@code .bin} file that already exists on that repo's base branch, which is
+     * pre-existing content the job did not create. If any invalid file remains,
+     * {@link #onInvalidFilesDetected(List)} is invoked to give a subclass one
+     * chance to clean up, then the trees are re-scanned. If invalid files remain
+     * after that — or no corrective handler is configured — an exception is
+     * thrown so the whole job is marked failed and no git operations occur.</p>
      *
      * @throws IllegalStateException if invalid files remain after correction
      */
     private void enforceNoInvalidFiles() {
-        InvalidFileDetector detector = new InvalidFileDetector(this);
+        List<String> dependentRepoPaths = repoSetup != null
+                ? repoSetup.getDependentRepoPaths() : Collections.emptyList();
+        InvalidFileDetector detector = new InvalidFileDetector(this, dependentRepoPaths);
         detector.detect();
         if (!detector.isDetected()) {
             return;

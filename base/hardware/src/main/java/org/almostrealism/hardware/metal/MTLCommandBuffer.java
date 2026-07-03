@@ -61,6 +61,22 @@ public class MTLCommandBuffer extends MTLObject {
 	}
 
 	/**
+	 * Encodes a buffer-to-buffer copy onto this command buffer via a blit command encoder, so the copy
+	 * is queued alongside the surrounding compute dispatches and ordered against them by Metal's
+	 * in-buffer hazard tracking.
+	 *
+	 * @param source            the source buffer
+	 * @param sourceOffset      byte offset within the source buffer
+	 * @param destination       the destination buffer
+	 * @param destinationOffset byte offset within the destination buffer
+	 * @param size              number of bytes to copy
+	 */
+	public void blitCopy(MTLBuffer source, long sourceOffset, MTLBuffer destination, long destinationOffset, long size) {
+		MTL.blitCopy(getNativePointer(), source.getNativePointer(), sourceOffset,
+				destination.getNativePointer(), destinationOffset, size);
+	}
+
+	/**
 	 * Commits this command buffer for execution on the GPU.
 	 *
 	 * <p>Once committed, the buffer cannot be modified. Use {@link #waitUntilCompleted()}

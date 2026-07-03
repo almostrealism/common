@@ -84,7 +84,6 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>{@link #dc()} - Get the current data context</li>
  *   <li>{@link #dc(Runnable)} - Execute within a data context</li>
- *   <li>{@link #cc()} - Get the current compute context</li>
  *   <li>{@link #cc(Runnable, ComputeRequirement...)} - Execute with compute requirements</li>
  * </ul>
  *
@@ -357,15 +356,6 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 	 */
 	default <T> T dc(Callable<T> exec) {
 		return Hardware.getLocalHardware().dataContext(exec);
-	}
-
-	/**
-	 * Returns the current hardware {@link ComputeContext}.
-	 *
-	 * @return the active compute context for the local hardware
-	 */
-	default ComputeContext cc() {
-		return Hardware.getLocalHardware().getComputeContext();
 	}
 
 	/**

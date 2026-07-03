@@ -166,7 +166,7 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_OFF_HEAP_SIZE</h3>
  * <p><strong>Purpose:</strong> Off-heap buffer size in bytes.</p>
- * <p><strong>Default:</strong> 1024</p>
+ * <p><strong>Default:</strong> {@value #DEFAULT_OFF_HEAP_SIZE}</p>
  *
  * <h3>AR_HARDWARE_EPSILON_64</h3>
  * <p><strong>Purpose:</strong> Use full FP64 epsilon precision.</p>
@@ -225,10 +225,11 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <h3>ComputeContext</h3>
- * <p>Handles kernel compilation and execution for a specific backend.</p>
- * <p><strong>Usage:</strong></p>
+ * <p>Handles kernel compilation and execution for a specific backend. Obtain one from the
+ * {@link DefaultComputer}, which selects intelligently for a computation — never from the
+ * ambient default, which is frequently a CPU context and may be the worst choice:</p>
  * <pre>{@code
- * ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputeContext();
+ * ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(computation);
  * Runnable compiled = ctx.compileRunnable(...);
  * }</pre>
  *
@@ -468,6 +469,9 @@ public final class Hardware implements ConsoleFeatures {
 	/** Root console for hardware-layer logging and timing metrics. */
 	public static Console console = Console.root().child()
 			.addFilter(ConsoleFeatures.duplicateFilter(10 * 60 * 1000L));
+
+	/** Default value for {@code AR_HARDWARE_OFF_HEAP_SIZE} (see {@link #getOffHeapSize(ComputeRequirement)}). */
+	public static final int DEFAULT_OFF_HEAP_SIZE = 0;
 
 	/** Memory scale factor: {@code MEMORY_SCALE=N} sets max memory to {@code 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
@@ -823,6 +827,16 @@ public final class Hardware implements ConsoleFeatures {
 	 * <p>The instance is initialized during class loading based on environment variables.
 	 * All Almost Realism code should use this singleton for hardware access.</p>
 	 *
+	 * <p><strong>Do not use this to guess at hardware targeting.</strong> Reaching for the
+	 * ambient/default context (for example via {@link #getComputeContext()}) to decide where
+	 * a workload should run is an anti-pattern: the default is frequently a CPU context and
+	 * may be the worst possible choice for the work at hand. Targeting decisions belong to
+	 * the {@link DefaultComputer} ({@link #getComputer()}), which selects a
+	 * {@link ComputeContext} intelligently from the computation's characteristics and active
+	 * {@link ComputeRequirement}s — or, for operations on already-resolved memory, to the
+	 * context of the {@link DataContext} that actually manages that memory
+	 * ({@link #getComputeContext(Memory)}).</p>
+	 *
 	 * @return The local hardware singleton
 	 */
 	public static Hardware getLocalHardware() { return local; }
@@ -1109,7 +1123,8 @@ public final class Hardware implements ConsoleFeatures {
 	/**
 	 * Returns the off-heap buffer size for the specified backend.
 	 *
-	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable (default: 1024 bytes).</p>
+	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable
+	 * (default: {@value #DEFAULT_OFF_HEAP_SIZE} bytes).</p>
 	 *
 	 * @param type The backend type (currently unused)
 	 * @return The off-heap buffer size in bytes
@@ -1118,7 +1133,7 @@ public final class Hardware implements ConsoleFeatures {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 1024;
+			return DEFAULT_OFF_HEAP_SIZE;
 		}
 	}
 
@@ -1132,6 +1147,34 @@ public final class Hardware implements ConsoleFeatures {
 	 */
 	public List<DataContext<MemoryData>> getAllDataContexts() {
 		return Collections.unmodifiableList(contexts);
+	}
+
+	/**
+	 * Returns the {@link ComputeContext} of the {@link DataContext} that manages the given
+	 * {@link Memory} &mdash; the correct target for an operation on already-resolved memory
+	 * (such as a copy), since that backend is the one that can move or process the memory it
+	 * owns. Returns {@code null} when no configured {@link DataContext} exposes the memory's
+	 * {@link MemoryProvider} (for example, plain JVM heap memory).
+	 *
+	 * <p>This is the memory-driven counterpart to
+	 * {@link DefaultComputer#getContext(io.almostrealism.code.Computation)}, which selects a
+	 * context from a computation's characteristics. One of the two should be used for any
+	 * targeting decision; the ambient {@link #getComputeContext()} should not.</p>
+	 *
+	 * @param memory the memory whose managing context is sought
+	 * @return the managing context, or {@code null} if no configured context manages it
+	 */
+	public ComputeContext<MemoryData> getComputeContext(Memory memory) {
+		if (memory == null) return null;
+
+		for (DataContext<MemoryData> dc : contexts) {
+			if (dc.getMemoryProviders().contains(memory.getProvider()) &&
+					!dc.getComputeContexts().isEmpty()) {
+				return dc.getComputeContexts().get(0);
+			}
+		}
+
+		return null;
 	}
 
 	/**

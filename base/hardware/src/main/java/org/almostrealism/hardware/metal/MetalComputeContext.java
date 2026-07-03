@@ -18,11 +18,13 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -31,6 +33,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * {@link io.almostrealism.code.ComputeContext} for Apple Metal shader compilation and execution.
@@ -198,6 +201,45 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public boolean isCPU() { return false; }
+
+	/**
+	 * Copies all of {@code source} into {@code destination} by queuing a blit onto the command buffer
+	 * (via the {@link MetalCommandRunner}), so the copy batches with the surrounding kernel dispatches,
+	 * and returns its completion semaphore.
+	 *
+	 * <p>{@code dependsOn} is honored the same way {@link MetalOperator#accept} honors it: a dependency
+	 * produced by this context's runner is passed through so the runner orders the blit after it on the
+	 * GPU (no host stall, and Metal's in-buffer hazard tracking covers a dependency still in the open
+	 * buffer); any other dependency is waited on the host first. When either side is not Metal memory
+	 * there is nothing to queue, so the {@link AbstractComputeContext#copy(MemoryData, MemoryData,
+	 * Semaphore) inherited} direct {@code setMem} copy is used.</p>
+	 *
+	 * @param source      the memory region to copy from
+	 * @param destination the memory region to copy into
+	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
+	 * @return the blit's completion semaphore, or {@code null} for the direct-copy fallback
+	 */
+	@Override
+	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
+		if (source.getMem() instanceof MetalMemory && destination.getMem() instanceof MetalMemory) {
+			MetalMemory src = (MetalMemory) source.getMem();
+			MetalMemory dst = (MetalMemory) destination.getMem();
+			long elementSize = src.getProvider().getNumberSize();
+			long sourceOffset = source.getOffset() * elementSize;
+			long destinationOffset = destination.getOffset() * elementSize;
+			long size = source.getMemLength() * elementSize;
+
+			boolean ordered = dependsOn instanceof MetalSemaphore
+					&& ((MetalSemaphore) dependsOn).getRunner() == runner;
+			if (dependsOn != null && !ordered) dependsOn.waitFor();
+
+			return runner.submit(
+					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset, dst.getMem(), destinationOffset, size),
+					ordered ? dependsOn : null, null);
+		}
+
+		return super.copy(source, destination, dependsOn);
+	}
 
 	/**
 	 * Returns the Metal device for this context.

@@ -18,6 +18,7 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.CompilationTimingListener;
 import io.almostrealism.scope.Scope;
@@ -153,6 +154,34 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 	@Override
 	public void runLater(Runnable runnable) {
 		executor.execute(runnable);
+	}
+
+	/**
+	 * Copies all of {@code source} into {@code destination} with a direct host-mediated
+	 * {@link MemoryData#setMem} after waiting for {@code dependsOn}.
+	 *
+	 * <p>This is the fallback that has no asynchronous mechanism of its own: it blocks on
+	 * {@code dependsOn} (so the copy is ordered after the work it depends on), performs the copy
+	 * synchronously, and reports completion by returning {@code null}. A backend that owns a command
+	 * buffer or queue overrides this to move the memory asynchronously and honor {@code dependsOn}
+	 * without a host stall.</p>
+	 *
+	 * @param source      the memory region to copy from
+	 * @param destination the memory region to copy into
+	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
+	 * @return {@code null}; the copy is complete on return
+	 */
+	@Override
+	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
+		// TODO  Rather than blocking here, this should schedule an operation that happens
+		// TODO  after dependsOn (plain Java threading is always available for chaining even
+		// TODO  when there is no native queueing mechanism) and return that operation's own
+		// TODO  Semaphore. Blocking should only ever occur because the end user demanded a
+		// TODO  result, never inside internal machinery like this fallback.
+		if (dependsOn != null) dependsOn.waitFor();
+
+		destination.setMem(0, source, 0, source.getMemLength());
+		return null;
 	}
 
 	/**

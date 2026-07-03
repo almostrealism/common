@@ -27,9 +27,11 @@ the standard CPU-only aarch64 job node, with no GPU and no manual steps.
   That is the cost the real C2 loop pays each time it regenerates references. It
   fits the 30-minute window with ~3 orders of magnitude to spare (~600+ reruns
   per window).
-- The references are dumped to the already-gitignored
-  `engine/ml/src/test/resources/same-s-references/` path. **No binaries are
-  committed** (git status shows only the one script edit below).
+- The references are dumped to the git-ignored build-output path
+  `engine/ml/target/test-classes/same-s-references/` (the script's default
+  `--out`, wiped by `mvn clean`). **No binaries are committed** — and they must
+  never be written into a tracked source path such as
+  `src/test/resources/same-s-references`.
 - One concrete, in-scope script improvement was applied (lazy protobuf import,
   §5) so the reference dump runs on a fresh transient checkout **without** a
   `grpcio-tools` / `protoc` generation step it never actually needed.
@@ -122,12 +124,14 @@ git -C /workspace/sa3-src checkout bccf5b7b75734c95a3049bb43bdbc7b3070a31bc
 python -c "from huggingface_hub import hf_hub_download as d; \
   d('stabilityai/SAME-S','model_config.json'); d('stabilityai/SAME-S','model.safetensors')"
 
-# (c)+(d) load + seeded forward + per-stage dump (the existing script, unchanged):
+# (c)+(d) load + seeded forward + per-stage dump (the existing script, unchanged).
+# --out defaults to the git-ignored build dir engine/ml/target/test-classes/same-s-references
+# (one of the locations SAMEResamplingParityTest searches). Do NOT pass a tracked source path
+# such as src/test/resources/same-s-references — these dumps are regenerable and must not be committed.
 python engine/ml/scripts/dump_same_references.py \
   --sa3-src /workspace/sa3-src \
   --config  <cached>/model_config.json \
   --weights <cached>/model.safetensors \
-  --out     engine/ml/src/test/resources/same-s-references \
   --seed 1234 --samples 24576
 ```
 
