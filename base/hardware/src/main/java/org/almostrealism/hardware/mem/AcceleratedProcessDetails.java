@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
@@ -154,14 +155,13 @@ import java.util.stream.Stream;
  *
  * <p>Integration with {@link MemoryReplacementManager} provides prepare/postprocess operations:</p>
  * <pre>{@code
- * OperationList prepare = details.getPrepare();
- * prepare.get().run();  // Prepare memory substitutions
+ * Semaphore prepared = Submittable.submit(details.getPrepareOperations(), dependsOn);
  *
- * // Execute kernel with processed arguments
- * executeKernel(details.getArguments());
+ * // Execute kernel with processed arguments, ordered after the prepare copies
+ * Semaphore done = executeKernel(details.getArguments(), prepared);
  *
- * OperationList postprocess = details.getPostprocess();
- * postprocess.get().run();  // Restore original memory
+ * // Restore original memory, ordered after the kernel
+ * Submittable.submit(details.getPostprocessOperations(), done);
  * }</pre>
  *
  * @see MemoryReplacementManager
@@ -231,18 +231,22 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
-	 * Returns the {@link OperationList} for prepare operations before kernel execution.
+	 * Returns the replacement copies that run before kernel execution (originals into
+	 * temporary buffers), each chaining on a {@link Semaphore} via
+	 * {@link io.almostrealism.concurrent.Submittable#submit(Semaphore)}.
 	 *
-	 * @return the prepare operations
+	 * @return the prepare copies
 	 */
-	public OperationList getPrepare() { return replacementManager.getPrepare(); }
+	public List<Submittable> getPrepareOperations() { return replacementManager.getPrepareOperations(); }
 
 	/**
-	 * Returns the {@link OperationList} for postprocess operations after kernel execution.
+	 * Returns the replacement copies that run after kernel execution (temporary buffers
+	 * back into originals), each chaining on a {@link Semaphore} via
+	 * {@link io.almostrealism.concurrent.Submittable#submit(Semaphore)}.
 	 *
-	 * @return the postprocess operations
+	 * @return the postprocess copies
 	 */
-	public OperationList getPostprocess() { return replacementManager.getPostprocess(); }
+	public List<Submittable> getPostprocessOperations() { return replacementManager.getPostprocessOperations(); }
 
 	/**
 	 * Returns true if there are no memory replacements to perform.

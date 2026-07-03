@@ -192,15 +192,19 @@ public class CLOperator extends HardwareOperator {
 	}
 
 	/**
-	 * Executes the OpenCL kernel with the provided arguments.
+	 * Enqueues the OpenCL kernel with the provided arguments and returns its completion
+	 * {@link CLSemaphore} without waiting for the kernel to finish.
 	 *
-	 * <p>Lazily creates the kernel on first invocation, sets kernel arguments (using caching
-	 * to skip unchanged arguments), and enqueues the kernel for execution. Waits for completion
-	 * and records profiling data if enabled.</p>
+	 * <p>Lazily creates the kernel on first invocation and sets kernel arguments (using caching
+	 * to skip unchanged arguments). A {@code dependsOn} that is a {@link CLSemaphore} is honored
+	 * inside the provider by placing its event in the enqueue wait-list; any other completion is
+	 * bridged by a host wait before the enqueue. The returned semaphore's
+	 * {@link CLSemaphore#waitFor() waitFor} performs the completion wait (and profiling) that
+	 * previously happened inline, and releases the dispatch's memory guard.</p>
 	 *
 	 * @param args      the arguments to pass to the kernel (MemoryData objects)
-	 * @param dependsOn optional semaphore to wait on before execution, or null
-	 * @return null (future versions may return a semaphore for async execution)
+	 * @param dependsOn optional semaphore this dispatch must be ordered after, or null
+	 * @return the dispatch's completion semaphore
 	 */
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
@@ -218,10 +222,14 @@ public class CLOperator extends HardwareOperator {
 			log("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
-		if (dependsOn != null) dependsOn.waitFor();
+		// A dependency from this backend is honored via the enqueue wait-list below; any
+		// other completion is bridged by a host wait before the enqueue.
+		if (dependsOn != null && !(dependsOn instanceof CLSemaphore)) dependsOn.waitFor();
+
 		MemoryData data[] = prepareArguments(argCount, args);
 
 		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+		CLSemaphore semaphore[] = new CLSemaphore[1];
 
 		try {
 			recordDuration(null, () -> {
@@ -272,24 +280,21 @@ public class CLOperator extends HardwareOperator {
 					cl_event event = new cl_event();
 
 					if (dependsOn instanceof CLSemaphore) {
-						CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
-								new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
-								null, 1,
-								new cl_event[]{((CLSemaphore) dependsOn).getEvent()}, event);
+						// The wait-list reference is taken under the dependency's processing
+						// lock; a null event means the dependency already completed (and its
+						// event was released), so no ordering constraint remains.
+						((CLSemaphore) dependsOn).whileValid(dependency ->
+								enqueueKernel(dependency, event));
 					} else {
-						// if (dependsOn != null) dependsOn.waitFor();
-
-						CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
-								new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
-								null, 0, null, event);
+						enqueueKernel(null, event);
 					}
 
-					context.processEvent(event, profile);
+					// The memory guard is released only once the kernel has completed (the
+					// enqueue above is asynchronous), via the semaphore's processing callback.
+					semaphore[0] = new CLSemaphore(prog.getMetadata(), context, event, profile,
+							() -> KernelMemoryGuard.releaseFor(guard, data));
 
 					if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
-
-					// TODO  This should return a semaphore
-					// return new CLSemaphore(context, event, profile);
 				} catch (CLException e) {
 					// TODO  This should use the exception processor also,
 					// TODO  but theres no way to pass the message details
@@ -298,13 +303,36 @@ public class CLOperator extends HardwareOperator {
 				}
 			});
 		} finally {
-			KernelMemoryGuard.releaseFor(guard, data);
+			if (semaphore[0] == null) {
+				// The dispatch never published a completion (argument setup or the enqueue
+				// failed), so there is no kernel in flight and the guard is released here.
+				KernelMemoryGuard.releaseFor(guard, data);
+			}
 		}
 
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
 
-		return null;
+		return semaphore[0];
+	}
+
+	/**
+	 * Enqueues this operator's kernel, optionally ordered after {@code dependency} via the
+	 * enqueue wait-list, signaling {@code event} on completion.
+	 *
+	 * @param dependency an event this dispatch must wait for on the device, or {@code null}
+	 * @param event      the event the dispatch signals on completion
+	 */
+	private void enqueueKernel(cl_event dependency, cl_event event) {
+		if (dependency != null) {
+			CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+					new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
+					null, 1, new cl_event[]{dependency}, event);
+		} else {
+			CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+					new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
+					null, 0, null, event);
+		}
 	}
 
 	/**
