@@ -762,14 +762,14 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		Assert.assertEquals("Embedding should have bins dimensions",
 				bins, embedding.getMemLength());
 
-		Assert.assertEquals("Bin 0 mean should be 3.0",
-				3.0, embedding.toDouble(0), 1e-9);
-		Assert.assertEquals("Bin 1 mean should be ~3.667",
-				11.0 / 3.0, embedding.toDouble(1), 1e-9);
-		Assert.assertEquals("Bin 2 mean should be ~4.333",
-				13.0 / 3.0, embedding.toDouble(2), 1e-9);
-		Assert.assertEquals("Bin 3 mean should be 5.0",
-				5.0, embedding.toDouble(3), 1e-9);
+		assertEquals("Bin 0 mean should be 3.0",
+				3.0, embedding.toDouble(0));
+		assertEquals("Bin 1 mean should be ~3.667",
+				11.0 / 3.0, embedding.toDouble(1));
+		assertEquals("Bin 2 mean should be ~4.333",
+				13.0 / 3.0, embedding.toDouble(2));
+		assertEquals("Bin 3 mean should be 5.0",
+				5.0, embedding.toDouble(3));
 	}
 
 	/**

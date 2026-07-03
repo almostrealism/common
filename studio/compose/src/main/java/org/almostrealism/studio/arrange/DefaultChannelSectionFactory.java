@@ -29,7 +29,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.graph.temporal.WaveCell;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.heredity.ProjectedGene;
@@ -312,9 +311,9 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 			dependencies.add(cells);
 
 			OperationList process = new OperationList();
-			process.add(new MemoryDataCopy("DefaultChannelSection Input", () -> source.get().evaluate(), () -> input, samples));
+			process.add(copy("DefaultChannelSection Input", () -> source.get().evaluate(), () -> input, samples));
 			process.add(cells.export(output));
-			process.add(new MemoryDataCopy("DefaultChannelSection Output", () -> output, () -> destination.get().evaluate(), samples));
+			process.add(copy("DefaultChannelSection Output", () -> output, () -> destination.get().evaluate(), samples));
 			return process;
 		}
 

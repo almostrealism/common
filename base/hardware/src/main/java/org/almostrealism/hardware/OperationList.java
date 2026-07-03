@@ -25,8 +25,6 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
-import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
@@ -34,7 +32,6 @@ import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.profile.OperationTimingListener;
 import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
@@ -43,7 +40,6 @@ import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -132,7 +128,7 @@ import java.util.stream.Stream;
  * });
  *
  * ops.isComputation();  // Returns false
- * ops.get().run();      // Sequential execution via Runner
+ * ops.get().run();      // Sequential execution via OperationListRunner
  * }</pre>
  *
  * <h2>Common Usage Patterns</h2>
@@ -333,7 +329,7 @@ import java.util.stream.Stream;
  * <ol>
  *   <li>If {@code enableAutomaticOptimization && !isUniform()} → call {@code optimize().get()}</li>
  *   <li>If {@code isComputation() && (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
- *   <li>Otherwise → sequential {@link Runner} execution</li>
+ *   <li>Otherwise → sequential {@link OperationListRunner} execution</li>
  * </ol>
  *
  * <h3>Uniform Lists</h3>
@@ -366,7 +362,7 @@ import java.util.stream.Stream;
  *   <tr>
  *     <th>Aspect</th>
  *     <th>Compiled (Computation)</th>
- *     <th>Sequential (Runner)</th>
+ *     <th>Sequential (OperationListRunner)</th>
  *   </tr>
  *   <tr>
  *     <td>Execution Speed</td>
@@ -515,9 +511,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
 					ComputableParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, Destroyable, ComputerFeatures {
-	/** Enable logging of operation list execution (controlled by AR_HARDWARE_RUN_LOGGING environment variable). */
-	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
-
 	/**
 	 * Enable automatic optimization of operation lists before execution.
 	 *
@@ -644,7 +637,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * <ol>
 	 *   <li>If {@code enableAutomaticOptimization && !isUniform()} → optimize and recurse</li>
 	 *   <li>If {@code isComputation() && (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
-	 *   <li>Otherwise → sequential {@link Runner} execution</li>
+	 *   <li>Otherwise → sequential {@link OperationListRunner} execution</li>
 	 * </ol>
 	 *
 	 * @see #enableAutomaticOptimization
@@ -906,7 +899,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					return run.get(0);
 				}
 
-				return new Runner(getMetadata(), run, getComputeRequirements(),
+				return new OperationListRunner(getMetadata(), run, getComputeRequirements(),
 						profile == null ? null : profile.getTimingListener());
 			}
 		} finally {
@@ -1299,141 +1292,4 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
-	/**
-	 * Compiled runner for executing a sequence of operations with metadata and timing support.
-	 */
-	public static class Runner implements Runnable, Destroyable, OperationInfo, ConsoleFeatures {
-		/** Metadata describing this runner for profiling and identification. */
-		private OperationMetadata metadata;
-		/** Sequence of compiled runnables to execute when this runner is invoked. */
-		private List<Runnable> run;
-		/** Compute requirements constraining which backend executes this runner; may be null. */
-		private List<ComputeRequirement> requirements;
-		/** Listener notified with timing information after each run; may be null. */
-		private OperationTimingListener timingListener;
-
-		/**
-		 * Creates a runner for the specified operations.
-		 *
-		 * @param metadata Operation metadata for identification
-		 * @param run List of runnables to execute sequentially
-		 * @param requirements Compute requirements (may be null)
-		 * @param timingListener Timing listener for profiling (may be null)
-		 */
-		public Runner(OperationMetadata metadata, List<Runnable> run,
-					  List<ComputeRequirement> requirements,
-					  OperationTimingListener timingListener) {
-			this.metadata = metadata;
-			this.run = run;
-			this.requirements = requirements;
-			this.timingListener = timingListener;
-		}
-
-		/**
-		 * Returns the operation metadata.
-		 *
-		 * @return The metadata
-		 */
-		@Override
-		public OperationMetadata getMetadata() { return metadata; }
-
-		/**
-		 * Returns the list of operations to execute.
-		 *
-		 * @return List of runnables
-		 */
-		public List<Runnable> getOperations() { return run; }
-
-		/**
-		 * Executes all operations in sequence with compute requirements and timing.
-		 */
-		@Override
-		public void run() {
-			try {
-				if (requirements != null) {
-					Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
-				}
-
-				Semaphore pending = null;
-
-				for (int i = 0; i < run.size(); i++) {
-					Runnable r = run.get(i);
-
-					if (r instanceof Submittable) {
-						// Issue the dispatch without waiting; carry its completion forward so a
-						// single wait at the end (or before the next non-submittable member) covers
-						// the whole group. Members are issued in order (the dispatch is issued before
-						// submit() returns, see AcceleratedOperation.submit), so the provider keeps
-						// them in order — a synchronous provider runs each before the next is issued,
-						// while Metal encodes them into one command buffer where issue order and
-						// hazard tracking serialize any real read-after-write dependency. No artificial
-						// dependency is threaded between members (that would force a provider to treat
-						// independent dispatches as dependent and defeat batching).
-						Submittable s = (Submittable) r;
-
-						if (timingListener == null) {
-							pending = s.submit(null);
-						} else {
-							if (enableRunLogging) log("Running " + OperationInfo.display(r));
-							Semaphore[] completion = { null };
-							timingListener.recordDuration(getMetadata(),
-									() -> completion[0] = s.submit(null));
-							pending = completion[0];
-						}
-					} else {
-						// Non-submittable member: complete any outstanding group first to preserve
-						// sequential ordering, then run synchronously.
-						if (pending != null) {
-							pending.waitFor();
-							pending = null;
-						}
-
-						if (timingListener == null) {
-							r.run();
-						} else {
-							if (enableRunLogging) log("Running " + OperationInfo.display(r));
-							timingListener.recordDuration(getMetadata(), r);
-						}
-					}
-				}
-
-				if (pending != null) {
-					pending.waitFor();
-				}
-			} finally {
-				if (requirements != null) {
-					Hardware.getLocalHardware().getComputer().popRequirements();
-				}
-			}
-		}
-
-		/**
-		 * Returns a description of this runner.
-		 *
-		 * @return The short description from metadata
-		 */
-		@Override
-		public String describe() {
-			return getMetadata().getShortDescription();
-		}
-
-		/**
-		 * Destroys all operations and releases resources.
-		 */
-		@Override
-		public void destroy() {
-			if (run == null) return;
-
-			run.forEach(Destroyable::destroy);
-			run = null;
-		}
-
-		/**
-		 * Returns the console for logging.
-		 *
-		 * @return The hardware console
-		 */
-		@Override
-		public Console console() { return Hardware.console; }
-	}
 }
