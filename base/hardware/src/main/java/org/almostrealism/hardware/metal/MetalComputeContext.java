@@ -20,6 +20,7 @@ import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
@@ -70,6 +71,10 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * Enables creation of a second "fast" command queue for parallel execution.
 	 */
 	public static boolean enableFastQueue = false;
+
+	/** Requester metadata identifying blit copies queued by {@link #copy(MemoryData, MemoryData, Semaphore)}. */
+	private static final OperationMetadata BLIT_COPY =
+			new OperationMetadata("mtlBlitCopy", "Metal blit copy");
 
 	/** Standard Metal Shading Language includes prepended to every compiled kernel. */
 	private static String includes = "#include <metal_stdlib>\n" +
@@ -233,7 +238,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 					&& ((MetalSemaphore) dependsOn).getRunner() == runner;
 			if (dependsOn != null && !ordered) dependsOn.waitFor();
 
-			return runner.submit(
+			return runner.submit(BLIT_COPY,
 					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset, dst.getMem(), destinationOffset, size),
 					ordered ? dependsOn : null, null);
 		}

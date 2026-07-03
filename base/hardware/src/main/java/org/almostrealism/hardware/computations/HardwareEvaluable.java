@@ -343,6 +343,7 @@ public class HardwareEvaluable<T> implements
 		if (cev instanceof StreamingEvaluable<?>) {
 			((StreamingEvaluable<T>) cev).setDownstream(downstream);
 			((StreamingEvaluable<T>) cev).request(args);
+			return;
 		}
 
 		throw new UnsupportedOperationException();

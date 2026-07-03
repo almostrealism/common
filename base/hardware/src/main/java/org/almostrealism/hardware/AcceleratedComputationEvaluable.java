@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.streams.EvaluableStreamingAdapter;
@@ -435,6 +436,16 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * result and pushes it to {@link #downstream} upon completion. This enables non-blocking
 	 * streaming pipelines.</p>
 	 *
+	 * <p>When the downstream is a {@link CompletionConsumer}, the result is delivered
+	 * immediately together with the dispatch's completion {@link
+	 * io.almostrealism.concurrent.Semaphore} instead of waiting for it — safe because
+	 * {@link #postProcessOutput(MemoryData, int)} only shapes the handle to the output
+	 * memory (it never reads its contents), and the consumer takes responsibility for
+	 * ordering via the delivered completion. The plain-{@link java.util.function.Consumer}
+	 * path (and any run with {@code AR_HARDWARE_OUTPUT_MONITORING} enabled, since
+	 * {@link #validate} must read the finished contents) keeps the completing-wait
+	 * behavior.</p>
+	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
 	 * evaluable.setDownstream(result -> processResult(result));
@@ -453,10 +464,16 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 
 		AcceleratedProcessDetails process = apply(null, args);
 		process.awaitReady();
-		process.getSemaphore().onComplete(() -> {
+
+		if (downstream instanceof CompletionConsumer && !outputMonitoring) {
 			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
-			downstream.accept(validate(result));
-		});
+			((CompletionConsumer<T>) downstream).accept(result, process.getSemaphore());
+		} else {
+			process.getSemaphore().onComplete(() -> {
+				T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+				downstream.accept(validate(result));
+			});
+		}
 	}
 
 	/**

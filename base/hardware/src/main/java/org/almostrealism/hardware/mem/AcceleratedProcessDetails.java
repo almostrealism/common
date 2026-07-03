@@ -172,6 +172,16 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	/** Original unprocessed arguments, potentially containing nulls for async results. */
 	private Object[] originalArguments;
 
+	/**
+	 * Completion {@link Semaphore}s delivered with asynchronously produced arguments, indexed
+	 * like {@link #originalArguments}. An entry is non-null when the producer delivered the
+	 * argument via {@link #result(int, Object, Semaphore)} before the work filling it had
+	 * completed; the kernel dispatch must then be ordered after that completion (by merging
+	 * {@link #getArgumentCompletions()} into its {@code dependsOn}) instead of the host
+	 * waiting for the argument.
+	 */
+	private Semaphore[] argumentCompletions;
+
 	/** Final processed arguments after memory replacement, ready for kernel execution. */
 	private Object[] arguments;
 
@@ -224,6 +234,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 									 MemoryReplacementManager replacementManager,
 									 Executor executor) {
 		this.originalArguments = args;
+		this.argumentCompletions = new Semaphore[args.length];
 		this.kernelSize = kernelSize;
 		this.replacementManager = replacementManager;
 		this.executor = executor;
@@ -402,17 +413,53 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * @throws IllegalStateException    if all arguments are already available
 	 */
 	public void result(int index, Object result) {
+		result(index, result, null);
+	}
+
+	/**
+	 * Sets an asynchronous result for the specified argument index along with the completion of
+	 * the work producing it. When {@code completion} is non-null the argument's contents are not
+	 * yet valid; the caller of {@link #getArguments()} must order the kernel after every
+	 * completion in {@link #getArgumentCompletions()} (typically by merging them into the
+	 * dispatch's {@code dependsOn}) rather than reading the argument on the host first.
+	 *
+	 * @param index      the argument index to set (0-based)
+	 * @param result     the result value to set at the specified index
+	 * @param completion the completion of the work filling {@code result}, or {@code null}
+	 *                   when the value is already complete
+	 * @throws IllegalArgumentException if a result has already been set for this index
+	 * @throws IllegalStateException    if all arguments are already available
+	 */
+	public void result(int index, Object result, Semaphore completion) {
 		if (originalArguments[index] != null) {
 			throw new IllegalArgumentException("Duplicate result for argument index " + index);
 		} else if (isReady()) {
 			throw new IllegalStateException("Received result when details are already available");
 		}
 
+		argumentCompletions[index] = completion;
 		originalArguments[index] = result;
 
 		// TODO  This check should not block the
 		// TODO  return of the results method
 		checkReady();
+	}
+
+	/**
+	 * Returns the completions of any asynchronously produced arguments that were delivered
+	 * before their contents were valid (see {@link #result(int, Object, Semaphore)}). The
+	 * kernel dispatch must be ordered after all of them. The list is safe to read from a
+	 * {@link #whenReady(Runnable)} listener, since every delivery precedes the readiness
+	 * notification.
+	 *
+	 * @return the non-null argument completions, possibly empty
+	 */
+	public List<Semaphore> getArgumentCompletions() {
+		List<Semaphore> completions = new ArrayList<>();
+		for (Semaphore s : argumentCompletions) {
+			if (s != null) completions.add(s);
+		}
+		return completions;
 	}
 
 	/**
