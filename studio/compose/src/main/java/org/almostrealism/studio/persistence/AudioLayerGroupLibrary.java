@@ -22,6 +22,8 @@ import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.music.notes.GroupNoteSource;
+import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.studio.AudioScene;
 
 import java.io.File;
@@ -236,6 +238,28 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 */
 	public List<Audio.AudioLayerGroup> allGroups() {
 		return groupStore.allGroups();
+	}
+
+	/**
+	 * Builds a {@link GroupNoteSource} for every stored group, ready to be added
+	 * alongside file/tree sources when assembling a scene's
+	 * {@link org.almostrealism.music.notes.NoteAudioChoice} sources.
+	 *
+	 * <p>This is the render-side counterpart to {@link #includeGroup}: where that
+	 * persists a group, this surfaces each persisted group as a single selectable
+	 * candidate (via {@link NoteAudioGroupBuilder#source}), resolving member audio
+	 * through the underlying {@link AudioLibrary} and member pitch through
+	 * {@link AudioLayerPitch}. Single-sample sources are unaffected — group
+	 * sources are simply additional candidates.</p>
+	 *
+	 * @return one {@link GroupNoteSource} per stored group
+	 */
+	public List<NoteAudioSource> groupSources() {
+		List<NoteAudioSource> sources = new ArrayList<>();
+		for (Audio.AudioLayerGroup group : allGroups()) {
+			sources.add(NoteAudioGroupBuilder.source(group, library));
+		}
+		return sources;
 	}
 
 	/**

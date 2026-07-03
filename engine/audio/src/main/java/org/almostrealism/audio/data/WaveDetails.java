@@ -97,6 +97,15 @@ public class WaveDetails implements CodeFeatures, Node {
 	/** Similarity scores to other samples, keyed by their identifiers. */
 	private Map<String, Double> similarities;
 
+	/**
+	 * Persistent sort rank for ordering this sample within the library tree.
+	 * {@code null} when the sample has not yet been ranked. A {@link Double}
+	 * (rather than a primitive) so a new item can be inserted between two
+	 * existing ranks by averaging, without renumbering, and so that an
+	 * unranked sample is distinguishable from one ranked at {@code 0.0}.
+	 */
+	private Double rank;
+
 	/** Creates a WaveDetails with no identifier and unknown sample rate. */
 	public WaveDetails() {
 		this(null);
@@ -489,6 +498,36 @@ public class WaveDetails implements CodeFeatures, Node {
 	 */
 	public void setSimilarities(Map<String, Double> similarities) {
 		this.similarities = similarities;
+	}
+
+	/**
+	 * Returns whether this sample has a persistent sort rank assigned.
+	 *
+	 * @return true if a rank has been set
+	 */
+	public boolean hasRank() {
+		return rank != null;
+	}
+
+	/**
+	 * Returns the persistent sort rank for this sample, or {@code null} if it
+	 * has not yet been ranked. Unranked samples sort to the end of the library
+	 * tree.
+	 *
+	 * @return the rank, or null if unranked
+	 */
+	public Double getRank() {
+		return rank;
+	}
+
+	/**
+	 * Sets the persistent sort rank for this sample. Pass {@code null} to mark
+	 * the sample as unranked.
+	 *
+	 * @param rank the rank, or null to clear it
+	 */
+	public void setRank(Double rank) {
+		this.rank = rank;
 	}
 
 	/**
