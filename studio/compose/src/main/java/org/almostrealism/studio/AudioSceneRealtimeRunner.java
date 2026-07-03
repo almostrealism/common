@@ -375,8 +375,13 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// for that path — it must not be skipped as a render shortcut. Render cost is reduced by
 		// making the render itself faster, not by rendering fewer channels.
 		OperationList renderOps = new OperationList("AudioScene Pattern Render Ahead");
+		// Zero the whole consolidated render buffer once per render round (a real buffer, so
+		// clear() zeroes it directly with a single command-buffer commit) rather than clearing each
+		// render cell's delegate output region. The per-cell region clears were the dominant per-round
+		// host-wait commits; the cells now sum into their already-zeroed regions (prepareBatch(false)).
+		renderOps.add(() -> () -> consolidated.clear());
 		for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
-			renderOps.add(renderCell.prepareBatch());
+			renderOps.add(renderCell.prepareBatch(false));
 		}
 		Runnable renderOp = renderOps.get();
 		PatternRenderStream renderStream = new PatternRenderStream(
