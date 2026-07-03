@@ -513,7 +513,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * on the prior operation's completion <em>inside the provider</em> (e.g. an OpenCL
 	 * {@code cl_event} wait-list) rather than blocking the host. The returned details'
 	 * {@link AcceleratedProcessDetails#getSemaphore() completion semaphore} is this
-	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.</p>
+	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.
+	 * Completions of asynchronously produced arguments (delivered via
+	 * {@link AcceleratedProcessDetails#result(int, Object, Semaphore)}) are merged with
+	 * {@code dependsOn} through {@link Semaphore#all}, so the kernel is ordered after the
+	 * work producing its inputs the same way.</p>
 	 *
 	 * <p><strong>Execution model.</strong> Two independent memory mechanisms may wrap
 	 * the kernel, and they unwind in reverse order of how they are set up. Every copy on both
@@ -584,8 +588,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 				boolean processing = !process.isEmpty();
 
-				// Copy-in groups chain on one another, and the kernel chains on the last of them
-				Semaphore ready = dependsOn;
+				// Copy-in groups chain on one another, and the kernel chains on the last of them.
+				// Arguments delivered asynchronously with an outstanding completion (see
+				// AcceleratedProcessDetails.getArgumentCompletions()) are merged in here, so the
+				// kernel is ordered after the work producing them without any host wait.
+				List<Semaphore> pending = process.getArgumentCompletions();
+				pending.add(dependsOn);
+				Semaphore ready = Semaphore.all(getMetadata(), pending);
 
 				if (aggregating) {
 					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);

@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
@@ -336,6 +337,16 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * deferred/uncommitted result as stale zeros. The same wait appears in
 	 * {@link #evaluate(Object...)} and in {@code AcceleratedComputationEvaluable.request}.</p>
 	 *
+	 * <p>When the downstream is a {@link CompletionConsumer}, the destination is delivered
+	 * <em>immediately</em> together with the dispatch's completion {@link
+	 * io.almostrealism.concurrent.Semaphore}, and the consumer takes responsibility for
+	 * ordering (typically by merging the completion into a dependent dispatch's
+	 * {@code dependsOn}). No host wait occurs at all in that case — this is what allows a
+	 * kernel's asynchronously produced arguments to chain on the device instead of each
+	 * costing a host wait (and, under Metal, a command-buffer commit). A plain
+	 * {@link java.util.function.Consumer} downstream keeps the completing-wait behavior:
+	 * the value is delivered only once the dispatch has completed.</p>
+	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
 	 * destEval.setDownstream(result -> processResult(result));
@@ -352,7 +363,12 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 			// Required before getSemaphore(); see the method javadoc
 			details.awaitReady();
-			details.getSemaphore().onComplete(() -> downstream.accept((T) destination));
+
+			if (downstream instanceof CompletionConsumer) {
+				((CompletionConsumer<T>) downstream).accept((T) destination, details.getSemaphore());
+			} else {
+				details.getSemaphore().onComplete(() -> downstream.accept((T) destination));
+			}
 		} else {
 			throw new UnsupportedOperationException();
 		}

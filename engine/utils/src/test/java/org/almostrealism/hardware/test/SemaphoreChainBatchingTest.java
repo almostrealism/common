@@ -17,10 +17,12 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.streams.StreamingEvaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -104,6 +106,120 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies commit-cause attribution: a host wait that forces a commit increments
+	 * {@link MetalCommandRunner#getHostCompleteCommitCount()} and records the requesting
+	 * operation in {@link MetalCommandRunner#hostCompleteRequesters}, while a repeated wait
+	 * on the same (already completed) dispatch is free and attributes nothing.
+	 */
+	@Test(timeout = 60000)
+	public void hostCompleteCommitAttribution() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		boolean aggregation = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+
+		try {
+			int n = 16;
+
+			PackedCollection src = new PackedCollection(n);
+			PackedCollection dst = new PackedCollection(n);
+			src.fill(pos -> Math.random() + 1.0);
+
+			Submittable op = copyKernel(src, dst, n, ComputeRequirement.MTL);
+
+			MetalCommandRunner runner = metal.getCommandRunner();
+			long baseTotal = runner.getCommitCount();
+			long baseHost = runner.getHostCompleteCommitCount();
+			int baseAttributed = attributedWaits();
+
+			Semaphore s = op.submit(null);
+			assertEquals((double) baseHost, (double) runner.getHostCompleteCommitCount());
+
+			s.waitFor();
+			assertEquals((double) (baseTotal + 1), (double) runner.getCommitCount());
+			assertEquals((double) (baseHost + 1), (double) runner.getHostCompleteCommitCount());
+			assertEquals((double) (baseAttributed + 1), (double) attributedWaits());
+
+			s.waitFor();
+			assertEquals((double) (baseHost + 1), (double) runner.getHostCompleteCommitCount());
+			assertEquals((double) (baseAttributed + 1), (double) attributedWaits());
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = aggregation;
+		}
+	}
+
+	/**
+	 * Verifies the asynchronous argument delivery contract: when a streaming producer's
+	 * downstream is a {@link CompletionConsumer}, {@link StreamingEvaluable#request} delivers
+	 * the destination together with the dispatch's completion {@link Semaphore} without any
+	 * host wait — so issuing the request performs no command-buffer commit — and the contents
+	 * are valid once the delivered completion is waited.
+	 */
+	@Test(timeout = 60000)
+	public void completionConsumerDeliveryAvoidsCommit() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		int n = 16;
+
+		PackedCollection a = new PackedCollection(n);
+		a.fill(pos -> Math.random() + 1.0);
+
+		Evaluable<PackedCollection> ev;
+		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(ComputeRequirement.MTL));
+
+		try {
+			ev = (Evaluable<PackedCollection>) (Evaluable) cp(a).multiply(2.0).get();
+		} finally {
+			Hardware.getLocalHardware().getComputer().popRequirements();
+		}
+
+		PackedCollection destination = new PackedCollection(n);
+		StreamingEvaluable<PackedCollection> streaming =
+				(StreamingEvaluable<PackedCollection>) ev.into(destination);
+
+		Object[] delivered = new Object[1];
+		Semaphore[] completion = new Semaphore[1];
+		streaming.setDownstream((CompletionConsumer<PackedCollection>) (value, c) -> {
+			delivered[0] = value;
+			completion[0] = c;
+		});
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		long baseline = runner.getCommitCount();
+
+		streaming.request(new Object[0]);
+
+		assertEquals((double) baseline, (double) runner.getCommitCount());
+		assertTrue(delivered[0] instanceof PackedCollection);
+		assertTrue(completion[0] != null);
+
+		completion[0].waitFor();
+
+		PackedCollection result = (PackedCollection) delivered[0];
+
+		for (int i = 0; i < n; i++) {
+			assertEquals(2.0 * a.toDouble(i), result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Returns the total number of commit-forcing host waits recorded in
+	 * {@link MetalCommandRunner#hostCompleteRequesters} across all requesters.
+	 */
+	private static int attributedWaits() {
+		return MetalCommandRunner.hostCompleteRequesters.getCounts()
+				.values().stream().mapToInt(Integer::intValue).sum();
+	}
+
+	/**
 	 * Runs an {@link OperationListRunner} whose first member is a Metal copy kernel and whose
 	 * second member is a CPU copy kernel reading the first member's output. Without the pending
 	 * semaphore threaded between members, the synchronous native consumer reads the Metal
@@ -141,7 +257,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	 * Returns the shared {@link MetalComputeContext}, or null when the current hardware
 	 * configuration exposes no Metal backend (in which case these tests are skipped).
 	 */
-	private static MetalComputeContext metalContext() {
+	static MetalComputeContext metalContext() {
 		try {
 			return Hardware.getLocalHardware()
 					.getComputeContexts(false, true, ComputeRequirement.MTL).stream()
