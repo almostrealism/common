@@ -113,8 +113,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * compile off the real-time clock. (An early stop on "no new shape for a while" is unsafe here:
 	 * pattern density varies, so a quiet stretch does not mean all shapes have been seen.) This is a
 	 * one-time setup cost. Set to {@code <= 0} to disable the sweep; the cap bounds it for safety.
+	 *
+	 * <p><b>Disabled by default ({@code 0}).</b> Render-sweeping the whole arrangement in setup is
+	 * front-loaded real-time rendering, not a compile step: it made "setup" cost several times the
+	 * playback duration and masked the true real-time performance. Kernels now compile lazily on the
+	 * render-ahead producer thread during playback. The correct replacement — if mid-stream compile
+	 * stalls prove problematic — is a bounded compile-only warm that renders just enough buffers to
+	 * reach each distinct kernel shape, never the whole arrangement.
 	 */
-	public static double preWarmMaxSeconds = 300.0;
+	public static double preWarmMaxSeconds = 0.0;
 
 	/**
 	 * Static wet-bus send level supplied to the PDSL {@code mixdown_master} layer.
@@ -442,9 +449,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 						renderFrame[0] = 0;
 					});
 				}
-				// Start the render producer thread and fill the ring ahead of playback. After this
-				// returns, the hot path is guaranteed to find each buffer already rendered.
-				setup.add(() -> () -> renderStream.start(renderAheadSlots));
+				// Start the render producer thread with a minimal one-buffer prefill so setup does
+				// not block rendering the whole render-ahead ring up front. The producer fills the
+				// ring lazily during playback; the mixdown consumer may under-run until the producer
+				// gets ahead — that is the honest cost of pattern rendering rather than hiding it here.
+				setup.add(() -> () -> renderStream.start(1));
 				return setup;
 			}
 

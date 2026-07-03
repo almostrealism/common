@@ -21,6 +21,7 @@ import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalFeatures;
 
@@ -912,7 +913,29 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * @return an uncompiled {@link CollectionProducer} of shape {@code [targetLength]}
 	 */
 	private CollectionProducer reduceAligned(CollectionProducer voiced2D) {
-		return permute(voiced2D, 1, 0).traverse(1).sum().reshape(shape(targetLength));
+		return sumNoteAxis(permute(voiced2D, 1, 0), targetLength);
+	}
+
+	/**
+	 * Sums the note axis of a permuted {@code [width, n]} producer without the
+	 * aggregation gather-collapse probe. Batched pattern windows sum genuinely
+	 * overlapping per-note rows — more than one note can contribute to any output
+	 * frame — so the {@code uniqueNonZeroOffset} analysis triggered by
+	 * {@link AggregatedProducerComputation#setReplaceLoop(boolean) replaceLoop}
+	 * can never identify a unique contributor here. On these deep fused chains
+	 * that always-failing analysis dominated first-compile wall time (14-29&nbsp;s
+	 * per kernel shape), so it is disabled before compilation.
+	 *
+	 * @param permuted the {@code [width, n]} producer whose second axis is summed
+	 * @param width    the output width in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [width]}
+	 */
+	private CollectionProducer sumNoteAxis(CollectionProducer permuted, int width) {
+		CollectionProducer summed = permuted.traverse(1).sum();
+		if (summed instanceof AggregatedProducerComputation aggregation) {
+			aggregation.setReplaceLoop(false);
+		}
+		return summed.reshape(shape(width));
 	}
 
 	/**
@@ -1002,6 +1025,6 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		// Sum the note axis: [noteCount, windowWidth] → [windowWidth, noteCount]
 		// → reduce → [windowWidth].
 		CollectionProducer rows2D = contribution.reshape(shape(noteCount, windowWidth));
-		return permute(rows2D, 1, 0).traverse(1).sum().reshape(shape(windowWidth));
+		return sumNoteAxis(permute(rows2D, 1, 0), windowWidth);
 	}
 }

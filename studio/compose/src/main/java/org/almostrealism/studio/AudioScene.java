@@ -83,7 +83,6 @@ import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
@@ -905,26 +904,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @return a settings snapshot of this scene's current state
 	 */
 	public AudioSceneLoader.Settings getSettings() {
-		AudioSceneLoader.Settings settings = new AudioSceneLoader.Settings();
-		settings.setBpm(getBPM());
-		settings.setMeasureSize(getMeasureSize());
-		settings.setTotalMeasures(getTotalMeasures());
-		settings.getBreaks().addAll(time.getResets());
-		settings.getSections().addAll(sections.getSections()
-				.stream().map(s -> new AudioSceneLoader.Settings.Section(s.getPosition(), s.getLength())).collect(Collectors.toList()));
-
-		if (library != null && library.getRoot() != null) {
-			settings.setLibraryRoot(library.getRoot().getResourcePath());
-		}
-
-		settings.setChordProgression(progression.getSettings());
-		settings.setPatternSystem(patterns.getSettings());
-		settings.setChannelNames(channelNames);
-		settings.setWetChannels(getEfxManager().getWetChannels());
-		settings.setReverbChannels(getMixdownManager().getReverbChannels());
-		settings.setGeneration(generation.getSettings());
-
-		return settings;
+		return AudioSceneLoader.Settings.from(this);
 	}
 
 	/**
@@ -945,39 +925,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public void setSettings(AudioSceneLoader.Settings settings,
 							Function<String, AudioLibrary> libraryProvider,
 							DoubleConsumer progress) {
-		setBPM(settings.getBpm());
-		setMeasureSize(settings.getMeasureSize());
-		setTotalMeasures(settings.getTotalMeasures());
-
-		time.getResets().clear();
-		settings.getBreaks().forEach(time::addReset);
-		settings.getSections().forEach(s -> sections.addSection(s.getPosition(), s.getLength()));
-
-		setLibrary(libraryProvider.apply(settings.getLibraryRoot()), progress);
-
-		progression.setSettings(settings.getChordProgression());
-		patterns.setSettings(settings.getPatternSystem());
-
-		channelNames.clear();
-		if (settings.getChannelNames() != null) channelNames.addAll(settings.getChannelNames());
-
-		getEfxManager().getWetChannels().clear();
-		getSectionManager().getWetChannels().clear();
-		if (settings.getWetChannels() != null) {
-			getEfxManager().getWetChannels().addAll(settings.getWetChannels());
-			getSectionManager().getWetChannels().addAll(settings.getWetChannels());
-		}
-
-		getMixdownManager().getReverbChannels().clear();
-		if (settings.getReverbChannels() != null) {
-			getMixdownManager().getReverbChannels().addAll(settings.getReverbChannels());
-		}
-
-		generation.setSettings(settings.getGeneration());
-
-		if (tuning != null) {
-			setTuning(tuning);
-		}
+		settings.applyTo(this, libraryProvider, progress);
 	}
 
 	/**
@@ -1092,8 +1040,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				activeCells = null;
 			}
 
-			prepareRenderCells(channels, ChannelInfo.StereoChannel.LEFT, bufferSize, frameSupplier, setup);
-			prepareRenderCells(channels, ChannelInfo.StereoChannel.RIGHT, bufferSize, frameSupplier, setup);
+			// WET cells are created only when efx is enabled — mirrors getPatternCells,
+			// which omits the WET voicing on the fast path.
+			renderBuffers.createRenderCells(patterns, this::renderContext, channels,
+					ChannelInfo.StereoChannel.LEFT, bufferSize, frameSupplier,
+					MixdownManager.enableEfx, setup);
+			renderBuffers.createRenderCells(patterns, this::renderContext, channels,
+					ChannelInfo.StereoChannel.RIGHT, bufferSize, frameSupplier,
+					MixdownManager.enableEfx, setup);
 
 			return setup;
 		} finally {
@@ -1102,40 +1056,14 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
-	 * Creates the render cells for one stereo side, MAIN voicing for every channel
-	 * followed by WET voicing for every channel — the same order {@link #getPatternCells}
-	 * produces them, so {@link PatternRenderBuffers#nextRegion} hands out regions in the
-	 * layout PDSL consumers rely on. WET cells are skipped when
-	 * {@link MixdownManager#enableEfx} is off, matching {@link #getPatternCells}.
+	 * Returns the rendering context for a single channel voicing — the per-cell
+	 * context factory handed to {@link PatternRenderBuffers#createRenderCells}.
 	 *
-	 * @param channels      channel indices to render
-	 * @param audioChannel  LEFT or RIGHT stereo channel
-	 * @param bufferSize    frames per render buffer
-	 * @param frameSupplier supplies the current frame position for pattern rendering
-	 * @param setup         the setup OperationList to accumulate operations in
+	 * @param channel the channel voicing
+	 * @return the scene context scoped to that channel
 	 */
-	private void prepareRenderCells(List<Integer> channels,
-									ChannelInfo.StereoChannel audioChannel,
-									int bufferSize,
-									IntSupplier frameSupplier,
-									OperationList setup) {
-		int[] idx = channels.stream().mapToInt(i -> i).toArray();
-
-		for (int i = 0; i < idx.length; i++) {
-			createRenderCell(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
-					bufferSize, frameSupplier, setup);
-		}
-
-		// Skip WET cells when enableEfx is false — mirrors getPatternCells, which omits the
-		// WET voicing on the fast path. The consolidated buffer is still sized for 4 regions per
-		// channel (consolidate allocates channels * 4), but the skipped regions are never rendered
-		// (remain zero-filled) and subsequent regions are allocated in creation order.
-		if (MixdownManager.enableEfx) {
-			for (int i = 0; i < idx.length; i++) {
-				createRenderCell(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
-						bufferSize, frameSupplier, setup);
-			}
-		}
+	private AudioSceneContext renderContext(ChannelInfo channel) {
+		return getContext(List.of(channel));
 	}
 
 	/**
@@ -1227,44 +1155,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  IntSupplier frameSupplier,
 									  OperationList setup,
 									  Producer<PackedCollection> waveCellFrame) {
-		PatternAudioBuffer renderCell = createRenderCell(channel, bufferSize, frameSupplier, setup);
+		PatternAudioBuffer renderCell = renderBuffers.createRenderCell(
+				patterns, this::renderContext, channel, bufferSize, frameSupplier, setup);
 
 		return efx.apply(channel, renderCell.getOutputProducer(),
 				getTotalDuration(), setup, waveCellFrame);
-	}
-
-	/**
-	 * Creates and registers a {@link PatternAudioBuffer} render cell for one channel
-	 * voicing, carving its region from the consolidated render buffer and wiring its
-	 * setup and initial-render operations into {@code setup}.
-	 *
-	 * <p>This is the pattern-prepare half of {@link #getPatternChannel} — the part both
-	 * runner paths need. The CellList runner then applies the Java effects chain to the
-	 * cell's output ({@link #getPatternChannel}); the PDSL runner reads the consolidated
-	 * render buffer directly and never builds the Java chain, so it calls this method via
-	 * {@link #prepareRenderBuffers} instead of {@code getPatternChannel}.</p>
-	 *
-	 * @param channel       the channel (index, voicing, stereo channel)
-	 * @param bufferSize    frames per render buffer
-	 * @param frameSupplier supplies the current frame position for pattern rendering
-	 * @param setup         the setup OperationList (render cell setup and initial render are added here)
-	 * @return the created and registered render cell
-	 */
-	private PatternAudioBuffer createRenderCell(ChannelInfo channel,
-												int bufferSize,
-												IntSupplier frameSupplier,
-												OperationList setup) {
-		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
-
-		PatternAudioBuffer renderCell = new PatternAudioBuffer(
-				patterns, ctx, channel, bufferSize, frameSupplier,
-				renderBuffers.nextRegion(bufferSize));
-
-		setup.add(renderCell.setup());
-		setup.add(renderCell.prepareBatch());
-		renderBuffers.add(renderCell);
-
-		return renderCell;
 	}
 
 	/**

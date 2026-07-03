@@ -16,11 +16,14 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
+import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.PatternSystemManager;
@@ -35,6 +38,8 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Measures the real-time PDSL tick's hot-path wall time on a dense curated scene at both the
@@ -179,6 +184,21 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	}
 
 	/**
+	 * Returns the {@link MetalCommandRunner} for the shared Metal compute context, or {@code null}
+	 * when no Metal context is active (so the commit-cause attribution is simply skipped off-Metal).
+	 *
+	 * @return the Metal command runner, or {@code null}
+	 */
+	private static MetalCommandRunner metalRunner() {
+		return Hardware.getLocalHardware()
+				.getComputeContexts(false, true, ComputeRequirement.MTL).stream()
+				.filter(MetalComputeContext.class::isInstance)
+				.map(MetalComputeContext.class::cast)
+				.map(MetalComputeContext::getCommandRunner)
+				.findFirst().orElse(null);
+	}
+
+	/**
 	 * Builds the runner at one buffer size, warms it, then times {@link #PROFILE_TICKS} steady
 	 * ticks and logs the attributed breakdown plus the realtime ratio.
 	 *
@@ -214,6 +234,13 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 
 				BatchedPatternLayerRenderer.resetCounters();
 				MetalCommandRunner.resetBatchSizeCounters();
+
+				MetalCommandRunner mtlRunner = metalRunner();
+				long baseHostCommits = mtlRunner == null ? 0 : mtlRunner.getHostCompleteCommitCount();
+				long baseMaxOpenCommits = mtlRunner == null ? 0 : mtlRunner.getMaxOpenCommitCount();
+				long baseRunnerCommits = mtlRunner == null ? 0 : mtlRunner.getCommitCount();
+				Map<String, Integer> baseRequesters =
+						new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
 
 				double totalTickMs = 0;
 				double[] ticks = new double[PROFILE_TICKS];
@@ -261,6 +288,30 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 						+ " dispatchesPerTick=" + fmt(metalDispatches / (double) PROFILE_TICKS)
 						+ " commitsPerTick=" + fmt(metalCommits / (double) PROFILE_TICKS)
 						+ " meanDispatchesPerCommit=" + fmt(MetalCommandRunner.meanBatchSize()));
+
+				if (mtlRunner != null) {
+					long hostCommits = mtlRunner.getHostCompleteCommitCount() - baseHostCommits;
+					long maxOpenCommits = mtlRunner.getMaxOpenCommitCount() - baseMaxOpenCommits;
+					long runnerCommits = mtlRunner.getCommitCount() - baseRunnerCommits;
+					log("buffer=" + bufferSize + " commitCause runnerCommits=" + runnerCommits
+							+ " hostCompleteCommits=" + hostCommits
+							+ " maxOpenCommits=" + maxOpenCommits
+							+ " hostCompletePerTick=" + fmt(hostCommits / (double) PROFILE_TICKS)
+							+ " maxOpenPerTick=" + fmt(maxOpenCommits / (double) PROFILE_TICKS));
+
+					Map<String, Integer> endRequesters =
+							new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
+					endRequesters.entrySet().stream()
+							.map(e -> Map.entry(e.getKey(),
+									e.getValue() - baseRequesters.getOrDefault(e.getKey(), 0)))
+							.filter(e -> e.getValue() > 0)
+							.sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+							.limit(15)
+							.forEach(e -> log("buffer=" + bufferSize
+									+ " requesterWaitsPerTick=" + fmt(e.getValue() / (double) PROFILE_TICKS)
+									+ " requesterWaits=" + e.getValue()
+									+ " requester=" + e.getKey()));
+				}
 
 				out.write().get().run();
 				double peak = peakAmplitude(scratch.getPath());
