@@ -68,8 +68,8 @@ import java.util.function.BiFunction;
  *         (args, index) -&gt; e(0),
  *         // Expression: compare values and update index if larger value found
  *         (args, currentIndex) -&gt; index -&gt;
- *             conditional(args[1].getValueRelative(index)
- *                         .greaterThan(args[1].getValueRelative(currentIndex)),
+ *             conditional(args[1].getValueAt(index)
+ *                         .greaterThan(args[1].getValueAt(currentIndex)),
  *                         index, currentIndex),
  *         input);
  * </code></pre>
@@ -155,8 +155,8 @@ public class TraversableRepeatedProducerComputation
 	 *     collection.getSize(),            // count: iterate over all elements
 	 *     (args, index) -&gt; e(0),          // initial: start with index 0
 	 *     (args, currentIndex) -&gt; index -&gt; // expression: compare and update
-	 *         conditional(args[1].getValueRelative(index)
-	 *                     .greaterThan(args[1].getValueRelative(currentIndex)),
+	 *         conditional(args[1].getValueAt(index)
+	 *                     .greaterThan(args[1].getValueAt(currentIndex)),
 	 *                     index, currentIndex),
 	 *     input                            // arguments: input collection
 	 * );

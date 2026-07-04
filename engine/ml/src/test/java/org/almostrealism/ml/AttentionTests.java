@@ -64,7 +64,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		q.fill(pos -> Math.random());
 		keyCache.fill(pos -> Math.random());
 
-		Producer<PackedCollection> o = c(p(keyCache)).traverse(1).map(v -> v.multiply(p(q)))
+		Producer<PackedCollection> o = c(p(keyCache)).traverse(1).multiply(p(q))
 				.traverse(2).sum()
 				.divide(c(Math.sqrt(headSize)))
 				.reshape(shape(seqLength, heads))

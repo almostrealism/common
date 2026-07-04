@@ -17,11 +17,13 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
@@ -206,7 +208,7 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 *
 	 * <p>The delta computation follows this pattern:</p>
 	 * <pre>
-	 * result = expression(args, row + localIndex).delta(target).getValueRelative(row + localIndex)
+	 * result = expression(args, row + localIndex).delta(target).getValueAt(row + localIndex)
 	 * </pre>
 	 *
 	 * @param args The traversable expressions representing input arguments
@@ -216,9 +218,14 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		return expression.apply(args, row.add(localIndex))
-				.delta(targetVariable)
-				.getValueRelative(row.add(localIndex));
+		CollectionExpression delta = expression.apply(args, row.add(localIndex))
+				.delta(targetVariable);
+
+		// Each kernel instance owns one gradient batch of the delta's size, so the
+		// position within the batch is addressed from the kernel index explicitly
+		return delta.getValueAt(new KernelIndex()
+				.multiply(delta.getShape().getSize())
+				.add(row.add(localIndex).toInt()));
 	}
 
 	/**

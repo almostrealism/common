@@ -318,7 +318,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		if (kvHeads == heads) {
 			// No GQA - use simple attention
 			return layer("attentionKeys", inputShape, outputShape, input ->
-					traverse(1, keys).map(v -> v.multiply(input))
+					traverse(1, keys).multiply(input)
 							.traverse(2).sum()
 							.divide(c(Math.sqrt(headSize)))
 							.reshape(shape(seqLength, heads))
@@ -355,7 +355,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 						// query: (headSize), keysForKv: (seqLen, headSize)
 						// output: (seqLen)
 						CollectionProducer dotProducts = traverse(1, keysForKv)
-								.map(v -> v.multiply(query))
+								.multiply(query)
 								.sum()
 								.divide(c(Math.sqrt(headSize)));
 
@@ -598,7 +598,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		// instead of enumerate(1, 1) which uses subset internally
 		return layer("attentionKeysStd", inputShape, outputShape, input ->
 				permute(
-					traverse(1, keys).map(v -> v.multiply(input))
+					traverse(1, keys).multiply(input)
 						.traverse(2).sum()
 						.divide(c(Math.sqrt(headSize)))
 						.reshape(shape(seqLength, heads)),

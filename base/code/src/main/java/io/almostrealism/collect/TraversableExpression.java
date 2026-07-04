@@ -52,7 +52,6 @@ import org.almostrealism.io.ConsoleFeatures;
  * <ul>
  *   <li>{@link #getValueAt(Expression)} - Access by flat (linear) index</li>
  *   <li>{@link #getValue(Expression...)} - Access by multi-dimensional position</li>
- *   <li>{@link #getValueRelative(Expression)} - Access relative to current context</li>
  * </ul>
  *
  * <h2>Usage Example</h2>
@@ -114,20 +113,6 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	 * @return an {@link Expression} representing the value at the specified index
 	 */
 	Expression<T> getValueAt(Expression<?> index);
-
-	/**
-	 * Retrieves a value at an index relative to the current context.
-	 *
-	 * <p>The default implementation simply delegates to {@link #getValueAt(Expression)}.
-	 * Subclasses like {@link CollectionExpression} may override this to provide
-	 * kernel-aware relative indexing.
-	 *
-	 * @param index the relative index expression
-	 * @return an {@link Expression} representing the value at the relative index
-	 */
-	default Expression<T> getValueRelative(Expression index) {
-		return getValueAt(index);
-	}
 
 	/**
 	 * Determines if the specified index is contained in this expression's valid index set.
