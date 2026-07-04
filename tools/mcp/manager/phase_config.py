@@ -25,17 +25,21 @@ from typing import Optional
 VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
 # Phase wire names mirrored from io.flowtree.jobs.agent.Phase on the Java side.
+# KEEP IN SYNC WITH Phase.java — the test_phase_config.py divergence guard
+# fails when this list and the Java enum's wire names disagree in either direction.
 _KNOWN_PHASE_WIRE_NAMES = (
     "primary",
+    "enforce-changes",
     "review",
     "deduplication",
     "organizational-placement",
-    "enforce-changes",
     "maven-dependency-protection",
     "post-completion",
     "commit-message",
     "git-tampering-restart",
+    "push-conflict-resolution",
     "retrospective",
+    "falsification",
 )
 
 # Runner identifiers mirrored from io.flowtree.jobs.agent.AgentRunnerRegistry.
