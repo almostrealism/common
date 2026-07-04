@@ -195,8 +195,8 @@ final class RetrospectivePromptBuilder {
         sb.append("IMPORTANT — WRITE RESULTS FILE\n\n");
         sb.append("After storing all findings (and the REQUIRED transcript-meta assessment\n");
         sb.append("memory described in the TRANSCRIPT-META ASSESSMENT section), write a\n");
-        sb.append("JSON file to the working directory:\n\n");
-        sb.append("  File: retrospective-results.json\n");
+        sb.append("JSON file under the .flowtree directory at the working-tree root:\n\n");
+        sb.append("  File: ").append(FlowtreeArtifacts.inDirectory(RetrospectivePhase.RESULTS_FILE)).append("\n");
         sb.append("  Content: {\n");
         sb.append("    \"transcriptFound\": true,\n");
         sb.append("    \"findingsCount\": <N>,\n");
@@ -318,7 +318,7 @@ final class RetrospectivePromptBuilder {
         sb.append("available, the context-upfront and context-pressure figures cannot\n");
         sb.append("be measured -- record 0 for both so the trend data records a gap:\n\n");
 
-        sb.append("  File: retrospective-results.json\n");
+        sb.append("  File: ").append(FlowtreeArtifacts.inDirectory(RetrospectivePhase.RESULTS_FILE)).append("\n");
         sb.append("  Content: {\n");
         sb.append("    \"transcriptFound\": false,\n");
         sb.append("    \"findingsCount\": 0,\n");
@@ -335,7 +335,8 @@ final class RetrospectivePromptBuilder {
         sb.append("  - No commits — the harness will commit at session end.\n");
         sb.append("  - No changes to any configuration files.\n");
         sb.append("  - No prompt modifications.\n");
-        sb.append("  - EXCEPT: You MAY write one file: retrospective-results.json\n");
+        sb.append("  - EXCEPT: You MAY write one file: ")
+                .append(FlowtreeArtifacts.inDirectory(RetrospectivePhase.RESULTS_FILE)).append("\n");
         sb.append("    (structured output required by the parent job; see HOW TO STORE FINDINGS).\n\n");
     }
 
@@ -343,7 +344,9 @@ final class RetrospectivePromptBuilder {
     private static void appendExpectedOutcome(StringBuilder sb) {
         sb.append("EXPECTED OUTCOME\n");
         sb.append("Store zero or more finding memories (or one no-transcript memory if\n");
-        sb.append("no transcript is available), write retrospective-results.json, then exit.\n");
+        sb.append("no transcript is available), write ")
+                .append(FlowtreeArtifacts.inDirectory(RetrospectivePhase.RESULTS_FILE))
+                .append(", then exit.\n");
         sb.append("The session should produce no commits and no other file changes.\n\n");
     }
 }

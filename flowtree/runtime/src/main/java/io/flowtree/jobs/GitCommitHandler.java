@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Handles the file-staging, committing, pushing and pull-request-detection
@@ -75,12 +76,34 @@ class GitCommitHandler implements ConsoleFeatures {
     private boolean successful;
 
     /**
+     * Repository-relative paths under {@link FlowtreeArtifacts#DIRECTORY} that
+     * this handler is permitted to stage. Defaults to the empty production
+     * whitelist {@link FlowtreeArtifacts#COMMIT_WHITELIST}; a test may inject a
+     * non-empty set via {@link #setFlowtreeCommitWhitelist(Set)} to prove the
+     * gate is real and not a no-op.
+     */
+    private Set<String> flowtreeCommitWhitelist = FlowtreeArtifacts.COMMIT_WHITELIST;
+
+    /**
      * Creates a new handler for the given job.
      *
      * @param job the job that this handler operates on behalf of
      */
     GitCommitHandler(GitManagedJob job) {
         this.job = job;
+    }
+
+    /**
+     * Overrides the set of {@link FlowtreeArtifacts#DIRECTORY} paths this handler
+     * will allow to be committed. Package-private; intended for tests that verify
+     * the whitelist genuinely gates. Production always uses the empty
+     * {@link FlowtreeArtifacts#COMMIT_WHITELIST}.
+     *
+     * @param whitelist the permitted paths; {@code null} restores the empty default
+     */
+    void setFlowtreeCommitWhitelist(Set<String> whitelist) {
+        this.flowtreeCommitWhitelist = whitelist == null
+                ? FlowtreeArtifacts.COMMIT_WHITELIST : whitelist;
     }
 
     /**
@@ -194,7 +217,12 @@ class GitCommitHandler implements ConsoleFeatures {
      * Returns all files reported as changed by {@code git status --porcelain}.
      *
      * <p>Includes modified, added, deleted, and untracked files. For renamed
-     * files, the post-rename path is returned (the part after {@code " -> "}).</p>
+     * files, the post-rename path is returned (the part after {@code " -> "}).
+     * Untracked files are listed individually ({@code -uall}) rather than
+     * collapsed to their containing directory, so that each candidate — in
+     * particular each file under {@link FlowtreeArtifacts#DIRECTORY} — passes
+     * through the staging guardrails on its own and the commit-time
+     * {@code .flowtree/} gate can act per file.</p>
      *
      * @return list of changed file paths relative to the working directory
      * @throws IOException if a git command fails to execute
@@ -203,7 +231,7 @@ class GitCommitHandler implements ConsoleFeatures {
     private List<String> findChangedFiles() throws IOException, InterruptedException {
         List<String> files = new ArrayList<>();
 
-        String statusOutput = job.executeGitWithOutput("status", "--porcelain");
+        String statusOutput = job.executeGitWithOutput("status", "--porcelain", "-uall");
         for (String line : statusOutput.split("\n")) {
             if (line.length() > 3) {
                 String file = line.substring(3).trim();
@@ -258,6 +286,14 @@ class GitCommitHandler implements ConsoleFeatures {
 
         // Stage each approved file.
         for (String file : result.getStagedFiles()) {
+            // Structural guard: never stage anything under .flowtree/ unless its
+            // repo-relative path is on the (empty by default) commit whitelist.
+            // This is what makes job/phase/harness artifacts unable to leak into
+            // a commit, regardless of which phase or the agent wrote them.
+            if (FlowtreeArtifacts.isExcludedFromCommit(file, flowtreeCommitWhitelist)) {
+                skippedFiles.add(file + " (flowtree artifact: excluded from commit)");
+                continue;
+            }
             if (job.isDryRun()) {
                 log("DRY RUN: Would stage: " + file);
                 stagedFiles.add(file);
