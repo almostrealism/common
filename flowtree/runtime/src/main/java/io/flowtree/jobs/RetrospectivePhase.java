@@ -46,7 +46,12 @@ import java.util.function.Consumer;
  */
 final class RetrospectivePhase {
 
-    /** Result file written by the retrospective agent. */
+    /**
+     * Bare name of the result file written by the retrospective agent. It is
+     * written and read under {@link FlowtreeArtifacts#DIRECTORY} (see
+     * {@link FlowtreeArtifacts#inDirectory(String)}); the bare name is retained
+     * as the canonical identifier shared with {@link RetrospectivePromptBuilder}.
+     */
     static final String RESULTS_FILE = "retrospective-results.json";
 
     /** {@code true} after {@link #run(CodingAgentJob)} has executed in this {@link CodingAgentJob#doWork()} call. */
@@ -167,7 +172,7 @@ final class RetrospectivePhase {
      * @param job the orchestrator used to resolve the working-directory path
      */
     private void readResults(CodingAgentJob job) {
-        Path resultsFile = job.resolveWorkingPath(RESULTS_FILE);
+        Path resultsFile = job.resolveWorkingPath(FlowtreeArtifacts.inDirectory(RESULTS_FILE));
         if (resultsFile == null || !Files.exists(resultsFile)) return;
         try {
             String json = Files.readString(resultsFile, StandardCharsets.UTF_8);

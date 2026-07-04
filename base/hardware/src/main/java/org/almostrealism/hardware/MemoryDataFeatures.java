@@ -140,12 +140,16 @@ public interface MemoryDataFeatures {
 	 * Controls whether {@link #copy} methods use {@link Assignment} (true) or
 	 * {@link MemoryDataCopy} (false).
 	 *
-	 * <p>Default: {@code true}. {@link Assignment} is a {@link ParallelProcess}
+	 * <p>Default: {@code false}. {@link Assignment} is a {@link ParallelProcess}
 	 * and therefore participates in the optimization cascade, whereas
 	 * {@link MemoryDataCopy} is a plain {@link Process} whose internal
 	 * producer tree is invisible to strategies. Routing {@link #copy} through
 	 * {@code Assignment} is a prerequisite for any isolation strategy that
-	 * needs to see the producer tree being copied into a destination.</p>
+	 * needs to see the producer tree being copied into a destination, and is
+	 * the intended end state; the default remains {@code false} because
+	 * assignment-based layer input recording currently diverges some trainings
+	 * (gradient-descent regressions observed when it was enabled), which must
+	 * be resolved before the flip can hold.</p>
 	 *
 	 * <p>Runtime-configurable via the {@code AR_HARDWARE_ASSIGNMENT_COPY} system property
 	 * (enabled/disabled), defaulting to enabled. As an interface field it is

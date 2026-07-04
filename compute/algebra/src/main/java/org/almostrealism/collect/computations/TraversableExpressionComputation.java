@@ -56,8 +56,8 @@ import org.almostrealism.hardware.HardwareFeatures;
  *         outputShape,
  *         (args) -> DefaultCollectionExpression.create(outputShape,
  *             idx -> Sum.of(
- *                 args[1].getValueRelative(new IntegerConstant(0)),
- *                 args[1].getValueRelative(new IntegerConstant(1)))),
+ *                 args[1].getValueAt(new IntegerConstant(0)),
+ *                 args[1].getValueAt(new IntegerConstant(1)))),
  *         inputProducer);
  * 
  * PackedCollection result = pairSum.get().evaluate();
@@ -72,8 +72,8 @@ import org.almostrealism.hardware.HardwareFeatures;
  *         inputShape,
  *         (args) -> DefaultCollectionExpression.create(inputShape,
  *             idx -> Product.of(
- *                 args[1].getValueRelative(IntegerConstant.ZERO),
- *                 args[1].getValueRelative(IntegerConstant.ZERO))),
+ *                 args[1].getValueAt(IntegerConstant.ZERO),
+ *                 args[1].getValueAt(IntegerConstant.ZERO))),
  *         inputProducer);
  * }</pre>
  * 
@@ -167,8 +167,8 @@ public abstract class TraversableExpressionComputation
 	 *     // For a sum operation: add the first two elements from each input
 	 *     return DefaultCollectionExpression.create(getShape(),
 	 *         idx -> Sum.of(
-	 *             args[1].getValueRelative(new IntegerConstant(0)),
-	 *             args[1].getValueRelative(new IntegerConstant(1))));
+	 *             args[1].getValueAt(new IntegerConstant(0)),
+	 *             args[1].getValueAt(new IntegerConstant(1))));
 	 * }
 	 * }</pre>
 	 * 
@@ -272,19 +272,6 @@ public abstract class TraversableExpressionComputation
 	@Override
 	public Expression getValueAt(Expression index) {
 		return getExpression(getTraversableArguments(index)).getValueAt(index);
-	}
-
-	/**
-	 * Gets the value at the specified relative index within the current traversal context.
-	 * This method is used when accessing values relative to the current position
-	 * during traversal, rather than using absolute indexing.
-	 * 
-	 * @param index An {@link Expression} representing the relative index offset
-	 * @return An {@link Expression} representing the value at the relative position
-	 */
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return getExpression(getTraversableArguments(new IntegerConstant(0))).getValueRelative(index);
 	}
 
 	/**

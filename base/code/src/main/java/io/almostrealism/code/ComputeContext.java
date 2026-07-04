@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 
@@ -109,6 +110,27 @@ public interface ComputeContext<MEM> {
 	 * @return {@code true} if this context executes on CPU, {@code false} for GPU or other accelerators
 	 */
 	boolean isCPU();
+
+	/**
+	 * Copies all of {@code source} into {@code destination} &mdash; each carrying its own offset and
+	 * length &mdash; using whatever mechanism this context prefers for a plain memory-to-memory copy,
+	 * and sequencing the copy after {@code dependsOn}.
+	 *
+	 * <p>This is the single tool {@code Assignment}/{@code MemoryDataArgumentMap} use for a copy
+	 * between two memory regions, so the mechanism <em>and</em> the sequencing are chosen by the
+	 * context rather than baked into a compiled kernel. A context that can move memory it owns
+	 * asynchronously &mdash; for example by queuing the copy onto its own command buffer so it batches
+	 * with, and is ordered against, the surrounding work &mdash; decides how to honor {@code dependsOn}
+	 * (a native ordering primitive, a host wait, or in-batch hazard tracking) and returns the copy's
+	 * completion {@link Semaphore} (which may still be pending). A context with no asynchronous
+	 * mechanism waits on {@code dependsOn}, performs a direct copy, and returns {@code null}.</p>
+	 *
+	 * @param source      the memory region to copy from
+	 * @param destination the memory region to copy into
+	 * @param dependsOn    the completion this copy must be ordered after, or {@code null}
+	 * @return the copy's completion semaphore, or {@code null} when the copy completed synchronously
+	 */
+	Semaphore copy(MEM source, MEM destination, Semaphore dependsOn);
 
 	/**
 	 * Checks if profiling is enabled for this compute context.

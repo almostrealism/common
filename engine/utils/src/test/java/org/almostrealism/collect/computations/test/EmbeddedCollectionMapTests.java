@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations.test;
 
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -53,7 +52,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		filter.fill(pos -> Math.random());
 
 		verboseLog(() -> {
-			CollectionProducer product = traverse(1, p(input)).map(v -> v.multiply(p(filter)));
+			CollectionProducer product = traverse(1, p(input)).multiply(p(filter));
 			PackedCollection output = product.get().evaluate();
 			log(String.valueOf(output.getShape()));
 
@@ -132,9 +131,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 	 * Tests single enumerate max operation.
 	 */
 	@Test(timeout = 30000)
-	@TestProperties(knownIssue = true)
 	public void singleEnumerateMax() {
-
 		int c = 16;
 		int d = 1;
 
@@ -145,44 +142,6 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 			CollectionProducer pool =
 					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
-			log(String.valueOf(pool.getShape()));
-			input.print();
-
-			PackedCollection output = pool.get().evaluate().reshape(d, 1);
-			log(String.valueOf(output.getShape()));
-
-			input.print();
-
-			for (int copy = 0; copy < d; copy++) {
-				double expected = -Math.pow(10, 5);
-
-				for (int j = 0; j < c; j++) {
-					expected = Math.max(expected, input.valueAt(0, j, copy));
-				}
-
-				double actual = output.valueAt(copy, 0);
-
-				Assert.assertEquals(expected, actual, 0.0001);
-			}
-		}
-	}
-
-	/**
-	 * Tests single enumerate reduce max operation.
-	 */
-	@Test(timeout = 30000)
-	public void singleEnumerateReduceMax() {
-		int c = 16;
-		int d = 1;
-
-		PackedCollection input = tensor(shape(1, c, d)).pack();
-
-		for (int i = 0; i < 10; i++) {
-			input.fill(pos -> Math.random());
-
-			CollectionProducer pool =
-//					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
-					enumerate(shape(1, c, d), cp(input)).traverse(1).reduce(slice -> max(slice));
 			log(String.valueOf(pool.getShape()));
 			input.print();
 
@@ -220,7 +179,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		verboseLog(() -> {
 			CollectionProducer pool =
 					enumerate(shape(w, d), c(p(input)))
-							.traverse(1).reduce(slice -> max(slice));
+							.traverse(1).max();
 			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
@@ -258,10 +217,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		verboseLog(() -> {
 			CollectionProducer pool =
-					c(p(input)).traverse(1)
-							.reduce(v ->
-									enumerate(shape(w, 1), v)
-											.traverse(1).reduce(slice -> max(slice)));
+					c(p(input)).traverse(1).max();
 			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
@@ -388,10 +344,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		verboseLog(() -> {
 			CollectionProducer pool =
-					c(p(input)).traverse(1)
-							.reduce(v ->
-									enumerate(shape(w), v)
-											.traverse(1).reduce(slice -> max(slice)));
+					c(p(input)).traverse(1).max();
 			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
@@ -422,9 +375,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		verboseLog(() -> {
 			CollectionProducer pool =
-					c(p(input)).traverse(1)
-							.map(shape(d, 1, w, 1),
-									v -> enumerate(shape(w, 1), v));
+					c(p(input)).permute(0, 2, 1);
 			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
@@ -435,7 +386,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 				for (int j = 0; j < w; j++) {
 					for (int k = 0; k < d; k++) {
 						double expected = input.valueAt(i, j, k);
-						double actual = output.valueAt(i, k, 0, j, 0);
+						double actual = output.valueAt(i, k, j);
 
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
@@ -523,10 +474,8 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		verboseLog(() -> {
 			CollectionProducer pool =
-					c(p(input)).traverse(1)
-							.reduce(v ->
-									enumerate(shape(w, 1), v)
-											.traverse(1).reduce(slice -> max(slice)));
+					c(p(input)).permute(0, 2, 1)
+							.traverse(2).max();
 			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();

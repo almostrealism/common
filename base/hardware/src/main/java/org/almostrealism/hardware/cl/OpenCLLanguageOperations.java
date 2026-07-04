@@ -57,9 +57,38 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 		super(precision, false, false);
 	}
 
+	/**
+	 * Returns the kernel index expression with an explicit signed cast.
+	 *
+	 * <p>OpenCL C's {@code get_global_id} returns the unsigned {@code size_t}, so using it
+	 * raw poisons any expression containing a negative intermediate: a subtraction wraps to
+	 * a huge positive value and comparisons like {@code (id % n) - k >= 0} are always true.
+	 * The Metal generator casts its thread position to {@code long} for the same reason;
+	 * this must match, since both backends compile the same expression trees.</p>
+	 *
+	 * @param index Dimension index (0=x, 1=y, 2=z)
+	 * @return Index expression like {@code ((long) get_global_id(0))}
+	 */
 	@Override
 	public String kernelIndex(int index) {
-		return "get_global_id(" + index + ")";
+		return "((long) get_global_id(" + index + "))";
+	}
+
+	/**
+	 * Returns the absolute value expression using {@code fabs}.
+	 *
+	 * <p>{@link io.almostrealism.expression.Absolute} is always a floating point
+	 * expression, and OpenCL C's {@code abs} is defined only for integer types —
+	 * passing a floating point argument is ambiguous among the integer overloads
+	 * and fails compilation. Metal and C++ resolve {@code abs} for floating point
+	 * arguments, so only this backend needs the distinction.</p>
+	 *
+	 * @param value The expression to take the absolute value of
+	 * @return Expression like {@code fabs(value)}
+	 */
+	@Override
+	public String abs(String value) {
+		return "fabs(" + value + ")";
 	}
 
 	@Override

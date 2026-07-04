@@ -53,47 +53,21 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Configuration — see config.py for all constants and environment-variable reads
 # ---------------------------------------------------------------------------
 
-CONTROLLER_URL = os.environ.get("AR_CONTROLLER_URL", "http://localhost:7780")
-TOKEN_FILE = os.environ.get(
-    "AR_MANAGER_TOKEN_FILE",
-    os.path.expanduser("~/.config/ar/manager-tokens.json"),
+from config import (
+    CONTROLLER_URL,
+    TOKEN_FILE,
+    RATE_LIMIT,
+    SHARED_SECRET,
+    MAX_PROMPT_LEN,
+    MAX_CONTENT_LEN,
+    MAX_SHORT_STRING_LEN,
+    WORKSPACE_CACHE_TTL,
+    _SENSITIVE_PATH_PREFIXES,
+    audit_log,
 )
-
-# Rate limit: requests per minute per token/IP (configurable)
-RATE_LIMIT = int(os.environ.get("AR_MANAGER_RATE_LIMIT", "60"))
-
-def _load_shared_secret() -> str:
-    """Load the shared secret from file or environment variable."""
-    secret_file = os.environ.get("AR_MANAGER_SHARED_SECRET_FILE", "").strip()
-    if secret_file and os.path.isfile(secret_file):
-        try:
-            with open(secret_file) as f:
-                return f.read().strip()
-        except OSError as e:
-            print(f"ar-manager: WARNING: Failed to read shared secret file: {e}",
-                  file=sys.stderr)
-    return os.environ.get("AR_MANAGER_SHARED_SECRET", "").strip()
-
-SHARED_SECRET = _load_shared_secret()
-
-# Input length limits
-MAX_PROMPT_LEN = 50_000
-MAX_CONTENT_LEN = 100_000
-MAX_SHORT_STRING_LEN = 1_000
-
-# Audit logger — writes to stderr alongside normal diagnostics
-audit_log = logging.getLogger("ar-manager.audit")
-audit_log.setLevel(logging.INFO)
-if not audit_log.handlers:
-    _handler = logging.StreamHandler(sys.stderr)
-    _handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
-    audit_log.addHandler(_handler)
-
-# Paths that are never valid targets for project_commit_plan
-_SENSITIVE_PATH_PREFIXES = (".github/workflows/", ".github/actions/")
 
 # ---------------------------------------------------------------------------
 # Shared libraries (memory + inference)
@@ -158,1105 +132,80 @@ print(f"ar-manager: AR_MANAGER_SHARED_SECRET={'<set>' if SHARED_SECRET else '<no
       file=sys.stderr)
 
 # ---------------------------------------------------------------------------
-# Bearer token authentication
+# Authentication, scoping, and ASGI middleware — see auth.py
 # ---------------------------------------------------------------------------
 
-# Per-request scope storage.  Primary: contextvars (works with asyncio).
-# Fallback: threading.local (works if contextvars don't propagate into
-# FastMCP's sync-tool thread pool).
-_request_scopes: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
-    "_request_scopes", default=None
-)
-_request_token_label: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "_request_token_label", default=None
-)
-_thread_local = threading.local()
-
-
-def _get_scopes() -> Optional[list]:
-    """Return the scopes for the current request."""
-    scopes = _request_scopes.get(None)
-    if scopes is not None:
-        return scopes
-    return getattr(_thread_local, "scopes", None)
-
-
-def _get_token_label() -> str:
-    """Return the label of the token used for the current request."""
-    label = _request_token_label.get(None)
-    if label is not None:
-        return label
-    return getattr(_thread_local, "token_label", "anonymous")
-
-
-def _set_scopes(scopes: list, label: str = "anonymous") -> None:
-    """Store scopes and token label for the current request."""
-    _request_scopes.set(scopes)
-    _request_token_label.set(label)
-    _thread_local.scopes = scopes
-    _thread_local.token_label = label
-
-
-_request_workstream_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "_request_workstream_id", default=None
-)
-_request_job_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "_request_job_id", default=None
+from auth import (
+    _request_scopes,
+    _request_token_label,
+    _request_workstream_id,
+    _request_job_id,
+    _request_workspace_scopes,
+    _thread_local,
+    _get_scopes,
+    _get_token_label,
+    _set_scopes,
+    _get_workspace_scopes,
+    _set_workspace_scopes,
+    _is_workspace_allowed,
+    _require_workspace,
+    _decode_current_request_token_full,
+    _decode_current_request_token,
+    _get_token_workstream_id,
+    _get_token_job_id,
+    _set_token_context,
+    _validate_temp_token,
+    _mint_temp_token,
+    _require_scope,
+    _audit,
+    _check_length,
+    _check_short_strings,
+    _load_tokens,
+    BearerAuthMiddleware,
+    RateLimitMiddleware,
+    HealthMiddleware,
 )
 
-# Per-request workspace scope. A value of None (or an empty list) means the
-# caller is unscoped — it may see and act on every workstream in every Slack
-# workspace. A non-empty list of workspace IDs restricts the caller to those
-# workspaces only.
-_request_workspace_scopes: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
-    "_request_workspace_scopes", default=None
+# ---------------------------------------------------------------------------
+# Controller and tracker HTTP helpers — see controller_client.py / tracker_client.py
+# ---------------------------------------------------------------------------
+
+from controller_client import _controller_get, _controller_post
+from tracker_client import (
+    _tracker_headers,
+    _tracker_get,
+    _tracker_post,
+    _tracker_put,
+    _tracker_delete,
 )
 
 
-def _get_workspace_scopes() -> Optional[list]:
-    """Return the list of workspace IDs this request is allowed to touch,
-    or None if unscoped (allowed everywhere)."""
-    ws = _request_workspace_scopes.get(None)
-    if ws is not None:
-        return ws
-    return getattr(_thread_local, "workspace_scopes", None)
-
-
-def _set_workspace_scopes(workspace_scopes: Optional[list]) -> None:
-    """Store the workspace scope list for the current request. Pass None to
-    mark the caller as unscoped (superadmin)."""
-    _request_workspace_scopes.set(workspace_scopes)
-    _thread_local.workspace_scopes = workspace_scopes
-
-
-def _is_workspace_allowed(workspace_id: Optional[str]) -> bool:
-    """Return True if the current request's workspace scope permits
-    operating on the given workspace ID.
-
-    Unscoped callers always pass. Scoped callers only pass when their
-    list contains the workspace ID. A workstream with no resolvable
-    workspace ID (single-workspace mode or unregistered) is permitted
-    only for unscoped callers, since we cannot verify its assignment.
-    """
-    scopes = _get_workspace_scopes()
-    if not scopes:
-        return True
-    if workspace_id is None or workspace_id == "":
-        return False
-    return workspace_id in scopes
-
-
-def _require_workspace(workspace_id: Optional[str]) -> None:
-    """Raise PermissionError if the current request is not scoped to the
-    given workspace. No-op for unscoped tokens."""
-    if not _is_workspace_allowed(workspace_id):
-        raise PermissionError(
-            "Token is not scoped to workspace "
-            + (workspace_id if workspace_id else "<unknown>")
-        )
-
-def _decode_current_request_token_full(
-) -> tuple[Optional[str], Optional[str], Optional[str], str]:
-    """Decode the Bearer token of the in-flight MCP tool call's HTTP request
-    and return diagnostic detail.
-
-    Returns ``(workstream_id, job_id, label, reason)`` where:
-      * ``workstream_id`` and ``job_id`` are the values from a valid HMAC
-        temp token, or ``None`` when decoding does not succeed.
-      * ``label`` is the audit label for the temp token (``tmp:ws/job``),
-        or ``None`` on any failure path.
-      * ``reason`` is a short identifier describing which path was taken
-        — ``"ok"`` on success, otherwise one of
-        ``"no_context"``, ``"no_request"``, ``"no_auth_header"``,
-        ``"non_bearer_scheme"``, ``"not_temp_token"``, ``"ctx_fallback"``,
-        ``"tl_fallback"`` — for diagnostic logging. This is the only
-        return slot meant for an operator to read; the body of the token
-        is never echoed.
-
-    Decoding the token directly from the current request's HTTP
-    ``Authorization`` header is the primary path: the FastMCP streamable
-    HTTP transport wraps every inbound JSON-RPC request's
-    :class:`starlette.requests.Request` in a ``ServerMessageMetadata``
-    object that the lowlevel MCP server stores in the dispatch-time
-    ``RequestContext`` (accessible via :meth:`FastMCP.get_context`). That
-    propagation works in BOTH the ``stateless_http`` mode ar-manager
-    ships with and the default stateful mode — the bearer the client
-    sent on this call is visible to the tool handler in either case.
-
-    A defensive fallback to the auth middleware's
-    :class:`contextvars.ContextVar` and :mod:`threading` local is also
-    attempted when the per-request path is unavailable (``no_request``
-    / ``no_context``). Those fallbacks are the legacy mechanism that
-    pre-dates the ServerMessageMetadata propagation. They are not
-    reliable in stateful mode because the long-lived server task that
-    runs the tool handler does not see ContextVar mutations from later
-    HTTP requests — but if the FastMCP transport ever stops
-    propagating the request (or a future version changes the wire
-    shape), the ContextVar/thread-local is still set by the
-    :class:`BearerAuthMiddleware` for the lifetime of that middleware
-    call. Reaching this fallback on a stateful production request is
-    itself evidence the per-request path is broken; the ``ctx_fallback``
-    and ``tl_fallback`` reasons let operators see that in the audit log
-    without the tool silently failing.
-
-    The reason vocabulary is intentionally small. ``send_message`` uses
-    it to decide when to fail loudly (a job-binding the caller expected
-    is missing) versus when to post at the workstream top level (the
-    caller didn't bind a job and threading was not expected).
-    """
-    # Primary path: read the bearer from the per-request HTTP request
-    # that the FastMCP transport propagated into the dispatch-time
-    # RequestContext. This is the only path that reflects the call the
-    # client actually made (rather than whatever ContextVar/thread-local
-    # state a prior request left behind).
-    try:
-        ctx = mcp.get_context()
-    except (LookupError, AttributeError):
-        primary_reason = "no_context"
-        request = None
-    else:
-        try:
-            request_context = ctx.request_context
-        except (LookupError, ValueError, AttributeError):
-            primary_reason = "no_request"
-            request = None
-        else:
-            if request_context is None:
-                primary_reason = "no_request"
-                request = None
-            else:
-                request = getattr(request_context, "request", None)
-                if request is None:
-                    primary_reason = "no_request"
-                    request = None
-                else:
-                    primary_reason = None  # signal "proceed"
-
-    if request is not None:
-        try:
-            auth_header = request.headers.get("authorization", "")
-        except Exception:
-            return None, None, None, "no_auth_header"
-        if not auth_header:
-            return None, None, None, "no_auth_header"
-        # RFC 7235 declares the scheme name case-insensitive; opencode
-        # and Claude Code both emit "Bearer " but a proxy could
-        # lowercase the value en route, so match either casing rather
-        # than failing closed on a cosmetic difference.
-        if not (auth_header.startswith("Bearer ")
-                or auth_header.startswith("bearer ")):
-            return None, None, None, "non_bearer_scheme"
-        token_value = auth_header[7:].strip()
-        result = _validate_temp_token(token_value)
-        if result is None:
-            return None, None, None, "not_temp_token"
-        _, label, ws_id, job_id = result
-        return ws_id, job_id, label, "ok"
-
-    # Per-request path is unavailable. The auth middleware still wrote
-    # the decoded (ws, job) into the ContextVar and thread-local for
-    # every request carrying a valid temp token, so consult those as
-    # a defensive fallback. This is the path that originally ran
-    # before the ServerMessageMetadata propagation was added and is
-    # retained purely as belt-and-braces coverage: if a future FastMCP
-    # version breaks the per-request propagation, the resolution still
-    # succeeds. The reason slot surfaces the fallback so operators can
-    # see when the per-request path is broken.
-    ctx_ws = _request_workstream_id.get(None)
-    ctx_job = _request_job_id.get(None)
-    if ctx_ws and ctx_job:
-        return ctx_ws, ctx_job, f"tmp:{ctx_ws}/{ctx_job}", "ctx_fallback"
-    tl_ws = getattr(_thread_local, "workstream_id", None)
-    tl_job = getattr(_thread_local, "job_id", None)
-    if tl_ws and tl_job:
-        return tl_ws, tl_job, f"tmp:{tl_ws}/{tl_job}", "tl_fallback"
-    return None, None, None, primary_reason
-
-
-def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
-    """Backwards-compatible 2-tuple wrapper around
-    :func:`_decode_current_request_token_full`. New callers that want the
-    diagnostic ``reason`` should use the full variant directly.
-    """
-    ws_id, job_id, _, _ = _decode_current_request_token_full()
-    return ws_id, job_id
-
-
-def _get_token_workstream_id() -> Optional[str]:
-    # Prefer per-request decoding (see _decode_current_request_token for
-    # why ContextVars/thread-locals are unreliable in FastMCP stateful mode).
-    req_ws, _ = _decode_current_request_token()
-    if req_ws:
-        return req_ws
-    ws = _request_workstream_id.get(None)
-    if ws is not None:
-        return ws
-    return getattr(_thread_local, "workstream_id", None)
-
-def _get_token_job_id() -> Optional[str]:
-    _, req_job = _decode_current_request_token()
-    if req_job:
-        return req_job
-    jid = _request_job_id.get(None)
-    if jid is not None:
-        return jid
-    return getattr(_thread_local, "job_id", None)
-
-def _set_token_context(workstream_id: str, job_id: str) -> None:
-    _request_workstream_id.set(workstream_id)
-    _request_job_id.set(job_id)
-    _thread_local.workstream_id = workstream_id
-    _thread_local.job_id = job_id
-
-
-def _validate_temp_token(token_value: str) -> Optional[tuple[list, str, str, str]]:
-    """Validate an HMAC temporary token.
-
-    Token format: armt_tmp_{base64url(hmac)}:{base64url(payload)}
-    Payload format: {workstream_id}:{job_id}:{expiry_epoch}
-
-    Returns (scopes, label, workstream_id, job_id) or None if invalid.
-    """
-    if not SHARED_SECRET:
-        return None
-    if not token_value.startswith("armt_tmp_"):
-        return None
-
-    rest = token_value[len("armt_tmp_"):]
-    parts = rest.split(":", 1)
-    if len(parts) != 2:
-        return None
-
-    token_hmac_b64, payload_b64 = parts
-    try:
-        token_hmac = base64.urlsafe_b64decode(token_hmac_b64 + "==")
-        payload = base64.urlsafe_b64decode(payload_b64 + "==").decode("utf-8")
-    except Exception:
-        return None
-
-    # Verify HMAC
-    expected_hmac = hmac.new(
-        SHARED_SECRET.encode("utf-8"),
-        payload.encode("utf-8"),
-        "sha256"
-    ).digest()
-    if not hmac.compare_digest(token_hmac, expected_hmac):
-        return None
-
-    # Parse payload
-    payload_parts = payload.split(":")
-    if len(payload_parts) != 3:
-        return None
-
-    workstream_id, job_id, expiry_str = payload_parts
-    try:
-        expiry = int(expiry_str)
-    except ValueError:
-        return None
-
-    # Check expiry
-    if time.time() > expiry:
-        return None
-
-    scopes = ["read", "write", "submit", "github", "memory-read", "memory-write"]
-    label = f"tmp:{workstream_id}/{job_id}"
-    return scopes, label, workstream_id, job_id
-
-
-def _mint_temp_token(workstream_id: str, job_id: str = "ar-manager",
-                     ttl_seconds: int = 60) -> Optional[str]:
-    """Mint an HMAC temporary token for an internal call to the controller.
-
-    The controller's workstream-scoped endpoints (e.g.
-    ``/api/secrets/{name}?workstream_id=...``) require a Bearer token in the
-    ``armt_tmp_`` family rather than the raw shared secret. ar-manager already
-    holds ``SHARED_SECRET`` (it uses it to validate inbound tokens), so it can
-    sign a short-lived temp token for the workstream and pass it through.
-
-    Returns ``None`` when ``SHARED_SECRET`` is unset.
-    """
-    if not SHARED_SECRET:
-        return None
-    expiry = int(time.time()) + ttl_seconds
-    payload = f"{workstream_id}:{job_id}:{expiry}"
-    digest = hmac.new(
-        SHARED_SECRET.encode("utf-8"),
-        payload.encode("utf-8"),
-        "sha256",
-    ).digest()
-    hmac_b64 = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    payload_b64 = base64.urlsafe_b64encode(
-        payload.encode("utf-8")).rstrip(b"=").decode("ascii")
-    return f"armt_tmp_{hmac_b64}:{payload_b64}"
-
-
-def _require_scope(scope: str) -> None:
-    """Raise if the current request does not have the required scope.
-
-    ar-manager only ever serves authenticated requests (it refuses to start
-    without tokens and only runs over HTTP/SSE), so a request that reaches a
-    tool always carries a validated token's scopes, set by
-    ``BearerAuthMiddleware``. Absent scopes mean the request did not
-    authenticate — fail closed rather than granting access.
-    """
-    scopes = _get_scopes()
-    if scopes is None:
-        raise PermissionError(
-            "Unauthenticated request: ar-manager requires a valid token"
-        )
-    if scope not in scopes:
-        raise PermissionError(
-            f"Token does not have required scope: {scope}"
-        )
-
-
-def _audit(tool_name: str, **params) -> None:
-    """Log an audit entry for a tool invocation."""
-    label = _get_token_label()
-    sanitized = {k: (v[:80] + "...") if isinstance(v, str) and len(v) > 80 else v
-                 for k, v in params.items()}
-    audit_log.info("tool=%s token=%s params=%s", tool_name, label, sanitized)
-
-
-def _check_length(value: str, name: str, max_len: int) -> Optional[dict]:
-    """Return an error dict if *value* exceeds *max_len*, else None."""
-    if len(value) > max_len:
-        return {
-            "ok": False,
-            "error": f"'{name}' exceeds maximum length of {max_len:,} characters "
-                     f"(got {len(value):,})",
-        }
-    return None
-
-
-def _check_short_strings(**kwargs) -> Optional[dict]:
-    """Validate that all provided string kwargs are within MAX_SHORT_STRING_LEN."""
-    for name, value in kwargs.items():
-        if isinstance(value, str) and len(value) > MAX_SHORT_STRING_LEN:
-            return {
-                "ok": False,
-                "error": f"'{name}' exceeds maximum length of {MAX_SHORT_STRING_LEN:,} "
-                         f"characters (got {len(value):,})",
-            }
-    return None
-
-
-def _load_tokens() -> Optional[list]:
-    """Load token definitions from env var or file.
-
-    Returns:
-        A list of token dicts, or None if no tokens are configured.
-    """
-    raw = os.environ.get("AR_MANAGER_TOKENS", "").strip()
-    if raw:
-        try:
-            data = json.loads(raw)
-            return data.get("tokens", [])
-        except json.JSONDecodeError:
-            print("ar-manager: WARNING: AR_MANAGER_TOKENS is not valid JSON",
-                  file=sys.stderr)
-            return None
-
-    if os.path.isfile(TOKEN_FILE):
-        try:
-            with open(TOKEN_FILE) as f:
-                data = json.load(f)
-            tokens = data.get("tokens", [])
-            print(f"ar-manager: Loaded {len(tokens)} token(s) from {TOKEN_FILE}",
-                  file=sys.stderr)
-            return tokens
-        except (json.JSONDecodeError, OSError) as e:
-            print(f"ar-manager: WARNING: Failed to load token file: {e}",
-                  file=sys.stderr)
-            return None
-
-    return None
-
-
-class BearerAuthMiddleware:
-    """ASGI middleware that validates Bearer tokens before passing requests
-    to the wrapped application.
-
-    Unauthenticated requests receive a 401 response. The validated token's
-    scopes are stored via ``_set_scopes`` for downstream tool handlers.
-    """
-
-    # Paths that bypass authentication (health checks, OAuth endpoints)
-    AUTH_EXEMPT_PATHS = {
-        "/_health",
-        "/.well-known/oauth-authorization-server",
-        "/.well-known/oauth-protected-resource",
-        "/oauth/register",
-        "/oauth/authorize",
-        "/oauth/token",
-    }
-
-    def __init__(self, app, tokens: list, issuer_url: Optional[str] = None):
-        self.app = app
-        # Public issuer URL used to advertise the protected-resource metadata
-        # location in the WWW-Authenticate challenge (RFC 9728). When None it
-        # is derived per-request from the Host header.
-        self.issuer_url = issuer_url.rstrip("/") if issuer_url else None
-        # Build a lookup: token value -> (scopes, label, workspace_scopes).
-        # workspace_scopes is None for unscoped (superadmin) tokens or a list
-        # of Slack workspace IDs for narrower tokens. An empty list in the
-        # config is normalised to None so callers can write either "no field"
-        # or "workspaceScopes: []" to mean unscoped.
-        self.token_entries = []
-        for t in tokens:
-            value = t.get("value", "")
-            scopes = t.get("scopes", [])
-            label = t.get("label", "unlabeled")
-            ws_scopes_raw = t.get("workspaceScopes")
-            if isinstance(ws_scopes_raw, list) and ws_scopes_raw:
-                ws_scopes: Optional[list] = [str(w) for w in ws_scopes_raw]
-            else:
-                ws_scopes = None
-            if value:
-                self.token_entries.append((value, scopes, label, ws_scopes))
-
-    def _www_authenticate(self, scope) -> bytes:
-        """Build the ``WWW-Authenticate`` challenge for a 401 response.
-
-        Advertises the protected-resource metadata location per RFC 9728 /
-        the MCP authorization spec, so an MCP client that probes the transport
-        endpoint without a token can discover the authorization server from
-        the 401 alone.
-        """
-        from oauth import derive_issuer
-        issuer = derive_issuer(scope, self.issuer_url)
-        # Point at the path-suffixed protected-resource metadata (RFC 9728) so
-        # the advertised resource matches the exact URL the client probed —
-        # including any per-connector path used purely as a cache key.
-        req_path = scope.get("path", "/")
-        suffix = "" if req_path in ("", "/") else req_path
-        prm = f"{issuer}/.well-known/oauth-protected-resource{suffix}"
-        return (f'Bearer realm="ar-manager", '
-                f'resource_metadata="{prm}"').encode("utf-8")
-
-    @staticmethod
-    def _transport_scope(scope):
-        """Normalize an authenticated request's path to the transport root.
-
-        The MCP streamable-HTTP transport is mounted at ``/``, but a connector
-        may be configured with an arbitrary path (some clients key their
-        per-connector OAuth state on the full URL, so a fresh path is the only
-        reliable way to force a brand-new authorization flow). Rewriting the
-        path here lets any such URL reach the single transport handler. OAuth,
-        well-known, and health paths are handled by outer middleware and never
-        reach this point, so only transport requests are affected.
-        """
-        if scope.get("path", "/") == "/":
-            return scope
-        rewritten = dict(scope)
-        rewritten["path"] = "/"
-        rewritten["raw_path"] = b"/"
-        return rewritten
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            # Allow auth-exempt paths (health checks)
-            path = scope.get("path", "")
-            if path in self.AUTH_EXEMPT_PATHS:
-                await self.app(scope, receive, send)
-                return
-
-            headers = dict(scope.get("headers", []))
-            auth = headers.get(b"authorization", b"").decode("utf-8", errors="replace")
-
-            if auth.startswith("Bearer "):
-                token_value = auth[7:].strip()
-                # Timing-safe comparison: iterate all entries to prevent
-                # timing side-channels that reveal token existence
-                matched_scopes = None
-                matched_label = None
-                matched_workspace_scopes = None
-                matched = False
-                for stored_value, scopes, label, ws_scopes in self.token_entries:
-                    if hmac.compare_digest(
-                        token_value.encode("utf-8"),
-                        stored_value.encode("utf-8"),
-                    ):
-                        matched_scopes = scopes
-                        matched_label = label
-                        matched_workspace_scopes = ws_scopes
-                        matched = True
-                        break
-
-                if matched:
-                    _set_scopes(matched_scopes, matched_label)
-                    _set_workspace_scopes(matched_workspace_scopes)
-                    # Static tokens are not bound to a specific workstream
-                    # or job. We MUST clear any token context that might
-                    # still be present on this thread from a previous
-                    # HMAC-temp-token request handled here — otherwise
-                    # _get_token_workstream_id() would fall back to that
-                    # stale thread-local value and incorrectly identify
-                    # this caller as an in-cluster agent on that
-                    # workstream's branch. (Static-token callers, e.g.
-                    # Claude.ai web chat or third-party API users, have
-                    # no association with any workstream's checkout and
-                    # cannot collide with one.)
-                    _set_token_context("", "")
-                    await self.app(self._transport_scope(scope), receive, send)
-                    return
-
-                # Try HMAC temporary token. Temp tokens are issued by the
-                # controller for a specific (workstream, job) pair; the
-                # token itself doesn't carry a workspace ID, so we resolve
-                # the workstream's owning workspace here and scope the
-                # request to it. In legacy (single-workspace) mode no
-                # workspace IDs exist at all — leave the scope None so
-                # behaviour matches static tokens in that deployment.
-                temp_result = _validate_temp_token(token_value)
-                if temp_result is not None:
-                    scopes, label, ws_id, job_id = temp_result
-                    workspace_id = _workspace_for_workstream(ws_id)
-                    if workspace_id is None and _is_multi_workspace_mode():
-                        # Multi-workspace deployment but the bound workstream
-                        # has no resolvable workspace — either it was removed
-                        # since the token was minted, or the config is
-                        # inconsistent. Fail closed rather than silently
-                        # granting superadmin.
-                        await send({
-                            "type": "http.response.start",
-                            "status": 401,
-                            "headers": [
-                                [b"content-type", b"application/json"],
-                                [b"www-authenticate", self._www_authenticate(scope)],
-                            ],
-                        })
-                        await send({
-                            "type": "http.response.body",
-                            "body": b'{"error":"Unauthorized: workspace for temp-token workstream could not be resolved"}',
-                        })
-                        return
-                    _set_scopes(scopes, label)
-                    _set_workspace_scopes([workspace_id] if workspace_id else None)
-                    _set_token_context(ws_id, job_id)
-                    # One line per HTTP request carrying a valid temp
-                    # token. Pair with send_message_resolved /
-                    # send_message_missing_job_id from the tool handler
-                    # to determine whether the per-request decode in the
-                    # handler saw the same (ws, job) that the middleware
-                    # observed here.
-                    audit_log.info(
-                        "temp_token_request "
-                        "method=%s path=%s "
-                        "workstream_id=%s job_id=%s workspace_id=%s",
-                        scope.get("method", ""),
-                        scope.get("path", ""),
-                        ws_id or "", job_id or "",
-                        workspace_id or "")
-                    await self.app(self._transport_scope(scope), receive, send)
-                    return
-
-            # Reject: no valid token
-            await send({
-                "type": "http.response.start",
-                "status": 401,
-                "headers": [
-                    [b"content-type", b"application/json"],
-                    [b"www-authenticate", self._www_authenticate(scope)],
-                ],
-            })
-            await send({
-                "type": "http.response.body",
-                "body": b'{"error":"Unauthorized: valid Bearer token required"}',
-            })
-            return
-
-        # Non-HTTP scopes (lifespan, websocket) pass through
-        await self.app(scope, receive, send)
-
-
-class RateLimitMiddleware:
-    """ASGI middleware implementing a per-client sliding-window rate limiter.
-
-    The client key is the raw Bearer token (before auth validation) or the
-    source IP for unauthenticated requests. Applied before auth so that
-    brute-force token guessing is also rate-limited.
-    """
-
-    def __init__(self, app, requests_per_minute: int = 60):
-        self.app = app
-        self.rpm = requests_per_minute
-        self.window = 60.0  # seconds
-        self._buckets: dict[str, list[float]] = {}
-        self._lock = threading.Lock()
-
-    def _client_key(self, scope) -> str:
-        """Extract a rate-limit key from the ASGI scope."""
-        headers = dict(scope.get("headers", []))
-        auth = headers.get(b"authorization", b"").decode("utf-8", errors="replace")
-        if auth.startswith("Bearer "):
-            return f"token:{auth[7:].strip()[:16]}"
-        # Fall back to source IP
-        client = scope.get("client")
-        if client:
-            return f"ip:{client[0]}"
-        return "unknown"
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        key = self._client_key(scope)
-        now = time.monotonic()
-        with self._lock:
-            timestamps = self._buckets.get(key, [])
-            # Evict expired entries
-            cutoff = now - self.window
-            timestamps = [t for t in timestamps if t > cutoff]
-            if len(timestamps) >= self.rpm:
-                self._buckets[key] = timestamps
-                retry_after = int(self.window - (now - timestamps[0])) + 1
-                await send({
-                    "type": "http.response.start",
-                    "status": 429,
-                    "headers": [
-                        [b"content-type", b"application/json"],
-                        [b"retry-after", str(retry_after).encode()],
-                    ],
-                })
-                await send({
-                    "type": "http.response.body",
-                    "body": b'{"error":"Rate limit exceeded. Try again later."}',
-                })
-                return
-            timestamps.append(now)
-            self._buckets[key] = timestamps
-
-        await self.app(scope, receive, send)
-
-
-class HealthMiddleware:
-    """ASGI middleware that handles ``/_health`` before the wrapped app.
-
-    Returns HTTP 200 for ``/_health`` requests so Docker/load-balancer
-    health checks work without authentication.
-    """
-
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope.get("path") == "/_health":
-            await send({
-                "type": "http.response.start",
-                "status": 200,
-                "headers": [[b"content-type", b"application/json"]],
-            })
-            await send({
-                "type": "http.response.body",
-                "body": b'{"status":"ok"}',
-            })
-            return
-        await self.app(scope, receive, send)
-
 
 # ---------------------------------------------------------------------------
-# Controller HTTP helpers
+# Workspace scope resolution — see workspace_map.py
 # ---------------------------------------------------------------------------
 
-def _controller_get(path: str, timeout: int = 10, auth_token: str = None) -> dict:
-    """GET a JSON resource from the FlowTree controller.
-
-    Args:
-        path: URL path (e.g., ``/api/health``).
-        timeout: Request timeout in seconds.
-        auth_token: Optional Bearer token for the Authorization header.
-
-    Returns:
-        Parsed JSON response as a dict.
-    """
-    url = CONTROLLER_URL.rstrip("/") + path
-    headers = {"Accept": "application/json"}
-    if auth_token:
-        headers["Authorization"] = f"Bearer {auth_token}"
-    req = Request(url, headers=headers)
-    print(f"ar-manager: GET {url}", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {}
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        logging.getLogger("ar-manager").error(
-            "Controller GET %s: HTTP %d: %s", path, e.code, body[:500])
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"Controller returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"Controller unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("Controller GET %s: %s", path, e)
-        return {"ok": False, "error": "Internal error contacting controller"}
-
-
-def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
-    """POST a JSON payload to the FlowTree controller.
-
-    Args:
-        path: URL path (e.g., ``/api/submit``).
-        payload: Dictionary to JSON-encode as the request body.
-        timeout: Request timeout in seconds.
-
-    Returns:
-        Parsed JSON response as a dict.
-    """
-    url = CONTROLLER_URL.rstrip("/") + path
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json; charset=utf-8"},
-    )
-    print(f"ar-manager: POST {url}", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {"ok": True}
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        logging.getLogger("ar-manager").error(
-            "Controller POST %s: HTTP %d: %s", path, e.code, body[:500])
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"Controller returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"Controller unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("Controller POST %s: %s", path, e)
-        return {"ok": False, "error": "Internal error contacting controller"}
-
-
-# ---------------------------------------------------------------------------
-# Workspace scope resolution
-# ---------------------------------------------------------------------------
-
-# Short-lived cache of the workstream → workspace mapping. Each entry holds
-# the mapping plus its fetch timestamp. Refreshed whenever the last fetch is
-# older than WORKSPACE_CACHE_TTL seconds. Controller is local so hitting
-# /api/workstreams is cheap, but refetching on every tool invocation adds
-# avoidable latency to short read tools.
-_workspace_map_cache: dict = {"map": None, "org_map": None, "fetched": 0.0}
-_workspace_map_lock = threading.Lock()
-WORKSPACE_CACHE_TTL = 30.0
-
-
-def _build_maps_from_workstreams(entries: list) -> tuple:
-    """Build ``(workstream_id → workspace_id, org_name → set(workspace_ids))``
-    from a workstream list. Workstreams whose ``repoUrl`` cannot be parsed
-    as a GitHub URL contribute nothing to the org map. An org may appear
-    in multiple workspaces; the org map tracks the full set so ambiguity
-    can be detected by :func:`_require_org_in_scope` rather than silently
-    resolved (either first-wins or last-wins would mis-authorise a scoped
-    token if the same org is shared across workspaces).
-    """
-    ws_map: dict = {}
-    org_map: dict = {}
-    if not isinstance(entries, list):
-        return ws_map, org_map
-    for ws in entries:
-        if not isinstance(ws, dict):
-            continue
-        wid = ws.get("workstreamId")
-        # Prefer the new workspaceId field; fall back to the legacy alias
-        # so we stay compatible with older controllers that still emit
-        # only slackWorkspaceId on the workstream list.
-        workspace_id = ws.get("workspaceId") or ws.get("slackWorkspaceId")
-        if wid:
-            ws_map[wid] = workspace_id
-        org = _extract_owner_repo(ws.get("repoUrl") or "")
-        if org and workspace_id:
-            org_map.setdefault(org[0], set()).add(workspace_id)
-    return ws_map, org_map
-
-
-def _refresh_workspace_map() -> tuple:
-    """Fetch the workstream list from the controller and return fresh
-    ``(workstream_id → workspace_id, org_name → workspace_id)`` maps.
-    """
-    result = _controller_get("/api/workstreams")
-    entries = result if isinstance(result, list) else result.get("workstreams", [])
-    return _build_maps_from_workstreams(entries)
-
-
-def _get_cached_maps(workstream_id: str = "", org: str = "") -> tuple:
-    """Return ``(workstream_map, org_map)`` from the cache, refreshing if
-    the cache is older than ``WORKSPACE_CACHE_TTL`` or if an expected key
-    is missing (handles a just-registered workstream or just-added org).
-
-    The lock is held only around cache reads and writes; the network
-    fetch happens outside the lock so concurrent callers do not serialize
-    behind a single slow I/O. Double-checked-locking pattern.
-    """
-    now = time.monotonic()
-    with _workspace_map_lock:
-        ws_map = _workspace_map_cache.get("map")
-        org_map = _workspace_map_cache.get("org_map")
-        fetched = _workspace_map_cache.get("fetched", 0.0)
-        fresh = (ws_map is not None and org_map is not None
-                 and (now - fetched) <= WORKSPACE_CACHE_TTL)
-    needs_refresh = not fresh
-    if fresh:
-        if workstream_id and workstream_id not in ws_map:
-            needs_refresh = True
-        elif org and org not in org_map:
-            needs_refresh = True
-    if not needs_refresh:
-        return ws_map, org_map
-    new_ws_map, new_org_map = _refresh_workspace_map()
-    new_fetched = time.monotonic()
-    with _workspace_map_lock:
-        _workspace_map_cache["map"] = new_ws_map
-        _workspace_map_cache["org_map"] = new_org_map
-        _workspace_map_cache["fetched"] = new_fetched
-    return new_ws_map, new_org_map
-
-
-def _workspace_for_workstream(workstream_id: str) -> Optional[str]:
-    """Return the Slack workspace ID that owns ``workstream_id``, or None
-    if the workstream is unknown or has no workspace assignment.
-    """
-    if not workstream_id:
-        return None
-    ws_map, _ = _get_cached_maps(workstream_id=workstream_id)
-    return ws_map.get(workstream_id)
-
-
-def _is_multi_workspace_mode() -> bool:
-    """Return True when the controller is running in multi-workspace mode —
-    i.e., at least one registered workstream has a non-null
-    ``slackWorkspaceId``. Used by the temp-token validator to decide
-    whether a workstream whose workspace cannot be resolved should be
-    rejected (multi-workspace mode) or accepted as unscoped (legacy
-    single-workspace mode).
-    """
-    ws_map, _ = _get_cached_maps()
-    return any(v for v in ws_map.values())
-
-
-def _workspaces_for_org(org: str) -> set:
-    """Return the set of Slack workspace IDs that declare at least one
-    workstream on the given GitHub org (i.e., a ``repoUrl`` on that org).
-    Empty when no registered workstream ties that org to any workspace.
-    """
-    if not org:
-        return set()
-    _, org_map = _get_cached_maps(org=org)
-    return set(org_map.get(org, set()))
-
-
-def _require_org_in_scope(org: str) -> None:
-    """Raise :class:`PermissionError` if the current request's workspace
-    scope does not permit operating on the given GitHub org.
-
-    Unscoped callers always pass — they're trusted to name any org the
-    controller holds a PAT for, and the controller will reject unknown
-    orgs itself.
-
-    Scoped callers are accepted only when the org is unambiguously owned
-    by a single workspace in their scope. An org that:
-      - has no registered workstream anywhere → denied.
-      - appears under multiple workspaces → denied (the controller's
-        per-org PAT map is last-wins, so even if the caller is in ONE of
-        the owning workspaces, a direct-org proxy call may end up using
-        a token issued for a different workspace's workstreams).
-      - appears under one workspace that is not in the caller's scope →
-        denied.
-
-    The scoped caller's fallback in the multi-workspace case is to pass a
-    workstream_id, which disambiguates the target workspace (and therefore
-    the PAT) unambiguously.
-    """
-    if not _get_workspace_scopes():
-        return
-    owners = _workspaces_for_org(org)
-    if not owners:
-        raise PermissionError(
-            f"Token is not scoped to any workspace containing GitHub org '{org}'. "
-            "Either pass a workstream_id that belongs to your scope, or ask "
-            "the operator to link the org to a workspace via workstreams.yaml.")
-    if len(owners) > 1:
-        raise PermissionError(
-            f"GitHub org '{org}' is registered under multiple Slack workspaces "
-            f"({sorted(owners)}). Direct-org addressing is ambiguous for scoped "
-            "tokens because the controller's per-org PAT is last-wins; pass a "
-            "workstream_id instead so the workspace (and therefore the PAT) is "
-            "uniquely determined.")
-    (only_workspace,) = owners
-    _require_workspace(only_workspace)
-
-
-def _require_workstream_in_scope(workstream_id: str) -> None:
-    """Resolve the workspace owning ``workstream_id`` and raise
-    PermissionError if the current request's token does not permit it.
-    No-op when the caller's token is unscoped.
-    """
-    if not _get_workspace_scopes():
-        return
-    ws_id = _workspace_for_workstream(workstream_id)
-    _require_workspace(ws_id)
-
-
-# Short-lived cache of the per-workstream ``dispatchCapable`` flag. The
-# controller's ``toSummaryJson`` (Java side, Workstream.java) emits the
-# field as ``"dispatchCapable": true`` only when set, so the cached map
-# holds a small set of dispatch-capable workstream IDs rather than a
-# full {id: bool} map. The TTL matches ``WORKSPACE_CACHE_TTL`` so the
-# two caches refresh on the same cadence — both come from the same
-# /api/workstreams list.
-_dispatch_capable_cache: dict = {"ids": None, "fetched": 0.0}
-_dispatch_capable_lock = threading.Lock()
-
-
-def _refresh_dispatch_capable_ids() -> set:
-    """Fetch the workstream list from the controller and return the set
-    of workstream IDs that have ``dispatchCapable: true``.
-
-    Returns an empty set when the controller is unreachable or returns
-    a non-list payload. The empty set is the fail-closed default: an
-    ar-manager that cannot reach its controller refuses to grant
-    dispatch, which is the safer direction (false negatives do not
-    silently expose the dispatch tools; false positives are exactly
-    what the controller-side check is designed to prevent).
-    """
-    try:
-        result = _controller_get("/api/workstreams")
-    except Exception:
-        return set()
-    if isinstance(result, list):
-        entries = result
-    elif isinstance(result, dict):
-        entries = result.get("workstreams", [])
-    else:
-        return set()
-    if not isinstance(entries, list):
-        return set()
-    ids = set()
-    for ws in entries:
-        if not isinstance(ws, dict):
-            continue
-        if ws.get("dispatchCapable") is True:
-            wid = ws.get("workstreamId")
-            if wid:
-                ids.add(wid)
-    return ids
-
-
-def _get_dispatch_capable_ids() -> set:
-    """Return the cached set of dispatch-capable workstream IDs,
-    refreshing if the cache is older than ``WORKSPACE_CACHE_TTL``.
-    """
-    now = time.monotonic()
-    with _dispatch_capable_lock:
-        ids = _dispatch_capable_cache.get("ids")
-        fetched = _dispatch_capable_cache.get("fetched", 0.0)
-        fresh = (ids is not None
-                 and (now - fetched) <= WORKSPACE_CACHE_TTL)
-    if fresh:
-        return ids
-    new_ids = _refresh_dispatch_capable_ids()
-    with _dispatch_capable_lock:
-        _dispatch_capable_cache["ids"] = new_ids
-        _dispatch_capable_cache["fetched"] = time.monotonic()
-    return new_ids
-
-
-def _require_dispatch_capable() -> None:
-    """Raise :class:`PermissionError` when the calling workstream is
-    not dispatch-capable. The check is the controller-side backstop
-    for the opencode harness's per-SERVER filtering — the harness
-    CSV cannot precisely gate individual MCP tools for opencode
-    sessions, so the controller must enforce.
-
-    Behavior:
-      - Unscoped tokens (``"unscoped"`` / superadmin): always permitted.
-        The operator-level caller is trusted to register and update
-        workstreams directly.
-      - Job-scoped HMAC tokens (a calling workstream is identified):
-        denied when the calling workstream's ``dispatchCapable`` flag
-        is not ``true``. A no-op when the flag is ``true``.
-      - Callers that are neither unscoped nor job-scoped (e.g. an
-        admin token without a workstream binding): always permitted.
-        The check is specifically for the agent path; admin flows
-        have their own auth.
-
-    The fail-closed default (a fresh cache returns an empty set, so a
-    workstream that just opted in is not yet recognized) trades a
-    short window after enabling dispatch for the guarantee that a
-    broken controller cannot silently grant it. Operators setting up
-    a new orchestrator wait at most ``WORKSPACE_CACHE_TTL`` seconds
-    before the first dispatch call succeeds.
-    """
-    caller_ws_id = _get_token_workstream_id()
-    if not caller_ws_id:
-        # No job-scoped identity; the check does not apply.
-        return
-    if caller_ws_id in _get_dispatch_capable_ids():
-        return
-    raise PermissionError(
-        "workstream_register / workstream_update_config require the"
-        " calling workstream to be dispatch-capable. The current"
-        " workstream ('" + caller_ws_id + "') has dispatchCapable=false"
-        " in the controller config. Operators enable this flag per"
-        " workstream with workstream_update_config(...,"
-        " dispatch_capable=True)."
-    )
-
-
-def _filter_workstreams_by_scope(entries: list) -> list:
-    """Return only those workstream-dict entries whose workspaceId is
-    permitted by the current request's workspace scope. Unscoped callers
-    see everything; scoped callers see only in-scope workstreams.
-    Accepts the legacy ``slackWorkspaceId`` field for backward
-    compatibility with controllers that have not yet started emitting
-    ``workspaceId``.
-    """
-    scopes = _get_workspace_scopes()
-    if not scopes:
-        return entries
-    filtered = []
-    for ws in entries:
-        if isinstance(ws, dict):
-            wsid = ws.get("workspaceId") or ws.get("slackWorkspaceId")
-            if wsid in scopes:
-                filtered.append(ws)
-    return filtered
-
-
-def _filter_tasks_by_scope(tasks: list) -> list:
-    """Return only those task-dict entries whose linked workstream is
-    permitted by the current request's workspace scope. Unscoped callers
-    see all tasks; scoped callers see only tasks attached to a workstream
-    inside their workspace. Tasks with no workstream_id (project-level
-    tasks not bound to any workstream) are dropped for scoped callers,
-    because the workspace-scoping rule for agent callers requires an
-    attached workstream — there is no safe interpretation of "this task
-    belongs to your workspace" when no workstream link exists. Malformed
-    non-list task payloads are rejected for scoped callers by returning
-    an empty list.
-    """
-    if not _get_workspace_scopes():
-        return tasks
-    if not isinstance(tasks, list):
-        return []
-    filtered = []
-    for t in tasks:
-        if not isinstance(t, dict):
-            continue
-        ws_id = t.get("workstream_id") or ""
-        if not ws_id:
-            continue
-        if _is_workspace_allowed(_workspace_for_workstream(ws_id)):
-            filtered.append(t)
-    return filtered
-
+from workspace_map import (
+    _workspace_map_cache,
+    _workspace_map_lock,
+    _build_maps_from_workstreams,
+    _refresh_workspace_map,
+    _get_cached_maps,
+    _workspace_for_workstream,
+    _is_multi_workspace_mode,
+    _workspaces_for_org,
+    _require_org_in_scope,
+    _require_workstream_in_scope,
+    _dispatch_capable_cache,
+    _dispatch_capable_lock,
+    _refresh_dispatch_capable_ids,
+    _get_dispatch_capable_ids,
+    _require_dispatch_capable,
+    _filter_workstreams_by_scope,
+    _filter_tasks_by_scope,
+    _pipeline_error,
+    _find_workstream,
+)
 
 # ---------------------------------------------------------------------------
 # GitHub API helpers — delegated to github_api.py to reduce file size
@@ -1265,59 +214,12 @@ def _filter_tasks_by_scope(tasks: list) -> list:
 import github_api  # noqa: E402
 
 # Re-export so existing call sites (pipeline tools, memory tools, tests) work unchanged.
-# configure() is called below after _find_workstream is defined.
 _github_request = github_api._github_request
 _github_graphql_request = github_api._github_graphql_request
 _set_github_org = github_api._set_github_org
 _extract_owner_repo = github_api._extract_owner_repo
 _current_github_org = github_api._current_github_org
 _resolve_github_repo = github_api._resolve_github_repo
-
-
-# ---------------------------------------------------------------------------
-# Capability validation helpers
-# ---------------------------------------------------------------------------
-
-def _pipeline_error(workstream_id: str, missing: str) -> dict:
-    """Return a structured error for Tier 2 tools called on
-    non-pipeline-capable workstreams.
-    """
-    return {
-        "ok": False,
-        "error": f"Workstream '{workstream_id}' does not support pipeline operations",
-        "reason": f"Missing: {missing}",
-        "suggestion": (
-            "Use workstream_update_config to set the missing field, "
-            "then use workstream_list to confirm pipeline_capable=true"
-        ),
-        "next_steps": [
-            f"Call workstream_update_config with {missing}",
-            "Then call workstream_list to confirm pipeline_capable=true",
-        ],
-    }
-
-
-def _find_workstream(workstream_id: str) -> Optional[dict]:
-    """Fetch a specific workstream from the controller's list.
-
-    Enforces the current request's workspace scope as a side effect: a
-    scoped caller looking up a workstream in an out-of-scope workspace
-    receives None (the lookup appears to fail, rather than leaking
-    existence or 403'ing from every call site independently).
-
-    Returns:
-        The workstream dict, or None if not found or not in scope.
-    """
-    result = _controller_get("/api/workstreams")
-    if isinstance(result, list):
-        for ws in result:
-            if ws.get("workstreamId") == workstream_id:
-                if _get_workspace_scopes() and not _is_workspace_allowed(
-                        ws.get("workspaceId") or ws.get("slackWorkspaceId")):
-                    return None
-                return ws
-    return None
-
 
 # Now that _find_workstream is defined, configure the GitHub API module.
 # ar-manager deliberately does not hold a GitHub token; all requests route
@@ -1332,6 +234,13 @@ github_api.configure(
 
 # ---------------------------------------------------------------------------
 # MCP server and tool definitions
+# TODO(review): server.py is 5578 lines — still well above the 1500-line soft limit after
+# the prior session's extraction of auth/config/controller_client/tracker_client/workspace_map.
+# Next extraction targets: github_tools.py (~900 lines), tracker_tools.py (~300 lines),
+# workstream_tools.py (~600 lines), memory_tools.py (~300 lines). KEY CONSTRAINT:
+# McpToolDiscoveryTest.java scans server.py for @mcp.tool() — the scanner must be updated
+# (or taught to scan multiple files) before tool functions can move. See review-followup
+# memory workstream:98600d20-225d-488c-ad3b-cfa4a1e547aa for the full analysis.
 # ---------------------------------------------------------------------------
 
 from mcp.server.fastmcp import FastMCP
@@ -1805,6 +714,7 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
     retrospective_enabled: bool = False,
+    falsification_enabled: bool = False,
     use_tmux: Optional[bool] = None,
     sensitive_file_protection_enabled: bool = True,
     review_enabled: bool = True,
@@ -1913,6 +823,18 @@ def workstream_submit_task(
             or stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
             ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
+        falsification_enabled: When ``True``, activates the falsification phase
+            after the primary session and before the enforcement rules. A
+            separate agent session extracts the primary attempt's load-bearing
+            behavioural claims and the captured evidence bearing on each; the
+            controller then settles each claim mechanically and BOUNCES the job
+            back to a fresh primary run when captured evidence refutes a claim
+            (bounded by a bounce budget). v1 settles claims only from captured
+            artifacts and source — it does not emit probes, so a claim that can
+            only be settled by running something on an unavailable configuration
+            is reported UNSETTLED rather than confirmed. Disabled by default.
+            Configure the analysis model via
+            ``phase_configs='{"falsification":{"model":"claude-sonnet-4-7"}}'``.
         use_tmux: Per-job override for tmux-backed launch, using presence
             semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
@@ -1993,13 +915,14 @@ def workstream_submit_task(
                   "effort": "medium", "provider": "openrouter"}'
 
         phase_configs: Per-phase configuration overrides as a JSON object
-            whose keys are phase wire names (``"primary"``, ``"review"``,
-            ``"deduplication"``, ``"organizational-placement"``,
-            ``"enforce-changes"``, ``"maven-dependency-protection"``,
-            ``"post-completion"``, ``"commit-message"``,
-            ``"git-tampering-restart"``, ``"retrospective"``) and whose values
-            are ``{runner, model, effort, provider}`` objects (all keys
-            optional). Each named phase overrides ``default_phase_config``
+            whose keys are phase wire names (``"primary"``, ``"enforce-changes"``,
+            ``"review"``, ``"deduplication"``, ``"organizational-placement"``,
+            ``"maven-dependency-protection"``, ``"post-completion"``,
+            ``"commit-message"``, ``"git-tampering-restart"``,
+            ``"push-conflict-resolution"``, ``"retrospective"``,
+            ``"falsification"``) and whose values are
+            ``{runner, model, effort, provider}`` objects (all keys optional).
+            Each named phase overrides ``default_phase_config``
             field-by-field. Example::
 
                 '{"review": {"model": "claude-opus-4-7", "effort": "high"},
@@ -2228,6 +1151,8 @@ def workstream_submit_task(
         payload["enforceOrganizationalPlacement"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
+    if falsification_enabled:
+        payload["falsificationEnabled"] = True
     # Presence semantics: forward useTmux only when explicitly set so an
     # explicit False reaches the controller and overrides the workstream
     # default (the controller distinguishes absent from false via hasField).
@@ -5833,114 +4758,7 @@ def github_pr_check_status(
     }
 
 
-# ---------------------------------------------------------------------------
-# Tracker HTTP helpers
-# ---------------------------------------------------------------------------
-
-TRACKER_URL = os.environ.get("AR_TRACKER_URL", "http://ar-tracker:8030")
-_TRACKER_AUTH_TOKEN = os.environ.get("AR_TRACKER_AUTH_TOKEN", "")
-
-
-def _tracker_headers() -> dict:
-    h = {"Accept": "application/json"}
-    if _TRACKER_AUTH_TOKEN:
-        h["Authorization"] = f"Bearer {_TRACKER_AUTH_TOKEN}"
-    return h
-
-
-def _tracker_get(path: str, timeout: int = 10) -> dict:
-    """GET a JSON resource from the ar-tracker service."""
-    url = TRACKER_URL.rstrip("/") + path
-    req = Request(url, headers=_tracker_headers())
-    print(f"ar-manager: TRACKER GET {url}", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {}
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("Tracker GET %s: %s", path, e)
-        return {"ok": False, "error": "Internal error contacting tracker"}
-
-
-def _tracker_post(path: str, payload: dict, timeout: int = 15) -> dict:
-    """POST a JSON payload to the ar-tracker service."""
-    url = TRACKER_URL.rstrip("/") + path
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    h = _tracker_headers()
-    h["Content-Type"] = "application/json; charset=utf-8"
-    req = Request(url, data=data, headers=h)
-    print(f"ar-manager: TRACKER POST {url}", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {"ok": True}
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("Tracker POST %s: %s", path, e)
-        return {"ok": False, "error": "Internal error contacting tracker"}
-
-
-def _tracker_put(path: str, payload: dict, timeout: int = 15) -> dict:
-    """PUT a JSON payload to the ar-tracker service."""
-    url = TRACKER_URL.rstrip("/") + path
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    h = _tracker_headers()
-    h["Content-Type"] = "application/json; charset=utf-8"
-    req = Request(url, data=data, headers=h, method="PUT")
-    print(f"ar-manager: TRACKER PUT {url}", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {"ok": True}
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("Tracker PUT %s: %s", path, e)
-        return {"ok": False, "error": "Internal error contacting tracker"}
-
-
-def _tracker_delete(path: str, timeout: int = 10) -> dict:
-    """DELETE a resource from the ar-tracker service."""
-    url = TRACKER_URL.rstrip("/") + path
-    req = Request(url, headers=_tracker_headers(), method="DELETE")
-    print(f"ar-manager: TRACKER DELETE {url}", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {"ok": True}
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("Tracker DELETE %s: %s", path, e)
-        return {"ok": False, "error": "Internal error contacting tracker"}
-
+# Tracker HTTP helpers are in tracker_client.py (imported above).
 
 # -- Tracker tools -----------------------------------------------------------
 

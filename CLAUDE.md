@@ -218,9 +218,30 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
 
 
+## Rule 3b: AR-PROFILE-ANALYZER FIRST FOR KERNEL BEHAVIOR
+
+`ar-profile-analyzer` is the PRIMARY tool for studying how a **kernel program behaves** — any
+task where a computation produces the wrong value (`0.0`, `NaN`, an incorrect result), or where
+you need to understand what a compiled operation actually does. **Before hand-instrumenting the
+framework with `log()`/`warn()` probes, and before theorizing about a mechanism, use
+`ar-profile-analyzer` to look INSIDE the kernel.** It loads a run's operation profile and exposes
+the compiled operation tree (`list_children`), per-operation timing (`get_timing_breakdown`,
+`find_slowest`), and — decisively — the **generated kernel source and its argument bindings**
+(`get_source`), including how aggregated arguments are addressed via per-argument `offset`/`size`
+into a shared buffer. A "computes-the-wrong-value" bug is read directly off the generated source
+and argument offsets; it is NOT diagnosed by guessing at execution ordering.
+
+Profiles are written to `<module>/results/*.xml` (named by each test's `OperationProfile`). If the
+failing operation has no profile, wire a small profiled reproduction of that exact graph, run it
+under the relevant backend (e.g. `AR_HARDWARE_DRIVER=mtl`), and inspect the generated source.
+
+**Mechanical rule:** for a wrong-output / `0.0` / `NaN` kernel investigation, an `ar-profile-analyzer`
+call comes before any framework `log()` probe you add yourself.
+
+
 ## Rule 4: IF A MANDATORY TOOL IS MISSING, TELL THE USER FIRST
 
-If any MCP tool named as mandatory by these rules (ar-consultant, ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-memory) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
+If any MCP tool named as mandatory by these rules (ar-consultant, ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-memory, ar-profile-analyzer) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
 
 Say explicitly which tool is missing and what rule it was needed for. Example:
 

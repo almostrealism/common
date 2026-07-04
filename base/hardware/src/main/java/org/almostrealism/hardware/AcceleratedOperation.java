@@ -22,6 +22,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.concurrent.Submittable;
@@ -40,7 +41,6 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.hardware.metal.MTLBuffer;
-import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
@@ -72,8 +72,8 @@ import java.util.List;
  * <pre>{@code
  * // When scope is prepared:
  * prepareScope() {
- *     // Creates MemoryDataArgumentMap
- *     argumentMap = MemoryDataArgumentMap.create();
+ *     // Creates MemoryDataArgumentMap bound to this operation's ComputeContext
+ *     argumentMap = MemoryDataArgumentMap.create(getComputeContext(), aggregateGenerator);
  * }
  * }</pre>
  *
@@ -95,7 +95,7 @@ import java.util.List;
  * <pre>{@code
  * @Override
  * public InstructionSetManager getInstructionSetManager() {
- *     return Hardware.getLocalHardware().getComputeContext().getKernelManager();
+ *     return getComputeContext().getKernelManager();  // The context this operation was created with
  * }
  *
  * @Override
@@ -138,10 +138,10 @@ import java.util.List;
  * <h3>Creating a Kernel Operation</h3>
  * <pre>{@code
  * public class VectorAddOperation extends AcceleratedComputationOperation {
- *     public VectorAddOperation(Producer<PackedCollection> a,
- *                               Producer<PackedCollection> b) {
- *         super(Hardware.getLocalHardware().getComputeContext(), true,
- *               a.get().evaluate(), b.get().evaluate());
+ *     public VectorAddOperation(Computation<Void> computation) {
+ *         // The Computer selects the context from the computation's characteristics;
+ *         // never reach for the ambient/default context to make this choice
+ *         super(Hardware.getLocalHardware().getComputer().getContext(computation), computation);
  *     }
  *
  *     @Override
@@ -171,7 +171,7 @@ import java.util.List;
  * @see AcceleratedProcessDetails
  */
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
-							implements Runnable, Submittable, ScopeLifecycle, Countable, HardwareFeatures {
+							implements Runnable, Submittable, ScopeLifecycle, Countable, Aggregatable, HardwareFeatures {
 
 	/** Console for logging accelerated operation events. */
 	public static Console console = Computation.console.child();
@@ -303,8 +303,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		// Provide an aggregate-buffer factory so that small input arguments can be folded into
 		// a single kernel argument (keeping the kernel's argument count under the compute
-		// context's limit). Eligibility is decided per argument by size inside the map.
-		argumentMap = MemoryDataArgumentMap.create(i -> createAggregatedInput(i, i));
+		// context's limit). Eligibility is decided per argument by size inside the map. Operations
+		// that opt out (see isArgumentAggregationSupported) get a map with no aggregation.
+		argumentMap = MemoryDataArgumentMap.create(getComputeContext(),
+				isArgumentAggregationSupported() ? i -> createAggregatedInput(i, i) : null);
 
 		prepareScope(argumentMap);
 	}
@@ -420,7 +422,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return A new {@link MemoryReplacementManager} configured for this operation
 	 */
 	protected MemoryReplacementManager createMemoryReplacementManager() {
-		return new MemoryReplacementManager(
+		return new MemoryReplacementManager(getComputeContext(),
 				getComputeContext().getDataContext().getKernelMemoryProvider(),
 				this::createAggregatedInput);
 	}
@@ -511,22 +513,29 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * on the prior operation's completion <em>inside the provider</em> (e.g. an OpenCL
 	 * {@code cl_event} wait-list) rather than blocking the host. The returned details'
 	 * {@link AcceleratedProcessDetails#getSemaphore() completion semaphore} is this
-	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.</p>
+	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.
+	 * Completions of asynchronously produced arguments (delivered via
+	 * {@link AcceleratedProcessDetails#result(int, Object, Semaphore)}) are merged with
+	 * {@code dependsOn} through {@link Semaphore#all}, so the kernel is ordered after the
+	 * work producing its inputs the same way.</p>
 	 *
-	 * <p><strong>Execution model.</strong> Two independent host-mediated memory mechanisms may wrap
-	 * the kernel, and they unwind in reverse order of how they are set up:</p>
+	 * <p><strong>Execution model.</strong> Two independent memory mechanisms may wrap
+	 * the kernel, and they unwind in reverse order of how they are set up. Every copy on both
+	 * sides is a {@link Submittable} over the operation's
+	 * {@link io.almostrealism.code.ComputeContext#copy(Object, Object, Semaphore) ComputeContext copy},
+	 * chained on the completion it must be ordered after — nothing in this method blocks the
+	 * host; the operation's completion semaphore is the tail of the chain, waited only at a
+	 * genuine boundary (the {@code OperationList} runner's trailing wait, or a top-level
+	 * {@code run()}/{@code evaluate()}):</p>
 	 * <ul>
 	 *   <li><strong>Cross-provider replacement</strong> (active when {@code !process.isEmpty()};
 	 *   managed by {@link org.almostrealism.hardware.mem.MemoryReplacementManager}). Arguments not
 	 *   already on the kernel's provider are reserved into a provider-owned temp:
-	 *   {@code process.getPrepare()} copies them in, {@code process.getPostprocess()} copies the
-	 *   results back. That copy-back crosses providers, so it must run only after the kernel has
-	 *   actually completed — which forces a per-operation completion wait (and, on Metal, a per-op
-	 *   command-buffer commit). Operations that need no replacement do NOT wait here: their dispatch
-	 *   accumulates into the provider's open command buffer and is committed once at the genuine
-	 *   boundary (the {@code OperationList} runner's trailing wait, or a top-level
-	 *   {@code run()}/{@code evaluate()}) — this is where Metal command-buffer batching happens, so
-	 *   only the replaced op pays the per-op commit.</li>
+	 *   {@code process.getPrepareOperations()} copies them in before the kernel (chained ahead of
+	 *   it), {@code process.getPostprocessOperations()} copies the results back chained on the
+	 *   kernel's completion. A context with no asynchronous copy mechanism waits for the kernel
+	 *   inside the copy's submit, so behavior degrades to the previous per-operation wait only
+	 *   where the hardware cannot do better.</li>
 	 *   <li><strong>Compile-time argument aggregation</strong> (active when the argument map has
 	 *   replacements; managed by {@link MemoryDataArgumentMap}). Small inputs are folded into one
 	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
@@ -558,68 +567,83 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
+		// Requirements are thread-local, and the listener below may run on another
+		// thread when dispatch is asynchronous; capture them here to re-establish there
+		List<ComputeRequirement> activeRequirements =
+				Hardware.getLocalHardware().getComputer().getActiveRequirements();
+
 		process.whenReady(() -> {
-			MemoryData input[] = process.getArguments(MemoryData[]::new);
-
-			// Prepare the operator
-			Execution operator = setupOperator(process);
-
-			// Two host-mediated memory mechanisms may wrap the kernel (see method javadoc):
-			// compile-time argument aggregation (aggregating) and cross-provider replacement
-			// (processing). They are set up here and unwound in reverse order after the kernel runs.
-			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
-			boolean aggregateCopyOut = aggregating
-					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
-
-			if (aggregating) {
-				argumentMap.getPrepareData().get().run();
+			if (!activeRequirements.isEmpty()) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(activeRequirements);
 			}
 
-			boolean processing = !process.isEmpty();
+			try {
+				MemoryData input[] = process.getArguments(MemoryData[]::new);
 
-			// Preprocessing
-			if (processing) {
-				process.getPrepare().get().run();
-			}
+				// Prepare the operator
+				Execution operator = setupOperator(process);
 
-			// Run the operator, chaining on the prior operation's completion when provided
-			Semaphore nextSemaphore = operator.accept(input, dependsOn);
-			MetalCommandRunner.diagApplyDispatches.incrementAndGet();
+				boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
+				boolean aggregateCopyOut = aggregating
+						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
+				boolean processing = !process.isEmpty();
 
-			// Register kernel semaphore with the active heap stage so
-			// that pop() waits for kernel completion before destroying memory
-			Heap.addPendingKernel(nextSemaphore);
+				// Copy-in groups chain on one another, and the kernel chains on the last of them.
+				// Arguments delivered asynchronously with an outstanding completion (see
+				// AcceleratedProcessDetails.getArgumentCompletions()) are merged in here, so the
+				// kernel is ordered after the work producing them without any host wait.
+				List<Semaphore> pending = process.getArgumentCompletions();
+				pending.add(dependsOn);
+				Semaphore ready = Semaphore.all(getMetadata(), pending);
 
-			// Adopt the operator's device-completion semaphore as the process completion so
-			// callers wait on (and can chain via dependsOn) the actual kernel completion
-			// rather than the host-readiness latch. When the operator returns null (fully
-			// synchronous providers) the host latch remains the completion — behavior is
-			// unchanged.
-			process.setSemaphore(nextSemaphore);
-
-			// Postprocessing runs only for ops that need it (cross-provider replacement and/or
-			// aggregation copy-out); plain ops stay batched. The per-op wait ensures the kernel has
-			// completed before the host-mediated copy-backs read its results.
-			if (processing || aggregateCopyOut) {
-				if (nextSemaphore != null) {
-					// TODO  result in a new Semaphore that performs the postprocessing when the
-					// TODO  original semaphore finishes, rather than blocking the host here
-					if (processing) MetalCommandRunner.diagApplyProcessingWaits.incrementAndGet();
-					if (aggregateCopyOut) MetalCommandRunner.diagApplyAggregateWaits.incrementAndGet();
-					nextSemaphore.waitFor();
+				if (aggregating) {
+					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
+					if (prepared != null) ready = prepared;
 				}
 
-				// Reverse-order unwind (see javadoc): the replacement copy-back (temp->aggregate) MUST
-				// precede aggregation's de-aggregation (aggregate->originals), or the de-aggregation
-				// reads a stale aggregate and the result reads as zero.
 				if (processing) {
-					process.getPostprocess().get().run();
+					Semaphore prepared = Submittable.submit(process.getPrepareOperations(), ready);
+					if (prepared != null) ready = prepared;
+				}
+
+				// Run the operator, chaining on the last copy-in (or the caller's prior completion).
+				Semaphore nextSemaphore = operator.accept(input, ready);
+
+				// Register kernel semaphore with the active heap stage so
+				// that pop() waits for kernel completion before destroying memory
+				Heap.addPendingKernel(nextSemaphore);
+
+				Semaphore completion = nextSemaphore;
+
+				// Copy-out unwinds in reverse order; see the method javadoc
+				if (processing) {
+					Semaphore copyBack = Submittable.submit(process.getPostprocessOperations(), completion);
+					if (copyBack != null) completion = copyBack;
 				}
 
 				if (aggregateCopyOut) {
-					(output == null ?
-							argumentMap.getPostprocessData() :
-							argumentMap.getPostprocessData((MemoryData) output)).get().run();
+					Semaphore copyOut = Submittable.submit(output == null ?
+							argumentMap.getPostprocessOperations(null) :
+							argumentMap.getPostprocessOperations((MemoryData) output), completion);
+					if (copyOut != null) {
+						completion = copyOut;
+					}
+				}
+
+				// Adopt the final completion (the kernel, or the de-aggregation copy-out when present) as
+				// the process completion so callers wait on (and can chain via dependsOn) the actual end
+				// of the operation rather than the host-readiness latch. When the operator returns null
+				// (fully synchronous providers) the host latch remains the completion — behavior is
+				// unchanged.
+				process.setSemaphore(completion);
+
+				if (completion != null && completion != nextSemaphore) {
+					// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
+					Heap.addPendingKernel(completion);
+				}
+			} finally {
+				if (!activeRequirements.isEmpty()) {
+					Hardware.getLocalHardware().getComputer().popRequirements();
 				}
 			}
 		});

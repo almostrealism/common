@@ -166,6 +166,21 @@ public class MTL {
 	public static native long computeCommandEncoder(long commandBuffer);
 
 	/**
+	 * Encodes a buffer-to-buffer copy onto the command buffer via a blit command encoder, so the copy
+	 * is queued alongside the surrounding compute dispatches and ordered against them by Metal's
+	 * in-buffer hazard tracking.
+	 *
+	 * @param commandBuffer      Native command buffer pointer
+	 * @param sourceBuffer       Native source buffer pointer
+	 * @param sourceOffset       Byte offset within the source buffer
+	 * @param destinationBuffer  Native destination buffer pointer
+	 * @param destinationOffset  Byte offset within the destination buffer
+	 * @param size               Number of bytes to copy
+	 */
+	public static native void blitCopy(long commandBuffer, long sourceBuffer, long sourceOffset,
+									   long destinationBuffer, long destinationOffset, long size);
+
+	/**
 	 * Creates an {@code MTLSharedEvent} on the device, used to order dispatches across command
 	 * buffers on the GPU (the analog of an OpenCL {@code cl_event}).
 	 *

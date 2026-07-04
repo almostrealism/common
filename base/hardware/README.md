@@ -849,6 +849,18 @@ MemoryBank<PackedCollection<?>> bank =
 // 1 GPU buffer, 1000 elements
 ```
 
+### 6. Diagnose Command-Buffer Batching (Metal)
+
+On Metal, dispatches batch into a shared command buffer until something on the host
+waits for a result, which commits the buffer on demand. A sustained workload committing
+every few dispatches (instead of every few hundred) has had its batching collapsed by
+synchronous waits. `MetalCommandRunner` partitions its commit count by cause and records
+every commit-forcing wait against the operation that was waited, so the collapse can be
+measured and attributed directly.
+
+See [docs/COMMIT_ATTRIBUTION.md](docs/COMMIT_ATTRIBUTION.md) for the measurement pattern
+and how to interpret the results.
+
 ## Advanced Topics
 
 ### Custom ComputeRequirements

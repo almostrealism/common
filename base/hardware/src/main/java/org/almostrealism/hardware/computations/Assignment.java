@@ -17,13 +17,17 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ExpressionAssignment;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -38,16 +42,20 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.Aggregatable;
 import org.almostrealism.hardware.DestinationEvaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.jvm.JVMMemory;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * {@link OperationComputationAdapter} that assigns computed values to a destination memory location.
@@ -183,7 +191,7 @@ import java.util.function.Supplier;
  * @see DestinationEvaluable
  * @see TraversableExpression
  */
-public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
+public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> implements Aggregatable {
 	/** Controls automatic adjustment of memory length to match kernel parallelism. */
 	public static boolean enableAdaptiveMemLength = true;
 
@@ -199,8 +207,30 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * @throws IllegalArgumentException if memLength exceeds {@link ScopeSettings#maxStatements}
 	 */
 	public Assignment(int memLength, Producer<T> result, Producer<T> value) {
+		this(memLength, result, value, null);
+	}
+
+	/**
+	 * Creates a new assignment operation compiled with the given {@link ComputeRequirement}s.
+	 *
+	 * <p>The requirements are applied before {@link #init()} builds the metadata, so they are folded
+	 * into the {@link #signature() signature} at construction (see {@link ComputeContext#getAssignmentComputeRequirements})
+	 * — this is what keeps a copy compiled for one backend distinct, in the signature-keyed instruction
+	 * cache, from one another backend would use.</p>
+	 *
+	 * @param memLength    the number of values each kernel thread processes
+	 * @param result       the destination producer where values will be written
+	 * @param value        the source producer providing values to assign
+	 * @param requirements the compute requirements to compile with, or null for none
+	 * @throws IllegalArgumentException if memLength exceeds {@link ScopeSettings#maxStatements}
+	 */
+	public Assignment(int memLength, Producer<T> result, Producer<T> value,
+					  List<ComputeRequirement> requirements) {
 		super(result, value);
 		this.memLength = memLength;
+		if (requirements != null) {
+			setComputeRequirements(requirements);
+		}
 		init();
 
 		if (memLength > ScopeSettings.maxStatements) {
@@ -379,10 +409,14 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			}
 
 
-			// DestinationEvaluable can be used for AccelerationOperations and Providers
-			boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
+			// Provider-to-provider assignment is a plain memory copy; see Runner
+			if (ev instanceof Provider<?>) {
+				return new Runner(Hardware.getLocalHardware().getComputer().getContext(this),
+						(Supplier) out, (Supplier) in);
+			}
 
-			if (shortCircuit) {
+			// An AcceleratedOperation source still uses DestinationEvaluable.
+			if (ev instanceof AcceleratedOperation<?>) {
 				return new DestinationEvaluable(ev, destination);
 			}
 
@@ -439,7 +473,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
 
-		Assignment result = new Assignment<>(memLength, (Producer) children.get(0), (Producer) children.get(1));
+		Assignment result = new Assignment<>(memLength,
+				(Producer) children.get(0), (Producer) children.get(1), getComputeRequirements());
 
 		if (getMetadata().getShortDescription() != null) {
 			result.getMetadata().setShortDescription(getMetadata().getShortDescription());
@@ -451,7 +486,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	/**
 	 * Returns a unique signature for this assignment operation.
 	 *
-	 * <p>Format: "assign{memLength}->{valueSignature}"</p>
+	 * <p>Format: {@code "assign{memLength}{requirements}->{valueSignature}"}. The
+	 * {@link #getComputeRequirements() compute requirements} are folded in (as other
+	 * {@link io.almostrealism.code.ProducerComputationBase#signature() computations} do) so that a copy
+	 * compiled for one backend is never reused, via the signature-keyed instruction cache, to feed a
+	 * kernel on another: a Metal copy ({@code [MTL]}) and a copy with no requirements have distinct
+	 * signatures and therefore distinct compiled kernels.</p>
 	 *
 	 * @return the signature string, or null if destination or value lacks a signature
 	 */
@@ -467,7 +507,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		String signature = Signature.of(getInputs().get(1));
 		if (signature == null || memLength == 0) return null;
 
-		return "assign" + memLength + "->" + signature;
+		String requirements = Optional.ofNullable(getComputeRequirements())
+				.map(r -> r.stream().map(ComputeRequirement::name)
+						.distinct().sorted().collect(Collectors.toList()).toString())
+				.orElse("");
+
+		return "assign" + memLength + requirements + "->" + signature;
 	}
 
 	/**
@@ -478,5 +523,115 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	@Override
 	public String describe() {
 		return getMetadata().getShortDescription() + " (" + getCount() + "x" + memLength + ")";
+	}
+
+	/**
+	 * Returns whether this assignment's arguments may be folded into an aggregate kernel argument.
+	 *
+	 * <p>A pure memory-to-memory copy — both the destination and the source are {@link Provider}s,
+	 * which is exactly the case {@link #get()} runs via {@link Runner} — has only two arguments and
+	 * gains nothing from aggregation; aggregating it would instead fold its own operands into a
+	 * nested aggregate and emit pointless copy kernels (and, for small operands, recurse). Such a
+	 * copy therefore opts out. Every other assignment (whose source is a real computation) aggregates
+	 * normally.</p>
+	 *
+	 * @return {@code false} for a pure Provider-to-Provider copy, {@code true} otherwise
+	 */
+	@Override
+	public boolean isArgumentAggregationSupported() {
+		return !(Computable.provider(getInputs().get(0)) && Computable.provider(getInputs().get(1)));
+	}
+
+	/**
+	 * The {@link Runnable} (and {@link Submittable}) returned by {@link Assignment#get()} when both the
+	 * destination and the source are {@link Provider}s. It performs a plain memory-to-memory copy via
+	 * the {@link io.almostrealism.code.ComputeContext}'s
+	 * {@link io.almostrealism.code.ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy},
+	 * which moves the memory however the context prefers (a direct {@code setMem} through the
+	 * destination's {@link io.almostrealism.code.MemoryProvider} by default).
+	 *
+	 * <p>The destination/source {@link Provider}s are resolved to their current {@link MemoryData} at
+	 * run time and their offsets are read then, so no compiled kernel — and therefore no signature-keyed
+	 * instruction reuse — is involved, and a copy into one region is never confused with a copy into
+	 * another.</p>
+	 */
+	public static class Runner implements Runnable, Submittable {
+		/**
+		 * Fallback context for the copy: the {@link io.almostrealism.code.Computer}'s
+		 * selection for the {@link Assignment} this runner was created from, matching what
+		 * compilation would have targeted. Used only when the destination's memory is not
+		 * managed by any configured {@link io.almostrealism.code.DataContext} (see
+		 * {@link #contextFor(MemoryData)}).
+		 */
+		private final ComputeContext<MemoryData> context;
+		/** Producer of the destination; resolved to its current {@link MemoryData} at run time. */
+		private final Supplier<Evaluable<? extends MemoryData>> destination;
+		/** Producer of the source; resolved to its current {@link MemoryData} at run time. */
+		private final Supplier<Evaluable<? extends MemoryData>> source;
+
+		/**
+		 * Creates a runner over the given context and the destination/source producers.
+		 *
+		 * @param context     the context whose {@code copy} performs the assignment
+		 * @param destination producer of the destination memory
+		 * @param source      producer of the source memory
+		 */
+		protected Runner(ComputeContext<MemoryData> context,
+						 Supplier<Evaluable<? extends MemoryData>> destination,
+						 Supplier<Evaluable<? extends MemoryData>> source) {
+			this.context = context;
+			this.destination = destination;
+			this.source = source;
+		}
+
+		@Override
+		public void run() {
+			Semaphore complete = submit(null);
+			if (complete != null) complete.waitFor();
+		}
+
+		@Override
+		public Semaphore submit(Semaphore dependsOn) {
+			MemoryData dst = resolve(destination);
+			MemoryData src = resolve(source);
+
+			return contextFor(dst).copy(src, dst, dependsOn);
+		}
+
+		/**
+		 * Returns the {@link ComputeContext} that should perform the copy into the given
+		 * destination: the context of the {@link io.almostrealism.code.DataContext} that
+		 * manages the destination's memory, since that backend is the one able to move
+		 * memory it owns (for example, queuing the copy onto its own command buffer). The
+		 * destination is not resolved until run time, so this decision cannot be made when
+		 * the runner is created; when no configured context manages the memory, the
+		 * {@link #context fallback} selected at creation is used.
+		 *
+		 * @param destination the resolved destination memory
+		 * @return the context that should perform the copy
+		 */
+		private ComputeContext<MemoryData> contextFor(MemoryData destination) {
+			ComputeContext<MemoryData> managing = destination == null ? null :
+					Hardware.getLocalHardware().getComputeContext(destination.getMem());
+			return managing == null ? context : managing;
+		}
+
+		/**
+		 * Resolves the given producer to its current {@link MemoryData}, or null when it does not
+		 * resolve to a {@link Provider} value.
+		 *
+		 * @param producer the producer to resolve
+		 * @return the current {@link MemoryData}, or null
+		 */
+		private static MemoryData resolve(Supplier<Evaluable<? extends MemoryData>> producer) {
+			Evaluable<? extends MemoryData> evaluable = producer.get();
+
+			if (evaluable instanceof Provider) {
+				Object value = ((Provider<?>) evaluable).get();
+				if (value instanceof MemoryData) return (MemoryData) value;
+			}
+
+			return null;
+		}
 	}
 }

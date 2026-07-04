@@ -356,40 +356,6 @@ public interface CollectionProducer extends
 	}
 
 	/**
-	 * Applies the given mapping function to each element of this collection,
-	 * using the collection's natural element shape.
-	 *
-	 * @param mapper a function from an element producer to its mapped result
-	 * @return a computation for the mapped collection
-	 */
-	default CollectionProducerComputation map(Function<CollectionProducerComputation, CollectionProducer> mapper) {
-		return map(this, mapper);
-	}
-
-	/**
-	 * Applies the given mapping function to each item of this collection,
-	 * where each item has the specified shape.
-	 *
-	 * @param itemShape the shape of each item within this collection
-	 * @param mapper    a function from an item producer to its mapped result
-	 * @return a computation for the mapped collection
-	 */
-	default CollectionProducerComputation map(TraversalPolicy itemShape, Function<CollectionProducerComputation, CollectionProducer> mapper) {
-		return map(itemShape, this, mapper);
-	}
-
-	/**
-	 * Reduces this entire collection to a scalar by applying the given mapper to the whole collection.
-	 *
-	 * @param <T>    the collection type
-	 * @param mapper a function from the full collection producer to a single-element result
-	 * @return a computation for the reduced scalar result
-	 */
-	default <T extends PackedCollection> CollectionProducerComputation reduce(Function<CollectionProducerComputation, CollectionProducer> mapper) {
-		return reduce(this, mapper);
-	}
-
-	/**
 	 * @deprecated Use {@link #repeat(int)}
 	 */
 	@Deprecated

@@ -756,6 +756,7 @@ public class AudioLibraryPersistence {
 				.setFeatureData(CollectionEncoder.encode(details.getFeatureData(), Precision.FP32))
 				.putAllSimilarities(details.getSimilarities());
 		if (details.getIdentifier() != null) data.setIdentifier(details.getIdentifier());
+		if (details.getRank() != null) data.setRank(details.getRank());
 		if (audioPrecision != null) {
 			data.setData(CollectionEncoder.encode(details.getData(), audioPrecision));
 		}
@@ -800,6 +801,7 @@ public class AudioLibraryPersistence {
 		details.setFeatureFrameCount(data.getFeatureFrameCount());
 		if (data.hasFeatureData()) details.setFeatureData(CollectionEncoder.decode(data.getFeatureData()));
 		if (includeSimilarities) details.getSimilarities().putAll(data.getSimilaritiesMap());
+		if (data.hasRank()) details.setRank(data.getRank());
 		if (data.hasData()) details.setData(CollectionEncoder.decode(data.getData()));
 		return details;
 	}

@@ -52,7 +52,7 @@ public interface TraversalPolicyFeatures extends ShapeFeatures {
 	 *
 	 * <pre>{@code
 	 * // Create an expression with known shape
-	 * TraversableExpression expr = new PackedCollectionMap(shape(2, 3), someProducer, mapper);
+	 * TraversableExpression expr = new PackedCollectionSubset(shape(2, 3), someProducer, 0, 0);
 	 * TraversalPolicy extractedShape = shape(expr);
 	 * // Result: shape with dimensions [2, 3]
 	 * }</pre>

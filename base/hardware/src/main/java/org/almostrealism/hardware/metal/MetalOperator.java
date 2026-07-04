@@ -235,7 +235,7 @@ public class MetalOperator extends HardwareOperator {
 		// Encode this kernel into the runner's command buffer. The runner returns this dispatch's
 		// completion semaphore; the onComplete callback releases the memory the kernel referenced
 		// only after that buffer has completed.
-		return runner.submit(cmdBuf -> {
+		return runner.submit(getMetadata(), cmdBuf -> {
 			recordDuration(null, () -> {
 				int index = 0;
 
@@ -254,6 +254,18 @@ public class MetalOperator extends HardwareOperator {
 					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
 					log("\tSizes = " + Arrays.toString(sizeValues));
 					log("\tOffsets = " + Arrays.toString(offsetValues));
+
+					StringBuilder desc = new StringBuilder();
+					for (int i = 0; i < argCount; i++) {
+						if (desc.length() > 0) desc.append(",");
+						desc.append(data[i].getMem().getClass().getSimpleName())
+								.append("@").append(System.identityHashCode(data[i].getMem()))
+								.append("+").append(data[i].getOffset())
+								.append("x").append(data[i].getMemLength())
+								.append("=").append(data[i].toDouble(0));
+					}
+
+					log("\tArgs = " + desc);
 				}
 
 				// Inline the per-dispatch offset/size arrays into the command (Metal copies them at

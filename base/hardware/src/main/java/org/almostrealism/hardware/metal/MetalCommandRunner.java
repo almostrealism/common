@@ -17,6 +17,9 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.DistributionMetric;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +27,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
@@ -66,48 +68,14 @@ public class MetalCommandRunner {
 	private static final int MAX_OPEN = 256;
 
 	/**
-	 * Why an open command buffer was committed — used only to attribute the diagnostic
-	 * commit-cause counters; does not affect commit behaviour.
+	 * Distribution of commit-forcing host waits across the operations that requested them, keyed by
+	 * the requester's {@link OperationMetadata#getDisplayName() display name}. Only waits that
+	 * actually forced a commit are recorded (a wait for an already-committed buffer costs nothing
+	 * attributable), so this distribution identifies which operations are responsible for breaking
+	 * command-buffer batching.
 	 */
-	private enum CommitCause { MAX_OPEN, DEPENDENCY, COMPLETE, DESTROY }
-
-	/** Total dispatches encoded across all runners since the last counter reset (diagnostic). */
-	public static final AtomicLong diagDispatches = new AtomicLong();
-	/** Dispatches submitted with a same-runner {@link MetalSemaphore} dependency present. */
-	public static final AtomicLong diagDispatchesWithDep = new AtomicLong();
-	/** Commits that fired because the open buffer reached {@link #MAX_OPEN} (batching at the cap). */
-	public static final AtomicLong diagCommitsMaxOpen = new AtomicLong();
-	/** Commits forced because a dispatch depended on the still-open buffer (cross-buffer ordering). */
-	public static final AtomicLong diagCommitsDependency = new AtomicLong();
-	/** Commits driven by a host wait ({@link MetalSemaphore#waitFor()} / completion). */
-	public static final AtomicLong diagCommitsComplete = new AtomicLong();
-	/** Commits performed while destroying the runner. */
-	public static final AtomicLong diagCommitsDestroy = new AtomicLong();
-	/** Running sum of the open-buffer dispatch count at each commit (mean-batch-size numerator). */
-	public static final AtomicLong diagDispatchesAtCommit = new AtomicLong();
-	/** Dispatches issued through {@code AcceleratedOperation.apply()} (diagnostic). */
-	public static final AtomicLong diagApplyDispatches = new AtomicLong();
-	/** apply() host-waits where {@code processing} (cross-provider replacement) was set. */
-	public static final AtomicLong diagApplyProcessingWaits = new AtomicLong();
-	/** apply() host-waits where {@code aggregateCopyOut} (argument aggregation) was set. */
-	public static final AtomicLong diagApplyAggregateWaits = new AtomicLong();
-
-	/**
-	 * Resets the diagnostic commit-cause counters. Intended for performance harnesses measuring a
-	 * bounded window; behaviour-neutral.
-	 */
-	public static void resetDiagnosticCounters() {
-		diagDispatches.set(0);
-		diagDispatchesWithDep.set(0);
-		diagCommitsMaxOpen.set(0);
-		diagCommitsDependency.set(0);
-		diagCommitsComplete.set(0);
-		diagCommitsDestroy.set(0);
-		diagDispatchesAtCommit.set(0);
-		diagApplyDispatches.set(0);
-		diagApplyProcessingWaits.set(0);
-		diagApplyAggregateWaits.set(0);
-	}
+	public static DistributionMetric hostCompleteRequesters =
+			Hardware.console.distribution("mtlHostCompleteRequesters");
 
 	/** Single-threaded executor that serializes all command-buffer operations. */
 	private ExecutorService executor;
@@ -123,6 +91,14 @@ public class MetalCommandRunner {
 
 	/** The open (encoded, not yet committed) command buffer, or {@code null}. Executor-thread only. */
 	private MTLCommandBuffer openBuffer;
+	/** Total command-buffer commits. Written on the executor thread; volatile for diagnostic reads. */
+	private volatile long commitCount;
+	/** Commits forced by a host-side wait ({@link #complete}). Executor-thread written; volatile reads. */
+	private volatile long hostCompleteCommits;
+	/** Commits forced by the open buffer reaching {@link #MAX_OPEN} dispatches. Executor-thread written. */
+	private volatile long maxOpenCommits;
+	/** Commits performed while destroying the runner. Executor-thread written; volatile reads. */
+	private volatile long destroyCommits;
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -155,17 +131,24 @@ public class MetalCommandRunner {
 	/**
 	 * Encodes a dispatch into the open command buffer and returns its completion semaphore.
 	 *
-	 * <p>When {@code dependsOn} is a {@link MetalSemaphore} from this runner, the open buffer is
-	 * committed first and the dispatch encodes a GPU wait for that dependency's event value, so the
-	 * dependent runs after the dependency without the host blocking. (A foreign dependency must be
+	 * <p>When {@code dependsOn} is a {@link MetalSemaphore} from this runner, ordering costs
+	 * nothing or almost nothing: a dependency still in the open command buffer is already
+	 * ordered ahead of this dispatch by Metal's hazard tracking (every buffer is allocated
+	 * with default tracking; see {@code MTL.cpp}), so it is simply dropped; a dependency in
+	 * an earlier, committed buffer is honored by encoding a GPU wait for its event value.
+	 * Neither case blocks the host or forces a commit, so chaining completion semaphores
+	 * through a sequence of dispatches preserves batching. (A foreign dependency must be
 	 * waited by the caller before calling this method.)</p>
 	 *
+	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
+	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
 	 * @param command   encodes the kernel into the supplied command buffer
 	 * @param dependsOn  a prior {@link MetalSemaphore} this dispatch depends on, or {@code null}
 	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
 	 * @return this dispatch's completion semaphore
 	 */
-	public MetalSemaphore submit(MetalCommand command, Semaphore dependsOn, Runnable onComplete) {
+	public MetalSemaphore submit(OperationMetadata requester, MetalCommand command,
+								 Semaphore dependsOn, Runnable onComplete) {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
 		await(executor.submit(() -> runInPool(() -> {
@@ -173,12 +156,10 @@ public class MetalCommandRunner {
 					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
 							? (MetalSemaphore) dependsOn : null;
 
-			if (dependency != null) diagDispatchesWithDep.incrementAndGet();
-
-			// Order a dependent dispatch after its dependency across buffers: commit the open buffer
-			// (so the dependency's signal lands in an earlier, committed buffer) then wait its value.
+			// A dependency encoded into the still-open buffer is already ordered ahead of this
+			// dispatch by in-buffer hazard tracking; no commit and no event wait are needed.
 			if (dependency != null && dependency.getCommandBuffer() == openBuffer) {
-				commitOpenOnExecutor(CommitCause.DEPENDENCY);
+				dependency = null;
 			}
 
 			ensureOpenBuffer();
@@ -192,13 +173,12 @@ public class MetalCommandRunner {
 			signaled++;
 			openBuffer.encodeSignalEvent(event, signaled);
 			openCount++;
-			diagDispatches.incrementAndGet();
 			if (onComplete != null) openOnComplete.add(onComplete);
 
-			result.add(new MetalSemaphore(null, this, openBuffer, event, signaled));
+			result.add(new MetalSemaphore(requester, this, openBuffer, event, signaled));
 
-			if (openCount >= MAX_OPEN) {
-				commitOpenOnExecutor(CommitCause.MAX_OPEN);
+			if (openCount >= MAX_OPEN && commitOpenOnExecutor()) {
+				maxOpenCommits++;
 			}
 		})));
 
@@ -213,7 +193,21 @@ public class MetalCommandRunner {
 	 * @param commandBuffer the dispatch's command buffer
 	 */
 	public void complete(MTLCommandBuffer commandBuffer) {
-		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer))));
+		complete(commandBuffer, null);
+	}
+
+	/**
+	 * Commits (if still open) the buffer the given dispatch was encoded into and blocks until it,
+	 * and every buffer committed before it, has completed; then runs their released-memory
+	 * callbacks. When the wait forces a commit, the commit is attributed to {@code requester} in
+	 * {@link #hostCompleteRequesters} so batching-breaking waits can be traced to the operations
+	 * responsible for them.
+	 *
+	 * @param commandBuffer the dispatch's command buffer
+	 * @param requester     metadata of the operation waiting for completion, or {@code null}
+	 */
+	public void complete(MTLCommandBuffer commandBuffer, OperationMetadata requester) {
+		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer, requester))));
 	}
 
 	/**
@@ -254,30 +248,48 @@ public class MetalCommandRunner {
 	}
 
 	/**
+	 * Returns the number of command buffers this runner has committed. Batching diagnostics:
+	 * a group of dispatches that was expected to share one command buffer can be checked by
+	 * comparing this count before and after the group is issued.
+	 *
+	 * @return the total number of command-buffer commits so far
+	 */
+	public long getCommitCount() { return commitCount; }
+
+	/**
+	 * Returns the number of commits forced by a host-side completion wait ({@link #complete}).
+	 * Together with {@link #getMaxOpenCommitCount()} and {@link #getDestroyCommitCount()} this
+	 * partitions {@link #getCommitCount()} by cause: host waits are the commits that break
+	 * batching on demand, while {@link #MAX_OPEN} commits are the expected steady-state cadence.
+	 *
+	 * @return the number of commits caused by host completion waits
+	 */
+	public long getHostCompleteCommitCount() { return hostCompleteCommits; }
+
+	/**
+	 * Returns the number of commits forced by the open buffer reaching {@link #MAX_OPEN} dispatches.
+	 *
+	 * @return the number of commits caused by the open-buffer dispatch bound
+	 */
+	public long getMaxOpenCommitCount() { return maxOpenCommits; }
+
+	/**
+	 * Returns the number of commits performed while destroying the runner.
+	 *
+	 * @return the number of commits caused by {@link #destroy()}
+	 */
+	public long getDestroyCommitCount() { return destroyCommits; }
+
+	/**
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
 	 * completion. Must run on the executor thread.
+	 *
+	 * @return true if a commit was performed, false if no buffer was open
 	 */
-	private void commitOpenOnExecutor(CommitCause cause) {
-		if (openBuffer == null) return;
+	private boolean commitOpenOnExecutor() {
+		if (openBuffer == null) return false;
 
-		diagDispatchesAtCommit.addAndGet(openCount);
-		switch (cause) {
-			case MAX_OPEN:
-				diagCommitsMaxOpen.incrementAndGet();
-				break;
-			case DEPENDENCY:
-				diagCommitsDependency.incrementAndGet();
-				break;
-			case COMPLETE:
-				diagCommitsComplete.incrementAndGet();
-				break;
-			case DESTROY:
-				diagCommitsDestroy.incrementAndGet();
-				break;
-			default:
-				break;
-		}
-
+		commitCount++;
 		openBuffer.commit();
 		bufferOpen = false;
 
@@ -285,14 +297,19 @@ public class MetalCommandRunner {
 		openBuffer = null;
 		openCount = 0;
 		openOnComplete = new ArrayList<>();
+		return true;
 	}
 
 	/**
 	 * Commits the target buffer if it is still open, then waits for it and every earlier committed
 	 * buffer to complete, running their callbacks in order. Must run on the executor thread.
 	 */
-	private void completeOnExecutor(MTLCommandBuffer target) {
-		if (target == openBuffer) commitOpenOnExecutor(CommitCause.COMPLETE);
+	private void completeOnExecutor(MTLCommandBuffer target, OperationMetadata requester) {
+		if (target == openBuffer && commitOpenOnExecutor()) {
+			hostCompleteCommits++;
+			hostCompleteRequesters.addEntry(
+					requester == null ? "unknown" : requester.getDisplayName(), 1);
+		}
 
 		int index = -1;
 		for (int i = 0; i < committed.size(); i++) {
@@ -331,7 +348,7 @@ public class MetalCommandRunner {
 	public void destroy() {
 		if (executor != null) {
 			await(executor.submit(() -> runInPool(() -> {
-				commitOpenOnExecutor(CommitCause.DESTROY);
+				if (commitOpenOnExecutor()) destroyCommits++;
 				while (!committed.isEmpty()) {
 					CommittedBuffer c = committed.remove(0);
 					c.buffer.waitUntilCompleted();

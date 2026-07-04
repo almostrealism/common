@@ -20,7 +20,6 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
-import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.NoteAudioCache;
@@ -223,7 +222,6 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				BatchedPatternLayerRenderer.resetCounters();
 				NoteAudioCache.resetCounters();
 				AudioSceneRealtimeRunner.resetHotPathTimers();
-				MetalCommandRunner.resetDiagnosticCounters();
 
 				double totalTickMs = 0;
 				double[] ticks = new double[PROFILE_TICKS];
@@ -270,31 +268,6 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 						+ " cacheMisses=" + NoteAudioCache.cacheMisses.get()
 						+ " batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount.get()
 						+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount.get());
-
-				long metalDispatches = MetalCommandRunner.diagDispatches.get();
-				long metalDispatchesWithDep = MetalCommandRunner.diagDispatchesWithDep.get();
-				long cMaxOpen = MetalCommandRunner.diagCommitsMaxOpen.get();
-				long cDependency = MetalCommandRunner.diagCommitsDependency.get();
-				long cComplete = MetalCommandRunner.diagCommitsComplete.get();
-				long cDestroy = MetalCommandRunner.diagCommitsDestroy.get();
-				long metalCommits = cMaxOpen + cDependency + cComplete + cDestroy;
-				long metalDispatchesAtCommit = MetalCommandRunner.diagDispatchesAtCommit.get();
-				double meanBatch = metalCommits == 0 ? 0.0 : metalDispatchesAtCommit / (double) metalCommits;
-				log("buffer=" + bufferSize + " METAL dispatches=" + metalDispatches
-						+ " withDep=" + metalDispatchesWithDep
-						+ " dispatchesPerTick=" + fmt(metalDispatches / (double) PROFILE_TICKS)
-						+ " commitsPerTick=" + fmt(metalCommits / (double) PROFILE_TICKS)
-						+ " meanDispatchesPerCommit=" + fmt(meanBatch)
-						+ " cMaxOpen=" + cMaxOpen + " cDependency=" + cDependency
-						+ " cComplete=" + cComplete + " cDestroy=" + cDestroy);
-
-				long applyDispatches = MetalCommandRunner.diagApplyDispatches.get();
-				long applyProcWaits = MetalCommandRunner.diagApplyProcessingWaits.get();
-				long applyAggWaits = MetalCommandRunner.diagApplyAggregateWaits.get();
-				log("buffer=" + bufferSize + " APPLY dispatches=" + applyDispatches
-						+ " processingWaits=" + applyProcWaits + " aggregateWaits=" + applyAggWaits
-						+ " procPerTick=" + fmt(applyProcWaits / (double) PROFILE_TICKS)
-						+ " aggPerTick=" + fmt(applyAggWaits / (double) PROFILE_TICKS));
 
 				out.write().get().run();
 				double peak = peakAmplitude(scratch.getPath());

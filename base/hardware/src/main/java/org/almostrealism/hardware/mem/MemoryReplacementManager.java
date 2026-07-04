@@ -15,10 +15,11 @@
  */
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.concurrent.Submittable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -55,9 +56,10 @@ import java.util.function.BiConsumer;
  * <p>The manager performs three-phase processing:</p>
  *
  * <h3>1. Prepare Phase</h3>
- * <p>Copy original memory to temporary aggregated buffer:</p>
+ * <p>Copy original memory to temporary aggregated buffer, chaining on any prior work:</p>
  * <pre>{@code
  * MemoryReplacementManager mgr = new MemoryReplacementManager(
+ *     context,
  *     gpuProvider,
  *     (size, atomic) -> new Bytes(size, atomic)  // Temp factory
  * );
@@ -65,23 +67,23 @@ import java.util.function.BiConsumer;
  * Object[] args = {cpuMem1, cpuMem2, cpuMem3};
  * Object[] replaced = mgr.processArguments(args);
  *
- * // Execute prepare operations
- * mgr.getPrepare().get().run();
+ * // Issue prepare copies, chained on the caller's prior completion
+ * Semaphore prepared = Submittable.submit(mgr.getPrepareOperations(), dependsOn);
  * // Copies: cpuMem1 -> temp[0:100]
  * //         cpuMem2 -> temp[100:150]
  * //         cpuMem3 -> temp[150:350]
  * }</pre>
  *
  * <h3>2. Kernel Execution</h3>
- * <p>Execute kernel with replaced arguments:</p>
+ * <p>Execute kernel with replaced arguments, chained on the prepare copies:</p>
  * <pre>{@code
- * executeKernel(replaced);  // Uses temp buffer instead of original
+ * Semaphore done = executeKernel(replaced, prepared);  // Uses temp buffer
  * }</pre>
  *
  * <h3>3. Postprocess Phase</h3>
- * <p>Copy results back to original memory:</p>
+ * <p>Copy results back to original memory, chained on the kernel's completion:</p>
  * <pre>{@code
- * mgr.getPostprocess().get().run();
+ * Semaphore complete = Submittable.submit(mgr.getPostprocessOperations(), done);
  * // Copies: temp[0:100] -> cpuMem1
  * //         temp[100:150] -> cpuMem2
  * //         temp[150:350] -> cpuMem3
@@ -139,16 +141,29 @@ import java.util.function.BiConsumer;
  * // cpuData1, cpuData2 replaced with temp memory
  *
  * // Execute kernel
- * mgr.getPrepare().get().run();      // CPU -> temp
- * kernel.execute(kernelArgs);         // Kernel sees temp
- * mgr.getPostprocess().get().run();   // temp -> CPU
+ * Semaphore prepared = Submittable.submit(mgr.getPrepareOperations(), null); // CPU -> temp
+ * Semaphore done = kernel.execute(kernelArgs, prepared);                     // Kernel sees temp
+ * Submittable.submit(mgr.getPostprocessOperations(), done);                  // temp -> CPU
  * }</pre>
  *
+ * <p>Each copy runs through the serving {@link ComputeContext}'s
+ * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy},
+ * so the context chooses the mechanism and the sequencing: a batching context queues the
+ * copy onto its command buffer ordered after {@code dependsOn}; any other context waits
+ * for {@code dependsOn} and copies directly.</p>
+ *
  * @see AcceleratedProcessDetails
- * @see MemoryDataCopy
- * @see OperationList
+ * @see ComputeContext
  */
 public class MemoryReplacementManager implements ConsoleFeatures {
+	/**
+	 * The {@link ComputeContext} of the operation this manager prepares arguments for. The
+	 * prepare/postprocess copies run through its
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy},
+	 * so the context the kernel runs on chooses how the replacement data moves and how the
+	 * copies are sequenced.
+	 */
+	private final ComputeContext<MemoryData> context;
 	/** Memory provider that arguments must reside in for the kernel to accept them without replacement. */
 	private final MemoryProvider target;
 	/** Factory for creating temporary buffers used during memory replacement. */
@@ -156,44 +171,49 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 	/** Maximum element count for a memory block to be eligible for aggregation and replacement. */
 	private final int aggregationThreshold;
 
-	/** Operations to copy data from original memory into temporary replacements before kernel execution. */
-	private final OperationList prepare;
-	/** Operations to copy results from temporary replacements back to original memory after kernel execution. */
-	private final OperationList postprocess;
+	/** Copies that move data from original memory into temporary replacements before kernel execution. */
+	private final List<Submittable> prepare;
+	/** Copies that move results from temporary replacements back to original memory after kernel execution. */
+	private final List<Submittable> postprocess;
 
 	/**
 	 * Creates a replacement manager with a default aggregation threshold of 1M elements.
 	 *
+	 * @param context The {@link ComputeContext} whose copy mechanism moves replacement data
 	 * @param target Target memory provider; arguments not in this provider will be replaced
 	 * @param tempFactory Factory for creating temporary replacement buffers
 	 */
-	public MemoryReplacementManager(MemoryProvider target,
+	public MemoryReplacementManager(ComputeContext<MemoryData> context,
+									MemoryProvider target,
 									TempMemoryFactory tempFactory) {
-		this(target, tempFactory, 1024 * 1024);
+		this(context, target, tempFactory, 1024 * 1024);
 	}
 
 	/**
 	 * Creates a replacement manager with a custom aggregation threshold.
 	 *
+	 * @param context The {@link ComputeContext} whose copy mechanism moves replacement data
 	 * @param target Target memory provider; arguments not in this provider will be replaced
 	 * @param tempFactory Factory for creating temporary replacement buffers
 	 * @param aggregationThreshold Maximum element count for aggregation eligibility
 	 */
-	public MemoryReplacementManager(MemoryProvider target,
+	public MemoryReplacementManager(ComputeContext<MemoryData> context,
+									MemoryProvider target,
 									TempMemoryFactory tempFactory,
 									int aggregationThreshold) {
+		this.context = context;
 		this.target = target;
 		this.tempFactory = tempFactory;
 		this.aggregationThreshold = aggregationThreshold;
 
-		this.prepare = new OperationList();
-		this.postprocess = new OperationList();
+		this.prepare = new ArrayList<>();
+		this.postprocess = new ArrayList<>();
 	}
 
-	/** Returns the pre-execution operation list that copies data into temporary replacements. */
-	public OperationList getPrepare() { return prepare; }
-	/** Returns the post-execution operation list that copies results back from temporary replacements. */
-	public OperationList getPostprocess() { return postprocess; }
+	/** Returns the pre-execution copies that move data into temporary replacements. */
+	public List<Submittable> getPrepareOperations() { return prepare; }
+	/** Returns the post-execution copies that move results back from temporary replacements. */
+	public List<Submittable> getPostprocessOperations() { return postprocess; }
 	/**
 	 * Returns true if no replacements have been registered.
 	 *
@@ -286,8 +306,8 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 			MemoryData data = new Bytes(length, root, start);
 			MemoryData tmp = tempFactory.apply(length, length);
 
-			prepare.add(new MemoryDataCopy("Temp Prep", data, tmp));
-			postprocess.add(new MemoryDataCopy("Temp Post", tmp, data));
+			prepare.add(dependsOn -> context.copy(data, tmp, dependsOn));
+			postprocess.add(dependsOn -> context.copy(tmp, data, dependsOn));
 
 			Bytes tempBytes = new Bytes(length, tmp, 0);
 
