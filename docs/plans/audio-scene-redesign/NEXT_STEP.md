@@ -1,88 +1,128 @@
-# Next Step — Reduce the a3 Mixdown Forward's Per-Dispatch Metal Overhead
+# Next Step — Stop Forcing Commits from the Hot Path (adjustVolume first)
 
-> **SUPERSEDED (2026-06-28).** The per-dispatch cost this document attributes to Metal
-> encoder-create + argument-bind has since been **measured** to be dominated by host
-> `MemoryDataCopy` copies forcing a per-op `waitFor`. Commit-cause split on the pinned scene: 100 %
-> completion-driven commits, `cDependency=0`, `cMaxOpen=0`, `meanDispatchesPerCommit ≈ 1.07` (the
-> encoder/arg-bind attribution was the unverified hypothesis `pdsl-streams-plan/HANDOFF_2026-06-28.md`
-> §3 already flagged). **The next step is the `MemoryDataCopy` → `Assignment` migration, not a Metal
-> encoder rewrite** — see [`../ASSIGNMENT_COPY_MIGRATION.md`](../ASSIGNMENT_COPY_MIGRATION.md) and
-> [`BATCHED_AGGREGATE_COPY.md`](BATCHED_AGGREGATE_COPY.md). The content below is retained for its
-> measurements and ruled-out list only.
+> **Rewritten 2026-07-04** after the kernel-tooling merge (`remove-variable-relative-value`,
+> `PackedCollectionMap` removal, OpenCL fixes) and a fresh measurement pass on the rebuilt
+> system. The two prior versions of this page are in git history: the encoder/arg-bind theory
+> (superseded 2026-06-28 by the `MemoryDataCopy` root cause) and the
+> `MemoryDataCopy → Assignment` migration framing (superseded by `a3b20e285`, which chained
+> every copy on the Semaphore mechanism instead — `apply` no longer blocks the host, and
+> `MemoryDataCopy` is deprecated). The measurements below are from the current tree.
 
-> **This is the single actionable next step for the AudioScene real-time effort** — deliberately
-> surfaced here instead of buried in the migration plan. The full trail is in
-> [pdsl-streams-plan/05_MIGRATION_PLAN.md](pdsl-streams-plan/05_MIGRATION_PLAN.md) Phase 2 and the
-> [claim ledger](pdsl-streams-plan/01_CLAIM_VERIFICATION_LEDGER.md); this page is the summary you
-> point a fresh session at.
+## Where the system stands (measured 2026-07-04, runs `f5f8486a` / `1dadc516`)
+
+Pinned dense scene (seed 58, 1126 elements), efx+reverb on, `renderAheadSlots=24`,
+200 sustained ticks, default hybrid driver:
+
+| | 4096 (budget 92.9 ms) | 8192 (budget 185.8 ms) |
+|---|---|---|
+| p50 / p95 / max tick | 36.7 / 58.5 / 135 ms | 50.5 / 145 / 488 ms |
+| p50 ratio (5× bar ≤ 0.2) | **0.40** (2.5×) | **0.27** (3.7×) |
+| commits/tick (100 % host-wait) | 63.3 | 72.1 |
+| `meanDispatchesPerCommit` | 2.90 | 3.36 |
+| a2 gather+eval+marshal | 18.4 ms | 40.6 ms |
+| batched vs per-note dispatches | 748 vs 3190 | 1395 vs 3541 |
+
+End-to-end honesty (`GenerateAudioFileTest`, 8192): `setupSeconds=2.23`,
+`generateRealtimeX=1.79`, peak 1.00 — both numbers are real (no pre-warm, one-buffer
+prefill; see `SETUP_FRONT_LOADING_HANDOFF.md` for how the setup number was made honest).
+
+Batching has recovered from the recorded collapse (`meanDispatchesPerCommit` 1.07 →
+2.9/3.4) via the Semaphore copy-chaining and the earlier zeroing batches — but **every
+commit is still a host-completion wait** (`maxOpenCommits=0`). The remaining distance to
+5× is concentrated in a small number of named wait sources, now directly attributed by the
+commit-cause requester histogram (`MetalCommandRunner.hostCompleteRequesters`, logged by
+`PdslHotPathBreakdownTest`).
 
 ## The one thing to do
 
-Cut the **per-dispatch encode + argument-bind overhead** of the a3 PDSL mixdown forward
-(`compiled.forward`): `MTLComputeCommandEncoder` creation + per-argument binding, paid ~1000× per
-buffer. The target is `base/hardware/.../metal/MetalCommandRunner` / `MetalOperator` (the argument-
-binding / encoder path). This is the gate to ~5× realtime.
+**Eliminate the per-cell `adjustVolume` evaluate — the single largest commit-forcer, and it
+is currently a no-op.**
 
-## Why this is the lever (measured, with receipts)
+- `PatternSystemManager.sum` ends every render cell's batch with
+  `AudioProcessingUtils.getSum().adjustVolume(destination, volume)` —
+  `AudioSumProvider.scaleVolume` (`multiply(v(shape(-1),0), v(shape(1),1))`, a
+  `collectionProductComputation`) run as a **synchronous `.into(dest).evaluate(...)`** once
+  per render cell (~24 cells: 6 channels × MAIN/WET × L/R) per buffer.
+- Measured: **~23 host-wait commits per tick at both buffer sizes** (22.84 @4096, 23.37
+  @8192 — buffer-size-independent, matching the cell count) ≈ **a third of all commits**.
+- `PatternSystemManager.enableAutoVolume` is hardcoded `false`, `volume` initializes to
+  `1.0`, and no production caller invokes `PatternSystemManager.setVolume` — so the render
+  path multiplies every cell buffer by **1.0**, ~23 times per tick, each forcing a command
+  buffer commit + host wait.
 
-- The steady-state tick is **~98% `compiled.forward`** — the a2 producer runs ahead and rarely
-  blocks a3 (stage timing, run `074fecbf`).
-- The forward is **fixed-overhead-bound**: `forward = F + k·N` with **F ≈ 21 ms** independent of
-  buffer size (~37–40 ms @4096 → ~45–52 ms @8192, i.e. only ~1.2–1.4× for 2× the samples; runs
-  `c87241fb`, `6900496f`).
-- The overhead is **dispatch count, not GPU compute**: the real DSP kernels are cheap (FIR
-  `multiOrderFilter` over 526k elements ≈ 17 µs run; `sum(8192)` ≈ 22 µs run vs ~25 ms one-time
-  compile), and the forward is a ~50–68k-node logical graph compiling to only ~30 native kernels
-  (OperationProfile, run `f4ac91ad`).
-- 5× needs total per-buffer GPU ≤ 18.6 ms @4096 / ≤ 37.2 ms @8192. **At 4096 the fixed ~21 ms F
-  alone already exceeds the 18.6 ms budget**, so F must fall to ≤ ~3 ms — near-eliminating per-op
-  encode overhead, not shaving DSP.
+Fix shape (in order of preference):
+1. **Skip when identity.** Track the volume scalar host-side (it is written only by
+   `setVolume` / the disabled auto-volume assignment) and skip `adjustVolume` when it is
+   `1.0`. Zero risk, removes ~23 waits/tick outright in the production config.
+2. **When a real volume is needed**, don't pay a per-cell synchronous evaluate: fold the
+   per-cell volume into the batched dispatch chain (it can ride the existing per-note volume
+   envelope scalars or the accumulate), or at minimum submit it as a chained `Submittable`
+   (no `.evaluate()` read-back — nothing reads the result on the host).
 
-## Already ruled out (do NOT re-chase)
+Parity gate: rendered output must be bit-identical with the skip in place (it is a ×1.0),
+on `PdslSetupBreakdownTest` (exact-peak) and `PdslHotPathBreakdownTest` (peak per size).
 
-- **Cross-scene kernel caching** — *not* a problem. The JVM-wide instruction cache reuses kernels
-  flawlessly; a second `AudioScene` recompiles zero kernels (`instrMisses=0`, `instrEvictions=0`;
-  run `68bfcc17`). This was the prior session's misdirection — see
-  [pdsl-streams-plan/HANDOFF_2026-06-28.md](pdsl-streams-plan/HANDOFF_2026-06-28.md) §8.
-- **Command-buffer batching** — already done (`MetalCommandRunner` encodes into one open buffer,
-  commits only every `MAX_OPEN=256`).
-- **Executor→lock hand-off** — tried (flag-gated `useLockSerialization`), measured only ~3%, reverted.
-- **Stateless-stage fusion via `DefaultBlock` / disabling output tracking** — no concentrated
-  materialization cost to recover (kernels already internally vectorized); a STOP-signal-sized
-  gradient at high blast radius. Output tracking is a contract (`CodeFeatures.copy:306` enforces it).
-- **An a2 kernel redesign** — a2 is healthy and hidden behind the forward at 4096; it only gates at 8192.
+## The queue after that (ranked, each with its receipt)
 
-## The hard part (read before touching it)
+1. **Per-note fallback volume: `mtlBlitCopy` waits (~16.5–20/tick).** The fallback count
+   (~16–18 per tick: continuing notes render per-note by design) numerically matches the
+   blit-copy wait count — the per-note path's evaluate + cache copy still host-waits per
+   note. Two sub-options, measure both: (a) chain the per-note copy/evaluate instead of
+   waiting (same treatment the aggregate copies got); (b) revisit batching continuing notes
+   via the offset-aware `buildBatchedSssChainPlacedFromScalars` (`samplingOffsets` support
+   already exists) — the "measured net loss" that justified the per-note fallback predates
+   the merge and the probe fix, so re-measure before trusting it.
+2. **a2 cost at 8192 (40.6 ms/tick > the 37.2 ms 5× bar on its own).** Gather (17.8 ms,
+   Java-side) + eval (17.4 ms) at 8192. Overlapped on the producer thread today, but at 5×
+   the consumer budget is small enough that a2 must also shrink (or 4096 becomes the
+   production size — it is the owner-preferred size anyway; at 4096 a2 is 18.4 ms and hides
+   completely).
+3. **The remaining ~1/tick wait tail (~15 distinct forward-stage requesters).** These are
+   the a3 mixdown forward's own per-stage boundary waits (one per materialized stage output
+   per tick). The structural fix is the D+A arc — `REFACTOR_ORDERING_NOTES.md` items D
+   (self-contained destination producer) + A (drop the `output` arg from `apply`), which is
+   also where `DROP_OPERATION_OUTPUT_ARG.md` already carries the design. B and C from that
+   arc landed in the 2026-07-04 merge; E's correctness class (pad-under-CL) is diagnosed
+   in-progress there.
+4. **`runnerBuildMs` ≈ 16 s** (one-time PDSL mixdown model build per runner construction) —
+   the largest remaining one-time cost now that setup is ~2 s. Same first-evaluate scope
+   machinery; profile before touching.
+5. **True stereo** (G4) — feature completeness, unchanged by the above; the dual-mono
+   master is still shipped.
 
-- The concrete target is **`MTLComputeCommandEncoder` reuse + argument-bind reduction** across
-  dispatches in an open command buffer. Today each dispatch *intentionally* gets its own encoder so
-  Metal's cross-encoder hazard tracking auto-serializes dependent dispatches. **Reusing one encoder
-  gives that up** — you must insert explicit `memoryBarrier`s between dependent dispatches by hand.
-  A missed barrier = silent GPU race = nondeterministic/wrong output across *every* model. This is
-  **not behavior-preserving**: flag-gate it, A/B on the sustained harness, validate for races
-  (intermittent, hard).
-- Expect a **multi-change** effort (encoder reuse + arg-bind reduction, possibly dispatch-count
-  cuts); no single edit reaches 5×. Highest blast radius in the codebase (`ar-hardware` Metal
-  backend, every model) — the owner's stated preference is this general/reusable framework win over
-  a mixdown-only DSP rewrite.
+## Already resolved / ruled out (do NOT re-chase)
 
-## How to measure it
+- **Per-scene setup cost & mid-stream ~29–33 s "compile" spikes** — RESOLVED. Root cause
+  was the `uniqueNonZeroOffset` gather-collapse probe on first evaluate of each batched
+  kernel shape (14–29 s each, always returning null on scatter-add chains); fixed by
+  `BatchedPatternRenderer.sumNoteAxis` (`setReplaceLoop(false)`). Setup 128.6 s → ~2.3 s;
+  the whole-arrangement pre-warm was removed as front-loaded rendering. Full record:
+  [`SETUP_FRONT_LOADING_HANDOFF.md`](SETUP_FRONT_LOADING_HANDOFF.md); correction to the
+  prior "genuine per-scene rendering" claim:
+  [`pdsl-streams-plan/HANDOFF_2026-06-28.md`](pdsl-streams-plan/HANDOFF_2026-06-28.md) §9.
+- **Cross-scene kernel caching** — not a problem (`instrMisses=0` on scene 1, run
+  `68bfcc17`; re-confirmed post-fix: scene 1 setup 2.1 s, run `f6094966`).
+- **Command-buffer batching mechanics** — the Semaphore chaining (`a3b20e285`) works;
+  commits are no longer forced by copy mechanics per se, but by the named synchronous
+  evaluates above. Fix the callers, not the runner.
+- **A potential framework hygiene follow-up** (not a 5× lever): a matrix-size cost gate in
+  `TraversableExpression.uniqueNonZeroOffset` alongside the depth/node gates, so no other
+  deep chain can hit the probe explosion the audio path hit.
 
-- Harness: `PdslHotPathBreakdownTest` (per-tick a2/a3 split via `hotAwaitNanos`/`hotForwardNanos`)
-  and `AudioScenePdslBenchmarkTest.pdslTickStageTiming` / `pdslTickProfile`, on the pinned dense
-  scene (seed 58, curated library at `/Users/Shared/Music`). **Measure ≫ ring depth** (≥200 ticks);
-  short prefilled-ring windows hide both the a2 deficit and lazy-compile spikes.
-- **Tooling to fix first:** a Java-side CPU/JFR profile of the steady-state `compiled.forward()`
-  would pinpoint where the ~21 ms goes (encode vs arg-resolve vs alloc vs sync), but `ar-jmx`
-  cannot attach to the forked surefire JVM — `forked_pid_discovery_failed`, because
-  `tools/mcp/test-runner/server.py` `_discover_forked_pid` polls `jps` for only `range(30)` (~30 s),
-  shorter than studio/compose's ~60 s test-compile. Raise that bound (or poll while the maven PID is
-  alive) to restore JFR.
+## How to measure
+
+- `PdslHotPathBreakdownTest#hotPathBreakdown` — sustained 200-tick p50/p95/max + ratio at
+  4096 and 8192, a2 gather/eval/marshal split, batched-vs-fallback counts, Metal
+  dispatch/commit counts, commit-cause split, and the per-requester wait histogram. This is
+  the instrument that produced every number above; any change must move these, not a
+  one-off timing.
+- `GenerateAudioFileTest` — the honest end-to-end pair (`setupSeconds` + `generateRealtimeX`
+  + non-silence). Any "real-time" claim must keep setup at seconds.
+- `PdslSetupBreakdownTest` — exact-peak parity + per-stage setup attribution.
 
 ## Acceptance
 
-~5× end-to-end (per-tick ratio ≤ 0.2) on the pinned dense scene at the production buffer (4096
-preferred, 8192 acceptable), efx + stereo on, sustained 2 minutes, consistent across ≥3 runs. The
-full mechanical gate is [pdsl-streams-plan/05_MIGRATION_PLAN.md](pdsl-streams-plan/05_MIGRATION_PLAN.md)
-Phase 5; the design home for the run-ahead-stream construct (where this perf fix becomes structural)
-is [pdsl-streams-plan/03_PDSL_STREAMS_DESIGN.md](pdsl-streams-plan/03_PDSL_STREAMS_DESIGN.md).
+Unchanged: ~5× end-to-end (p50 per-tick ratio ≤ 0.2) on the pinned dense scene at 4096
+(preferred) or 8192, efx + stereo on, sustained ≥ 200 ticks, consistent across ≥ 3 runs —
+the mechanical gates in
+[`pdsl-streams-plan/00_OBJECTIVE_AND_ACCEPTANCE.md`](pdsl-streams-plan/00_OBJECTIVE_AND_ACCEPTANCE.md) §4.

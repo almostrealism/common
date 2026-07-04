@@ -194,3 +194,25 @@ The full durable model lives in
 This fix unblocked Metal as a *sustained* backend; it did not by itself make rendering
 real-time (that was the DSP/mixdown loop, since migrated to PDSL — see
 [NEXT_STEP.md](NEXT_STEP.md)).
+
+### 8.4 First-evaluate probe explosion (setup front-load / mid-stream spike) — RESOLVED (2026-07-03)
+
+Every distinct batched pattern kernel shape paid **14–29 s on its first `evaluate()`** — in
+setup (as ~129 s of "setup" cost per scene) and again on any shape first reached mid-stream
+(the ~29–33 s dropout spike that motivated the whole-arrangement pre-warm). The cost was the
+`replaceLoop` gather-collapse probe (`AggregatedProducerComputation.prepareScope` →
+`TraversableExpression.uniqueNonZeroOffset`), which builds an `ExpressionMatrix` over
+`[windowWidth × bucketN]` substituting each index into the deep fused chain — and which can
+**never succeed** on the batched chains (their scatter-add sums overlapping notes, so no unique
+non-zero contributor exists). It burned the time and returned null every time; the production
+loop scope was always the fallback anyway.
+
+Fix: `BatchedPatternRenderer.sumNoteAxis` disables `replaceLoop` on the note-axis sums of
+`reduceAligned` / `scatterAddFlat`. Zero output change (bit-identical peak). Setup 128.6 s →
+~2.3 s; honest `generateRealtimeX` 0.63 → 1.46 (then 1.79 after the 2026-07-04 tooling merge);
+`preWarmMaxSeconds` now defaults to 0 and the render ring prefills a single buffer. Do **not**
+re-introduce a whole-arrangement pre-warm — front-loading rendering into setup is the
+anti-pattern this fix removed. The existing `ScopeSettings.maxGatherAnalysisDepth`/`Nodes`
+gates do not cover this case (they inspect only the target *index* expression); a matrix-size
+gate is a candidate framework hygiene follow-up. Full record:
+[`SETUP_FRONT_LOADING_HANDOFF.md`](SETUP_FRONT_LOADING_HANDOFF.md).

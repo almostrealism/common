@@ -1,31 +1,45 @@
 # AudioScene Redesign — Plan Index
 
-> **ROOT-CAUSE UPDATE (2026-06-28) — read before `NEXT_STEP.md`.** The steady-state batching
-> bottleneck has been **measured and root-caused**: Metal command-buffer batching collapses
-> (`meanDispatchesPerCommit ≈ 1.07`; 100 % of commits are host-`waitFor` completions; `withDep=0`,
-> `cMaxOpen=0`) because **host `MemoryDataCopy` copies force a per-op `waitFor`** — *not* the
-> per-dispatch Metal encoder/arg-bind overhead [`NEXT_STEP.md`](NEXT_STEP.md) hypothesised. The active
-> effort is therefore the general **`MemoryDataCopy` → `Assignment` (kernel) copy migration**:
-> canonical plan → [`../ASSIGNMENT_COPY_MIGRATION.md`](../ASSIGNMENT_COPY_MIGRATION.md); audio
-> all-Metal sub-case → [`BATCHED_AGGREGATE_COPY.md`](BATCHED_AGGREGATE_COPY.md). `NEXT_STEP.md` and the
-> "a3 forward dispatch overhead" framing in `pdsl-streams-plan/` are **superseded for the root cause**
-> (their measurements and ruled-out lists remain on record).
+> **STATUS UPDATE (2026-07-04) — read before anything else.** Three things changed since the
+> 2026-06-28 banners:
+>
+> 1. **The setup front-load and the mid-stream "compile spike" are RESOLVED.** Both were the
+>    `uniqueNonZeroOffset` gather-collapse probe running on the first evaluate of every batched
+>    kernel shape (14–29 s each, always failing on scatter-add chains) — *not* rendering and
+>    *not* native compilation. Fixed by `BatchedPatternRenderer.sumNoteAxis`
+>    (`setReplaceLoop(false)`); setup is now ~2.3 s (was 128.6 s), the whole-arrangement
+>    pre-warm is removed, and the honest end-to-end is `generateRealtimeX=1.79` @8192 with
+>    `setupSeconds=2.23`. Record: [`SETUP_FRONT_LOADING_HANDOFF.md`](SETUP_FRONT_LOADING_HANDOFF.md);
+>    correction to the prior handoff's conclusion:
+>    [`pdsl-streams-plan/HANDOFF_2026-06-28.md`](pdsl-streams-plan/HANDOFF_2026-06-28.md) §9.
+> 2. **The `MemoryDataCopy` batching collapse was addressed by a different design than the one
+>    planned here.** `a3b20e285` chains every copy on the Semaphore mechanism
+>    (`AcceleratedOperation.apply` no longer blocks the host; `MemoryDataCopy` deprecated).
+>    Measured after: `meanDispatchesPerCommit` 1.07 → 2.9 @4096 / 3.4 @8192 — but commits are
+>    still 100 % host-completion-driven (~63–72/tick), now attributed per-requester. The
+>    `Assignment` migration ([`../ASSIGNMENT_COPY_MIGRATION.md`](../ASSIGNMENT_COPY_MIGRATION.md))
+>    remains a separate, paused effort (its flag is default-off for ML-training reasons).
+> 3. **The kernel-tooling simplification arc landed** (`getValueRelative` removed,
+>    `PackedCollectionMap` removed, OpenCL index/abs fixes — items B/C/E of
+>    [`../REFACTOR_ORDERING_NOTES.md`](../REFACTOR_ORDERING_NOTES.md)); the remaining arc is
+>    D+A ([`../DROP_OPERATION_OUTPUT_ARG.md`](../DROP_OPERATION_OUTPUT_ARG.md), still a study).
+>
+> The current bottleneck attribution and the ranked path to 5× live in
+> **[NEXT_STEP.md](NEXT_STEP.md)** (rewritten 2026-07-04 with fresh receipts).
 
 > **Goal:** a real-time `AudioScene` pipeline — batched pattern rendering with live genome
 > swap, all DSP defined in PDSL, acoustic parity with the released system, at/under
 > ratio-of-1 (~92.9 ms/tick at 44.1 kHz / 4096 frames).
 >
-> **Where it stands (updated 2026-06-28, `feature/pattern-batched-dispatch`):** the a3 DSP/mixdown
-> is migrated to PDSL, parity-validated by ear, and runs under the realtime budget by
-> default (faster than the legacy CellList path); the efx-feedback parity has closed its
-> three biggest character gaps. a2 batched pattern dispatch now fires on real scenes
-> (melodic and percussion), `enablePdslMixdown` is default-on, and the a1/a2/a3 ring
-> decoupling is implemented and **measured to work** (a2 runs ahead, rarely blocks a3). The
-> system is ~2–2.4× realtime steady-state; the remaining headline work is **5×**, then true
-> stereo and kernel pre-warm. **The 5× bottleneck is the a3 mixdown `compiled.forward`'s fixed
-> per-dispatch encode/arg-bind overhead — NOT a2.** The earlier "a2-bound / needs an a2 kernel
-> redesign" framing is **superseded by measurement** — see [NEXT_STEP.md](NEXT_STEP.md) and
-> `pdsl-streams-plan/04 §0b` / `05` Phase 2.
+> **Where it stands (updated 2026-07-04, `feature/pattern-batched-dispatch`):** the a3
+> DSP/mixdown is migrated to PDSL, parity-validated by ear, `enablePdslMixdown` is default-on,
+> a2 batched dispatch fires on real scenes, and the a1/a2/a3 ring decoupling works (a2 runs
+> ahead; a3 rarely waits). Setup is honest (~2.3 s) and steady-state is **p50 ratio 0.40 @4096
+> (2.5×) / 0.27 @8192 (3.7×)**, sustained 200 ticks, efx+reverb on (run `1dadc516`). The
+> remaining headline work is **5× (ratio ≤ 0.2)**, then true stereo. The measured levers, in
+> order: the no-op per-cell `adjustVolume` synchronous evaluate (~23 host-wait commits/tick —
+> a third of all commits), the per-note fallback's blit-copy waits (~17–20/tick), a2's own
+> cost at 8192 (40.6 ms/tick), and the per-stage forward wait tail (the D+A framework arc).
 >
 > **Authoritative current plan: [`pdsl-streams-plan/`](pdsl-streams-plan/)** (claim-ledger-gated,
 > measurement-first); the single current next step is **[NEXT_STEP.md](NEXT_STEP.md)**. The other

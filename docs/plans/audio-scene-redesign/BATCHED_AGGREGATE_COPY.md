@@ -8,8 +8,17 @@
 > (JVM-heap or native memory on one side of the copy, plus the larger `processing` cross-provider
 > replacement waits) is **explicitly out of scope** and deferred to a follow-on built on this one.
 >
-> Status: **plan only.** No production code has been changed for this plan. The `diag*`
-> instrumentation referenced under "Validation" already exists in the working tree (uncommitted).
+> Status: **plan only — and largely SUPERSEDED (2026-07-04).** The per-op host waits this plan
+> targets were addressed by a different design: `a3b20e285` ("Chain every copy on the Semaphore
+> mechanism and deprecate `MemoryDataCopy`") makes `AcceleratedOperation.apply` non-blocking —
+> prepare copies chain ahead of the kernel, the kernel chains on the last copy-in, replacement
+> copy-back and de-aggregation chain after. Measured on the pinned scene (run `1dadc516`,
+> 200 sustained ticks): `meanDispatchesPerCommit` 1.07 → 2.90 @4096 / 3.36 @8192, and the §1
+> `aggregateCopyOut`/`processing` wait taxonomy no longer appears in the commit-cause histogram —
+> the dominant requesters are now the per-cell `adjustVolume` evaluate and `mtlBlitCopy` (see
+> [`NEXT_STEP.md`](NEXT_STEP.md)). The §2 mechanism description remains a correct record of the
+> pre-chaining code; re-baseline before implementing anything from §4 onward. The `diag*`
+> instrumentation referenced under "Validation" is now committed (`PdslHotPathBreakdownTest`).
 
 ---
 
