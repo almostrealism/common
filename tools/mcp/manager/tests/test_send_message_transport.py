@@ -304,6 +304,27 @@ class TestRealTransportPerRequestDecode(unittest.TestCase):
     the prior fix (PR #286) did not include because mocking
     ``mcp.get_context`` does not exercise the transport."""
 
+    def setUp(self):
+        # The per-request decode tests mint a temp token, which
+        # BearerAuthMiddleware then has to resolve to a Slack workspace
+        # via the controller's /api/workstreams endpoint. The fail-closed
+        # workspace_map fix in PR #332 means an unreachable controller
+        # no longer silently downgrades to legacy/single-workspace mode,
+        # so we must hand the middleware a mocked controller response
+        # that maps the test workstreams to a workspace before sending
+        # the request. Also reset the workspace cache so a previous
+        # test's state cannot leak into the per-request decode path.
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["org_map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+        server._workspace_map_cache["fetch_ok_ever"] = False
+
+    def tearDown(self):
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["org_map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+        server._workspace_map_cache["fetch_ok_ever"] = False
+
     @staticmethod
     def _build_app(*, stateless):
         from mcp.server.fastmcp import FastMCP
@@ -337,9 +358,16 @@ class TestRealTransportPerRequestDecode(unittest.TestCase):
     def test_stateless_mode_resolves_temp_token_via_per_request_path(self):
         token = server._mint_temp_token("ws-RT", "job-RT", ttl_seconds=60)
         app = self._build_app(stateless=True)
-        with _running_server(app) as port:
-            result, _ = _send_initialize_and_tool_call(
-                port, token, "probe", stateful=False)
+        # Map the test workstream to a real workspace so the fail-closed
+        # auth path accepts the temp token (otherwise an unreachable
+        # controller would reject the request with 401 before the per-
+        # request decode ever runs).
+        with patch.object(server, "_controller_get",
+                          return_value=[{"workstreamId": "ws-RT",
+                                         "slackWorkspaceId": "T-RT"}]):
+            with _running_server(app) as port:
+                result, _ = _send_initialize_and_tool_call(
+                    port, token, "probe", stateful=False)
         self.assertEqual(result["per_request_ws"], "ws-RT",
                          msg=f"per-request decode did not see the temp token bearer; got: {result}")
         self.assertEqual(result["per_request_job"], "job-RT",
@@ -350,9 +378,12 @@ class TestRealTransportPerRequestDecode(unittest.TestCase):
     def test_stateful_mode_resolves_temp_token_via_per_request_path(self):
         token = server._mint_temp_token("ws-RT-2", "job-RT-2", ttl_seconds=60)
         app = self._build_app(stateless=False)
-        with _running_server(app) as port:
-            result, sid = _send_initialize_and_tool_call(
-                port, token, "probe", stateful=True)
+        with patch.object(server, "_controller_get",
+                          return_value=[{"workstreamId": "ws-RT-2",
+                                         "slackWorkspaceId": "T-RT-2"}]):
+            with _running_server(app) as port:
+                result, sid = _send_initialize_and_tool_call(
+                    port, token, "probe", stateful=True)
         # Stateful transport must have handed us a session id that
         # the second request reuses; if it did not, the assertion
         # below would not be exercising the per-session stateful
