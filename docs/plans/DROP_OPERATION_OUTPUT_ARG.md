@@ -40,6 +40,57 @@ implementation, and enumerates the risks. It is a study, not an approved change.
 
 ---
 
+## Status
+
+**Phase 1 — self-contained destination creation: COMPLETE (staged, uncommitted).**
+The destination-factory delegation cycle is eliminated. The new
+`CollectionDestinationProducer` (compute/algebra) carries the computation's output
+`TraversalPolicy`, derives the count from that shape, and performs
+`shapeForLength` + allocation itself; `CollectionProducerComputationBase`
+constructs it from plain values and `adjustDestination` is deleted. The owner is
+consulted only for `Countable.isFixedCount()` as plain data at creation time
+(constructor-time capture is impossible: `ArithmeticSequenceComputation` overrides
+`isFixedCount` with a field assigned after the base constructor runs). The
+adjust-existing-buffer reuse path was not carried over — it was provably dead
+(the factory adapter always passed a null existing bank). The new type remains a
+`MemoryDataDestinationProducer` subtype so the instanceof-unwrap sites
+(`ProcessArgumentMap`, `AlgebraFeatures`, the input filter in
+`CollectionProducerComputation`) are untouched; the hierarchy collapses in
+phase 2. Verified: 160 tests (map/subset/enumerate/pad/delta/gradient/dense/
+kernel-op/interpolate/matrix) on the default driver, 48 under `native,cl`,
+validator green, full-reactor install green. `commit.txt` describes this change.
+
+**Phase 2 — steps 2–5 of §6: DESIGNED, NOT STARTED.** Findings that adjust the plan:
+
+- **§5.1 audit PASSED.** No bare passthrough usage exists anywhere; all
+  `Input.value`/`new PassThroughProducer` sites embed into computations, and
+  `ProcessDetailsFactory` binds passthroughs via reference index without invoking
+  their raw `get()`. `WaveDataProviderAdapter` (indices 0/1/2) shifts to 1/2/3.
+- **Steps 2–4 must land as one change set** (the index shift alone misbinds every
+  argument until the delegation prepends); step 5 stays separate.
+- **The §5.1 hazard concretely manifests in nested evaluation:**
+  `ProcessDetailsFactory.construct` hands its received args to *inner* evaluables
+  for kernel arguments that are themselves computations. If the outer apply args
+  carry the prepended destination slot, the inner evaluation prepends again and
+  inner argument references go off by one per nesting level. Resolution: the
+  factory holds both spaces — it binds the destination from slot 0 but delegates
+  the *un-prepended* user args to inner evaluables.
+- **Two `init()` adjustments fall out:** (a) bound the reference binding by
+  `refIndex < args.length` so `run()`/`submit()` with empty args do not fail on
+  the destination reference; (b) the argument-kernel-size heuristic (and its
+  `allMemoryData` precondition) must skip the destination slot, or plain
+  `evaluate` kernel sizing silently degrades.
+- **Phase 2 edit list:** shift the `Input.value` variants to `n + 1`; fix
+  `WaveDataProviderAdapter`; add `ProducerArgumentReference` (returning 0) to
+  `CollectionDestinationProducer`; apply the `init()` adjustments plus the
+  inner-args separation; prepend `null` in
+  `AcceleratedComputationEvaluable.evaluate`/`request` and the destination in
+  `DestinationEvaluable.evaluate`/`request` (continuing to pass `output` in
+  parallel until step 5); keep the copy-out policy keyed on `output` until
+  step 5, then re-key to `args[0]`.
+
+---
+
 ## 1. Background — how the destination works today
 
 ### 1.1 The destination is input index 0 of every `ProducerComputation`

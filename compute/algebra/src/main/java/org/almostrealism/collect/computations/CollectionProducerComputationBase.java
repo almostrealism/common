@@ -39,11 +39,9 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
-import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -106,9 +104,10 @@ import java.util.stream.Stream;
  * the resulting {@link Evaluable} can be safely used concurrently.</p>
  * 
  * <h2>Memory Considerations:</h2>
- * <p>This class manages memory allocation automatically through the {@link #adjustDestination(MemoryBank, Integer)}
- * method. Large computations may hit memory limits defined by {@link MemoryProvider#MAX_RESERVATION}.
- * Applications should call {@link #destroy()} when computations are no longer needed to free resources.</p>
+ * <p>Destination memory is allocated automatically by the computation's
+ * {@link CollectionDestinationProducer}. Large computations may hit memory limits defined by
+ * {@link MemoryProvider#MAX_RESERVATION}. Applications should call {@link #destroy()} when
+ * computations are no longer needed to free resources.</p>
  *
  * 
  * @author Michael Murray
@@ -198,7 +197,7 @@ public abstract class CollectionProducerComputationBase
 		this.shape = outputShape.withOrder(null);
 
 		List<Producer<PackedCollection>> inputs = new ArrayList<>();
-		inputs.add(new MemoryDataDestinationProducer<>(this, this::adjustDestination));
+		inputs.add(new CollectionDestinationProducer(this.shape, this));
 		inputs.addAll(List.of(arguments));
 		setInputs(inputs);
 
@@ -338,51 +337,6 @@ public abstract class CollectionProducerComputationBase
 			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 
 		// this.evaluable = null;
-	}
-
-	/**
-	 * Adjusts the destination buffer to match the required length and shape.
-	 * This method handles intelligent memory management by reusing existing buffers
-	 * when possible and allocating new ones only when necessary.
-	 * 
-	 * <p>The adjustment logic:</p>
-	 * <ul>
-	 *   <li>If length is null or zero, destroys the existing buffer and returns null</li>
-	 *   <li>If existing buffer is too small, destroys it and creates a new one</li>
-	 *   <li>If existing buffer has the exact shape, returns it unchanged</li>
-	 *   <li>Otherwise, returns a range view of the existing buffer</li>
-	 * </ul>
-	 * 
-	 * @param existing The existing memory bank, may be null
-	 * @param len The required length for the destination buffer
-	 * @return Adjusted memory bank, or null if length is invalid
-	 * @throws IllegalArgumentException if len is null
-	 * @see CollectionProducerComputation#shapeForLength(TraversalPolicy, int, boolean, int)
-	 */
-	protected MemoryBank<PackedCollection> adjustDestination(MemoryBank<?> existing, Integer len) {
-		if (len == null) {
-			throw new IllegalArgumentException();
-		} else if (len <= 0) {
-			if (existing != null) {
-				existing.getRootDelegate().destroy();
-			}
-
-			return null;
-		}
-
-		TraversalPolicy shape = CollectionProducerComputation.shapeForLength(
-				getShape(), getCount(), isFixedCount(), len);
-
-		if (!(existing instanceof PackedCollection) || existing.getMem() == null ||
-				((PackedCollection) existing).getShape().getTotalSize() < shape.getTotalSize()) {
-			if (existing != null) existing.getRootDelegate().destroy();
-			return new PackedCollection(shape);
-		}
-
-		if (((PackedCollection) existing).getShape().equals(shape))
-			return (MemoryBank<PackedCollection>) existing;
-
-		return ((PackedCollection) existing).range(shape);
 	}
 
 	/**
