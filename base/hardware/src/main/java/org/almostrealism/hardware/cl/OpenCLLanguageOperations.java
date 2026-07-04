@@ -74,6 +74,23 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 		return "((long) get_global_id(" + index + "))";
 	}
 
+	/**
+	 * Returns the absolute value expression using {@code fabs}.
+	 *
+	 * <p>{@link io.almostrealism.expression.Absolute} is always a floating point
+	 * expression, and OpenCL C's {@code abs} is defined only for integer types —
+	 * passing a floating point argument is ambiguous among the integer overloads
+	 * and fails compilation. Metal and C++ resolve {@code abs} for floating point
+	 * arguments, so only this backend needs the distinction.</p>
+	 *
+	 * @param value The expression to take the absolute value of
+	 * @return Expression like {@code fabs(value)}
+	 */
+	@Override
+	public String abs(String value) {
+		return "fabs(" + value + ")";
+	}
+
 	@Override
 	public String nameForType(Class<?> type) {
 		if (type == cl_event.class) {
