@@ -148,7 +148,7 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 
 		PackedCollection destination = new PackedCollection(shape(5, 10));
 
-		Evaluable<PackedCollection> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
+		Evaluable<PackedCollection> ev = c(p(params)).traverseEach().repeat(10).multiply(cp(timeline)).get();
 		ev.into(destination.traverseEach()).evaluate();
 		log(Arrays.toString(destination.toArray(20, 10)));
 	}

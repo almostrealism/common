@@ -20,7 +20,6 @@ import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.util.TestSuiteBase;
@@ -91,34 +90,4 @@ public class TraversableExpressionComputationTest extends TestSuiteBase {
 		}
 	}
 
-	/**
-	 * Tests the pairSum operation used within a map operation.
-	 * Demonstrates how TraversableExpressionComputation can be used as part of
-	 * higher-order operations like mapping across collection elements.
-	 *
-	 * <p>This test shows a more complex usage pattern where the pairSum computation
-	 * is applied through a map operation, demonstrating composition of computations.
-	 *
-	 * <p>Expected behavior:
-	 * - Input: 3x2 matrix with random values
-	 * - Process: Map pairSum across the input using traversal
-	 * - Output: 3x1 matrix with summed pairs (same as pair() test but through mapping)
-	 */
-	@Test(timeout = 30000)
-	public void map() {
-		int r = 3;
-		int c = 2;
-
-		PackedCollection input = new PackedCollection(shape(r, c));
-		input.fill(pos -> Math.random());
-
-		CollectionProducerComputation sum = c(p(input.traverse(1))).map(shape(1), v -> pairSum(v));
-		PackedCollection out = sum.get().evaluate();
-
-		for (int i = 0; i < r; i++) {
-			double expected = input.valueAt(i, 0) + input.valueAt(i, 1);
-			double actual = out.valueAt(i, 0);
-			assertEquals(expected, actual);
-		}
-	}
 }

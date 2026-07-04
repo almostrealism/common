@@ -131,7 +131,7 @@ public class AttentionKeysDuplicationProfileTest extends TestSuiteBase implement
 		keyCache.fill(pos -> Math.random());
 
 		Producer<PackedCollection> o = c(p(keyCache))
-				.traverse(1).map(v -> v.multiply(p(q)))
+				.traverse(1).multiply(p(q))
 				.traverse(2).sum()
 				.divide(c(Math.sqrt(HEAD_SIZE)))
 				.reshape(shape(seqLength, HEADS))

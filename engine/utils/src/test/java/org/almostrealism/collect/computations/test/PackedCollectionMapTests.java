@@ -20,7 +20,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -32,15 +31,16 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 /**
- * Tests for map, reduce, and enumerate operations on PackedCollections.
- * These tests validate traversal, transformation, and aggregation patterns
- * used in neural network layers and tensor operations.
+ * Tests for slice-wise composition patterns on PackedCollections: traversal-aware
+ * broadcast arithmetic, repeat, enumerate, and sum/max aggregation. These validate the
+ * transformation patterns used in neural network layers and tensor operations, expressed
+ * directly through traversal-aware operations (each slice of a traversed collection is
+ * combined with a broadcast operand or reduced independently).
  */
 public class PackedCollectionMapTests extends TestSuiteBase {
 
 	/**
-	 * Tests 2D mapping operation that multiplies each element of a collection by all elements of another collection.
-	 * Validates that the outer product pattern (c[i] * d[j]) produces correct results.
+	 * Tests the outer product pattern (c[i] * d[j]) via per-element repeat and broadcast multiply.
 	 *
 	 * <p>Operation: For each element in collection c (size 5), repeat it and multiply by collection d (size 2)
 	 * Expected output: 5x2 matrix where output[i,j] = c[i] * d[j]</p>
@@ -52,9 +52,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 
 		PackedCollection c = empty(shape(n)).fill(Math::random);
 		PackedCollection d = empty(shape(m)).fill(Math::random);
-		Supplier<CollectionProducerComputation> product =
-				() -> cp(c).each().map(shape(m), v ->
-						v.repeat(2).mul(cp(d)));
+		Supplier<CollectionProducer> product =
+				() -> cp(c).each().repeat(m).mul(cp(d))
+						.reshape(shape(n, m)).traverse(1);
 
 		Consumer<PackedCollection> valid = output -> {
 			Assert.assertEquals(5, output.getShape().length(0));
@@ -138,22 +138,18 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests simple reduce operation that adds two collections for each traversed slice.
-	 * Validates that map can produce output with arbitrary transformations independent of input.
+	 * Tests producing a repeated slice-wise result that is independent of any input collection.
 	 *
-	 * <p>Operation: Traverse input (8x3x3), for each slice produce source + filter (both 3x1).
-	 * Expected: output[i,j,k] = source[j,k] + filter[j,k], independent of input values.</p>
-	 *
-	 * <p>This tests that mapped operations can ignore the traversed input and produce fixed results.</p>
+	 * <p>Operation: Repeat source + filter (both 3x1) 8 times.
+	 * Expected: output[i,j,k] = source[j,k] + filter[j,k] for every copy i.</p>
 	 */
 	@Test(timeout = 30000)
 	public void simpleReduce() {
-		PackedCollection input = tensor(shape(8, 3, 3)).pack();
 		PackedCollection source = tensor(shape(3, 1)).pack();
 		PackedCollection filter = tensor(shape(3, 1)).pack();
 
 		Supplier<Producer<PackedCollection>> product =
-				() -> traverse(1, p(input)).map(shape(3, 1), v -> add(p(source), p(filter)));
+				() -> repeat(8, add(p(source), p(filter)));
 
 		Consumer<PackedCollection> valid = output -> {
 			Assert.assertEquals(8, output.getShape().length(0));
@@ -186,7 +182,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		PackedCollection input = tensor(shape(8, 6)).pack();
 
 		verboseLog(() -> {
-			CollectionProducer product = traverse(1, p(input)).reduce(v -> v.sum());
+			CollectionProducer product = traverse(1, p(input)).sum();
 			PackedCollection output = product.get().evaluate();
 			log(output.getShape());
 
@@ -219,7 +215,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 
 		verboseLog(() -> {
 			CollectionProducer enumerated = enumerate(shape(size, size, 1), p(input));
-			CollectionProducer sum = enumerated.traverse(1).reduce(slice -> sum(slice));
+			CollectionProducer sum = enumerated.traverse(1).sum();
 			PackedCollection output = sum.get().evaluate();
 			log(output.getShape());
 
@@ -254,7 +250,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 
 		verboseLog(() -> {
 			CollectionProducer enumerated = enumerate(shape(size, size, 1), p(input));
-			CollectionProducer sum = enumerated.traverse(1).reduce(slice -> sum(slice));
+			CollectionProducer sum = enumerated.traverse(1).sum();
 			PackedCollection output = sum.get().evaluate();
 			log(output.getShape());
 
@@ -322,8 +318,8 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 
 		Supplier<Producer<PackedCollection>> product =
 				() -> traverse(1, p(input))
-						.map(v -> v.multiply(p(filter)))
-						.reduce(v -> v.sum());
+						.multiply(p(filter))
+						.sum();
 
 		Consumer<PackedCollection> validate = output -> {
 			for (int i = 0; i < 8; i++) {
@@ -412,7 +408,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 
 		Producer<PackedCollection> o =
 				c(p(in)).traverse(1)
-						.map(v -> v.multiply(p(x)))
+						.multiply(p(x))
 						.traverse(2).sum()
 						.reshape(shape(w, h))
 						.enumerate(1, 1)
@@ -456,7 +452,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
-					.map(v -> v.multiply(p(filter)));
+					.multiply(p(filter));
 			log(conv.getShape());
 
 			PackedCollection output = conv.get().evaluate();
@@ -511,8 +507,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
-					.map(v ->
-							v.multiply(p(filter)));
+					.multiply(p(filter));
 			log(conv.getShape());
 
 			PackedCollection output = conv.get().evaluate();
@@ -529,50 +524,6 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 
 							if (verboseLogs)
 								log("\tPackedCollectionMapTests: " + expected + " vs " + actual);
-							Assert.assertEquals(expected, actual, 0.0001);
-						}
-					}
-				}
-			}
-		});
-	}
-
-	/**
-	 * Tests enumerate map with traverse each operation.
-	 */
-	// @Test(timeout = 30000)
-	private void enumerateMapTraverseEach() {
-		int r = 10;
-		int c = 10;
-		int w = 3;
-		int s = 1;
-		int pad = 2;
-
-		PackedCollection input = tensor(shape(r, c)).pack();
-		PackedCollection filter = tensor(shape(w, w)).pack();
-
-		verboseLog(() -> {
-			CollectionProducer conv = c(p(input))
-					.enumerate(1, w, s)
-					.enumerate(1, w, s)
-					.traverse(2)
-					.map(v ->
-							v.traverseEach().multiply(traverseEach(p(filter))));
-			log(conv.getShape());
-
-			PackedCollection output = conv.get().evaluate();
-			log(output.getShape());
-
-			for (int i = 0; i < r - pad; i++) {
-				for (int j = 0; j < c - pad; j++) {
-					log("PackedCollectionMapTests: " + i + ", " + j);
-
-					for (int k = 0; k < w; k++) {
-						for (int l = 0; l < w; l++) {
-							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
-							double actual = output.toDouble(output.getShape().index(i, j, k, l));
-
-							log("\tPackedCollectionMapTests: " + expected + " vs " + actual);
 							Assert.assertEquals(expected, actual, 0.0001);
 						}
 					}
@@ -648,8 +599,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 						.enumerate(1, w, s)
 						.enumerate(1, w, s)
 						.traverse(2)
-						.map(shape(2, w, w), v ->
-								v.repeat(2).multiply(traverseEach(p(filter))));  // Map over windows, repeat and multiply
+						.repeat(2)
+						.traverse(2)
+						.multiply(cp(filter).repeat(c - pad).traverse(0).repeat(r - pad).traverse(2));
 
 				log("Input shape: " + input.getShape());
 				log("Filter shape: " + filter.getShape());
@@ -877,7 +829,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 					.traverse(2)
 					.multiply(cp(filter).repeat(c - pad).traverse(0).repeat(r - pad).traverse(2))
 					.traverse()
-					.reduce(v -> v.sum());
+					.sum();
 			log(conv.getShape());
 
 			Evaluable<PackedCollection> ev = conv.get();
@@ -982,48 +934,4 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
-	/**
-	 * Tests map concat operation.
-	 */
-	// @Test(timeout = 30000)
-	private void mapConcat() {
-		int r = 10;
-		int c = 10;
-		int s = 3;
-
-		PackedCollection input = tensor(shape(r, c, s)).pack();
-		PackedCollection addOn = tensor(shape(s)).pack();
-
-		verboseLog(() -> {
-			CollectionProducer conv = traverse(2, p(input))
-					.map(v ->
-							concat(shape(1, 1, 2 * s), v, p(addOn)));
-			log(conv.getShape());
-
-			PackedCollection output = conv.get().evaluate();
-			log(output.getShape());
-
-			for (int i = 0; i < 10; i++) {
-				for (int j = 0; j < 10; j++) {
-					for (int k = 0; k < 3; k++) {
-						double expected = input.toDouble(input.getShape().index(i, j, k));
-						double actual = output.toDouble(output.getShape().index(i, j, k));
-
-						if (verboseLogs)
-							log(expected + " vs " + actual);
-						Assert.assertEquals(expected, actual, 0.0001);
-					}
-
-					for (int k = 0; k < 3; k++) {
-						double expected = addOn.toDouble(addOn.getShape().index(k));
-						double actual = output.toDouble(output.getShape().index(i, j, k + 3));
-
-						if (verboseLogs)
-							log(expected + " vs " + actual);
-						Assert.assertEquals(expected, actual, 0.0001);
-					}
-				}
-			}
-		});
-	}
 }
