@@ -67,8 +67,8 @@ import java.util.function.Supplier;
  *         "pairSum", outputShape,
  *         args -> DefaultCollectionExpression.create(outputShape,
  *             idx -> Sum.of(
- *                 args[1].getValueRelative(new IntegerConstant(0)),
- *                 args[1].getValueRelative(new IntegerConstant(1)))),
+ *                 args[1].getValueAt(new IntegerConstant(0)),
+ *                 args[1].getValueAt(new IntegerConstant(1)))),
  *         inputProducer);
  * }</pre>
  *

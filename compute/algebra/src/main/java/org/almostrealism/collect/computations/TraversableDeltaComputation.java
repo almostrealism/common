@@ -26,7 +26,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
@@ -440,21 +439,6 @@ public class TraversableDeltaComputation
 	@Override
 	public Expression getValueAt(Expression index) {
 		return getExpression(index).getValueAt(index);
-	}
-
-	/**
-	 * Gets the gradient value at a position relative to the current output location.
-	 *
-	 * <p>Uses a zero index for the expression (representing the base position) and retrieves
-	 * the value at the specified relative offset. This is used when the actual position
-	 * is determined by the output buffer location rather than absolute indexing.</p>
-	 *
-	 * @param index The {@link Expression} representing the relative offset from output position
-	 * @return An {@link Expression} representing the gradient value at the relative position
-	 */
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return getExpression(new IntegerConstant(0)).getValueRelative(index);
 	}
 
 	/**

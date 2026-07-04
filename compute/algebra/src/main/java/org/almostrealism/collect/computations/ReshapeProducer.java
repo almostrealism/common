@@ -525,11 +525,6 @@ public class ReshapeProducer
 	}
 
 	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueRelative(index) : null;
-	}
-
-	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		return producer instanceof TraversableExpression ?
 				((TraversableExpression) producer).uniqueNonZeroOffset(globalIndex, localIndex, targetIndex) :

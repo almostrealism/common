@@ -110,9 +110,9 @@ public class DynamicIndexProjectionProducerComputation
 	private final BiFunction<TraversableExpression[], Expression, Expression> indexExpression;
 	
 	/**
-	 * Indicates whether this computation uses relative indexing.
-	 * When true, the computation uses {@link TraversableExpression#getValueRelative}
-	 * for more memory-efficient access patterns.
+	 * Indicates whether this computation uses relative indexing, offsetting the
+	 * projected index by the current kernel position for more memory-efficient
+	 * access patterns.
 	 */
 	private final boolean relative;
 
