@@ -1175,9 +1175,9 @@ public class CodingAgentJob extends GitManagedJob {
             }
         }
 
-        File outputDir = new File("claude-output");
-        if (!outputDir.exists()) outputDir.mkdir();
-        String outputFile = "claude-output/" + KeyUtils.generateKey() + ".json";
+        File outputDir = new File(FlowtreeArtifacts.OUTPUT_CAPTURE_DIRECTORY);
+        if (!outputDir.exists()) outputDir.mkdirs();
+        String outputFile = FlowtreeArtifacts.OUTPUT_CAPTURE_DIRECTORY + "/" + KeyUtils.generateKey() + ".json";
         Path outputCapturePath = Path.of(outputFile);
 
         Phase currentPhase = resolveCurrentPhase();

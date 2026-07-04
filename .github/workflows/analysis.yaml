@@ -814,7 +814,15 @@ jobs:
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
     strategy:
-      fail-fast: true
+      # Let every group in the matrix run to completion even when a peer fails.
+      # A failure in one group must not cancel the others: a simpler group often
+      # reproduces the same problem, and cancelling hides that cheaper signal.
+      # Cross-OS gating (don't run mac when linux fails) is handled by test-mac's
+      # needs/if, not by fail-fast.
+      fail-fast: false
+      # Cap concurrent groups so all seven completing doesn't overrun runner
+      # capacity; the remaining groups queue and run as slots free up.
+      max-parallel: 4
       matrix:
         group: [0, 1, 2, 3, 4, 5, 6]
     steps:
@@ -1064,11 +1072,12 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
-    concurrency:
-      group: test-mac-${{ github.ref }}-${{ matrix.group }}
-      cancel-in-progress: true
     strategy:
-      fail-fast: true
+      # Let every group finish even when a peer fails (see the test job above).
+      # test-mac already only runs when the linux test job succeeded/was skipped,
+      # so this only affects cancellation among the mac groups themselves.
+      fail-fast: false
+      max-parallel: 3
       matrix:
         group: [0, 1, 2]
     steps:
