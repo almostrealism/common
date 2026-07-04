@@ -22,13 +22,11 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.CollectionPermute;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
-import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionPad;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 
-import java.util.function.Function;
 
 /**
  * Factory interface for slicing, subsetting, and transformation operations on collections.
@@ -670,50 +668,6 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 		}
 
 		return new PackedCollectionPad(shape, position, collection);
-	}
-
-	/**
-	 * Applies a mapping function to each item of the given collection.
-	 * The mapper receives a computation representing each item and returns a producer for the mapped result.
-	 *
-	 * @param collection the collection to map over
-	 * @param mapper the function that transforms each item
-	 * @return a computation applying the mapper to each item
-	 * @deprecated Use {@link TraversableExpressionComputation} instead.
-	 */
-	default CollectionProducerComputation map(
-			Producer<?> collection,
-			Function<CollectionProducerComputation, CollectionProducer> mapper) {
-		return new PackedCollectionMap(collection, mapper);
-	}
-
-	/**
-	 * Applies a mapping function independently to each item of the collection,
-	 * where each item has the specified shape.
-	 *
-	 * @param itemShape  the shape of each item within the collection
-	 * @param collection the collection to map over
-	 * @param mapper     a function that receives each item as a producer and returns the mapped result
-	 * @return a computation producing the mapped collection
-	 */
-	default CollectionProducerComputation map(
-			TraversalPolicy itemShape, Producer<?> collection,
-			Function<CollectionProducerComputation, CollectionProducer> mapper) {
-		return new PackedCollectionMap(shape(collection).replace(itemShape), collection, mapper);
-	}
-
-	/**
-	 * Reduces the entire collection to a scalar (shape 1) by applying the given mapper
-	 * to the entire collection as a single item. This is equivalent to {@code map(shape(1), collection, mapper)}.
-	 *
-	 * @param collection the collection to reduce
-	 * @param mapper     a function that maps the entire collection to a single-element result
-	 * @return a computation producing the reduced scalar result
-	 */
-	default CollectionProducerComputation reduce(
-			Producer<?> collection,
-			Function<CollectionProducerComputation, CollectionProducer> mapper) {
-		return map(shape(1), collection, mapper);
 	}
 
 	/**

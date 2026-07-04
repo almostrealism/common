@@ -274,9 +274,14 @@ public class Interpolate extends CollectionProducerComputationBase {
 			} else if (c.getShape().isFixedCount()) {
 				return c.getValueAt(pos);
 			}
+
+			// A variable-count series provides one series of getShape().getSize()
+			// values to each kernel instance, so the position is addressed within
+			// the current kernel's series explicitly
+			return c.getValueAt(kernel().multiply(c.getShape().getSize()).add(pos.toInt()));
 		}
 
-		return var.getValueRelative(pos);
+		return var.reference(kernel().multiply(var.length()).add(pos.toInt()));
 	}
 
 	/**

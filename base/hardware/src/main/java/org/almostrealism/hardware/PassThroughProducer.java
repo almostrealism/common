@@ -460,19 +460,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	/**
-	 * Returns an expression for the value at a kernel-relative index.
-	 *
-	 * <p>Computes the absolute index as {@code kernel() * memLength + index}.</p>
-	 *
-	 * @param index The relative index expression
-	 * @return Expression referencing the argument variable at the absolute index
-	 */
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return (Expression) getArgumentVariables().get(0).reference(kernel().multiply(getMemLength()).add(index));
-	}
-
-	/**
 	 * Pass-through producers have no unique non-zero offset.
 	 *
 	 * @param globalIndex The global index

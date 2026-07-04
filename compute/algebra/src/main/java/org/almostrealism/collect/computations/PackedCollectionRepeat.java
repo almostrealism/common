@@ -31,7 +31,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.function.Supplier;
 
 /**
@@ -300,30 +299,6 @@ public class PackedCollectionRepeat
 		offset = slice.multiply(e(subsetShape.getTotalSizeLong())).add(offset);
 
 		return offset;
-	}
-
-	/**
-	 * Retrieves a value from the repeated collection at a relative index position.
-	 * 
-	 * <p>This method provides direct access to values in the repeated collection
-	 * by computing the corresponding input position and delegating to the
-	 * underlying collection's value retrieval.</p>
-	 * 
-	 * @deprecated This method is marked for removal in future versions.
-	 *             Use the standard evaluation pipeline instead.
-	 * 
-	 * @param index the relative index in the output collection
-	 * @return the value expression at the computed input position
-	 * @throws UnsupportedOperationException if the index cannot be simplified to a constant
-	 */
-	// TODO  Remove
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		Expression offset = projectIndex(index);
-		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
-		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
-
-		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
 	}
 
 	/**

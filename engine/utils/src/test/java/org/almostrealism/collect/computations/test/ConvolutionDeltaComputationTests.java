@@ -82,7 +82,7 @@ public class ConvolutionDeltaComputationTests extends TestSuiteBase implements G
 						.repeat(filterCount)
 						.multiply(p(filters))
 						.traverse()
-						.reduce(v -> v.sum());
+						.sum();
 
 		c.delta(p(filters)).evaluate();
 		// TODO  assertions
@@ -108,7 +108,7 @@ public class ConvolutionDeltaComputationTests extends TestSuiteBase implements G
 				.repeat(filterCount)
 				.multiply(cp(filters))
 				.traverse()
-				.reduce(v -> v.sum());
+				.sum();
 
 		int outSize = shape(c).getTotalSize();
 		PackedCollection g = integers(1, outSize + 1).evaluate().reshape(shape(c));
