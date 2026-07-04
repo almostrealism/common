@@ -1115,7 +1115,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 					.reshape(count, dim * dim)
 					.enumerate(1, 1)
 					.traverseEach()
-					.map(x -> x.multiply(2.0))
+					.multiply(2.0)
 					.delta(p(v))
 					.reshape(dim * dim, dim * dim)
 					.traverse(1)
@@ -1323,7 +1323,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		PackedCollection g = pack(3, 5);
 		PackedCollection w = pack(10, 100, 1000);
 		CollectionProducer c = cp(g).each()
-				.map(shape(3), v -> v.repeat(3).mul(cp(w)));
+				.repeat(3).mul(cp(w));
 
 		print(2, 3, c.get().evaluate());
 
@@ -1354,7 +1354,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 
 		Producer cdy = cp(v)
 				.multiply(c(3))
-				.map(shape(2), x -> x.repeat(2).multiply(cp(f)))
+				.repeat(2).multiply(cp(f))
 				.delta(p(v));
 		Evaluable<PackedCollection> dy = cdy.get();
 		PackedCollection dout = dy.evaluate();
@@ -1381,7 +1381,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				.reshape(shape(dim, dim));
 
 		CollectionProducer cdy = cp(v)
-				.map(x -> x.multiply(cp(f)))
+				.multiply(cp(f))
 				.delta(p(v));
 		Evaluable<PackedCollection> dy = cdy.get();
 		PackedCollection dout = dy.evaluate();

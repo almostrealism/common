@@ -1162,7 +1162,7 @@ jobs:
       group: test-cl-${{ github.ref }}-${{ matrix.group }}
       cancel-in-progress: true
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         # More groups than test-mac (7 vs 3): the CL backend reaches its memory
         # ceiling under the larger per-group test loads (AR_HARDWARE_MEMORY_SCALE

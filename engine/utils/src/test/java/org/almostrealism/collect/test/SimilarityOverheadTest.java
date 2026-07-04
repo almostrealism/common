@@ -17,13 +17,19 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.Ops;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.cl.CLComputeContext;
+import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
+import org.junit.Assume;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -46,6 +52,33 @@ import java.util.stream.DoubleStream;
  * allocation) vs the actual native kernel execution time.</p>
  */
 public class SimilarityOverheadTest extends TestSuiteBase {
+
+	/**
+	 * Skips this suite when OpenCL is the only available GPU backend. The allocation
+	 * churn of these measurements exhausts the OpenCL reservation ceiling, because the
+	 * CL provider frees device memory only on explicit destroy rather than when the
+	 * owning object is collected the way the other providers do.
+	 */
+	@Before
+	public void requireReclaimingGpuProvider() {
+		Assume.assumeFalse("OpenCL is the only available GPU backend",
+				hasContext(CLComputeContext.class, ComputeRequirement.CL) &&
+						!hasContext(MetalComputeContext.class, ComputeRequirement.MTL));
+	}
+
+	/**
+	 * Returns true when a {@link io.almostrealism.code.ComputeContext} of the given
+	 * type is available for the given requirement under the current configuration.
+	 */
+	private static boolean hasContext(Class<?> type, ComputeRequirement requirement) {
+		try {
+			return Hardware.getLocalHardware()
+					.getComputeContexts(false, true, requirement).stream()
+					.anyMatch(type::isInstance);
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
 
 	/** Number of feature bins per frame (matches typical audio feature extraction). */
 	private static final int BINS = 40;

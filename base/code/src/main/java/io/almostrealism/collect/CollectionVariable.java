@@ -234,18 +234,6 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	}
 
 	/**
-	 * Returns an expression for accessing a value at a relative index offset.
-	 * Delegates to the superclass implementation.
-	 *
-	 * @param index the relative index expression
-	 * @return an expression representing the value at the relative index
-	 */
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return super.getValueRelative(index);
-	}
-
-	/**
 	 * Computes a unique non-zero offset for the given indices, if one exists.
 	 * This method checks if the underlying producer is a {@link TraversableExpression}
 	 * and delegates to its offset calculation, otherwise falls back to the default

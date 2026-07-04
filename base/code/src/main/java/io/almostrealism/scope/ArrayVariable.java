@@ -25,7 +25,6 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.SizeValue;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
 
@@ -42,8 +41,8 @@ import java.util.function.Supplier;
  *
  * <h2>Key Features</h2>
  * <ul>
- *   <li><b>Element Access:</b> Access individual elements via {@link #valueAt(Expression)},
- *       {@link #reference(Expression)}, or {@link #getValueRelative(Expression)}</li>
+ *   <li><b>Element Access:</b> Access individual elements via {@link #valueAt(Expression)}
+ *       or {@link #reference(Expression)}</li>
  *   <li><b>Delegation:</b> Support for delegate relationships where one ArrayVariable can
  *       reference a portion of another via an offset</li>
  *   <li><b>Size Tracking:</b> Maintains array size information for bounds checking and
@@ -95,9 +94,6 @@ import java.util.function.Supplier;
  *
  * <h3>Accessing Elements</h3>
  * <pre>{@code
- * // Get value at a specific index
- * Expression<Double> element = arrayVar.getValueRelative(5);
- *
  * // Get value using an expression index
  * Expression<Double> dynamic = arrayVar.valueAt(indexExpression);
  *
@@ -316,49 +312,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 		} else {
 			return getDelegate().getOffset() + getDelegateOffset().intValue().getAsInt();
 		}
-	}
-
-	/**
-	 * Gets the value at a relative index position as a constant integer.
-	 *
-	 * <p>This is a convenience method that wraps the index in an {@link IntegerConstant}.</p>
-	 *
-	 * @param index the constant index relative to the current kernel position
-	 * @return an expression representing the value at the specified relative index
-	 */
-	public Expression<Double> getValueRelative(int index) {
-		return getValueRelative(new IntegerConstant(index));
-	}
-
-	/**
-	 * Gets the value at a relative index position.
-	 *
-	 * <p>This method retrieves a value relative to the current kernel index. The actual
-	 * position is calculated as: {@code kernelIndex * length + index}. If this variable
-	 * has a delegate, the request is forwarded with the delegate offset applied.</p>
-	 *
-	 * <p>If a {@link TraversableExpression} is available from the producer, it will be
-	 * consulted first to potentially provide an optimized expression.</p>
-	 *
-	 * @param index an expression representing the relative index
-	 * @return an expression representing the value at the computed position
-	 * @throws UnsupportedOperationException if this variable has been destroyed
-	 */
-	public Expression<Double> getValueRelative(Expression index) {
-		if (destroyed) throw new UnsupportedOperationException();
-
-		TraversableExpression exp = TraversableExpression.traverse(getProducer());
-
-		if (exp != null) {
-			Expression<Double> value = exp.getValueRelative(index);
-			if (value != null) return value;
-		}
-
-		if (getDelegate() != null) {
-			return getDelegate().getValueRelative(index.add(getDelegateOffset()));
-		}
-
-		return (Expression) reference(new KernelIndex().multiply(length()).add(index.toInt()));
 	}
 
 	/**

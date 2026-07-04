@@ -119,6 +119,21 @@ The five items:
   read-heavy tests crawl; several of the worst offenders live in the
   PackedCollectionMap test classes that B deletes. Treat timeouts as
   perf/infrastructure work, re-baselined after B.
+- The **memory-max** class of CL failures is a third category, and an accepted
+  parity gap for now. `CLMemoryProvider` never adopted `HardwareMemoryProvider`'s
+  phantom-reference reclamation (Metal, native, and nio all free device memory
+  when the owning Java object is collected; CL frees only on explicit
+  `destroy()`), so allocation-churn workloads — `SimilarityOverheadTest`'s
+  at-scale methods churn hundreds of thousands of undestroyed transients —
+  climb monotonically to the reservation ceiling under CL while Metal shrugs
+  them off. Both fix routes were probed and hit real hazards: migrating the
+  provider onto the reclamation base requires refcounting the `cl_mem` buffers
+  it shares across host-pointer allocations (`reverseHeap`), and adding
+  explicit `destroy()` calls to the test raced the asynchronous copy-out chain
+  (null source reads on a compute-context thread) and the native provider's
+  own reclamation (double-free warnings). The systemic fix — GC-driven CL
+  reclamation with refcounted shared buffers — is backlog; until then the CL
+  lane will report memory-max in groups containing high-churn tests.
 - These jobs are informational (not in the all-checks gate), so nothing
   blocks on E — but a trustworthy CL backend doubles the regression oracle
   for A/D (the output-arg plan's validation gate explicitly wants both
