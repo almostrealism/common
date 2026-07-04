@@ -80,7 +80,7 @@ public class MetalSemaphore implements Semaphore {
 	 */
 	@Override
 	public void waitFor() {
-		runner.complete(commandBuffer);
+		runner.complete(commandBuffer, requester);
 	}
 
 	@Override

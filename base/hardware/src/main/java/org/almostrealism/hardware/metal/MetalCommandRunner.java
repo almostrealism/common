@@ -17,6 +17,9 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.DistributionMetric;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,6 +67,16 @@ public class MetalCommandRunner {
 	 */
 	private static final int MAX_OPEN = 256;
 
+	/**
+	 * Distribution of commit-forcing host waits across the operations that requested them, keyed by
+	 * the requester's {@link OperationMetadata#getDisplayName() display name}. Only waits that
+	 * actually forced a commit are recorded (a wait for an already-committed buffer costs nothing
+	 * attributable), so this distribution identifies which operations are responsible for breaking
+	 * command-buffer batching.
+	 */
+	public static DistributionMetric hostCompleteRequesters =
+			Hardware.console.distribution("mtlHostCompleteRequesters");
+
 	/** Single-threaded executor that serializes all command-buffer operations. */
 	private ExecutorService executor;
 
@@ -80,6 +93,12 @@ public class MetalCommandRunner {
 	private MTLCommandBuffer openBuffer;
 	/** Total command-buffer commits. Written on the executor thread; volatile for diagnostic reads. */
 	private volatile long commitCount;
+	/** Commits forced by a host-side wait ({@link #complete}). Executor-thread written; volatile reads. */
+	private volatile long hostCompleteCommits;
+	/** Commits forced by the open buffer reaching {@link #MAX_OPEN} dispatches. Executor-thread written. */
+	private volatile long maxOpenCommits;
+	/** Commits performed while destroying the runner. Executor-thread written; volatile reads. */
+	private volatile long destroyCommits;
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -121,12 +140,15 @@ public class MetalCommandRunner {
 	 * through a sequence of dispatches preserves batching. (A foreign dependency must be
 	 * waited by the caller before calling this method.)</p>
 	 *
+	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
+	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
 	 * @param command   encodes the kernel into the supplied command buffer
 	 * @param dependsOn  a prior {@link MetalSemaphore} this dispatch depends on, or {@code null}
 	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
 	 * @return this dispatch's completion semaphore
 	 */
-	public MetalSemaphore submit(MetalCommand command, Semaphore dependsOn, Runnable onComplete) {
+	public MetalSemaphore submit(OperationMetadata requester, MetalCommand command,
+								 Semaphore dependsOn, Runnable onComplete) {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
 		await(executor.submit(() -> runInPool(() -> {
@@ -153,10 +175,10 @@ public class MetalCommandRunner {
 			openCount++;
 			if (onComplete != null) openOnComplete.add(onComplete);
 
-			result.add(new MetalSemaphore(null, this, openBuffer, event, signaled));
+			result.add(new MetalSemaphore(requester, this, openBuffer, event, signaled));
 
-			if (openCount >= MAX_OPEN) {
-				commitOpenOnExecutor();
+			if (openCount >= MAX_OPEN && commitOpenOnExecutor()) {
+				maxOpenCommits++;
 			}
 		})));
 
@@ -171,7 +193,21 @@ public class MetalCommandRunner {
 	 * @param commandBuffer the dispatch's command buffer
 	 */
 	public void complete(MTLCommandBuffer commandBuffer) {
-		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer))));
+		complete(commandBuffer, null);
+	}
+
+	/**
+	 * Commits (if still open) the buffer the given dispatch was encoded into and blocks until it,
+	 * and every buffer committed before it, has completed; then runs their released-memory
+	 * callbacks. When the wait forces a commit, the commit is attributed to {@code requester} in
+	 * {@link #hostCompleteRequesters} so batching-breaking waits can be traced to the operations
+	 * responsible for them.
+	 *
+	 * @param commandBuffer the dispatch's command buffer
+	 * @param requester     metadata of the operation waiting for completion, or {@code null}
+	 */
+	public void complete(MTLCommandBuffer commandBuffer, OperationMetadata requester) {
+		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer, requester))));
 	}
 
 	/**
@@ -221,11 +257,37 @@ public class MetalCommandRunner {
 	public long getCommitCount() { return commitCount; }
 
 	/**
+	 * Returns the number of commits forced by a host-side completion wait ({@link #complete}).
+	 * Together with {@link #getMaxOpenCommitCount()} and {@link #getDestroyCommitCount()} this
+	 * partitions {@link #getCommitCount()} by cause: host waits are the commits that break
+	 * batching on demand, while {@link #MAX_OPEN} commits are the expected steady-state cadence.
+	 *
+	 * @return the number of commits caused by host completion waits
+	 */
+	public long getHostCompleteCommitCount() { return hostCompleteCommits; }
+
+	/**
+	 * Returns the number of commits forced by the open buffer reaching {@link #MAX_OPEN} dispatches.
+	 *
+	 * @return the number of commits caused by the open-buffer dispatch bound
+	 */
+	public long getMaxOpenCommitCount() { return maxOpenCommits; }
+
+	/**
+	 * Returns the number of commits performed while destroying the runner.
+	 *
+	 * @return the number of commits caused by {@link #destroy()}
+	 */
+	public long getDestroyCommitCount() { return destroyCommits; }
+
+	/**
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
 	 * completion. Must run on the executor thread.
+	 *
+	 * @return true if a commit was performed, false if no buffer was open
 	 */
-	private void commitOpenOnExecutor() {
-		if (openBuffer == null) return;
+	private boolean commitOpenOnExecutor() {
+		if (openBuffer == null) return false;
 
 		commitCount++;
 		openBuffer.commit();
@@ -235,14 +297,19 @@ public class MetalCommandRunner {
 		openBuffer = null;
 		openCount = 0;
 		openOnComplete = new ArrayList<>();
+		return true;
 	}
 
 	/**
 	 * Commits the target buffer if it is still open, then waits for it and every earlier committed
 	 * buffer to complete, running their callbacks in order. Must run on the executor thread.
 	 */
-	private void completeOnExecutor(MTLCommandBuffer target) {
-		if (target == openBuffer) commitOpenOnExecutor();
+	private void completeOnExecutor(MTLCommandBuffer target, OperationMetadata requester) {
+		if (target == openBuffer && commitOpenOnExecutor()) {
+			hostCompleteCommits++;
+			hostCompleteRequesters.addEntry(
+					requester == null ? "unknown" : requester.getDisplayName(), 1);
+		}
 
 		int index = -1;
 		for (int i = 0; i < committed.size(); i++) {
@@ -281,7 +348,7 @@ public class MetalCommandRunner {
 	public void destroy() {
 		if (executor != null) {
 			await(executor.submit(() -> runInPool(() -> {
-				commitOpenOnExecutor();
+				if (commitOpenOnExecutor()) destroyCommits++;
 				while (!committed.isEmpty()) {
 					CommittedBuffer c = committed.remove(0);
 					c.buffer.waitUntilCompleted();

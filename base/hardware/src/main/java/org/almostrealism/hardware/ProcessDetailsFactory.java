@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -566,12 +567,20 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * ensuring that async results are delivered to the correct details even when
 	 * multiple constructions overlap.</p>
 	 *
+	 * <p>The returned consumer is a {@link CompletionConsumer}, so a producer that issues
+	 * its work asynchronously can deliver the argument together with the {@link
+	 * io.almostrealism.concurrent.Semaphore} for its completion instead of blocking the
+	 * host until the argument's contents are valid. The completion is recorded via
+	 * {@link AcceleratedProcessDetails#result(int, Object, io.almostrealism.concurrent.Semaphore)}
+	 * and merged into the kernel dispatch's {@code dependsOn}.</p>
+	 *
 	 * @param index the argument index
 	 * @param targetDetails the specific details instance to deliver results to
 	 * @return a consumer that delivers results to the target details
 	 */
 	protected Consumer<Object> result(int index, AcceleratedProcessDetails targetDetails) {
-		return result -> targetDetails.result(index, result);
+		return (CompletionConsumer<Object>)
+				(result, completion) -> targetDetails.result(index, result, completion);
 	}
 
 	/**
