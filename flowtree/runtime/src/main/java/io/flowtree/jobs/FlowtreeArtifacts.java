@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Central registry and commit-time gate for files that a {@link GitManagedJob}
@@ -117,6 +118,11 @@ final class FlowtreeArtifacts {
      * path <em>under</em> the directory is excluded unless its normalized form is
      * present in {@code whitelist}.</p>
      *
+     * <p>Both the candidate path and every whitelist entry are compared in
+     * normalized form, so a whitelist entry spelled with a leading {@code ./},
+     * a leading {@code /}, or Windows backslashes still matches the equivalent
+     * candidate path instead of silently excluding it.</p>
+     *
      * @param repoRelativePath the candidate path, relative to the working tree
      * @param whitelist        the permitted paths under {@link #DIRECTORY};
      *                         {@code null} is treated as {@link #COMMIT_WHITELIST}
@@ -127,9 +133,9 @@ final class FlowtreeArtifacts {
             return false;
         }
         Set<String> effective = whitelist == null ? COMMIT_WHITELIST : whitelist;
-        // TODO(review): whitelist entries are NOT normalized here; only the incoming path is.
-        // When the whitelist becomes non-empty, entries must be pre-normalized (forward slashes,
-        // no leading "./" or "/") or this contains() check may silently fail.
-        return !effective.contains(normalize(repoRelativePath));
+        Set<String> normalizedWhitelist = effective.stream()
+                .map(FlowtreeArtifacts::normalize)
+                .collect(Collectors.toSet());
+        return !normalizedWhitelist.contains(normalize(repoRelativePath));
     }
 }

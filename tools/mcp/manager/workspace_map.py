@@ -51,7 +51,9 @@ from github_api import _extract_owner_repo
 # /api/workstreams is cheap, but refetching on every tool invocation adds
 # avoidable latency to short read tools.
 
-_workspace_map_cache: dict = {"map": None, "org_map": None, "fetched": 0.0}
+_workspace_map_cache: dict = {
+    "map": None, "org_map": None, "fetched": 0.0, "fetch_ok_ever": False,
+}
 _workspace_map_lock = threading.Lock()
 
 
@@ -84,14 +86,29 @@ def _build_maps_from_workstreams(entries: list) -> tuple:
     return ws_map, org_map
 
 
-def _refresh_workspace_map() -> tuple:
+def _refresh_workspace_map() -> Optional[tuple]:
     """Fetch the workstream list from the controller and return fresh
     ``(workstream_id → workspace_id, org_name → set(workspace_ids))`` maps.
+
+    Returns ``None`` when the controller could not be queried successfully —
+    an unreachable controller or an HTTP/parse error surfaces from
+    :func:`~controller_client._controller_get` as an ``{"ok": False, ...}``
+    dict, which carries no ``"workstreams"`` list. This is distinct from a
+    successful fetch that legitimately returns zero workstreams (a plain
+    list, or a dict with an empty ``"workstreams"`` list). Callers must not
+    treat the two the same: a fetch failure means "unknown state," not
+    "no workspaces exist," and must not overwrite a previously-good cache
+    with an empty one (see :func:`_get_cached_maps`).
     """
     import sys as _sys
     _cget = getattr(_sys.modules.get('server'), '_controller_get', None) or _controller_get
     result = _cget("/api/workstreams")
-    entries = result if isinstance(result, list) else result.get("workstreams", [])
+    if isinstance(result, list):
+        entries = result
+    elif isinstance(result, dict) and isinstance(result.get("workstreams"), list):
+        entries = result["workstreams"]
+    else:
+        return None
     return _build_maps_from_workstreams(entries)
 
 
@@ -103,6 +120,16 @@ def _get_cached_maps(workstream_id: str = "", org: str = "") -> tuple:
     The lock is held only around cache reads and writes; the network fetch
     happens outside the lock so concurrent callers do not serialize behind a
     single slow I/O (double-checked-locking pattern).
+
+    When the refresh fails (controller unreachable or error response), the
+    previously-cached maps are returned unchanged instead of being clobbered
+    by an empty result — a fetch failure must never look identical to "the
+    controller confirmed there are no workspaces." If there is no prior
+    cache at all (cold start with an immediate failure), empty maps are
+    returned so callers get plain dicts rather than ``None``;
+    :func:`_is_multi_workspace_mode` consults
+    :func:`_has_ever_fetched_workspace_map` separately to fail closed in
+    that cold-start case.
     """
     now = time.monotonic()
     with _workspace_map_lock:
@@ -119,13 +146,32 @@ def _get_cached_maps(workstream_id: str = "", org: str = "") -> tuple:
             needs_refresh = True
     if not needs_refresh:
         return ws_map, org_map
-    new_ws_map, new_org_map = _refresh_workspace_map()
+    refreshed = _refresh_workspace_map()
+    if refreshed is None:
+        return (ws_map if ws_map is not None else {},
+                org_map if org_map is not None else {})
+    new_ws_map, new_org_map = refreshed
     new_fetched = time.monotonic()
     with _workspace_map_lock:
         _workspace_map_cache["map"] = new_ws_map
         _workspace_map_cache["org_map"] = new_org_map
         _workspace_map_cache["fetched"] = new_fetched
+        _workspace_map_cache["fetch_ok_ever"] = True
     return new_ws_map, new_org_map
+
+
+def _has_ever_fetched_workspace_map() -> bool:
+    """Return ``True`` once ``/api/workstreams`` has been queried
+    successfully at least once (even if it returned zero workstreams).
+
+    Used by :func:`_is_multi_workspace_mode` to distinguish "we confirmed
+    there are no workspace-bound workstreams" (an accurate empty state,
+    safe to read as single-workspace/legacy mode) from "we have never
+    successfully reached the controller" (an unknown state that must fail
+    closed rather than default to the permissive legacy reading).
+    """
+    with _workspace_map_lock:
+        return bool(_workspace_map_cache.get("fetch_ok_ever"))
 
 
 def _workspace_for_workstream(workstream_id: str) -> Optional[str]:
@@ -145,8 +191,19 @@ def _is_multi_workspace_mode() -> bool:
     has a non-null ``slackWorkspaceId``.  Used by the temp-token validator to
     decide whether a workstream whose workspace cannot be resolved should be
     rejected (multi-workspace) or accepted as unscoped (legacy single-workspace).
+
+    Fails closed: if the controller has never been queried successfully
+    (unreachable since startup, or every attempt so far has errored), this
+    returns ``True`` even though the cached map is empty, so that a
+    temp-token request whose workstream cannot be resolved is rejected
+    rather than silently treated as unscoped. Once a real fetch succeeds —
+    even one that legitimately finds zero workspace-bound workstreams — the
+    accurate empty-map reading (``False``, legacy single-workspace mode)
+    takes over.
     """
     ws_map, _ = _get_cached_maps()
+    if not _has_ever_fetched_workspace_map():
+        return True
     return any(v for v in ws_map.values())
 
 
