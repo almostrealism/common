@@ -23,7 +23,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -53,7 +53,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		int m = 256;
 
 		transpose(n, m, input -> {
-			PassThroughProducer p = new PassThroughProducer(shape(n, m), 0);
+			Producer<PackedCollection> p = Input.value(shape(n, m), 0);
 			Evaluable<PackedCollection> transpose = c(p).transpose().get();
 			return transpose
 					.into(new PackedCollection(shape(m, n)).each())

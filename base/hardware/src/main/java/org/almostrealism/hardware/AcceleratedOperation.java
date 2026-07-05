@@ -506,6 +506,23 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
+	 * Returns the dispatch argument array for the given evaluation arguments: the
+	 * destination occupies the leading slot (null when the destination should be created
+	 * automatically) and the evaluation arguments follow, matching the shifted indices
+	 * produced by {@link Input#value}.
+	 *
+	 * @param destination the caller's destination, or null to create one automatically
+	 * @param args        the evaluation arguments
+	 * @return the dispatch argument array with the destination in the leading slot
+	 */
+	protected static Object[] withDestinationSlot(Object destination, Object[] args) {
+		Object[] result = new Object[args.length + 1];
+		result[0] = destination;
+		System.arraycopy(args, 0, result, 1, args.length);
+		return result;
+	}
+
+	/**
 	 * Applies this operation, chaining on a prior operation's completion.
 	 *
 	 * <p>Equivalent to {@link #apply(MemoryBank, Object[])} except that {@code dependsOn},

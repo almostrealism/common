@@ -281,7 +281,8 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 			operation.into(destination).evaluate(args);
 		} else if (operation instanceof AcceleratedOperation) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
-					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+					.apply(destination, AcceleratedOperation.withDestinationSlot(destination,
+							Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new)));
 			// Wait for the dispatch to be issued before reading the completion: until the whenReady
 			// callback runs, getSemaphore() returns the host-readiness latch (which fires once the
 			// kernel is encoded, not once its command buffer commits), so waiting it would let the
@@ -360,7 +361,8 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	public void request(Object[] args) {
 		if (operation instanceof AcceleratedOperation) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
-					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+					.apply(destination, AcceleratedOperation.withDestinationSlot(destination,
+							Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new)));
 			// Required before getSemaphore(); see the method javadoc
 			details.awaitReady();
 

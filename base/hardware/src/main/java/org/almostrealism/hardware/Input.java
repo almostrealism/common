@@ -163,13 +163,19 @@ public class Input {
 	 * Producer<PackedCollection> matrix = Input.value(matrixShape, 0);
 	 * }</pre>
 	 *
+	 * <p>The index is in <em>evaluation</em> space: {@code value(shape, n)} refers to the
+	 * n-th argument passed to {@code evaluate}. Internally the dispatch argument array
+	 * reserves slot 0 for the operation's destination, so the produced
+	 * {@link PassThroughProducer} carries the index shifted by one; this shift lives only
+	 * here, and callers always work with evaluation-space indices.</p>
+	 *
 	 * @param shape The expected shape of the argument
 	 * @param argIndex The argument index (0-based, must match evaluation order)
 	 * @param <T> The type of data this producer will reference
 	 * @return A {@link PassThroughProducer} referencing the specified argument
 	 */
 	public static <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
-		return new PassThroughProducer(shape, argIndex);
+		return new PassThroughProducer(shape, argIndex + 1);
 	}
 
 	/**
@@ -184,13 +190,16 @@ public class Input {
 	 * Producer<PackedCollection> data = Input.value(1000, 0);
 	 * }</pre>
 	 *
+	 * <p>The index is in evaluation space and is shifted for the destination slot the same
+	 * way as {@link #value(TraversalPolicy, int)}.</p>
+	 *
 	 * @param memLength The number of elements in the argument
 	 * @param argIndex The argument index (0-based, must match evaluation order)
 	 * @param <T> The type of data this producer will reference
 	 * @return A {@link PassThroughProducer} referencing the specified argument
 	 */
 	public static <T> Producer<T> value(int memLength, int argIndex) {
-		return new PassThroughProducer(new TraversalPolicy(memLength), argIndex);
+		return new PassThroughProducer(new TraversalPolicy(memLength), argIndex + 1);
 	}
 
 	/**

@@ -24,7 +24,7 @@ import org.almostrealism.Ops;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.time.computations.Interpolate;
@@ -60,9 +60,9 @@ public abstract class WaveDataProviderAdapter implements WaveDataProvider, CodeF
 		loaded = new HashMap<>();
 		interpolate = new DefaultContextSpecific<>(() ->
 				new Interpolate(
-						new PassThroughProducer<>(Ops.o().shape(1), 0),
-						new PassThroughProducer<>(Ops.o().shape(-1), 1),
-						new PassThroughProducer<>(Ops.o().shape(1), 2),
+						Input.value(Ops.o().shape(1), 0),
+						Input.value(Ops.o().shape(-1), 1),
+						Input.value(Ops.o().shape(1), 2),
 						v -> Product.of(v, ExpressionFeatures.getInstance().e(1.0 / OutputLine.sampleRate)),
 						v -> Product.of(v, ExpressionFeatures.getInstance().e(OutputLine.sampleRate))).get());
 	}

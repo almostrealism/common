@@ -261,6 +261,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	private MemoryBank output;
 	/** The positional arguments passed to the last {@link #init} call. */
 	private Object args[];
+
+	/**
+	 * The evaluation-space arguments: {@link #args} without its leading destination slot.
+	 * Inner evaluables receive these, since each dispatch reserves its own leading slot
+	 * and offsets its argument references accordingly; handing an inner evaluable the
+	 * outer dispatch array would misalign its references by one per nesting level.
+	 */
+	private Object evalArgs[];
 	/** True if all positional arguments passed to {@link #init} are {@link io.almostrealism.code.MemoryData} instances. */
 	private boolean allMemoryData;
 
@@ -342,8 +350,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		this.output = output;
 		this.args = args;
+		this.evalArgs = args.length > 0 ? Arrays.copyOfRange(args, 1, args.length) : args;
 
-		allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
+		allMemoryData = evalArgs.length <= 0 ||
+				Stream.of(evalArgs).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
 
 		if (isFixedCount()) {
 			kernelSize = getCount();
@@ -367,11 +377,11 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				warn("Operation count was reduced from " + getCountLong() +
 						" to " + kernelSize + " to match the output count");
 			}
-		} else if (enableArgumentKernelSize && args.length > 0 && allMemoryData && ((MemoryBank) args[0]).getCountLong() > getCount()) {
+		} else if (enableArgumentKernelSize && evalArgs.length > 0 && allMemoryData && ((MemoryBank) evalArgs[0]).getCountLong() > getCount()) {
 			if (enableKernelSizeWarnings)
 				warn("Relying on argument count to determine kernel size");
 
-			kernelSize = ((MemoryBank) args[0]).getCountLong();
+			kernelSize = ((MemoryBank) evalArgs[0]).getCountLong();
 		} else {
 			kernelSize = -1;
 		}
@@ -400,7 +410,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
 
-			if (refIndex >= 0) {
+			if (refIndex >= 0 && refIndex < args.length) {
 				kernelArgs[i] = (MemoryData) args[refIndex];
 			}
 
@@ -422,7 +432,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (enableConstantCache && kernelSize > 0 && kernelArgEvaluables[i].isConstant()) {
-				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
+				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(evalArgs);
 			}
 		}
 
@@ -552,7 +562,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
-			asyncEvaluables[i].request(args);
+			asyncEvaluables[i].request(evalArgs);
 		}
 
 		/* The details are ready */

@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
@@ -47,10 +48,17 @@ import java.util.function.IntFunction;
  * the historical adjust-existing-bank path never received a prior bank through this
  * producer, so creation is unconditional.</p>
  *
+ * <p>As a {@link ProducerArgumentReference} for slot 0, this producer also binds a
+ * caller-supplied destination: dispatch argument arrays reserve their leading slot for
+ * the destination, so when that slot is populated the destination is bound from it like
+ * any other referenced argument, and when it is null (or absent, for operations with no
+ * result) the destination is created here instead.</p>
+ *
  * @see MemoryDataDestination
  * @see CollectionProducerComputationBase
  */
-public class CollectionDestinationProducer extends MemoryDataDestinationProducer<PackedCollection> {
+public class CollectionDestinationProducer extends MemoryDataDestinationProducer<PackedCollection>
+		implements ProducerArgumentReference {
 
 	/** The output shape of the computation this producer creates destinations for. */
 	private final TraversalPolicy shape;
@@ -85,6 +93,9 @@ public class CollectionDestinationProducer extends MemoryDataDestinationProducer
 				shape, shape.getCount(), owner.isFixedCount(), len);
 		return new PackedCollection(destinationShape);
 	}
+
+	@Override
+	public int getReferencedArgumentIndex() { return 0; }
 
 	@Override
 	public IntFunction<MemoryBank<PackedCollection>> getDestinationFactory() {
