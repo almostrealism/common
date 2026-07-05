@@ -1162,9 +1162,6 @@ jobs:
       group: test-cl-${{ github.ref }}-${{ matrix.group }}
       cancel-in-progress: true
     strategy:
-      # This lane is informational (not in the all-checks gate) and is being used
-      # to observe CL backend behavior: one failing group must not cancel the
-      # other six, or a single flaky failure hides the rest of the picture.
       fail-fast: false
       matrix:
         # More groups than test-mac (7 vs 3): the CL backend reaches its memory
@@ -1348,10 +1345,6 @@ jobs:
            -DAR_TEST_PROFILE=pipeline
 
       - name: Run Music Tests
-        # Run even when an earlier module's tests failed (but not when the job was
-        # cancelled) so this informational lane reports every module's CL behavior
-        # rather than stopping at the first failure. The job still fails overall.
-        if: success() || failure()
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native,cl \
@@ -1359,8 +1352,6 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Compose Tests
-        # See Run Music Tests above.
-        if: success() || failure()
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native,cl \
