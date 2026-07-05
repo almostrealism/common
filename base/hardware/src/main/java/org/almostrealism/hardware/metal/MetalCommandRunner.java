@@ -107,6 +107,8 @@ public class MetalCommandRunner {
 	private volatile long maxOpenCommits;
 	/** Commits performed while destroying the runner. Executor-thread written; volatile reads. */
 	private volatile long destroyCommits;
+	/** Commits forced so a bridged dispatch starts a fresh buffer. Executor-thread written. */
+	private volatile long bridgeCommits;
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -182,6 +184,17 @@ public class MetalCommandRunner {
 			if (foreign != null && !enableHostSignaledBridges) {
 				foreign.waitFor();
 				foreign = null;
+			}
+
+			// A bridged dispatch must start a fresh buffer: the foreign completion may itself
+			// require waiting for dispatches already encoded here (a composite completion over
+			// this runner's own semaphores resolves by completing their whole buffer), and a
+			// buffer that contains both those dispatches and the bridge wait can never complete.
+			// The GPU watchdog then kills the stalled buffer and the gated work silently never
+			// runs. Committing first makes the cycle impossible; it costs the same commit the
+			// old blocking bridge caused, without blocking the host.
+			if (foreign != null && openCount > 0 && commitOpenOnExecutor()) {
+				bridgeCommits++;
 			}
 
 			ensureOpenBuffer();
@@ -291,9 +304,10 @@ public class MetalCommandRunner {
 
 	/**
 	 * Returns the number of commits forced by a host-side completion wait ({@link #complete}).
-	 * Together with {@link #getMaxOpenCommitCount()} and {@link #getDestroyCommitCount()} this
-	 * partitions {@link #getCommitCount()} by cause: host waits are the commits that break
-	 * batching on demand, while {@link #MAX_OPEN} commits are the expected steady-state cadence.
+	 * Together with {@link #getMaxOpenCommitCount()}, {@link #getBridgeCommitCount()} and
+	 * {@link #getDestroyCommitCount()} this partitions {@link #getCommitCount()} by cause:
+	 * host waits are the commits that break batching on demand, while {@link #MAX_OPEN}
+	 * commits are the expected steady-state cadence.
 	 *
 	 * @return the number of commits caused by host completion waits
 	 */
@@ -312,6 +326,14 @@ public class MetalCommandRunner {
 	 * @return the number of commits caused by {@link #destroy()}
 	 */
 	public long getDestroyCommitCount() { return destroyCommits; }
+
+	/**
+	 * Returns the number of commits forced so that a dispatch bridging a foreign dependency
+	 * could start a fresh command buffer (see {@link #enableHostSignaledBridges}).
+	 *
+	 * @return the number of commits caused by foreign-dependency bridges
+	 */
+	public long getBridgeCommitCount() { return bridgeCommits; }
 
 	/**
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
