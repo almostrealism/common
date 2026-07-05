@@ -77,6 +77,14 @@ public class MetalCommandRunner {
 	public static DistributionMetric hostCompleteRequesters =
 			Hardware.console.distribution("mtlHostCompleteRequesters");
 
+	/**
+	 * Bridges a foreign dependency (a {@link Semaphore} not produced by this runner) by encoding
+	 * a GPU wait on a fresh {@link MTLEvent} that is signaled from the host when the foreign work
+	 * completes, so {@link #submit} never blocks on foreign completions. When disabled, a foreign
+	 * dependency is bridged the old way: a blocking wait before the dispatch is encoded.
+	 */
+	public static boolean enableHostSignaledBridges = true;
+
 	/** Single-threaded executor that serializes all command-buffer operations. */
 	private ExecutorService executor;
 
@@ -137,8 +145,16 @@ public class MetalCommandRunner {
 	 * with default tracking; see {@code MTL.cpp}), so it is simply dropped; a dependency in
 	 * an earlier, committed buffer is honored by encoding a GPU wait for its event value.
 	 * Neither case blocks the host or forces a commit, so chaining completion semaphores
-	 * through a sequence of dispatches preserves batching. (A foreign dependency must be
-	 * waited by the caller before calling this method.)</p>
+	 * through a sequence of dispatches preserves batching.</p>
+	 *
+	 * <p>A foreign dependency (any other {@link Semaphore}) is bridged without blocking when
+	 * {@link #enableHostSignaledBridges} is set: the dispatch's buffer encodes a GPU wait on a
+	 * fresh per-bridge {@link MTLEvent}, and the event is signaled from the host when the
+	 * foreign work completes, via {@link Semaphore#onComplete(Runnable)}. The dispatch is
+	 * therefore ordered after the foreign work with no host wait and no forced commit. If the
+	 * foreign work never completes, the buffer never completes — the same exposure a blocking
+	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
+	 * before the dispatch is encoded.</p>
 	 *
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
 	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
@@ -152,9 +168,10 @@ public class MetalCommandRunner {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
 		await(executor.submit(() -> runInPool(() -> {
-			MetalSemaphore dependency =
-					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
-							? (MetalSemaphore) dependsOn : null;
+			boolean sameRunner = dependsOn instanceof MetalSemaphore &&
+					((MetalSemaphore) dependsOn).getRunner() == this;
+			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
+			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;
 
 			// A dependency encoded into the still-open buffer is already ordered ahead of this
 			// dispatch by in-buffer hazard tracking; no commit and no event wait are needed.
@@ -162,10 +179,26 @@ public class MetalCommandRunner {
 				dependency = null;
 			}
 
+			if (foreign != null && !enableHostSignaledBridges) {
+				foreign.waitFor();
+				foreign = null;
+			}
+
 			ensureOpenBuffer();
 
 			if (dependency != null) {
 				openBuffer.encodeWaitForEvent(event, dependency.getValue());
+			}
+
+			if (foreign != null) {
+				// Each bridge uses its own event because a host signal releases every encoded
+				// wait at or below the signaled value; sharing an event across bridges would let
+				// an out-of-order foreign completion release another bridge's wait. The event is
+				// released with the buffer, which cannot complete before the wait is satisfied.
+				MTLEvent bridge = queue.getDevice().newSharedEvent();
+				openBuffer.encodeWaitForEvent(bridge, 1);
+				openOnComplete.add(bridge::release);
+				foreign.onComplete(() -> bridge.setSignaledValue(1));
 			}
 
 			command.encode(openBuffer);

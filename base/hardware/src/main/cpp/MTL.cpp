@@ -122,6 +122,15 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_encodeWaitForEv
     buf->encodeWait(ev, (uint64_t) value);
 }
 
+// Signals the event to the given value from the host, releasing any encoded waits for values
+// up to and including it. The signaled value of an event must never decrease, so the caller
+// is responsible for using values that are monotonically non-decreasing per event.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setSignaledValue(JNIEnv* env, jclass cls, jlong event, jlong value) {
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    ev->setSignaledValue((uint64_t) value);
+}
+
 // Releases an event created by createSharedEvent.
 extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseSharedEvent(JNIEnv* env, jclass cls, jlong event) {
