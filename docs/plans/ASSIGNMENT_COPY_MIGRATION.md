@@ -184,6 +184,19 @@ that the surrounding code not insert a host `waitFor` around it.
   (`copy`/`enableAssignmentCopy`), `CodeFeatures.java:305-318`, `DestinationEvaluable.java`,
   `MemoryDataArgumentMap.java`, `MemoryReplacementManager.java`.
 
+## 9.1 Audio connection (2026-07-05)
+
+The audio real-time effort independently converged on a **scoped** version of this
+migration as its top lever: `OperationListRunner` forces a host wait before every
+non-submittable member, and the PDSL tick's composites still contain `copy()`-helper
+`MemoryDataCopy` members (~15 waits/tick at 4096, plus their blit chain-tails) — which
+also starves the new `MTLSharedEvent` foreign-dependency bridge (`bridgeCommits=0`),
+since each wait resets the dependency chain before a cross-context handoff can reach
+`MetalCommandRunner.submit`. Routing just those call sites through the `Submittable`
+copy machinery (per §5's incremental path, not the global flag flip) is the plan of
+record in [`audio-scene-redesign/NEXT_STEP.md`](audio-scene-redesign/NEXT_STEP.md);
+its parity gates and measurements can serve as the first §7 case study.
+
 ## 10. Open questions / next actions
 
 1. **Baseline (§6)** — flip `enableAssignmentCopy=true`, run the full suite (CI), record the failing

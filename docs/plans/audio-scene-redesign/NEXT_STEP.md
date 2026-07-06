@@ -1,14 +1,115 @@
-# Next Step — Stop Forcing Commits from the Hot Path (adjustVolume first)
+# Next Step — Make the Tick's Composites Fully Submittable (one wait per tick)
 
-> **Rewritten 2026-07-04** after the kernel-tooling merge (`remove-variable-relative-value`,
-> `PackedCollectionMap` removal, OpenCL fixes) and a fresh measurement pass on the rebuilt
-> system. The two prior versions of this page are in git history: the encoder/arg-bind theory
-> (superseded 2026-06-28 by the `MemoryDataCopy` root cause) and the
-> `MemoryDataCopy → Assignment` migration framing (superseded by `a3b20e285`, which chained
-> every copy on the Semaphore mechanism instead — `apply` no longer blocks the host, and
-> `MemoryDataCopy` is deprecated). The measurements below are from the current tree.
+> **Updated 2026-07-05** after `MTLSharedEvent` foreign-dependency bridging merged
+> (PR #337, `6e3c29366` + `4b48b1f9e`) and a fresh measurement pass on the fully rebuilt
+> branch. **The production buffer size is now 4096** (owner decision) — measure and design
+> against the 92.9 ms budget / 18.6 ms 5× bar; 8192 numbers are secondary. The 2026-07-04
+> content (adjustVolume win, refuted per-note-sums lever) is retained below as history.
 
-## Where the system stands (measured 2026-07-04, runs `f5f8486a` / `1dadc516`)
+## Where the system stands (measured 2026-07-05, runs `a85488c2` / `30810eaf`)
+
+Pinned dense scene (seed 58, 1126 elements), efx+reverb on, 200 sustained ticks, default
+hybrid driver, full clean rebuild including the shared-event merge:
+
+| 4096 (budget 92.9 ms, 5× bar 18.6 ms) | value |
+|---|---|
+| p50 / p95 / max tick | 36.8 / 71.7 / **86.0** ms |
+| p50 ratio | **0.40** (2.5×) |
+| over-budget ticks | **0 / 200** |
+| commits/tick | 42.7 — 100 % host-complete |
+| `bridgeCommits` | **0** |
+| a2 gather+eval+marshal | 25.0 ms (overlapped, producer thread) |
+| rendered peak | 0.57 (stable) |
+
+The shared-event merge did not move the steady-state medians (identical to the
+pre-merge `ba6c43ca` baseline) but **tightened the tail decisively at 4096**: max tick
+135–183 → 86 ms, over-budget 2–4/200 → 0/200. At 8192 p50 is 61 ms (ratio 0.33) with
+24/200 over budget — one more reason 4096 is the production size.
+
+Stage decomposition of the consumer tick (`pdslTickStageTiming`, run `30810eaf`): the
+tick **is** the awaitSlot+forward stage (47.5 of 48.6 ms at 8192); automation refresh is
+0.28 ms, output streaming 0.45 ms, clock advance 0.34 ms. There is no secondary consumer
+cost worth chasing — the forward's composition is the whole game.
+
+## The finding that sets the next step: the bridge never fires
+
+`MetalCommandRunner` can now bridge a *foreign* dependency (a semaphore from another
+backend, another context, or a composite latch) onto the GPU — a per-bridge
+`MTLSharedEvent` wait signaled from the foreign completion's callback, no host block, no
+forced commit (`enableHostSignaledBridges`, with `bridgeCommits` counting the
+fresh-buffer commits bridging requires). **On this workload `bridgeCommits = 0` at both
+buffer sizes: nothing ever submits a Metal dispatch with a foreign dependency.**
+
+The mechanism (verified in `OperationListRunner.run()`): `Submittable` members chain via
+`submit(pending)` with no wait, but every **non-submittable member** — a plain `Runnable`
+lambda or a (deprecated) `MemoryDataCopy`, which the `copy()` helpers still construct
+while `enableAssignmentCopy` is off — forces `pending.waitFor()` and **resets the chain**.
+The tick's composites are peppered with such members, so:
+
+- each one is a host wait → a forced commit (the ~15 distinct forward-stage requesters at
+  ~1/tick each, plus waits whose chain tails land on copy-out blits → the `mtlBlitCopy`
+  share) — this is `COMMIT_ATTRIBUTION.md`'s "composite completing its members
+  synchronously" fingerprint, and
+- the dependency chain is chopped before any cross-context handoff reaches
+  `MetalCommandRunner.submit`, so the ordering that the shared-event bridge exists to
+  provide is instead provided by the waits — **the bridge is starved by the very waits it
+  was built to replace**.
+
+## The one thing to do
+
+**Migrate the non-submittable members of the tick/forward composites to `Submittable`
+form, so the whole consumer tick becomes one chained submission with a single trailing
+wait.** Concretely:
+
+1. **Inventory the non-submittable members** of the compiled tick at 4096: instrument or
+   inspect `OperationListRunner` member lists for the PDSL runner's tick (which members
+   are not `Submittable`; expect the stage output-tracking / model-output-capture copies
+   built by the `copy()` helpers, plus small glue lambdas). The ~15 stage-named requesters
+   in run `a85488c2` are the work-list.
+2. **Route those copies through the `Submittable` copy machinery** — `ComputeContext.copy`
+   (blit-backed on Metal, already `Semaphore`-returning) or `Assignment` — *scoped to
+   these call sites*, NOT via the global `enableAssignmentCopy` flip (still blocked by the
+   gradient-descent divergence recorded in `MemoryDataFeatures`).
+3. **Let the chain reach the bridge.** With the copies submittable, a Metal member that
+   follows a CPU member (the recurrent DSP loop stage is CPU-resident under the 31-buffer
+   limit) receives a foreign `dependsOn` and exercises the `MTLSharedEvent` bridge —
+   cross-context ordering moves onto the device. Expect `bridgeCommits` to become nonzero
+   and `hostCompletePerTick` to collapse toward ~1–2.
+
+Verification: `PdslHotPathBreakdownTest` (now reporting `bridgeCommits`/`destroyCommits`
+in its commitCause line) — success is host-complete commits/tick **42.7 → ≲ 5** at 4096,
+p50 moving toward the 18.6 ms bar, peak 0.57 stable, and the sentinel/parity batteries
+green. Watch for the 4b48b1f9e caveat: each bridge with a non-empty open buffer forces a
+fresh-buffer commit, so bridge placement affects batching — if `bridgeCommits` grows to
+~the member count, buffers are fragmenting and member *ordering* (group same-context
+members) becomes part of the work.
+
+## Shared-event system improvements (pursue only as the migration surfaces them)
+
+The bridge is currently unexercised, so improving it now would be speculative. Once the
+migration makes bridges fire ~10–15×/tick, these are the known candidates:
+
+- **Per-bridge event allocation churn**: every bridge allocates a fresh
+  `MTLSharedEvent` (`queue.getDevice().newSharedEvent()`) and releases it with the
+  buffer; at tick rate that is hundreds of native allocations/sec — a pooled or
+  per-(runner, foreign-source) event with a monotonic value would amortize it (the
+  per-bridge-event design exists to prevent out-of-order releases, so pooling must keep
+  values monotone per event).
+- **Bridge-induced buffer fragmentation** (the `4b48b1f9e` fresh-buffer rule): if
+  measured `bridgeCommits` per tick approaches the bridged-member count, consider
+  encoding bridge waits only at buffer start (reorder members) or a second event
+  strategy that tolerates in-buffer bridges.
+- **CPU→Metal is bridged; Metal→CPU still waits**: a CPU member depending on a Metal
+  semaphore must complete-wait it (the host genuinely reads the memory). That direction
+  is bounded by the number of CPU-resident stages — reducing those (moving the recurrent
+  loop's parallelizable parts onto Metal, per `KNOWN_ISSUES.md` §1) is the complementary
+  lever.
+
+---
+
+# History — 2026-07-04 state and completed/refuted items
+
+## Where the system stood (measured 2026-07-04, runs `f5f8486a` / `1dadc516`)
 
 Pinned dense scene (seed 58, 1126 elements), efx+reverb on, `renderAheadSlots=24`,
 200 sustained ticks, default hybrid driver:
@@ -70,31 +171,31 @@ Two durable lessons, bought with receipts:
   the 8192 peak as a parity verdict in either direction; the cause (producer/consumer ring
   timing vs note-cache eviction is the leading candidate) is itself worth a diagnosis.
 
-## The queue after that (ranked, each with its receipt)
+## The 2026-07-04 queue — superseded by the 2026-07-05 sections above
 
-1. **The consumer-side wait tail — now measured as ~35–40 of the remaining ~43–49
-   commits/tick.** The ~15 distinct forward-stage requesters at ~1/tick each PLUS the
-   `mtlBlitCopy` waits (~17–20/tick, re-attributed above) are the a3 forward's own
-   per-stage boundary waits (one per materialized stage output, tails landing on copy-out
-   blits) and the automation-refresh evaluates. This is where the remaining distance to 5×
-   is concentrated. The structural fixes are (a) the owner's planned **`MTLSharedEvent`
-   support** (cross-JNI/MTL coordination so stage boundaries stop host-waiting), and (b)
-   the D+A arc — `REFACTOR_ORDERING_NOTES.md` items D (self-contained destination
-   producer) + A (drop the `output` arg from `apply`), designed in
-   `DROP_OPERATION_OUTPUT_ARG.md`. B and C from that arc landed in the 2026-07-04 merge.
-2. **a2 cost at 8192 (40.6 ms/tick > the 37.2 ms 5× bar on its own).** Gather (17.8 ms,
-   Java-side) + eval (17.4 ms) at 8192. Overlapped on the producer thread today, but at 5×
-   the consumer budget is small enough that a2 must also shrink (or 4096 becomes the
-   production size — it is the owner-preferred size anyway; at 4096 a2 is 18.4 ms and hides
-   completely).
-3. **`runnerBuildMs` ≈ 16 s** (one-time PDSL mixdown model build per runner construction) —
-   the largest remaining one-time cost now that setup is ~2 s. Same first-evaluate scope
-   machinery; profile before touching.
+The consumer-side wait tail (item 1 of that queue) is now the top-of-page next step: the
+`MTLSharedEvent` support it anticipated has landed (PR #337) and the measured finding is
+that the tick's non-submittable members both cause the waits and starve the bridge. The
+remaining items carry forward into the current queue below.
+
+# Current queue after the submittable-composite migration (2026-07-05)
+
+1. **Shared-event system improvements** — see the dedicated section near the top; pursue
+   as the migration makes bridges fire.
+2. **a2 cost** — at 4096 (the production size) a2 is ~25 ms/round on the producer thread
+   and fully hidden behind the 36.8 ms consumer tick; it becomes a gate only when the
+   consumer tick approaches the 18.6 ms bar. Revisit after the migration lands.
+3. **`runnerBuildMs` ≈ 16 s** (one-time PDSL mixdown model build per runner
+   construction) — the largest remaining one-time cost now that setup is ~2 s. Same
+   first-evaluate scope machinery; profile before touching.
 4. **True stereo** (G4) — feature completeness, unchanged by the above; the dual-mono
    master is still shipped.
 5. **Tooling: thread-tagged commit-cause attribution.** Split `hostCompleteRequesters` by
-   waiting thread (producer vs consumer) so the next lever decision does not repeat the
-   misattribution above. Small `MetalCommandRunner`/`PdslHotPathBreakdownTest` change.
+   waiting thread (producer vs consumer) so lever decisions stop relying on elimination
+   arguments (the 2026-07-04 misattribution below is the cautionary record).
+6. **Diagnosis: the 8192 peak nondeterminism** (0.68 vs 0.63 across identical-code runs;
+   4096 stable at 0.57) — secondary now that 4096 is the production size, but a real
+   determinism question (G7) someone should eventually own.
 
 ## Already resolved / ruled out (do NOT re-chase)
 
@@ -118,8 +219,9 @@ Two durable lessons, bought with receipts:
 ## How to measure
 
 - `PdslHotPathBreakdownTest#hotPathBreakdown` — sustained 200-tick p50/p95/max + ratio at
-  4096 and 8192, a2 gather/eval/marshal split, batched-vs-fallback counts, Metal
-  dispatch/commit counts, commit-cause split, and the per-requester wait histogram. This is
+  4096 (primary; 8192 secondary), a2 gather/eval/marshal split, batched-vs-fallback counts,
+  Metal dispatch/commit counts, the commit-cause split (now including `bridgeCommits` and
+  `destroyCommits`), and the per-requester wait histogram. This is
   the instrument that produced every number above; any change must move these, not a
   one-off timing.
 - `GenerateAudioFileTest` — the honest end-to-end pair (`setupSeconds` + `generateRealtimeX`

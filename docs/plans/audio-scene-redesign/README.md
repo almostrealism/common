@@ -1,5 +1,21 @@
 # AudioScene Redesign — Plan Index
 
+> **STATUS UPDATE (2026-07-05).** Two changes on top of the 2026-07-04 update below:
+>
+> 1. **`MTLSharedEvent` foreign-dependency bridging landed** (PR #337: a Metal dispatch
+>    depending on foreign work — another backend, another context, a composite latch — now
+>    encodes a GPU wait on a host-signaled event instead of blocking the submitting thread).
+>    Measured on the pinned scene: steady-state medians unchanged, **tails tightened at 4096**
+>    (max tick 135–183 → 86 ms; over-budget 0/200), and — the finding that defines the next
+>    step — **`bridgeCommits = 0`: the hot path never exercises the bridge**, because the
+>    tick's non-submittable members (plain lambdas and `copy()`-helper `MemoryDataCopy`
+>    instances) force per-member host waits that both cause the remaining ~43 commits/tick
+>    and chop the dependency chain before it can reach the bridge. See
+>    [NEXT_STEP.md](NEXT_STEP.md) (updated 2026-07-05) for the migration that fixes both.
+> 2. **The production buffer size is 4096** (owner decision). Measurements and acceptance are
+>    now primarily against the 92.9 ms budget / 18.6 ms 5× bar; current p50 ratio there is
+>    0.40 with a2 fully hidden on the producer thread.
+
 > **STATUS UPDATE (2026-07-04) — read before anything else.** Three things changed since the
 > 2026-06-28 banners:
 >

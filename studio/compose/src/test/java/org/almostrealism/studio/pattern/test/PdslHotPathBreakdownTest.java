@@ -238,6 +238,8 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				MetalCommandRunner mtlRunner = metalRunner();
 				long baseHostCommits = mtlRunner == null ? 0 : mtlRunner.getHostCompleteCommitCount();
 				long baseMaxOpenCommits = mtlRunner == null ? 0 : mtlRunner.getMaxOpenCommitCount();
+				long baseBridgeCommits = mtlRunner == null ? 0 : mtlRunner.getBridgeCommitCount();
+				long baseDestroyCommits = mtlRunner == null ? 0 : mtlRunner.getDestroyCommitCount();
 				long baseRunnerCommits = mtlRunner == null ? 0 : mtlRunner.getCommitCount();
 				Map<String, Integer> baseRequesters =
 						new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
@@ -292,12 +294,16 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				if (mtlRunner != null) {
 					long hostCommits = mtlRunner.getHostCompleteCommitCount() - baseHostCommits;
 					long maxOpenCommits = mtlRunner.getMaxOpenCommitCount() - baseMaxOpenCommits;
+					long bridgeCommits = mtlRunner.getBridgeCommitCount() - baseBridgeCommits;
+					long destroyCommits = mtlRunner.getDestroyCommitCount() - baseDestroyCommits;
 					long runnerCommits = mtlRunner.getCommitCount() - baseRunnerCommits;
 					log("buffer=" + bufferSize + " commitCause runnerCommits=" + runnerCommits
 							+ " hostCompleteCommits=" + hostCommits
 							+ " maxOpenCommits=" + maxOpenCommits
+							+ " bridgeCommits=" + bridgeCommits
+							+ " destroyCommits=" + destroyCommits
 							+ " hostCompletePerTick=" + fmt(hostCommits / (double) PROFILE_TICKS)
-							+ " maxOpenPerTick=" + fmt(maxOpenCommits / (double) PROFILE_TICKS));
+							+ " bridgePerTick=" + fmt(bridgeCommits / (double) PROFILE_TICKS));
 
 					Map<String, Integer> endRequesters =
 							new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
