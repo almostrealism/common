@@ -56,9 +56,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * one kernel across ticks, note counts are ceiling-rounded to one of
  * {@link #BUCKETS} = {@code {64, 128, 256, 512}} and per-dispatch source
  * lengths are rounded up to {@link #SOURCE_BUCKET}, so every tick reuses the
- * same compiled renderer (cached per resulting shape). Variable-N within a
- * bucket is handled by padding unused rows with silent (zero) inputs so they
- * contribute nothing to the accumulate-reduce kernel's output.</p>
+ * same compiled renderer (cached JVM-wide per resulting shape, so scenes and
+ * genomes share renderers rather than each compiling and holding its own).
+ * Variable-N within a bucket is handled by padding unused rows with silent
+ * (zero) inputs so they contribute nothing to the accumulate-reduce kernel's
+ * output.</p>
  *
  * <h2>Gather and envelopes</h2>
  *
@@ -99,13 +101,23 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	public static final int MAX_WINDOW = 8192;
 
 	/**
-	 * Cache of compiled batched renderers keyed by {@code [bucketN, sourceLength,
-	 * targetLength]}. The kernel is fixed-shape at construction, so a distinct
-	 * renderer is compiled per note-count bucket, per source-length bucket, and per
-	 * render-window width; each is shared across all ticks of the same shape.
-	 * Concurrent access is supported for future multi-thread render orchestration.
+	 * JVM-wide cache of compiled batched renderers keyed by {@code [bucketN, sourceLength,
+	 * targetLength, sampleRate, filterOrder]}. The kernel is fixed-shape at construction,
+	 * so a distinct renderer is compiled per note-count bucket, per source-length bucket,
+	 * and per render-window width; each is shared across all ticks of the same shape.
+	 *
+	 * <p>The cache is static — shared across every pattern, scene, and genome — because a
+	 * renderer's identity is purely its shape: its bound input buffers are fully
+	 * re-marshalled on every dispatch (sources are zeroed and rewritten, scalars
+	 * overwritten), so no scene state survives in them between dispatches. Sharing bounds
+	 * total renderer memory at the distinct-shape set for the JVM's lifetime; a per-scene
+	 * cache instead leaked every discarded scene's bound buffers (no destroy chain
+	 * reaches them), which accumulated to an out-of-memory kill on scene-churn workloads
+	 * such as a test class building a scene per method. Dispatches synchronize on the
+	 * renderer instance, so two threads rendering the same shape marshal and dispatch in
+	 * turn rather than interleaving writes to the shared buffers.</p>
 	 */
-	private final ConcurrentMap<List<Integer>, BatchedPatternRenderer> rendererCache =
+	private static final ConcurrentMap<List<Integer>, BatchedPatternRenderer> rendererCache =
 			new ConcurrentHashMap<>();
 
 	/**
@@ -201,7 +213,9 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 
 	/**
 	 * Returns the cached {@link BatchedPatternRenderer} for the given shape, lazily
-	 * compiling one if absent.
+	 * compiling one if absent. Renderers are shared JVM-wide (see {@link #rendererCache});
+	 * the construction parameters beyond the shape — sample rate and filter order — are
+	 * part of the cache key so differently-configured dispatch sites never share.
 	 *
 	 * @param bucket       the bucket-N (one of {@link #BUCKETS}, or larger if oversized)
 	 * @param sourceLength per-note source buffer length (already source-bucketed)
@@ -209,9 +223,10 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * @return the renderer compiled for that shape
 	 */
 	public BatchedPatternRenderer rendererFor(int bucket, int sourceLength, int targetLength) {
-		return rendererCache.computeIfAbsent(List.of(bucket, sourceLength, targetLength), k ->
-				new BatchedPatternRenderer(bucket, sourceLength, targetLength,
-						sampleRate, filterOrder));
+		return rendererCache.computeIfAbsent(
+				List.of(bucket, sourceLength, targetLength, sampleRate, filterOrder), k ->
+						new BatchedPatternRenderer(bucket, sourceLength, targetLength,
+								sampleRate, filterOrder));
 	}
 
 	/** Returns the configured audio sample rate in Hz. */
@@ -413,77 +428,83 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 		// buffers and re-run the cached kernel (cp() rereads buffer memory), so no
 		// kernel is rebuilt or recompiled per dispatch.
 		BatchedPatternRenderer renderer = rendererFor(bucketN, sourceLength, targetLength);
-		renderer.sssDispatch(layers);
 
-		long marshalStart = System.nanoTime();
+		// The renderer is JVM-shared (see rendererCache), so its bound input buffers
+		// and output are exclusive to one dispatch at a time: the renderer's monitor
+		// is held from the first buffer write through output accumulation.
+		synchronized (renderer) {
+			renderer.sssDispatch(layers);
 
-		// Finite placeholder scalars for all rows; real rows overwrite below.
-		double[] layerDefaults = { PAD_DURATION, 0.3, 0.6, 1.0, 0.5, 0.5, 0.5, 0.5 };
-		double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
-		for (int row = 0; row < bucketN; row++) {
+			long marshalStart = System.nanoTime();
+
+			// Finite placeholder scalars for all rows; real rows overwrite below.
+			double[] layerDefaults = { PAD_DURATION, 0.3, 0.6, 1.0, 0.5, 0.5, 0.5, 0.5 };
+			double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
+			for (int row = 0; row < bucketN; row++) {
+				for (int l = 0; l < layers; l++) {
+					ratios[l][row] = 1.0;
+					for (int p = 0; p < 8; p++) layerParams[l][p][row] = layerDefaults[p];
+				}
+				for (int p = 0; p < 5; p++) {
+					filterAdsr[p][row] = adsrDefaults[p];
+					volumeAdsr[p][row] = adsrDefaults[p];
+				}
+			}
+
+			// Zero the bound source buffers so padded (and previously-used) rows contribute
+			// nothing, then copy each real note's source into its row. The clear spans the
+			// full [bucketN, sourceLength] buffer deliberately: bucketN and sourceLength are
+			// fixed for a cached renderer, so this clear compiles once and is reused every
+			// tick. It is batched across all layers into one compile-once assignment
+			// (renderer.clearSssSources) so the per-layer zeroing shares a single Metal
+			// command-buffer commit instead of forcing one synchronous host wait per layer.
+			PackedCollection[] boundSources = renderer.getSssSources();
+			renderer.clearSssSources();
+			for (int row = 0; row < count; row++) {
+				BatchedNoteInputs in = notes.get(row).getBatchedInputs();
+				for (int l = 0; l < layers; l++) {
+					PackedCollection src = in.getSources()[l];
+					copyRow(boundSources[l], row * sourceLength, src,
+							Math.min(src.getMemLength(), sourceLength));
+					ratios[l][row] = in.getRatios()[l];
+					for (int p = 0; p < 8; p++) layerParams[l][p][row] = in.getLayerParams()[l][p];
+				}
+				for (int p = 0; p < 5; p++) {
+					filterAdsr[p][row] = in.getFilterAdsr()[p];
+					volumeAdsr[p][row] = in.getVolumeAdsr()[p];
+				}
+				int noteStart = notes.get(row).getOffset();
+				destOffsets[row] = Math.max(0, noteStart - startFrame);
+				samplingOffsets[row] = Math.max(0, startFrame - noteStart);
+			}
+
+			// Write the assembled per-note scalar columns into the kernel's bound buffers.
+			PackedCollection[] boundRatios = renderer.getSssRatios();
+			PackedCollection[][] boundLayerEnv = renderer.getSssLayerEnv();
 			for (int l = 0; l < layers; l++) {
-				ratios[l][row] = 1.0;
-				for (int p = 0; p < 8; p++) layerParams[l][p][row] = layerDefaults[p];
+				writeColumn(boundRatios[l], ratios[l]);
+				for (int p = 0; p < 8; p++) {
+					writeColumn(boundLayerEnv[l][p], layerParams[l][p]);
+				}
 			}
+			PackedCollection[] boundFilter = renderer.getSssFilterAdsr();
+			PackedCollection[] boundVolume = renderer.getSssVolumeAdsr();
 			for (int p = 0; p < 5; p++) {
-				filterAdsr[p][row] = adsrDefaults[p];
-				volumeAdsr[p][row] = adsrDefaults[p];
+				writeColumn(boundFilter[p], filterAdsr[p]);
+				writeColumn(boundVolume[p], volumeAdsr[p]);
 			}
-		}
+			writeColumn(renderer.getSssDestOffsets(), destOffsets);
+			writeColumn(renderer.getSssSamplingOffsets(), samplingOffsets);
 
-		// Zero the bound source buffers so padded (and previously-used) rows contribute
-		// nothing, then copy each real note's source into its row. The clear spans the
-		// full [bucketN, sourceLength] buffer deliberately: bucketN and sourceLength are
-		// fixed for a cached renderer, so this clear compiles once and is reused every
-		// tick. It is batched across all layers into one compile-once assignment
-		// (renderer.clearSssSources) so the per-layer zeroing shares a single Metal
-		// command-buffer commit instead of forcing one synchronous host wait per layer.
-		PackedCollection[] boundSources = renderer.getSssSources();
-		renderer.clearSssSources();
-		for (int row = 0; row < count; row++) {
-			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
-			for (int l = 0; l < layers; l++) {
-				PackedCollection src = in.getSources()[l];
-				copyRow(boundSources[l], row * sourceLength, src,
-						Math.min(src.getMemLength(), sourceLength));
-				ratios[l][row] = in.getRatios()[l];
-				for (int p = 0; p < 8; p++) layerParams[l][p][row] = in.getLayerParams()[l][p];
-			}
-			for (int p = 0; p < 5; p++) {
-				filterAdsr[p][row] = in.getFilterAdsr()[p];
-				volumeAdsr[p][row] = in.getVolumeAdsr()[p];
-			}
-			int noteStart = notes.get(row).getOffset();
-			destOffsets[row] = Math.max(0, noteStart - startFrame);
-			samplingOffsets[row] = Math.max(0, startFrame - noteStart);
-		}
+			marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
-		// Write the assembled per-note scalar columns into the kernel's bound buffers.
-		PackedCollection[] boundRatios = renderer.getSssRatios();
-		PackedCollection[][] boundLayerEnv = renderer.getSssLayerEnv();
-		for (int l = 0; l < layers; l++) {
-			writeColumn(boundRatios[l], ratios[l]);
-			for (int p = 0; p < 8; p++) {
-				writeColumn(boundLayerEnv[l][p], layerParams[l][p]);
-			}
+			// The compiled kernel rereads the bound buffers; it is re-evaluated at the
+			// pipeline boundary and the window accumulates into the destination.
+			long evalStart = System.nanoTime();
+			accumulateBatchedOutput(renderer.sssDispatch(layers),
+					destination, destBaseOffset, targetLength);
+			evalNanos.addAndGet(System.nanoTime() - evalStart);
 		}
-		PackedCollection[] boundFilter = renderer.getSssFilterAdsr();
-		PackedCollection[] boundVolume = renderer.getSssVolumeAdsr();
-		for (int p = 0; p < 5; p++) {
-			writeColumn(boundFilter[p], filterAdsr[p]);
-			writeColumn(boundVolume[p], volumeAdsr[p]);
-		}
-		writeColumn(renderer.getSssDestOffsets(), destOffsets);
-		writeColumn(renderer.getSssSamplingOffsets(), samplingOffsets);
-
-		marshalNanos.addAndGet(System.nanoTime() - marshalStart);
-
-		// The compiled kernel rereads the bound buffers; it is re-evaluated at the
-		// pipeline boundary and the window accumulates into the destination.
-		long evalStart = System.nanoTime();
-		accumulateBatchedOutput(renderer.sssDispatch(layers),
-				destination, destBaseOffset, targetLength);
-		evalNanos.addAndGet(System.nanoTime() - evalStart);
 	}
 
 	/**
@@ -518,62 +539,68 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 		int sourceLength = sourceLengthFor(notes, count, layers, startFrame, targetLength);
 
 		BatchedPatternRenderer renderer = rendererFor(bucketN, sourceLength, targetLength);
-		renderer.percDispatch(layers, wet);
 
-		long marshalStart = System.nanoTime();
+		// The renderer is JVM-shared (see rendererCache), so its bound input buffers
+		// and output are exclusive to one dispatch at a time: the renderer's monitor
+		// is held from the first buffer write through output accumulation.
+		synchronized (renderer) {
+			renderer.percDispatch(layers, wet);
 
-		// Finite placeholder scalars for all rows; real rows overwrite below. The dry
-		// voicing has no volume envelope, so its rows need no defaults.
-		double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
-		for (int row = 0; row < bucketN; row++) {
-			for (int l = 0; l < layers; l++) ratios[l][row] = 1.0;
-			if (wet) {
-				for (int p = 0; p < 5; p++) volumeAdsr[p][row] = adsrDefaults[p];
+			long marshalStart = System.nanoTime();
+
+			// Finite placeholder scalars for all rows; real rows overwrite below. The dry
+			// voicing has no volume envelope, so its rows need no defaults.
+			double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
+			for (int row = 0; row < bucketN; row++) {
+				for (int l = 0; l < layers; l++) ratios[l][row] = 1.0;
+				if (wet) {
+					for (int p = 0; p < 5; p++) volumeAdsr[p][row] = adsrDefaults[p];
+				}
 			}
-		}
 
-		// Zero the bound source buffers (full fixed shape, compiles once) so padded and
-		// previously-used rows contribute nothing, then copy each real note's source.
-		// Batched across layers into one compile-once assignment (renderer.clearPercSources)
-		// so the zeroing shares a single command-buffer commit instead of one host wait per layer.
-		PackedCollection[] boundSources = renderer.getPercSources();
-		renderer.clearPercSources();
-		for (int row = 0; row < count; row++) {
-			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
+			// Zero the bound source buffers (full fixed shape, compiles once) so padded and
+			// previously-used rows contribute nothing, then copy each real note's source.
+			// Batched across layers into one compile-once assignment (renderer.clearPercSources)
+			// so the zeroing shares a single command-buffer commit instead of one host wait per layer.
+			PackedCollection[] boundSources = renderer.getPercSources();
+			renderer.clearPercSources();
+			for (int row = 0; row < count; row++) {
+				BatchedNoteInputs in = notes.get(row).getBatchedInputs();
+				for (int l = 0; l < layers; l++) {
+					PackedCollection src = in.getSources()[l];
+					copyRow(boundSources[l], row * sourceLength, src,
+							Math.min(src.getMemLength(), sourceLength));
+					ratios[l][row] = in.getRatios()[l];
+				}
+				if (wet) {
+					for (int p = 0; p < 5; p++) volumeAdsr[p][row] = in.getVolumeAdsr()[p];
+				}
+				int noteStart = notes.get(row).getOffset();
+				destOffsets[row] = Math.max(0, noteStart - startFrame);
+				samplingOffsets[row] = Math.max(0, startFrame - noteStart);
+			}
+
+			// Write the assembled per-note scalar columns into the kernel's bound buffers.
+			PackedCollection[] boundRatios = renderer.getPercRatios();
 			for (int l = 0; l < layers; l++) {
-				PackedCollection src = in.getSources()[l];
-				copyRow(boundSources[l], row * sourceLength, src,
-						Math.min(src.getMemLength(), sourceLength));
-				ratios[l][row] = in.getRatios()[l];
+				writeColumn(boundRatios[l], ratios[l]);
 			}
 			if (wet) {
-				for (int p = 0; p < 5; p++) volumeAdsr[p][row] = in.getVolumeAdsr()[p];
+				PackedCollection[] boundVolume = renderer.getPercVolumeAdsr();
+				for (int p = 0; p < 5; p++) {
+					writeColumn(boundVolume[p], volumeAdsr[p]);
+				}
 			}
-			int noteStart = notes.get(row).getOffset();
-			destOffsets[row] = Math.max(0, noteStart - startFrame);
-			samplingOffsets[row] = Math.max(0, startFrame - noteStart);
-		}
+			writeColumn(renderer.getPercDestOffsets(), destOffsets);
+			writeColumn(renderer.getPercSamplingOffsets(), samplingOffsets);
 
-		// Write the assembled per-note scalar columns into the kernel's bound buffers.
-		PackedCollection[] boundRatios = renderer.getPercRatios();
-		for (int l = 0; l < layers; l++) {
-			writeColumn(boundRatios[l], ratios[l]);
-		}
-		if (wet) {
-			PackedCollection[] boundVolume = renderer.getPercVolumeAdsr();
-			for (int p = 0; p < 5; p++) {
-				writeColumn(boundVolume[p], volumeAdsr[p]);
-			}
-		}
-		writeColumn(renderer.getPercDestOffsets(), destOffsets);
-		writeColumn(renderer.getPercSamplingOffsets(), samplingOffsets);
+			marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
-		marshalNanos.addAndGet(System.nanoTime() - marshalStart);
-
-		long evalStart = System.nanoTime();
-		accumulateBatchedOutput(renderer.percDispatch(layers, wet),
-				destination, destBaseOffset, targetLength);
-		evalNanos.addAndGet(System.nanoTime() - evalStart);
+			long evalStart = System.nanoTime();
+			accumulateBatchedOutput(renderer.percDispatch(layers, wet),
+					destination, destBaseOffset, targetLength);
+			evalNanos.addAndGet(System.nanoTime() - evalStart);
+		}
 	}
 
 	/**

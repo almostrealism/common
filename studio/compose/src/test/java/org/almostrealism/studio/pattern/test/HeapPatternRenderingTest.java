@@ -45,10 +45,7 @@ import java.util.List;
  * duration: the per-note path is the subject under test here (the Heap lifecycle
  * question — staged note audio surviving until summation — belongs to per-note
  * evaluation), and the batched dispatch's Heap behaviour is covered by the batched
- * sentinel tests. The batched path also allocates large fixed-shape bound buffers
- * per kernel shape, which this class's scene-per-method structure never releases —
- * enough accumulation across its nine methods to exceed the CI runner's memory
- * limit once batching became the default.</p>
+ * sentinel tests.</p>
  */
 public class HeapPatternRenderingTest extends AudioSceneTestBase {
 
