@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.profile.OperationMetadata;
@@ -100,6 +101,59 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			}
 
 			assertEquals((double) (baseline + 1), (double) runner.getCommitCount());
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = aggregation;
+		}
+	}
+
+	/**
+	 * Verifies the non-blocking foreign-dependency bridge: submitting a Metal dispatch that
+	 * depends on a {@link Semaphore} from outside the runner must return while that dependency
+	 * is still outstanding (the runner encodes a GPU wait on a host-signaled event rather than
+	 * blocking; see {@link MetalCommandRunner#enableHostSignaledBridges}), must not force a
+	 * commit, and must produce correct results once the dependency completes. Before the
+	 * bridge existed this call blocked until the foreign dependency completed, which under
+	 * this test's ordering (completion arrives only after submit returns) was a deadlock —
+	 * the timeout guards that regression.
+	 */
+	@Test(timeout = 60000)
+	public void foreignDependencyBridgesWithoutHostWait() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		boolean aggregation = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+
+		try {
+			int n = 16;
+
+			PackedCollection src = new PackedCollection(n);
+			PackedCollection dst = new PackedCollection(n);
+			src.fill(pos -> Math.random() + 1.0);
+
+			Submittable op = copyKernel(src, dst, n, ComputeRequirement.MTL);
+
+			MetalCommandRunner runner = metal.getCommandRunner();
+			long baseline = runner.getCommitCount();
+
+			DefaultLatchSemaphore foreign = new DefaultLatchSemaphore(
+					new OperationMetadata("foreignWork", "foreign dependency for bridge test"), 1);
+
+			Semaphore s = op.submit(foreign);
+
+			// The dispatch was encoded while the foreign dependency is still outstanding,
+			// with no commit forced
+			assertEquals((double) baseline, (double) runner.getCommitCount());
+
+			foreign.countDown();
+			s.waitFor();
+
+			for (int i = 0; i < n; i++) {
+				assertEquals(src.toDouble(i), dst.toDouble(i));
+			}
 		} finally {
 			MemoryDataArgumentMap.enableArgumentAggregation = aggregation;
 		}
