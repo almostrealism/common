@@ -25,6 +25,7 @@ import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.audio.tone.WesternScales;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Heap;
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -39,18 +40,41 @@ import java.util.List;
  * that run without one never exercise the push/pop lifecycle that frees
  * staged allocations. These tests reproduce the desktop app's Heap context
  * to verify that evaluated note audio survives long enough for summation.</p>
+ *
+ * <p>The class pins {@link PatternLayerManager#enableBatched} <em>off</em> for its
+ * duration: the per-note path is the subject under test here (the Heap lifecycle
+ * question — staged note audio surviving until summation — belongs to per-note
+ * evaluation), and the batched dispatch's Heap behaviour is covered by the batched
+ * sentinel tests. The batched path also allocates large fixed-shape bound buffers
+ * per kernel shape, which this class's scene-per-method structure never releases —
+ * enough accumulation across its nine methods to exceed the CI runner's memory
+ * limit once batching became the default.</p>
  */
 public class HeapPatternRenderingTest extends AudioSceneTestBase {
 
 	/** Size of the heap for test operations in bytes. */
 	private static final int HEAP_SIZE = 64 * 1024 * 1024;
 
+	/** The {@link PatternLayerManager#enableBatched} value to restore after the class. */
+	private static boolean previousBatched;
+
 	/**
-	 * Initializes audio processing before running tests.
+	 * Initializes audio processing and pins rendering to the per-note path
+	 * (see the class javadoc) before running tests.
 	 */
 	@BeforeClass
 	public static void initProcessing() {
 		AudioProcessingUtils.init();
+		previousBatched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+	}
+
+	/**
+	 * Restores the batched-dispatch flag after the class completes.
+	 */
+	@AfterClass
+	public static void restoreBatched() {
+		PatternLayerManager.enableBatched = previousBatched;
 	}
 
 	/** Single layer sum inside a Heap produces non-silent audio. */
