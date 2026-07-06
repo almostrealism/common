@@ -21,13 +21,13 @@ import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalFeatures;
-
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Batched pattern renderer implementing the four-kernel chain used by
- * the Phase 3 pattern rendering architecture:
+ * the batched pattern rendering path:
  * <ol>
  *   <li><b>Resample</b> — per-row linear interpolation gather from
  *       {@code [N, sourceLength]} source using {@code [N]} pitch ratios →
@@ -167,6 +167,31 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	/** Returns the bound per-layer source buffers for the SSS dispatch. */
 	public PackedCollection[] getSssSources() { return sssSources; }
 
+	/** Compile-once batched zero of all {@link #sssSources}, reused across ticks; built on first {@link #clearSssSources()}. */
+	private Runnable sssSourcesClear;
+
+	/**
+	 * Zeroes all {@link #getSssSources() SSS source buffers} in one batched, compile-once pass so
+	 * that padded and previously-used rows contribute nothing. This replaces per-buffer
+	 * {@link PackedCollection#clear()} calls — each a synchronous host wait that forced its own Metal
+	 * command-buffer commit — with a single assignment-based {@link OperationList} whose members batch
+	 * into one command buffer and commit once. The buffers are fixed for a cached renderer, so the
+	 * assignment compiles once and is re-run every tick.
+	 */
+	public void clearSssSources() {
+		if (sssSources == null) return;
+
+		if (sssSourcesClear == null) {
+			OperationList clear = new OperationList("sssSourcesClear");
+			for (PackedCollection source : sssSources) {
+				clear.add(a(traverseEach(cp(source)), c(0.0)));
+			}
+			sssSourcesClear = clear.get();
+		}
+
+		sssSourcesClear.run();
+	}
+
 	/** Returns the bound per-layer pitch-ratio buffers for the SSS dispatch. */
 	public PackedCollection[] getSssRatios() { return sssRatios; }
 
@@ -209,9 +234,6 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	/** Bound per-note sampling offsets for the percussion dispatch, {@code [n]}. */
 	private PackedCollection percSamplingOffsets;
 
-	/** Diagnostic: count of percussion-kernel compiles (should stay small if shapes reuse). */
-	public static final AtomicLong percCompileCount = new AtomicLong();
-
 	/**
 	 * Allocates the percussion input buffers on first use, sized to this renderer's
 	 * fixed shape. Shared by the dry and wet percussion dispatches: both read the
@@ -253,14 +275,12 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		ensurePercBuffers(layers);
 		if (wet) {
 			if (percDispatchWet == null) {
-				percCompileCount.incrementAndGet();
 				percDispatchWet = buildBatchedPercussionChainPlaced(percSources, percRatios,
 						percVolumeAdsr, percDestOffsets, percSamplingOffsets, targetLength).get();
 			}
 			return percDispatchWet;
 		}
 		if (percDispatchDry == null) {
-			percCompileCount.incrementAndGet();
 			percDispatchDry = buildBatchedPercussionChainPlaced(percSources, percRatios,
 					null, percDestOffsets, percSamplingOffsets, targetLength).get();
 		}
@@ -269,6 +289,29 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 
 	/** Returns the bound per-layer source buffers for the percussion dispatch. */
 	public PackedCollection[] getPercSources() { return percSources; }
+
+	/** Compile-once batched zero of all {@link #percSources}, reused across ticks; built on first {@link #clearPercSources()}. */
+	private Runnable percSourcesClear;
+
+	/**
+	 * Zeroes all {@link #getPercSources() percussion source buffers} in one batched, compile-once
+	 * pass so that padded and previously-used rows contribute nothing. As with
+	 * {@link #clearSssSources()}, this replaces per-buffer {@link PackedCollection#clear()} calls with
+	 * a single assignment-based {@link OperationList} that batches into one command-buffer commit.
+	 */
+	public void clearPercSources() {
+		if (percSources == null) return;
+
+		if (percSourcesClear == null) {
+			OperationList clear = new OperationList("percSourcesClear");
+			for (PackedCollection source : percSources) {
+				clear.add(a(traverseEach(cp(source)), c(0.0)));
+			}
+			percSourcesClear = clear.get();
+		}
+
+		percSourcesClear.run();
+	}
 
 	/** Returns the bound per-layer pitch-ratio buffers for the percussion dispatch. */
 	public PackedCollection[] getPercRatios() { return percRatios; }
@@ -429,8 +472,8 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * volume-envelope stage, but the per-note {@code [targetLength]} voiced rows
 	 * are scattered into a {@code [windowWidth]} output at their per-note
 	 * destination offsets (the same mechanism as {@link #buildScatterAdd})
-	 * instead of being summed in alignment. This is the full first-cut real-time
-	 * a2 form: one fused kernel from three source layers to a placed, summed
+	 * instead of being summed in alignment. This is the full real-time pattern
+	 * render form: one fused kernel from three source layers to a placed, summed
 	 * output window. No intermediate buffer is materialized between the chain and
 	 * the placement.
 	 *
@@ -870,7 +913,29 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * @return an uncompiled {@link CollectionProducer} of shape {@code [targetLength]}
 	 */
 	private CollectionProducer reduceAligned(CollectionProducer voiced2D) {
-		return permute(voiced2D, 1, 0).traverse(1).sum().reshape(shape(targetLength));
+		return sumNoteAxis(permute(voiced2D, 1, 0), targetLength);
+	}
+
+	/**
+	 * Sums the note axis of a permuted {@code [width, n]} producer without the
+	 * aggregation gather-collapse probe. Batched pattern windows sum genuinely
+	 * overlapping per-note rows — more than one note can contribute to any output
+	 * frame — so the {@code uniqueNonZeroOffset} analysis triggered by
+	 * {@link AggregatedProducerComputation#setReplaceLoop(boolean) replaceLoop}
+	 * can never identify a unique contributor here. On these deep fused chains
+	 * that always-failing analysis dominated first-compile wall time (14-29&nbsp;s
+	 * per kernel shape), so it is disabled before compilation.
+	 *
+	 * @param permuted the {@code [width, n]} producer whose second axis is summed
+	 * @param width    the output width in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [width]}
+	 */
+	private CollectionProducer sumNoteAxis(CollectionProducer permuted, int width) {
+		CollectionProducer summed = permuted.traverse(1).sum();
+		if (summed instanceof AggregatedProducerComputation aggregation) {
+			aggregation.setReplaceLoop(false);
+		}
+		return summed.reshape(shape(width));
 	}
 
 	/**
@@ -960,6 +1025,6 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		// Sum the note axis: [noteCount, windowWidth] → [windowWidth, noteCount]
 		// → reduce → [windowWidth].
 		CollectionProducer rows2D = contribution.reshape(shape(noteCount, windowWidth));
-		return permute(rows2D, 1, 0).traverse(1).sum().reshape(shape(windowWidth));
+		return sumNoteAxis(permute(rows2D, 1, 0), windowWidth);
 	}
 }

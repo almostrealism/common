@@ -36,6 +36,11 @@ import java.util.function.Function;
  * {@link #layer(String, TraversalPolicy, TraversalPolicy, Factor, ComputeRequirement...)}
  * to create the actual layer instances.</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see LayerFeatures
  */
 public interface ActivationFeatures extends GeometryFeatures {

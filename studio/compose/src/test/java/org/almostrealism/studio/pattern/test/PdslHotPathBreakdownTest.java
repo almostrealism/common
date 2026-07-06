@@ -16,13 +16,14 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.audio.WaveOutput;
-import org.almostrealism.audio.data.WaveData;
-import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.metal.MetalCommandRunner;
+import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
-import org.almostrealism.music.pattern.NoteAudioCache;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
@@ -35,19 +36,14 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Attributes the real-time PDSL tick's hot-path wall time on a dense curated scene into its
- * components — the a2 wait ({@code awaitSlot}) versus the a3 mixdown forward
- * ({@code compiled.forward}) — and reports the full a2 producer breakdown alongside, at both the
- * preferred (4096) and default (8192) buffer sizes.
- *
- * <p>This is the Phase-1 decomposition measurement for the run-ahead-streams plan: it answers
- * whether the per-buffer cost is the a3 forward, the a2 wait, or the a2 placement, so the fix is
- * directed by data rather than the (untrusted) prior performance docs. The {@code awaitSlot}
- * versus {@code forward} split (read from {@link AudioSceneRealtimeRunner#hotAwaitNanos} /
- * {@link AudioSceneRealtimeRunner#hotForwardNanos}) tells whether a3 is waiting on a2 or doing
- * its own work; the {@link NoteAudioCache} hit/miss counts confirm synthesis is render-once.</p>
+ * Measures the real-time PDSL tick's hot-path wall time on a dense curated scene at both the
+ * preferred (4096) and default (8192) buffer sizes, and reports the pattern-render breakdown
+ * (gather / eval / marshal) and the effective GPU batch size alongside, so per-buffer cost can be
+ * directed by data rather than the (untrusted) prior performance docs.
  */
 public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 
@@ -67,9 +63,9 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	private static final int[] BUFFER_SIZES = { 4096, 8192 };
 
 	/**
-	 * Runs the decomposition on the densest curated genome at each buffer size, logging the
-	 * a2/a3 attribution and asserting the render is non-silent (a fast render of silence is not
-	 * progress).
+	 * Runs the breakdown on the densest curated genome at each buffer size, logging the hot-path
+	 * timing and pattern-render breakdown and asserting the render is non-silent (a fast render of
+	 * silence is not progress).
 	 *
 	 * @throws IOException if the curated scene cannot be loaded
 	 */
@@ -186,6 +182,21 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	}
 
 	/**
+	 * Returns the {@link MetalCommandRunner} for the shared Metal compute context, or {@code null}
+	 * when no Metal context is active (so the commit-cause attribution is simply skipped off-Metal).
+	 *
+	 * @return the Metal command runner, or {@code null}
+	 */
+	private static MetalCommandRunner metalRunner() {
+		return Hardware.getLocalHardware()
+				.getComputeContexts(false, true, ComputeRequirement.MTL).stream()
+				.filter(MetalComputeContext.class::isInstance)
+				.map(MetalComputeContext.class::cast)
+				.map(MetalComputeContext::getCommandRunner)
+				.findFirst().orElse(null);
+	}
+
+	/**
 	 * Builds the runner at one buffer size, warms it, then times {@link #PROFILE_TICKS} steady
 	 * ticks and logs the attributed breakdown plus the realtime ratio.
 	 *
@@ -220,8 +231,16 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				}
 
 				BatchedPatternLayerRenderer.resetCounters();
-				NoteAudioCache.resetCounters();
-				AudioSceneRealtimeRunner.resetHotPathTimers();
+				MetalCommandRunner.resetBatchSizeCounters();
+
+				MetalCommandRunner mtlRunner = metalRunner();
+				long baseHostCommits = mtlRunner == null ? 0 : mtlRunner.getHostCompleteCommitCount();
+				long baseMaxOpenCommits = mtlRunner == null ? 0 : mtlRunner.getMaxOpenCommitCount();
+				long baseBridgeCommits = mtlRunner == null ? 0 : mtlRunner.getBridgeCommitCount();
+				long baseDestroyCommits = mtlRunner == null ? 0 : mtlRunner.getDestroyCommitCount();
+				long baseRunnerCommits = mtlRunner == null ? 0 : mtlRunner.getCommitCount();
+				Map<String, Integer> baseRequesters =
+						new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
 
 				double totalTickMs = 0;
 				double[] ticks = new double[PROFILE_TICKS];
@@ -243,31 +262,60 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 				log("buffer=" + bufferSize + " SUSTAINED ticks=" + PROFILE_TICKS
 						+ " p50Ms=" + fmt(p50) + " p95Ms=" + fmt(p95) + " maxMs=" + fmt(maxMs)
 						+ " p50ratio=" + fmt(p50 / budget) + " p95ratio=" + fmt(p95 / budget)
-						+ " overBudgetTicks=" + overBudget + "/" + PROFILE_TICKS
-						+ " rendererCompilesDuringRun=" + BatchedPatternLayerRenderer.rendererCompileCount.get());
+						+ " overBudgetTicks=" + overBudget + "/" + PROFILE_TICKS);
 
 				double budgetMs = 1000.0 * bufferSize / SAMPLE_RATE;
 				double tickMs = totalTickMs / PROFILE_TICKS;
-				double awaitMs = AudioSceneRealtimeRunner.hotAwaitNanos.get() / 1e6 / PROFILE_TICKS;
-				double forwardMs = AudioSceneRealtimeRunner.hotForwardNanos.get() / 1e6 / PROFILE_TICKS;
-				double a2GatherMs = BatchedPatternLayerRenderer.gatherNanos.get() / 1e6 / PROFILE_TICKS;
-				double a2EvalMs = BatchedPatternLayerRenderer.evalNanos.get() / 1e6 / PROFILE_TICKS;
-				double a2PerNoteMs = BatchedPatternLayerRenderer.perNoteNanos.get() / 1e6 / PROFILE_TICKS;
-				double a2MarshalMs = BatchedPatternLayerRenderer.marshalNanos.get() / 1e6 / PROFILE_TICKS;
+				double gatherMs = BatchedPatternLayerRenderer.gatherNanos.get() / 1e6 / PROFILE_TICKS;
+				double evalMs = BatchedPatternLayerRenderer.evalNanos.get() / 1e6 / PROFILE_TICKS;
+				double marshalMs = BatchedPatternLayerRenderer.marshalNanos.get() / 1e6 / PROFILE_TICKS;
 
 				log("efx=" + efx + " buffer=" + bufferSize + " budgetMs=" + fmt(budgetMs)
 						+ " tickMs=" + fmt(tickMs) + " realtimeX=" + fmt(budgetMs / tickMs)
 						+ " ratioToRealtime=" + fmt(tickMs / budgetMs));
-				log("efx=" + efx + " buffer=" + bufferSize + " HOTPATH hotAwaitMs=" + fmt(awaitMs)
-						+ " hotForwardMs=" + fmt(forwardMs));
-				log("buffer=" + bufferSize + " A2 gatherMs=" + fmt(a2GatherMs)
-						+ " evalMs=" + fmt(a2EvalMs) + " perNoteMs=" + fmt(a2PerNoteMs)
-						+ " marshalMs=" + fmt(a2MarshalMs)
-						+ " a2TotalMs=" + fmt(a2GatherMs + a2EvalMs + a2PerNoteMs + a2MarshalMs));
-				log("buffer=" + bufferSize + " cacheHits=" + NoteAudioCache.cacheHits.get()
-						+ " cacheMisses=" + NoteAudioCache.cacheMisses.get()
+				log("buffer=" + bufferSize + " patternRender gatherMs=" + fmt(gatherMs)
+						+ " evalMs=" + fmt(evalMs)
+						+ " marshalMs=" + fmt(marshalMs)
+						+ " totalMs=" + fmt(gatherMs + evalMs + marshalMs));
+				log("buffer=" + bufferSize
 						+ " batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount.get()
 						+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount.get());
+
+				long metalDispatches = MetalCommandRunner.totalDispatchCount.get();
+				long metalCommits = MetalCommandRunner.totalCommitCount.get();
+				log("buffer=" + bufferSize + " METAL dispatches=" + metalDispatches
+						+ " commits=" + metalCommits
+						+ " dispatchesPerTick=" + fmt(metalDispatches / (double) PROFILE_TICKS)
+						+ " commitsPerTick=" + fmt(metalCommits / (double) PROFILE_TICKS)
+						+ " meanDispatchesPerCommit=" + fmt(MetalCommandRunner.meanBatchSize()));
+
+				if (mtlRunner != null) {
+					long hostCommits = mtlRunner.getHostCompleteCommitCount() - baseHostCommits;
+					long maxOpenCommits = mtlRunner.getMaxOpenCommitCount() - baseMaxOpenCommits;
+					long bridgeCommits = mtlRunner.getBridgeCommitCount() - baseBridgeCommits;
+					long destroyCommits = mtlRunner.getDestroyCommitCount() - baseDestroyCommits;
+					long runnerCommits = mtlRunner.getCommitCount() - baseRunnerCommits;
+					log("buffer=" + bufferSize + " commitCause runnerCommits=" + runnerCommits
+							+ " hostCompleteCommits=" + hostCommits
+							+ " maxOpenCommits=" + maxOpenCommits
+							+ " bridgeCommits=" + bridgeCommits
+							+ " destroyCommits=" + destroyCommits
+							+ " hostCompletePerTick=" + fmt(hostCommits / (double) PROFILE_TICKS)
+							+ " bridgePerTick=" + fmt(bridgeCommits / (double) PROFILE_TICKS));
+
+					Map<String, Integer> endRequesters =
+							new HashMap<>(MetalCommandRunner.hostCompleteRequesters.getCounts());
+					endRequesters.entrySet().stream()
+							.map(e -> Map.entry(e.getKey(),
+									e.getValue() - baseRequesters.getOrDefault(e.getKey(), 0)))
+							.filter(e -> e.getValue() > 0)
+							.sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+							.limit(15)
+							.forEach(e -> log("buffer=" + bufferSize
+									+ " requesterWaitsPerTick=" + fmt(e.getValue() / (double) PROFILE_TICKS)
+									+ " requesterWaits=" + e.getValue()
+									+ " requester=" + e.getKey()));
+				}
 
 				out.write().get().run();
 				double peak = peakAmplitude(scratch.getPath());
@@ -282,29 +330,6 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 			MixdownManager.enablePdslMixdown = previous;
 			MixdownManager.enableEfx = previousEfx;
 			MixdownManager.enableReverb = previousReverb;
-		}
-	}
-
-	/**
-	 * Returns the peak absolute sample over channel 0 of a rendered WAV.
-	 *
-	 * @param wavPath path to the rendered WAV
-	 * @return the peak absolute sample in [0, 1]
-	 * @throws IOException if the WAV cannot be read
-	 */
-	private double peakAmplitude(String wavPath) throws IOException {
-		WaveData data = WaveData.load(new File(wavPath));
-		try {
-			PackedCollection channel = data.getChannelData(0);
-			double peak = 0.0;
-			int n = channel.getShape().getTotalSize();
-			for (int i = 0; i < n; i++) {
-				double v = Math.abs(channel.valueAt(i));
-				if (v > peak) peak = v;
-			}
-			return peak;
-		} finally {
-			data.destroy();
 		}
 	}
 

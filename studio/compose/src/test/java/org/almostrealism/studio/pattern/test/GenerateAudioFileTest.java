@@ -17,8 +17,6 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.audio.WaveOutput;
-import org.almostrealism.audio.data.WaveData;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.AudioScene;
@@ -33,18 +31,18 @@ import java.io.File;
 import java.io.IOException;
 
 /**
- * Renders two minutes of audio through the current real-time {@link AudioScene} PDSL pipeline
- * (a1 pattern generation, a2 batched render-ahead, a3 PDSL mixdown with full efx + reverb) to a
+ * Renders {@link #TARGET_SECONDS} of audio through the current real-time {@link AudioScene} PDSL
+ * pipeline (pattern generation, batched render-ahead, PDSL mixdown with full efx + reverb) to a
  * single listenable WAV file, and reports the wall time it took to generate — broken into the
  * one-time setup (scene load + kernel pre-warm) and the steady per-buffer generation loop — along
  * with the realtime multiple (audio seconds produced per wall-clock second).
  */
-public class Generate2MinAudioTest extends AudioSceneTestBase {
+public class GenerateAudioFileTest extends AudioSceneTestBase {
 
 	/** Tempo for the rendered arrangement. */
 	private static final double BENCH_BPM = 120.0;
 
-	/** Total measures in the arrangement (64 measures at 120 BPM is ~128 s, covering the 2 min). */
+	/** Total measures in the arrangement (64 measures at 120 BPM is ~128 s of audio). */
 	private static final int BENCH_MEASURES = 64;
 
 	/** Genome seed: the dense curated genome the breakdown harness renders (~1126 elements). */
@@ -57,18 +55,18 @@ public class Generate2MinAudioTest extends AudioSceneTestBase {
 	private static final double TARGET_SECONDS = 120.0;
 
 	/**
-	 * Generates two minutes of audio to {@code results/generated-2min.wav} and logs the generation
-	 * time. Asserts the render is non-silent so a fast render of silence cannot pass as success.
+	 * Generates audio to {@code results/generated-audio.wav} and logs the generation time. Asserts
+	 * the render is non-silent so a fast render of silence cannot pass as success.
 	 *
 	 * @throws IOException if the curated scene cannot be loaded or the WAV cannot be written
 	 */
 	@Test(timeout = 900_000)
 	@TestDepth(1)
-	public void generateTwoMinutes() throws IOException {
+	public void generateAudioFile() throws IOException {
 		File library = getSamplesDir();
 		File patternFactory = new File(PATTERN_FACTORY);
 		if (library == null || !patternFactory.exists()) {
-			log("Skipping generateTwoMinutes - need the curated library (" + SAMPLES_PATH
+			log("Skipping generateAudioFile - need the curated library (" + SAMPLES_PATH
 					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
 			return;
 		}
@@ -86,7 +84,7 @@ public class Generate2MinAudioTest extends AudioSceneTestBase {
 		log("scene elements=" + countElements(scene) + " seed=" + GENOME_SEED
 				+ " bpm=" + BENCH_BPM + " measures=" + BENCH_MEASURES);
 
-		File outFile = new File("results/generated-2min.wav");
+		File outFile = new File("results/generated-audio.wav");
 		outFile.getParentFile().mkdirs();
 		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
 
@@ -111,7 +109,7 @@ public class Generate2MinAudioTest extends AudioSceneTestBase {
 
 			out.write().get().run();
 
-			double peak = peak(outFile.getPath());
+			double peak = peakAmplitude(outFile.getPath());
 			double totalSec = setupSec + genSec;
 			log("audioSeconds=" + fmt(audioSeconds) + " ticks=" + ticks
 					+ " bufferSize=" + BUFFER_SIZE);
@@ -127,29 +125,6 @@ public class Generate2MinAudioTest extends AudioSceneTestBase {
 		} finally {
 			out.reset();
 			runner.reset();
-		}
-	}
-
-	/**
-	 * Returns the peak absolute sample over channel 0 of a rendered WAV.
-	 *
-	 * @param wavPath path to the rendered WAV
-	 * @return the peak absolute sample in [0, 1]
-	 * @throws IOException if the WAV cannot be read
-	 */
-	private double peak(String wavPath) throws IOException {
-		WaveData data = WaveData.load(new File(wavPath));
-		try {
-			PackedCollection channel = data.getChannelData(0);
-			double peak = 0.0;
-			int n = channel.getShape().getTotalSize();
-			for (int i = 0; i < n; i++) {
-				double v = Math.abs(channel.valueAt(i));
-				if (v > peak) peak = v;
-			}
-			return peak;
-		} finally {
-			data.destroy();
 		}
 	}
 

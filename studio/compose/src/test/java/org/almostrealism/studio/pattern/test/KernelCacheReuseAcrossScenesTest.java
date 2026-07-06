@@ -17,10 +17,8 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.audio.WaveOutput;
-import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
-import org.almostrealism.music.pattern.NoteAudioCache;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
@@ -40,10 +38,9 @@ import java.io.IOException;
  *
  * <p>It reproduces the scenario directly: build a scene, render a fixed number of buffers (which
  * forces kernel compilation on first encounter, since pre-warm is disabled here), reset it, then
- * build and render a fresh scene with identical configuration — three times in one JVM. Kernel
+ * build and render a fresh scene with identical configuration — twice in one JVM. Kernel
  * compilation dominates the first scene's render wall time; if the cache covers cross-scene reuse,
- * later scenes render dramatically faster. The per-scene {@code rendererCompiles} count
- * (distinct a2 batched-render kernels built) is logged alongside as a direct compile signal.</p>
+ * later scenes render dramatically faster, which the per-scene render wall times reveal.</p>
  */
 public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 
@@ -64,8 +61,8 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 
 	/**
 	 * Number of independent scenes built and rendered in one JVM. Two is sufficient to measure
-	 * cross-scene kernel reuse: scene 0 compiles cold and scene 1 reveals, via the instruction-cache
-	 * counters, whether those kernels are reused or recompiled.
+	 * cross-scene kernel reuse: scene 0 compiles cold and scene 1 reveals, via its render wall
+	 * time, whether those kernels are reused or recompiled.
 	 */
 	private static final int SCENES = 2;
 
@@ -101,8 +98,6 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 
 		for (int s = 0; s < SCENES; s++) {
 			BatchedPatternLayerRenderer.resetCounters();
-			NoteAudioCache.resetCounters();
-			DefaultComputer.resetCacheCounters();
 
 			AudioScene<?> scene = loadCuratedScene(library, patternFactory, BPM, MEASURES);
 			applyGenome(scene, SEED);
@@ -127,21 +122,12 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 				}
 				long t3 = System.nanoTime();
 
-				long instrLookups = DefaultComputer.instructionCacheLookups.get();
-				long instrMisses = DefaultComputer.instructionCacheMisses.get();
 				log("scene=" + s
 						+ " setupMs=" + ms(t1 - t0)
 						+ " firstTickMs=" + ms(t2 - t1)
 						+ " renderLoopMs=" + ms(t3 - t2)
 						+ " renderTotalMs=" + ms(t3 - t1)
-						+ " ticks=" + RENDER_TICKS
-						+ " rendererCompiles=" + BatchedPatternLayerRenderer.rendererCompileCount.get()
-						+ " noteCacheMisses=" + NoteAudioCache.cacheMisses.get()
-						+ " noteCacheHits=" + NoteAudioCache.cacheHits.get()
-						+ " instrLookups=" + instrLookups
-						+ " instrMisses=" + instrMisses
-						+ " instrHits=" + (instrLookups - instrMisses)
-						+ " instrEvictions=" + DefaultComputer.instructionCacheEvictions.get());
+						+ " ticks=" + RENDER_TICKS);
 			} finally {
 				out.reset();
 				runner.reset();

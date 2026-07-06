@@ -8,11 +8,22 @@
 > only behind a flag) and is the long-stated goal that has not yet been achieved. This document is the
 > single consolidation point for that effort so it can be picked up across sessions.
 >
-> **Status:** baselining. The enabling flag (`enableAssignmentCopy`) is now **runtime-configurable**
-> via `AR_HARDWARE_ASSIGNMENT_COPY` (enabled/disabled) and **default-enabled as of 2026-06-28**
-> (`MemoryDataFeatures.java`). It is **known-not-ready** (enabling it breaks an unknown set of things —
-> establishing that set via a CI baseline on a clean build is the first task). The default flip is the
-> only production change so far, and it takes effect only after a clean rebuild (CI).
+> **Status (updated 2026-07-04):** default **OFF again**, and the primary motivation has been
+> partially superseded. The flag history: default-enabled `de5f2a961` (2026-06-28) → reverted
+> `b20a4a175` → re-enabled `468fe809d` → **currently disabled**
+> (`MemoryDataFeatures.enableAssignmentCopy` reads `AR_HARDWARE_ASSIGNMENT_COPY` with
+> `.orElse(false)`); the javadoc there records why the flip cannot hold yet:
+> assignment-based layer input recording **diverges some gradient-descent trainings**.
+> Separately, the §1 batching motivation was addressed by a different design:
+> `a3b20e285` (2026-07-02, "Chain every copy on the Semaphore mechanism and deprecate
+> `MemoryDataCopy`") makes `AcceleratedOperation.apply` non-blocking — prepare copies chain
+> ahead of the kernel, the kernel chains on the last copy-in, replacement copy-back and
+> de-aggregation chain after — so host copies no longer force the per-op `waitFor` this plan
+> was written to eliminate. `MemoryDataCopy` is now `@Deprecated` with guidance toward
+> `Assignment`, `MemoryData.copyFrom`, and the `copy(...)` helpers, and the §3 direct-construction
+> sites have been migrated. The remaining motivations for *this* migration are optimizer
+> visibility (`Assignment` is a `ParallelProcess`; `MemoryDataCopy`'s producer tree is invisible
+> to strategies) and the ML copy cost (§1 Qwen numbers) — re-baseline both before resuming.
 
 ---
 
@@ -172,6 +183,19 @@ that the surrounding code not insert a host `waitFor` around it.
 - Code anchors: `Assignment.java`, `MemoryDataCopy.java`, `MemoryDataFeatures.java`
   (`copy`/`enableAssignmentCopy`), `CodeFeatures.java:305-318`, `DestinationEvaluable.java`,
   `MemoryDataArgumentMap.java`, `MemoryReplacementManager.java`.
+
+## 9.1 Audio connection (2026-07-05)
+
+The audio real-time effort independently converged on a **scoped** version of this
+migration as its top lever: `OperationListRunner` forces a host wait before every
+non-submittable member, and the PDSL tick's composites still contain `copy()`-helper
+`MemoryDataCopy` members (~15 waits/tick at 4096, plus their blit chain-tails) — which
+also starves the new `MTLSharedEvent` foreign-dependency bridge (`bridgeCommits=0`),
+since each wait resets the dependency chain before a cross-context handoff can reach
+`MetalCommandRunner.submit`. Routing just those call sites through the `Submittable`
+copy machinery (per §5's incremental path, not the global flag flip) is the plan of
+record in [`audio-scene-redesign/NEXT_STEP.md`](audio-scene-redesign/NEXT_STEP.md);
+its parity gates and measurements can serve as the first §7 case study.
 
 ## 10. Open questions / next actions
 

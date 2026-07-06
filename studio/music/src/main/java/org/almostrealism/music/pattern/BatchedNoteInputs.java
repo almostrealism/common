@@ -75,8 +75,13 @@ public class BatchedNoteInputs {
 	/** Volume-envelope scalars {@code [5]}; {@code null} for a dry percussion note. */
 	private final double[] volumeAdsr;
 
-	/** Whether this record is a percussion note (no per-layer envelope, no filter envelope, unity pitch). */
-	private final boolean percussion;
+	/**
+	 * Whether this record is the full melodic-SSS shape (per-layer envelopes, filter
+	 * envelope, pitched resample); {@code false} for the percussion subset (no per-layer
+	 * envelope, no filter envelope, unity pitch), matching the {@code melodic} flag used
+	 * throughout the pattern system.
+	 */
+	private final boolean melodic;
 
 	/** Whether this note carries a volume envelope on the wet voicing (always {@code true} for melodic). */
 	private final boolean wet;
@@ -89,17 +94,17 @@ public class BatchedNoteInputs {
 	 * @param layerParams per-layer envelope scalars, or {@code null} for percussion
 	 * @param filterAdsr  filter-envelope scalars, or {@code null} for percussion
 	 * @param volumeAdsr  volume-envelope scalars, or {@code null} for a dry percussion note
-	 * @param percussion  whether this is a percussion note
+	 * @param melodic     whether this is the full melodic-SSS shape (percussion otherwise)
 	 * @param wet         whether this note carries a volume envelope (the wet voicing)
 	 */
 	private BatchedNoteInputs(PackedCollection[] sources, double[] ratios, double[][] layerParams,
-							  double[] filterAdsr, double[] volumeAdsr, boolean percussion, boolean wet) {
+							  double[] filterAdsr, double[] volumeAdsr, boolean melodic, boolean wet) {
 		this.sources = sources;
 		this.ratios = ratios;
 		this.layerParams = layerParams;
 		this.filterAdsr = filterAdsr;
 		this.volumeAdsr = volumeAdsr;
-		this.percussion = percussion;
+		this.melodic = melodic;
 		this.wet = wet;
 	}
 
@@ -118,8 +123,11 @@ public class BatchedNoteInputs {
 	/** Volume-envelope scalars {@code [5]} = (attack, decay, sustain, release, duration); {@code null} when dry. */
 	public double[] getVolumeAdsr() { return volumeAdsr; }
 
-	/** Returns whether this is a percussion note (no per-layer envelope, no filter envelope, unity pitch). */
-	public boolean isPercussion() { return percussion; }
+	/**
+	 * Returns whether this is the full melodic-SSS shape; {@code false} for the
+	 * percussion subset (no per-layer envelope, no filter envelope, unity pitch).
+	 */
+	public boolean isMelodic() { return melodic; }
 
 	/** Returns whether this note carries a volume envelope (the wet voicing). */
 	public boolean isWet() { return wet; }
@@ -217,7 +225,7 @@ public class BatchedNoteInputs {
 					lf.getVolume0(), lf.getVolume1(), lf.getVolume2(), lf.getVolume3() };
 		}
 
-		return new BatchedNoteInputs(sources, ratios, layerParams, filterAdsr, volumeAdsr, false, true);
+		return new BatchedNoteInputs(sources, ratios, layerParams, filterAdsr, volumeAdsr, true, true);
 	}
 
 	/**
@@ -298,7 +306,7 @@ public class BatchedNoteInputs {
 			}
 		}
 
-		return new BatchedNoteInputs(sources, ratios, null, null, volumeAdsr, true, wet);
+		return new BatchedNoteInputs(sources, ratios, null, null, volumeAdsr, false, wet);
 	}
 
 	/**

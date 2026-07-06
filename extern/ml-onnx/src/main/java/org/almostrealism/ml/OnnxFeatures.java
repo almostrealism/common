@@ -46,6 +46,11 @@ import java.util.Objects;
  * <p>ONNX Runtime types (OnnxTensor, OrtSession, OrtEnvironment) must not
  * leak out of classes that implement this interface into higher-level modules.
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see org.almostrealism.CodeFeatures
  */
 public interface OnnxFeatures extends CodeFeatures {

@@ -107,6 +107,33 @@ longer `@Ignore`d); its `singleMelodicChannelFullPipeline` uses a random `realGe
 is therefore flaky (peak can be `0.0` on some seeds). Full treatment:
 [A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
 
+## 6.1 Batched renderer bound buffers — RESOLVED via JVM-wide renderer sharing (2026-07-06)
+
+Each `BatchedPatternRenderer` compiled for a `(bucket, sourceLength, targetLength)` shape
+owns large fixed-shape bound input buffers (`bucketN × sourceLength × 8 B × layers` per
+source set — hundreds of MB at the larger buckets), plus compiled evaluables. Originally
+the renderer cache lived on each `BatchedPatternLayerRenderer` (per pattern, per scene)
+and nothing destroyed it when the scene was discarded, so **scene-churn workloads
+leaked**: once `enableBatched` became the default, test classes creating a scene per
+method OOM-killed the CI fork (exit 137 — `HeapPatternRenderingTest`, then
+`AudioSceneRealTimeCorrectnessTest` one class later in the same single-fork module run,
+2026-07-06).
+
+Resolved by making `rendererCache` **static** (keyed `[bucket, sourceLength,
+targetLength, sampleRate, filterOrder]`): renderers are shared across patterns, scenes,
+and genomes, so total renderer memory is bounded by the distinct-shape set for the JVM's
+lifetime instead of growing with every scene built. This is safe because a renderer's
+bound buffers are fully re-marshalled on every dispatch (sources zeroed and rewritten,
+scalars overwritten) — the same guarantee that already allowed cross-tick reuse within a
+scene — and dispatches now synchronize on the renderer instance so concurrent renders of
+the same shape cannot interleave buffer writes. Side benefit: a new scene reuses
+existing renderers outright instead of re-building its own.
+
+The renderers are now deliberately JVM-lifetime (never destroyed); if a bounded-memory
+teardown is ever needed (e.g. embedding hosts), an explicit static drain belongs with
+the copy/lifecycle migration effort, which still owes per-note source buffers a real
+destroy story.
+
 ## 7. Real-scene tests depend on the absolute-path curated library
 
 The real-scene tests and any full-render experiment read `/Users/Shared/Music/Samples`
@@ -194,3 +221,25 @@ The full durable model lives in
 This fix unblocked Metal as a *sustained* backend; it did not by itself make rendering
 real-time (that was the DSP/mixdown loop, since migrated to PDSL — see
 [NEXT_STEP.md](NEXT_STEP.md)).
+
+### 8.4 First-evaluate probe explosion (setup front-load / mid-stream spike) — RESOLVED (2026-07-03)
+
+Every distinct batched pattern kernel shape paid **14–29 s on its first `evaluate()`** — in
+setup (as ~129 s of "setup" cost per scene) and again on any shape first reached mid-stream
+(the ~29–33 s dropout spike that motivated the whole-arrangement pre-warm). The cost was the
+`replaceLoop` gather-collapse probe (`AggregatedProducerComputation.prepareScope` →
+`TraversableExpression.uniqueNonZeroOffset`), which builds an `ExpressionMatrix` over
+`[windowWidth × bucketN]` substituting each index into the deep fused chain — and which can
+**never succeed** on the batched chains (their scatter-add sums overlapping notes, so no unique
+non-zero contributor exists). It burned the time and returned null every time; the production
+loop scope was always the fallback anyway.
+
+Fix: `BatchedPatternRenderer.sumNoteAxis` disables `replaceLoop` on the note-axis sums of
+`reduceAligned` / `scatterAddFlat`. Zero output change (bit-identical peak). Setup 128.6 s →
+~2.3 s; honest `generateRealtimeX` 0.63 → 1.46 (then 1.79 after the 2026-07-04 tooling merge);
+`preWarmMaxSeconds` now defaults to 0 and the render ring prefills a single buffer. Do **not**
+re-introduce a whole-arrangement pre-warm — front-loading rendering into setup is the
+anti-pattern this fix removed. The existing `ScopeSettings.maxGatherAnalysisDepth`/`Nodes`
+gates do not cover this case (they inspect only the target *index* expression); a matrix-size
+gate is a candidate framework hygiene follow-up. Full record:
+[`SETUP_FRONT_LOADING_HANDOFF.md`](SETUP_FRONT_LOADING_HANDOFF.md).

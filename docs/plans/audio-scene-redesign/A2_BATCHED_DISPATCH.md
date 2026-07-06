@@ -15,6 +15,16 @@
 > correct — only its *bottleneck framing* is wrong. Authoritative now:
 > [`pdsl-streams-plan/`](pdsl-streams-plan/) (`04 §0b`, `05` Phase 2) and the claim ledger. Measured
 > steady-state ~2–2.4× realtime.
+>
+> **UPDATE (2026-07-04, run `1dadc516`):** steady-state is now p50 ratio **0.40 @4096 (2.5×) /
+> 0.27 @8192 (3.7×)** after the first-evaluate probe fix (`BatchedPatternRenderer.sumNoteAxis` —
+> see `../SETUP_FRONT_LOADING_HANDOFF.md`) and the kernel-tooling merge. Two a2-relevant facts
+> from that run: the **per-note fallback outnumbers batched dispatch ~2.5–4.3×**
+> (`fallbackCount` 3190 @4096 / 3541 @8192 vs `batchedDispatchCount` 748 / 1395 per 200 ticks —
+> continuing notes fall back by design, §"gather and envelopes"), and its cache copies now
+> surface as `mtlBlitCopy` host waits (~17–20/tick). a2's per-tick totals are
+> gather+eval+marshal = 18.4 ms @4096 / **40.6 ms @8192** — the latter exceeds the 37.2 ms 5×
+> bar on its own. Current lever ranking: [`NEXT_STEP.md`](NEXT_STEP.md).
 
 ---
 

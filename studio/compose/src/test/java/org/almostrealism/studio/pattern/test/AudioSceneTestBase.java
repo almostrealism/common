@@ -416,6 +416,30 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
+	 * Returns the peak absolute sample over channel 0 of a rendered WAV — the shared
+	 * non-silence gate for render tests (a fast render of silence is not progress).
+	 *
+	 * @param wavPath path to the rendered WAV
+	 * @return the peak absolute sample value in [0, 1]
+	 * @throws IOException if the WAV cannot be read
+	 */
+	protected double peakAmplitude(String wavPath) throws IOException {
+		WaveData data = WaveData.load(new File(wavPath));
+		try {
+			PackedCollection channel = data.getChannelData(0);
+			double peak = 0.0;
+			int n = channel.getShape().getTotalSize();
+			for (int i = 0; i < n; i++) {
+				double v = Math.abs(channel.valueAt(i));
+				if (v > peak) peak = v;
+			}
+			return peak;
+		} finally {
+			data.destroy();
+		}
+	}
+
+	/**
 	 * Loads a WAV file and returns its first-channel samples as a {@code double[]}.
 	 *
 	 * @param file the WAV file to read

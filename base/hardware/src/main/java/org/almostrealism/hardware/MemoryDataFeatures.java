@@ -132,6 +132,11 @@ import java.util.function.Supplier;
  * copy("gpuToCpu", gpuMemory, cpuMemory, size).get().run();
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see Assignment
  * @see MemoryDataCopy
  */
@@ -152,11 +157,11 @@ public interface MemoryDataFeatures {
 	 * be resolved before the flip can hold.</p>
 	 *
 	 * <p>Runtime-configurable via the {@code AR_HARDWARE_ASSIGNMENT_COPY} system property
-	 * (enabled/disabled), defaulting to enabled. As an interface field it is
+	 * (enabled/disabled), defaulting to disabled. As an interface field it is
 	 * {@code public static final}, so the value is resolved once at class initialization;
 	 * consumers compiled against a prior constant value must be rebuilt to observe a change.</p>
 	 */
-	boolean enableAssignmentCopy = SystemUtils.isEnabled("AR_HARDWARE_ASSIGNMENT_COPY").orElse(true);
+	boolean enableAssignmentCopy = SystemUtils.isEnabled("AR_HARDWARE_ASSIGNMENT_COPY").orElse(false);
 
 	/**
 	 * Creates an {@link Assignment} operation that assigns the value producer's output to the result producer.

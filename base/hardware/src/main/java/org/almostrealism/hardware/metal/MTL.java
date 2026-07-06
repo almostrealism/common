@@ -210,6 +210,16 @@ public class MTL {
 	public static native void encodeWaitForEvent(long commandBuffer, long event, long value);
 
 	/**
+	 * Signals the event to {@code value} from the host, releasing any encoded waits for
+	 * values up to and including it. An event's signaled value must never decrease, so
+	 * callers are responsible for signaling monotonically non-decreasing values per event.
+	 *
+	 * @param event Native shared-event pointer
+	 * @param value Value to signal
+	 */
+	public static native void setSignaledValue(long event, long value);
+
+	/**
 	 * Releases a shared event created by {@link #createSharedEvent(long)}.
 	 *
 	 * @param event Native shared-event pointer

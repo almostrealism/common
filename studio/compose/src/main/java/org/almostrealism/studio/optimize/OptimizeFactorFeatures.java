@@ -43,6 +43,11 @@ import java.util.stream.IntStream;
  * <p>Implementors gain default methods for constructing genes that express time-varying
  * audio parameter adjustments from the raw unit-range values stored in {@link ProjectedGenome}
  * chromosomes.</p>
+ *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
  */
 public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	/** Number of gene slots per adjustment chromosome gene (two delay parameters, two polynomial params, one scale, one offset). */

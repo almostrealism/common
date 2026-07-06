@@ -68,6 +68,11 @@ import java.util.function.BiFunction;
  * CollectionProducerComputationBase result = multiplyComplex(c1, c2);  // -5 + 10i
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author  Michael Murray
  * @see Pair
  * @see ComplexNumber

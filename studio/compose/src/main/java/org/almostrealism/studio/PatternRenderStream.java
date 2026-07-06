@@ -18,6 +18,7 @@ package org.almostrealism.studio;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
 
@@ -25,16 +26,16 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * The pattern-element rendering layer (a2) of the real-time audio pipeline, running
- * <em>independently</em> of the mixdown hot path (a3).
+ * Renders pattern audio <em>ahead</em> of playback on a dedicated producer thread so the
+ * real-time mixdown never has to wait on a render.
  *
- * <p>In the three-layer just-in-time design, pattern-element creation (a1) produces the
- * notes, this layer renders those notes to audio (a2), and the mixdown (a3) consumes the
- * rendered audio per buffer. The defining property is that the a3 hot path contains
- * <em>only</em> the mixdown: it must never trigger a render. To guarantee that, this class
- * renders successive buffers <em>ahead</em> of playback on a dedicated producer thread,
- * depositing each rendered buffer into a bounded ring. The consumer (a3) only ever takes an
- * already-rendered slot, mixes it, and releases it.</p>
+ * <p>The real-time pipeline is staged: note generation produces the notes, pattern rendering
+ * turns those notes into audio, and the mixdown consumes the rendered audio per buffer. This
+ * class owns the pattern-rendering stage. The defining property is that the mixdown hot path
+ * contains <em>only</em> the mixdown: it must never trigger a render. To guarantee that, this
+ * class renders successive buffers ahead of playback on a producer thread, depositing each
+ * rendered buffer into a bounded ring. The mixdown consumer only ever takes an already-rendered
+ * slot, mixes it, and releases it.</p>
  *
  * <h2>Why a separate thread is correct and fast</h2>
  * <p>The Metal backend shares one {@code MetalComputeContext} across threads and serializes
@@ -58,7 +59,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * which is distinct from the consumer's playback clock. The render depends only on the frame
  * parameter, so the two positions are free to diverge by up to {@code slots} buffers.</p>
  */
-class PatternRenderStream implements Destroyable {
+public class PatternRenderStream implements Destroyable, CollectionFeatures {
 
 	/** Renders the working input for the current {@link #renderFrame}; run repeatedly by the producer. */
 	private final Runnable renderOp;
@@ -71,6 +72,15 @@ class PatternRenderStream implements Destroyable {
 
 	/** Backing storage for the ring: {@code slots} contiguous {@link #sliceSize}-element slots. */
 	private final PackedCollection ring;
+
+	/**
+	 * Compiled per-slot {@link org.almostrealism.hardware.computations.Assignment} copies of
+	 * {@link #workingInput} into each ring slot, built lazily on the slot's first use. An
+	 * assignment kernel keeps the copy on the compute device (ordered by the device against
+	 * the render's own kernels), where a host-mediated copy would stall the producer until
+	 * every pending render dispatch completed.
+	 */
+	private final Runnable[] slotCopies;
 
 	/** Shape of one ring slot ({@code [inputChannels, bufferSize]}). */
 	private final TraversalPolicy slotShape;
@@ -111,8 +121,8 @@ class PatternRenderStream implements Destroyable {
 	 * @param inputChannels number of consolidated input channels (rows) per buffer
 	 * @param bufferSize    frames per buffer
 	 */
-	PatternRenderStream(Runnable renderOp, long[] renderFrame, PackedCollection workingInput,
-						int slots, int inputChannels, int bufferSize) {
+	public PatternRenderStream(Runnable renderOp, long[] renderFrame, PackedCollection workingInput,
+							   int slots, int inputChannels, int bufferSize) {
 		this.renderOp = renderOp;
 		this.renderFrame = renderFrame;
 		this.workingInput = workingInput;
@@ -121,6 +131,7 @@ class PatternRenderStream implements Destroyable {
 		this.sliceSize = inputChannels * bufferSize;
 		this.slotShape = new TraversalPolicy(inputChannels, bufferSize);
 		this.ring = new PackedCollection(slots * sliceSize);
+		this.slotCopies = new Runnable[slots];
 		this.empty = new Semaphore(slots);
 		this.filled = new Semaphore(0);
 	}
@@ -132,11 +143,11 @@ class PatternRenderStream implements Destroyable {
 	 *
 	 * @param prefill number of buffers to render before returning (clamped to {@link #slots})
 	 */
-	void start(int prefill) {
+	public void start(int prefill) {
 		int target = Math.min(prefill, slots);
 		running = true;
 		producerError = null;
-		producer = new Thread(this::produceLoop, "a2-pattern-render-ahead");
+		producer = new Thread(this::produceLoop, "pattern-render-ahead");
 		producer.setDaemon(true);
 		producer.start();
 
@@ -166,7 +177,7 @@ class PatternRenderStream implements Destroyable {
 				long w = writeIndex.get();
 				renderFrame[0] = w * (long) bufferSize;
 				renderOp.run();
-				ring.setMem((int) (w % slots) * sliceSize, workingInput, 0, sliceSize);
+				slotCopy((int) (w % slots)).run();
 
 				writeIndex.incrementAndGet();
 				filled.release();
@@ -182,13 +193,30 @@ class PatternRenderStream implements Destroyable {
 	}
 
 	/**
+	 * Returns the compiled assignment that copies {@link #workingInput} into the given ring
+	 * slot, building it on the slot's first use — the ring depth is fixed, so each compiles
+	 * exactly once.
+	 *
+	 * @param slot the ring slot index
+	 * @return the compiled copy for that slot
+	 */
+	private Runnable slotCopy(int slot) {
+		if (slotCopies[slot] == null) {
+			PackedCollection dest = ring.range(slotShape, slot * sliceSize);
+			slotCopies[slot] = a(traverseEach(cp(dest)), traverseEach(cp(workingInput))).get();
+		}
+
+		return slotCopies[slot];
+	}
+
+	/**
 	 * Returns a view of the oldest filled ring slot, blocking until the producer has rendered
 	 * it. The caller must mix the returned slot and then call {@link #release()}. The view stays
 	 * valid until {@code release()} frees the slot for reuse.
 	 *
 	 * @return a {@code [inputChannels, bufferSize]} view of the next buffer's rendered input
 	 */
-	PackedCollection awaitSlot() {
+	public PackedCollection awaitSlot() {
 		try {
 			filled.acquire();
 		} catch (InterruptedException e) {
@@ -205,18 +233,18 @@ class PatternRenderStream implements Destroyable {
 	 * Releases the slot returned by the most recent {@link #awaitSlot()}, freeing it for the
 	 * producer to overwrite. Call only after the slot's data has been consumed (mixed).
 	 */
-	void release() {
+	public void release() {
 		readIndex.incrementAndGet();
 		empty.release();
 	}
 
 	/** Returns the number of buffers rendered so far (producer progress). */
-	long buffersRendered() {
+	public long buffersRendered() {
 		return writeIndex.get();
 	}
 
 	/** Returns the number of buffers consumed so far (playback progress). */
-	long buffersConsumed() {
+	public long buffersConsumed() {
 		return readIndex.get();
 	}
 
@@ -224,7 +252,7 @@ class PatternRenderStream implements Destroyable {
 	 * Stops the producer thread and resets the ring to empty so the stream can be restarted via
 	 * {@link #start(int)}. The backing storage is retained.
 	 */
-	void stop() {
+	public void stop() {
 		running = false;
 		if (producer != null) {
 			producer.interrupt();
@@ -245,6 +273,12 @@ class PatternRenderStream implements Destroyable {
 	@Override
 	public void destroy() {
 		stop();
+
+		for (int i = 0; i < slotCopies.length; i++) {
+			Destroyable.destroy(slotCopies[i]);
+			slotCopies[i] = null;
+		}
+
 		if (ring != null) {
 			ring.destroy();
 		}

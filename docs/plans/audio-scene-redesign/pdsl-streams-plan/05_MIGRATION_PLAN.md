@@ -44,6 +44,53 @@ and is now recorded with its receipts (`PdslHotPathBreakdownTest`).
 
 ## Phase 2 progress log (measured)
 
+- **2026-07-05 — MTLSharedEvent landed (PR #337); production size fixed at 4096; the
+  bridge is measured to be starved by non-submittable composite members.** Fresh
+  measurements on the fully rebuilt branch (runs `a85488c2` sustained breakdown,
+  `30810eaf` stage timing): 4096 p50=36.8 ms (ratio **0.40**), max 86 ms,
+  **0/200 over budget** (tails tightened from 135–183 ms max pre-merge); commits/tick
+  42.7, still 100 % host-complete, **`bridgeCommits=0`** — nothing on the hot path ever
+  submits a Metal dispatch with a foreign dependency, because `OperationListRunner`
+  forces `pending.waitFor()` before every non-submittable member (plain lambdas and the
+  `copy()` helpers' deprecated `MemoryDataCopy` instances), which both causes the ~15
+  stage-named waits/tick (+ blit chain-tails) and resets the dependency chain before any
+  cross-context handoff could reach the bridge. Stage timing confirms the consumer tick
+  IS the awaitSlot+forward stage (47.5 of 48.6 ms; automation refresh 0.28 ms). The
+  current next step ([`../NEXT_STEP.md`](../NEXT_STEP.md), rewritten 2026-07-05) is the
+  scoped migration of those members to `Submittable` form — one trailing wait per tick,
+  and the bridge finally exercised for the CPU-resident stage handoffs.
+  `PdslHotPathBreakdownTest` now reports `bridgeCommits`/`destroyCommits` in its
+  commitCause line, and `COMMIT_ATTRIBUTION.md` documents the bridge cause.
+
+- **2026-07-04 — RE-ATTRIBUTION + fresh sustained numbers (post kernel-tooling merge).** Three
+  updates to entries below, each with receipts:
+  - **WIN 3's mechanism was misattributed and its fix is now removed.** The mid-stream ~29–33 s
+    "compile" spike (and the ~14–29 s-per-shape setup cost the pre-warm hid) was **not** native
+    kernel compilation — it was the `uniqueNonZeroOffset` gather-collapse probe running on the
+    first `evaluate()` of each batched kernel shape and always failing (scatter-add chains sum
+    overlapping notes, so no unique contributor exists). Fixed at the source by
+    `BatchedPatternRenderer.sumNoteAxis` (`setReplaceLoop(false)` on the note-axis sums); the
+    whole-arrangement pre-warm (`preWarmMaxSeconds`) now defaults to **0** and the render ring
+    prefills one buffer — setup is honest: **128.6 s → ~2.3 s**, and `GenerateAudioFileTest`
+    reports `setupSeconds=2.23` / `generateRealtimeX=1.79` @8192 (run `f5f8486a`). Full record:
+    `../SETUP_FRONT_LOADING_HANDOFF.md`; correction note: `HANDOFF_2026-06-28.md` §9.
+  - **The copy-wait collapse was fixed by Semaphore chaining, not the planned copy migration.**
+    `a3b20e285` chains prepare copies, kernel, replacement copy-back, and de-aggregation on the
+    Semaphore mechanism (`apply` never blocks the host; `MemoryDataCopy` deprecated). Measured
+    (run `1dadc516`, 200 sustained ticks, seed 58, efx+reverb): `meanDispatchesPerCommit`
+    1.07 → **2.90 @4096 / 3.36 @8192**; commits still 100 % host-completion-driven
+    (63.3 / 72.1 per tick, `maxOpenCommits=0`).
+  - **Current sustained truth and the new lever ranking:** 4096 p50=36.7 ms (ratio **0.40**),
+    p95=58.5; 8192 p50=50.5 ms (ratio **0.27**), p95=145. The commit-cause requester histogram
+    attributes the waits: (1) `f_collectionProductComputation_*` ≈ 23/tick at both sizes — the
+    per-render-cell `PatternSystemManager.sum` → `AudioSumProvider.adjustVolume` synchronous
+    `.into().evaluate()`, currently a **multiply by 1.0** (auto-volume hardcoded off, volume
+    never set) — a third of all commits; (2) `mtlBlitCopy` ≈ 17–20/tick, numerically matching
+    the per-note fallback rate (`fallbackCount` 3190–3541 per 200 ticks vs
+    `batchedDispatchCount` 748–1395); (3) a ~1/tick tail of forward-stage requesters. The
+    "two deep levers" framing in WIN 3 is superseded accordingly — the ranked queue is now in
+    [`../NEXT_STEP.md`](../NEXT_STEP.md) (rewritten 2026-07-04).
+
 - **2026-06-28 — WIN 3: kernel pre-warm eliminates the compile-spike dropout.** Confirmed the 33 s
   spike was the a2 batched renderer compiling a new `(bucket, sourceLength, targetLength)` kernel
   shape mid-stream (`rendererCompilesDuringRun=2` at 8192). Fix: `AudioSceneRealtimeRunner` setup
