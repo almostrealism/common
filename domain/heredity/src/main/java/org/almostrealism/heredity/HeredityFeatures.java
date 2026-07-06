@@ -65,6 +65,11 @@ import java.util.stream.Stream;
  * double expanded = features.oneToInfinity(0.9, 2.0);  // Returns a large value
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see Gene
  * @see Chromosome
  * @see ScaleFactor

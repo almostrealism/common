@@ -33,6 +33,11 @@ import java.util.stream.Collectors;
  * This interface provides methods for changing the traversal axis, reshaping
  * collections, and aligning traversal axes across multiple producers.
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author Michael Murray
  * @see TraversalPolicy
  * @see CollectionFeatures

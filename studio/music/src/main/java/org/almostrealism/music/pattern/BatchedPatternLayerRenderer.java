@@ -46,7 +46,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Only continuing notes (within-note sampling offset {@code > 0}) and
  * non-batchable note shapes fall to the per-note path
- * ({@link PatternFeatures#renderPerNote}) by design.</p>
+ * ({@link PatternFeatures#renderNotes}) by design. This class implements
+ * {@link PatternFeatures} to access that path and the batched-output
+ * accumulation boundary, per the standard {@code Features} mixin convention.</p>
  *
  * <h2>Shared compiled kernel</h2>
  *
@@ -70,7 +72,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @see BatchedPatternRenderer
  * @see PatternLayerManager#enableBatched
  */
-public final class BatchedPatternLayerRenderer {
+public final class BatchedPatternLayerRenderer implements PatternFeatures {
 
 	/**
 	 * Note-count buckets used to share compiled batched kernels across ticks
@@ -221,10 +223,10 @@ public final class BatchedPatternLayerRenderer {
 	/**
 	 * Renders a layer's pattern elements via the batched dispatch boundary.
 	 *
-	 * <p>Signature mirrors {@link PatternFeatures#render} so this method can be
-	 * called as a drop-in replacement when {@link PatternLayerManager#enableBatched}
-	 * is set. The {@code features} argument supplies the per-note fallback path
-	 * via {@link PatternFeatures#renderPerNote}.</p>
+	 * <p>Overrides {@link PatternFeatures#render} — for this class, rendering
+	 * <em>is</em> the batched dispatch, so there is no flag check or delegation.
+	 * The per-note fallback path and the batched-output accumulation boundary
+	 * come from the inherited {@link PatternFeatures} default methods.</p>
 	 *
 	 * <p>Each render call gathers the destination notes via the standard
 	 * {@link PatternElement#getNoteDestinations} flatMap, classifies the notes
@@ -235,8 +237,6 @@ public final class BatchedPatternLayerRenderer {
 	 * {@link BatchedPatternRenderer#buildBatchedPercussionChainPlaced}) — see
 	 * the class javadoc.</p>
 	 *
-	 * @param features     the {@link PatternFeatures} instance providing the
-	 *                     fallback per-note path
 	 * @param sceneContext scene context containing the destination buffer
 	 * @param audioContext note audio context
 	 * @param elements     elements to render
@@ -246,8 +246,8 @@ public final class BatchedPatternLayerRenderer {
 	 * @param frameCount   number of frames in the target range
 	 * @param cache        optional cache for evaluated note audio (may be null)
 	 */
-	public void render(PatternFeatures features,
-					   AudioSceneContext sceneContext, NoteAudioContext audioContext,
+	@Override
+	public void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
 					   List<PatternElement> elements, boolean melodic, double offset,
 					   int startFrame, int frameCount, NoteAudioCache cache) {
 		PackedCollection destination = sceneContext.getDestination();
@@ -320,12 +320,12 @@ public final class BatchedPatternLayerRenderer {
 		}
 
 		if (!batchNow.isEmpty()) {
-			dispatchBatched(features, batchNow, startFrame, frameCount, destination);
+			dispatchBatched(batchNow, startFrame, frameCount, destination);
 			batchedDispatchCount.incrementAndGet();
 		}
 		if (!perNote.isEmpty()) {
 			fallbackCount.incrementAndGet();
-			features.renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
+			renderNotes(sceneContext, perNote, startFrame, frameCount, cache);
 		}
 	}
 
@@ -338,13 +338,12 @@ public final class BatchedPatternLayerRenderer {
 	 * boundary is continued in the next sub-window from its advancing sampling
 	 * offset.
 	 *
-	 * @param features    the features instance providing the evaluate boundary
 	 * @param notes       the notes to render (size {@code >= 1})
 	 * @param startFrame  the tick's absolute start frame
 	 * @param frameCount  the tick's frame count (the full output window width)
 	 * @param destination the per-tick destination buffer to accumulate into
 	 */
-	private void dispatchBatched(PatternFeatures features, List<RenderedNoteAudio> notes, int startFrame,
+	private void dispatchBatched(List<RenderedNoteAudio> notes, int startFrame,
 								 int frameCount, PackedCollection destination) {
 		for (int ws = 0; ws < frameCount; ws += MAX_WINDOW) {
 			int subWidth = Math.min(MAX_WINDOW, frameCount - ws);
@@ -363,7 +362,7 @@ public final class BatchedPatternLayerRenderer {
 				sub.add(note);
 			}
 			if (!sub.isEmpty()) {
-				dispatchWindow(features, sub, subStart, subWidth, destination, ws);
+				dispatchWindow(sub, subStart, subWidth, destination, ws);
 			}
 		}
 	}
@@ -374,19 +373,18 @@ public final class BatchedPatternLayerRenderer {
 	 * fused melodic-SSS kernel sized to this window, and accumulates the placed,
 	 * summed output into {@code destination} starting at {@code destBaseOffset}.
 	 *
-	 * @param features      the features instance providing the evaluate boundary
 	 * @param notes         the notes overlapping this sub-window (size {@code >= 1})
 	 * @param windowStart   the sub-window's absolute start frame
 	 * @param windowWidth   the sub-window's frame count (per-note row length)
 	 * @param destination   the per-tick destination buffer to accumulate into
 	 * @param destBaseOffset the frame offset into {@code destination} for this sub-window
 	 */
-	private void dispatchWindow(PatternFeatures features, List<RenderedNoteAudio> notes, int windowStart,
+	private void dispatchWindow(List<RenderedNoteAudio> notes, int windowStart,
 								int windowWidth, PackedCollection destination, int destBaseOffset) {
 		// A channel is homogeneous (all melodic OR all percussion), so the first note's
 		// kind classifies the whole window; percussion takes the strict-subset path.
-		if (notes.get(0).getBatchedInputs().isPercussion()) {
-			dispatchWindowPercussion(features, notes, windowStart, windowWidth, destination, destBaseOffset);
+		if (!notes.get(0).getBatchedInputs().isMelodic()) {
+			dispatchWindowPercussion(notes, windowStart, windowWidth, destination, destBaseOffset);
 			return;
 		}
 
@@ -480,10 +478,10 @@ public final class BatchedPatternLayerRenderer {
 
 		marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
-		// The compiled kernel rereads the bound buffers; PatternFeatures re-evaluates
-		// it at the pipeline boundary and accumulates the window into the destination.
+		// The compiled kernel rereads the bound buffers; it is re-evaluated at the
+		// pipeline boundary and the window accumulates into the destination.
 		long evalStart = System.nanoTime();
-		features.accumulateBatchedOutput(renderer.sssDispatch(layers),
+		accumulateBatchedOutput(renderer.sssDispatch(layers),
 				destination, destBaseOffset, targetLength);
 		evalNanos.addAndGet(System.nanoTime() - evalStart);
 	}
@@ -497,14 +495,13 @@ public final class BatchedPatternLayerRenderer {
 	 * then runs the fused percussion kernel sized to this window and accumulates the
 	 * placed, summed output into {@code destination}.
 	 *
-	 * @param features       the features instance providing the evaluate boundary
 	 * @param notes          the notes overlapping this sub-window (size {@code >= 1})
 	 * @param windowStart    the sub-window's absolute start frame
 	 * @param windowWidth    the sub-window's frame count (per-note row length)
 	 * @param destination    the per-tick destination buffer to accumulate into
 	 * @param destBaseOffset the frame offset into {@code destination} for this sub-window
 	 */
-	private void dispatchWindowPercussion(PatternFeatures features, List<RenderedNoteAudio> notes, int windowStart,
+	private void dispatchWindowPercussion(List<RenderedNoteAudio> notes, int windowStart,
 										  int windowWidth, PackedCollection destination, int destBaseOffset) {
 		int count = notes.size();
 		int bucketN = bucketFor(count);
@@ -574,7 +571,7 @@ public final class BatchedPatternLayerRenderer {
 		marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
 		long evalStart = System.nanoTime();
-		features.accumulateBatchedOutput(renderer.percDispatch(layers, wet),
+		accumulateBatchedOutput(renderer.percDispatch(layers, wet),
 				destination, destBaseOffset, targetLength);
 		evalNanos.addAndGet(System.nanoTime() - evalStart);
 	}

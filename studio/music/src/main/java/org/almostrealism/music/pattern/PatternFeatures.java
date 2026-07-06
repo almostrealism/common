@@ -43,6 +43,11 @@ import java.util.List;
  *       compiled kernel is reused across different frame positions.</li>
  * </ul>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see PatternElement#getNoteDestinations
  * @see RenderedNoteAudio
  * @see PatternLayerManager#sum
@@ -98,7 +103,7 @@ public interface PatternFeatures extends CodeFeatures {
 		if (PatternLayerManager.enableBatched) {
 			BatchedPatternLayerRenderer batchedRenderer = getBatchedLayerRenderer();
 			if (batchedRenderer != null) {
-				batchedRenderer.render(this, sceneContext, audioContext, elements,
+				batchedRenderer.render(sceneContext, audioContext, elements,
 						melodic, offset, startFrame, frameCount, cache);
 				return;
 			}

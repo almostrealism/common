@@ -18,8 +18,6 @@ package org.almostrealism.studio.pattern.test;
 
 import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.audio.WaveOutput;
-import org.almostrealism.audio.data.WaveData;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
@@ -332,29 +330,6 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 			MixdownManager.enablePdslMixdown = previous;
 			MixdownManager.enableEfx = previousEfx;
 			MixdownManager.enableReverb = previousReverb;
-		}
-	}
-
-	/**
-	 * Returns the peak absolute sample over channel 0 of a rendered WAV.
-	 *
-	 * @param wavPath path to the rendered WAV
-	 * @return the peak absolute sample in [0, 1]
-	 * @throws IOException if the WAV cannot be read
-	 */
-	private double peakAmplitude(String wavPath) throws IOException {
-		WaveData data = WaveData.load(new File(wavPath));
-		try {
-			PackedCollection channel = data.getChannelData(0);
-			double peak = 0.0;
-			int n = channel.getShape().getTotalSize();
-			for (int i = 0; i < n; i++) {
-				double v = Math.abs(channel.valueAt(i));
-				if (v > peak) peak = v;
-			}
-			return peak;
-		} finally {
-			data.destroy();
 		}
 	}
 

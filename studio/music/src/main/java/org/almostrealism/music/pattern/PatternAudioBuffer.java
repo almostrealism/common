@@ -191,15 +191,12 @@ public class PatternAudioBuffer implements Setup, CollectionFeatures {
 			return ctx;
 		};
 
-		Supplier<Runnable> sumSupplier = patterns.sum(batchContext, channel, currentFrame, bufferSize);
-
-		return () -> {
-			Runnable sumOp = sumSupplier.get();
-			return () -> {
-				if (clearOutput) outputBuffer.clear();
-				sumOp.run();
-			};
-		};
+		OperationList prepare = new OperationList("PatternAudioBuffer Prepare");
+		if (clearOutput) {
+			prepare.add(a(traverseEach(cp(outputBuffer)), c(0.0)));
+		}
+		prepare.add(patterns.sum(batchContext, channel, currentFrame, bufferSize));
+		return prepare;
 	}
 
 	/**

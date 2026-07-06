@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.computations.MultiOrderFilter;
 import org.almostrealism.util.TestDepth;
+import org.junit.Assert;
 import org.junit.Test;
 
 /**
@@ -67,6 +68,12 @@ public class PdslFirMicrobenchmarkTest extends AudioSceneTestBase {
 
 		MultiOrderFilter filter = MultiOrderFilter.create(p(input), p(coeffs));
 		Evaluable<PackedCollection> ev = filter.get();
+
+		// A timing with a broken kernel is worthless: confirm the evaluation actually
+		// produces a result of the expected size before timing it.
+		PackedCollection first = ev.evaluate();
+		Assert.assertNotNull(first);
+		Assert.assertEquals(channels * signal, first.getShape().getTotalSize());
 
 		for (int i = 0; i < WARMUP; i++) {
 			ev.evaluate();

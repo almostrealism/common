@@ -32,6 +32,11 @@ import org.almostrealism.geometry.RayFeatures;
  * <p>The methods handle the transformation from screen-space coordinates to
  * 3D ray directions using the camera's orthonormal basis vectors (u, v, w).</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author Michael Murray
  * @see PinholeCamera
  * @see RayFeatures

@@ -179,6 +179,11 @@ import java.util.stream.IntStream;
  *   <li>Caching of compiled kernels</li>
  * </ul>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see Temporal
  * @see FourierTransform
  * @see MultiOrderFilter

@@ -41,6 +41,11 @@ import org.almostrealism.collect.PackedCollection;
  * Producer<PackedCollection> output = factor.getResultant(audioInput);
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see EnvelopeSection
  * @see SamplingFeatures
  */

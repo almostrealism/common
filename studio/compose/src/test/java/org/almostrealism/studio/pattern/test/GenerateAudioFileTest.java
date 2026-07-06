@@ -17,8 +17,6 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.audio.WaveOutput;
-import org.almostrealism.audio.data.WaveData;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.AudioScene;
@@ -111,7 +109,7 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 
 			out.write().get().run();
 
-			double peak = peak(outFile.getPath());
+			double peak = peakAmplitude(outFile.getPath());
 			double totalSec = setupSec + genSec;
 			log("audioSeconds=" + fmt(audioSeconds) + " ticks=" + ticks
 					+ " bufferSize=" + BUFFER_SIZE);
@@ -127,29 +125,6 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 		} finally {
 			out.reset();
 			runner.reset();
-		}
-	}
-
-	/**
-	 * Returns the peak absolute sample over channel 0 of a rendered WAV.
-	 *
-	 * @param wavPath path to the rendered WAV
-	 * @return the peak absolute sample in [0, 1]
-	 * @throws IOException if the WAV cannot be read
-	 */
-	private double peak(String wavPath) throws IOException {
-		WaveData data = WaveData.load(new File(wavPath));
-		try {
-			PackedCollection channel = data.getChannelData(0);
-			double peak = 0.0;
-			int n = channel.getShape().getTotalSize();
-			for (int i = 0; i < n; i++) {
-				double v = Math.abs(channel.valueAt(i));
-				if (v > peak) peak = v;
-			}
-			return peak;
-		} finally {
-			data.destroy();
 		}
 	}
 

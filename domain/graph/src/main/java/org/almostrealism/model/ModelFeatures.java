@@ -25,6 +25,11 @@ import org.almostrealism.CodeFeatures;
  * sequence of 2D convolution, optional group normalization, 2×2 max-pooling, flattening,
  * and dense classification layers in one call.</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see Model
  * @see org.almostrealism.layers.LayerFeatures
  * @author Michael Murray

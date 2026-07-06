@@ -18,8 +18,6 @@ package org.almostrealism.studio.pattern.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.WaveOutput;
-import org.almostrealism.audio.data.WaveData;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
@@ -295,30 +293,6 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 			}
 		} finally {
 			MixdownManager.enablePdslMixdown = previous;
-		}
-	}
-
-	/**
-	 * Returns the peak absolute sample over channel 0 of a rendered WAV — used to assert
-	 * a measured render is non-silent (a fast render of silence is not progress).
-	 *
-	 * @param wavPath path to the rendered WAV
-	 * @return the peak absolute sample value in [0, 1]
-	 * @throws IOException if the WAV cannot be read
-	 */
-	private double peakAmplitude(String wavPath) throws IOException {
-		WaveData data = WaveData.load(new File(wavPath));
-		try {
-			PackedCollection channel = data.getChannelData(0);
-			double peak = 0.0;
-			int n = channel.getShape().getTotalSize();
-			for (int i = 0; i < n; i++) {
-				double v = Math.abs(channel.valueAt(i));
-				if (v > peak) peak = v;
-			}
-			return peak;
-		} finally {
-			data.destroy();
 		}
 	}
 
