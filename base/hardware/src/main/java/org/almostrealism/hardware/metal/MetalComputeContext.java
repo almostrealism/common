@@ -212,12 +212,13 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * (via the {@link MetalCommandRunner}), so the copy batches with the surrounding kernel dispatches,
 	 * and returns its completion semaphore.
 	 *
-	 * <p>{@code dependsOn} is honored the same way {@link MetalOperator#accept} honors it: a dependency
-	 * produced by this context's runner is passed through so the runner orders the blit after it on the
-	 * GPU (no host stall, and Metal's in-buffer hazard tracking covers a dependency still in the open
-	 * buffer); any other dependency is waited on the host first. When either side is not Metal memory
-	 * there is nothing to queue, so the {@link AbstractComputeContext#copy(MemoryData, MemoryData,
-	 * Semaphore) inherited} direct {@code setMem} copy is used.</p>
+	 * <p>{@code dependsOn} is honored by the {@link MetalCommandRunner}: a dependency produced by
+	 * this context's runner orders the blit after it on the GPU (Metal's in-buffer hazard tracking
+	 * covers a dependency still in the open buffer), and a foreign dependency is bridged through a
+	 * host-signaled event without blocking (see {@link MetalCommandRunner#submit}). When either
+	 * side is not Metal memory there is nothing to queue, so the
+	 * {@link AbstractComputeContext#copy(MemoryData, MemoryData, Semaphore) inherited} direct
+	 * {@code setMem} copy is used.</p>
 	 *
 	 * @param source      the memory region to copy from
 	 * @param destination the memory region to copy into
@@ -234,13 +235,9 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			long destinationOffset = destination.getOffset() * elementSize;
 			long size = source.getMemLength() * elementSize;
 
-			boolean ordered = dependsOn instanceof MetalSemaphore
-					&& ((MetalSemaphore) dependsOn).getRunner() == runner;
-			if (dependsOn != null && !ordered) dependsOn.waitFor();
-
 			return runner.submit(BLIT_COPY,
 					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset, dst.getMem(), destinationOffset, size),
-					ordered ? dependsOn : null, null);
+					dependsOn, null);
 		}
 
 		return super.copy(source, destination, dependsOn);

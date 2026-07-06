@@ -34,6 +34,11 @@ import java.util.stream.LongStream;
  * <p>Shape operations are fundamental to the Almost Realism framework, as they
  * define how data is organized and accessed in collections.</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author Michael Murray
  * @see TraversalPolicy
  * @see CollectionFeatures

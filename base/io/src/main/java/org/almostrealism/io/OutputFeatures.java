@@ -40,6 +40,12 @@ import java.util.function.Consumer;
  * <h2>Test Output Pattern</h2>
  * <p>Commonly used in tests to capture output for later review:</p>
  * <pre>{@code
+ *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @Test
  * public void myTest() {
  *     Console.root().addListener(

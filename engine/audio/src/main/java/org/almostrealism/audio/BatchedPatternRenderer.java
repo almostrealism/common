@@ -21,11 +21,13 @@ import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.TemporalFeatures;
 
 /**
  * Batched pattern renderer implementing the four-kernel chain used by
- * the Phase 3 pattern rendering architecture:
+ * the batched pattern rendering path:
  * <ol>
  *   <li><b>Resample</b> — per-row linear interpolation gather from
  *       {@code [N, sourceLength]} source using {@code [N]} pitch ratios →
@@ -165,6 +167,31 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	/** Returns the bound per-layer source buffers for the SSS dispatch. */
 	public PackedCollection[] getSssSources() { return sssSources; }
 
+	/** Compile-once batched zero of all {@link #sssSources}, reused across ticks; built on first {@link #clearSssSources()}. */
+	private Runnable sssSourcesClear;
+
+	/**
+	 * Zeroes all {@link #getSssSources() SSS source buffers} in one batched, compile-once pass so
+	 * that padded and previously-used rows contribute nothing. This replaces per-buffer
+	 * {@link PackedCollection#clear()} calls — each a synchronous host wait that forced its own Metal
+	 * command-buffer commit — with a single assignment-based {@link OperationList} whose members batch
+	 * into one command buffer and commit once. The buffers are fixed for a cached renderer, so the
+	 * assignment compiles once and is re-run every tick.
+	 */
+	public void clearSssSources() {
+		if (sssSources == null) return;
+
+		if (sssSourcesClear == null) {
+			OperationList clear = new OperationList("sssSourcesClear");
+			for (PackedCollection source : sssSources) {
+				clear.add(a(traverseEach(cp(source)), c(0.0)));
+			}
+			sssSourcesClear = clear.get();
+		}
+
+		sssSourcesClear.run();
+	}
+
 	/** Returns the bound per-layer pitch-ratio buffers for the SSS dispatch. */
 	public PackedCollection[] getSssRatios() { return sssRatios; }
 
@@ -185,6 +212,162 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 
 	/** Returns the number of notes per batch (the bucket size). */
 	public int getN() { return n; }
+
+	/** Compile-once percussion dispatch for the dry (no volume envelope) voicing; built on first {@link #percDispatch}. */
+	private Evaluable<PackedCollection> percDispatchDry;
+
+	/** Compile-once percussion dispatch for the wet (volume envelope) voicing; built on first {@link #percDispatch}. */
+	private Evaluable<PackedCollection> percDispatchWet;
+
+	/** Bound per-layer source buffers read by the percussion dispatch, each {@code [n, sourceLength]}. */
+	private PackedCollection[] percSources;
+
+	/** Bound per-layer pitch-ratio buffers for the percussion dispatch, each {@code [n]}. */
+	private PackedCollection[] percRatios;
+
+	/** Bound volume-envelope scalar buffers for the wet percussion dispatch, {@code [5]} each {@code [n]}. */
+	private PackedCollection[] percVolumeAdsr;
+
+	/** Bound per-note destination offsets for the percussion dispatch, {@code [n]}. */
+	private PackedCollection percDestOffsets;
+
+	/** Bound per-note sampling offsets for the percussion dispatch, {@code [n]}. */
+	private PackedCollection percSamplingOffsets;
+
+	/**
+	 * Allocates the percussion input buffers on first use, sized to this renderer's
+	 * fixed shape. Shared by the dry and wet percussion dispatches: both read the
+	 * same per-layer sources, pitch ratios, and offsets; only the wet dispatch
+	 * additionally consumes {@link #percVolumeAdsr}.
+	 *
+	 * @param layers the number of source layers (the percussion aggregation arity)
+	 */
+	private void ensurePercBuffers(int layers) {
+		if (percSources == null) {
+			percSources = new PackedCollection[layers];
+			percRatios = new PackedCollection[layers];
+			for (int l = 0; l < layers; l++) {
+				percSources[l] = new PackedCollection(n, sourceLength);
+				percRatios[l] = new PackedCollection(n);
+			}
+			percVolumeAdsr = new PackedCollection[5];
+			for (int p = 0; p < 5; p++) percVolumeAdsr[p] = new PackedCollection(n);
+			percDestOffsets = new PackedCollection(n);
+			percSamplingOffsets = new PackedCollection(n);
+		}
+	}
+
+	/**
+	 * Returns the compile-once percussion dispatch for this renderer's fixed shape,
+	 * building and compiling it on first call (separately per voicing) and reusing it
+	 * thereafter. The percussion chain is the strict subset of the melodic SSS chain:
+	 * a three-source sum at unity pitch (sample-rate-only resample), with no per-layer
+	 * envelope and no filter envelope, and a volume envelope applied only on the wet
+	 * voicing. A caller writes the per-tick data into the bound buffers (the
+	 * {@code getPerc*} accessors) with {@code setMem} and re-evaluates the returned
+	 * {@link Evaluable}, so the native kernel is compiled once and reused every tick.
+	 *
+	 * @param layers the number of source layers (the percussion aggregation arity)
+	 * @param wet    whether to return the wet dispatch (with the volume envelope) or the dry dispatch
+	 * @return the compiled, reusable dispatch evaluable producing a {@code [targetLength]} window
+	 */
+	public Evaluable<PackedCollection> percDispatch(int layers, boolean wet) {
+		ensurePercBuffers(layers);
+		if (wet) {
+			if (percDispatchWet == null) {
+				percDispatchWet = buildBatchedPercussionChainPlaced(percSources, percRatios,
+						percVolumeAdsr, percDestOffsets, percSamplingOffsets, targetLength).get();
+			}
+			return percDispatchWet;
+		}
+		if (percDispatchDry == null) {
+			percDispatchDry = buildBatchedPercussionChainPlaced(percSources, percRatios,
+					null, percDestOffsets, percSamplingOffsets, targetLength).get();
+		}
+		return percDispatchDry;
+	}
+
+	/** Returns the bound per-layer source buffers for the percussion dispatch. */
+	public PackedCollection[] getPercSources() { return percSources; }
+
+	/** Compile-once batched zero of all {@link #percSources}, reused across ticks; built on first {@link #clearPercSources()}. */
+	private Runnable percSourcesClear;
+
+	/**
+	 * Zeroes all {@link #getPercSources() percussion source buffers} in one batched, compile-once
+	 * pass so that padded and previously-used rows contribute nothing. As with
+	 * {@link #clearSssSources()}, this replaces per-buffer {@link PackedCollection#clear()} calls with
+	 * a single assignment-based {@link OperationList} that batches into one command-buffer commit.
+	 */
+	public void clearPercSources() {
+		if (percSources == null) return;
+
+		if (percSourcesClear == null) {
+			OperationList clear = new OperationList("percSourcesClear");
+			for (PackedCollection source : percSources) {
+				clear.add(a(traverseEach(cp(source)), c(0.0)));
+			}
+			percSourcesClear = clear.get();
+		}
+
+		percSourcesClear.run();
+	}
+
+	/** Returns the bound per-layer pitch-ratio buffers for the percussion dispatch. */
+	public PackedCollection[] getPercRatios() { return percRatios; }
+
+	/** Returns the bound volume-envelope scalar buffers for the wet percussion dispatch. */
+	public PackedCollection[] getPercVolumeAdsr() { return percVolumeAdsr; }
+
+	/** Returns the bound per-note destination-offset buffer for the percussion dispatch. */
+	public PackedCollection getPercDestOffsets() { return percDestOffsets; }
+
+	/** Returns the bound per-note sampling-offset buffer for the percussion dispatch. */
+	public PackedCollection getPercSamplingOffsets() { return percSamplingOffsets; }
+
+	/**
+	 * Builds the batched percussion chain with offset-aware placement — the strict
+	 * subset of {@link #buildBatchedSssChainPlacedFromScalars} for percussion notes.
+	 * Each of the {@code sources.length} layers is independently resampled by its own
+	 * per-note ratio (unity pitch, sample-rate-only resample) and the layers are
+	 * summed — the {@code SOURCE, SOURCE, SOURCE} aggregation. Unlike the melodic
+	 * chain there is no per-layer envelope and no filter-envelope stage. When
+	 * {@code volumeAdsr} is non-{@code null} (the wet voicing) the merged signal is
+	 * multiplied by the per-note volume-envelope curve generated inside the kernel;
+	 * when {@code null} (the dry voicing) no volume envelope is applied. The voiced
+	 * per-note rows are then scattered into a {@code [windowWidth]} output at their
+	 * per-note destination offsets and summed.
+	 *
+	 * <p>The returned producer is uncompiled; no {@code evaluate()} occurs here.</p>
+	 *
+	 * @param sources         per-layer flattened sources, each shape {@code [n, sourceLength]}
+	 * @param ratios          per-layer per-note pitch ratios, each shape {@code [n]}
+	 * @param volumeAdsr      volume-envelope scalars {@code [5]} = (attack, decay, sustain, release, duration),
+	 *                        each {@code [n]}, or {@code null} for the dry voicing (no volume envelope)
+	 * @param destOffsets     per-note destination offsets in frames, shape {@code [n]}
+	 * @param samplingOffsets per-note within-note sampling offsets in frames, shape {@code [n]}, or {@code null}
+	 * @param windowWidth     width of the output window in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [windowWidth]}
+	 * @throws IllegalArgumentException if {@code sources} is empty
+	 */
+	public CollectionProducer buildBatchedPercussionChainPlaced(PackedCollection[] sources,
+			PackedCollection[] ratios, PackedCollection[] volumeAdsr,
+			PackedCollection destOffsets, PackedCollection samplingOffsets, int windowWidth) {
+		if (sources.length == 0) throw new IllegalArgumentException("At least one source layer is required");
+		int totalSamples = n * targetLength;
+		CollectionProducer merged = null;
+		for (int i = 0; i < sources.length; i++) {
+			CollectionProducer layer = resampleFlat(sources[i], ratios[i], samplingOffsets);
+			merged = (merged == null) ? layer : merged.add(layer);
+		}
+		CollectionProducer voiced = merged;
+		if (volumeAdsr != null) {
+			CollectionProducer volumeEnv2D = buildVolumeEnvelopeCurve(
+					volumeAdsr[0], volumeAdsr[1], volumeAdsr[2], volumeAdsr[3], volumeAdsr[4], samplingOffsets);
+			voiced = merged.multiply(volumeEnv2D.reshape(shape(totalSamples)));
+		}
+		return scatterAddFlat(voiced.reshape(shape(n * targetLength)), destOffsets, n, targetLength, windowWidth);
+	}
 
 	/**
 	 * Builds a per-note linear-resample producer that maps a
@@ -289,8 +472,8 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * volume-envelope stage, but the per-note {@code [targetLength]} voiced rows
 	 * are scattered into a {@code [windowWidth]} output at their per-note
 	 * destination offsets (the same mechanism as {@link #buildScatterAdd})
-	 * instead of being summed in alignment. This is the full first-cut real-time
-	 * a2 form: one fused kernel from three source layers to a placed, summed
+	 * instead of being summed in alignment. This is the full real-time pattern
+	 * render form: one fused kernel from three source layers to a placed, summed
 	 * output window. No intermediate buffer is materialized between the chain and
 	 * the placement.
 	 *
@@ -730,7 +913,29 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * @return an uncompiled {@link CollectionProducer} of shape {@code [targetLength]}
 	 */
 	private CollectionProducer reduceAligned(CollectionProducer voiced2D) {
-		return permute(voiced2D, 1, 0).traverse(1).sum().reshape(shape(targetLength));
+		return sumNoteAxis(permute(voiced2D, 1, 0), targetLength);
+	}
+
+	/**
+	 * Sums the note axis of a permuted {@code [width, n]} producer without the
+	 * aggregation gather-collapse probe. Batched pattern windows sum genuinely
+	 * overlapping per-note rows — more than one note can contribute to any output
+	 * frame — so the {@code uniqueNonZeroOffset} analysis triggered by
+	 * {@link AggregatedProducerComputation#setReplaceLoop(boolean) replaceLoop}
+	 * can never identify a unique contributor here. On these deep fused chains
+	 * that always-failing analysis dominated first-compile wall time (14-29&nbsp;s
+	 * per kernel shape), so it is disabled before compilation.
+	 *
+	 * @param permuted the {@code [width, n]} producer whose second axis is summed
+	 * @param width    the output width in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [width]}
+	 */
+	private CollectionProducer sumNoteAxis(CollectionProducer permuted, int width) {
+		CollectionProducer summed = permuted.traverse(1).sum();
+		if (summed instanceof AggregatedProducerComputation aggregation) {
+			aggregation.setReplaceLoop(false);
+		}
+		return summed.reshape(shape(width));
 	}
 
 	/**
@@ -820,6 +1025,6 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		// Sum the note axis: [noteCount, windowWidth] → [windowWidth, noteCount]
 		// → reduce → [windowWidth].
 		CollectionProducer rows2D = contribution.reshape(shape(noteCount, windowWidth));
-		return permute(rows2D, 1, 0).traverse(1).sum().reshape(shape(windowWidth));
+		return sumNoteAxis(permute(rows2D, 1, 0), windowWidth);
 	}
 }

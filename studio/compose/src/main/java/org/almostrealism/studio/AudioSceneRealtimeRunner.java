@@ -87,6 +87,44 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	public static int pdslFilterOrder = 40;
 
 	/**
+	 * Number of buffers the pattern render-ahead ring holds, and the number rendered before playback
+	 * begins. The producer thread renders up to this many buffers ahead of the mixdown hot path,
+	 * smoothing per-buffer render bursts so the mixdown consumer never waits on a render.
+	 *
+	 * <p>The render producer and mixdown consumer share the single Metal command runner, so the
+	 * producer's per-buffer render time varies (GPU contention, occasional kernel/cache misses). When
+	 * the ring is shallow those transient stalls drain it and the consumer blocks (measured: ~21&nbsp;ms/tick
+	 * of wait at 8192 with depth&nbsp;8). A deeper ring absorbs the variance — the producer keeps up on
+	 * average, so the consumer stops waiting (wait fell to ~0, raising sustained throughput from ~3.2x
+	 * to ~4.6x at 8192). The cost is render latency for pattern/genome changes
+	 * (≈ {@code depth × bufferSize / sampleRate}; automation/efx is unaffected — it is applied
+	 * just-in-time in the mixdown) and ring memory
+	 * ({@code depth × inputChannels × bufferSize}). Tune down if pattern-swap latency matters more
+	 * than render headroom.
+	 */
+	public static int renderAheadSlots = 24;
+
+	/**
+	 * Kernel pre-warm (see {@link #createPdsl} setup): when set above zero, the runner
+	 * render-sweeps the arrangement once before the clock starts (pattern render only —
+	 * clock-neutral), forcing the batched renderer's lazily-compiled
+	 * {@code (bucket, sourceLength, targetLength)} kernel shapes to compile off the
+	 * real-time clock, bounded by this cap in seconds of arrangement.
+	 *
+	 * <p><b>Disabled by default ({@code 0}).</b> Render-sweeping the whole arrangement in setup is
+	 * front-loaded real-time rendering, not a compile step: it made "setup" cost several times the
+	 * playback duration and masked the true real-time performance. It also existed to hide a
+	 * mid-stream first-evaluation stall that was later found to be a failed compile-time analysis
+	 * rather than kernel compilation, and was fixed at the source
+	 * ({@code BatchedPatternRenderer.sumNoteAxis}); the remaining mid-stream cost of a
+	 * first-encountered shape is ordinary lazy compilation on the render-ahead producer thread,
+	 * off the consumer's clock. If compile stalls ever prove problematic again, the correct
+	 * replacement is a bounded compile-only warm that renders just enough buffers to reach each
+	 * distinct kernel shape — never the whole arrangement.
+	 */
+	public static double preWarmMaxSeconds = 0.0;
+
+	/**
 	 * Static wet-bus send level supplied to the PDSL {@code mixdown_master} layer.
 	 * Wire-first default; the Java path derives this from genome state per buffer.
 	 */
@@ -231,17 +269,18 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				return tick;
 			}
 
+			/**
+			 * Rewinds the frame counter, the cells, and the global clock so time-driven
+			 * envelopes (volume, filter, AutomationManager outputs) start fresh on the
+			 * next genome. Without the clock rewind, every genome after the first runs
+			 * with the clock parked in the post-decay region of the volume envelope
+			 * (gene 4 has scale = -1, a fade-out), so pattern channels come out
+			 * near-silent.
+			 */
 			@Override
 			public void reset() {
 				currentFrame[0] = 0;
 				cells.reset();
-				// Rewind the global clock so time-driven envelopes (volume,
-				// filter, AutomationManager outputs) start fresh on the next
-				// genome. Without this, evaluating multiple genomes in
-				// sequence makes every genome after the first run with the
-				// clock parked in the post-decay region of the volume
-				// envelope (gene 4 has scale = -1, a fade-out), so pattern
-				// channels come out near-silent.
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};
@@ -274,8 +313,48 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 *
 	 * <p><b>Remaining wire-first gap.</b> The path writes a mono master (the LEFT writer)
 	 * duplicated to both stereo channels; true stereo (per-channel PAN in the PDSL mixdown)
-	 * is outstanding. The per-buffer automation granularity (one clock value per forward
-	 * pass) is the documented trade-off versus the CellList path's per-frame automation.</p>
+	 * is outstanding. Both stereo sides are still rendered — true stereo mixes both sides'
+	 * pattern audio in a single forward, so the RIGHT-side render is a required input for
+	 * that path and must not be skipped as a render shortcut. Until per-channel PAN exists,
+	 * processing the two (near-identical) sides separately would cost 2x for no audible
+	 * benefit, so one master is rendered and streamed to both writers. The per-buffer
+	 * automation granularity (one clock value per forward pass) is the documented trade-off
+	 * versus the CellList path's per-frame automation.</p>
+	 *
+	 * <p><b>Wiring.</b> {@link AudioScene#prepareRenderBuffers} creates the render cells and
+	 * consolidated buffer without building the Java mixdown {@link CellList} (which the PDSL
+	 * path would only compile and discard). With efx enabled the consolidated buffer is
+	 * filled in the order {@code [LEFT-MAIN(N), LEFT-WET(N), RIGHT-MAIN(N), RIGHT-WET(N)]},
+	 * so the first {@code 2*N} rows are exactly what {@code mixdown_master_wet} reads; with
+	 * efx off, {@code mixdown_master} reads the single MAIN region — either way one
+	 * zero-copy view at offset 0 is the model input. The adapter receives the actual
+	 * selected channel indices (not just a count) so per-channel genome reads resolve to the
+	 * rendered channels: a single-channel {@code renderChannel(c)} selection maps bank
+	 * position 0 to channel {@code c}'s genes, and the contiguous multi-channel selection is
+	 * the identity mapping.</p>
+	 *
+	 * <p><b>Render-ahead.</b> A dedicated producer thread ({@link PatternRenderStream})
+	 * renders successive buffers into a ring, driven by its own {@code renderFrame} cursor
+	 * (distinct from the playback position), so the hot path only ever mixes
+	 * already-rendered audio and never triggers a render. Each render round zeroes the whole
+	 * consolidated buffer once — a single dispatch on a real (non-delegate) buffer — instead
+	 * of clearing every cell's delegate region, which measured as the dominant per-round
+	 * host-wait commits; the cells then sum into their already-zeroed regions
+	 * ({@code prepareBatch(false)}). Producer-thread rendering is safe because the Metal
+	 * command runner serializes GPU encoding, and it overlaps the render's Java
+	 * orchestration with the consumer's GPU mixdown.</p>
+	 *
+	 * <p><b>Per-buffer automation.</b> The time-varying gene/clock-driven values (filter
+	 * cutoffs, volume, efx automation, reverb send) live in collection slots the compiled
+	 * graph reads every forward pass. Producer-valued model args are frozen at build time,
+	 * so each tick re-evaluates those slots for the buffer's clock position — without this
+	 * the filter sweeps would never engage.</p>
+	 *
+	 * <p><b>Output streaming.</b> {@code forward()} writes into a stable output buffer
+	 * (the same instance every pass), so one build-time pass captures the handle the
+	 * streaming loop reads. {@code WaveOutput}'s Writer contract is one frame per push
+	 * (advancing the cursor) and {@code WaveOutput.write} gates on the minimum frame count
+	 * across channels, so the mono master is pushed to both stereo writers each frame.</p>
 	 *
 	 * @param output     the audio output to write to
 	 * @param channels   channel indices to render (already resolved, non-null)
@@ -285,42 +364,20 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private TemporalCellular createPdsl(MultiChannelAudioOutput output,
 										List<Integer> channels, int bufferSize) {
 		final int[] currentFrame = {0};
+		final long[] renderFrame = {0};
 		int channelCount = channels.size();
 
-		// Frame index within the current buffer (0..bufferSize-1), driven by the
-		// output-streaming loop below.
+		// Frame index within the current buffer, driven by the output-streaming loop
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
 
-		// Prepare the pattern-render wiring (render cells + consolidated buffer) WITHOUT
-		// building the Java mixdown CellList: the PDSL block performs all DSP, so the
-		// CellList would only be compiled and discarded. prepareRenderBuffers reproduces the
-		// pattern-prepare side effects getCells relies on and returns just the setup.
 		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
-				() -> currentFrame[0]);
+				() -> (int) renderFrame[0]);
 
-		// Choose the DSP layer based on whether a separate WET voicing was rendered.
-		// AudioScene fills the consolidated buffer in the order
-		// [LEFT-MAIN(N), LEFT-WET(N), RIGHT-MAIN(N), RIGHT-WET(N)] when efx is enabled, so:
-		//   - efx on:  the first 2*N ranges (LEFT-MAIN then LEFT-WET) are contiguous, and
-		//              mixdown_master_wet reads MAIN from rows [0,N) and WET from rows [N,2N).
-		//   - efx off: there are no WET ranges; mixdown_master reads the single MAIN region
-		//              and derives wet internally.
-		// Either way a single zero-copy view over offset 0 is the model input.
 		boolean wetVoicing = MixdownManager.enableEfx;
 		int inputChannels = wetVoicing ? channelCount * 2 : channelCount;
 		String layerName = wetVoicing ? "mixdown_master_wet" : "mixdown_master";
 
-		// Dual-mono master: the consolidated buffer also holds the RIGHT-side regions, but for
-		// this content the per-stereo-side pattern audio is (near-)identical — both the Java
-		// CellList path and a true per-side PDSL render produce essentially mono output — so
-		// processing the two sides separately costs 2x for no audible benefit. A genuine stereo
-		// image would require per-channel PAN in the PDSL mixdown (not separate-region
-		// processing); until that exists, render one master and stream it to both writers.
 		MixdownManager mixdown = scene.getMixdownManager();
-		// Pass the actual selected channel indices (not just the count) so the adapter's
-		// per-channel genome reads resolve to the rendered channels. For a single-channel
-		// renderChannel(c) selection this maps bank position 0 to channel c's genes; for the
-		// multi-channel zero-based contiguous selection it is the identity mapping.
 		int[] channelIndices = channels.stream().mapToInt(Integer::intValue).toArray();
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				channelIndices, bufferSize, scene.getSampleRate(),
@@ -330,27 +387,27 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
 		PackedCollection pdslInput = consolidated.range(inputShape, 0);
 
+		OperationList renderOps = new OperationList("AudioScene Pattern Render Ahead");
+		renderOps.add(() -> () -> consolidated.clear());
+		for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
+			renderOps.add(renderCell.prepareBatch(false));
+		}
+		Runnable renderOp = renderOps.get();
+		PatternRenderStream renderStream = new PatternRenderStream(
+				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
+
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
 		Map<String, Object> args = buildMixdownArgs(wetVoicing, mixdown, config);
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
 
-		// Per-buffer automation refresh: the time-varying gene/clock-driven values
-		// (filter cutoffs, volume, efx automation, reverb send) live in collection slots
-		// the compiled graph reads every forward pass; this re-evaluates them for the
-		// buffer's clock position. Producer-valued model args are frozen at build time,
-		// so without this the filter sweeps would never engage.
 		Supplier<Runnable> automationRefresh = MixdownManagerPdslAdapter.automationRefresh(
 				mixdown, wetVoicing ? scene.getEfxManager() : null, config, args);
 
-		// forward() copies into a stable output buffer (CompiledModel returns the same instance
-		// every pass), so a single throwaway pass captures the handle the streaming loop reads.
+		// Throwaway pass to capture the stable output handle the streaming loop reads
 		PackedCollection masterOutput = compiled.forward(pdslInput);
 
-		// Stream the mono master to both writers one frame at a time (WaveOutput's Writer
-		// contract is one frame per push, advancing the cursor; WaveOutput.write gates on the
-		// minimum frame count across channels, so both writers must be fed).
 		Receptor<PackedCollection> masterLeft = output.getMaster(ChannelInfo.StereoChannel.LEFT);
 		Receptor<PackedCollection> masterRight = output.getMaster(ChannelInfo.StereoChannel.RIGHT);
 		OperationList outputLoopBody = new OperationList("PDSL Output Stream Body");
@@ -359,50 +416,80 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		outputLoopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
 		return new TemporalCellular() {
+			/**
+			 * One-time preparation: the render-cell setup from
+			 * {@link AudioScene#prepareRenderBuffers} (which also renders the first buffer
+			 * into the working input; the producer harmlessly re-renders it), a model
+			 * reset, the optional bounded kernel pre-warm (see {@link #preWarmMaxSeconds}
+			 * — the sweep advances only {@code renderFrame}, never the playback clock or
+			 * mixdown state), and the producer start with a one-buffer prefill. The
+			 * minimal prefill keeps setup from front-loading the whole render-ahead ring:
+			 * the producer fills the ring during playback, and any early under-run is the
+			 * honest cost of pattern rendering rather than work hidden in setup.
+			 */
 			@Override
 			public Supplier<Runnable> setup() {
 				OperationList setup = new OperationList("AudioScene PDSL RealTime Runner Setup");
 				setup.add(patternSetup);
 				setup.add(() -> () -> compiled.reset());
+
+				if (preWarmMaxSeconds > 0) {
+					setup.add(() -> () -> {
+						double arrangementFrames = scene.getTotalMeasures() * 4.0 * 60.0
+								* scene.getSampleRate() / scene.getBPM();
+						int sweepBuffers = (int) Math.min(
+								Math.ceil(arrangementFrames / bufferSize),
+								Math.ceil(preWarmMaxSeconds * scene.getSampleRate() / bufferSize));
+						for (int b = 0; b < sweepBuffers; b++) {
+							renderFrame[0] = b * (long) bufferSize;
+							renderOp.run();
+						}
+						renderFrame[0] = 0;
+					});
+				}
+
+				setup.add(() -> () -> renderStream.start(1));
 				return setup;
 			}
 
+			/**
+			 * The hot path contains only the mixdown: reset the per-buffer frame index,
+			 * refresh the clock-driven automation slots for this buffer's position, run
+			 * the compiled forward over the next already-rendered ring slot (the producer
+			 * renders ahead, so this never triggers a render), stream the master to both
+			 * writers, and advance the clock and playback position. The clock advances
+			 * here (once per frame via a compiled loop) because this path never ticks the
+			 * CellList that would otherwise drive it — without this, time-driven
+			 * automation would stay frozen at frame 0.
+			 */
 			@Override
 			public Supplier<Runnable> tick() {
 				OperationList tick = new OperationList("AudioScene PDSL RealTime Runner Tick");
-
-				// OUTSIDE LOOP: reset the per-buffer frame index and prepare pattern data
 				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
-				for (PatternAudioBuffer renderCell : scene.getRenderCells()) {
-					tick.add(renderCell.prepareBatch());
-				}
-
-				// AUTOMATION: evaluate the clock-driven values (cutoffs, volume, sends) into
-				// their argument slots for this buffer's clock position.
 				tick.add(automationRefresh);
 
-				// DSP: run the whole-buffer PDSL forward pass (writes into masterOutput).
-				tick.add(() -> () -> compiled.forward(pdslInput));
+				tick.add(() -> () -> {
+					PackedCollection slot = renderStream.awaitSlot();
+					compiled.forward(slot);
+					renderStream.release();
+				});
 
-				// STREAM: drain masterOutput to both writers frame-by-frame
 				tick.add(loop(outputLoopBody, bufferSize));
-
-				// Advance the global clock by one buffer. The CellList path ticks the clock
-				// once per frame (via cells' time::tick requirement); this path does not tick
-				// the CellList, so it must advance the clock itself, or the time-driven
-				// automation (filter sweeps, volume envelopes) would stay frozen at frame 0.
-				// Per-buffer granularity (one clock value per forward) is the wire-first
-				// trade-off versus the CellList path's per-frame automation.
 				tick.add(loop(scene.getTimeManager().tick(), bufferSize));
-
-				// AFTER: advance global frame position
 				tick.add(() -> () -> currentFrame[0] += bufferSize);
 				return tick;
 			}
 
+			/**
+			 * Stops the producer, rewinds both frame cursors and the global clock, and
+			 * resets the compiled model, so the next genome starts from frame 0 rather
+			 * than the post-decay region of the previous run's envelopes.
+			 */
 			@Override
 			public void reset() {
+				renderStream.stop();
 				currentFrame[0] = 0;
+				renderFrame[0] = 0;
 				compiled.reset();
 				scene.getTimeManager().getClock().setFrame(0);
 			}
@@ -428,6 +515,15 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	/**
 	 * Compiles a mixdown layer into a {@link CompiledModel} for the given input shape and args.
 	 *
+	 * <p>The mixdown model is inference-only — every tick calls {@code forward()} over the
+	 * whole buffer and no backward pass ever runs — so it is compiled with
+	 * {@code backprop=false}. That disables per-layer input tracking (each stage's entry
+	 * cell passes input straight through, dropping one input-record copy dispatch per
+	 * layer, which measurably dominated the forward cost) and skips building the unused
+	 * backward graph. Output tracking stays on: branch/merge blocks ({@code accum_blocks},
+	 * {@code route}) and the model-output capture read each stage's materialized output
+	 * buffer.</p>
+	 *
 	 * @param loader     the PDSL loader
 	 * @param program    the parsed PDSL program
 	 * @param layerName  the layer to build
@@ -441,6 +537,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		Block block = loader.buildLayer(program, layerName, inputShape, args);
 		Model model = new Model(inputShape);
 		model.add(block);
-		return model.compile();
+		return model.compile(false);
 	}
 }

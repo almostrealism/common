@@ -64,6 +64,11 @@ import org.almostrealism.optimize.TrainingResult;
  * <p>Training results are saved to CSV files in the {@code results/} directory,
  * and logs are written to {@code results/logs/}.</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author Michael Murray
  * @see TestFeatures for the base testing interface
  * @see ModelOptimizer for the underlying optimization logic

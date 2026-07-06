@@ -50,7 +50,8 @@ import static org.junit.Assume.assumeTrue;
  * {@code seedBiasAdjustment}. These tests try multiple genomes to find one that produces
  * audio, mirroring the multi-evaluation approach used by the optimizer.</p>
  *
- * <p>The test uses samples from the {@code Samples/} directory in the project root.</p>
+ * <p>The test uses the curated sample library (see {@link AudioSceneTestBase#SAMPLES_PATH});
+ * when it is absent it falls back to synthetic samples.</p>
  *
  * @see AudioScene
  * @see StableDurationHealthComputation

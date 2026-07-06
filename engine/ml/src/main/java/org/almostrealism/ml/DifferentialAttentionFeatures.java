@@ -48,6 +48,11 @@ import java.util.List;
  * existing output projection is then applied. With {@code λ = 0} the result is exactly the standard
  * scaled-dot-product attention over {@code [Q1, K1, V]}.</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author  Michael Murray
  * @see AttentionVariant
  * @see AttentionFeatures#selfAttention

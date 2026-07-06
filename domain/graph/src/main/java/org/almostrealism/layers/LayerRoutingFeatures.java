@@ -59,6 +59,11 @@ import java.util.function.Supplier;
  * they can use skip-connections ({@link #residual}), gated activations ({@link #product}),
  * multi-head similarity ({@link #similarity}), and parallel embedding fans ({@link #concatBlocks}).</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see LayerFeatures
  * @see org.almostrealism.ml.AttentionFeatures
  */

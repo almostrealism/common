@@ -13,6 +13,7 @@ import org.almostrealism.hardware.OperatorPoolExhaustedException;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.DistributionMetric;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -42,6 +43,11 @@ import java.util.List;
  *       compiled kernel is reused across different frame positions.</li>
  * </ul>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see PatternElement#getNoteDestinations
  * @see RenderedNoteAudio
  * @see PatternLayerManager#sum
@@ -69,15 +75,15 @@ public interface PatternFeatures extends CodeFeatures {
 	 * {@link PatternLayerManager#enableBatched} feature flag
 	 * ({@code AR_PATTERN_BATCHED}):</p>
 	 * <ul>
-	 *   <li><strong>Per-note path</strong> (flag off, default): the legacy
-	 *       sequential per-note dispatch via {@link #renderPerNote}. One
-	 *       {@code evaluate()} per note; the existing acoustic baseline.</li>
-	 *   <li><strong>Batched path</strong> (flag on): the Phase 3 integration via
+	 *   <li><strong>Batched path</strong> (flag on, default): the integration via
 	 *       {@link BatchedPatternLayerRenderer#render}. Per-tick gathers notes
 	 *       into bucket-N tensors and dispatches through
-	 *       {@link org.almostrealism.audio.BatchedPatternRenderer}. The batched
-	 *       path falls back to the per-note path for cases its input gather
-	 *       cannot yet handle.</li>
+	 *       {@link org.almostrealism.audio.BatchedPatternRenderer}. Non-batchable
+	 *       note shapes and continuing notes fall back to the per-note path by
+	 *       design.</li>
+	 *   <li><strong>Per-note path</strong> (flag off): the legacy
+	 *       sequential per-note dispatch via {@link #renderPerNote}. One
+	 *       {@code evaluate()} per note; the existing acoustic baseline.</li>
 	 * </ul>
 	 *
 	 * <p>See {@link #renderPerNote} for the per-note rendering semantics.</p>
@@ -97,7 +103,7 @@ public interface PatternFeatures extends CodeFeatures {
 		if (PatternLayerManager.enableBatched) {
 			BatchedPatternLayerRenderer batchedRenderer = getBatchedLayerRenderer();
 			if (batchedRenderer != null) {
-				batchedRenderer.render(this, sceneContext, audioContext, elements,
+				batchedRenderer.render(sceneContext, audioContext, elements,
 						melodic, offset, startFrame, frameCount, cache);
 				return;
 			}
@@ -112,7 +118,7 @@ public interface PatternFeatures extends CodeFeatures {
 	 * features instance, or {@code null} when no batched dispatch site is
 	 * available.
 	 *
-	 * <p>Implementations that participate in the Phase 3 batched rendering path
+	 * <p>Implementations that participate in the batched rendering path
 	 * (currently {@link PatternLayerManager}) return their per-pattern bucket
 	 * cache so the {@code AR_PATTERN_BATCHED} flag can route through it. The
 	 * default implementation returns {@code null}, which keeps the
@@ -227,6 +233,29 @@ public interface PatternFeatures extends CodeFeatures {
 	default void renderPerNote(AudioSceneContext sceneContext, NoteAudioContext audioContext,
 							   List<PatternElement> elements, boolean melodic, double offset,
 							   int startFrame, int frameCount, NoteAudioCache cache) {
+		List<RenderedNoteAudio> notes = new ArrayList<>();
+		for (PatternElement element : elements) {
+			notes.addAll(element.getNoteDestinations(melodic, offset, sceneContext, audioContext));
+		}
+		renderNotes(sceneContext, notes, startFrame, frameCount, cache);
+	}
+
+	/**
+	 * Renders a specific list of {@link RenderedNoteAudio} into the scene destination via the
+	 * per-note dispatch path. Shared by {@link #renderPerNote} (which gathers every element's
+	 * notes) and the batched dispatch site (which passes only the notes it cannot batch — those
+	 * not of a batchable shape, or continuing from an earlier window), so those notes render
+	 * per-note without falling the whole window back. The per-note body below is unchanged from
+	 * the original {@code renderPerNote} loop.
+	 *
+	 * @param sceneContext scene context containing the destination buffer
+	 * @param notes        the notes to render
+	 * @param startFrame   starting frame of the target range (absolute position)
+	 * @param frameCount   number of frames in the target range
+	 * @param cache        optional cache for evaluated note audio (may be null)
+	 */
+	default void renderNotes(AudioSceneContext sceneContext, List<RenderedNoteAudio> notes,
+							 int startFrame, int frameCount, NoteAudioCache cache) {
 		PackedCollection destination = sceneContext.getDestination();
 		if (destination == null) {
 			throw new IllegalArgumentException("Destination buffer is null");
@@ -235,10 +264,7 @@ public interface PatternFeatures extends CodeFeatures {
 		int endFrame = startFrame + frameCount;
 		int[] consecutiveFailures = {0};
 
-		elements.stream()
-				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
-				.flatMap(List::stream)
-				.forEach(note -> {
+		notes.forEach(note -> {
 					int noteStart = note.getOffset();
 
 					// Pre-filter: skip notes that cannot overlap the frame range

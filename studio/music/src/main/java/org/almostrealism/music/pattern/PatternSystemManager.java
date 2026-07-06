@@ -145,6 +145,15 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	/** The volume scaling collection. */
 	private PackedCollection volume;
 
+	/**
+	 * Host-side shadow of the single value in {@link #volume}, used to skip the per-cell
+	 * volume adjustment when it would multiply by 1.0. Valid only while
+	 * {@link #enableAutoVolume} is off: auto-volume writes {@link #volume} device-side
+	 * (per render), where this shadow cannot see it, so the skip is never taken when
+	 * auto-volume is enabled.
+	 */
+	private double volumeValue = 1.0;
+
 	/** The destination collection. */
 	private PackedCollection destination;
 
@@ -173,6 +182,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	public void init() {
 		volume = new PackedCollection(1);
 		volume.setMem(0, 1.0);
+		volumeValue = 1.0;
 	}
 
 	@Override
@@ -227,6 +237,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 */
 	public void setVolume(double volume) {
 		this.volume.setMem(0, volume);
+		this.volumeValue = volume;
 	}
 
 	/**
@@ -458,7 +469,14 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 		}
 
 		op.add(() -> () -> {
-			AudioProcessingUtils.getSum().adjustVolume(context.get().getDestination(), volume);
+			// A unity volume is a no-op multiply, but dispatching it still costs a
+			// synchronous per-cell kernel evaluation (measured as the single largest
+			// commit-forcing host wait on the streaming render path), so it is skipped.
+			// The host-side shadow is authoritative only while auto-volume is off —
+			// auto-volume rewrites the volume collection device-side every render.
+			if (enableAutoVolume || volumeValue != 1.0) {
+				AudioProcessingUtils.getSum().adjustVolume(context.get().getDestination(), volume);
+			}
 		});
 
 		return op;
