@@ -1,5 +1,11 @@
 # Plan: Remove `ScopeLifecycle.prepareArguments`
 
+> **Cross-ref (2026-06-28).** The argument aggregation/grouping this plan touches intersects the
+> **`MemoryDataCopy` → `Assignment` copy migration**
+> ([`ASSIGNMENT_COPY_MIGRATION.md`](ASSIGNMENT_COPY_MIGRATION.md)): the aggregation copy-in/out
+> (`MemoryDataArgumentMap.getPrepareData`/`getPostprocessData`) are the `MemoryDataCopy` ops produced
+> around prepared/aggregated arguments. Coordinate changes in this area with that migration.
+
 ## Background
 
 `ScopeLifecycle.prepareArguments(ArgumentMap)` is called by every

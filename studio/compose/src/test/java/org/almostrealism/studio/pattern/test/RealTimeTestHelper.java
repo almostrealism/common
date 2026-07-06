@@ -67,8 +67,8 @@ import static org.junit.Assume.assumeTrue;
  */
 public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFeatures {
 
-	/** Path to the Samples directory relative to the compose module. */
-	public static final String SAMPLES_PATH = "../../Samples";
+	/** Curated sample library location; see {@link AudioSceneTestBase#SAMPLES_PATH}. */
+	public static final String SAMPLES_PATH = AudioSceneTestBase.SAMPLES_PATH;
 
 	/** Path to the Library directory (ringsdesktop). */
 	public static final String LIBRARY_PATH = "../../ringsdesktop/Library";

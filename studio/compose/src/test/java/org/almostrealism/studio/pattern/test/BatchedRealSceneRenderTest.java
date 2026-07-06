@@ -36,7 +36,6 @@ import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Assume;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -59,21 +58,23 @@ import java.util.stream.IntStream;
  * not part of the repository); the test skips if they are absent. Run with the Metal
  * backend forced via {@code -DAR_HARDWARE_DRIVER=mtl} to measure GPU behaviour.</p>
  *
- * <p><strong>Disabled in CI (this branch).</strong> These full-scene integration renders
- * recompile thousands of native kernels with no signature-based reuse: per-instance
- * compilation is not deduplicated because the small per-value buffers these scenes reference
- * are argument-aggregation targets, for which a structural signature is not computed, so the
- * instruction cache cannot reuse them across scene instances. The result exhausts the fixed
- * {@code GeneratedOperation} pool and cascades into failures of unrelated {@code AudioScene}
- * tests. A second, independent gap is that batched dispatch does not yet fire for the real
- * pattern path (some methods render {@code peak=0.0}). The test is retained for local use and
- * should be re-enabled once compile-reuse works (or once the path moves to PDSL). Run locally
- * by removing the {@link Ignore} annotation.</p>
+ * <p><strong>Curated-library gated.</strong> These full-scene integration renders require the
+ * curated sample library ({@link #LIBRARY}); they skip via {@link Assume} where it is absent,
+ * so they do not run in CI. They were previously disabled for two reasons, both now resolved:
+ * (1) full-scene renders exhausted the fixed {@code GeneratedOperation} pool because
+ * per-instance compilation was not reused — fixed by the rebuilt argument-aggregation system,
+ * which gives aggregation-target buffers a structural signature so the instruction cache
+ * reuses kernels across scene instances; and (2) batched dispatch was thought not to fire for
+ * the real pattern path — it does: on the real curated scene every melodic note classifies as
+ * the batched melodic-SSS shape and dispatches, while percussive notes correctly fall back to
+ * per-note. Validated 2026-06-26 (single melodic channel: {@code batchedDispatchCount=1388},
+ * {@code fallback=0}, peak 0.51; all six channels: {@code batchedDispatchCount=2220}, peak 0.56).</p>
+ *
+ * <p>The all-channels full-pipeline renders are heavy: they complete within the per-test
+ * budget on the PDSL mixdown ({@code -DAR_PDSL_MIXDOWN=enabled}); with the legacy CellList
+ * mixdown the cold six-channel render can exceed the per-test timeout on slower hardware. The
+ * single-channel renders pass on either mixdown path.</p>
  */
-@Ignore("Disabled on this branch: full-scene batched renders exhaust the GeneratedOperation "
-		+ "pool because per-instance compilation is not reused (aggregation-target buffers have "
-		+ "no structural signature), and batched dispatch does not yet fire for the real pattern "
-		+ "path. Re-enable after the compile-reuse fix.")
 public class BatchedRealSceneRenderTest extends TestSuiteBase {
 
 	/** Curated sample library root. */

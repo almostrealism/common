@@ -66,6 +66,11 @@ import java.util.function.Supplier;
  * Producer<PackedCollection> attenuated = attenuation(0.0, 0.0, 1.0, lightColor, distanceSq);
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see RGB
  * @see ScalarFeatures
  * @author Michael Murray

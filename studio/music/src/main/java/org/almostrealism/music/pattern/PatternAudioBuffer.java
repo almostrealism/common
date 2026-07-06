@@ -170,21 +170,33 @@ public class PatternAudioBuffer implements Setup, CollectionFeatures {
 	 * @return an operation that renders one buffer of pattern audio
 	 */
 	public Supplier<Runnable> prepareBatch() {
+		return prepareBatch(true);
+	}
+
+	/**
+	 * As {@link #prepareBatch()}, but when {@code clearOutput} is {@code false} the per-cell output
+	 * zeroing is skipped. Each cell's {@code outputBuffer} is a delegate region into the shared
+	 * consolidated render buffer; the streaming render-ahead path zeroes the whole consolidated
+	 * buffer once per round (a single command-buffer commit on a real buffer) rather than clearing
+	 * each cell's region separately, so it passes {@code false}. All other callers zero their own
+	 * output as before.
+	 *
+	 * @param clearOutput whether to zero this cell's output buffer before summing
+	 * @return an operation that renders one buffer of pattern audio
+	 */
+	public Supplier<Runnable> prepareBatch(boolean clearOutput) {
 		Supplier<AudioSceneContext> batchContext = () -> {
 			AudioSceneContext ctx = contextSupplier.get();
 			ctx.setDestination(outputBuffer);
 			return ctx;
 		};
 
-		Supplier<Runnable> sumSupplier = patterns.sum(batchContext, channel, currentFrame, bufferSize);
-
-		return () -> {
-			Runnable sumOp = sumSupplier.get();
-			return () -> {
-				outputBuffer.clear();
-				sumOp.run();
-			};
-		};
+		OperationList prepare = new OperationList("PatternAudioBuffer Prepare");
+		if (clearOutput) {
+			prepare.add(a(traverseEach(cp(outputBuffer)), c(0.0)));
+		}
+		prepare.add(patterns.sum(batchContext, channel, currentFrame, bufferSize));
+		return prepare;
 	}
 
 	/**

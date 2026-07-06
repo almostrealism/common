@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.KeyPosition;
@@ -36,6 +37,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.DoubleConsumer;
 import java.util.function.Function;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
@@ -133,7 +135,9 @@ public class AudioSceneLoader {
 	/**
 	 * Serializable settings for an {@link AudioScene}. Captures tempo, structure,
 	 * library path, chord progression, pattern system, channel names, and effects routing.
-	 * Used with {@link AudioScene#getSettings()} and {@link AudioScene#setSettings(AudioScene.Settings)}.
+	 * Snapshots are taken with {@link #from(AudioScene)} and restored with
+	 * {@link #applyTo(AudioScene, Function, DoubleConsumer)} (exposed on the scene as
+	 * {@link AudioScene#getSettings()} and {@link AudioScene#setSettings(Settings)}).
 	 */
 	public static class Settings {
 		/** Tempo in beats per minute. */
@@ -266,6 +270,83 @@ public class AudioSceneLoader {
 			 * @param length the new section length in measures
 			 */
 			public void setLength(int length) { this.length = length; }
+		}
+
+		/**
+		 * Captures the given scene's current configuration as a settings snapshot —
+		 * the inverse of {@link #applyTo(AudioScene, Function, DoubleConsumer)}.
+		 *
+		 * @param scene the scene to snapshot
+		 * @return a settings snapshot of the scene's current state
+		 */
+		public static Settings from(AudioScene<?> scene) {
+			Settings settings = new Settings();
+			settings.setBpm(scene.getBPM());
+			settings.setMeasureSize(scene.getMeasureSize());
+			settings.setTotalMeasures(scene.getTotalMeasures());
+			settings.getBreaks().addAll(scene.getTimeManager().getResets());
+			scene.getSectionManager().getSections().stream()
+					.map(s -> new Section(s.getPosition(), s.getLength()))
+					.forEach(settings.getSections()::add);
+
+			if (scene.getLibrary() != null && scene.getLibrary().getRoot() != null) {
+				settings.setLibraryRoot(scene.getLibrary().getRoot().getResourcePath());
+			}
+
+			settings.setChordProgression(scene.getChordProgression().getSettings());
+			settings.setPatternSystem(scene.getPatternManager().getSettings());
+			settings.setChannelNames(scene.getChannelNames());
+			settings.setWetChannels(scene.getEfxManager().getWetChannels());
+			settings.setReverbChannels(scene.getMixdownManager().getReverbChannels());
+			settings.setGeneration(scene.getGenerationManager().getSettings());
+
+			return settings;
+		}
+
+		/**
+		 * Applies this settings snapshot to the given scene, loading the sample library
+		 * through {@code libraryProvider} — the inverse of {@link #from(AudioScene)}.
+		 *
+		 * @param scene           the scene to configure
+		 * @param libraryProvider a function that creates an {@link AudioLibrary} from a root path
+		 * @param progress        optional consumer that receives library loading progress; may be {@code null}
+		 */
+		public void applyTo(AudioScene<?> scene,
+							Function<String, AudioLibrary> libraryProvider,
+							DoubleConsumer progress) {
+			scene.setBPM(getBpm());
+			scene.setMeasureSize(getMeasureSize());
+			scene.setTotalMeasures(getTotalMeasures());
+
+			scene.getTimeManager().getResets().clear();
+			getBreaks().forEach(scene::addBreak);
+			getSections().forEach(s -> scene.addSection(s.getPosition(), s.getLength()));
+
+			scene.setLibrary(libraryProvider.apply(getLibraryRoot()), progress);
+
+			scene.getChordProgression().setSettings(getChordProgression());
+			scene.getPatternManager().setSettings(getPatternSystem());
+
+			scene.getChannelNames().clear();
+			if (getChannelNames() != null) scene.getChannelNames().addAll(getChannelNames());
+
+			scene.getEfxManager().getWetChannels().clear();
+			scene.getSectionManager().getWetChannels().clear();
+			if (getWetChannels() != null) {
+				scene.getEfxManager().getWetChannels().addAll(getWetChannels());
+				scene.getSectionManager().getWetChannels().addAll(getWetChannels());
+			}
+
+			scene.getMixdownManager().getReverbChannels().clear();
+			if (getReverbChannels() != null) {
+				scene.getMixdownManager().getReverbChannels().addAll(getReverbChannels());
+			}
+
+			scene.getGenerationManager().setSettings(getGeneration());
+
+			if (scene.getTuning() != null) {
+				scene.setTuning(scene.getTuning());
+			}
 		}
 
 		/**

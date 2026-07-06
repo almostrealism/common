@@ -154,11 +154,14 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	/**
 	 * When {@code true}, the mixdown signal path is produced by the PDSL
 	 * {@code mixdown_master} layer (via {@link MixdownManagerPdslAdapter}) instead of
-	 * the hand-wired Java {@link #createCells} path. Off by default; this is the A/B
-	 * cutover flag, selectable at scene-build time and via {@code AR_PDSL_MIXDOWN}.
+	 * the hand-wired Java {@link #createCells} path. On by default (set
+	 * {@code AR_PDSL_MIXDOWN=disabled} for the legacy Java path); engages for any single
+	 * channel and the zero-based contiguous multi-channel prefix, falling back to the Java
+	 * path for non-contiguous channel subsets. The PDSL and Java paths are parity-validated
+	 * with documented accepted differences (reverb texture, efx feedback character).
 	 */
 	public static boolean enablePdslMixdown =
-			SystemUtils.isEnabled("AR_PDSL_MIXDOWN").orElse(false);
+			SystemUtils.isEnabled("AR_PDSL_MIXDOWN").orElse(true);
 
 	/** Global reverb wet-level multiplier applied during reverb processing. */
 	protected static double reverbLevel = 2.0;

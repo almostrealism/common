@@ -19,11 +19,18 @@ package org.almostrealism.studio;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.music.arrange.AudioSceneContext;
+import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.pattern.PatternAudioBuffer;
+import org.almostrealism.music.pattern.PatternSystemManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 /**
  * Owns the consolidated pattern-render storage for one {@link AudioScene} runner build:
@@ -95,6 +102,78 @@ class PatternRenderBuffers implements Destroyable {
 	 * @param cell the pattern audio buffer to track
 	 */
 	void add(PatternAudioBuffer cell) { cells.add(cell); }
+
+	/**
+	 * Creates the render cells for one stereo side, MAIN voicing for every channel
+	 * followed by WET voicing for every channel — the same order the CellList path
+	 * produces them, so {@link #nextRegion} hands out regions in the
+	 * {@code [MAIN(N), WET(N)]} per-side layout PDSL consumers rely on. WET cells
+	 * are skipped when {@code includeWet} is {@code false}; the consolidated buffer
+	 * is still sized for 4 regions per channel, but the skipped regions are never
+	 * rendered (remain zero-filled) and subsequent regions are allocated in
+	 * creation order.
+	 *
+	 * @param patterns       the pattern system the cells render from
+	 * @param contextFactory produces the {@link AudioSceneContext} for one channel voicing
+	 * @param channels       channel indices to render
+	 * @param audioChannel   LEFT or RIGHT stereo channel
+	 * @param bufferSize     frames per render buffer
+	 * @param frameSupplier  supplies the current frame position for pattern rendering
+	 * @param includeWet     whether to create the WET voicing cells (efx enabled)
+	 * @param setup          the setup OperationList to accumulate operations in
+	 */
+	void createRenderCells(PatternSystemManager patterns,
+						   Function<ChannelInfo, AudioSceneContext> contextFactory,
+						   List<Integer> channels,
+						   ChannelInfo.StereoChannel audioChannel,
+						   int bufferSize, IntSupplier frameSupplier,
+						   boolean includeWet, OperationList setup) {
+		int[] idx = channels.stream().mapToInt(i -> i).toArray();
+
+		for (int i = 0; i < idx.length; i++) {
+			createRenderCell(patterns, contextFactory,
+					new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
+					bufferSize, frameSupplier, setup);
+		}
+
+		if (includeWet) {
+			for (int i = 0; i < idx.length; i++) {
+				createRenderCell(patterns, contextFactory,
+						new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
+						bufferSize, frameSupplier, setup);
+			}
+		}
+	}
+
+	/**
+	 * Creates and registers a {@link PatternAudioBuffer} render cell for one channel
+	 * voicing, carving its region from the consolidated render buffer and wiring its
+	 * setup and initial-render operations into {@code setup}.
+	 *
+	 * @param patterns       the pattern system the cell renders from
+	 * @param contextFactory produces the {@link AudioSceneContext} for the channel voicing
+	 * @param channel        the channel (index, voicing, stereo channel)
+	 * @param bufferSize     frames per render buffer
+	 * @param frameSupplier  supplies the current frame position for pattern rendering
+	 * @param setup          the setup OperationList (render cell setup and initial render are added here)
+	 * @return the created and registered render cell
+	 */
+	PatternAudioBuffer createRenderCell(PatternSystemManager patterns,
+										Function<ChannelInfo, AudioSceneContext> contextFactory,
+										ChannelInfo channel, int bufferSize,
+										IntSupplier frameSupplier, OperationList setup) {
+		Supplier<AudioSceneContext> ctx = () -> contextFactory.apply(channel);
+
+		PatternAudioBuffer renderCell = new PatternAudioBuffer(
+				patterns, ctx, channel, bufferSize, frameSupplier,
+				nextRegion(bufferSize));
+
+		setup.add(renderCell.setup());
+		setup.add(renderCell.prepareBatch());
+		add(renderCell);
+
+		return renderCell;
+	}
 
 	/**
 	 * Returns the render cells created during the current build.

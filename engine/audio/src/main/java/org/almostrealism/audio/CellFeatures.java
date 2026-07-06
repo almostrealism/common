@@ -108,6 +108,11 @@ import java.util.stream.Stream;
  *   <li>Tick phase: Process one sample (called per sample)</li>
  * </ol>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see CellList
  * @see SamplingFeatures
  * @see org.almostrealism.audio.filter.AudioPassFilter

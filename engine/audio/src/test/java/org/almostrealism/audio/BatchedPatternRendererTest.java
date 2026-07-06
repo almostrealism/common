@@ -57,6 +57,9 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 	/** FIR filter order matching production {@code EfxManager.filterOrder}. */
 	private static final int FILTER_ORDER = 40;
 
+	/** Per-note layer count matching production {@code BatchedNoteInputs.LAYERS}. */
+	private static final int LAYERS = 3;
+
 	/**
 	 * Acoustic equivalence test: generates a synthetic workload of {@value #N} notes
 	 * with distinct source buffers, pitch ratios (1.0 – 1.7), and per-row ADSR envelopes;
@@ -198,6 +201,61 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 		Assert.assertTrue(
 				"Batched chain RMS difference from per-note reference exceeds 1e-4 (got " + rms + ")",
 				rms < 1e-4);
+	}
+
+	/**
+	 * Verifies that {@link BatchedPatternRenderer#clearSssSources()} and
+	 * {@link BatchedPatternRenderer#clearPercSources()} zero every element of every bound source
+	 * buffer. These batch the per-layer zeroing into one compile-once assignment, so this test fills
+	 * the buffers with non-zero data first (a partial, missed, or incompletely-drained clear would
+	 * leave a non-zero element behind) and clears twice to confirm the cached operation re-runs.
+	 */
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testBatchedClearZeroesBoundSources() {
+		BatchedPatternRenderer renderer = new BatchedPatternRenderer(
+				N, SOURCE_LENGTH, TARGET_LENGTH, SAMPLE_RATE, FILTER_ORDER);
+
+		renderer.sssDispatch(LAYERS);
+		PackedCollection[] sssSources = renderer.getSssSources();
+
+		fillNonZero(sssSources);
+		renderer.clearSssSources();
+		assertAllZero("sss", sssSources);
+
+		// Refill and clear again: the clear is compiled once and re-run every tick.
+		fillNonZero(sssSources);
+		renderer.clearSssSources();
+		assertAllZero("sss second run", sssSources);
+
+		renderer.percDispatch(LAYERS, true);
+		PackedCollection[] percSources = renderer.getPercSources();
+
+		fillNonZero(percSources);
+		renderer.clearPercSources();
+		assertAllZero("perc", percSources);
+	}
+
+	/** Fills every element of each buffer with distinct non-zero values. */
+	private static void fillNonZero(PackedCollection[] buffers) {
+		for (PackedCollection buffer : buffers) {
+			double[] data = new double[buffer.getMemLength()];
+			for (int i = 0; i < data.length; i++) {
+				data[i] = 1.0 + (i % 7);
+			}
+			buffer.setMem(data);
+		}
+	}
+
+	/** Asserts that every element of every buffer is exactly zero. */
+	private void assertAllZero(String label, PackedCollection[] buffers) {
+		for (int b = 0; b < buffers.length; b++) {
+			double[] data = buffers[b].toArray(0, buffers[b].getMemLength());
+			for (int i = 0; i < data.length; i++) {
+				Assert.assertEquals(label + " buffer " + b + " element " + i + " not zeroed",
+						0.0, data[i], 0.0);
+			}
+		}
 	}
 
 }

@@ -107,9 +107,9 @@ import java.util.stream.Stream;
  *
  * <h2>Real-Time Considerations</h2>
  *
- * <p><strong>Current Limitation:</strong> The {@link #sum} method renders all pattern
- * repetitions at once. For real-time rendering, frame range parameters would need
- * to be added to render only elements within the current buffer window.</p>
+ * <p>The {@link #sum} method accepts {@code startFrame} and {@code frameCount}
+ * parameters and renders only the pattern repetitions that overlap the requested
+ * frame window, so it serves both offline and real-time (per-buffer) rendering.</p>
  *
  * @see PatternSystemManager
  * @see PatternLayer
@@ -130,28 +130,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	public static boolean enableLogging = SystemUtils.isEnabled("AR_PATTERN_LOGGING").orElse(false);
 
 	/**
-	 * Phase 3 batched pattern rendering feature flag (off by default). When
-	 * enabled, {@link PatternFeatures#render} dispatches through the
-	 * {@link BatchedPatternLayerRenderer} bucket cache instead of the legacy
-	 * per-note path. See
-	 * {@link BatchedPatternLayerRenderer} javadoc for the current integration
-	 * scope.
+	 * Batched pattern rendering feature flag (on by default; set
+	 * {@code AR_PATTERN_BATCHED=disabled} to force the per-note path). When enabled,
+	 * {@link PatternFeatures#render} dispatches batchable (melodic-SSS) notes through the
+	 * {@link BatchedPatternLayerRenderer} bucket cache instead of the legacy per-note path;
+	 * non-batchable note shapes fall back to per-note automatically. See
+	 * {@link BatchedPatternLayerRenderer} javadoc for the dispatch model.
 	 */
-	public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(false);
-
-	/**
-	 * Default source-samples-per-note used when constructing a per-pattern
-	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
-	 * by the batched-chain benchmarks.
-	 */
-	public static final int BATCHED_SOURCE_LENGTH = 2048;
-
-	/**
-	 * Default target-samples-per-note used when constructing a per-pattern
-	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
-	 * by the batched-chain benchmarks.
-	 */
-	public static final int BATCHED_TARGET_LENGTH = 1024;
+	public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(true);
 
 	/** The audio channel index for this pattern. */
 	private int channel;
@@ -232,6 +218,18 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 */
 	public static void invalidateCaches() {
 		cacheEpoch.incrementAndGet();
+	}
+
+	/**
+	 * Returns the current note-audio cache epoch, bumped by {@link #invalidateCaches()} on
+	 * genome/arrangement swap. Consumers that memoize genome-dependent derived data (the
+	 * batched renderer's melodic gathered note destinations) include it so a swap discards
+	 * stale entries.
+	 *
+	 * @return the current cache epoch
+	 */
+	static int currentCacheEpoch() {
+		return cacheEpoch.get();
 	}
 
 	/**

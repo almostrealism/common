@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.function.Supplier;
 
@@ -131,6 +132,11 @@ import java.util.function.Supplier;
  * copy("gpuToCpu", gpuMemory, cpuMemory, size).get().run();
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see Assignment
  * @see MemoryDataCopy
  */
@@ -150,11 +156,12 @@ public interface MemoryDataFeatures {
 	 * (gradient-descent regressions observed when it was enabled), which must
 	 * be resolved before the flip can hold.</p>
 	 *
-	 * <p>As an interface field this is {@code public static final} and therefore
-	 * a compile-time switch, not a runtime one. Flipping it requires a
-	 * rebuild.</p>
+	 * <p>Runtime-configurable via the {@code AR_HARDWARE_ASSIGNMENT_COPY} system property
+	 * (enabled/disabled), defaulting to disabled. As an interface field it is
+	 * {@code public static final}, so the value is resolved once at class initialization;
+	 * consumers compiled against a prior constant value must be rebuilt to observe a change.</p>
 	 */
-	boolean enableAssignmentCopy = false;
+	boolean enableAssignmentCopy = SystemUtils.isEnabled("AR_HARDWARE_ASSIGNMENT_COPY").orElse(false);
 
 	/**
 	 * Creates an {@link Assignment} operation that assigns the value producer's output to the result producer.

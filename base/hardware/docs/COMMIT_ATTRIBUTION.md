@@ -48,10 +48,26 @@ count by cause:
 | `getCommitCount()` | Total command-buffer commits |
 | `getHostCompleteCommitCount()` | Commits forced by a host-side wait (`complete()`, reached through `MetalSemaphore.waitFor()`) |
 | `getMaxOpenCommitCount()` | Commits from the open buffer reaching its dispatch bound — the expected steady-state cadence |
+| `getBridgeCommitCount()` | Commits forced so a dispatch that bridges a *foreign* dependency starts a fresh buffer (see below) |
 | `getDestroyCommitCount()` | Commits performed while tearing the runner down |
 
-The three cause counters always sum to the total. All are written on the runner's
+The cause counters always sum to the total. All are written on the runner's
 executor thread and safe to read from any thread.
+
+**Bridge commits.** A dispatch whose `dependsOn` is a foreign `Semaphore` (produced by
+another backend, another Metal context, or a composite latch) is ordered by encoding a
+GPU wait on a fresh per-bridge `MTLSharedEvent`, signaled from the host when the foreign
+work completes (`enableHostSignaledBridges`, default on). The submitting thread does not
+block, but if the open buffer already contains work it is committed first — a composite
+completion over this runner's own semaphores resolves by completing their whole buffer,
+so a buffer containing both those dispatches and the bridge wait could never complete.
+Each such fresh-buffer commit increments `getBridgeCommitCount()`. A workload whose
+bridge commits approach its bridged-dispatch count is fragmenting buffers around bridges;
+grouping same-context members so bridges land at buffer starts restores batching. A zero
+bridge count on a workload with cross-context dependencies means those dependencies never
+reach `submit` as dependencies at all — typically because non-submittable members in the
+composite force per-member waits that chop the chain first (see the composite
+fingerprint below).
 
 To obtain the runner for the shared Metal context:
 

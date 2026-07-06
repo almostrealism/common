@@ -55,9 +55,15 @@ import java.util.Random;
  */
 public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFeatures, RGBFeatures, AudioTestFeatures {
 
-	/** Path to the Samples directory relative to the compose module. */
+	/**
+	 * Curated sample library location, overridable via {@code AR_RINGS_LIBRARY}. Defaults to
+	 * the absolute curated-library path (the same directory that holds {@link #PATTERN_FACTORY}).
+	 * Kept absolute so no repo-root symlink to an out-of-repo location is required; when the
+	 * library is absent (e.g. on CI) {@link #getSamplesDir()} returns {@code null} and synthetic
+	 * fallback samples are used.
+	 */
 	protected static final String SAMPLES_PATH =
-			SystemUtils.getProperty("AR_RINGS_LIBRARY", "../../Samples");
+			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples");
 
 	/**
 	 * Returns the Samples directory if it exists, or {@code null} if it
@@ -406,6 +412,30 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 			waveData.destroy();
 		} catch (Exception e) {
 			log("Failed to generate spectrogram for " + wavPath + ": " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Returns the peak absolute sample over channel 0 of a rendered WAV — the shared
+	 * non-silence gate for render tests (a fast render of silence is not progress).
+	 *
+	 * @param wavPath path to the rendered WAV
+	 * @return the peak absolute sample value in [0, 1]
+	 * @throws IOException if the WAV cannot be read
+	 */
+	protected double peakAmplitude(String wavPath) throws IOException {
+		WaveData data = WaveData.load(new File(wavPath));
+		try {
+			PackedCollection channel = data.getChannelData(0);
+			double peak = 0.0;
+			int n = channel.getShape().getTotalSize();
+			for (int i = 0; i < n; i++) {
+				double v = Math.abs(channel.valueAt(i));
+				if (v > peak) peak = v;
+			}
+			return peak;
+		} finally {
+			data.destroy();
 		}
 	}
 

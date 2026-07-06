@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
@@ -66,6 +67,28 @@ public class MetalCommandRunner {
 	 * accumulate), not a behavioural switch — correctness does not depend on its value.
 	 */
 	private static final int MAX_OPEN = 256;
+
+	/** Total dispatches encoded across all runners since the last reset. */
+	public static final AtomicLong totalDispatchCount = new AtomicLong();
+	/** Total command-buffer commits across all runners since the last reset. */
+	public static final AtomicLong totalCommitCount = new AtomicLong();
+
+	/**
+	 * Returns the mean number of dispatches per committed command buffer (the effective GPU batch
+	 * size) since the last {@link #resetBatchSizeCounters()}, or {@code 0} when nothing has committed.
+	 *
+	 * @return mean dispatches per commit
+	 */
+	public static double meanBatchSize() {
+		long commits = totalCommitCount.get();
+		return commits == 0 ? 0 : totalDispatchCount.get() / (double) commits;
+	}
+
+	/** Resets the batch-size counters; behaviour-neutral. */
+	public static void resetBatchSizeCounters() {
+		totalDispatchCount.set(0);
+		totalCommitCount.set(0);
+	}
 
 	/**
 	 * Distribution of commit-forcing host waits across the operations that requested them, keyed by
@@ -219,6 +242,7 @@ public class MetalCommandRunner {
 			signaled++;
 			openBuffer.encodeSignalEvent(event, signaled);
 			openCount++;
+			totalDispatchCount.incrementAndGet();
 			if (onComplete != null) openOnComplete.add(onComplete);
 
 			result.add(new MetalSemaphore(requester, this, openBuffer, event, signaled));
@@ -344,7 +368,9 @@ public class MetalCommandRunner {
 	private boolean commitOpenOnExecutor() {
 		if (openBuffer == null) return false;
 
+		totalCommitCount.incrementAndGet();
 		commitCount++;
+
 		openBuffer.commit();
 		bufferOpen = false;
 
