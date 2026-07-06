@@ -100,6 +100,14 @@ public class MetalCommandRunner {
 	public static DistributionMetric hostCompleteRequesters =
 			Hardware.console.distribution("mtlHostCompleteRequesters");
 
+	/**
+	 * Bridges a foreign dependency (a {@link Semaphore} not produced by this runner) by encoding
+	 * a GPU wait on a fresh {@link MTLEvent} that is signaled from the host when the foreign work
+	 * completes, so {@link #submit} never blocks on foreign completions. When disabled, a foreign
+	 * dependency is bridged the old way: a blocking wait before the dispatch is encoded.
+	 */
+	public static boolean enableHostSignaledBridges = true;
+
 	/** Single-threaded executor that serializes all command-buffer operations. */
 	private ExecutorService executor;
 
@@ -122,6 +130,8 @@ public class MetalCommandRunner {
 	private volatile long maxOpenCommits;
 	/** Commits performed while destroying the runner. Executor-thread written; volatile reads. */
 	private volatile long destroyCommits;
+	/** Commits forced so a bridged dispatch starts a fresh buffer. Executor-thread written. */
+	private volatile long bridgeCommits;
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -160,8 +170,16 @@ public class MetalCommandRunner {
 	 * with default tracking; see {@code MTL.cpp}), so it is simply dropped; a dependency in
 	 * an earlier, committed buffer is honored by encoding a GPU wait for its event value.
 	 * Neither case blocks the host or forces a commit, so chaining completion semaphores
-	 * through a sequence of dispatches preserves batching. (A foreign dependency must be
-	 * waited by the caller before calling this method.)</p>
+	 * through a sequence of dispatches preserves batching.</p>
+	 *
+	 * <p>A foreign dependency (any other {@link Semaphore}) is bridged without blocking when
+	 * {@link #enableHostSignaledBridges} is set: the dispatch's buffer encodes a GPU wait on a
+	 * fresh per-bridge {@link MTLEvent}, and the event is signaled from the host when the
+	 * foreign work completes, via {@link Semaphore#onComplete(Runnable)}. The dispatch is
+	 * therefore ordered after the foreign work with no host wait and no forced commit. If the
+	 * foreign work never completes, the buffer never completes — the same exposure a blocking
+	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
+	 * before the dispatch is encoded.</p>
 	 *
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
 	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
@@ -175,9 +193,10 @@ public class MetalCommandRunner {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
 		await(executor.submit(() -> runInPool(() -> {
-			MetalSemaphore dependency =
-					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
-							? (MetalSemaphore) dependsOn : null;
+			boolean sameRunner = dependsOn instanceof MetalSemaphore &&
+					((MetalSemaphore) dependsOn).getRunner() == this;
+			MetalSemaphore dependency = sameRunner ? (MetalSemaphore) dependsOn : null;
+			Semaphore foreign = dependsOn != null && !sameRunner ? dependsOn : null;
 
 			// A dependency encoded into the still-open buffer is already ordered ahead of this
 			// dispatch by in-buffer hazard tracking; no commit and no event wait are needed.
@@ -185,10 +204,37 @@ public class MetalCommandRunner {
 				dependency = null;
 			}
 
+			if (foreign != null && !enableHostSignaledBridges) {
+				foreign.waitFor();
+				foreign = null;
+			}
+
+			// A bridged dispatch must start a fresh buffer: the foreign completion may itself
+			// require waiting for dispatches already encoded here (a composite completion over
+			// this runner's own semaphores resolves by completing their whole buffer), and a
+			// buffer that contains both those dispatches and the bridge wait can never complete.
+			// The GPU watchdog then kills the stalled buffer and the gated work silently never
+			// runs. Committing first makes the cycle impossible; it costs the same commit the
+			// old blocking bridge caused, without blocking the host.
+			if (foreign != null && openCount > 0 && commitOpenOnExecutor()) {
+				bridgeCommits++;
+			}
+
 			ensureOpenBuffer();
 
 			if (dependency != null) {
 				openBuffer.encodeWaitForEvent(event, dependency.getValue());
+			}
+
+			if (foreign != null) {
+				// Each bridge uses its own event because a host signal releases every encoded
+				// wait at or below the signaled value; sharing an event across bridges would let
+				// an out-of-order foreign completion release another bridge's wait. The event is
+				// released with the buffer, which cannot complete before the wait is satisfied.
+				MTLEvent bridge = queue.getDevice().newSharedEvent();
+				openBuffer.encodeWaitForEvent(bridge, 1);
+				openOnComplete.add(bridge::release);
+				foreign.onComplete(() -> bridge.setSignaledValue(1));
 			}
 
 			command.encode(openBuffer);
@@ -282,9 +328,10 @@ public class MetalCommandRunner {
 
 	/**
 	 * Returns the number of commits forced by a host-side completion wait ({@link #complete}).
-	 * Together with {@link #getMaxOpenCommitCount()} and {@link #getDestroyCommitCount()} this
-	 * partitions {@link #getCommitCount()} by cause: host waits are the commits that break
-	 * batching on demand, while {@link #MAX_OPEN} commits are the expected steady-state cadence.
+	 * Together with {@link #getMaxOpenCommitCount()}, {@link #getBridgeCommitCount()} and
+	 * {@link #getDestroyCommitCount()} this partitions {@link #getCommitCount()} by cause:
+	 * host waits are the commits that break batching on demand, while {@link #MAX_OPEN}
+	 * commits are the expected steady-state cadence.
 	 *
 	 * @return the number of commits caused by host completion waits
 	 */
@@ -303,6 +350,14 @@ public class MetalCommandRunner {
 	 * @return the number of commits caused by {@link #destroy()}
 	 */
 	public long getDestroyCommitCount() { return destroyCommits; }
+
+	/**
+	 * Returns the number of commits forced so that a dispatch bridging a foreign dependency
+	 * could start a fresh command buffer (see {@link #enableHostSignaledBridges}).
+	 *
+	 * @return the number of commits caused by foreign-dependency bridges
+	 */
+	public long getBridgeCommitCount() { return bridgeCommits; }
 
 	/**
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for

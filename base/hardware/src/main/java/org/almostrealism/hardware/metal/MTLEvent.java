@@ -36,6 +36,16 @@ public class MTLEvent extends MTLObject {
 	}
 
 	/**
+	 * Signals this event to the given value from the host, releasing any encoded waits
+	 * for values up to and including it. The signaled value must never decrease.
+	 *
+	 * @param value Value to signal
+	 */
+	public void setSignaledValue(long value) {
+		MTL.setSignaledValue(getNativePointer(), value);
+	}
+
+	/**
 	 * Releases the native shared event.
 	 */
 	@Override

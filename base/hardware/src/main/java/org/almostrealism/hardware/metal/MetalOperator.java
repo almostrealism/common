@@ -201,7 +201,9 @@ public class MetalOperator extends HardwareOperator {
 	 * executes at a time per operator instance.</p>
 	 *
 	 * @param args Kernel arguments (must be {@link MemoryData})
-	 * @param dependsOn Optional {@link Semaphore} to wait on before execution
+	 * @param dependsOn Optional {@link Semaphore} this dispatch is ordered after (same-runner
+	 *                  dependencies order on the GPU; foreign dependencies are bridged by the
+	 *                  {@link MetalCommandRunner} without blocking)
 	 * @return Currently always returns null (TODO: return proper Semaphore)
 	 * @throws UnsupportedOperationException if argument count exceeds {@link MetalCommandRunner#MAX_ARGS}
 	 * @throws UnsupportedOperationException if global work size exceeds {@link Integer#MAX_VALUE}
@@ -222,19 +224,12 @@ public class MetalOperator extends HardwareOperator {
 
 		MetalCommandRunner runner = context.getCommandRunner();
 
-		// Honor the dependency unconditionally. A dependency produced by this runner is passed
-		// through so the runner orders this dispatch after it on the GPU (no host stall); any
-		// other dependency (a foreign provider, or another Metal runner with its own event) is
-		// waited on the host here.
-		boolean ordered = dependsOn instanceof MetalSemaphore
-				&& ((MetalSemaphore) dependsOn).getRunner() == runner;
-		if (dependsOn != null && !ordered) dependsOn.waitFor();
-
 		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
 
-		// Encode this kernel into the runner's command buffer. The runner returns this dispatch's
-		// completion semaphore; the onComplete callback releases the memory the kernel referenced
-		// only after that buffer has completed.
+		// Encode this kernel into the runner's command buffer, ordered after dependsOn (the
+		// runner handles both same-runner and foreign dependencies without blocking here). The
+		// runner returns this dispatch's completion semaphore; the onComplete callback releases
+		// the memory the kernel referenced only after that buffer has completed.
 		return runner.submit(getMetadata(), cmdBuf -> {
 			recordDuration(null, () -> {
 				int index = 0;
@@ -292,7 +287,7 @@ public class MetalOperator extends HardwareOperator {
 
 				encoder.endEncoding();
 			});
-		}, ordered ? dependsOn : null, () -> {
+		}, dependsOn, () -> {
 			KernelMemoryGuard.releaseFor(guard, data);
 			Reference.reachabilityFence(data);
 			Reference.reachabilityFence(args);
