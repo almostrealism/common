@@ -476,7 +476,26 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return Process details ready for execution
 	 */
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
-		return getDetailsFactory().init(output, args).construct();
+		return getProcessDetails(output, args, null);
+	}
+
+	/**
+	 * Creates process details with argument configuration, ordering every argument
+	 * evaluation after the given completion.
+	 *
+	 * <p>Arguments backed by a hardware dispatch chain the dependency through the
+	 * provider; arguments evaluated on the host wait for the completion on their
+	 * evaluation thread before reading. This guarantees that argument preparation
+	 * never observes memory from before the work this operation depends on.</p>
+	 *
+	 * @param output    The destination memory bank for operation results
+	 * @param args      The input arguments for the operation
+	 * @param dependsOn completion that must fire before argument evaluation reads
+	 *                  memory, or {@code null} when there is no dependency
+	 * @return Process details ready for execution
+	 */
+	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args, Semaphore dependsOn) {
+		return getDetailsFactory().init(output, args).construct(dependsOn);
 	}
 
 	/**
@@ -563,8 +582,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			throw new UnsupportedOperationException("Operation was not compiled");
 		}
 
-		// Load the inputs
-		AcceleratedProcessDetails process = getProcessDetails(output, args);
+		// Load the inputs, ordering argument evaluation after the prior completion
+		AcceleratedProcessDetails process = getProcessDetails(output, args, dependsOn);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
 		// Requirements are thread-local, and the listener below may run on another

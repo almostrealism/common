@@ -18,6 +18,8 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.concurrent.DependentStreamingEvaluable;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
@@ -181,7 +183,7 @@ import java.util.stream.Stream;
  * @see Provider
  */
 public class DestinationEvaluable<T extends MemoryBank> implements
-		Evaluable<T>, StreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
+		Evaluable<T>, DependentStreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
 	/** The wrapped evaluable operation that produces results. */
 	private Evaluable<T> operation;
 
@@ -358,9 +360,26 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 */
 	@Override
 	public void request(Object[] args) {
+		request(args, null);
+	}
+
+	/**
+	 * Initiates evaluation ordered after the given completion. The wrapped
+	 * operation's dispatch chains on {@code dependsOn} through the provider,
+	 * so the dependency costs no host wait; delivery is unchanged.
+	 *
+	 * @param args      The input arguments ({@link MemoryData} instances)
+	 * @param dependsOn completion that must fire before the dispatch (and its
+	 *                  argument preparation) reads memory, or {@code null}
+	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn) {
 		if (operation instanceof AcceleratedOperation) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
-					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+					.apply(destination,
+							Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new),
+							dependsOn);
 			// Required before getSemaphore(); see the method javadoc
 			details.awaitReady();
 

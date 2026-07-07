@@ -18,6 +18,8 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.concurrent.DependentStreamingEvaluable;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -448,6 +450,30 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 */
 	@Override
 	public AcceleratedProcessDetails construct() {
+		return construct(null);
+	}
+
+	/**
+	 * Constructs an {@link AcceleratedProcessDetails} whose dispatch-backed argument
+	 * evaluations are ordered after the given completion.
+	 *
+	 * <p>Arguments whose evaluation is itself a hardware dispatch
+	 * ({@link DependentStreamingEvaluable}) chain the dependency through the provider,
+	 * so an argument kernel never reads memory written by the work {@code dependsOn}
+	 * represents before that work has completed — without any host wait. Plain host
+	 * evaluables are handle-producers (they return {@link MemoryData} handles; the
+	 * kernel reads the contents on the device, ordered by its own chained dispatch)
+	 * and are evaluated immediately: blocking them on {@code dependsOn} would violate
+	 * the non-blocking submission contract (a submit with an outstanding foreign
+	 * dependency must return, and a same-provider dependency must remain free), so a
+	 * host function that reads memory <em>contents</em> rather than returning a handle
+	 * is responsible for its own ordering.</p>
+	 *
+	 * @param dependsOn completion that dispatch-backed argument evaluations must chain
+	 *                  on, or {@code null} when there is no dependency
+	 * @return the fully configured process details ready for execution
+	 */
+	public AcceleratedProcessDetails construct(Semaphore dependsOn) {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 		for (int i = 0; i < kernelArgs.length; i++) {
@@ -552,7 +578,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
-			asyncEvaluables[i].request(args);
+
+			if (asyncEvaluables[i] instanceof DependentStreamingEvaluable) {
+				((DependentStreamingEvaluable) asyncEvaluables[i]).request(args, dependsOn);
+			} else {
+				asyncEvaluables[i].request(args);
+			}
 		}
 
 		/* The details are ready */

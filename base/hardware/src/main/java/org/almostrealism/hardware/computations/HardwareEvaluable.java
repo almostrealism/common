@@ -20,6 +20,8 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
+import io.almostrealism.concurrent.DependentStreamingEvaluable;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
@@ -164,7 +166,7 @@ import java.util.function.UnaryOperator;
  * @author Michael Murray
  */
 public class HardwareEvaluable<T> implements
-		Evaluable<T>, StreamingEvaluable<T>, Destroyable, Runnable, ArgumentList<T> {
+		Evaluable<T>, DependentStreamingEvaluable<T>, Destroyable, Runnable, ArgumentList<T> {
 	/** Supplier that produces the underlying {@link Evaluable} for this computation. */
 	private Supplier<Evaluable<T>> ev;
 	/** Evaluable used to allocate and provide the output destination buffer. */
@@ -330,6 +332,23 @@ public class HardwareEvaluable<T> implements
 
 	@Override
 	public void request(Object[] args) {
+		request(args, null);
+	}
+
+	/**
+	 * Initiates evaluation ordered after the given completion. The dependency is
+	 * delegated to the underlying kernel evaluable, which chains it through the
+	 * provider without blocking. The short-circuit path (and a kernel evaluable
+	 * that cannot chain) evaluates immediately, like
+	 * {@link #request(Object[])} — host-side evaluation is never blocked on the
+	 * dependency, because submission must not wait for outstanding completions.
+	 *
+	 * @param args      the arguments for the evaluation
+	 * @param dependsOn completion the underlying dispatch must chain on, or
+	 *                  {@code null} when there is no dependency
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn) {
 		if (Arrays.stream(args).anyMatch(i -> i instanceof Object[])) {
 			throw new IllegalArgumentException("Embedded array provided to request");
 		}
@@ -340,7 +359,11 @@ public class HardwareEvaluable<T> implements
 		}
 
 		Evaluable<T> cev = getKernel().getValue();
-		if (cev instanceof StreamingEvaluable<?>) {
+		if (cev instanceof DependentStreamingEvaluable<?>) {
+			((DependentStreamingEvaluable<T>) cev).setDownstream(downstream);
+			((DependentStreamingEvaluable<T>) cev).request(args, dependsOn);
+			return;
+		} else if (cev instanceof StreamingEvaluable<?>) {
 			((StreamingEvaluable<T>) cev).setDownstream(downstream);
 			((StreamingEvaluable<T>) cev).request(args);
 			return;

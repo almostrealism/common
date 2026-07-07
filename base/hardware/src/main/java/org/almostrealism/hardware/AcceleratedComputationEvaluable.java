@@ -20,6 +20,8 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.concurrent.DependentStreamingEvaluable;
+import io.almostrealism.concurrent.Semaphore;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.streams.EvaluableStreamingAdapter;
@@ -184,7 +186,7 @@ import java.util.function.IntFunction;
  */
 public class AcceleratedComputationEvaluable<T extends MemoryData>
 		extends AcceleratedComputationOperation<T>
-		implements StreamingEvaluable<T>, Evaluable<T> {
+		implements DependentStreamingEvaluable<T>, Evaluable<T> {
 	/**
 	 * Controls whether multiple evaluables with the same signature can compile independently.
 	 *
@@ -457,12 +459,28 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 */
 	@Override
 	public void request(Object[] args) {
+		request(args, null);
+	}
+
+	/**
+	 * Initiates evaluation ordered after the given completion. The kernel
+	 * dispatch (and its own argument preparation) chains on {@code dependsOn}
+	 * through the provider, so the dependency costs no host wait; delivery
+	 * is unchanged.
+	 *
+	 * @param args      The input arguments for the computation
+	 * @param dependsOn completion that must fire before the dispatch (and its
+	 *                  argument preparation) reads memory, or {@code null}
+	 * @throws NullPointerException if {@link #downstream} is not set
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn) {
 		confirmLoad();
 
 		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
 		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
 
-		AcceleratedProcessDetails process = apply(null, args);
+		AcceleratedProcessDetails process = apply(null, args, dependsOn);
 		process.awaitReady();
 
 		if (downstream instanceof CompletionConsumer && !outputMonitoring) {
