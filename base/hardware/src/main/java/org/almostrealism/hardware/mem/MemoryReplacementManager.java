@@ -147,7 +147,7 @@ import java.util.function.BiConsumer;
  * }</pre>
  *
  * <p>Each copy runs through the serving {@link ComputeContext}'s
- * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy},
+ * {@link ComputeContext#copy(Object, Object, io.almostrealism.streams.Semaphore) copy},
  * so the context chooses the mechanism and the sequencing: a batching context queues the
  * copy onto its command buffer ordered after {@code dependsOn}; any other context waits
  * for {@code dependsOn} and copies directly.</p>
@@ -159,7 +159,7 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 	/**
 	 * The {@link ComputeContext} of the operation this manager prepares arguments for. The
 	 * prepare/postprocess copies run through its
-	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy},
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.streams.Semaphore) copy},
 	 * so the context the kernel runs on chooses how the replacement data moves and how the
 	 * copies are sequenced.
 	 */

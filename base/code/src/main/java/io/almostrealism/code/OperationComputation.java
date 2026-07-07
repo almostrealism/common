@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
@@ -59,7 +60,7 @@ public interface OperationComputation<T> extends Computation<T>, Operation {
 	 * operation in {@code IsolatedProcess} prevents the optimizer from inlining the operation's
 	 * expression tree into its callers.</p>
 	 */
-	class IsolatedProcess implements Process<Process<?, ?>, Runnable>, OperationInfo {
+	class IsolatedProcess implements Process<Process<?, ?>, Runnable>, OperationInfo, Isolated {
 		/** The wrapped operation. */
 		private Operation op;
 

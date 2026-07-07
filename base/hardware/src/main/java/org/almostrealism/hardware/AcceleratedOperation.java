@@ -24,7 +24,8 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
@@ -476,7 +477,26 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return Process details ready for execution
 	 */
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
-		return getDetailsFactory().init(output, args).construct();
+		return getProcessDetails(output, args, null);
+	}
+
+	/**
+	 * Creates process details with argument configuration, ordering every argument
+	 * evaluation after the given completion.
+	 *
+	 * <p>Arguments backed by a hardware dispatch chain the dependency through the
+	 * provider; arguments evaluated on the host wait for the completion on their
+	 * evaluation thread before reading. This guarantees that argument preparation
+	 * never observes memory from before the work this operation depends on.</p>
+	 *
+	 * @param output    The destination memory bank for operation results
+	 * @param args      The input arguments for the operation
+	 * @param dependsOn completion that must fire before argument evaluation reads
+	 *                  memory, or {@code null} when there is no dependency
+	 * @return Process details ready for execution
+	 */
+	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args, Semaphore dependsOn) {
+		return getDetailsFactory().init(output, args).construct(dependsOn);
 	}
 
 	/**
@@ -516,7 +536,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.
 	 * Completions of asynchronously produced arguments (delivered via
 	 * {@link AcceleratedProcessDetails#result(int, Object, Semaphore)}) are merged with
-	 * {@code dependsOn} through {@link Semaphore#all}, so the kernel is ordered after the
+	 * {@code dependsOn} through {@link OperationSemaphore#all}, so the kernel is ordered after the
 	 * work producing its inputs the same way.</p>
 	 *
 	 * <p><strong>Execution model.</strong> Two independent memory mechanisms may wrap
@@ -563,8 +583,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			throw new UnsupportedOperationException("Operation was not compiled");
 		}
 
-		// Load the inputs
-		AcceleratedProcessDetails process = getProcessDetails(output, args);
+		// Load the inputs, ordering argument evaluation after the prior completion
+		AcceleratedProcessDetails process = getProcessDetails(output, args, dependsOn);
 		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
 		// Requirements are thread-local, and the listener below may run on another
@@ -594,7 +614,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// kernel is ordered after the work producing them without any host wait.
 				List<Semaphore> pending = process.getArgumentCompletions();
 				pending.add(dependsOn);
-				Semaphore ready = Semaphore.all(getMetadata(), pending);
+				Semaphore ready = OperationSemaphore.all(getMetadata(), pending);
 
 				if (aggregating) {
 					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);

@@ -20,11 +20,20 @@
  * <p>This package provides lightweight synchronization abstractions used to chain
  * GPU/CPU executions together without blocking the calling thread unnecessarily.</p>
  *
+ * <p>The foundational {@link io.almostrealism.streams.Semaphore} — a completion token
+ * returned by {@link io.almostrealism.code.Execution#accept} that callers can wait on —
+ * is defined in {@code ar-relation} (alongside
+ * {@link io.almostrealism.streams.StreamingEvaluable}) so it carries no dependency on the
+ * operation-metadata model. This package contributes the metadata-aware extensions:</p>
+ *
  * <ul>
- *   <li>{@link io.almostrealism.concurrent.Semaphore} — a completion token returned
- *       by {@link io.almostrealism.code.Execution#accept} that callers can wait on</li>
+ *   <li>{@link io.almostrealism.concurrent.OperationSemaphore} — a
+ *       {@link io.almostrealism.streams.Semaphore} that additionally carries the
+ *       {@link io.almostrealism.profile.OperationMetadata} of the operation waiting on it,
+ *       and defines the metadata-attributing merge
+ *       ({@link io.almostrealism.concurrent.OperationSemaphore#all})</li>
  *   <li>{@link io.almostrealism.concurrent.DefaultLatchSemaphore} — a {@link java.util.concurrent.CountDownLatch}-based
- *       implementation of {@code Semaphore}</li>
+ *       implementation of {@code OperationSemaphore}</li>
  * </ul>
  */
 package io.almostrealism.concurrent;

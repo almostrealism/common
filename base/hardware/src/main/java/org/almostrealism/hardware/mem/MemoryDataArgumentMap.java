@@ -102,7 +102,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	/**
 	 * The {@link ComputeContext} of the {@link org.almostrealism.hardware.AcceleratedOperation} this map
 	 * prepares arguments for. The aggregate copy-in/copy-out run through its
-	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy} (see
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.streams.Semaphore) copy} (see
 	 * {@link #ensureCopyOperations()}), so the context the kernel program runs on chooses how the copy
 	 * is performed and how it is ordered.
 	 */
@@ -380,7 +380,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	/**
 	 * Builds a {@link Submittable} that copies all of {@code source} into {@code target} through the
 	 * serving {@link #context}'s
-	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.concurrent.Semaphore) copy}, letting
+	 * {@link ComputeContext#copy(Object, Object, io.almostrealism.streams.Semaphore) copy}, letting
 	 * the context choose the mechanism and the sequencing: a batching context (e.g. Metal) queues the
 	 * copy onto its command buffer, orders it after {@code dependsOn}, and returns a pending completion
 	 * semaphore; any other context waits for {@code dependsOn}, performs a direct copy, and returns

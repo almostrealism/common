@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Validates {@link Semaphore#all(io.almostrealism.profile.OperationMetadata, List)}, the merge
+ * Validates {@link Semaphore#all(List)}, the merge
  * primitive for an operation that depends on several prior completions.
  */
 public class SemaphoreCompositionTest extends TestSuiteBase {
@@ -37,11 +37,11 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void degenerateForms() {
-		assertTrue(Semaphore.all(null, null) == null);
-		assertTrue(Semaphore.all(null, Arrays.asList(null, null)) == null);
+		assertTrue(Semaphore.all(null) == null);
+		assertTrue(Semaphore.all(Arrays.asList(null, null)) == null);
 
 		DefaultLatchSemaphore only = new DefaultLatchSemaphore((Semaphore) null, 1);
-		assertTrue(Semaphore.all(null, Arrays.asList(null, only, null)) == only);
+		assertTrue(Semaphore.all(Arrays.asList(null, only, null)) == only);
 	}
 
 	/**
@@ -54,7 +54,7 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 		DefaultLatchSemaphore b = new DefaultLatchSemaphore((Semaphore) null, 1);
 		DefaultLatchSemaphore c = new DefaultLatchSemaphore((Semaphore) null, 1);
 
-		Semaphore combined = Semaphore.all(null, Arrays.asList(a, null, b, c));
+		Semaphore combined = Semaphore.all(Arrays.asList(a, null, b, c));
 		assertTrue(combined != a && combined != b && combined != c);
 
 		AtomicBoolean released = new AtomicBoolean(false);

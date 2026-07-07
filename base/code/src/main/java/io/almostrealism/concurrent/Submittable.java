@@ -16,6 +16,8 @@
 
 package io.almostrealism.concurrent;
 
+import io.almostrealism.streams.Semaphore;
+
 import java.util.List;
 
 /**

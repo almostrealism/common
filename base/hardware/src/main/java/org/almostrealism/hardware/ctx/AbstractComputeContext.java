@@ -18,7 +18,7 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.CompilationTimingListener;
 import io.almostrealism.scope.Scope;
