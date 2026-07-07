@@ -27,6 +27,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.OperationListRunner;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
@@ -47,24 +48,47 @@ import java.util.List;
  * so the subtree is evaluated as a nested dispatch during member two's argument preparation. The
  * cross-context read must not observe the buffer from before member one's command buffer
  * committed.</p>
+ *
+ * <p>The composite runs at two sizes: small enough for any synchronous fast path to hide the
+ * ordering question entirely, and large enough that the Metal dispatch is certainly a genuine
+ * asynchronous encode. Commit counts from the {@link MetalCommandRunner} are logged around each
+ * pass so a run records <em>when</em> the writing dispatch's buffer was committed relative to the
+ * reading member.</p>
  */
 public class ArgumentPreparationChainTest extends TestSuiteBase implements TestFeatures {
+
+	/**
+	 * Runs the composite, requiring member two's isolated argument to observe
+	 * member one's write on every pass. The commit counts logged with each pass
+	 * confirm the Metal write is a genuine asynchronous encode (committed only
+	 * by a chained wait), so the ordering under test is real.
+	 */
+	@Test(timeout = 120000)
+	public void crossContextArgumentObservesPriorMemberWrite() {
+		runCrossContextComposite(8, "crossContext");
+	}
 
 	/**
 	 * Runs the two-member cross-context composite several times with fresh values
 	 * each pass and requires member two's isolated argument to observe member one's
 	 * write on every pass.
+	 *
+	 * @param n     element count for the written buffer
+	 * @param label log label for this variant
 	 */
-	@Test(timeout = 120000)
-	public void crossContextArgumentObservesPriorMemberWrite() {
-		if (Hardware.getLocalHardware()
+	private void runCrossContextComposite(int n, String label) {
+		MetalComputeContext metal = Hardware.getLocalHardware()
 				.getComputeContexts(false, true, ComputeRequirement.MTL).stream()
-				.noneMatch(MetalComputeContext.class::isInstance)) {
-			log("skipping, no MetalComputeContext available");
+				.filter(MetalComputeContext.class::isInstance)
+				.map(MetalComputeContext.class::cast)
+				.findFirst().orElse(null);
+
+		if (metal == null) {
+			log(label + " skipping, no MetalComputeContext available");
 			return;
 		}
 
-		int n = 8;
+		MetalCommandRunner runner = metal.getCommandRunner();
 
 		PackedCollection source = new PackedCollection(shape(n));
 		PackedCollection written = new PackedCollection(shape(n));
@@ -93,19 +117,20 @@ public class ArgumentPreparationChainTest extends TestSuiteBase implements TestF
 				(Producer) reduce,
 				List.of(ComputeRequirement.CPU));
 
+		// Compile each member under its own pushed requirements: constructor
+		// requirements apply at dispatch, but context selection happens at
+		// compile time, so an unpushed compile would target the default context.
 		OperationList list = new OperationList("crossContextArgumentObservesPriorMemberWrite");
-		list.add(write);
-		list.add(gather);
-		list.add(() -> () -> { });
+		list.add(() -> compiled(write, ComputeRequirement.MTL));
+		list.add(() -> compiled(gather, ComputeRequirement.CPU));
 
 		Runnable run = list.get();
-		log("crossContextArgumentObservesPriorMemberWrite runnable=" + run.getClass().getSimpleName());
+		log(label + " runnable=" + run.getClass().getSimpleName());
 
 		if (run instanceof OperationListRunner) {
 			List<Runnable> ops = ((OperationListRunner) run).getOperations();
 			for (int i = 0; i < ops.size(); i++) {
-				log("crossContextArgumentObservesPriorMemberWrite member=" + i +
-						" type=" + ops.get(i).getClass().getSimpleName());
+				log(label + " member=" + i + " type=" + ops.get(i).getClass().getSimpleName());
 			}
 		}
 
@@ -113,16 +138,42 @@ public class ArgumentPreparationChainTest extends TestSuiteBase implements TestF
 			double base = pass * 10.0;
 			double expected = 0.0;
 
+			double[] values = new double[n];
 			for (int i = 0; i < n; i++) {
-				source.setMem(i, base + i);
-				expected += base + i;
+				values[i] = base + (i % 100);
+				expected += values[i];
 			}
+			source.setMem(0, values, 0, n);
+
+			long commits = runner.getCommitCount();
+			long hostCommits = runner.getHostCompleteCommitCount();
 
 			run.run();
 			double result = out.toDouble(0);
-			log("crossContextArgumentObservesPriorMemberWrite pass=" + pass +
-					" result=" + result + " expected=" + expected);
+
+			log(label + " pass=" + pass + " result=" + result + " expected=" + expected +
+					" commits=" + (runner.getCommitCount() - commits) +
+					" hostCompleteCommits=" + (runner.getHostCompleteCommitCount() - hostCommits));
 			assertEquals(expected, result);
+		}
+	}
+
+	/**
+	 * Compiles the given assignment for the specified backend by pushing the
+	 * requirement around compilation, mirroring how framework code selects a
+	 * compute context at compile time.
+	 *
+	 * @param assignment  the assignment to compile
+	 * @param requirement backend the assignment must compile for
+	 * @return the compiled runnable
+	 */
+	private static Runnable compiled(Assignment<MemoryData> assignment, ComputeRequirement requirement) {
+		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(requirement));
+
+		try {
+			return assignment.get();
+		} finally {
+			Hardware.getLocalHardware().getComputer().popRequirements();
 		}
 	}
 }

@@ -338,13 +338,14 @@ public class HardwareEvaluable<T> implements
 	/**
 	 * Initiates evaluation ordered after the given completion. The dependency is
 	 * delegated to the underlying kernel evaluable, which chains it through the
-	 * provider without blocking. The short-circuit path (and a kernel evaluable
-	 * that cannot chain) evaluates immediately, like
-	 * {@link #request(Object[])} — host-side evaluation is never blocked on the
-	 * dependency, because submission must not wait for outstanding completions.
+	 * provider without blocking. The short-circuit path is a genuine host
+	 * evaluation (for example a reshape wrapper that evaluates the underlying
+	 * kernel synchronously) — it cannot chain the dependency into a dispatch, so
+	 * it waits for the completion on the thread performing the evaluation before
+	 * reading. A kernel evaluable that cannot chain waits the same way.
 	 *
 	 * @param args      the arguments for the evaluation
-	 * @param dependsOn completion the underlying dispatch must chain on, or
+	 * @param dependsOn completion this evaluation must be ordered after, or
 	 *                  {@code null} when there is no dependency
 	 */
 	@Override
@@ -354,6 +355,7 @@ public class HardwareEvaluable<T> implements
 		}
 
 		if (shortCircuit != null) {
+			if (dependsOn != null) dependsOn.waitFor();
 			downstream.accept(shortCircuit.evaluate(args));
 			return;
 		}
@@ -364,6 +366,7 @@ public class HardwareEvaluable<T> implements
 			((DependentStreamingEvaluable<T>) cev).request(args, dependsOn);
 			return;
 		} else if (cev instanceof StreamingEvaluable<?>) {
+			if (dependsOn != null) dependsOn.waitFor();
 			((StreamingEvaluable<T>) cev).setDownstream(downstream);
 			((StreamingEvaluable<T>) cev).request(args);
 			return;
