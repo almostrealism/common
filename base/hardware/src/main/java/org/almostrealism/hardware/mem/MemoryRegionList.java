@@ -30,11 +30,11 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * A set of {@link MemoryData} regions touched by an operation, with overlap
+ * A list of {@link MemoryData} regions touched by an operation, with overlap
  * semantics: two regions overlap when they refer to the same underlying
  * {@link io.almostrealism.code.Memory} and their absolute offset ranges intersect.
  *
- * <p>Footprints support dependency analysis between the members of a composite
+ * <p>Region lists support dependency analysis between the members of a composite
  * operation. The two extraction forms reflect <em>when</em> memory is touched
  * relative to a member's own execution:</p>
  * <ul>
@@ -43,9 +43,11 @@ import java.util.function.Supplier;
  *       {@link Assignment} with a provider destination; a destination supplied by
  *       an opaque function cannot be resolved without running it, so such a
  *       member is not treated as a writer).</li>
- *   <li>{@link #hoistedReads(Supplier)} — the regions read by a member's
+ *   <li>{@link #dependentReads(Supplier)} — the regions read by a member's
  *       {@link Isolated} subtrees, which are evaluated during argument
- *       preparation, <em>before</em> the member's own kernel executes.</li>
+ *       preparation, <em>before</em> the member's own kernel executes; a read of
+ *       a region an earlier member wrote is the dependency that forces a
+ *       subdivision.</li>
  * </ul>
  *
  * <p>Only providers are resolved during extraction (via the
@@ -54,35 +56,35 @@ import java.util.function.Supplier;
  *
  * @see OperationList#subdivide()
  */
-public class MemoryFootprint {
-	/** The memory regions in this footprint. */
+public class MemoryRegionList {
+	/** The memory regions in this list. */
 	private final List<MemoryData> regions;
 
 	/**
-	 * Creates an empty footprint.
+	 * Creates an empty region list.
 	 */
-	public MemoryFootprint() {
+	public MemoryRegionList() {
 		this.regions = new ArrayList<>();
 	}
 
 	/**
-	 * Adds all of the given footprint's regions to this footprint.
+	 * Adds all of the given list's regions to this list.
 	 *
-	 * @param footprint the regions to include
+	 * @param other the regions to include
 	 */
-	public void include(MemoryFootprint footprint) {
-		regions.addAll(footprint.regions);
+	public void include(MemoryRegionList other) {
+		regions.addAll(other.regions);
 	}
 
 	/**
-	 * Removes all regions from this footprint.
+	 * Removes all regions from this list.
 	 */
 	public void clear() {
 		regions.clear();
 	}
 
 	/**
-	 * Returns whether this footprint is empty.
+	 * Returns whether this region list is empty.
 	 *
 	 * @return true when no regions are present
 	 */
@@ -91,14 +93,14 @@ public class MemoryFootprint {
 	}
 
 	/**
-	 * Returns whether any region of this footprint overlaps any region of the
-	 * given footprint — the same {@link io.almostrealism.code.Memory} with
-	 * intersecting absolute offset ranges.
+	 * Returns whether any region of this list overlaps any region of the given
+	 * list — the same {@link io.almostrealism.code.Memory} with intersecting
+	 * absolute offset ranges.
 	 *
-	 * @param other the footprint to compare against
+	 * @param other the region list to compare against
 	 * @return true when an overlapping pair of regions exists
 	 */
-	public boolean overlaps(MemoryFootprint other) {
+	public boolean overlaps(MemoryRegionList other) {
 		for (MemoryData a : regions) {
 			for (MemoryData b : other.regions) {
 				if (a.getMem() == b.getMem() &&
@@ -120,49 +122,50 @@ public class MemoryFootprint {
 	 * @param op the operation to inspect
 	 * @return the regions the operation writes, possibly empty
 	 */
-	public static MemoryFootprint writes(Supplier<Runnable> op) {
-		MemoryFootprint footprint = new MemoryFootprint();
-		collectWrites(op, footprint);
-		return footprint;
+	public static MemoryRegionList writes(Supplier<Runnable> op) {
+		MemoryRegionList result = new MemoryRegionList();
+		collectWrites(op, result);
+		return result;
 	}
 
 	/**
 	 * Returns the memory regions read by the given operation's {@link Isolated}
 	 * subtrees — the reads that occur during argument preparation rather than
-	 * inside the operation's own kernel.
+	 * inside the operation's own kernel, and hence the reads that can depend on a
+	 * region an earlier member has written.
 	 *
 	 * @param op the operation to inspect
 	 * @return the regions read ahead of the operation's execution, possibly empty
 	 */
-	public static MemoryFootprint hoistedReads(Supplier<Runnable> op) {
-		MemoryFootprint footprint = new MemoryFootprint();
+	public static MemoryRegionList dependentReads(Supplier<Runnable> op) {
+		MemoryRegionList result = new MemoryRegionList();
 
 		if (op instanceof OperationList) {
 			for (Supplier<Runnable> member : (OperationList) op) {
-				footprint.include(hoistedReads(member));
+				result.include(dependentReads(member));
 			}
 		} else if (op instanceof Process) {
-			collectHoistedReads((Process<?, ?>) op, false, footprint);
+			collectDependentReads((Process<?, ?>) op, false, result);
 		}
 
-		return footprint;
+		return result;
 	}
 
 	/**
 	 * Recursively collects the write regions of the given operation into the
-	 * provided footprint.
+	 * provided list.
 	 *
-	 * @param op        the operation to inspect
-	 * @param footprint receives the regions the operation writes
+	 * @param op     the operation to inspect
+	 * @param result receives the regions the operation writes
 	 */
-	private static void collectWrites(Supplier<Runnable> op, MemoryFootprint footprint) {
+	private static void collectWrites(Supplier<Runnable> op, MemoryRegionList result) {
 		if (op instanceof OperationList) {
 			for (Supplier<Runnable> member : (OperationList) op) {
-				collectWrites(member, footprint);
+				collectWrites(member, result);
 			}
 		} else if (op instanceof Assignment) {
 			MemoryData destination = providerValue(((Assignment<?>) op).getInputs().get(0));
-			if (destination != null) footprint.regions.add(destination);
+			if (destination != null) result.regions.add(destination);
 		}
 	}
 
@@ -170,17 +173,17 @@ public class MemoryFootprint {
 	 * Recursively collects the provider memory beneath {@link Isolated} nodes of the
 	 * given process tree.
 	 *
-	 * @param node      the process node to inspect
-	 * @param hoisted   whether an {@link Isolated} ancestor has already been encountered
-	 * @param footprint receives the regions read by isolated subtrees
+	 * @param node     the process node to inspect
+	 * @param hoisted  whether an {@link Isolated} ancestor has already been encountered
+	 * @param result   receives the regions read by isolated subtrees
 	 */
-	private static void collectHoistedReads(Process<?, ?> node, boolean hoisted, MemoryFootprint footprint) {
+	private static void collectDependentReads(Process<?, ?> node, boolean hoisted, MemoryRegionList result) {
 		boolean isolated = hoisted || node instanceof Isolated;
 
 		if (isolated) {
 			MemoryData value = providerValue(node);
 			if (value != null) {
-				footprint.regions.add(value);
+				result.regions.add(value);
 				return;
 			}
 		}
@@ -189,7 +192,7 @@ public class MemoryFootprint {
 		if (children == null) return;
 
 		for (Process<?, ?> child : children) {
-			collectHoistedReads(child, isolated, footprint);
+			collectDependentReads(child, isolated, result);
 		}
 	}
 

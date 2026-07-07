@@ -39,7 +39,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.hardware.mem.MemoryFootprint;
+import org.almostrealism.hardware.mem.MemoryRegionList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -1236,10 +1236,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		List<OperationList> segments = new ArrayList<>();
 		OperationList current = new OperationList();
-		MemoryFootprint written = new MemoryFootprint();
+		MemoryRegionList written = new MemoryRegionList();
 
 		for (Supplier<Runnable> member : this) {
-			if (!current.isEmpty() && written.overlaps(MemoryFootprint.hoistedReads(member))) {
+			if (!current.isEmpty() && written.overlaps(MemoryRegionList.dependentReads(member))) {
 				if (enableSubdivisionLogging) {
 					log("subdividing " + describe() + " before " + OperationInfo.display(member));
 				}
@@ -1250,7 +1250,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 			}
 
 			current.add(member);
-			written.include(MemoryFootprint.writes(member));
+			written.include(MemoryRegionList.writes(member));
 		}
 
 		segments.add(current);
