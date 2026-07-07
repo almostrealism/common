@@ -22,6 +22,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Evaluable;
@@ -339,7 +340,7 @@ public interface CollectionProducerComputation extends
 	 * causing it to be evaluated as an independent process rather than inlined
 	 * into a parent computation graph.
 	 */
-	class IsolatedProcess extends DelegatedCollectionProducer {
+	class IsolatedProcess extends DelegatedCollectionProducer implements Isolated {
 
 		/**
 		 * Creates an isolated process wrapping the specified producer.

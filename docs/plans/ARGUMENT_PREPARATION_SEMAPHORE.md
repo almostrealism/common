@@ -107,6 +107,38 @@ near-synchronous dispatch masks the defect (the test still asserts correctness t
   (`getHostCompleteCommitCount`, `hostCompleteRequesters`) can attribute any unexpected new
   waits.
 
+## 5.1 Follow-on: streaming delegation for reshape wrappers
+
+The investigation that produced the short-circuit fix exposed a structural gap worth its
+own change: `ReshapeProducer.get()` wraps every non-provider producer — which includes
+every isolated subtree the optimization strategies create — in a `HardwareEvaluable`
+whose short-circuit synchronously evaluates the underlying kernel and reshapes the
+result. Two costs follow:
+
+- **With a dependency**: the short-circuit branch of `request(args, dependsOn)` must
+  wait for the completion on the host (the correctness fix), forcing a commit at every
+  dependency boundary that feeds a reshape-wrapped argument.
+- **Without one**: the wrapper's request path is synchronous regardless — the underlying
+  kernel is evaluated with a completing wait instead of delivering
+  `(result, completion)` the way `DestinationEvaluable` does, so a parent kernel never
+  chains on an isolated argument's completion. Every isolated-argument evaluation has
+  been paying a host wait independent of this plan's change.
+
+Reshape is metadata-only (it re-wraps the handle; it never reads contents), so the
+wrapper can deliver asynchronously: delegate `request(args, dependsOn)` to the
+underlying kernel evaluable and apply the reshape to the result at delivery — transform
+the handle before passing it downstream, leaving the completion semaphore untouched.
+Design shape: a delivery-time result transform on `HardwareEvaluable` (the underlying
+smell is that `ReshapeProducer` conflates "short-circuit" — a CPU fallback — with
+"post-processing" — a result transform); `ReshapeProducer` sets the transform for the
+streaming path and keeps the short-circuit for plain `evaluate()`. This removes both
+waits and lets isolated arguments chain, which matters most once hazard-aware
+subdivision (§6) starts chaining segments: a segment boundary is only cheap if the
+reshape-wrapped arguments behind it can chain rather than wait.
+
+Sequencing: hazard-aware subdivision first (it unblocks the parked migration and its
+parity gates), this delegation immediately after.
+
 ## 6. Relationship to the follow-on (A)
 
 With (B) in place, the hazard-aware subdivision of fused `OperationList`s (cut only at
