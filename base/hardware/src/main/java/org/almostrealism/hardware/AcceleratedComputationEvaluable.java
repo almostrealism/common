@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.streams.EvaluableStreamingAdapter;
@@ -430,7 +431,10 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	}
 
 	/**
-	 * Requests asynchronous evaluation that pushes results to the downstream consumer.
+	 * Requests asynchronous evaluation that pushes results to the downstream consumer,
+	 * ordering the dispatch after the given completion. The kernel dispatch (and its own
+	 * argument preparation) chains on {@code dependsOn} through the provider, so the
+	 * dependency costs no host wait; delivery is unchanged.
 	 *
 	 * <p>Dispatches the kernel without blocking, registering a callback that extracts the
 	 * result and pushes it to {@link #downstream} upon completion. This enables non-blocking
@@ -438,7 +442,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 *
 	 * <p>When the downstream is a {@link CompletionConsumer}, the result is delivered
 	 * immediately together with the dispatch's completion {@link
-	 * io.almostrealism.concurrent.Semaphore} instead of waiting for it — safe because
+	 * io.almostrealism.streams.Semaphore} instead of waiting for it — safe because
 	 * {@link #postProcessOutput(MemoryData, int)} only shapes the handle to the output
 	 * memory (it never reads its contents), and the consumer takes responsibility for
 	 * ordering via the delivered completion. The plain-{@link java.util.function.Consumer}
@@ -452,17 +456,19 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * evaluable.request(args);  // Non-blocking, result sent to downstream
 	 * }</pre>
 	 *
-	 * @param args The input arguments for the computation
+	 * @param args      The input arguments for the computation
+	 * @param dependsOn completion that must fire before the dispatch (and its
+	 *                  argument preparation) reads memory, or {@code null}
 	 * @throws NullPointerException if {@link #downstream} is not set
 	 */
 	@Override
-	public void request(Object[] args) {
+	public void request(Object[] args, Semaphore dependsOn) {
 		confirmLoad();
 
 		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
 		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
 
-		AcceleratedProcessDetails process = apply(null, args);
+		AcceleratedProcessDetails process = apply(null, args, dependsOn);
 		process.awaitReady();
 
 		if (downstream instanceof CompletionConsumer && !outputMonitoring) {

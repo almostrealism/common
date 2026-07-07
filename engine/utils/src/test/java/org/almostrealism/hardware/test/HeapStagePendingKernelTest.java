@@ -17,7 +17,8 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.util.TestSuiteBase;
@@ -177,7 +178,7 @@ public class HeapStagePendingKernelTest extends TestSuiteBase {
 	public void destroyHandlesFailingSemaphore() {
 		Heap heap = new Heap(1024);
 
-		Semaphore failingSemaphore = new Semaphore() {
+		Semaphore failingSemaphore = new OperationSemaphore() {
 			@Override
 			public OperationMetadata getRequester() { return null; }
 

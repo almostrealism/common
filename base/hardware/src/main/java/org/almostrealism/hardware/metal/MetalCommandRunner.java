@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.metal;
 
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.DistributionMetric;

@@ -23,6 +23,7 @@ import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
@@ -38,8 +39,10 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.mem.MemoryRegionList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -612,6 +615,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	public static boolean enableSegmenting = false;
 
+	/**
+	 * Enable logging when {@link #subdivide()} cuts a list at a read-after-write hazard
+	 * boundary, naming the list and the member whose {@link Isolated} reads triggered the
+	 * cut. Controlled by {@code AR_SUBDIVISION_LOGGING}.
+	 */
+	public static boolean enableSubdivisionLogging =
+			SystemUtils.isEnabled("AR_SUBDIVISION_LOGGING").orElse(false);
+
 
 	/**
 	 * Enable non-uniform compilation where operations with different counts can be compiled
@@ -719,6 +730,19 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * non-uniform list.
 	 */
 	private boolean autoOptimized;
+
+	/**
+	 * Marks an instance whose members must execute as separately-dispatched units, in
+	 * order, rather than fusing into a single compiled kernel. Set by
+	 * {@link #subdivide()} when a member's {@link Isolated} subtree reads memory that an
+	 * earlier member writes: an isolated subtree is evaluated during argument
+	 * preparation, before a fused kernel would run, so fusing across that boundary would
+	 * let the read observe memory from before the write. When set,
+	 * {@link #isComputation()} returns {@code false} so {@link #get(OperationProfile)}
+	 * takes the {@link OperationListRunner} path; members that are themselves lists may
+	 * still compile internally.
+	 */
+	private boolean sequential;
 
 	/**
 	 * Creates an empty operation list with no description.
@@ -920,6 +944,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * @return true if this list can be compiled to a hardware kernel
 	 */
 	public boolean isComputation() {
+		if (sequential) return false;
 		if (!enableCompilation) return false;
 		if (getDepth() > maxDepth) return false;
 
@@ -1129,10 +1154,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
-		if (!enableSegmenting || size() <= 1 || isUniform()) return ComputableParallelProcess.super.optimize(context);
+		if (!enableSegmenting || size() <= 1 || isUniform()) return optimizeAndSubdivide(context);
 
 		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
-		if (!match) return ComputableParallelProcess.super.optimize(context);
+		if (!match) return optimizeAndSubdivide(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
@@ -1156,6 +1181,88 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		if (current.size() > 0) op.add(current.size() == 1 ? current.get(0) : current);
 
 		return op.optimize(context);
+	}
+
+	/**
+	 * Applies the standard optimization pipeline and then subdivides the result at
+	 * read-after-write hazard boundaries.
+	 *
+	 * <p>Subdivision must follow optimization because the hazards it guards against are
+	 * created by the optimization strategies: an {@link Isolated} subtree only exists
+	 * once a strategy has decided to isolate it.</p>
+	 *
+	 * @param context The process context for optimization decisions
+	 * @return The optimized process, subdivided where required
+	 */
+	private ParallelProcess<Process<?, ?>, Runnable> optimizeAndSubdivide(ProcessContext context) {
+		ParallelProcess<Process<?, ?>, Runnable> optimized = ComputableParallelProcess.super.optimize(context);
+
+		if (optimized instanceof OperationList) {
+			return ((OperationList) optimized).subdivide();
+		}
+
+		return optimized;
+	}
+
+	/**
+	 * Partitions this list into sequentially-executed segments wherever a member's
+	 * {@link Isolated} subtree reads memory that an earlier member of the same segment
+	 * writes.
+	 *
+	 * <p>When every member of a list is a computation, {@link #get(OperationProfile)}
+	 * fuses the list into a single compiled operation. Fusion is correct for inline
+	 * reads — an earlier member's write and a later member's read become ordered
+	 * statements in one kernel — but an {@link Isolated} subtree is evaluated during
+	 * argument preparation, <em>before</em> the fused kernel runs, so its read would
+	 * observe memory from before the write. Only that read-after-write direction forces
+	 * a cut: an isolated read followed by a later write observes the pre-kernel
+	 * contents either way, which matches the inline statement order.</p>
+	 *
+	 * <p>Each resulting segment may still fuse internally; the partitioned outer list
+	 * executes them in order through the {@link OperationListRunner}, whose chained
+	 * submission carries each segment's completion into the next segment's argument
+	 * preparation.</p>
+	 *
+	 * <p>Writes are recognized for members (including members of nested lists) whose
+	 * destination is a provider — the only destination form whose memory can be
+	 * resolved without running anything. A member whose destination is supplied by an
+	 * opaque function is not treated as a writer.</p>
+	 *
+	 * @return this list when no hazard boundary exists, otherwise a new sequential
+	 *         list of segments
+	 */
+	public ParallelProcess<Process<?, ?>, Runnable> subdivide() {
+		if (size() <= 1 || sequential) return this;
+
+		List<OperationList> segments = new ArrayList<>();
+		OperationList current = new OperationList();
+		MemoryRegionList written = new MemoryRegionList();
+
+		for (Supplier<Runnable> member : this) {
+			if (!current.isEmpty() && written.overlaps(MemoryRegionList.dependentReads(member))) {
+				if (enableSubdivisionLogging) {
+					log("subdividing " + describe() + " before " + OperationInfo.display(member));
+				}
+
+				segments.add(current);
+				current = new OperationList();
+				written.clear();
+			}
+
+			current.add(member);
+			written.include(MemoryRegionList.writes(member));
+		}
+
+		segments.add(current);
+		if (segments.size() == 1) return this;
+
+		OperationList op = new OperationList(description);
+		op.sequential = true;
+		for (OperationList segment : segments) {
+			op.add(segment.size() == 1 ? segment.get(0) : segment);
+		}
+
+		return op;
 	}
 
 	@Override

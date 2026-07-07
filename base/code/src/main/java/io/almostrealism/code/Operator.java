@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -57,7 +58,7 @@ public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends 
 	 *
 	 * @param <T> the type of value produced by the wrapped operator
 	 */
-	class IsolatedProcess<T> implements Process<Process<?, ?>, Evaluable<? extends T>>, Producer<T> {
+	class IsolatedProcess<T> implements Process<Process<?, ?>, Evaluable<? extends T>>, Producer<T>, Isolated {
 		/** The wrapped operator. */
 		private Operator<T> op;
 

@@ -18,7 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -35,7 +35,7 @@ import java.util.stream.IntStream;
  * <p>Wraps {@link MTLComputePipelineState} and manages threadgroup sizing,
  * argument encoding, and kernel dispatch on Metal GPU. An operator may be shared across
  * threads (its {@link MetalComputeContext} is shared per data context), so
- * {@link #accept(Object[], io.almostrealism.concurrent.Semaphore)} is synchronized and
+ * {@link #accept(Object[], io.almostrealism.streams.Semaphore)} is synchronized and
  * the actual encoding is serialized by the context's {@link MetalCommandRunner}.</p>
  *
  * <h2>Threadgroup Sizing</h2>

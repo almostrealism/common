@@ -19,7 +19,8 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationTimingListener;
@@ -434,7 +435,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 * @param semaphore Optional semaphore providing operation metadata
 	 * @param r The runnable to execute and time
 	 */
-	protected void recordDuration(Semaphore semaphore, Runnable r) {
+	protected void recordDuration(OperationSemaphore semaphore, Runnable r) {
 		recordDuration(semaphore, r, true);
 	}
 
@@ -448,7 +449,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 * @param r The runnable to execute and time
 	 * @param countOp Whether to increment global operation counts
 	 */
-	protected void recordDuration(Semaphore semaphore, Runnable r, boolean countOp) {
+	protected void recordDuration(OperationSemaphore semaphore, Runnable r, boolean countOp) {
 		long duration = -1;
 
 		OperationMetadata requester = null;

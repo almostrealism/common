@@ -18,7 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.lang.ScopeEncoder;

@@ -16,6 +16,8 @@
 
 package io.almostrealism.concurrent;
 
+import io.almostrealism.streams.Semaphore;
+
 import java.util.function.Consumer;
 
 /**
@@ -28,7 +30,7 @@ import java.util.function.Consumer;
  * host for the completion first. The consumer takes responsibility for ordering: it must not
  * read the value's contents until {@code completion} has fired, but it may chain the
  * {@link Semaphore} into downstream work (for example, merging it into a dependent dispatch's
- * {@code dependsOn} via {@link Semaphore#all(io.almostrealism.profile.OperationMetadata, java.util.List)})
+ * {@code dependsOn} via {@link OperationSemaphore#all(io.almostrealism.profile.OperationMetadata, java.util.List)})
  * so the ordering is enforced by the device rather than by a host wait.</p>
  *
  * <p>Delivery through the plain {@link Consumer#accept(Object)} contract implies the value is

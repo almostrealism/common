@@ -19,7 +19,7 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;

@@ -16,6 +16,7 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
 
 import java.util.Collection;
@@ -127,7 +128,7 @@ public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Ru
 	 * process context. The isolated process delegates all behavior to the
 	 * underlying operation while maintaining its own identity.</p>
 	 */
-	class IsolatedProcess implements Process<Process<?, ?>, Runnable> {
+	class IsolatedProcess implements Process<Process<?, ?>, Runnable>, Isolated {
 		/** The wrapped operation whose children and get() results are delegated to. */
 		private Operation op;
 

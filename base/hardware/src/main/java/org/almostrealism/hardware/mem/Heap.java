@@ -18,7 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;

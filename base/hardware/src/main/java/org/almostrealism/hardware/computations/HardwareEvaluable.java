@@ -20,6 +20,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
@@ -328,13 +329,27 @@ public class HardwareEvaluable<T> implements
 		return shortCircuit == null ? getKernel().getValue().evaluate(args) : shortCircuit.evaluate(args);
 	}
 
+	/**
+	 * Initiates evaluation ordered after the given completion. The dependency is
+	 * delegated to the underlying kernel evaluable, which chains it through the
+	 * provider without blocking. The short-circuit path is a genuine host
+	 * evaluation (for example a reshape wrapper that evaluates the underlying
+	 * kernel synchronously) — it cannot chain the dependency into a dispatch, so
+	 * it waits for the completion on the thread performing the evaluation before
+	 * reading. A kernel evaluable that cannot chain waits the same way.
+	 *
+	 * @param args      the arguments for the evaluation
+	 * @param dependsOn completion this evaluation must be ordered after, or
+	 *                  {@code null} when there is no dependency
+	 */
 	@Override
-	public void request(Object[] args) {
+	public void request(Object[] args, Semaphore dependsOn) {
 		if (Arrays.stream(args).anyMatch(i -> i instanceof Object[])) {
 			throw new IllegalArgumentException("Embedded array provided to request");
 		}
 
 		if (shortCircuit != null) {
+			if (dependsOn != null) dependsOn.waitFor();
 			downstream.accept(shortCircuit.evaluate(args));
 			return;
 		}
@@ -342,7 +357,7 @@ public class HardwareEvaluable<T> implements
 		Evaluable<T> cev = getKernel().getValue();
 		if (cev instanceof StreamingEvaluable<?>) {
 			((StreamingEvaluable<T>) cev).setDownstream(downstream);
-			((StreamingEvaluable<T>) cev).request(args);
+			((StreamingEvaluable<T>) cev).request(args, dependsOn);
 			return;
 		}
 

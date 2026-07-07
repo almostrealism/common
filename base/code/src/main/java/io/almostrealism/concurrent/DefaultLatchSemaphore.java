@@ -17,23 +17,22 @@
 package io.almostrealism.concurrent;
 
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.streams.LatchSemaphore;
+import io.almostrealism.streams.Semaphore;
 
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * A {@link Semaphore} implementation backed by a {@link CountDownLatch}.
+ * A {@link LatchSemaphore} that additionally carries the {@link OperationMetadata} of the
+ * operation waiting on it, making it an {@link OperationSemaphore}.
  *
- * <p>The latch counts down to zero when the guarded operation (or a set of
- * parallel sub-operations) completes. Callers blocked in {@link #waitFor()} are
- * released once the count reaches zero.</p>
+ * <p>The latch counts down to zero when the guarded operation (or a set of parallel
+ * sub-operations) completes. Callers blocked in {@link #waitFor()} are released once the
+ * count reaches zero.</p>
  */
-public class DefaultLatchSemaphore implements Semaphore {
+public class DefaultLatchSemaphore extends LatchSemaphore implements OperationSemaphore {
 	/** The metadata describing the operation waiting on this semaphore. */
 	private final OperationMetadata requester;
-
-	/** The underlying latch used for synchronization. */
-	private final CountDownLatch latch;
 
 	/**
 	 * Constructs a semaphore inheriting the requester metadata from a parent semaphore.
@@ -42,7 +41,8 @@ public class DefaultLatchSemaphore implements Semaphore {
 	 * @param count  the number of {@link #countDown()} calls required before {@link #waitFor()} returns
 	 */
 	public DefaultLatchSemaphore(Semaphore parent, int count) {
-		this(Optional.ofNullable(parent).map(Semaphore::getRequester).orElse(null), count);
+		this(parent instanceof OperationSemaphore ?
+				((OperationSemaphore) parent).getRequester() : null, count);
 	}
 
 	/**
@@ -52,7 +52,8 @@ public class DefaultLatchSemaphore implements Semaphore {
 	 * @param count     the initial latch count
 	 */
 	public DefaultLatchSemaphore(OperationMetadata requester, int count) {
-		this(requester, new CountDownLatch(count));
+		super(count);
+		this.requester = requester;
 	}
 
 	/**
@@ -63,26 +64,15 @@ public class DefaultLatchSemaphore implements Semaphore {
 	 * @param latch     the existing {@link CountDownLatch} to reuse
 	 */
 	protected DefaultLatchSemaphore(OperationMetadata requester, CountDownLatch latch) {
+		super(latch);
 		this.requester = requester;
-		this.latch = latch;
 	}
 
 	@Override
 	public OperationMetadata getRequester() { return requester; }
 
-	public void countDown() { latch.countDown(); }
-
-	@Override
-	public void waitFor() {
-		try {
-			latch.await();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-	}
-
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
-		return new DefaultLatchSemaphore(requester, latch);
+		return new DefaultLatchSemaphore(requester, getLatch());
 	}
 }

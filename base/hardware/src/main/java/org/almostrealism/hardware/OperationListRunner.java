@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;

@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 
 /**
  * Represents a compiled, executable computation that accepts arguments and returns a semaphore.
@@ -27,7 +27,7 @@ import io.almostrealism.concurrent.Semaphore;
  * that the caller can wait on.</p>
  *
  * @see InstructionSet
- * @see io.almostrealism.concurrent.Semaphore
+ * @see io.almostrealism.streams.Semaphore
  */
 public interface Execution {
 	/**

@@ -16,7 +16,8 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.cl_event;
@@ -25,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * {@link Semaphore} implementation backed by OpenCL {@link cl_event}.
+ * {@link OperationSemaphore} implementation backed by OpenCL {@link cl_event}.
  *
  * <p>Enables synchronization between OpenCL operations by wrapping {@link cl_event}
  * and waiting for event completion with optional profiling. A dependent OpenCL
@@ -43,7 +44,7 @@ import java.util.function.Consumer;
  * @see CLComputeContext#processEvent(cl_event, Consumer)
  * @see Semaphore
  */
-public class CLSemaphore implements Semaphore {
+public class CLSemaphore implements OperationSemaphore {
 	/** Metadata identifying the operation that requested this semaphore. */
 	private OperationMetadata requester;
 
