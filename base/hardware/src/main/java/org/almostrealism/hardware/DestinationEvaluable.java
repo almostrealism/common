@@ -18,8 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.concurrent.CompletionConsumer;
-import io.almostrealism.concurrent.DependentStreamingEvaluable;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
@@ -183,7 +182,7 @@ import java.util.stream.Stream;
  * @see Provider
  */
 public class DestinationEvaluable<T extends MemoryBank> implements
-		Evaluable<T>, DependentStreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
+		Evaluable<T>, StreamingEvaluable<T>, Runnable, Destroyable, ConsoleFeatures {
 	/** The wrapped evaluable operation that produces results. */
 	private Evaluable<T> operation;
 
@@ -324,7 +323,10 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	}
 
 	/**
-	 * Requests asynchronous evaluation that pushes results to the downstream consumer.
+	 * Requests asynchronous evaluation that pushes results to the downstream consumer,
+	 * ordering the dispatch after the given completion. The wrapped operation's dispatch
+	 * chains on {@code dependsOn} through the provider, so the dependency costs no host
+	 * wait; delivery is unchanged.
 	 *
 	 * <p>Dispatches the kernel without blocking, registering a callback that pushes the
 	 * destination bank to {@link #downstream} upon completion. Only supported for
@@ -341,7 +343,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 *
 	 * <p>When the downstream is a {@link CompletionConsumer}, the destination is delivered
 	 * <em>immediately</em> together with the dispatch's completion {@link
-	 * io.almostrealism.concurrent.Semaphore}, and the consumer takes responsibility for
+	 * io.almostrealism.streams.Semaphore}, and the consumer takes responsibility for
 	 * ordering (typically by merging the completion into a dependent dispatch's
 	 * {@code dependsOn}). No host wait occurs at all in that case — this is what allows a
 	 * kernel's asynchronously produced arguments to chain on the device instead of each
@@ -354,19 +356,6 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 * destEval.setDownstream(result -> processResult(result));
 	 * destEval.request(new Object[] { inputBank });  // Non-blocking
 	 * }</pre>
-	 *
-	 * @param args The input arguments ({@link MemoryData} instances)
-	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
-	 */
-	@Override
-	public void request(Object[] args) {
-		request(args, null);
-	}
-
-	/**
-	 * Initiates evaluation ordered after the given completion. The wrapped
-	 * operation's dispatch chains on {@code dependsOn} through the provider,
-	 * so the dependency costs no host wait; delivery is unchanged.
 	 *
 	 * @param args      The input arguments ({@link MemoryData} instances)
 	 * @param dependsOn completion that must fire before the dispatch (and its

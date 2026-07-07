@@ -3,7 +3,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
@@ -141,14 +141,14 @@ import java.util.function.Supplier;
  * @deprecated {@link org.almostrealism.hardware.computations.Assignment} is the tool for
  * assigning one value to another, and it recognizes the plain-memory-copy case (routing it
  * through the {@link io.almostrealism.code.ComputeContext}'s copy, which chains on the
- * {@link io.almostrealism.concurrent.Semaphore} mechanism like every other operation).
+ * {@link io.almostrealism.streams.Semaphore} mechanism like every other operation).
  * Prefer {@code Assignment} (directly, or via the {@code copy(...)} helpers on
  * {@code MemoryDataFeatures}) wherever it can be used. Where it cannot yet take this class's
  * place, keep using {@link MemoryDataCopy} rather than open-coding a replacement &mdash; it
  * keeps every reference to the fallback path in one place, and it already targets the
  * {@link io.almostrealism.code.ComputeContext} that manages the memory being written.
  * {@link MemoryDataCopy} remains a plain {@link Process} whose execution neither accepts nor
- * publishes a completion {@link io.almostrealism.concurrent.Semaphore}.
+ * publishes a completion {@link io.almostrealism.streams.Semaphore}.
  */
 @Deprecated
 public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Runnable>, OperationInfo, ConsoleFeatures {

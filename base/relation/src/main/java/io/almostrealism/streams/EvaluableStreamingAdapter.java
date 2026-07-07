@@ -98,10 +98,16 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	 * The method returns immediately without waiting for the computation to complete
 	 * (unless a synchronous executor is used).</p>
 	 *
-	 * @param args the arguments to pass to the underlying evaluable
+	 * <p>The adapter wraps a synchronous {@link Evaluable} and performs no hardware
+	 * dispatch of its own, so there is no provider into which a dependency could be
+	 * chained; {@code dependsOn} is therefore disregarded and the evaluation is
+	 * submitted immediately.</p>
+	 *
+	 * @param args      the arguments to pass to the underlying evaluable
+	 * @param dependsOn ignored; the wrapped evaluable performs no chainable dispatch
 	 */
 	@Override
-	public void request(Object[] args) {
+	public void request(Object[] args, Semaphore dependsOn) {
 		executor.execute(() -> getDownstream().accept(evaluable.evaluate(args)));
 	}
 }

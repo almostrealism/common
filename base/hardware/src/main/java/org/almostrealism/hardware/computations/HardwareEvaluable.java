@@ -20,8 +20,7 @@ import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArgumentList;
-import io.almostrealism.concurrent.DependentStreamingEvaluable;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
@@ -166,7 +165,7 @@ import java.util.function.UnaryOperator;
  * @author Michael Murray
  */
 public class HardwareEvaluable<T> implements
-		Evaluable<T>, DependentStreamingEvaluable<T>, Destroyable, Runnable, ArgumentList<T> {
+		Evaluable<T>, StreamingEvaluable<T>, Destroyable, Runnable, ArgumentList<T> {
 	/** Supplier that produces the underlying {@link Evaluable} for this computation. */
 	private Supplier<Evaluable<T>> ev;
 	/** Evaluable used to allocate and provide the output destination buffer. */
@@ -330,11 +329,6 @@ public class HardwareEvaluable<T> implements
 		return shortCircuit == null ? getKernel().getValue().evaluate(args) : shortCircuit.evaluate(args);
 	}
 
-	@Override
-	public void request(Object[] args) {
-		request(args, null);
-	}
-
 	/**
 	 * Initiates evaluation ordered after the given completion. The dependency is
 	 * delegated to the underlying kernel evaluable, which chains it through the
@@ -361,14 +355,9 @@ public class HardwareEvaluable<T> implements
 		}
 
 		Evaluable<T> cev = getKernel().getValue();
-		if (cev instanceof DependentStreamingEvaluable<?>) {
-			((DependentStreamingEvaluable<T>) cev).setDownstream(downstream);
-			((DependentStreamingEvaluable<T>) cev).request(args, dependsOn);
-			return;
-		} else if (cev instanceof StreamingEvaluable<?>) {
-			if (dependsOn != null) dependsOn.waitFor();
+		if (cev instanceof StreamingEvaluable<?>) {
 			((StreamingEvaluable<T>) cev).setDownstream(downstream);
-			((StreamingEvaluable<T>) cev).request(args);
+			((StreamingEvaluable<T>) cev).request(args, dependsOn);
 			return;
 		}
 

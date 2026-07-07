@@ -18,8 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.concurrent.CompletionConsumer;
-import io.almostrealism.concurrent.DependentStreamingEvaluable;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -457,14 +456,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * Constructs an {@link AcceleratedProcessDetails} whose dispatch-backed argument
 	 * evaluations are ordered after the given completion.
 	 *
-	 * <p>Arguments whose evaluation is itself a hardware dispatch
-	 * ({@link DependentStreamingEvaluable}) chain the dependency through the provider,
-	 * so an argument kernel never reads memory written by the work {@code dependsOn}
-	 * represents before that work has completed — without any host wait. Plain host
-	 * evaluables are handle-producers (they return {@link MemoryData} handles; the
-	 * kernel reads the contents on the device, ordered by its own chained dispatch)
-	 * and are evaluated immediately: blocking them on {@code dependsOn} would violate
-	 * the non-blocking submission contract (a submit with an outstanding foreign
+	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn}.
+	 * An argument whose evaluation is itself a hardware dispatch chains the dependency
+	 * through the provider, so an argument kernel never reads memory written by the work
+	 * {@code dependsOn} represents before that work has completed — without any host wait.
+	 * Plain host evaluables are handle-producers (they return {@link MemoryData} handles;
+	 * the kernel reads the contents on the device, ordered by its own chained dispatch)
+	 * and disregard {@code dependsOn}, evaluating immediately: blocking them on it would
+	 * violate the non-blocking submission contract (a submit with an outstanding foreign
 	 * dependency must return, and a same-provider dependency must remain free), so a
 	 * host function that reads memory <em>contents</em> rather than returning a handle
 	 * is responsible for its own ordering.</p>
@@ -579,11 +578,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
 
-			if (asyncEvaluables[i] instanceof DependentStreamingEvaluable) {
-				((DependentStreamingEvaluable) asyncEvaluables[i]).request(args, dependsOn);
-			} else {
-				asyncEvaluables[i].request(args);
-			}
+			asyncEvaluables[i].request(args, dependsOn);
 		}
 
 		/* The details are ready */
@@ -600,9 +595,9 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 *
 	 * <p>The returned consumer is a {@link CompletionConsumer}, so a producer that issues
 	 * its work asynchronously can deliver the argument together with the {@link
-	 * io.almostrealism.concurrent.Semaphore} for its completion instead of blocking the
+	 * io.almostrealism.streams.Semaphore} for its completion instead of blocking the
 	 * host until the argument's contents are valid. The completion is recorded via
-	 * {@link AcceleratedProcessDetails#result(int, Object, io.almostrealism.concurrent.Semaphore)}
+	 * {@link AcceleratedProcessDetails#result(int, Object, io.almostrealism.streams.Semaphore)}
 	 * and merged into the kernel dispatch's {@code dependsOn}.</p>
 	 *
 	 * @param index the argument index

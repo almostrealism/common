@@ -18,7 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;

@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;

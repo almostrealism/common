@@ -19,7 +19,8 @@ package org.almostrealism.hardware.jni;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
@@ -152,7 +153,7 @@ import java.util.stream.Collectors;
  *
  * <h2>Performance Tracking</h2>
  *
- * <p>Execution duration is recorded via {@link #recordDuration(Semaphore, Runnable)}:</p>
+ * <p>Execution duration is recorded via {@link #recordDuration(OperationSemaphore, Runnable)}:</p>
  * <pre>{@code
  * recordDuration(latch, () -> {
  *     // Submit tasks...

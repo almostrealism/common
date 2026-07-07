@@ -24,7 +24,8 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
@@ -535,7 +536,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.
 	 * Completions of asynchronously produced arguments (delivered via
 	 * {@link AcceleratedProcessDetails#result(int, Object, Semaphore)}) are merged with
-	 * {@code dependsOn} through {@link Semaphore#all}, so the kernel is ordered after the
+	 * {@code dependsOn} through {@link OperationSemaphore#all}, so the kernel is ordered after the
 	 * work producing its inputs the same way.</p>
 	 *
 	 * <p><strong>Execution model.</strong> Two independent memory mechanisms may wrap
@@ -613,7 +614,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// kernel is ordered after the work producing them without any host wait.
 				List<Semaphore> pending = process.getArgumentCompletions();
 				pending.add(dependsOn);
-				Semaphore ready = Semaphore.all(getMetadata(), pending);
+				Semaphore ready = OperationSemaphore.all(getMetadata(), pending);
 
 				if (aggregating) {
 					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);

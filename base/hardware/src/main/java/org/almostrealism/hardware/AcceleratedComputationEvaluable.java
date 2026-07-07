@@ -20,8 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.concurrent.CompletionConsumer;
-import io.almostrealism.concurrent.DependentStreamingEvaluable;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.streams.EvaluableStreamingAdapter;
@@ -186,7 +185,7 @@ import java.util.function.IntFunction;
  */
 public class AcceleratedComputationEvaluable<T extends MemoryData>
 		extends AcceleratedComputationOperation<T>
-		implements DependentStreamingEvaluable<T>, Evaluable<T> {
+		implements StreamingEvaluable<T>, Evaluable<T> {
 	/**
 	 * Controls whether multiple evaluables with the same signature can compile independently.
 	 *
@@ -432,7 +431,10 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	}
 
 	/**
-	 * Requests asynchronous evaluation that pushes results to the downstream consumer.
+	 * Requests asynchronous evaluation that pushes results to the downstream consumer,
+	 * ordering the dispatch after the given completion. The kernel dispatch (and its own
+	 * argument preparation) chains on {@code dependsOn} through the provider, so the
+	 * dependency costs no host wait; delivery is unchanged.
 	 *
 	 * <p>Dispatches the kernel without blocking, registering a callback that extracts the
 	 * result and pushes it to {@link #downstream} upon completion. This enables non-blocking
@@ -440,7 +442,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 *
 	 * <p>When the downstream is a {@link CompletionConsumer}, the result is delivered
 	 * immediately together with the dispatch's completion {@link
-	 * io.almostrealism.concurrent.Semaphore} instead of waiting for it — safe because
+	 * io.almostrealism.streams.Semaphore} instead of waiting for it — safe because
 	 * {@link #postProcessOutput(MemoryData, int)} only shapes the handle to the output
 	 * memory (it never reads its contents), and the consumer takes responsibility for
 	 * ordering via the delivered completion. The plain-{@link java.util.function.Consumer}
@@ -453,20 +455,6 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * evaluable.setDownstream(result -> processResult(result));
 	 * evaluable.request(args);  // Non-blocking, result sent to downstream
 	 * }</pre>
-	 *
-	 * @param args The input arguments for the computation
-	 * @throws NullPointerException if {@link #downstream} is not set
-	 */
-	@Override
-	public void request(Object[] args) {
-		request(args, null);
-	}
-
-	/**
-	 * Initiates evaluation ordered after the given completion. The kernel
-	 * dispatch (and its own argument preparation) chains on {@code dependsOn}
-	 * through the provider, so the dependency costs no host wait; delivery
-	 * is unchanged.
 	 *
 	 * @param args      The input arguments for the computation
 	 * @param dependsOn completion that must fire before the dispatch (and its

@@ -37,7 +37,7 @@ import java.util.List;
 
 /**
  * Verifies that argument preparation for an {@link org.almostrealism.hardware.AcceleratedOperation}
- * respects the {@link io.almostrealism.concurrent.Semaphore} chain: an argument evaluation that is
+ * respects the {@link io.almostrealism.streams.Semaphore} chain: an argument evaluation that is
  * itself a dispatch reading memory written by a prior member of the same composite must be ordered
  * after that member's completion.
  *

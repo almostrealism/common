@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;

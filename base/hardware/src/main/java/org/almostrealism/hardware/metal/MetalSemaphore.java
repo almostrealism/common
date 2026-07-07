@@ -16,11 +16,12 @@
 
 package org.almostrealism.hardware.metal;
 
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 
 /**
- * {@link Semaphore} backed by a Metal {@link MTLEvent} timeline value — the Metal analog of
+ * {@link OperationSemaphore} backed by a Metal {@link MTLEvent} timeline value — the Metal analog of
  * {@link org.almostrealism.hardware.cl.CLSemaphore}. It is the single completion handle for one
  * dispatch: the dispatch was encoded into {@link #getCommandBuffer() a command buffer} and signals
  * the event to {@link #getValue() its value}.
@@ -30,7 +31,7 @@ import io.almostrealism.profile.OperationMetadata;
  * for {@link #getValue()} on the {@link #getEvent() event} — no host stall (see
  * {@link MetalCommandRunner#submit}).</p>
  */
-public class MetalSemaphore implements Semaphore {
+public class MetalSemaphore implements OperationSemaphore {
 	/** Metadata identifying the operation this completion belongs to, or {@code null}. */
 	private final OperationMetadata requester;
 	/** The command runner that owns the command buffer. */
