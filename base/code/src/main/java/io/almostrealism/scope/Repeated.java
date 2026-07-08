@@ -443,16 +443,20 @@ public class Repeated<T> extends Scope<T> {
 	 * and its descendants, failing when the body contains anything whose memory
 	 * behavior cannot be fully analyzed.
 	 *
-	 * <p>Nested {@link Repeated} scopes, method calls, metrics, and statements that
-	 * are not {@link ExpressionAssignment}s all cause analysis to fail, which makes
-	 * the caller skip accumulator promotion for the whole loop.</p>
+	 * <p>Only plain {@link Scope} instances are analyzable: subclasses carry
+	 * expressions outside the statements list that read memory invisibly to this
+	 * analysis ({@link Cases} branch conditions, {@link HybridScope} explicit code,
+	 * nested {@link Repeated} loop bounds), so any of them causes analysis to fail.
+	 * Method calls, metrics, and statements that are not
+	 * {@link ExpressionAssignment}s fail for the same reason, which makes the
+	 * caller skip accumulator promotion for the whole loop.</p>
 	 *
 	 * @param scope the loop-body scope to scan
 	 * @param assignments the list to add assignments to
 	 * @return true if the body was fully analyzable, false otherwise
 	 */
 	private static boolean collectBodyAssignments(Scope<?> scope, List<ExpressionAssignment<?>> assignments) {
-		if (scope instanceof Repeated) return false;
+		if (scope.getClass() != Scope.class) return false;
 		if (!scope.getMethods().isEmpty()) return false;
 		if (!scope.getMetrics().isEmpty()) return false;
 

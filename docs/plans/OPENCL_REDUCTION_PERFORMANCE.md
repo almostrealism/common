@@ -136,6 +136,19 @@ Bail out on any other reference, on references from the loop condition, and on
 nested `Repeated` scopes touching the same array. Gate the transform behind a public
 static flag (mirroring `enableLoopInvariantHoisting`) for differential testing.
 
+**Regression found by CI and fixed:** `PeriodicTest.testPeriodicInsideLoop`
+failed (`0.0 != 3.0`) because a Periodic inside a Loop increments a counter
+element via a statement but tests it via a `Cases` branch condition — an
+expression held *outside* the statements list, invisible to a statement-only
+analysis. The counter was promoted to a register while the branch condition
+kept reading stale global memory, so the periodic body never fired. The fix
+restricts analysis to loop bodies whose every descendant is exactly plain
+`Scope` (`getClass() != Scope.class` aborts): `Cases` conditions, `HybridScope`
+explicit code, and nested `Repeated` bounds all read memory outside statements,
+and future subclasses are excluded by default. Reduction kernels still promote
+(their bodies are plain Scopes). Regression test: `casesScopeBlocksPromotion`
+in `AccumulatorPromotionTest`.
+
 This fixes the sum kernel and every other reduction sharing the structure
 (`CollectionMaxComputation`, etc.) on every backend, without touching the
 computation classes, the Expression layer, or the codegen writers. With a private

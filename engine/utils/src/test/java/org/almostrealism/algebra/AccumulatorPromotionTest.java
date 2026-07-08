@@ -24,6 +24,7 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -182,6 +183,46 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 		Assert.assertEquals("No epilogue store should be created when the array is read elsewhere",
 				0, simplified.getEpilogue().size());
 		Assert.assertTrue("The loop body should still store to the array",
+				bodyReferencesArray(simplified, "out"));
+	}
+
+	/**
+	 * Verifies that promotion is abandoned when the loop body contains a
+	 * {@link Cases} scope, since its branch conditions read memory outside the
+	 * statement list. This mirrors the Periodic-inside-Loop structure, where a
+	 * counter element is incremented by a statement but tested by a branch
+	 * condition: promoting the counter to a register would leave the condition
+	 * reading a stale global value.
+	 */
+	@Test(timeout = 30000)
+	public void casesScopeBlocksPromotion() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(64));
+		loop.setName("casesTest");
+
+		ArrayVariable<Double> counter = new ArrayVariable(Double.class, "counter", e(1));
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(1));
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(
+				outElement(counter), outElement(counter).add(e(1.0))));
+
+		Cases<Void> cases = new Cases<>("check");
+		Scope<Void> branch = new Scope<>("branch");
+		branch.getStatements().add(new ExpressionAssignment(
+				outElement(out), outElement(out).add(e(1.0))));
+		cases.addCase(outElement(counter).greaterThanOrEqual(e(5.0)), branch, null);
+		body.getChildren().add(cases);
+
+		loop.getChildren().add(body);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertEquals("No epilogue store should be created when the body contains a Cases scope",
+				0, simplified.getEpilogue().size());
+		Assert.assertTrue("The counter increment should still store to the array",
+				bodyReferencesArray(simplified, "counter"));
+		Assert.assertTrue("The branch should still store to the array",
 				bodyReferencesArray(simplified, "out"));
 	}
 
