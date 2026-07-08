@@ -221,6 +221,49 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 	}
 
 	/**
+	 * Marker beginning each line of {@link #generateMachineReport()}, used by tooling
+	 * to locate machine-readable violation records within captured build output.
+	 */
+	public static final String MACHINE_REPORT_MARKER = "POLICY_VIOLATION";
+
+	/**
+	 * Generates a machine-readable report of all violations for tooling that needs to
+	 * parse individual violations rather than the human-readable {@link #generateReport()}.
+	 *
+	 * <p>Each violation occupies exactly one tab-delimited line of the form
+	 * {@code POLICY_VIOLATION\t<file>\t<line>\t<rule>\t<description>}. Tabs and newlines
+	 * are stripped from the description so a violation never spans multiple lines. The
+	 * report is empty when there are no violations.</p>
+	 *
+	 * @return the tab-delimited machine report
+	 */
+	public String generateMachineReport() {
+		StringBuilder sb = new StringBuilder();
+
+		for (Violation v : violations) {
+			sb.append(MACHINE_REPORT_MARKER).append('\t')
+					.append(v.getFile()).append('\t')
+					.append(v.getLineNumber()).append('\t')
+					.append(v.getRule()).append('\t')
+					.append(singleLine(v.getDescription())).append('\n');
+		}
+
+		return sb.toString();
+	}
+
+	/**
+	 * Collapses a value onto a single line by replacing tab and newline characters
+	 * with spaces, so it can be embedded in a tab-delimited machine report line.
+	 *
+	 * @param text the value to flatten; may be {@code null}
+	 * @return the single-line value, or an empty string when {@code text} is {@code null}
+	 */
+	private static String singleLine(String text) {
+		if (text == null) return "";
+		return text.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ');
+	}
+
+	/**
 	 * Returns {@code true} if the given path matches any of the exclusion patterns.
 	 *
 	 * @param path  the path to test

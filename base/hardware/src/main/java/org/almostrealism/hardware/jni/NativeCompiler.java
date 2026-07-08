@@ -25,6 +25,7 @@ import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.OperatorPoolExhaustedException;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -394,8 +395,12 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 					Class.forName("org.almostrealism.generated.GeneratedOperation" + runnableCount++)
 							.getConstructor(Computation.class).newInstance(new Object[] { null });
 			return gen;
+		} catch (ClassNotFoundException e) {
+			// The pre-generated GeneratedOperation template classes have all been reserved;
+			// no further native operators can be compiled for this run.
+			throw new OperatorPoolExhaustedException(e);
 		} catch (InstantiationException | IllegalAccessException | InvocationTargetException
-				| NoSuchMethodException | ClassNotFoundException e) {
+				| NoSuchMethodException e) {
 			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
 		}
 	}

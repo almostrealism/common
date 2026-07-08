@@ -75,6 +75,22 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 	}
 
 	/**
+	 * Indicates that OpenCL C supports 64-bit integers.
+	 *
+	 * <p>OpenCL C provides {@code long} as a core 64-bit signed integer type, and this
+	 * backend already emits {@code long}-typed index expressions (see {@link #kernelIndex(int)}).
+	 * Reporting int64 support lets {@link io.almostrealism.lang.LanguageOperations#stringForLong(long)}
+	 * render integer constants outside the {@code int} range (for example large Jacobian strides in
+	 * a backward pass) as full 64-bit literals rather than throwing, matching
+	 * {@link org.almostrealism.hardware.metal.MetalLanguageOperations#isInt64()}. Without it the
+	 * {@link io.almostrealism.code.Precision}-based fallback rejects such constants under FP32.</p>
+	 *
+	 * @return Always true (OpenCL C supports the {@code long} integer type)
+	 */
+	@Override
+	public boolean isInt64() { return true; }
+
+	/**
 	 * Returns the absolute value expression using {@code fabs}.
 	 *
 	 * <p>{@link io.almostrealism.expression.Absolute} is always a floating point
