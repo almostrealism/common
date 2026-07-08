@@ -156,6 +156,9 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 			String report = detector.generateReport();
 			log("\n" + report);
 
+			// Emit machine-readable violation records for the build validator to parse.
+			log("\n" + detector.generateMachineReport());
+
 			Assert.fail("BUILD FAILED: " + detector.getViolations().size() +
 					" code policy violation(s) detected.\n\n" +
 					"These violations MUST be fixed before the build can succeed.\n" +

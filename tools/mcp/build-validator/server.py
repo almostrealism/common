@@ -474,9 +474,12 @@ class BuildValidator:
             # Compile the whole project; ErrorProne runs as an annotation processor.
             return ["mvn", "compile", "-B"]
         if check_name == "code_policy":
+            # Run only the enforcement method, not the detector's own self-tests
+            # (testDetector*), which deliberately construct synthetic violations and
+            # would otherwise pollute the parsed results.
             return [
                 "mvn", "test", "-pl", "tools", "-B",
-                "-Dtest=CodePolicyEnforcementTest#enforceCodePolicies+testDetector*",
+                "-Dtest=CodePolicyEnforcementTest#enforceCodePolicies",
                 "-DAR_HARDWARE_DRIVER=native",
             ]
         if check_name == "test_timeouts":
@@ -564,9 +567,71 @@ class BuildValidator:
             return self._parse_checkstyle(check_output)
         if check_name == "errorprone":
             return self._parse_errorprone(check_output)
+        if check_name == "code_policy":
+            return self._parse_code_policy()
         if check_name in BUILD_REQUIRED_CHECKS:
             return self._parse_surefire(check_name)
         return []
+
+    def _parse_code_policy(self) -> list:
+        """Parse structured POLICY_VIOLATION records from the enforceCodePolicies report.
+
+        enforceCodePolicies emits one tab-delimited line per violation of the form
+        ``POLICY_VIOLATION\\t<file>\\t<line>\\t<rule>\\t<description>``. Only those
+        marker lines are treated as violations, so pass messages ("No code policy
+        violations detected.") and any incidental text are ignored — no keyword
+        scraping. Records are keyed by (file, line, rule) to de-duplicate.
+        """
+        report_file = (
+            PROJECT_ROOT / "tools" / "target" / "surefire-reports"
+            / f"TEST-{SUREFIRE_TEST_CLASS}.xml"
+        )
+        if not report_file.exists():
+            return []
+
+        marker = re.compile(r"POLICY_VIOLATION\t(.+?)\t(\d+)\t(\S+)\t(.*)")
+        violations = []
+        seen = set()
+
+        try:
+            tree = ET.parse(report_file)
+            root = tree.getroot()
+            for testcase in root.findall("testcase"):
+                if testcase.get("name", "") != "enforceCodePolicies":
+                    continue
+
+                texts = []
+                for elem in testcase.findall("failure") + testcase.findall("error"):
+                    texts.append(elem.get("message", "") or "")
+                    if elem.text:
+                        texts.append(elem.text)
+                sysout = testcase.find("system-out")
+                if sysout is not None and sysout.text:
+                    texts.append(sysout.text)
+
+                for text in texts:
+                    for m in marker.finditer(text):
+                        filepath, line, rule, message = (
+                            m.group(1), m.group(2), m.group(3), m.group(4).strip()
+                        )
+                        try:
+                            rel = str(Path(filepath).relative_to(PROJECT_ROOT))
+                        except ValueError:
+                            rel = filepath
+                        key = (rel, int(line), rule)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        violations.append({
+                            "file": rel,
+                            "line": int(line),
+                            "rule": rule,
+                            "message": message,
+                        })
+        except Exception:
+            pass
+
+        return violations
 
     def _parse_checkstyle(self, text: str) -> list:
         """Extract checkstyle violations from Maven output.
@@ -630,7 +695,6 @@ class BuildValidator:
             return []
 
         method_map = {
-            "code_policy": ["enforceCodePolicies", "testDetector"],
             "test_timeouts": ["enforceTestTimeouts"],
             "duplicate_code": ["enforceNoDuplicateCode"],
         }

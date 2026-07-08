@@ -139,9 +139,17 @@ public class RmsnormDuplicationProfileTest extends TestSuiteBase implements Laye
 		CompilationTimingListener previous = AbstractComputeContext.compilationTimingListener;
 		AbstractComputeContext.compilationTimingListener = new CapturingListener(capturedScopes);
 
+		// Compile the scope fresh rather than reusing a cached instruction set. The JVM-wide
+		// signature cache (DefaultComputer.instructionsCache) would otherwise serve a
+		// structurally identical scope compiled by an earlier test in the same JVM, so no
+		// compilation would occur here and the listener would observe nothing.
+		boolean previousReuse = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+
 		try {
 			op.get().run();
 		} finally {
+			ScopeSettings.enableInstructionSetReuse = previousReuse;
 			AbstractComputeContext.compilationTimingListener = previous;
 		}
 

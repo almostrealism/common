@@ -20,15 +20,17 @@ package org.almostrealism.hardware;
  * Thrown when the runtime native-lib template class pool is exhausted and
  * no further operators can be obtained for an accelerated operation.
  *
- * <p>Raised by {@link AcceleratedOperation#load()} when the
- * {@link io.almostrealism.code.InstructionSetManager} cannot supply an operator
- * for the current execution key because the pool of pre-compiled
- * {@code GeneratedOperation} classes has been exhausted.
- * Exhaustion is a terminal condition for the current rendering pass — further
- * invocations along the same path will also fail. Callers that encounter this
- * exception should abort rather than retry.</p>
+ * <p>Raised when reserving a native operator template fails because the pool of
+ * pre-compiled {@code GeneratedOperation} classes has been exhausted (every slot
+ * has already been reserved). Exhaustion is a terminal condition for the current
+ * rendering pass — further invocations along the same path will also fail. Callers
+ * that encounter this exception should abort rather than retry.</p>
  *
- * @see AcceleratedOperation
+ * <p>This is thrown specifically for pool exhaustion; other failures encountered
+ * while obtaining an operator (for example a code-generation error) surface as an
+ * ordinary {@link HardwareException} carrying the underlying cause, so they are not
+ * misreported as pool exhaustion.</p>
+ *
  * @see HardwareException
  */
 public class OperatorPoolExhaustedException extends HardwareException {
