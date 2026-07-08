@@ -420,22 +420,37 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 
 	/**
 	 * Profiles the given operation supplier under the provided {@link OperationProfileNode},
-	 * using the profile for timing if the supplier is an {@link OperationList}.
+	 * capturing both timing and generated kernel source.
 	 *
-	 * @param profile the profile node to collect timing into; may be {@code null}
+	 * <p>The profile is assigned as the active profile <em>before</em> the operation is
+	 * compiled (the {@code get} call below triggers compilation). This ordering is
+	 * required for source capture: assigning the profile installs its compilation
+	 * listener (see {@link org.almostrealism.hardware.Hardware#assignProfile}), which
+	 * records the generated kernel source as each scope compiles. Compiling first and
+	 * assigning afterwards — as an earlier version of this method did — captures timing
+	 * but no source, so {@code ar-profile-analyzer get_source} returns nothing for the
+	 * saved profile.</p>
+	 *
+	 * @param profile the profile node to collect timing and source into; may be {@code null}
 	 * @param op      a supplier producing the runnable to profile
 	 * @return the profile node after the operation completes
 	 */
 	default OperationProfileNode profile(OperationProfileNode profile, Supplier<Runnable> op) {
-		Runnable r;
+		try {
+			Hardware.getLocalHardware().assignProfile(profile);
 
-		if (op instanceof OperationList && profile != null) {
-			r = ((OperationList) op).get(profile);
-		} else {
-			r = op.get();
+			Runnable r;
+			if (op instanceof OperationList && profile != null) {
+				r = ((OperationList) op).get(profile);
+			} else {
+				r = op.get();
+			}
+
+			r.run();
+			return profile;
+		} finally {
+			Hardware.getLocalHardware().clearProfile();
 		}
-
-		return profile(profile, r);
 	}
 
 	/**
