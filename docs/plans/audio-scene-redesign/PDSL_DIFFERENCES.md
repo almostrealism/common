@@ -290,12 +290,23 @@ each fix.
    fine.
 
 **C. Restore the missing legacy genes/behaviors (character, medium effort):**
-1. Put the per-channel self-feedback gene (`delayLevels[ch,1]`) on the
-   `efx_fb_transmission` **diagonal** (replacing the flat 0.1 scaling there), keeping
-   the off-diagonal contraction scaling for stability; drive the feedforward delay from
-   the `delayTimes` gene per channel instead of the static 6500 (A2 makes the rings big
-   enough). This restores per-channel echo identity — the biggest single character gap
-   (§3.2).
+1. **DONE 2026-07-09.** The per-channel self-feedback gene (`delayLevels[ch,1]`) is on
+   the `efx_fb_transmission` **diagonal** (`feedbackGridMatrix`), off-diagonal
+   contraction scaling kept; and the wet arm's feedforward delay is gene-driven per
+   position from the **`delay` chromosome** — the legacy mixdown-bus delay layer's
+   4–20 s genes (`busDelaySamples`, positions cycling over the `delayLayers` genes,
+   ring sized from the evaluated genome). An earlier revision of this item named the
+   `delayTimes` gene for the feedforward stage — wrong: `delayTimes` is the apply-echo
+   period and already drives `efx_fb_delay`; the feedforward stage renders the *bus*
+   delay layer. This also restores the efx bus's slow-building arrival (legacy: the
+   whole wet bus passes through the 4–20 s delay layer; the wire-first 6500 ≈ 147 ms
+   constant made it near-immediate — a major duration-dependent character gap). Wiring
+   pinned by `MixdownManagerPdslVerificationTest.feedbackGridAndBusDelayFollowGenes`.
+   §3.2 residues deliberately out of scope here: the off-diagonal transmission
+   regeneration period is still `delayTimes`-based (legacy regenerates the bus grid at
+   the bus-delay period — a full loop split if audibly needed), `wetInSimple` send
+   automation is still unread, and the apply echo runs after (not before) the wet
+   filter/volume stages.
 2. Approximate delay modulation: drift `efx_fb_delay` by the `delayDynamicsSimple`
    gene once per buffer in `automationRefresh` (integer sample steps; small amplitude).
    Cheap; breaks the static-comb rigidity. Evaluate by ear whether per-buffer drift

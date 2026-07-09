@@ -427,7 +427,7 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                          lp_coeffs: producer([fir_taps]),
                          sample_rate: scalar, filter_order: scalar,
                          wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
-                         delay_samples: producer([1]),
+                         delay_samples: producer([channels]),
                          master_gain: producer([1]),
                          efx_filter_coeffs: producer([channels, fir_taps]),
                          efx_wet_level: producer([channels]),
@@ -492,10 +492,13 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                 // Mixdown efx bus: per-channel wet filter then the per-channel VOLUME, mirroring
                 // Java's efxFactor = v ∘ wetFilter (MixdownManager.createCells:654-656). The
                 // previous static wet_level here was spurious (no Java counterpart) and, together
-                // with the missing volume, made the efx bus ~1/v too hot.
+                // with the missing volume, made the efx bus ~1/v too hot. The per-channel delay
+                // renders the legacy bus delay layer: gene-driven lengths from the `delay`
+                // chromosome (4-20 s), so the efx bus arrives as the slow-building regenerating
+                // wash the legacy path produces, not a near-immediate echo.
                 fir(wet_filter_coeffs[channel])
                 scale(volume[channel])
-                delay(delay_samples, buffers[channel], heads[channel])
+                delay(delay_samples[channel], buffers[channel], heads[channel])
             }
             // Recursive cross-channel feedback grid — the decaying echo/tail. Replaces the
             // feedforward route(transmission) with MixdownManager.createEfx's .mself(transmission):

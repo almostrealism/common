@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -35,6 +36,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.arrange.AutomationManager;
+import org.almostrealism.studio.arrange.EfxManager;
 import org.almostrealism.studio.arrange.GlobalTimeManager;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
@@ -159,6 +161,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Time manager of the most recently built fixture (see {@link #buildFixtureMixdown()}). */
 	private GlobalTimeManager fixtureTime;
 
+	/** Effects manager of the most recently built fixture, when requested (see {@link #buildFixtureMixdown(boolean)}). */
+	private EfxManager fixtureEfx;
+
 	/**
 	 * Builds the shared test fixture: the standard MixdownManager feature-flag configuration
 	 * plus a populated {@link MixdownManager} (reverb disabled to keep the Java/PDSL comparison
@@ -169,6 +174,19 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return the constructed mixdown manager
 	 */
 	private MixdownManager buildFixtureMixdown() {
+		return buildFixtureMixdown(false);
+	}
+
+	/**
+	 * Builds the shared test fixture, optionally with an {@link EfxManager} (exposed via
+	 * {@link #fixtureEfx}) for tests that exercise the efx-layer argument map. The
+	 * EfxManager's chromosome is added after the mixdown manager's, so the genome layout
+	 * of fixtures built without it is unchanged.
+	 *
+	 * @param withEfx whether to also construct the effects manager
+	 * @return the constructed mixdown manager
+	 */
+	private MixdownManager buildFixtureMixdown(boolean withEfx) {
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
 		MixdownManager.enableEfxFilters = true;
@@ -191,6 +209,10 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				() -> measureDuration, SAMPLE_RATE);
 		MixdownManager mixdown = new MixdownManager(genome.addChromosome(),
 				CHANNELS, DELAY_LAYERS, fixtureAutomation, fixtureTime.getClock(), SAMPLE_RATE);
+		fixtureEfx = withEfx
+				? new EfxManager(genome.addChromosome(), CHANNELS, fixtureAutomation,
+						() -> measureDuration / 4.0, SAMPLE_RATE)
+				: null;
 		genome.consolidateGeneValues();
 
 		PackedCollection params = new PackedCollection(GENOME_PARAMS).fill(0.5);
@@ -213,6 +235,86 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		setup.add(mixdown.setup());
 		setup.add(fixtureTime.setup());
 		setup.get().run();
+	}
+
+	/**
+	 * Verifies the gene wiring of the efx-layer argument map: the feedback grid's
+	 * diagonal carries the per-channel self-feedback gene (nonzero, bounded by
+	 * {@link EfxManager#maxFeedback}, and distinct from the scaled transmission the
+	 * off-diagonals carry), the off-diagonals are exactly the genome transmission matrix
+	 * scaled by the contraction factor, and the wet arm's feedforward delay is the
+	 * gene-driven bus delay — positions cycling over the delay chromosome's layers, every
+	 * value inside the configured 4–20 s gene range rather than at a static constant.
+	 */
+	@Test(timeout = 120_000)
+	public void feedbackGridAndBusDelayFollowGenes() {
+		MixdownManager mixdown = buildFixtureMixdown(true);
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		Map<String, Object> args =
+				MixdownManagerPdslAdapter.buildArgsMap(mixdown, fixtureEfx, config);
+
+		double[] grid = evaluateProducer(args.get("efx_fb_transmission"), CHANNELS * CHANNELS);
+		double[] transmission = evaluateProducer(args.get("transmission"), CHANNELS * CHANNELS);
+		double offScale = MixdownManagerPdslAdapter.feedbackGain / CHANNELS;
+
+		// Kernel outputs are single-precision, and the grid and its reference are two
+		// separately compiled evaluations, so comparisons carry float32 rounding
+		// (~1e-8 relative); the wiring distinctions asserted here are at the 1e-1
+		// scale, so a 1e-6 tolerance is both safe and strict. Note the projected
+		// genome maps even a uniform parameter vector to DISTINCT per-gene values,
+		// so the diagonal entries are individually gene-driven, not identical.
+		double eps = 1e-6;
+		for (int n = 0; n < CHANNELS; n++) {
+			for (int m = 0; m < CHANNELS; m++) {
+				double cell = grid[n * CHANNELS + m];
+				if (n == m) {
+					Assert.assertTrue(
+							"diagonal " + n + " self-feedback must be nonzero (gene-driven);"
+									+ " got " + cell,
+							cell > eps);
+					Assert.assertTrue(
+							"diagonal " + n + " self-feedback must respect the maxFeedback"
+									+ " bound; got " + cell,
+							cell <= EfxManager.maxFeedback + eps);
+					Assert.assertNotEquals(
+							"the diagonal must carry the self-feedback gene, not the scaled"
+									+ " transmission",
+							offScale * transmission[n * CHANNELS + m], cell, eps);
+				} else {
+					Assert.assertEquals(
+							"off-diagonal " + n + "," + m + " must be the transmission matrix"
+									+ " scaled by feedbackGain/channels",
+							offScale * transmission[n * CHANNELS + m], cell, eps);
+				}
+			}
+		}
+
+		double[] busDelays = evaluateProducer(args.get("delay_samples"), CHANNELS);
+		for (int p = 0; p < CHANNELS; p++) {
+			Assert.assertEquals(
+					"bus delay positions must cycle over the delay chromosome's layers",
+					busDelays[p % DELAY_LAYERS], busDelays[p], eps);
+			Assert.assertTrue(
+					"bus delay " + busDelays[p] + " must sit inside the configured 4-20 s"
+							+ " gene range, not at a static constant",
+					busDelays[p] >= 4.0 * SAMPLE_RATE && busDelays[p] <= 20.0 * SAMPLE_RATE);
+		}
+	}
+
+	/**
+	 * Evaluates a producer-valued argument-map entry once and returns its contents.
+	 *
+	 * @param producer the argument-map value (a {@link Producer})
+	 * @param size     the number of elements to read
+	 * @return the evaluated values
+	 */
+	private double[] evaluateProducer(Object producer, int size) {
+		PackedCollection result = (PackedCollection) ((Producer) producer).get().evaluate();
+		return result.toArray(0, size);
 	}
 
 	/**

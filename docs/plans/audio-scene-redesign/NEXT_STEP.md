@@ -28,11 +28,15 @@ Execution order (PDSL_DIFFERENCES §6):
 3. **B — re-align the reverb room. DONE 2026-07-09** (seconds-denominated ring;
    `reverb_taps` decoupled from channels, default 32; golden-ratio spread over the
    legacy 0.15–1.5 s range; radius 1/taps). Owner listening verdict pending.
-4. **C — restore missing character. ← CURRENT.** Self-feedback gene on the grid
-   diagonal, gene-driven feedforward delay, per-buffer delay drift (modulation
-   approximation), per-sample parameter ramps for hot-bus automation, biquad-table
-   coefficients for the in-loop filters. Tune the granularity-dependent pieces (drift
-   steps, ramps) against the **1024** production buffer (43 Hz update rate).
+4. **C — restore missing character. ← CURRENT.** C1 **done 2026-07-09**: the
+   self-feedback gene drives the grid diagonal and the wet arm's feedforward delay is
+   the gene-driven bus delay (4–20 s `delay` chromosome — restoring the legacy efx
+   bus's slow-building arrival); wiring pinned by
+   `MixdownManagerPdslVerificationTest.feedbackGridAndBusDelayFollowGenes`. Remaining:
+   per-buffer delay drift (C2, modulation approximation), per-sample parameter ramps
+   for hot-bus automation (C3), biquad-table coefficients for the in-loop filters
+   (C4). Tune the granularity-dependent pieces against the **1024** production buffer
+   (43 Hz update rate).
 5. **D — accept and document** what a block-parallel buffer cannot reproduce
    (PDSL_DIFFERENCES §5).
 
