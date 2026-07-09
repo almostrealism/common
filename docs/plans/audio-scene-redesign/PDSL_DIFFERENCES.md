@@ -169,12 +169,19 @@ loop 2's chromosome scaled by `feedbackGain/channels = 0.1`
 - The wet channel's dry component goes through the (broken, §2.1) feedforward delay in
   PDSL; legacy keeps it clean.
 
-### 3.3 Block-rate re-entry (one regeneration step per buffer)
-`feedback(...)` re-enters once per forward pass, so echo regeneration is quantized to
-the 92.9 ms buffer grid regardless of the gene delay, versus the legacy per-sample
-recurrence. Fundamental to buffer > 1 — a sub-frame regeneration interval cannot exist
-block-parallel (§2 invariant). Repeats land on `ceil(delay/buffer)` multiples; fine for
-delays ≥ 1 buffer (production gene range at ≤ 161 bpm), foundational limit below that.
+### 3.3 Regeneration floor: one buffer — but sample-exact above it
+Correction to earlier revisions of this inventory (including the first draft of this
+one, which repeated the old "repeats quantized to the buffer grid" claim):
+block-parallel feedback is **not** quantized to the buffer grid. For a delay
+`D ≥ signalSize` with an adequately sized ring, `feedbackNetworkBlock` evaluates the
+ring recurrence `y[t] = x[t] + (M·y)[t−D]` exactly — every read lands in
+already-written frames, so repeats fall at exact multiples of the gene delay,
+matching the legacy per-sample recurrence for static delays. What the buffer size
+actually sets is the **floor**: no regeneration interval below one buffer can exist
+block-parallel (§2 invariant), and delay/matrix values are re-read once per pass
+(relevant only when they modulate, §6-C2). At 4096 the floor is 92.9 ms — clear of
+the production gene range except above ~161 bpm; the floor scales linearly with
+buffer size.
 
 ### 3.4 Automation steps once per buffer
 All time-varying values (volume, cutoffs, efx automation, reverb send) are slots
@@ -298,8 +305,9 @@ each fix.
 4. Source the efx/wet filter banks from the biquad response tables (§3.5) so the
    in-loop filters match legacy slope.
 
-**D. Accept (documented):** block-rate re-entry granularity (§3.3), dual-mono until the
-pan feature, determinism-by-design, FP drift, per-buffer coefficient stepping after C3.
+**D. Accept (documented):** the one-buffer regeneration floor (§3.3), dual-mono until
+the pan feature, determinism-by-design, FP drift, per-buffer coefficient stepping after
+C3.
 
 A alone plausibly removes the "grinding" (it removes every mechanical discontinuity
 generator); B+C close the character gap (room size/density, echo identity, tail
