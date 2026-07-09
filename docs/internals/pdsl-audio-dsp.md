@@ -6,8 +6,16 @@ and argument forms used when writing new PDSL audio DSL. PDSL `layer` bodies com
 rest of the project; the audio primitives add stateful and multi-channel block factories on
 top of the interpreter core.
 
-For broader context on the audio path this substrate backs, see
-[NEXT_STEP.md](NEXT_STEP.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+The production consumer of this substrate is the `AudioScene` real-time mixdown
+(`AudioSceneRealtimeRunner.createPdsl` driving `mixdown_master_wet`); in-progress work
+on that path is planned in `docs/plans/audio-scene-redesign/`.
+
+Note on the stateful ring primitives (`delay`, `feedback`, `delay_network`): a
+block-parallel ring must span at least `maxDelay + signalSize` samples, and the
+read-before-write stages (`feedback`, `delay_network`) additionally require
+`delay ≥ signalSize` — a sub-frame delay would be an intra-frame recurrence, which the
+block-parallel construct cannot express. Reads outside these bounds silently return
+wrong-lap samples (see `MultiChannelDspFeatures.routedRingRead`).
 
 ## Where the code lives
 

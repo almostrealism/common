@@ -38,8 +38,9 @@ which commits and drains the open command buffer. Two independent workstreams hi
   `meanDispatchesPerCommit ≈ 1.07` (vs `MAX_OPEN=256`); **100 %** of commits are host-`waitFor`
   completions; the per-op host waits come from `AcceleratedOperation.apply()` on the
   `processing || aggregateCopyOut` copy-back path (≈ 87 + 68 waits/tick, overlapping). Both of those
-  copy paths are `MemoryDataCopy`. See
-  [`audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`](audio-scene-redesign/BATCHED_AGGREGATE_COPY.md).
+  copy paths are `MemoryDataCopy`. (The audio-side diagnosis lived in
+  `audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`, removed 2026-07-09 as superseded by the
+  Semaphore chaining arc — full text in git history.)
 - **ML (Qwen).** [`QWEN_PERFORMANCE.md`](QWEN_PERFORMANCE.md) records `copy_4864` (11.0 %) +
   `copy_896` (6.8 %) = **17.8 % of total inference time** in memory copies, and names
   "`Assignment` in place of `MemoryDataCopy` via `MemoryDataFeatures.enableAssignmentCopy`" as a
@@ -115,10 +116,11 @@ that the surrounding code not insert a host `waitFor` around it.
 
 ## 5. Scope & sequencing
 
-- **Sub-scope already specified (audio, all-Metal):**
-  [`audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`](audio-scene-redesign/BATCHED_AGGREGATE_COPY.md)
-  — route the two `MemoryDataArgumentMap` aggregation copies through the `Assignment` path under
-  `OFF_HEAP_SIZE=0`, prove batching + parity. This is the smallest correctness-provable beachhead.
+- **Sub-scope formerly specified (audio, all-Metal):** `BATCHED_AGGREGATE_COPY.md`
+  (removed 2026-07-09; git history) routed the two `MemoryDataArgumentMap` aggregation copies
+  through the `Assignment` path under `OFF_HEAP_SIZE=0`. Its batching motivation was addressed
+  by the Semaphore chaining arc (`a3b20e285`, PR #340), so the beachhead is no longer required
+  for batching — only for the `Assignment`-default goal itself.
 - **Global migration (this doc):** progressively route *every* direct `new MemoryDataCopy` site
   (§3 table) through the `Assignment` path (or the `copy()` helper), implement the **inverted
   short-circuit** (§2), and make `Assignment`-copy the default — once the baseline (§6) says what
@@ -170,8 +172,8 @@ that the surrounding code not insert a host `waitFor` around it.
 
 ## 9. Intersecting materials (the "one place" index)
 
-- [`audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`](audio-scene-redesign/BATCHED_AGGREGATE_COPY.md)
-  — the audio aggregation sub-case (all-Metal beachhead), with the full batching diagnosis.
+- `audio-scene-redesign/BATCHED_AGGREGATE_COPY.md` (removed 2026-07-09; git history) — the
+  audio aggregation sub-case, whose batching diagnosis was superseded by the Semaphore chaining arc.
 - [`QWEN_PERFORMANCE.md`](QWEN_PERFORMANCE.md) — ML motivation (copies = 17.8 % of Qwen); names the
   `enableAssignmentCopy` lever (§1/§2 there).
 - [`EXPANSION_WIDTH_OPTIMIZATION.md`](EXPANSION_WIDTH_OPTIMIZATION.md) — how `MemoryDataCopy` vs
@@ -201,8 +203,8 @@ its parity gates and measurements can serve as the first §7 case study.
 
 1. **Baseline (§6)** — flip `enableAssignmentCopy=true`, run the full suite (CI), record the failing
    set here. *(First action; owner offered to run CI.)*
-2. **Audio beachhead** — implement the all-Metal aggregation copy via `Assignment` per
-   `BATCHED_AGGREGATE_COPY.md`; prove batching + parity. Smallest provable win.
+2. **Audio beachhead** — superseded for batching (Semaphore chaining arc); revisit only as a
+   parity-provable first site for the `Assignment`-default flip itself.
 3. **Inverted short-circuit (§2)** — design the "standalone ⇒ may fall back to `setMem`" decision;
    where in `Assignment.get()` / the execution context that signal is available.
 4. **Route direct sites (§3 table)** through the `Assignment` path incrementally, parity-gated.

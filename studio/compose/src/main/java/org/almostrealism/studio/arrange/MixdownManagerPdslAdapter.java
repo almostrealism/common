@@ -288,10 +288,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// Mirrors MixdownManager.createEfx():
 		//   if (masterBusGain != 1.0) main = main.map(... bound(in*gain, -1, 1) ...)
 		// Sourced from Config.masterBusGain (defaults to MixdownManager.masterBusGain).
-		// The PDSL master path also applies tanh_act() after this scale to bound the
-		// output, replacing the Java path's hard clip with a soft saturator. The two
-		// stages together replicate the master shaping the original Java pipeline
-		// applies just before the output receptor.
+		// The PDSL master path applies clip(-1, 1) after this scale — the same hard
+		// limiter the Java path uses (an earlier tanh_act() soft saturator bent the
+		// signal even at matched levels and was replaced).
 		args.put("master_gain", config.masterBusGain);
 
 		// buffers, heads — fresh state slots, sized to match the PDSL subscript
