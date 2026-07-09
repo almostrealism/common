@@ -35,6 +35,9 @@ import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
+import java.lang.ref.Reference;
+import java.nio.ByteBuffer;
+
 /**
  * {@link MemoryProvider} implementation for OpenCL memory management.
  *
@@ -369,8 +372,30 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
 		} else {
-			// TODO  There should still be some way to use clEnqueueWriteBuffer for cases
-			// TODO  where all we have is the long value returned by RAM::getContentPointer
+			// A source whose provider shares this provider's element size and can expose
+			// its memory as a direct buffer is written with a single bulk transfer,
+			// avoiding the double[] mediation of the fallback below
+			MemoryProvider srcProvider = srcRam.getProvider();
+			ByteBuffer view = srcProvider != null && srcProvider.getNumberSize() == getNumberSize()
+					? srcProvider.getHostBuffer(srcRam, srcOffset, length) : null;
+
+			if (view != null) {
+				try {
+					cl_event event = new cl_event();
+					CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
+							(long) offset * getNumberSize(), (long) length * getNumberSize(),
+							Pointer.to(view), 0, null, event);
+					processEvent(event);
+				} catch (CLException e) {
+					throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+				} finally {
+					Reference.reachabilityFence(srcRam);
+					ioTime.addEntry("setMem", System.nanoTime() - start);
+				}
+
+				return;
+			}
+
 			setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
 		}
 	}
@@ -451,6 +476,33 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
 		} finally {
+			ioTime.addEntry("getMem", System.nanoTime() - start);
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Performs a single blocking {@code clEnqueueReadBuffer} directly into the given
+	 * buffer, with no element conversion. The caller is responsible for confirming that
+	 * its element size matches {@link #getNumberSize()} before requesting the transfer.</p>
+	 */
+	@Override
+	public boolean getMem(CLMemory mem, int sOffset, ByteBuffer out, int length) {
+		long start = System.nanoTime();
+
+		try {
+			cl_event event = new cl_event();
+			CL.clEnqueueReadBuffer(queue, mem.getMem(),
+					CL.CL_TRUE, (long) sOffset * getNumberSize(),
+					(long) length * getNumberSize(), Pointer.to(out), 0,
+					null, event);
+			processEvent(event);
+			return true;
+		} catch (CLException e) {
+			throw CLExceptionProcessor.process(e, this, sOffset, 0, length);
+		} finally {
+			Reference.reachabilityFence(mem);
 			ioTime.addEntry("getMem", System.nanoTime() - start);
 		}
 	}

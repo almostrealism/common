@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.uml.Named;
 
+import java.nio.ByteBuffer;
 import java.util.stream.IntStream;
 
 /**
@@ -110,6 +111,45 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	 * @param length the number of elements to copy
 	 */
 	void setMem(T mem, int offset, Memory source, int srcOffset, int length);
+
+	/**
+	 * Returns a direct {@link ByteBuffer} view of the given memory region, or {@code null}
+	 * when this provider cannot expose its memory to the host without a copy.
+	 *
+	 * <p>The view contains the region's raw bytes in this provider's native element format
+	 * ({@link #getNumberSize()} bytes per element); no conversion is performed, so a consumer
+	 * must confirm that element sizes match before interpreting or transferring the bytes.
+	 * The view remains valid only while the underlying memory is allocated — callers must
+	 * keep the {@link Memory} strongly reachable for as long as the view is in use.</p>
+	 *
+	 * @param mem the memory region to view
+	 * @param offset the starting position within the memory region, in elements
+	 * @param length the number of elements the view should cover
+	 * @return a direct buffer view of the region, or {@code null} if unsupported
+	 */
+	default ByteBuffer getHostBuffer(T mem, int offset, int length) {
+		return null;
+	}
+
+	/**
+	 * Reads elements from the source memory region directly into a {@link ByteBuffer},
+	 * without conversion, when this provider supports bulk host transfers.
+	 *
+	 * <p>The bytes are written in this provider's native element format
+	 * ({@link #getNumberSize()} bytes per element), so the caller must confirm that its
+	 * element size matches before requesting the transfer. Providers without a bulk
+	 * transfer mechanism return {@code false} and the caller falls back to array-mediated
+	 * reads.</p>
+	 *
+	 * @param mem the source memory region
+	 * @param sOffset the starting position in the source memory, in elements
+	 * @param out the destination buffer, positioned at zero with capacity for the transfer
+	 * @param length the number of elements to read
+	 * @return true if the transfer was performed, false if unsupported
+	 */
+	default boolean getMem(T mem, int sOffset, ByteBuffer out, int length) {
+		return false;
+	}
 
 	/**
 	 * Copies data from a float array into the destination memory region, converting to double.

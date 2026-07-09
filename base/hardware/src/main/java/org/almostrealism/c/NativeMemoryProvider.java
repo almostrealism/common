@@ -17,6 +17,7 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -25,6 +26,9 @@ import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
+
+import java.lang.ref.Reference;
+import java.nio.ByteBuffer;
 
 /**
  * {@link io.almostrealism.code.MemoryProvider} implementation for JNI-based native memory management.
@@ -76,6 +80,9 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 
 	/** JNI wrapper for writing to native memory. */
 	private NativeWrite write;
+
+	/** JNI wrapper for viewing native memory as a direct buffer. */
+	private NativeBufferView bufferView;
 
 	/** The maximum total memory that can be allocated in bytes. */
 	private final long memoryMax;
@@ -146,9 +153,48 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<NativeMemory> {
 		deallocationSizes.addEntry(ref.getSize());
 	}
 
-	/** {@inheritDoc} */
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The returned view wraps the allocation directly via {@code NewDirectByteBuffer};
+	 * no data is copied. It remains valid only while {@code mem} is allocated.</p>
+	 *
+	 * @throws IllegalArgumentException if the requested range extends beyond the allocation
+	 */
+	@Override
+	public synchronized ByteBuffer getHostBuffer(NativeMemory mem, int offset, int length) {
+		if (bufferView == null) bufferView = new NativeBufferView(getNativeCompiler());
+
+		long bytes = getNumberSize();
+		if (mem.getSize() < (offset + (long) length) * bytes) {
+			throw new IllegalArgumentException("Attempt to view memory beyond the size of " + mem);
+		}
+
+		return bufferView.apply(mem.getContentPointer(), offset * bytes, length * bytes);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the source provider shares this provider's element size and supports bulk
+	 * host transfers, the data is read directly into this allocation through a
+	 * {@link #getHostBuffer} view, avoiding array mediation entirely. Otherwise the
+	 * copy falls back to reading the source into a double array.</p>
+	 */
 	@Override
 	public synchronized void setMem(NativeMemory mem, int offset, Memory source, int srcOffset, int length) {
+		MemoryProvider provider = source.getProvider();
+
+		if (provider != null && provider != this && provider.getNumberSize() == getNumberSize()) {
+			try {
+				ByteBuffer view = getHostBuffer(mem, offset, length);
+				if (view != null && provider.getMem(source, srcOffset, view, length)) return;
+			} finally {
+				Reference.reachabilityFence(mem);
+				Reference.reachabilityFence(source);
+			}
+		}
+
 		double[] value = new double[length];
 		source.getProvider().getMem(source, srcOffset, value, 0, length);
 		setMem(mem, offset, value, 0, length);
