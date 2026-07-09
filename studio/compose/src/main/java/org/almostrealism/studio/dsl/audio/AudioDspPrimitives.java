@@ -267,40 +267,18 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 					channels, shape.getTotalSize() / channels);
 		}
 
+		// Single-channel form: delegate to the bank implementation so both forms share
+		// one semantics — the write-first ordering and the ring-band clamp of
+		// MultiChannelDspFeatures.multiChannelDelayBlock. (The former hand-rolled
+		// single-channel cell read the ring BEFORE writing the frame — the opposite
+		// order to the bank form — and rewrote the whole ring per pass, so it could
+		// not support multi-frame rings at all.)
 		CollectionProducer delaySamplesP = ctx.toProducer(args.get(0), shape(1),
 				"delay() delaySamples");
 		CollectionProducer buffer = ctx.toProducer(args.get(1), null, "delay() buffer");
 		CollectionProducer head = ctx.toProducer(args.get(2), shape(1), "delay() head");
-		int bufSize = shape(buffer).getSize();
-		return shape -> {
-			int n = shape.getSize();
-			Cell<PackedCollection> forward = Cell.of(
-					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-							Supplier<Runnable>>) (in, next) -> {
-						CollectionProducer readPositions = mod(
-								head.add(integers(0, n))
-										.subtract(delaySamplesP)
-										.add(c(bufSize)),
-								c(bufSize));
-						CollectionProducer output =
-								c(buffer, readPositions).reshape(shape);
-						CollectionProducer flatInput = c(in).reshape(shape(bufSize));
-						CollectionProducer newHead = head
-								.add(c((double) n))
-								.mod(c((double) bufSize));
-						OperationList ops = new OperationList("delay");
-						ops.add(next.push(output));
-						ops.add(into("delay-buffer-write", flatInput,
-								buffer, false));
-						ops.add(into("delay-head-write", newHead,
-								head, false));
-						return ops;
-					});
-			Cell<PackedCollection> backward = Cell.of(
-					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-							Supplier<Runnable>>) (in, next) -> new OperationList("delay-backward"));
-			return new DefaultBlock(shape, shape, forward, backward);
-		};
+		return shape -> multiChannelDelayBlock(delaySamplesP, buffer, head,
+				1, shape.getTotalSize());
 	}
 
 	/** {@code lfo(freqHz, sampleRate, phase)} — stateful sinusoidal LFO. */
@@ -377,6 +355,23 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		return block;
 	}
 
+	/**
+	 * Derives a feedback-network's line count from its per-line delay argument. The
+	 * delays producer's own shape carries the tap count (the {@code .pdsl} declaration
+	 * is {@code producer([taps])}), so a network can have more lines than the layer has
+	 * channels — e.g. a mono reverb send fanned by {@code repeat(reverb_taps)} into a
+	 * tap count chosen for diffusion density. A shape-{@code [1]} delays argument keeps
+	 * the environment channel count (the shared-scalar-delay form).
+	 *
+	 * @param delays the normalised per-line delay producer
+	 * @param ctx    the primitive context supplying the fallback channel count
+	 * @return the network line count
+	 */
+	private static int networkLineCount(CollectionProducer delays, PdslPrimitiveContext ctx) {
+		int taps = INSTANCE.shape(delays).getTotalSize();
+		return taps > 1 ? taps : ctx.channels();
+	}
+
 	/** {@code delay_network(delay_samples, feedback_matrix, buffer, heads)}. */
 	private Block dispatchDelayNetwork(List<Object> args, PdslPrimitiveContext ctx) {
 		if (args.size() != 4) {
@@ -384,10 +379,10 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 					"delay_network() expects 4 arguments (delay_samples, feedback_matrix, "
 							+ "buffer, heads), got " + args.size());
 		}
-		int channels = ctx.channels();
 		int signalSize = ctx.signalSize();
-		CollectionProducer delays = ctx.toProducer(args.get(0), shape(channels),
+		CollectionProducer delays = ctx.toProducer(args.get(0), null,
 				"delay_network() delay_samples");
+		int channels = networkLineCount(delays, ctx);
 		CollectionProducer feedback = ctx.toProducer(args.get(1), shape(channels, channels),
 				"delay_network() feedback_matrix");
 		CollectionProducer buffer = ctx.toProducer(args.get(2), null,
@@ -414,10 +409,10 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 					"feedback() expects 5 arguments (delay_samples, transmission_matrix, "
 							+ "passthrough_matrix, buffer, heads), got " + args.size());
 		}
-		int channels = ctx.channels();
 		int signalSize = ctx.signalSize();
-		CollectionProducer delays = ctx.toProducer(args.get(0), shape(channels),
+		CollectionProducer delays = ctx.toProducer(args.get(0), null,
 				"feedback() delay_samples");
+		int channels = networkLineCount(delays, ctx);
 		CollectionProducer transmission = ctx.toProducer(args.get(1),
 				shape(channels, channels), "feedback() transmission_matrix");
 		CollectionProducer passthrough = ctx.toProducer(args.get(2),

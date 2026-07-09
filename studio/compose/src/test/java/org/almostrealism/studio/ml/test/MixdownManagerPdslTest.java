@@ -24,6 +24,7 @@ import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
@@ -36,8 +37,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Tests for the PDSL rendition of
@@ -101,11 +104,15 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 	/**
 	 * Per-tap delay lengths (in samples) used by {@code testMixdownManagerReverbPath}.
-	 * Irregular primes scaled so each is comfortably less than {@link #REVERB_SIGNAL_SIZE},
-	 * matching the irregular-tap pattern Java DelayNetwork produces from random
-	 * Householder reflections.
+	 * Irregular (prime-offset) values inside the read-first ring band
+	 * {@code [REVERB_SIGNAL_SIZE, 2 * REVERB_SIGNAL_SIZE]} — a block-parallel
+	 * delay network cannot represent sub-frame taps (they clamp to one frame), so the
+	 * irregular-tap pattern of the Java DelayNetwork is expressed one frame up. The
+	 * per-line rings span two frames to hold the longest tap.
 	 */
-	private static final int[] REVERB_DELAY_SAMPLES = {103, 211, 401, 619};
+	private static final int[] REVERB_DELAY_SAMPLES = {
+			REVERB_SIGNAL_SIZE + 103, REVERB_SIGNAL_SIZE + 211,
+			REVERB_SIGNAL_SIZE + 401, REVERB_SIGNAL_SIZE + 619 };
 
 	/**
 	 * Number of forward passes used by the producer-args automation tests.
@@ -920,11 +927,15 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		// (3) Energy at the configured delay sample positions must dominate
 		// energy at other positions in pass 2 — the impulse propagates through
-		// each tap exactly once before any feedback contribution.
+		// each tap exactly once before any feedback contribution. The impulse
+		// entered at absolute sample 0, so tap n's echo lands at absolute
+		// sample REVERB_DELAY_SAMPLES[n] — inside pass 2's window at index
+		// (delay - REVERB_SIGNAL_SIZE).
 		for (int n = 0; n < REVERB_TAPS; n++) {
-			int t = REVERB_DELAY_SAMPLES[n];
+			int t = REVERB_DELAY_SAMPLES[n] - REVERB_SIGNAL_SIZE;
 			Assert.assertTrue(
-					"Pass 2 sample at tap " + n + " delay (" + t
+					"Pass 2 sample at tap " + n + " delay ("
+							+ REVERB_DELAY_SAMPLES[n]
 							+ ") must carry impulse echo, got " + pass2Output[t],
 					Math.abs(pass2Output[t]) > 0.5);
 		}
@@ -945,6 +956,40 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		for (double e : passEnergies) totalEnergy += e;
 		Assert.assertTrue("Total reverb energy must be non-zero (totalEnergy="
 				+ totalEnergy + ")", totalEnergy > 0.5);
+	}
+
+	/**
+	 * The adapter's reverb tap spread must sit inside the {@code delay_network}
+	 * read-first ring band at the production buffer size: every tap within
+	 * {@code [max(0.15 s, one frame), 1.5 s]}, the ring sized to hold the longest tap,
+	 * one tap per configured line, and the taps mutually distinct (uniform taps
+	 * produce a metallic comb). This pins the seconds-denominated room: the tap range
+	 * is the Java DelayNetwork's, independent of the buffer size.
+	 */
+	@Test(timeout = 60000)
+	public void testReverbTapDelaysWithinRingBand() {
+		int signalSize = 4096;
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, signalSize, SAMPLE_RATE, FILTER_ORDER, 0.5, 6500);
+		PackedCollection taps = MixdownManagerPdslAdapter.reverbTapDelays(config);
+		int count = taps.getMemLength();
+		Assert.assertEquals("one tap per configured reverb line",
+				MixdownManagerPdslAdapter.reverbTaps, count);
+
+		double lo = Math.max(0.15 * SAMPLE_RATE, signalSize);
+		double hi = 1.5 * SAMPLE_RATE;
+		int ring = MixdownManagerPdslAdapter.reverbRingFrames(config) * signalSize;
+		double[] values = taps.toArray(0, count);
+		Set<Long> distinct = new HashSet<>();
+		for (double v : values) {
+			Assert.assertTrue("tap " + v + " must be at least " + lo
+					+ " (band floor: one frame / legacy range bottom)", v >= lo);
+			Assert.assertTrue("tap " + v + " must be at most " + hi
+					+ " (legacy range top)", v <= hi);
+			Assert.assertTrue("tap " + v + " must fit the ring span " + ring, v <= ring);
+			distinct.add(Math.round(v));
+		}
+		Assert.assertEquals("taps must be mutually distinct", count, distinct.size());
 	}
 
 	// ==== Helpers ====
@@ -1037,10 +1082,13 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("delay_samples", DELAY_SAMPLES);
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
 		args.put("transmission", rectangularTransmission(CHANNELS, CHANNELS, 0.55));
-		// Per-channel delay state: total size = channels * signal_size for buffers,
-		// channels for heads, matching the subscript-slicing convention in the PDSL.
-		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.setMem(new double[CHANNELS * SIGNAL_SIZE]);
+		// Per-channel delay state: two frames per channel so sub-frame delays (the
+		// static DELAY_SAMPLES and the [16, 192] variable-delay sweep) sit inside the
+		// write-first ring band [0, ring - signal_size] and are rendered exactly. A
+		// one-frame ring supports only a zero delay (the delay clamps to it), which
+		// would make delayed and undelayed configurations indistinguishable.
+		PackedCollection buffers = new PackedCollection(CHANNELS * 2 * SIGNAL_SIZE);
+		buffers.setMem(new double[CHANNELS * 2 * SIGNAL_SIZE]);
 		PackedCollection heads = new PackedCollection(CHANNELS);
 		heads.setMem(new double[CHANNELS]);
 		args.put("buffers", buffers);
@@ -1078,9 +1126,11 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		feedback.setMem(matrixData);
 		args.put("feedback_matrix", feedback);
 
+		// Two frames per line: the read-first ring band is [signal_size, ringSize], so
+		// the ring must span the longest tap (REVERB_SIGNAL_SIZE + 619 < 2 frames).
 		PackedCollection reverbBuffers = new PackedCollection(
-				REVERB_TAPS * REVERB_SIGNAL_SIZE);
-		reverbBuffers.setMem(new double[REVERB_TAPS * REVERB_SIGNAL_SIZE]);
+				REVERB_TAPS * 2 * REVERB_SIGNAL_SIZE);
+		reverbBuffers.setMem(new double[REVERB_TAPS * 2 * REVERB_SIGNAL_SIZE]);
 		PackedCollection reverbHeads = new PackedCollection(REVERB_TAPS);
 		reverbHeads.setMem(new double[REVERB_TAPS]);
 		args.put("reverb_buffers", reverbBuffers);

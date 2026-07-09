@@ -11,11 +11,14 @@ The production consumer of this substrate is the `AudioScene` real-time mixdown
 on that path is planned in `docs/plans/audio-scene-redesign/`.
 
 Note on the stateful ring primitives (`delay`, `feedback`, `delay_network`): a
-block-parallel ring must span at least `maxDelay + signalSize` samples, and the
-read-before-write stages (`feedback`, `delay_network`) additionally require
-`delay ≥ signalSize` — a sub-frame delay would be an intra-frame recurrence, which the
-block-parallel construct cannot express. Reads outside these bounds silently return
-wrong-lap samples (see `MultiChannelDspFeatures.routedRingRead`).
+block-parallel ring only holds samples of the requested age inside a band set by its
+write order. The read-before-write stages (`feedback`, `delay_network`) support
+`signalSize ≤ delay ≤ ringSize` — a sub-frame delay would be an intra-frame
+recurrence, which block-parallel evaluation cannot express. The write-first `delay`
+primitive supports `0 ≤ delay ≤ ringSize − signalSize` — a one-frame ring holds only a
+zero delay. The kernels clamp delays into these bands
+(see `MultiChannelDspFeatures.routedRingRead`); size rings so the intended delays sit
+inside them.
 
 ## Where the code lives
 

@@ -48,12 +48,15 @@ same expression in the scalar `AudioDspPrimitives.dispatchDelay`). That expressi
 true delay **only when the ring is deep enough that the wrapped read never lands in a
 slot holding the wrong lap**. The invariant it needs:
 
-> **Ring-sizing invariant.** A block-parallel ring must span at least
-> `maxDelay + signalSize` samples. Stages that read *before* writing the current frame
-> (`feedbackNetworkBlock`, used by `feedback` and `delay_network`) additionally require
-> `delay ≥ signalSize` — a sub-frame delay would need intra-frame recurrence, which the
-> block-parallel construct cannot express (`feedbackNetworkBlock` javadoc says so, but
-> nothing enforces it).
+> **Ring-sizing invariant.** For a read at `(head + i − D) mod B` the sample's age is
+> `i + ((D − i) mod B)`, which equals the requested `D` exactly only inside a band that
+> depends on write order. Stages that read *before* writing the current frame
+> (`feedbackNetworkBlock`, used by `feedback` and `delay_network`) support
+> `signalSize ≤ D ≤ bufSize` — sub-frame delays would need intra-frame recurrence,
+> which block-parallel evaluation cannot express. Stages that write *first*
+> (`multiChannelDelayBlock`, the `delay` primitive) support
+> `0 ≤ D ≤ bufSize − signalSize` — a one-frame ring holds only `D = 0`. Nothing
+> enforced either band. (Now enforced by a device-side clamp in the kernels.)
 
 Every violation produces, per buffer: a **splice discontinuity** (the read crosses from
 a correct lap to a wrong lap mid-frame) and a region whose **effective delay is wrong**
@@ -90,13 +93,15 @@ invariant:
 ### 2.2 Reverb network: 2-frame ring whose taps can never all be valid
 
 - `reverbTapDelays` spreads taps over `0.3 … 0.85 × (REVERB_FRAMES × signalSize)` with
-  `REVERB_FRAMES = 2` (`MixdownManagerPdslAdapter`), i.e. **0.6–1.7 frames**. The
-  read-first `delay_network` supports only `delay/signalSize ∈ [1, REVERB_FRAMES − 1]`
-  — with a 2-frame ring that band is the single value `delay = signalSize`. So **every
-  tap is partially wrong at any buffer size**: for 6 channels at 4096 the taps are
-  {3101, 3745, 4388, 5032, 5676, 6320} samples — the two sub-frame taps splice to a
-  lap-stale echo (`delay + 8192` ≈ +186 ms) for most of each frame, and the four
-  above-frame taps splice to lap-stale for the head of each frame.
+  `REVERB_FRAMES = 2` (`MixdownManagerPdslAdapter`), i.e. **0.6–1.7 frames**, but the
+  read-first `delay_network` band is `[signalSize, bufSize]` — so any tap below one
+  frame is defective. For 6 channels the two lowest tap fractions are always below
+  one frame regardless of buffer size (at 4096: taps {3101, 3745} of
+  {3101, 3745, 4388, 5032, 5676, 6320}); each splices at `i = delay` every frame and
+  reads a full ring-lap stale (`delay + 8192` ≈ +186 ms) for the rest. (An earlier
+  revision of this section claimed the above-frame taps were also invalid — wrong: the
+  head slot legitimately holds the oldest lap under read-first ordering, so
+  `delay ≤ bufSize` is fine.)
 - These spliced reads are **inside the Householder feedback loop**
   (`reverb_feedback`, radius 1/N), so each pass re-injects the previous pass's
   discontinuities: the artifact energy grows with accumulated tail energy — i.e. with
@@ -110,14 +115,11 @@ invariant:
 
 - `efx_fb_delay` = `floor(delayTimes gene × beatSamples)`; the gene choices are
   `{0.25, 0.375, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6}` beats (`EfxManager.init`). At
-  BPM > 161.5 the 0.25-beat choice is **< 4096 samples** → the read-first `feedback`
-  stage's unsupported sub-frame band; the echo reads a full fb-ring lap stale
-  (~33 frames ≈ 3 s at 120 bpm sizing) for most of each frame.
-- Independently, the fb ring size `ceil((maxDelay + 1)/signalSize)` frames
-  (`buildArgsMap`) is **one frame short of the invariant** at the top of the gene range
-  (6 beats): the first `~(maxDelay mod signalSize)` samples of each frame read the head
-  slot (lap-stale) whenever the gene picks the maximum delay at a tempo where
-  `6 × beatSamples` approaches the ring size.
+  BPM > 161.5 the 0.25-beat choice is **< 4096 samples** → below the read-first
+  `feedback` stage's band; the echo reads a full fb-ring lap stale (~33 frames ≈ 3 s at
+  120 bpm sizing) for most of each frame. (The fb ring's *size* is fine: an earlier
+  revision claimed the `ceil((maxDelay + 1)/signalSize)` formula was one frame short —
+  wrong, since the read-first band extends to the full ring span.)
 
 ---
 
@@ -269,8 +271,9 @@ each fix.
    once, checked for `delay`, `feedback`, and `delay_network`.
 2. Size the feedforward delay rings from the actual delay:
    `frames = ceil((delaySamples + signalSize)/signalSize)` in
-   `buildArgsMap` (3 frames for 6500 @ 4096); same +1-frame correction for the fb ring
-   formula. Unify the write/read order of the vectorized and scalar `delay` forms.
+   `buildArgsMap` (3 frames for 6500 @ 4096). The fb ring formula needs no change (the
+   read-first band extends to the full ring span). Unify the write/read order of the
+   vectorized and scalar `delay` forms.
 3. Clamp `efx_fb_delay` to `max(geneDelay, signalSize)` (quantize-up, per §5) and
    likewise floor the reverb taps at `signalSize`.
 4. Re-validate: bit-parity is not expected (the current output includes the defects),

@@ -17,15 +17,15 @@ receipts, and the fix plan: [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §2/§6.
 - **Feedforward wet-arm delay** (`pdslDelaySamples = 6500` into a one-frame ring): at
   4096 the delay degenerates to a within-frame rotation with a non-causal region; the
   intended 147 ms pre-delay has never been rendered at any buffer size.
-- **Reverb taps** (`reverbTapDelays` spans 0.6–1.7 frames of a 2-frame ring): a
-  read-first ring of depth 2 supports only `delay == signalSize`, so every tap is
-  partially lap-stale every frame, recirculated by the Householder feedback.
+- **Reverb taps** (`reverbTapDelays` spans 0.6–1.7 frames of a 2-frame ring): the
+  read-first band is `[signalSize, bufSize]`, so the sub-frame taps (always the two
+  lowest fractions for 6 channels) splice to lap-stale reads every frame, recirculated
+  by the Householder feedback.
 - **Efx feedback gene delays**: the 0.25-beat `delayTimes` choice drops below one frame
-  at BPM > ~161 (unsupported sub-frame band → ~ring-lap-stale echoes); the fb ring
-  formula is also one frame short of `maxDelay + signalSize` at the 6-beat ceiling.
+  at BPM > ~161 (below the read-first band → ~ring-lap-stale echoes).
 
-The governing invariant (a ring must span `maxDelay + signalSize`; read-first stages
-need `delay ≥ signalSize`) is currently enforced nowhere. The vectorized and scalar
+The governing bands (write-first `delay ≤ ring − signalSize`; read-first
+`signalSize ≤ delay ≤ ring`) are currently enforced nowhere. The vectorized and scalar
 forms of the `delay` primitive also disagree on write-vs-read order.
 
 ## 2. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`

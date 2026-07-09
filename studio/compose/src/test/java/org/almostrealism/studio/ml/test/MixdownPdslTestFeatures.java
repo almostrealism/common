@@ -93,6 +93,10 @@ interface MixdownPdslTestFeatures {
 		neutralEfx.put("efx_fb_passthrough", fbPassthrough);
 		neutralEfx.put("fb_buffers", fbBuffers);
 		neutralEfx.put("fb_heads", fbHeads);
+		// The neutral reverb overlay uses one line per channel, so reverb_taps must be
+		// overridden to match — every reverb argument's shape follows the tap count
+		// (the adapter's own map uses its production tap count with matching shapes).
+		neutralEfx.put("reverb_taps", channels);
 		neutralEfx.put("reverb_send", reverbSend);
 		neutralEfx.put("reverb_delays", reverbDelays);
 		neutralEfx.put("reverb_feedback", reverbFeedback);

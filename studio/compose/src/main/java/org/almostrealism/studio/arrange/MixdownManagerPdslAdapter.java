@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.filter.AudioPassFilter;
+import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
@@ -293,12 +294,17 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// signal even at matched levels and was replaced).
 		args.put("master_gain", config.masterBusGain);
 
-		// buffers, heads — fresh state slots, sized to match the PDSL subscript
-		// convention (buffers indexed by channel via 'buffers[channel]' carves
-		// signal_size samples per channel; heads indexed similarly carves 1 head
-		// per channel). Mirrors MixdownManager.createEfx(), where
-		// each AdjustableDelayCell owns its own internal delay state.
-		PackedCollection buffers = new PackedCollection(config.channels * config.signalSize).fill(0.0);
+		// buffers, heads — fresh state slots for the per-channel feedforward delay.
+		// The delay stage is write-first, so a ring only holds samples of age D for
+		// D <= ring - signal_size: the ring must span ceil((delaySamples + signalSize)
+		// / signalSize) whole frames. The former one-frame allocation could not hold
+		// ANY positive delay — at 4096 the 6500-sample delay degenerated into a
+		// non-causal within-frame rotation with a splice every buffer (the audible
+		// defect this sizing closed). 'buffers[channel]' carves ring-per-channel;
+		// 'heads[channel]' carves 1 head per channel.
+		int ffFrames = (config.delaySamples + 2 * config.signalSize - 1) / config.signalSize;
+		int ffRing = ffFrames * config.signalSize;
+		PackedCollection buffers = new PackedCollection(config.channels * ffRing).fill(0.0);
 		PackedCollection heads = new PackedCollection(config.channels).fill(0.0);
 		args.put("buffers", buffers);
 		args.put("heads", heads);
@@ -585,25 +591,36 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// and the wet output is the MEAN of the lines (sum * 1/size), so the wet level
 		// sits at roughly input * gain regardless of line count.
 		args.put("reverb_network_gain", 0.1);
-		args.put("reverb_tap_mean", 1.0 / config.channels);
+		args.put("reverb_tap_mean", 1.0 / reverbTaps);
 
-		// reverb_delays: producer([channels]) — per-tap delay lengths spanning the multi-frame
-		// reverb ring, spread across taps for diffusion (uniform taps give a metallic comb).
+		// reverb_taps: the delay-line count, decoupled from the scene channel count. The
+		// Java DelayNetwork defaults to 128 random lines over 0.15-1.5 s; a line count
+		// tied to channels (formerly 6) with a 2-frame ring produced 6 regular
+		// flutter-range taps (~70-143 ms at 4096) — a small metallic room instead of the
+		// legacy diffusion splash. The mono send is fanned across the taps by
+		// repeat(reverb_taps) in the PDSL layer.
+		args.put("reverb_taps", reverbTaps);
+
+		// reverb_delays: producer([reverb_taps]) — per-tap delay lengths spread over the
+		// legacy DelayNetwork's 0.15-1.5 s range (seconds-denominated, so the room no
+		// longer changes size with the buffer), quasi-randomly but deterministically
+		// spaced (uniform taps give a metallic comb).
 		args.put("reverb_delays", reverbTapDelays(config));
 
-		// reverb_feedback: producer([channels, channels]) — a scaled Householder reflection,
-		// the same feedback structure the Java DelayNetwork builds with
+		// reverb_feedback: producer([reverb_taps, reverb_taps]) — a scaled Householder
+		// reflection, the same feedback structure the Java DelayNetwork builds with
 		// randomHouseholderMatrix(size, 1.0): an orthogonal reflection scaled by 1/size,
 		// i.e. spectral radius 1/size. The previous 0.7 radius held ~2x the steady-state
 		// energy and a much longer tail than Java, audibly inflating the reverb arm once
 		// the automation drove the send past unity.
-		args.put("reverb_feedback", householderMatrix(config.channels, 1.0 / config.channels));
+		args.put("reverb_feedback", householderMatrix(reverbTaps, 1.0 / reverbTaps));
 
-		// Reverb ring state: a multi-frame ring (REVERB_FRAMES * signal_size) so the tail can
-		// extend beyond one buffer; heads one write position per tap.
-		int reverbRing = config.channels * REVERB_FRAMES * config.signalSize;
-		PackedCollection reverbBuffers = new PackedCollection(reverbRing).fill(0.0);
-		PackedCollection reverbHeads = new PackedCollection(config.channels).fill(0.0);
+		// Reverb ring state: the delay_network stage is read-first, so a ring holds
+		// samples of age D for signal_size <= D <= ring; sizing the ring to the tail's
+		// longest tap keeps every tap inside that band. One write head per tap.
+		int reverbRing = reverbRingFrames(config) * config.signalSize;
+		PackedCollection reverbBuffers = new PackedCollection(reverbTaps * reverbRing).fill(0.0);
+		PackedCollection reverbHeads = new PackedCollection(reverbTaps).fill(0.0);
 		args.put("reverb_buffers", reverbBuffers);
 		args.put("reverb_heads", reverbHeads);
 
@@ -646,8 +663,28 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	/** Number of log-spaced cutoff bins in the filter impulse-response lookup tables. */
 	private static final int FILTER_TABLE_BINS = 1024;
 
-	/** Reverb ring depth in frames; the per-tap delays span this multiple of signal_size. */
-	private static final int REVERB_FRAMES = 2;
+	/**
+	 * Reverb delay-line count. Decoupled from the scene channel count so tap density is
+	 * a diffusion choice, not a topology accident: the Java {@link DelayNetwork} the
+	 * reverb arm mirrors defaults to 128 random lines, and per-line recirculation at
+	 * spectral radius {@code 1/taps} is near-negligible either way, so the audible tail
+	 * is essentially the spread of first arrivals — denser taps, denser splash. Mutable
+	 * (read at argument-build time) so density can be tuned by ear; the kernel cost of
+	 * the tap-routing expression grows with {@code taps^2}, which bounds how high this
+	 * should go (128 lines would unroll a 16k-term expression per output sample).
+	 */
+	public static int reverbTaps = 32;
+
+	/**
+	 * Longest reverb tap in seconds — the top of the Java {@link DelayNetwork} per-line
+	 * delay range (its lines draw uniformly from 0.15–1.5 s). Seconds-denominated so the
+	 * reverb room no longer changes size with the buffer: the former frames-denominated
+	 * ring halved the room when production moved from 8192 to 4096.
+	 */
+	private static final double REVERB_TAIL_SECONDS = 1.5;
+
+	/** Shortest reverb tap in seconds — the bottom of the Java per-line delay range. */
+	private static final double REVERB_MIN_TAP_SECONDS = 0.15;
 
 	/**
 	 * Longest efx feedback delay the ring must accommodate, in beats. Matches the ceiling of
@@ -678,22 +715,41 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Builds the {@code [channels]} per-tap reverb delay lengths, spread across the multi-frame
-	 * ring (0.3 … 0.85 of the ring) so the taps are distinct and produce diffusion rather than a
-	 * single coherent echo.
+	 * Builds the {@code [reverbTaps]} per-tap reverb delay lengths, spread over the Java
+	 * {@link DelayNetwork}'s 0.15–1.5 s per-line range. The spread uses the golden-ratio
+	 * (Weyl) sequence {@code frac((k + 1) * phi^-1)} — quasi-random spacing that avoids
+	 * both the metallic comb of uniform taps and the run-to-run nondeterminism of the
+	 * Java network's {@code Math.random()} draw, so renders stay reproducible. The lower
+	 * bound is floored at one frame ({@code delay_network} is read-first, so sub-frame
+	 * taps cannot be represented — they formerly read a full ring-lap stale and spliced
+	 * every buffer, the defect this rewrite closed).
 	 *
 	 * @param config structural configuration
-	 * @return a {@code [channels]} {@link PackedCollection} of per-tap delay sample counts
+	 * @return a {@code [reverbTaps]} {@link PackedCollection} of per-tap delay sample counts
 	 */
 	public static PackedCollection reverbTapDelays(Config config) {
-		int ring = REVERB_FRAMES * config.signalSize;
-		// fraction[ch] = 0.3 + 0.55*(ch+1)/(channels+1); delay[ch] = floor(fraction * ring).
-		CollectionProducer fraction = ADAPTER.integers(0, config.channels).add(1.0)
-				.multiply(0.55 / (config.channels + 1.0)).add(0.3);
-		PackedCollection delays = new PackedCollection(config.channels);
-		ADAPTER.a(config.channels, ADAPTER.cp(delays),
-				ADAPTER.floor(fraction.multiply((double) ring))).get().run();
+		double lo = Math.max(REVERB_MIN_TAP_SECONDS * config.sampleRate, config.signalSize);
+		double hi = REVERB_TAIL_SECONDS * config.sampleRate;
+		double phiInverse = 2.0 / (1.0 + Math.sqrt(5.0));
+		CollectionProducer fraction = ADAPTER.mod(
+				ADAPTER.integers(1, reverbTaps + 1).multiply(phiInverse), ADAPTER.c(1.0));
+		PackedCollection delays = new PackedCollection(reverbTaps);
+		ADAPTER.a(reverbTaps, ADAPTER.cp(delays),
+				ADAPTER.floor(fraction.multiply(hi - lo).add(lo))).get().run();
 		return delays;
+	}
+
+	/**
+	 * Number of whole frames the per-tap reverb ring must span so the longest tap
+	 * ({@link #REVERB_TAIL_SECONDS}) sits inside the read-first band
+	 * {@code [signalSize, ringSize]}.
+	 *
+	 * @param config structural configuration
+	 * @return the ring depth in frames
+	 */
+	public static int reverbRingFrames(Config config) {
+		int maxTap = (int) Math.ceil(REVERB_TAIL_SECONDS * config.sampleRate);
+		return (maxTap + config.signalSize - 1) / config.signalSize;
 	}
 
 	/**

@@ -45,9 +45,11 @@
 // Per-channel delay state for the efx bus
 //
 // Each of the `channels` delay lines owns its own slice of `buffers` and
-// `heads`. `buffers` must have total size `channels * signal_size` and
-// `heads` must have total size `channels`; the subscript operator
-// (e.g., `buffers[channel]`) carves a per-channel view at build time.
+// `heads`. `buffers` must have total size `channels * ring` where `ring` is a
+// whole multiple of `signal_size` spanning at least `delay_samples +
+// signal_size` (the write-first ring invariant — a one-frame ring can only
+// hold a zero delay); `heads` must have total size `channels`. The subscript
+// operator (e.g., `buffers[channel]`) carves a per-channel view at build time.
 // ---------------------------------------------------------------------------
 state mixdown_efx_state {
     buffers: weight
@@ -58,9 +60,11 @@ state mixdown_efx_state {
 // Per-line delay state for the reverb bus
 //
 // The closed-loop multi-tap reverb structure (delay_network) requires its
-// own per-line buffers and heads, sized [taps * signal_size] and [taps]
-// respectively. These are independent of mixdown_efx_state's slots so the
-// reverb path can be exercised in isolation by tests like
+// own per-line buffers and heads, sized [taps * ring] and [taps] where `ring`
+// is a whole multiple of `signal_size` spanning at least the longest tap
+// delay (the read-first ring invariant: a tap is representable for
+// signal_size <= delay <= ring). These are independent of mixdown_efx_state's
+// slots so the reverb path can be exercised in isolation by tests like
 // testMixdownManagerReverbPath.
 // ---------------------------------------------------------------------------
 state mixdown_reverb_state {
@@ -432,8 +436,9 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                          efx_fb_transmission: producer([channels, channels]),
                          efx_fb_passthrough: producer([channels, channels]),
                          reverb_send: producer([channels]),
-                         reverb_delays: producer([channels]),
-                         reverb_feedback: producer([channels, channels]),
+                         reverb_taps: int,
+                         reverb_delays: producer([reverb_taps]),
+                         reverb_feedback: producer([reverb_taps, reverb_taps]),
                          reverb_network_gain: producer([1]),
                          reverb_tap_mean: producer([1]),
                          main_arm_gain: producer([1]),
@@ -506,12 +511,16 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
             // voicing (wetSources.branch(..., reverbFactor)). So slice the WET region, apply the
             // per-channel reverb send (reverb_send[channel], 0 for non-reverb channels), sum to a
             // mono send, then fan across the reverb taps and run the closed-loop multi-tap
-            // feedback delay network (Householder feedback for a stable, diffuse tail). The
-            // network's GAIN STRUCTURE mirrors Java's DelayNetwork: the send enters the lines
-            // scaled by reverb_network_gain (DelayNetwork's `gain`, 0.1) and the wet output is
-            // the MEAN over the lines (sum * 1/size), so the wet level sits at roughly
-            // input * gain. Without these two stages the arm ran ~15x hotter than Java once
-            // the reverb automation grew past unity, swamping the swept dry bus.
+            // feedback delay network (Householder feedback for a stable, diffuse tail). The tap
+            // count (reverb_taps) is independent of the scene channel count — density is a
+            // diffusion choice, mirroring Java's 128-line DelayNetwork — and delay_network
+            // derives its line count from the [reverb_taps]-shaped delay argument, so the
+            // repeat() fan-out needs no channel bookkeeping. The network's GAIN STRUCTURE
+            // mirrors Java's DelayNetwork: the send enters the lines scaled by
+            // reverb_network_gain (DelayNetwork's `gain`, 0.1) and the wet output is the MEAN
+            // over the lines (sum * 1/size), so the wet level sits at roughly input * gain.
+            // Without these two stages the arm ran ~15x hotter than Java once the reverb
+            // automation grew past unity, swamping the swept dry bus.
             reshape(shape(2 * channels * signal_size))
             slice(channels * signal_size, channels * signal_size)
             reshape(shape(channels, signal_size))
@@ -520,7 +529,7 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
             }
             sum_channels()
             scale(reverb_network_gain)
-            repeat(channels)
+            repeat(reverb_taps)
             delay_network(reverb_delays, reverb_feedback, reverb_buffers, reverb_heads)
             sum_channels()
             scale(reverb_tap_mean)

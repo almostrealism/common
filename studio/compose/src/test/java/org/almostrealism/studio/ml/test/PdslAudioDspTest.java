@@ -439,8 +439,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	@TestDepth(2)
 	public void testDelayLineStatePersistence() {
 		int delaySamples = 2;
-		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
-		buffer.setMem(new double[SIGNAL_SIZE]);
+		// Two frames of ring so the sub-frame delay sits inside the write-first band
+		// [0, ring - signal_size]; a one-frame ring supports only a zero delay (the
+		// kernel clamps to it), which would turn this delay line into a pass-through.
+		PackedCollection buffer = new PackedCollection(2 * SIGNAL_SIZE);
+		buffer.setMem(new double[2 * SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(new double[]{0.0});
 
