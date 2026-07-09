@@ -21,25 +21,38 @@ differences (reverb room, merged feedback loops, missing genes).
 
 Execution order (PDSL_DIFFERENCES §6):
 
-1. **Step 0 — receipts.** Ring-semantics unit test (effective-delay assertions on
-   `multiChannelDelayBlock` / `feedbackNetworkBlock`) + arm-gain bisection by ear on the
-   real scene at 4096.
-2. **A — fix the ring defects.** Enforce the ring-sizing invariant, size rings from the
-   actual delays, unify the two `delay` forms' write/read order, quantize sub-frame
-   gene delays up to one frame.
-3. **B — re-align the reverb room.** Seconds-denominated ring, tap count decoupled from
-   channel count, legacy-range tap spread. Knobs, not a rewrite.
-4. **C — restore missing character.** Self-feedback gene on the grid diagonal,
-   gene-driven feedforward delay, per-buffer delay drift (modulation approximation),
-   per-sample parameter ramps for hot-bus automation, biquad-table coefficients for the
-   in-loop filters.
-5. **D — accept and document** what buffer size 4096 cannot reproduce
+1. **Step 0 — receipts. DONE 2026-07-09** (`DelayBankBehaviorTest`; exact-timing tests
+   in `DelayNetworkBehaviorTest` including the sample-exact-regeneration receipt).
+2. **A — fix the ring defects. DONE 2026-07-09** (device-side band clamps; rings sized
+   from actual delays; the two `delay` forms unified on write-first semantics).
+3. **B — re-align the reverb room. DONE 2026-07-09** (seconds-denominated ring;
+   `reverb_taps` decoupled from channels, default 32; golden-ratio spread over the
+   legacy 0.15–1.5 s range; radius 1/taps). Owner listening verdict pending.
+4. **C — restore missing character. ← CURRENT.** Self-feedback gene on the grid
+   diagonal, gene-driven feedforward delay, per-buffer delay drift (modulation
+   approximation), per-sample parameter ramps for hot-bus automation, biquad-table
+   coefficients for the in-loop filters. Tune the granularity-dependent pieces (drift
+   steps, ramps) against the **1024** production buffer (43 Hz update rate).
+5. **D — accept and document** what a block-parallel buffer cannot reproduce
    (PDSL_DIFFERENCES §5).
 
-Acceptance: long-render (≥ 3 min) A/B at 4096 on the curated scene judged by ear on wet
-and reverb channels, with the Step-0 unit test green and no grinding signature. Bit
-parity with the current output is **not** a gate — the current output contains the
-defects.
+Acceptance: long-render (≥ 3 min) A/B on the curated scene judged by ear on wet and
+reverb channels, with the Step-0 unit tests green and no grinding signature. Bit
+parity with pre-fix output is **not** a gate — that output contained the defects.
+
+## Buffer size: the default is now 1024 (2026-07-09, owner decision)
+
+`AudioScene.DEFAULT_REALTIME_BUFFER_SIZE` switched 4096 → **1024**, accepting that it
+is not yet reliably real-time on all hardware. The 2026-07-09 buffer-size sweep found
+a frame-count-independent per-tick cost floor (~21.6 ms early content / ~52 ms dense on
+the worker M1) made of host-completion commits (~41–47/tick) and per-note fallback
+dispatches (~15–19/tick), putting break-even at 1024 on that machine. Removing the
+floor — plus the argument-preparation NPE fix that unblocks the benchmark — is
+**handed off to the performance effort**: the full sweep data, mechanisms, three work
+items, and the acceptance bar live in
+**[PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md)**. Quality work (option C above)
+proceeds here at 1024 in the meantime; re-test real-time viability when the
+performance items land.
 
 ## Queue after the audible gap
 
@@ -56,8 +69,8 @@ defects.
    `PatternRenderStream` is the shipped hand-built prototype. Pursue when the language
    work is prioritized, not as part of parity.
 5. **8192 rendered-peak nondeterminism** (0.63 vs 0.68 across identical runs; 4096 is
-   stable) — a real determinism question, deprioritized while 4096 is the production
-   size.
+   stable) — a real determinism question, deprioritized while the production size is
+   far below 8192.
 
 ## How to measure
 
@@ -66,6 +79,9 @@ defects.
   (`AR_GENERATE_CHANNEL=2`) and a reverb channel; windowed RMS is blind to the §2
   defects, so it is a level check only.
 - `PdslHotPathBreakdownTest` / `PdslSetupBreakdownTest` — the perf instruments; keep
-  them green as regression guards (p50 ratio at 4096, setup seconds, exact-peak
-  parity where applicable).
+  them green as regression guards (p50 ratio at the production buffer size, setup
+  seconds, exact-peak parity where applicable). The former is currently broken on
+  master by the argument-preparation NPE (see
+  [PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md)); run with
+  `-DAR_HARDWARE_ASYNC=disabled` until that fix lands.
 - The batched sentinel battery (`studio/music`) — unchanged; guards a2 dispatch parity.

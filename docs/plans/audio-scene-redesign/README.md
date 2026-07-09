@@ -1,11 +1,15 @@
 # AudioScene → PDSL Migration — Plan Index
 
 > **Goal:** finish the migration of `AudioScene` real-time rendering to the PDSL-defined
-> DSP path. The performance goal is **achieved** (≈ 5× real-time including compilation
-> and warmup, owner-measured on M4, 2026-07, at the production buffer size of 4096) and
-> is no longer this folder's concern. **What remains is acoustic:** the PDSL path must
-> sound like the CellList baseline it replaces — plus the endgame items (true stereo,
-> adapter retirement) that let CellList mixdown be deleted.
+> DSP path. The original performance goal was **achieved at 4096** (≈ 5× real-time
+> including compilation and warmup, owner-measured on M4, 2026-07). The production
+> default is now **1024** (owner decision, 2026-07-09) for its audible-quality and
+> latency benefits, accepting that 1024 is not yet reliably real-time everywhere — the
+> per-tick fixed-cost floor that gates it is handed off to the performance effort
+> ([PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md)). **What remains here is
+> acoustic:** the PDSL path must sound like the CellList baseline it replaces — plus
+> the endgame items (true stereo, adapter retirement) that let CellList mixdown be
+> deleted.
 
 ## Read in this order
 
@@ -18,6 +22,9 @@
 3. **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** — live platform constraints (open ring
    defects, hybrid routing / Metal 31-buffer limit, cache-persist, curated-library
    dependence) and the compressed resolved-issues record.
+4. **[PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md)** — the brief for the separate
+   performance effort: the buffer-size sweep, the frame-independent cost floor, the
+   argument-preparation NPE, and the acceptance bar for making 1024 reliably real-time.
 
 ## Related, elsewhere
 
