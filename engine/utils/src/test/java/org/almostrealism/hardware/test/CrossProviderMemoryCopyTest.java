@@ -17,11 +17,11 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.compute.ComputeRequirement;
-import org.almostrealism.c.NativeMemory;
-import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.cl.CLMemory;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
+import org.almostrealism.hardware.mem.RAM;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -37,7 +37,7 @@ import org.junit.Test;
  * <p>All tests skip cleanly when the OpenCL or JNI backend is unavailable.</p>
  *
  * @see org.almostrealism.hardware.cl.CLMemoryProvider
- * @see org.almostrealism.c.NativeMemoryProvider
+ * @see org.almostrealism.nio.NativeMemoryProvider
  */
 public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 
@@ -56,7 +56,7 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 		}
 
 		int n = 96;
-		NativeMemory source = nativeProvider.allocate(n);
+		RAM source = nativeProvider.allocate(n);
 		CLMemory dest = clProvider.allocate(n);
 
 		try {
@@ -99,7 +99,7 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 
 		int n = 96;
 		CLMemory source = clProvider.allocate(n);
-		NativeMemory dest = nativeProvider.allocate(n);
+		RAM dest = nativeProvider.allocate(n);
 
 		try {
 			double[] values = new double[n];
@@ -141,9 +141,9 @@ public class CrossProviderMemoryCopyTest extends TestSuiteBase {
 		}
 
 		int n = 1024;
-		NativeMemory original = nativeProvider.allocate(n);
+		RAM original = nativeProvider.allocate(n);
 		CLMemory device = clProvider.allocate(n);
-		NativeMemory returned = nativeProvider.allocate(n);
+		RAM returned = nativeProvider.allocate(n);
 
 		try {
 			double[] values = new double[n];

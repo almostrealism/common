@@ -21,13 +21,14 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.ByteBufferMemory;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 import org.almostrealism.nio.NativeBuffer;
-import org.almostrealism.nio.NativeBufferMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
@@ -36,7 +37,6 @@ import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
 import java.lang.ref.Reference;
-import java.nio.ByteBuffer;
 
 /**
  * {@link MemoryProvider} implementation for OpenCL memory management.
@@ -46,7 +46,7 @@ import java.nio.ByteBuffer;
  * {@link CLMemoryRef} ({@link java.lang.ref.PhantomReference}) rather than a strong reference,
  * and the underlying {@code cl_mem} is released automatically when the owning {@link CLMemory}
  * is garbage collected — matching the lifecycle used by {@link org.almostrealism.hardware.metal.MetalMemoryProvider}
- * and {@link org.almostrealism.c.NativeMemoryProvider}.</p>
+ * and {@link org.almostrealism.nio.NativeMemoryProvider}.</p>
  *
  * <h2>Allocation Strategy</h2>
  *
@@ -87,13 +87,16 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	public static TimingMetric ioTime = Hardware.console.timing("clIO");
 
 	static {
-		NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
+		NativeMemoryProvider.registerAdapter(CLMemory.class,
 				(mem, offset, source, srcOffset, length) -> {
 					if (mem.getProvider().getNumberSize() != source.getProvider().getNumberSize()) {
 						throw new UnsupportedOperationException();
 					}
 
-					Pointer dst = Pointer.to(mem.getBuffer()).withByteOffset(0);
+					// Address the position-stable root ByteBuffer rather than the typed view,
+					// whose position is left advanced by element-wise host writes
+					Pointer dst = Pointer.to(mem.getByteBuffer())
+							.withByteOffset((long) offset * source.getProvider().getNumberSize());
 					cl_event event = new cl_event();
 					CL.clEnqueueReadBuffer(source.getProvider().queue, source.getMem(),
 							CL.CL_TRUE, (long) srcOffset * source.getProvider().getNumberSize(),
@@ -352,7 +355,9 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			} finally {
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
-		} else if (srcRam instanceof NativeBuffer) {
+		} else if (srcRam instanceof ByteBufferMemory) {
+			// A source backed by a host-accessible ByteBuffer is written with a single bulk
+			// transfer, avoiding the double[] mediation of the array fallback
 			if (srcRam.getProvider().getNumberSize() != getNumberSize()) {
 				warn("Unable to copy memory directly due to precision difference");
 				setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
@@ -360,7 +365,8 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			}
 
 			try {
-				Pointer src = Pointer.to(((NativeBuffer) srcRam).getBuffer()).withByteOffset(0);
+				Pointer src = Pointer.to(((ByteBufferMemory) srcRam).getByteBuffer())
+						.withByteOffset((long) srcOffset * getNumberSize());
 				cl_event event = new cl_event();
 				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
@@ -369,33 +375,10 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			} catch (CLException e) {
 				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 			} finally {
+				Reference.reachabilityFence(srcRam);
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
 		} else {
-			// A source whose provider shares this provider's element size and can expose
-			// its memory as a direct buffer is written with a single bulk transfer,
-			// avoiding the double[] mediation of the fallback below
-			MemoryProvider srcProvider = srcRam.getProvider();
-			ByteBuffer view = srcProvider != null && srcProvider.getNumberSize() == getNumberSize()
-					? srcProvider.getHostBuffer(srcRam, srcOffset, length) : null;
-
-			if (view != null) {
-				try {
-					cl_event event = new cl_event();
-					CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
-							(long) offset * getNumberSize(), (long) length * getNumberSize(),
-							Pointer.to(view), 0, null, event);
-					processEvent(event);
-				} catch (CLException e) {
-					throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
-				} finally {
-					Reference.reachabilityFence(srcRam);
-					ioTime.addEntry("setMem", System.nanoTime() - start);
-				}
-
-				return;
-			}
-
 			setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
 		}
 	}
@@ -476,33 +459,6 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
 		} finally {
-			ioTime.addEntry("getMem", System.nanoTime() - start);
-		}
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>Performs a single blocking {@code clEnqueueReadBuffer} directly into the given
-	 * buffer, with no element conversion. The caller is responsible for confirming that
-	 * its element size matches {@link #getNumberSize()} before requesting the transfer.</p>
-	 */
-	@Override
-	public boolean getMem(CLMemory mem, int sOffset, ByteBuffer out, int length) {
-		long start = System.nanoTime();
-
-		try {
-			cl_event event = new cl_event();
-			CL.clEnqueueReadBuffer(queue, mem.getMem(),
-					CL.CL_TRUE, (long) sOffset * getNumberSize(),
-					(long) length * getNumberSize(), Pointer.to(out), 0,
-					null, event);
-			processEvent(event);
-			return true;
-		} catch (CLException e) {
-			throw CLExceptionProcessor.process(e, this, sOffset, 0, length);
-		} finally {
-			Reference.reachabilityFence(mem);
 			ioTime.addEntry("getMem", System.nanoTime() - start);
 		}
 	}

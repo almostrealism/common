@@ -30,7 +30,7 @@ import java.nio.file.Files;
  *
  * <p>Loads the platform-specific native library ({@code libNIO.dylib} on macOS, {@code libNIO.so} on Linux)
  * from the classpath and exposes low-level memory-mapped I/O operations for use by
- * {@link NativeBufferMemoryProvider}.</p>
+ * {@link NativeMemoryProvider}.</p>
  */
 public class NIO {
 	static {

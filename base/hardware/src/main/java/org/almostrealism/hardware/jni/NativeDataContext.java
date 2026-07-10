@@ -22,7 +22,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.compute.ComputeRequirement;
-import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.HardwareDataContext;
@@ -235,7 +235,8 @@ public class NativeDataContext extends HardwareDataContext {
 		compiler = NativeCompiler.factory(getPrecision(), isClMemory).construct();
 
 		if (ram == null) {
-			ram = new NativeMemoryProvider(compiler, getMaxReservation() * getPrecision().bytes());
+			ram = new NativeMemoryProvider(getPrecision(),
+					getMaxReservation() * getPrecision().bytes(), compiler);
 		}
 
 		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);

@@ -24,7 +24,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  * JNI wrapper for writing data from Java arrays into native memory.
  *
  * <p>{@link NativeWrite} provides a native operation that copies data from Java double arrays
- * into native memory (allocated via {@link Malloc} or {@link NativeMemoryProvider}).
+ * into native memory (allocated via {@link Malloc} or {@link org.almostrealism.nio.NativeMemoryProvider}).
  * It handles precision conversion automatically based on the compiler's precision setting.</p>
  *
  * <h2>Usage</h2>
@@ -56,7 +56,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *
  * @see NativeRead
  * @see NativeMemory
- * @see NativeMemoryProvider
+ * @see org.almostrealism.nio.NativeMemoryProvider
  * @see BaseNative
  */
 public class NativeWrite extends BaseNative {

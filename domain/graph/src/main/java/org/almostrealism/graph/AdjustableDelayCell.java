@@ -232,7 +232,7 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 	 *
 	 * <p>The {@link AcceleratedTimeSeries} buffer is the largest allocation
 	 * (10M entries by default). Destroying it returns the native memory to
-	 * the {@link org.almostrealism.c.NativeMemoryProvider} immediately rather
+	 * the {@link org.almostrealism.nio.NativeMemoryProvider} immediately rather
 	 * than waiting for garbage collection.</p>
 	 */
 	@Override

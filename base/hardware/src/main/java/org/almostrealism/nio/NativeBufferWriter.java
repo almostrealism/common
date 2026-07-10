@@ -21,11 +21,11 @@ import io.almostrealism.code.Memory;
 /**
  * Strategy interface for copying data from a foreign {@link io.almostrealism.code.Memory} type into a {@link NativeBuffer}.
  *
- * <p>Implementations are registered with {@link NativeBufferMemoryProvider} to handle cross-type
+ * <p>Implementations are registered with {@link NativeMemoryProvider} to handle cross-type
  * memory writes without requiring the caller to know the source memory's concrete type.</p>
  *
  * @param <T> Foreign memory type to read from
- * @see NativeBufferMemoryProvider#registerAdapter(Class, NativeBufferWriter)
+ * @see NativeMemoryProvider#registerAdapter(Class, NativeBufferWriter)
  */
 public interface NativeBufferWriter<T extends Memory> {
 	/**

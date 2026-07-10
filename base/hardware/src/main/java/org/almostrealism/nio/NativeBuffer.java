@@ -20,8 +20,8 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.ByteBufferMemory;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
-import org.almostrealism.hardware.mem.RAM;
 
 import java.io.File;
 import java.nio.Buffer;
@@ -39,14 +39,14 @@ import java.util.function.Consumer;
  * The raw native pointer to the buffer is exposed for kernel argument passing.</p>
  *
  * <p>When the buffer is backed by shared memory, {@link #destroy()} unmaps the region.
- * Deallocation listeners are called by {@link NativeBufferMemoryProvider} after GC cleanup.</p>
+ * Deallocation listeners are called by {@link NativeMemoryProvider} after GC cleanup.</p>
  *
- * @see NativeBufferMemoryProvider
+ * @see NativeMemoryProvider
  * @see NIO
  */
-public class NativeBuffer extends RAM implements Destroyable {
+public class NativeBuffer extends ByteBufferMemory implements Destroyable {
 	/** The memory provider that allocated this buffer. */
-	private final NativeBufferMemoryProvider provider;
+	private final NativeMemoryProvider provider;
 	/** Root byte buffer used for shared memory mapping and capacity queries. */
 	private final ByteBuffer rootBuffer;
 	/** Typed view of the buffer (float, double, or short depending on precision). */
@@ -64,7 +64,7 @@ public class NativeBuffer extends RAM implements Destroyable {
 	 * @param buffer         Typed view used for kernel argument passing
 	 * @param sharedLocation Shared memory path, or null for private allocation
 	 */
-	protected NativeBuffer(NativeBufferMemoryProvider provider,
+	protected NativeBuffer(NativeMemoryProvider provider,
 						   ByteBuffer rootBuffer, Buffer buffer,
 						   String sharedLocation) {
 		if (!rootBuffer.isDirect() || !buffer.isDirect())
@@ -77,12 +77,21 @@ public class NativeBuffer extends RAM implements Destroyable {
 	}
 
 	@Override
-	public MemoryProvider<NativeBuffer> getProvider() { return provider; }
+	public MemoryProvider getProvider() { return provider; }
 
 	@Override
 	public long getContentPointer() { return NIO.pointerForBuffer(buffer); }
 
 	public Buffer getBuffer() { return buffer; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns the root {@link ByteBuffer} backing this buffer; the typed view returned by
+	 * {@link #getBuffer()} shares the same storage.</p>
+	 */
+	@Override
+	public ByteBuffer getByteBuffer() { return rootBuffer; }
 
 	/**
 	 * Returns the root {@link ByteBuffer} backing this native buffer.
@@ -179,7 +188,7 @@ public class NativeBuffer extends RAM implements Destroyable {
 	 * @return New {@link NativeBuffer} wrapping a typed direct buffer
 	 * @throws HardwareException If the provider's precision is not supported
 	 */
-	public static NativeBuffer create(NativeBufferMemoryProvider provider, int len, String sharedLocation) {
+	public static NativeBuffer create(NativeMemoryProvider provider, int len, String sharedLocation) {
 		if (provider.getPrecision() == Precision.FP16) {
 			ByteBuffer bufferByte = buffer(len * 2, sharedLocation);
 			return new NativeBuffer(provider, bufferByte, bufferByte.asShortBuffer(), sharedLocation);

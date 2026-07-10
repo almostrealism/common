@@ -22,7 +22,7 @@
  * <ul>
  *   <li>{@link org.almostrealism.nio.NIO} - JNI bridge for shared memory and pointer operations</li>
  *   <li>{@link org.almostrealism.nio.NativeBuffer} - direct buffer RAM implementation</li>
- *   <li>{@link org.almostrealism.nio.NativeBufferMemoryProvider} - provider managing NIO buffers</li>
+ *   <li>{@link org.almostrealism.nio.NativeMemoryProvider} - provider managing NIO buffers</li>
  *   <li>{@link org.almostrealism.nio.NativeBufferRef} - phantom reference for GC-triggered cleanup</li>
  * </ul>
  */

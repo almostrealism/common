@@ -47,7 +47,7 @@ import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.nio.NativeBufferMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -585,7 +585,7 @@ public final class Hardware implements ConsoleFeatures {
 	/** Location strategy for CL memory allocation (DEVICE, HEAP, HOST, or DELEGATE). */
 	private Location location;
 	/** Optional NIO-based memory provider for Metal/NIO shared memory mode; null if not enabled. */
-	private NativeBufferMemoryProvider nioMemory;
+	private NativeMemoryProvider nioMemory;
 
 	/** High-level orchestrator for submitting and sequencing hardware operations. */
 	private DefaultComputer computer;
@@ -629,7 +629,7 @@ public final class Hardware implements ConsoleFeatures {
 		int count;
 
 		if (nioMemory) {
-			this.nioMemory = new NativeBufferMemoryProvider(Precision.FP32, Precision.FP32.bytes() * maxReservation);
+			this.nioMemory = new NativeMemoryProvider(Precision.FP32, Precision.FP32.bytes() * maxReservation);
 			count = processRequirements(reqs, Precision.FP32);
 		} else {
 			count = processRequirements(reqs);

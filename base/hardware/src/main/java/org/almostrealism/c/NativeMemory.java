@@ -25,7 +25,7 @@ import org.almostrealism.hardware.mem.RAM;
  * <p>{@link NativeMemory} wraps a native memory pointer allocated via JNI malloc,
  * providing access to CPU memory for native code execution.</p>
  *
- * @see NativeMemoryProvider
+ * @see org.almostrealism.nio.NativeMemoryProvider
  * @see RAM
  */
 public class NativeMemory extends RAM {

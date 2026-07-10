@@ -55,7 +55,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *
  * @see Malloc
  * @see BaseNative
- * @see NativeMemoryProvider
+ * @see org.almostrealism.nio.NativeMemoryProvider
  */
 public class Free extends BaseNative {
 
