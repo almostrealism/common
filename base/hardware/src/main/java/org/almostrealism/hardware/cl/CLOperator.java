@@ -218,6 +218,9 @@ public class CLOperator extends HardwareOperator {
 
 		long id = totalInvocations++;
 
+		// Invalidate any host read caches: this kernel may write its argument buffers.
+		CLMemory.markDispatch();
+
 		if (enableVerboseLog) {
 			log("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}

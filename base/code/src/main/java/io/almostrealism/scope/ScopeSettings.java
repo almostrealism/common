@@ -58,6 +58,23 @@ public class ScopeSettings {
 	/** When {@code true}, masking is applied to instance-level reference expressions. */
 	public static boolean enableInstanceReferenceMasking = false;
 
+	/**
+	 * When {@code true}, reduction accumulators in {@link Repeated} loop bodies are promoted
+	 * to local variables during simplification. A store to a loop-invariant array element on
+	 * every iteration (a reduction like {@code out[i] = out[i] + in[j]}) is rewritten to
+	 * accumulate in a local variable, with a single store to the element after the loop. This
+	 * removes a global-memory read-modify-write from every iteration, which compilers for some
+	 * backends (notably OpenCL) cannot do themselves because unqualified global pointers may
+	 * alias.
+	 *
+	 * <p>Defaults to {@code true}; disabled only for differential testing. The transform
+	 * assumes distinct kernel argument arrays do not overlap in memory (the same assumption
+	 * made throughout scope compilation) and is conservative in every other respect: it bails
+	 * out on nested loops, method calls, metrics, non-assignment statements, and any reference
+	 * to the promoted array that does not address the promoted element.</p>
+	 */
+	public static boolean enableAccumulatorPromotion = true;
+
 	/** When {@code true}, kernel sequence results are cached to avoid recomputation. */
 	public static boolean enableKernelSeqCache = false;
 

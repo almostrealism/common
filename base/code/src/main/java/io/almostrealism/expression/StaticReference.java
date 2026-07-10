@@ -78,6 +78,11 @@ public class StaticReference<T> extends Expression<T> {
 	protected Variable getReferent() { return referent; }
 
 	@Override
+	public boolean containsReference(Set<String> names) {
+		return (getName() != null && names.contains(getName())) || super.containsReference(names);
+	}
+
+	@Override
 	public Expression<T> withValue(String name, Number value) {
 		if (!Objects.equals(name, expression)) return this;
 
