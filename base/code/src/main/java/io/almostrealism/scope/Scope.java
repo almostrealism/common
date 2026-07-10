@@ -1016,6 +1016,42 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
+	 * Returns a copy of this scope and its descendants in which every occurrence of
+	 * {@code target} within a statement or variable expression has been replaced by
+	 * {@code replacement}, mirroring {@link Expression#replace(Expression, Expression)}
+	 * at the scope level.
+	 *
+	 * <p>The expressions of {@link ExpressionAssignment} statements and of
+	 * {@link #getVariables() variables} are rewritten through
+	 * {@link ExpressionAssignment#replace(Expression, Expression)}, and child scopes are
+	 * rewritten recursively. Other statement types, methods, metrics, parameters, required
+	 * scopes and kernel children are carried over unchanged. Subclasses that store
+	 * expressions outside the statement list — such as {@link Repeated} loop bounds or
+	 * {@link Cases} branch conditions — override this method to rewrite those as well.</p>
+	 *
+	 * @param target      the expression to find and replace
+	 * @param replacement the expression to substitute for the target
+	 * @return a new scope tree with the substitution applied
+	 */
+	public Scope<T> replace(Expression<?> target, Expression<?> replacement) {
+		Scope<T> scope = (Scope<T>) generate(getChildren().stream()
+				.map(c -> c.replace(target, replacement))
+				.collect(Collectors.toList()));
+
+		scope.getRequiredScopes().addAll(getRequiredScopes());
+		scope.getParameters().addAll(getParameters());
+		scope.getMethods().addAll(getMethods());
+		getStatements().forEach(s -> scope.getStatements().add(s instanceof ExpressionAssignment ?
+				((ExpressionAssignment<?>) s).replace(target, replacement) : s));
+		getVariables().forEach(v -> scope.getVariables().add(v.replace(target, replacement)));
+		scope.getMetrics().addAll(getMetrics());
+
+		if (getKernelChildren() != null) scope.setKernelChildren(new HashSet<>(getKernelChildren()));
+
+		return scope;
+	}
+
+	/**
 	 * Returns the signature string for this scope.
 	 * <p>Uses the metadata signature if available, otherwise falls back to the scope name.</p>
 	 *

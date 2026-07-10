@@ -166,8 +166,7 @@ public class ScopeExpressionCollector {
 
 	/**
 	 * If the scope is a {@link Repeated}, appends the loop condition and stride
-	 * expressions to the given root list, along with the destination and
-	 * expression of every epilogue assignment. Otherwise does nothing.
+	 * expressions to the given root list. Otherwise does nothing.
 	 *
 	 * @param s     the scope to read
 	 * @param roots the list to append into
@@ -177,14 +176,6 @@ public class ScopeExpressionCollector {
 			Repeated<?> r = (Repeated<?>) s;
 			if (r.getCondition() != null) roots.add(r.getCondition());
 			if (r.getInterval() != null) roots.add(r.getInterval());
-
-			for (Statement<?> stmt : r.getEpilogue()) {
-				if (stmt instanceof ExpressionAssignment) {
-					ExpressionAssignment<?> a = (ExpressionAssignment<?>) stmt;
-					if (a.getDestination() != null) roots.add(a.getDestination());
-					if (a.getExpression() != null) roots.add(a.getExpression());
-				}
-			}
 		}
 	}
 }

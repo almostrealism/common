@@ -381,7 +381,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = hostReadCache(mem, length);
+			double[] cache = mem.snapshotForRead(length, () -> readWholeBuffer(mem));
 			if (cache != null) {
 				for (int i = 0; i < length; i++) out[oOffset + i] = (float) cache[sOffset + i];
 				return;
@@ -421,7 +421,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = hostReadCache(mem, length);
+			double[] cache = mem.snapshotForRead(length, () -> readWholeBuffer(mem));
 			if (cache != null) {
 				for (int i = 0; i < length; i++) out[oOffset + i] = cache[sOffset + i];
 				return;
@@ -456,44 +456,16 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	}
 
 	/**
-	 * Returns a whole-buffer host snapshot to serve a partial read from, or {@code null} when
-	 * the read should transfer directly from the device.
-	 *
-	 * <p>A per-element read loop (millions of one-element {@code getMem} calls, as validation
-	 * code performs) is catastrophic on OpenCL because each element is an individual blocking
-	 * {@code clEnqueueReadBuffer}. This serves such reads from a single whole-buffer snapshot
-	 * instead. The snapshot is captured only on the second read at the current
-	 * {@link CLMemory#currentGeneration() dispatch generation} — so a lone read never triggers a
-	 * full transfer — and is discarded once a kernel dispatch or a host write invalidates it. A
-	 * read that already covers the whole buffer transfers directly and is not retained, so bulk
-	 * transfers do not pay for a cached copy.</p>
-	 *
-	 * @param mem    the memory being read
-	 * @param length the number of elements requested
-	 * @return a whole-buffer snapshot indexed by element, or {@code null} to read directly
-	 */
-	private double[] hostReadCache(CLMemory mem, int length) {
-		int total = (int) (mem.getSize() / getNumberSize());
-		if (length >= total) return null;
-
-		long generation = CLMemory.currentGeneration();
-		double[] cache = mem.getHostCache(generation);
-		if (cache != null) return cache;
-		if (!mem.seenReadAt(generation)) return null;
-
-		cache = readWholeBuffer(mem, total);
-		mem.setHostCache(cache, generation);
-		return cache;
-	}
-
-	/**
 	 * Reads every element of the buffer into a new {@code double[]} with a single transfer.
+	 * Used by {@link CLMemory#snapshotForRead(int, java.util.function.Supplier)} to capture a
+	 * whole-buffer snapshot that serves repeated per-element reads without a device round-trip
+	 * per element.
 	 *
-	 * @param mem   the memory to read
-	 * @param total the number of elements in the buffer
+	 * @param mem the memory to read
 	 * @return a snapshot of all elements as doubles
 	 */
-	private double[] readWholeBuffer(CLMemory mem, int total) {
+	private double[] readWholeBuffer(CLMemory mem) {
+		int total = (int) (mem.getSize() / getNumberSize());
 		double[] cache = new double[total];
 		cl_event event = new cl_event();
 

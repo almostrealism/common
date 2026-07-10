@@ -598,6 +598,9 @@ public final class Hardware implements ConsoleFeatures {
 	/** Weak references to registered context lifecycle listeners; entries are cleaned up on GC. */
 	private final List<WeakReference<ContextListener>> contextListeners;
 
+	/** The profile currently collecting timing and source data, or null when profiling is off. */
+	private OperationProfile profile;
+
 	/**
 	 * Creates a Hardware instance with the given backend requirements, using a default name.
 	 *
@@ -920,6 +923,7 @@ public final class Hardware implements ConsoleFeatures {
 		if (profile == null) {
 			clearProfile();
 		} else {
+			this.profile = profile;
 			HardwareOperator.timingListener = profile.getRuntimeListener();
 			AbstractComputeContext.compilationTimingListener = profile.getCompilationListener();
 			ComputationScopeCompiler.timing = profile.getScopeListener(true);
@@ -930,11 +934,19 @@ public final class Hardware implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns the profile currently collecting timing and source data.
+	 *
+	 * @return the active profile, or null if profiling is disabled
+	 */
+	public OperationProfile getProfile() { return profile; }
+
+	/**
 	 * Removes any attached profiling, disabling timing collection.
 	 *
 	 * <p>Equivalent to calling {@link #assignProfile(OperationProfile)} with null.</p>
 	 */
 	public void clearProfile() {
+		this.profile = null;
 		HardwareOperator.timingListener = null;
 		AbstractComputeContext.compilationTimingListener = null;
 		ComputationScopeCompiler.timing = null;

@@ -134,7 +134,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 	@Override
 	public boolean containsReference(Variable var) {
-		return Objects.equals(getReferent().getName(), var.getName());
+		return Objects.equals(getReferent().getName(), var.getName()) || super.containsReference(var);
 	}
 
 	@Override

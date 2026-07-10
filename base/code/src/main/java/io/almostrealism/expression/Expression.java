@@ -586,34 +586,6 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Checks whether this expression tree contains any {@link InstanceReference}
-	 * whose referent {@link Variable} name matches one of the given names.
-	 *
-	 * <p>This is useful for detecting reads or writes of specific array variables,
-	 * which appear as {@link InstanceReference} nodes rather than
-	 * {@link StaticReference} nodes.</p>
-	 *
-	 * @param names the set of variable names to look for
-	 * @return true if a matching {@link InstanceReference} is found anywhere in this subtree
-	 */
-	public boolean containsInstanceReferenceToAny(Set<String> names) {
-		if (this instanceof InstanceReference) {
-			Variable<?, ?> referent = ((InstanceReference<?, ?>) this).getReferent();
-			if (referent != null && referent.getName() != null && names.contains(referent.getName())) {
-				return true;
-			}
-		}
-
-		for (Expression<?> child : getChildren()) {
-			if (child.containsInstanceReferenceToAny(names)) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
 	 * Collects all variable, index, and {@link StaticReference} names referenced
 	 * by this expression tree in a single traversal.
 	 *
