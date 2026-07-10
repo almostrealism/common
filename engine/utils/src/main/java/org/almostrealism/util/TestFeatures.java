@@ -684,11 +684,30 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
-	 * Initializes kernel metrics collection with a custom profile.
-	 * Associates the profile with the local hardware for timing collection.
+	 * Initializes kernel metrics collection with a custom profile, capturing both timing
+	 * and generated kernel source.
+	 *
+	 * <p>Assigns the profile as the active profile (see
+	 * {@link org.almostrealism.hardware.Hardware#assignProfile}), which installs its
+	 * compilation listener so that the generated kernel source of every scope compiled
+	 * <em>after this call</em> is recorded into the profile. To capture the source of an
+	 * operation, call this method <em>before</em> the operation is compiled, then save the
+	 * profile:</p>
+	 *
+	 * <pre>{@code
+	 * OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("myKernel"));
+	 * Runnable r = ((OperationList) op.optimize()).get(profile); // compiles -> source captured
+	 * r.run();
+	 * profile.save(new File("results/myKernel.xml"));
+	 * // Inspect with ar-profile-analyzer: load_profile, then get_source on the operation node.
+	 * }</pre>
+	 *
+	 * <p>An operation compiled before this call (for example a warm-up run, or a prior run
+	 * whose signature is still in the instruction cache) is served from cache without
+	 * recompiling, so no source is recorded for it and {@code get_source} returns nothing.</p>
 	 *
 	 * @param <T>     the profile type
-	 * @param profile the operation profile to use for metrics collection
+	 * @param profile the operation profile to use for metrics and source collection
 	 * @return the same profile instance for method chaining
 	 */
 	default <T extends OperationProfile> T initKernelMetrics(T profile) {

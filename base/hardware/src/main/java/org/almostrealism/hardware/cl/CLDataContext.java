@@ -282,7 +282,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	private cl_context ctx;
 
 	/** The main OpenCL memory provider for RAM allocations. */
-	private MemoryProvider<RAM> mainRam;
+	private MemoryProvider<CLMemory> mainRam;
 
 	/** The alternate JVM heap-based memory provider for small allocations. */
 	private MemoryProvider<Memory> altRam;
@@ -531,7 +531,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 *
 	 * @return the main {@link CLMemoryProvider} for this context
 	 */
-	public MemoryProvider<RAM> getMemoryProvider() {
+	public MemoryProvider<CLMemory> getMemoryProvider() {
 		if (start != null) start.run();
 		return mainRam;
 	}

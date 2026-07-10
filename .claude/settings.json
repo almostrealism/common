@@ -291,7 +291,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/file-length-advisory.sh",
-            "description": "Warn when a just-read source file (java/py/ts/etc.) is within 100 lines of the 1500 soft limit \u2014 refactor signal, not a compaction target"
+            "description": "Warn when a just-read source file (java/py/ts/etc.) reaches 1480 lines \u2014 recommended max 1500, checkstyle hard limit 1600 (build fails beyond); a refactor signal, not a compaction target"
           }
         ]
       },

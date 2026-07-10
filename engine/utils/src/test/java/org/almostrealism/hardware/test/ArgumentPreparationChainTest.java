@@ -77,11 +77,7 @@ public class ArgumentPreparationChainTest extends TestSuiteBase implements TestF
 	 * @param label log label for this variant
 	 */
 	private void runCrossContextComposite(int n, String label) {
-		MetalComputeContext metal = Hardware.getLocalHardware()
-				.getComputeContexts(false, true, ComputeRequirement.MTL).stream()
-				.filter(MetalComputeContext.class::isInstance)
-				.map(MetalComputeContext.class::cast)
-				.findFirst().orElse(null);
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
 
 		if (metal == null) {
 			log(label + " skipping, no MetalComputeContext available");
