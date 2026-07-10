@@ -1021,13 +1021,13 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 * {@code replacement}, mirroring {@link Expression#replace(Expression, Expression)}
 	 * at the scope level.
 	 *
-	 * <p>The expressions of {@link ExpressionAssignment} statements and of
-	 * {@link #getVariables() variables} are rewritten through
-	 * {@link ExpressionAssignment#replace(Expression, Expression)}, and child scopes are
-	 * rewritten recursively. Other statement types, methods, metrics, parameters, required
-	 * scopes and kernel children are carried over unchanged. Subclasses that store
-	 * expressions outside the statement list — such as {@link Repeated} loop bounds or
-	 * {@link Cases} branch conditions — override this method to rewrite those as well.</p>
+	 * <p>Each statement rewrites its own expressions through
+	 * {@link Statement#replace(Expression, Expression)}, {@link #getVariables() variables}
+	 * through {@link ExpressionAssignment#replace(Expression, Expression)}, and child scopes
+	 * are rewritten recursively. Methods, metrics, parameters, required scopes and kernel
+	 * children are carried over unchanged. Subclasses that store expressions outside the
+	 * statement list — such as {@link Repeated} loop bounds or {@link Cases} branch
+	 * conditions — override this method to rewrite those as well.</p>
 	 *
 	 * @param target      the expression to find and replace
 	 * @param replacement the expression to substitute for the target
@@ -1041,8 +1041,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		scope.getRequiredScopes().addAll(getRequiredScopes());
 		scope.getParameters().addAll(getParameters());
 		scope.getMethods().addAll(getMethods());
-		getStatements().forEach(s -> scope.getStatements().add(s instanceof ExpressionAssignment ?
-				((ExpressionAssignment<?>) s).replace(target, replacement) : s));
+		getStatements().forEach(s -> scope.getStatements().add((Statement<?>) s.replace(target, replacement)));
 		getVariables().forEach(v -> scope.getVariables().add(v.replace(target, replacement)));
 		scope.getMetrics().addAll(getMetrics());
 

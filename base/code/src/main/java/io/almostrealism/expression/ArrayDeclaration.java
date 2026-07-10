@@ -139,4 +139,9 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	public ArrayDeclaration<T> simplify(KernelStructureContext context, int depth) {
 		return new ArrayDeclaration<>(type, name, size.simplify(context, depth + 1));
 	}
+
+	@Override
+	public ArrayDeclaration<T> replace(Expression target, Expression replacement) {
+		return new ArrayDeclaration<>(type, name, size.replace(target, replacement));
+	}
 }

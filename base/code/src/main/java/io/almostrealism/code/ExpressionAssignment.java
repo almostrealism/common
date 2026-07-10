@@ -172,16 +172,8 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 				ScopeSettings.reviewSimplification(expression, expression.simplify(context, depth + 1)));
 	}
 
-	/**
-	 * Returns a copy of this assignment with every occurrence of {@code target} in its
-	 * destination and source expressions replaced by {@code replacement}, mirroring
-	 * {@link Expression#replace(Expression, Expression)}.
-	 *
-	 * @param target      the expression to find and replace
-	 * @param replacement the expression to substitute for the target
-	 * @return a new assignment with the substitution applied, or this assignment if unchanged
-	 */
-	public ExpressionAssignment<T> replace(Expression<?> target, Expression<?> replacement) {
+	@Override
+	public ExpressionAssignment<T> replace(Expression target, Expression replacement) {
 		Expression<T> newDestination = destination == null ? null : destination.replace(target, replacement);
 		Expression<T> newExpression = expression.replace(target, replacement);
 
