@@ -20,7 +20,6 @@ import org.almostrealism.hardware.mem.RAM;
 import org.jocl.cl_mem;
 
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
 
 /**
  * {@link RAM} implementation backed by OpenCL {@link cl_mem} buffer.
@@ -179,7 +178,7 @@ public class CLMemory extends RAM {
 
 	/**
 	 * Serves a partial host read of {@code length} elements from a whole-buffer snapshot,
-	 * capturing and caching the snapshot through {@code loader} when doing so is worthwhile.
+	 * capturing and caching the snapshot when doing so is worthwhile.
 	 *
 	 * <p>A per-element read loop (millions of one-element reads, as validation code performs)
 	 * is catastrophic on OpenCL because each element is an individual blocking transfer. This
@@ -187,21 +186,22 @@ public class CLMemory extends RAM {
 	 * only on the second read at the current {@link #currentGeneration() dispatch generation} —
 	 * so a lone read never triggers a full transfer — and is discarded once a kernel dispatch or
 	 * a host write invalidates it. A read that already covers the whole buffer transfers directly
-	 * and is not retained, so bulk transfers do not pay for a cached copy.</p>
+	 * (through {@link #toArray(int, int)}) and is not retained, so bulk transfers do not pay for a
+	 * cached copy.</p>
 	 *
 	 * @param length the number of elements requested by the read
-	 * @param loader supplies a fresh whole-buffer snapshot when one must be captured
 	 * @return a whole-buffer snapshot to read from, or {@code null} to transfer directly
 	 */
-	public double[] snapshotForRead(int length, Supplier<double[]> loader) {
-		if (length >= elementCount()) return null;
+	public double[] snapshotForRead(int length) {
+		int total = elementCount();
+		if (length >= total) return null;
 
 		long generation = currentGeneration();
 		double[] cache = getHostCache(generation);
 		if (cache != null) return cache;
 		if (!seenReadAt(generation)) return null;
 
-		cache = loader.get();
+		cache = toArray(0, total);
 		setHostCache(cache, generation);
 		return cache;
 	}

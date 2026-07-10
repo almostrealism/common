@@ -381,7 +381,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = mem.snapshotForRead(length, () -> readWholeBuffer(mem));
+			double[] cache = mem.snapshotForRead(length);
 			if (cache != null) {
 				for (int i = 0; i < length; i++) out[oOffset + i] = (float) cache[sOffset + i];
 				return;
@@ -421,7 +421,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = mem.snapshotForRead(length, () -> readWholeBuffer(mem));
+			double[] cache = mem.snapshotForRead(length);
 			if (cache != null) {
 				for (int i = 0; i < length; i++) out[oOffset + i] = cache[sOffset + i];
 				return;
@@ -453,23 +453,6 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		} finally {
 			ioTime.addEntry("getMem", System.nanoTime() - start);
 		}
-	}
-
-	/**
-	 * Reads every element of the buffer into a new {@code double[]}, used by
-	 * {@link CLMemory#snapshotForRead(int, java.util.function.Supplier)} to capture a
-	 * whole-buffer snapshot that serves repeated per-element reads without a device
-	 * round-trip per element. The read is delegated to {@link #getMem(CLMemory, int, double[], int, int)};
-	 * because it covers the whole buffer, that call transfers directly rather than
-	 * recursing back into the snapshot.
-	 *
-	 * @param mem the memory to read
-	 * @return a snapshot of all elements as doubles
-	 */
-	private double[] readWholeBuffer(CLMemory mem) {
-		double[] cache = new double[(int) (mem.getSize() / getNumberSize())];
-		getMem(mem, 0, cache, 0, cache.length);
-		return cache;
 	}
 
 	/**

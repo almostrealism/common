@@ -559,31 +559,19 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Checks whether this expression tree contains any {@link StaticReference}
-	 * whose name matches one of the given variable names.
+	 * Checks whether this expression tree references any variable named in {@code names}.
 	 *
-	 * <p>This is useful for detecting dependencies on locally-declared variables
-	 * (e.g., {@code double f_0 = ...}) that are referenced via {@link StaticReference}
-	 * nodes rather than through {@link Variable} dependencies.</p>
+	 * <p>This is the name-based counterpart to {@link #containsReference(Variable)}, for
+	 * callers that hold variable names rather than {@link Variable} instances. Like that
+	 * method, this base implementation delegates to the children; the reference subclasses
+	 * ({@link StaticReference}, {@link InstanceReference}) override it to match their own
+	 * referent name.</p>
 	 *
-	 * @param names the set of variable names to look for
-	 * @return true if a matching {@link StaticReference} is found anywhere in this subtree
+	 * @param names the variable names to look for
+	 * @return true if any matching reference is found anywhere in this subtree
 	 */
-	public boolean containsStaticReferenceToAny(Set<String> names) {
-		if (this instanceof StaticReference) {
-			String name = ((StaticReference<?>) this).getName();
-			if (name != null && names.contains(name)) {
-				return true;
-			}
-		}
-
-		for (Expression<?> child : getChildren()) {
-			if (child.containsStaticReferenceToAny(names)) {
-				return true;
-			}
-		}
-
-		return false;
+	public boolean containsReference(Set<String> names) {
+		return getChildren().stream().anyMatch(e -> e.containsReference(names));
 	}
 
 	/**
@@ -611,7 +599,7 @@ public abstract class Expression<T> implements
 			if (idx.getName() != null && loopVariantNames.contains(idx.getName())) return false;
 		}
 
-		if (containsStaticReferenceToAny(loopVariantNames)) return false;
+		if (containsReference(loopVariantNames)) return false;
 
 		for (Variable<?, ?> array : writtenArrays) {
 			if (containsReference(array)) return false;
