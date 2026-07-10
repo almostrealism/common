@@ -508,63 +508,6 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	}
 
 	/**
-	 * Returns a whole-buffer host snapshot to serve a partial read from, or {@code null} when
-	 * the read should transfer directly from the device.
-	 *
-	 * <p>A per-element read loop (millions of one-element {@code getMem} calls, as validation
-	 * code performs) is catastrophic on OpenCL because each element is an individual blocking
-	 * {@code clEnqueueReadBuffer}. This serves such reads from a single whole-buffer snapshot
-	 * instead. The snapshot is captured only on the second read at the current
-	 * {@link CLMemory#currentGeneration() dispatch generation} — so a lone read never triggers a
-	 * full transfer — and is discarded once a kernel dispatch or a host write invalidates it. A
-	 * read that already covers the whole buffer transfers directly and is not retained, so bulk
-	 * transfers do not pay for a cached copy.</p>
-	 *
-	 * @param mem    the memory being read
-	 * @param length the number of elements requested
-	 * @return a whole-buffer snapshot indexed by element, or {@code null} to read directly
-	 */
-	private double[] hostReadCache(CLMemory mem, int length) {
-		int total = (int) (mem.getSize() / getNumberSize());
-		if (length >= total) return null;
-
-		long generation = CLMemory.currentGeneration();
-		double[] cache = mem.getHostCache(generation);
-		if (cache != null) return cache;
-		if (!mem.seenReadAt(generation)) return null;
-
-		cache = readWholeBuffer(mem, total);
-		mem.setHostCache(cache, generation);
-		return cache;
-	}
-
-	/**
-	 * Reads every element of the buffer into a new {@code double[]} with a single transfer.
-	 *
-	 * @param mem   the memory to read
-	 * @param total the number of elements in the buffer
-	 * @return a snapshot of all elements as doubles
-	 */
-	private double[] readWholeBuffer(CLMemory mem, int total) {
-		double[] cache = new double[total];
-		cl_event event = new cl_event();
-
-		if (getNumberSize() == 8) {
-			CL.clEnqueueReadBuffer(queue, mem.getMem(), CL.CL_TRUE, 0,
-					(long) total * getNumberSize(), Pointer.to(cache).withByteOffset(0), 0, null, event);
-			processEvent(event);
-		} else {
-			float[] tmp = new float[total];
-			CL.clEnqueueReadBuffer(queue, mem.getMem(), CL.CL_TRUE, 0,
-					(long) total * getNumberSize(), Pointer.to(tmp).withByteOffset(0), 0, null, event);
-			processEvent(event);
-			for (int i = 0; i < total; i++) cache[i] = tmp[i];
-		}
-
-		return cache;
-	}
-
-	/**
 	 * Waits for an OpenCL event to complete and releases it.
 	 *
 	 * @param event the OpenCL event to process
