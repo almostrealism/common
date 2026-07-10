@@ -47,6 +47,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * @see RAM
  */
 public class CLMemory extends RAM {
+	/**
+	 * Monotonically increasing counter incremented once per OpenCL kernel dispatch (see
+	 * {@link #markDispatch()}). A host read cache captured at one value of this counter is
+	 * stale once the counter advances, because an intervening kernel may have written the buffer.
+	 */
+	private static final AtomicLong dispatchGeneration = new AtomicLong();
+
 	/** The underlying OpenCL memory object handle. */
 	private final cl_mem mem;
 
@@ -59,13 +66,6 @@ public class CLMemory extends RAM {
 	/** True once {@code clReleaseMemObject} has been invoked for the underlying handle. */
 	private volatile boolean released;
 
-	/**
-	 * Monotonically increasing counter incremented once per OpenCL kernel dispatch (see
-	 * {@link #markDispatch()}). A host read cache captured at one value of this counter is
-	 * stale once the counter advances, because an intervening kernel may have written the buffer.
-	 */
-	private static final AtomicLong dispatchGeneration = new AtomicLong();
-
 	/** Whole-buffer host snapshot serving repeated element reads, or {@code null} when absent. */
 	private volatile double[] hostCache;
 
@@ -74,69 +74,6 @@ public class CLMemory extends RAM {
 
 	/** The most recent generation at which a host read of this buffer was seen (warm-up tracking). */
 	private volatile long probeGeneration = -2L;
-
-	/**
-	 * Records that an OpenCL kernel has been dispatched, invalidating every host read cache
-	 * captured before now. Called once per dispatch from {@link CLOperator}.
-	 */
-	public static void markDispatch() {
-		dispatchGeneration.incrementAndGet();
-	}
-
-	/**
-	 * Returns the current dispatch generation. Host caches are valid only while this value
-	 * is unchanged from when they were captured.
-	 *
-	 * @return the current dispatch generation
-	 */
-	public static long currentGeneration() {
-		return dispatchGeneration.get();
-	}
-
-	/**
-	 * Returns the cached whole-buffer host snapshot if it is valid for the given generation.
-	 *
-	 * @param generation the generation the caller requires the snapshot to be valid for
-	 * @return the cached snapshot, or {@code null} if none is valid for {@code generation}
-	 */
-	public double[] getHostCache(long generation) {
-		return hostCacheGeneration == generation ? hostCache : null;
-	}
-
-	/**
-	 * Stores a whole-buffer host snapshot as valid for the given generation.
-	 *
-	 * @param cache      the snapshot of every element in this buffer
-	 * @param generation the generation the snapshot was read at
-	 */
-	public void setHostCache(double[] cache, long generation) {
-		this.hostCache = cache;
-		this.hostCacheGeneration = generation;
-	}
-
-	/**
-	 * Records a host read at the given generation and reports whether one was already seen at
-	 * that generation. Used to defer populating the whole-buffer cache until a second read at
-	 * the same generation makes it worthwhile, so a single read never triggers a full transfer.
-	 *
-	 * @param generation the current dispatch generation
-	 * @return true if a prior read at this generation was already seen (caching is worthwhile)
-	 */
-	public boolean seenReadAt(long generation) {
-		if (probeGeneration == generation) return true;
-		probeGeneration = generation;
-		return false;
-	}
-
-	/**
-	 * Discards any host read cache. Called when this buffer is written on the host so a
-	 * subsequent read does not observe stale contents.
-	 */
-	public void invalidateHostCache() {
-		this.hostCache = null;
-		this.hostCacheGeneration = -1L;
-		this.probeGeneration = -2L;
-	}
 
 	/**
 	 * Creates a new CLMemory wrapping an OpenCL memory buffer.
@@ -220,4 +157,89 @@ public class CLMemory extends RAM {
 	 */
 	@Override
 	public CLMemoryProvider getProvider() { return provider; }
+
+	/**
+	 * Records that an OpenCL kernel has been dispatched, invalidating every host read cache
+	 * captured before now. Called once per dispatch from {@link CLOperator}.
+	 */
+	public static void markDispatch() {
+		dispatchGeneration.incrementAndGet();
+	}
+
+	/**
+	 * Returns the current dispatch generation. Host caches are valid only while this value
+	 * is unchanged from when they were captured.
+	 *
+	 * @return the current dispatch generation
+	 */
+	public static long currentGeneration() {
+		return dispatchGeneration.get();
+	}
+
+	/**
+	 * Serves a partial host read of {@code length} elements from a whole-buffer snapshot,
+	 * capturing and caching the snapshot when doing so is worthwhile.
+	 *
+	 * <p>A per-element read loop (millions of one-element reads, as validation code performs)
+	 * is catastrophic on OpenCL because each element is an individual blocking transfer. This
+	 * serves such reads from a single whole-buffer snapshot instead. The snapshot is captured
+	 * only on the second read at the current {@link #currentGeneration() dispatch generation} —
+	 * so a lone read never triggers a full transfer — and is discarded once a kernel dispatch or
+	 * a host write invalidates it. A read that already covers the whole buffer transfers directly
+	 * (through {@link #toArray(int, int)}) and is not retained, so bulk transfers do not pay for a
+	 * cached copy.</p>
+	 *
+	 * @param length the number of elements requested by the read
+	 * @return a whole-buffer snapshot to read from, or {@code null} to transfer directly
+	 */
+	public double[] snapshotForRead(int length) {
+		int total = elementCount();
+		if (length >= total) return null;
+
+		long generation = currentGeneration();
+		double[] cache = getHostCache(generation);
+		if (cache != null) return cache;
+		if (!seenReadAt(generation)) return null;
+
+		cache = toArray(0, total);
+		setHostCache(cache, generation);
+		return cache;
+	}
+
+	/**
+	 * Discards any host read cache. Called when this buffer is written on the host so a
+	 * subsequent read does not observe stale contents.
+	 */
+	public void invalidateHostCache() {
+		this.hostCache = null;
+		this.hostCacheGeneration = -1L;
+		this.probeGeneration = -2L;
+	}
+
+	/** Returns the number of elements this buffer holds at the provider's element size. */
+	private int elementCount() {
+		return (int) (size / getProvider().getNumberSize());
+	}
+
+	/** Returns the cached whole-buffer snapshot if it is valid for {@code generation}. */
+	private double[] getHostCache(long generation) {
+		return hostCacheGeneration == generation ? hostCache : null;
+	}
+
+	/** Stores a whole-buffer snapshot as valid for {@code generation}. */
+	private void setHostCache(double[] cache, long generation) {
+		this.hostCache = cache;
+		this.hostCacheGeneration = generation;
+	}
+
+	/**
+	 * Records a host read at {@code generation}, returning whether one was already seen at that
+	 * generation. Deferring the snapshot until a second read means a lone read never triggers a
+	 * full transfer.
+	 */
+	private boolean seenReadAt(long generation) {
+		if (probeGeneration == generation) return true;
+		probeGeneration = generation;
+		return false;
+	}
 }

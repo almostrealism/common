@@ -27,6 +27,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.collect.PackedCollection;
@@ -35,24 +36,22 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * Tests for accumulator promotion in {@link Repeated} scopes.
  *
  * <p>These tests verify that {@link Repeated#simplify} rewrites reduction-style
- * loop bodies (a store to the same array element on every iteration) to use a
- * local accumulator with a single post-loop store, and that the transform bails
- * out whenever promotion could change the loop's semantics. The tests cover:</p>
- * <ul>
- *   <li>Promotion of a simple read-modify-write reduction</li>
- *   <li>No promotion when the element position varies with the loop index</li>
- *   <li>No promotion when the array is read at a different position</li>
- *   <li>No promotion when the loop condition references the array</li>
- *   <li>Epilogue rendering after the loop in generated code</li>
- *   <li>End-to-end result equality with promotion enabled vs disabled</li>
- * </ul>
+ * loop bodies (a store to the same array element on every iteration) into an
+ * ordinary {@link Scope} that declares a local accumulator before the loop, uses
+ * it inside the loop, and stores it back once afterwards, and that the transform
+ * bails out whenever promotion could change the loop's semantics.</p>
+ *
+ * <p>When a loop is promoted, {@link Repeated#simplify} returns a plain
+ * {@link Scope} — not a {@link Repeated} — whose statements are the accumulator
+ * declarations, whose first child is the rewritten loop, and whose second child is
+ * a {@link Scope} holding the final stores. When nothing qualifies, it returns the
+ * {@link Repeated} unchanged.</p>
  *
  * @see Repeated
  */
@@ -65,7 +64,7 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void promotionIsEnabledByDefault() {
 		Assert.assertTrue("Accumulator promotion should be enabled by default",
-				Repeated.enableAccumulatorPromotion);
+				ScopeSettings.enableAccumulatorPromotion);
 	}
 
 	/**
@@ -79,9 +78,10 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 	 * }
 	 * </pre>
 	 *
-	 * <p>After promotion the body assigns to a local accumulator, a declaration
-	 * initialized from {@code out[_gid]} appears before the loop, and a store of
-	 * the accumulator back to {@code out[_gid]} appears in the epilogue.</p>
+	 * <p>After promotion the loop is wrapped in a {@link Scope} whose statements
+	 * declare the accumulator (initialized from {@code out[_gid]}), whose first
+	 * child is the loop accumulating into the local, and whose second child stores
+	 * the accumulator back to {@code out[_gid]}.</p>
 	 */
 	@Test(timeout = 30000)
 	public void simpleReductionPromoted() {
@@ -97,27 +97,37 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 				outElement(out), outElement(out).add(inElement(in))));
 		loop.getChildren().add(body);
 
-		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
 
-		// A declaration for the accumulator appears before the loop,
-		// initialized from the promoted element
+		// Promotion wraps the loop in a plain Scope rather than returning a Repeated
+		Assert.assertFalse("A promoted loop should be wrapped in a plain Scope",
+				simplified instanceof Repeated);
+
+		// A declaration for the accumulator appears before the loop
 		Assert.assertEquals("An accumulator declaration should be added before the loop",
 				1, countAccumulatorDeclarations(simplified.getStatements()));
 
-		// The epilogue stores the accumulator back to the array element
-		Assert.assertEquals("The epilogue should contain the final store",
-				1, simplified.getEpilogue().size());
-		ExpressionAssignment<?> store = (ExpressionAssignment<?>) simplified.getEpilogue().get(0);
-		Assert.assertTrue("The epilogue store destination should reference the array",
-				store.getDestination().containsInstanceReferenceToAny(Collections.singleton("out")));
+		// The wrapper holds the loop followed by the store scope
+		Assert.assertEquals("The wrapper should hold the loop and the store scope",
+				2, simplified.getChildren().size());
+
+		Scope<Void> storedLoop = simplified.getChildren().get(0);
+		Scope<Void> stores = simplified.getChildren().get(1);
+
+		// The store scope stores the accumulator back to the array element
+		Assert.assertEquals("The store scope should contain the final store",
+				1, stores.getStatements().size());
+		ExpressionAssignment<?> store = (ExpressionAssignment<?>) stores.getStatements().get(0);
+		Assert.assertTrue("The final store destination should reference the array",
+				store.getDestination().containsReference(out));
 
 		// The loop body no longer references the output array at all
 		Assert.assertFalse("The loop body should no longer reference the promoted array",
-				bodyReferencesArray(simplified, "out"));
+				bodyReferencesArray(storedLoop, out));
 
 		// The input array is still read inside the loop
 		Assert.assertTrue("The loop body should still read the input array",
-				bodyReferencesArray(simplified, "in"));
+				bodyReferencesArray(storedLoop, in));
 	}
 
 	/**
@@ -145,12 +155,12 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 		body.getStatements().add(new ExpressionAssignment(element, element.add(e(1.0))));
 		loop.getChildren().add(body);
 
-		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
 
-		Assert.assertEquals("No epilogue store should be created for a variant position",
-				0, simplified.getEpilogue().size());
+		Assert.assertTrue("A loop with a variant position should not be promoted",
+				simplified instanceof Repeated);
 		Assert.assertTrue("The loop body should still store to the array",
-				bodyReferencesArray(simplified, "out"));
+				bodyReferencesArray(simplified, out));
 	}
 
 	/**
@@ -178,12 +188,12 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 				outElement(out), outElement(out).add(inElement(out))));
 		loop.getChildren().add(body);
 
-		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
 
-		Assert.assertEquals("No epilogue store should be created when the array is read elsewhere",
-				0, simplified.getEpilogue().size());
+		Assert.assertTrue("Promotion should be abandoned when the array is read elsewhere",
+				simplified instanceof Repeated);
 		Assert.assertTrue("The loop body should still store to the array",
-				bodyReferencesArray(simplified, "out"));
+				bodyReferencesArray(simplified, out));
 	}
 
 	/**
@@ -216,20 +226,20 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 
 		loop.getChildren().add(body);
 
-		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
 
-		Assert.assertEquals("No epilogue store should be created when the body contains a Cases scope",
-				0, simplified.getEpilogue().size());
+		Assert.assertTrue("Promotion should be abandoned when the body contains a Cases scope",
+				simplified instanceof Repeated);
 		Assert.assertTrue("The counter increment should still store to the array",
-				bodyReferencesArray(simplified, "counter"));
+				bodyReferencesArray(simplified, counter));
 		Assert.assertTrue("The branch should still store to the array",
-				bodyReferencesArray(simplified, "out"));
+				bodyReferencesArray(simplified, out));
 	}
 
 	/**
 	 * Verifies that promotion is abandoned when the loop condition reads the
 	 * array being stored to, since the condition would then observe stale values
-	 * once the stores are deferred to the epilogue.
+	 * once the stores are deferred until after the loop.
 	 */
 	@Test(timeout = 30000)
 	public void conditionReferenceBlocksPromotion() {
@@ -248,12 +258,12 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 				outElement(out), outElement(out).add(inElement(in))));
 		loop.getChildren().add(body);
 
-		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
 
-		Assert.assertEquals("No epilogue store should be created when the condition reads the array",
-				0, simplified.getEpilogue().size());
+		Assert.assertTrue("Promotion should be abandoned when the condition reads the array",
+				simplified instanceof Repeated);
 		Assert.assertTrue("The loop body should still store to the array",
-				bodyReferencesArray(simplified, "out"));
+				bodyReferencesArray(simplified, out));
 	}
 
 	/**
@@ -262,7 +272,7 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 	 * array element after the loop closes.
 	 */
 	@Test(timeout = 30000)
-	public void epilogueRenderedAfterLoop() {
+	public void storeRenderedAfterLoop() {
 		Variable<Integer, ?> idx = Variable.integer("_test_i");
 		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(64));
 		loop.setName("renderTest");
@@ -275,7 +285,7 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 				outElement(out), outElement(out).add(inElement(in))));
 		loop.getChildren().add(body);
 
-		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
 
 		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 		CPrintWriter writer = new CPrintWriter(buffer, "renderTest", Precision.FP64);
@@ -341,8 +351,8 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 	 * @return the row sums
 	 */
 	private double[] evaluateRowSums(PackedCollection data, int rows, boolean enablePromotion) {
-		boolean previous = Repeated.enableAccumulatorPromotion;
-		Repeated.enableAccumulatorPromotion = enablePromotion;
+		boolean previous = ScopeSettings.enableAccumulatorPromotion;
+		ScopeSettings.enableAccumulatorPromotion = enablePromotion;
 
 		try {
 			PackedCollection output = (PackedCollection) cp(data).traverse(1).sum().get().evaluate();
@@ -353,7 +363,7 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 			}
 			return result;
 		} finally {
-			Repeated.enableAccumulatorPromotion = previous;
+			ScopeSettings.enableAccumulatorPromotion = previous;
 		}
 	}
 
@@ -395,26 +405,25 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Checks whether any assignment in the loop body (descendant scopes of the
-	 * given loop) references the named array.
+	 * Checks whether any assignment in the descendant scopes of the given scope
+	 * references the given array.
 	 */
-	private boolean bodyReferencesArray(Scope<?> scope, String arrayName) {
+	private boolean bodyReferencesArray(Scope<?> scope, Variable<?, ?> array) {
 		for (Scope<?> child : scope.getChildren()) {
 			for (Statement<?> stmt : child.getStatements()) {
 				if (stmt instanceof ExpressionAssignment) {
 					ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-					if (assignment.getDestination() != null && assignment.getDestination()
-							.containsInstanceReferenceToAny(Collections.singleton(arrayName))) {
+					if (assignment.getDestination() != null
+							&& assignment.getDestination().containsReference(array)) {
 						return true;
 					}
-					if (assignment.getExpression()
-							.containsInstanceReferenceToAny(Collections.singleton(arrayName))) {
+					if (assignment.getExpression().containsReference(array)) {
 						return true;
 					}
 				}
 			}
 
-			if (bodyReferencesArray(child, arrayName)) return true;
+			if (bodyReferencesArray(child, array)) return true;
 		}
 
 		return false;

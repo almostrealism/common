@@ -406,7 +406,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = hostReadCache(mem, length);
+			double[] cache = mem.snapshotForRead(length);
 			if (cache != null) {
 				for (int i = 0; i < length; i++) out[oOffset + i] = (float) cache[sOffset + i];
 				return;
@@ -446,7 +446,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
-			double[] cache = hostReadCache(mem, length);
+			double[] cache = mem.snapshotForRead(length);
 			if (cache != null) {
 				for (int i = 0; i < length; i++) out[oOffset + i] = cache[sOffset + i];
 				return;

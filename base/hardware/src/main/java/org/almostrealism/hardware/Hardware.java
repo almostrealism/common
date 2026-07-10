@@ -944,6 +944,22 @@ public final class Hardware implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns whether a profile is currently assigned, determined from the profiling listeners
+	 * installed by {@link #assignProfile(OperationProfile)} rather than from a retained profile
+	 * reference.
+	 *
+	 * @return true if profiling is currently active
+	 */
+	public boolean isProfileAssigned() {
+		return HardwareOperator.timingListener != null
+				|| AbstractComputeContext.compilationTimingListener != null
+				|| ComputationScopeCompiler.timing != null
+				|| Scope.timing != null
+				|| ScopeSettings.timing != null
+				|| Expression.timing != null;
+	}
+
+	/**
 	 * Registers a {@link ContextListener} to receive context lifecycle events.
 	 *
 	 * <p>Listeners are stored via {@link WeakReference}, so callers must maintain
