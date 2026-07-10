@@ -456,31 +456,19 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	}
 
 	/**
-	 * Reads every element of the buffer into a new {@code double[]} with a single transfer.
-	 * Used by {@link CLMemory#snapshotForRead(int, java.util.function.Supplier)} to capture a
-	 * whole-buffer snapshot that serves repeated per-element reads without a device round-trip
-	 * per element.
+	 * Reads every element of the buffer into a new {@code double[]}, used by
+	 * {@link CLMemory#snapshotForRead(int, java.util.function.Supplier)} to capture a
+	 * whole-buffer snapshot that serves repeated per-element reads without a device
+	 * round-trip per element. The read is delegated to {@link #getMem(CLMemory, int, double[], int, int)};
+	 * because it covers the whole buffer, that call transfers directly rather than
+	 * recursing back into the snapshot.
 	 *
 	 * @param mem the memory to read
 	 * @return a snapshot of all elements as doubles
 	 */
 	private double[] readWholeBuffer(CLMemory mem) {
-		int total = (int) (mem.getSize() / getNumberSize());
-		double[] cache = new double[total];
-		cl_event event = new cl_event();
-
-		if (getNumberSize() == 8) {
-			CL.clEnqueueReadBuffer(queue, mem.getMem(), CL.CL_TRUE, 0,
-					(long) total * getNumberSize(), Pointer.to(cache).withByteOffset(0), 0, null, event);
-			processEvent(event);
-		} else {
-			float[] tmp = new float[total];
-			CL.clEnqueueReadBuffer(queue, mem.getMem(), CL.CL_TRUE, 0,
-					(long) total * getNumberSize(), Pointer.to(tmp).withByteOffset(0), 0, null, event);
-			processEvent(event);
-			for (int i = 0; i < total; i++) cache[i] = tmp[i];
-		}
-
+		double[] cache = new double[(int) (mem.getSize() / getNumberSize())];
+		getMem(mem, 0, cache, 0, cache.length);
 		return cache;
 	}
 

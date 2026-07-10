@@ -48,6 +48,13 @@ import java.util.function.Supplier;
  * @see RAM
  */
 public class CLMemory extends RAM {
+	/**
+	 * Monotonically increasing counter incremented once per OpenCL kernel dispatch (see
+	 * {@link #markDispatch()}). A host read cache captured at one value of this counter is
+	 * stale once the counter advances, because an intervening kernel may have written the buffer.
+	 */
+	private static final AtomicLong dispatchGeneration = new AtomicLong();
+
 	/** The underlying OpenCL memory object handle. */
 	private final cl_mem mem;
 
@@ -59,13 +66,6 @@ public class CLMemory extends RAM {
 
 	/** True once {@code clReleaseMemObject} has been invoked for the underlying handle. */
 	private volatile boolean released;
-
-	/**
-	 * Monotonically increasing counter incremented once per OpenCL kernel dispatch (see
-	 * {@link #markDispatch()}). A host read cache captured at one value of this counter is
-	 * stale once the counter advances, because an intervening kernel may have written the buffer.
-	 */
-	private static final AtomicLong dispatchGeneration = new AtomicLong();
 
 	/** Whole-buffer host snapshot serving repeated element reads, or {@code null} when absent. */
 	private volatile double[] hostCache;

@@ -44,6 +44,7 @@ import org.almostrealism.io.Bits;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -583,6 +584,40 @@ public abstract class Expression<T> implements
 		}
 
 		return false;
+	}
+
+	/**
+	 * Determines whether this expression yields the same value on every iteration of a
+	 * loop. The expression is loop-variant if it references one of the loop indices, a
+	 * loop-assigned scalar (by name), or an element of an array the loop writes (whose
+	 * value changes as the loop runs).
+	 *
+	 * @param loopVariantNames names of the loop index and scalars assigned in the loop
+	 * @param writtenArrays    the arrays written inside the loop
+	 * @param loopIndices      indices from the loop and any nested loops
+	 * @return true if this expression's value cannot change across iterations
+	 */
+	public boolean isLoopInvariant(Set<String> loopVariantNames,
+								   Collection<Variable<?, ?>> writtenArrays, List<Index> loopIndices) {
+		for (Index idx : loopIndices) {
+			if (containsIndex(idx)) return false;
+		}
+
+		for (Variable<?, ?> var : getDependencies()) {
+			if (var.getName() != null && loopVariantNames.contains(var.getName())) return false;
+		}
+
+		for (Index idx : getIndices()) {
+			if (idx.getName() != null && loopVariantNames.contains(idx.getName())) return false;
+		}
+
+		if (containsStaticReferenceToAny(loopVariantNames)) return false;
+
+		for (Variable<?, ?> array : writtenArrays) {
+			if (containsReference(array)) return false;
+		}
+
+		return true;
 	}
 
 	/**

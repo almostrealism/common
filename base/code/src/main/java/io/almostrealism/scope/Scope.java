@@ -1051,6 +1051,41 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
+	 * Returns every {@link ExpressionAssignment} contained in this scope and its
+	 * descendants as a flat list, or {@code null} when the scope tree contains anything
+	 * whose memory behavior cannot be analyzed as a plain sequence of assignments.
+	 *
+	 * <p>Only plain {@link Scope} instances qualify. Subclasses carry expressions outside
+	 * the statement list that read memory invisibly to this analysis ({@link Cases} branch
+	 * conditions, nested {@link Repeated} loop bounds), and methods, metrics, or statements
+	 * that are not {@link ExpressionAssignment}s are equally opaque; any of them yields
+	 * {@code null}.</p>
+	 *
+	 * @return the assignments in traversal order, or {@code null} if the tree is not analyzable
+	 */
+	public List<ExpressionAssignment<?>> collectAssignments() {
+		if (getClass() != Scope.class) return null;
+		if (!getMethods().isEmpty() || !getMetrics().isEmpty()) return null;
+
+		List<ExpressionAssignment<?>> assignments = new ArrayList<>();
+
+		for (Statement<?> stmt : getStatements()) {
+			if (!(stmt instanceof ExpressionAssignment)) return null;
+			assignments.add((ExpressionAssignment<?>) stmt);
+		}
+
+		assignments.addAll(getVariables());
+
+		for (Scope<?> child : getChildren()) {
+			List<ExpressionAssignment<?>> childAssignments = child.collectAssignments();
+			if (childAssignments == null) return null;
+			assignments.addAll(childAssignments);
+		}
+
+		return assignments;
+	}
+
+	/**
 	 * Returns the signature string for this scope.
 	 * <p>Uses the metadata signature if available, otherwise falls back to the scope name.</p>
 	 *

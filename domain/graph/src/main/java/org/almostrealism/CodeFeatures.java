@@ -389,11 +389,7 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 
 	/**
 	 * Assigns the given {@link OperationProfile} as the active profile, runs the runnable,
-	 * then restores the previously active profile and returns the profile with captured
-	 * timing data.
-	 *
-	 * <p>The prior profile is restored rather than cleared, so this is safe to call from
-	 * code that has already assigned a profile it expects to remain active afterward.</p>
+	 * then clears the profile and returns it with captured timing data.
 	 *
 	 * @param <T>     the profile type
 	 * @param profile the operation profile to assign
@@ -401,14 +397,12 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 	 * @return the profile, populated with timing data after the runnable completes
 	 */
 	default <T extends OperationProfile> T profile(T profile, Runnable r) {
-		OperationProfile previous = Hardware.getLocalHardware().getProfile();
-
 		try {
 			Hardware.getLocalHardware().assignProfile(profile);
 			r.run();
 			return profile;
 		} finally {
-			Hardware.getLocalHardware().assignProfile(previous);
+			Hardware.getLocalHardware().clearProfile();
 		}
 	}
 
@@ -437,17 +431,11 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 	 * but no source, so {@code ar-profile-analyzer get_source} returns nothing for the
 	 * saved profile.</p>
 	 *
-	 * <p>The profile active on entry is restored when this method returns rather than
-	 * cleared, so this is safe to call from code that has already assigned a profile it
-	 * expects to remain active afterward.</p>
-	 *
 	 * @param profile the profile node to collect timing and source into; may be {@code null}
 	 * @param op      a supplier producing the runnable to profile
 	 * @return the profile node after the operation completes
 	 */
 	default OperationProfileNode profile(OperationProfileNode profile, Supplier<Runnable> op) {
-		OperationProfile previous = Hardware.getLocalHardware().getProfile();
-
 		try {
 			Hardware.getLocalHardware().assignProfile(profile);
 
@@ -461,7 +449,7 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 			r.run();
 			return profile;
 		} finally {
-			Hardware.getLocalHardware().assignProfile(previous);
+			Hardware.getLocalHardware().clearProfile();
 		}
 	}
 

@@ -30,7 +30,7 @@ import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -329,7 +329,9 @@ public class Repeated<T> extends Scope<T> {
 
 		List<ExpressionAssignment<?>> body = new ArrayList<>();
 		for (Scope<T> child : getChildren()) {
-			if (!collectBodyAssignments(child, body)) return this;
+			List<ExpressionAssignment<?>> childAssignments = child.collectAssignments();
+			if (childAssignments == null) return this;
+			body.addAll(childAssignments);
 		}
 		if (body.isEmpty()) return this;
 
@@ -372,7 +374,7 @@ public class Repeated<T> extends Scope<T> {
 			String name = element.getReferent().getName();
 			Expression<?> position = element.getChildren().isEmpty() ? null : element.getChildren().get(0);
 
-			if (position == null || !isPositionInvariant(position, loopScalars, storedArrays.values(), loopIndices)) {
+			if (position == null || !position.isLoopInvariant(loopScalars, storedArrays.values(), loopIndices)) {
 				disqualified.add(name);
 				continue;
 			}
@@ -403,7 +405,7 @@ public class Repeated<T> extends Scope<T> {
 
 			// Substituting every promoted element must leave no remaining reference to
 			// the array; a leftover reference addresses an element we are not promoting.
-			if (!referencesOnlyPromotedElements(body, array, elements, locals)) continue;
+			if (body.stream().anyMatch(a -> a.referencesArrayBeyond(array, elements, locals))) continue;
 
 			promoted.addAll(elements);
 			accumulators.addAll(locals);
@@ -430,97 +432,6 @@ public class Repeated<T> extends Scope<T> {
 		result.getChildren().add(loop);
 		result.getChildren().add(stores);
 		return result;
-	}
-
-	/**
-	 * Recursively collects every {@link ExpressionAssignment} from a loop-body scope
-	 * and its descendants, failing when the body contains anything whose memory
-	 * behavior cannot be fully analyzed.
-	 *
-	 * <p>Only plain {@link Scope} instances are analyzable: subclasses carry
-	 * expressions outside the statements list that read memory invisibly to this
-	 * analysis ({@link Cases} branch conditions, {@link HybridScope} explicit code,
-	 * nested {@link Repeated} loop bounds), so any of them causes analysis to fail.
-	 * Method calls, metrics, and statements that are not
-	 * {@link ExpressionAssignment}s fail for the same reason, which makes the
-	 * caller skip accumulator promotion for the whole loop.</p>
-	 *
-	 * @param scope the loop-body scope to scan
-	 * @param assignments the list to add assignments to
-	 * @return true if the body was fully analyzable, false otherwise
-	 */
-	private static boolean collectBodyAssignments(Scope<?> scope, List<ExpressionAssignment<?>> assignments) {
-		if (scope.getClass() != Scope.class) return false;
-		if (!scope.getMethods().isEmpty()) return false;
-		if (!scope.getMetrics().isEmpty()) return false;
-
-		for (Statement<?> stmt : scope.getStatements()) {
-			if (!(stmt instanceof ExpressionAssignment)) return false;
-			assignments.add((ExpressionAssignment<?>) stmt);
-		}
-
-		assignments.addAll(scope.getVariables());
-
-		for (Scope<?> child : scope.getChildren()) {
-			if (!collectBodyAssignments(child, assignments)) return false;
-		}
-
-		return true;
-	}
-
-	/**
-	 * Checks whether an array-element position addresses the same element on every
-	 * iteration of the loop.
-	 *
-	 * <p>Building on {@link #isLoopInvariant(Expression, Set, List)}, a position is
-	 * iteration-invariant when it neither depends on any loop-variant scalar or index
-	 * nor reads an element of an array that the loop writes (whose value would change
-	 * as the loop runs).</p>
-	 *
-	 * @param position     the element position expression to check
-	 * @param loopScalars  names of the loop index and scalars assigned in the loop
-	 * @param storedArrays the arrays written inside the loop
-	 * @param loopIndices  indices from this and nested loops
-	 * @return true if the position addresses the same element on every iteration
-	 */
-	private boolean isPositionInvariant(Expression<?> position, Set<String> loopScalars,
-										Collection<Variable<?, ?>> storedArrays, List<Index> loopIndices) {
-		if (!isLoopInvariant(position, loopScalars, loopIndices)) return false;
-
-		for (Variable<?, ?> array : storedArrays) {
-			if (position.containsReference(array)) return false;
-		}
-
-		return true;
-	}
-
-	/**
-	 * Checks whether {@code array} is referenced only through the promoted elements
-	 * within the loop body. Each assignment has its promoted elements substituted for
-	 * their accumulators; if any reference to {@code array} survives, it addresses an
-	 * element that is not being promoted and promotion must be abandoned.
-	 *
-	 * @param body         the assignments in the loop body
-	 * @param array        the array being considered for promotion
-	 * @param elements     the promoted element references
-	 * @param accumulators the accumulator that replaces each promoted element
-	 * @return true if promotion of the array preserves the loop's semantics
-	 */
-	private static boolean referencesOnlyPromotedElements(List<ExpressionAssignment<?>> body, Variable<?, ?> array,
-														  List<InstanceReference<?, ?>> elements,
-														  List<StaticReference<?>> accumulators) {
-		for (ExpressionAssignment<?> assignment : body) {
-			ExpressionAssignment<?> rewritten = assignment;
-			for (int i = 0; i < elements.size(); i++) {
-				rewritten = rewritten.replace(elements.get(i), accumulators.get(i));
-			}
-
-			Expression<?> dest = rewritten.getDestination();
-			if (dest != null && dest.containsReference(array)) return false;
-			if (rewritten.getExpression().containsReference(array)) return false;
-		}
-
-		return true;
 	}
 
 	/**
@@ -1003,36 +914,7 @@ public class Repeated<T> extends Scope<T> {
 	 */
 	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables, List<Index> loopIndices) {
 		if (index == null) return false;
-
-		// Check if expression references any loop index (Index objects, not Variables)
-		for (Index idx : loopIndices) {
-			if (expr.containsIndex(idx)) {
-				return false;
-			}
-		}
-
-		// Check all variable dependencies of the expression
-		for (Variable<?, ?> var : expr.getDependencies()) {
-			if (var.getName() != null && loopAssignedVariables.contains(var.getName())) {
-				return false;
-			}
-		}
-
-		// Check all Index objects in the expression by name.
-		// This handles the case where the Repeated scope's index variable is a plain Variable,
-		// but expressions use a separate Index object (like DefaultIndex) with the same name.
-		// The Index objects won't be in loopIndices (since collectLoopIndices only looks at
-		// scope.getIndex()), but we can check their names against loopAssignedVariables.
-		for (Index idx : expr.getIndices()) {
-			if (idx.getName() != null && loopAssignedVariables.contains(idx.getName())) {
-				return false;
-			}
-		}
-
-		// Check for StaticReference nodes that reference loop-assigned variables by name.
-		// StaticReference without a referent returns empty from getDependencies(),
-		// so we must check by name to avoid incorrectly hoisting dependent expressions.
-		return !expr.containsStaticReferenceToAny(loopAssignedVariables);
+		return expr.isLoopInvariant(loopAssignedVariables, Collections.emptyList(), loopIndices);
 	}
 
 	/**
