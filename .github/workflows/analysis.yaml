@@ -971,6 +971,13 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
+    # Native memory allocates as direct ByteBuffers, which count against the JVM's
+    # MaxDirectMemorySize (default: -Xmx). The media tests allocate near the framework's
+    # AR_HARDWARE_MEMORY_SCALE=7 ceiling (~8 GB), so raise the direct-memory limit for
+    # the forked test JVM without changing heap size. _JAVA_OPTIONS is used (not
+    # MAVEN_OPTS) so it reaches the surefire fork, and it leaves the JaCoCo argLine alone.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1316,6 +1323,11 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # Same as test-media: native,cl runs the media tests on direct-ByteBuffer native
+    # RAM (no Metal), so raise the forked JVM's direct-memory ceiling without touching
+    # heap. See the test-media job for the full rationale.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
