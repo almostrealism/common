@@ -8,22 +8,34 @@
 > only behind a flag) and is the long-stated goal that has not yet been achieved. This document is the
 > single consolidation point for that effort so it can be picked up across sessions.
 >
-> **Status (updated 2026-07-04):** default **OFF again**, and the primary motivation has been
+> **Status (updated 2026-07-06):** default **OFF again**, and the primary motivation has been
 > partially superseded. The flag history: default-enabled `de5f2a961` (2026-06-28) → reverted
 > `b20a4a175` → re-enabled `468fe809d` → **currently disabled**
 > (`MemoryDataFeatures.enableAssignmentCopy` reads `AR_HARDWARE_ASSIGNMENT_COPY` with
 > `.orElse(false)`); the javadoc there records why the flip cannot hold yet:
-> assignment-based layer input recording **diverges some gradient-descent trainings**.
+> assignment-based layer input recording **diverges some gradient-descent trainings**
+> (`AssignmentRecordingDiagTest` in `engine/utils` reproduces the divergent shape — a single
+> `dense(2, 1)` step under both `DefaultCellularLayer.enableMemoryDataCopy` modes — and saves
+> per-mode operation profiles for comparison).
 > Separately, the §1 batching motivation was addressed by a different design:
 > `a3b20e285` (2026-07-02, "Chain every copy on the Semaphore mechanism and deprecate
 > `MemoryDataCopy`") makes `AcceleratedOperation.apply` non-blocking — prepare copies chain
 > ahead of the kernel, the kernel chains on the last copy-in, replacement copy-back and
 > de-aggregation chain after — so host copies no longer force the per-op `waitFor` this plan
 > was written to eliminate. `MemoryDataCopy` is now `@Deprecated` with guidance toward
-> `Assignment`, `MemoryData.copyFrom`, and the `copy(...)` helpers, and the §3 direct-construction
-> sites have been migrated. The remaining motivations for *this* migration are optimizer
-> visibility (`Assignment` is a `ParallelProcess`; `MemoryDataCopy`'s producer tree is invisible
-> to strategies) and the ML copy cost (§1 Qwen numbers) — re-baseline both before resuming.
+> `Assignment`, `MemoryData.copyFrom`, and the `copy(...)` helpers, and internally performs its
+> physical copy through the owning `ComputeContext` (`Hardware.getComputeContext(Memory)`), with
+> host `toArray`/`setMem` only as the unmanaged-memory fallback — but it is still **not**
+> `Submittable`, so as an `OperationList` member it forces a `pending.waitFor()` chain reset
+> (see §9.1). The §3 direct-construction sites have been **partially** migrated (see the updated
+> §3 table: aggregation and cross-provider replacement now use `ComputeContext.copy`
+> `Submittable`s; `WaveOutput` and `DefaultChannelSectionFactory` route through the flag-gated
+> `copy()` helper; `PackedCollection`, `CollectionProvider`, and `FilterEnvelopeProcessor`
+> still construct `MemoryDataCopy` directly). The remaining motivations for *this* migration are
+> **batch-continuity** (`Submittable` copies keep the semaphore chain intact inside composite
+> operations — the audio §9.1 case), optimizer visibility (`Assignment` is a `ParallelProcess`;
+> `MemoryDataCopy`'s producer tree is invisible to strategies), and the ML copy cost (§1 Qwen
+> numbers) — re-baseline the Qwen numbers before acting on them.
 
 ---
 
@@ -75,34 +87,39 @@ copies stop breaking batches.
   `Provider`/`AcceleratedOperation` (`:383-387`); `DestinationEvaluable.evaluate()` runs
   `operation.into(destination).evaluate()` (host write for a bare `Provider`). `super.get()`
   (`OperationComputationAdapter`) is the real kernel path.
-- **The flag + helpers.** `MemoryDataFeatures.enableAssignmentCopy` (`:153`, runtime via
-  `AR_HARDWARE_ASSIGNMENT_COPY`, **default enabled** as of 2026-06-28).
-  `MemoryDataFeatures.copy()` (`:180-204`) and `CodeFeatures.copy()` (`:305-318`) switch
+- **The flag + helpers.** `MemoryDataFeatures.enableAssignmentCopy` (`:164`, runtime via
+  `AR_HARDWARE_ASSIGNMENT_COPY`, **default disabled** — see the header status for the flag
+  history and the divergence that blocks the flip).
+  `MemoryDataFeatures.copy()` (`:191-251`) and `CodeFeatures.copy()` (`:305-322`) switch
   `MemoryDataCopy → Assignment` when the flag is on, constructing the `Assignment` to **avoid** the
   short-circuit (lambda producers / `traverseEach`, so `Computable.provider(out)` is false → kernel).
-- This is an **in-progress owner migration**, commit `06b1dd32d`. The default-off is *in-progress*,
-  **not reverted**. (`ExpansionWidthTargetOptimization`, also in that commit, is **coincidental and
-  out of scope** here unless separately needed.)
+- **`Assignment.Runner`** (`Assignment.java:558`) is a `Submittable` — a provider→provider
+  `Assignment` already chains through `ComputeContext.copy` (blit-backed on Metal) with no host
+  wait. The remaining non-`Submittable` result of `Assignment.get()` is `DestinationEvaluable`
+  (source is an `AcceleratedOperation`, `:419-421`), which evaluates into the destination on the
+  host — this is the "source is a kernel program" gap (§10.3).
 
-### What bypasses the flag (must be covered by a global switch)
-Many call sites construct `new MemoryDataCopy(...)` **directly**, so they do not respond to
-`enableAssignmentCopy`:
+### Call-site inventory (updated 2026-07-06)
+The original table listed the sites that bypassed `enableAssignmentCopy` by constructing
+`new MemoryDataCopy(...)` directly. Their current status:
 
-| Site | Role |
-|---|---|
-| `MemoryDataArgumentMap.java:302,340` | **Aggregation** copy-in / copy-out (the audio `aggregateCopyOut` waits) |
-| `MemoryReplacementManager.java:289,290` | **Cross-provider replacement** Temp Prep/Post (the audio `processing` waits) |
-| `PackedCollection.java:229` | constructor copy |
-| `CollectionProvider.java:163` | evaluate-into |
-| `WaveOutput.java:359` | export |
-| `FilterEnvelopeProcessor.java:150,152` | input / output |
-| `DefaultChannelSectionFactory.java:315,317` | section input / output |
+| Site | Role | Status |
+|---|---|---|
+| `MemoryDataArgumentMap` | **Aggregation** copy-in / copy-out | **RESOLVED** — compiled per-replacement `Submittable`s via `ComputeContext.copy` (`ensureCopyOperations()`, `copyInOperations`/`copyOutOperations`) |
+| `MemoryReplacementManager.java:309,310` | **Cross-provider replacement** Temp Prep/Post | **RESOLVED** — `context.copy(data, tmp, dependsOn)` lambdas, semaphore-chained |
+| `WaveOutput.java:358` | export | **Helper-routed** — `copy(...)`, so flag-gated (still `MemoryDataCopy` while the flag is off) |
+| `DefaultChannelSectionFactory.java:314,316` | section input / output | **Helper-routed** — `copy(...)`, flag-gated |
+| `PackedCollection.java:229` | constructor copy | **Still direct** (immediate `.get().run()` — standalone, setup-time) |
+| `CollectionProvider.java:163` | evaluate-into | **Still direct** |
+| `FilterEnvelopeProcessor.java:150,152` | input / output | **Still direct** (immediate `.get().run()`) |
 
-> **Important connection:** the aggregation (`MemoryDataArgumentMap`) *and* the cross-provider
-> replacement (`MemoryReplacementManager`) copies — i.e. **both halves** of the audio per-op-wait
-> problem — are `MemoryDataCopy`. A correct global switch therefore addresses both. And note that
-> under all-Metal (`AR_HARDWARE_OFF_HEAP_SIZE=0`) the cross-provider replacement path should largely
-> *not trigger* (no provider mismatch), which is why the audio sub-plan scopes to all-Metal first.
+> **Important:** "helper-routed" is necessary but not sufficient. While `enableAssignmentCopy`
+> is off, the helper still returns a `MemoryDataCopy`, which is **not `Submittable`** — inside an
+> `OperationList` it forces `pending.waitFor()` and resets the semaphore chain
+> (`OperationListRunner.run()`). The audio §9.1 work therefore migrates those members to
+> `Submittable` form **per call site**, without waiting for the global flag flip. Under all-Metal
+> (`AR_HARDWARE_OFF_HEAP_SIZE=0`, now the default) the cross-provider replacement path largely
+> does not trigger (no provider mismatch).
 
 ## 4. How `Assignment` becomes a *batchable* GPU copy (the mechanism)
 
@@ -131,30 +148,41 @@ that the surrounding code not insert a host `waitFor` around it.
 `enableAssignmentCopy` is **not close to ready**; what breaks is currently unknown and must be
 *measured*, not guessed.
 
-- **Mechanics.** `enableAssignmentCopy` is now resolved at runtime from `AR_HARDWARE_ASSIGNMENT_COPY`
-  (enabled/disabled), **default enabled**. It is still a `public static final` interface field, so the
-  value is read once at class initialization and a **clean full rebuild** is required for consumers to
-  observe the new default (CI does this); until then, modules compiled against the old constant keep
+- **Mechanics.** `enableAssignmentCopy` is resolved at runtime from `AR_HARDWARE_ASSIGNMENT_COPY`
+  (enabled/disabled), **default disabled**. It is still a `public static final` interface field, so
+  the value is read once at class initialization and a **clean full rebuild** is required for
+  consumers to observe a change; until then, modules compiled against the old constant keep
   the old value. Enabled, the **helper-routed** copies (`MemoryDataFeatures.copy` /
   `CodeFeatures.copy`) become `Assignment`; the direct `new MemoryDataCopy` sites (§3) are unaffected
   until separately routed.
-- **Plan.** Run the full suite on a clean build with the new default (CI) and record the **exact
+- **Plan.** Run the full suite on a clean build with the flag enabled (CI) and record the **exact
   failing set** (test → failure mode) as the baseline; a full-suite run is the right signal because
-  the blast radius is unknown, and the failing set becomes the migration's work-list. (To A/B later
+  the blast radius is unknown, and the failing set becomes the migration's work-list. (To A/B
   without a rebuild, set `AR_HARDWARE_ASSIGNMENT_COPY=disabled`.)
 - **Record results below** (date, commit, pass/fail set) so the next session starts from data, not
   memory.
 
-> Baseline results: _to be filled in._
+> Baseline results: the flag **was** default-enabled during the 2026-06-28 → 2026-07-02 window
+> (see the header flag history). The known failure mode from that period: **assignment-based
+> layer input/output recording diverges some gradient-descent trainings** (recorded in the
+> `enableAssignmentCopy` javadoc; the related `DefaultCellularLayer.enableMemoryDataCopy=false`
+> experiment showed the same shape). `AssignmentRecordingDiagTest` (`engine/utils`, currently
+> uncommitted on `feature/assignment-copy-migration`) reproduces the minimal divergent case —
+> one forward/backward step of `dense(2, 1)` under both recording modes with identical weights
+> and input — and saves per-mode operation profiles under `results/` for `ar-profile-analyzer`
+> comparison. A per-test enumeration of the failing set on current master has not been recorded;
+> re-run CI with `AR_HARDWARE_ASSIGNMENT_COPY=enabled` to regenerate it when resuming the flip.
 
 ## 7. Validation & acceptance (per case and globally)
 
 - **Parity is the gate, not non-silence.** A kernel copy with a mis-ordered hazard yields
   wrong-but-non-silent output. Every case must show **output parity** (bit-exact where deterministic,
   else tight tolerance) flag-on vs flag-off.
-- **Batching recovered** (where batching is the point): the audio `diag*` counters
-  (`MetalCommandRunner.diag*`, the `apply()` counters in `PdslHotPathBreakdownTest`) show
-  `meanDispatchesPerCommit` rising and `aggregateWaits/tick → 0`.
+- **Batching recovered** (where batching is the point): the `MetalCommandRunner` batch-size
+  counters (`totalDispatchCount`/`totalCommitCount`/`meanBatchSize()`) and the commit-cause
+  attribution (`getHostCompleteCommitCount()`, `getBridgeCommitCount()`, etc., plus the
+  `hostCompleteRequesters` histogram), all logged by `PdslHotPathBreakdownTest`, show
+  `meanDispatchesPerCommit` rising and host-complete commits/tick falling.
 - **No regressions:** the §6 baseline failing-set is driven to zero; the full suite is green with the
   flag on before it can become the default.
 - **Signature stability:** aggregated/standalone copies remain instruction-cache-stable (offsets are
@@ -196,15 +224,34 @@ also starves the new `MTLSharedEvent` foreign-dependency bridge (`bridgeCommits=
 since each wait resets the dependency chain before a cross-context handoff can reach
 `MetalCommandRunner.submit`. Routing just those call sites through the `Submittable`
 copy machinery (per §5's incremental path, not the global flag flip) is the plan of
-record in [`audio-scene-redesign/NEXT_STEP.md`](audio-scene-redesign/NEXT_STEP.md);
+record, handed to the performance effort in
+[`audio-scene-redesign/PERFORMANCE_HANDOFF.md`](audio-scene-redesign/PERFORMANCE_HANDOFF.md);
 its parity gates and measurements can serve as the first §7 case study.
 
-## 10. Open questions / next actions
+## 10. Open questions / next actions (updated 2026-07-11)
 
-1. **Baseline (§6)** — flip `enableAssignmentCopy=true`, run the full suite (CI), record the failing
-   set here. *(First action; owner offered to run CI.)*
-2. **Audio beachhead** — superseded for batching (Semaphore chaining arc); revisit only as a
-   parity-provable first site for the `Assignment`-default flip itself.
-3. **Inverted short-circuit (§2)** — design the "standalone ⇒ may fall back to `setMem`" decision;
-   where in `Assignment.get()` / the execution context that signal is available.
-4. **Route direct sites (§3 table)** through the `Assignment` path incrementally, parity-gated.
+1. **Resolve the recording divergence (the flip-blocker).** Root-cause why assignment-based
+   layer input/output recording diverges gradient-descent trainings, using
+   `AssignmentRecordingDiagTest` and its per-mode operation profiles (`ar-profile-analyzer` on
+   the generated kernel source is the prescribed instrument). Until this is fixed,
+   `enableAssignmentCopy` cannot default on.
+2. ~~**Audio beachhead** — aggregation copies via the `Assignment`/`Submittable` path.~~
+   **DONE** on master: `MemoryDataArgumentMap` aggregation and `MemoryReplacementManager`
+   replacement copies run through `ComputeContext.copy` `Submittable`s;
+   `meanDispatchesPerCommit` recovered 1.07 → ~3.9 and the per-op `waitFor` collapse is gone
+   (measured history in `audio-scene-redesign/PERFORMANCE_HANDOFF.md` and the pre-2026-07-09
+   revisions of `audio-scene-redesign/NEXT_STEP.md` in git history).
+3. **Inverted short-circuit / kernel-source `Assignment` (§2).** The remaining structural gap:
+   `Assignment.get()` returns a host-side `DestinationEvaluable` when the source is an
+   `AcceleratedOperation` (`Assignment.java:419-421`) — exactly the "source is itself a kernel
+   program" case. Design the `Submittable` path for it (compile the kernel and chain it, with a
+   standalone-execution fallback to direct `setMem` where cheaper).
+4. **Route the audio tick's non-submittable members** — the current plan of record, handed to
+   the performance effort in `audio-scene-redesign/PERFORMANCE_HANDOFF.md` (item 2): migrate
+   the `copy()`-helper members of the tick/forward composites (`CompiledModel`
+   Forward/Backward Output capture, `DefaultChannelSection` Input/Output, `WaveOutput` Export,
+   plus glue lambdas) to `Submittable` form per call site, scoped, parity-gated — NOT via the
+   global flag flip. Success metric: host-complete commits/tick ~42-47 → ≲ 5.
+5. **Route the remaining direct sites** (`PackedCollection:229`, `CollectionProvider:163`,
+   `FilterEnvelopeProcessor:150,152`) through the helper or `Assignment` path — lower priority;
+   the first two are standalone/setup-time copies where the §2 short-circuit would apply anyway.

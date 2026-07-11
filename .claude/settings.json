@@ -104,6 +104,11 @@
           },
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/steer-generated-code-read.sh",
+            "description": "Block raw shell reads (find/grep/cat/ls) of generated compiler output \u2014 instruction-set dumps, *.metal/*.cl kernels, OperationProfile XML \u2014 and steer to the ar-profile-analyzer MCP tool (list_profiles/search_operations/get_source)"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-branch-track-master.sh",
             "description": "Block creating/tracking/pushing a non-master branch against remote master/main (the 'branch tracks origin/master' footgun) \u2014 use --no-track or branch off local master"
           }
