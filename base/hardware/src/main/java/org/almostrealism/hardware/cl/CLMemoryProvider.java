@@ -27,7 +27,6 @@ import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
-import org.almostrealism.nio.NativeBuffer;
 import org.almostrealism.nio.NativeMemoryProvider;
 import org.jocl.CL;
 import org.jocl.CLException;

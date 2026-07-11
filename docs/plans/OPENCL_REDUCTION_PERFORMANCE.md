@@ -344,34 +344,55 @@ to graft a `ByteBuffer` onto that calloc memory — duplicating what `NativeBuff
 already is.
 
 The revision removes the special-case surface entirely and unifies the two
-CPU-side providers:
+CPU-side providers.
+
+**Root-caused a prerequisite along the way: `libNIO` was the odd one out.**
+Making `NativeBuffer` the native RAM first surfaced that `NIO` — the class
+`NativeBuffer` uses for its content pointer — loaded a *prebuilt* library, and only
+`libNIO.dylib` (macOS) shipped in resources. There was never a `libNIO.so`, so on
+Linux CI `NIO` could not initialize and every test touching a `NativeBuffer` threw
+`NoClassDefFoundError`. Rather than route around it, `NIO` was fixed to match the
+rest of the native backend: its four operations (direct-buffer pointer via
+`GetDirectBufferAddress`, and shared-memory `mmap`/`msync`/`munmap`) are now
+compiled at runtime by `NativeCompiler` as `BaseNative` ops, exactly like `Malloc`.
+`libNIO.dylib` and `NIO.cpp` are deleted. `NativeBuffer` now works on every
+platform the native backend supports, so there is no platform constraint on the
+default.
+
+The design:
 
 - The NIO provider and the calloc provider are merged into a single
-  `org.almostrealism.nio.NativeMemoryProvider` with a per-instance `direct` mode
-  (default from `AR_HARDWARE_DIRECT_MEMORY`, default true). Direct mode allocates
-  a ByteBuffer-backed `NativeBuffer`; calloc mode allocates a `NativeMemory` via
-  `malloc`. Allocation tracking, metrics, and leak detection run in both modes.
-  Deallocation frees calloc memory explicitly but leaves direct buffers to the
-  JVM's own `DirectByteBuffer` cleaner — distinguished by reference type
-  (`NativeBufferRef` vs plain `NativeRef`) so there is no double free.
-  `NativeDataContext` defaults the native RAM to direct mode, so under
-  `native,cl` collections are ByteBuffer-backed and the existing CL bulk-copy
-  paths apply with no new code.
+  `org.almostrealism.nio.NativeMemoryProvider` with a per-instance `direct` mode.
+  **Direct mode is the default** (`AR_HARDWARE_DIRECT_MEMORY`, default true):
+  allocate a `NativeBuffer` via `allocateDirect`, whose content pointer comes from
+  the now-runtime-compiled `NIO`. Calloc mode allocates a `NativeMemory` via
+  `Malloc` and gives it a `ByteBuffer` view via a runtime-compiled
+  `NewDirectByteBuffer` (`NativeBufferView`); it avoids the JVM's direct-memory
+  accounting. Both modes work on every platform and support the bulk copy.
+  Allocation tracking, metrics, and leak detection run in both modes; deallocation
+  frees calloc memory explicitly but leaves direct buffers to the JVM's own
+  `DirectByteBuffer` cleaner — distinguished by reference type (`NativeBufferRef`
+  vs plain `NativeRef`) so there is no double free.
 - The ByteBuffer capability is expressed through the type hierarchy — an abstract
-  `ByteBufferMemory extends RAM` that `NativeBuffer` extends — and consumers check
-  `instanceof ByteBufferMemory`, rather than a `MemoryProvider` method that
-  returns `null` on unsupported memory. The two capability methods and
-  `NativeBufferView` are deleted; `CLMemoryProvider`'s bulk `setMem` keys off
-  `ByteBufferMemory` and now honors the source offset. A latent bug in the CL
-  adapter was fixed at the same time: it addressed the typed buffer view (whose
-  position advances with host writes) and ignored the destination offset; it now
-  addresses the position-stable root `ByteBuffer` at the correct offset.
+  `ByteBufferMemory extends RAM` that both `NativeMemory` and `NativeBuffer`
+  extend — and consumers check `instanceof ByteBufferMemory` + `getByteBuffer()`,
+  rather than a `MemoryProvider` method that returns `null` on unsupported memory.
+  The two capability methods are deleted; `NativeBufferView` survives only as the
+  internal implementation of `NativeMemory.getByteBuffer()`. `CLMemoryProvider`'s
+  bulk `setMem` and its registered copy-back adapter both key off
+  `ByteBufferMemory` and address the position-stable root `ByteBuffer` at the
+  correct offset (fixing a latent adapter bug that used the typed view — whose
+  position advances with host writes — and ignored the destination offset).
 - The `NativeRead` bulk-region change is retained — it benefits calloc-mode host
   reads regardless of the cross-provider path.
 
-Net: the branch delivers the same bulk cross-provider transfer with zero new
-`MemoryProvider` surface and no duplicated ByteBuffer-view machinery. The
-device-side operation is the same bulk `clEnqueue*Buffer`, so the transfer
-characteristics and the per-dispatch timing conclusions from the table above are
-unchanged; the per-dispatch replacement floor remains the open item, addressed by
-the CLMemory-everywhere / CLJNI direction rather than by this change.
+Net: the branch delivers the bulk cross-provider transfer with zero new
+`MemoryProvider` surface, using only runtime-generated code on every path — no
+prebuilt native library anywhere. Verified with `libNIO.dylib` deleted from the
+build: `CrossProviderMemoryCopyTest` (under `native,cl`) and native-only matmul
+tests pass with `NativeBuffer` as the default RAM and `NIO` compiled at runtime.
+The device-side
+operation is the same bulk `clEnqueue*Buffer`, so the transfer characteristics and
+per-dispatch timing conclusions from the table above are unchanged; the
+per-dispatch replacement floor remains the open item, addressed by the
+CLMemory-everywhere / CLJNI direction rather than by this change.

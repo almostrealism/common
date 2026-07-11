@@ -20,10 +20,12 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.Precision;
 import org.almostrealism.c.Free;
 import org.almostrealism.c.Malloc;
+import org.almostrealism.c.NativeBufferView;
 import org.almostrealism.c.NativeMemory;
 import org.almostrealism.c.NativeRead;
 import org.almostrealism.c.NativeWrite;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.ByteBufferMemory;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
@@ -42,20 +44,24 @@ import java.util.Map;
 /**
  * Memory provider for CPU-side native memory, backed by either NIO direct buffers or JNI malloc.
  *
- * <p>This provider unifies the two ways the framework allocates host-accessible native memory:</p>
+ * <p>This provider unifies the two ways the framework allocates host-accessible native memory. Both
+ * expose their contents as a {@link java.nio.ByteBuffer} (through
+ * {@link org.almostrealism.hardware.mem.ByteBufferMemory}), so another backend can move data to and
+ * from either in bulk without an intermediate array — for example an OpenCL provider reading or
+ * writing the buffer directly:</p>
  *
  * <ul>
  *   <li><b>Direct mode (default)</b> allocates a {@link NativeBuffer} via
- *       {@link java.nio.ByteBuffer#allocateDirect}. Because the memory is exposed as a
- *       {@link java.nio.ByteBuffer} (through {@link org.almostrealism.hardware.mem.ByteBufferMemory}),
- *       other backends can move data to and from it in bulk without an intermediate array — for
- *       example an OpenCL provider reading or writing the buffer directly.</li>
- *   <li><b>Calloc mode</b> allocates a {@link NativeMemory} via JNI {@link Malloc}. This memory has
- *       no {@link java.nio.ByteBuffer} view, so cross-provider copies fall back to an array-mediated
- *       transfer, but it avoids the JVM's direct-memory accounting (and the associated
- *       {@code -XX:MaxDirectMemorySize} limit and {@code System.gc()} pressure) and its allocation is
- *       cheaper for large blocks.</li>
+ *       {@link java.nio.ByteBuffer#allocateDirect} and supports named shared memory. Its content
+ *       pointer is obtained through {@link NIO}, whose operations are compiled at runtime, so it needs
+ *       no prebuilt native library.</li>
+ *   <li><b>Calloc mode</b> allocates a {@link NativeMemory} via JNI {@link Malloc}; its ByteBuffer
+ *       view is produced by a runtime-compiled {@code NewDirectByteBuffer} operation. It avoids the
+ *       JVM's direct-memory accounting (and the associated {@code -XX:MaxDirectMemorySize} limit and
+ *       {@code System.gc()} pressure).</li>
  * </ul>
+ *
+ * <p>Both modes work on every platform the native backend supports.</p>
  *
  * <p>The mode is selected per instance and does not change the {@link io.almostrealism.code.MemoryProvider}
  * contract: it only affects how memory is allocated and reclaimed. The default is controlled by
@@ -90,8 +96,14 @@ import java.util.Map;
  */
 public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	/**
-	 * Default allocation mode. When true (the default), instances allocate NIO direct buffers;
-	 * when false, they allocate via JNI malloc. Controlled by {@code AR_HARDWARE_DIRECT_MEMORY}.
+	 * Whether native (JNI) execution allocates NIO direct buffers ({@link NativeBuffer}) by default
+	 * (the default) rather than JNI {@link Malloc} blocks ({@link NativeMemory}). Both are
+	 * host-accessible {@link org.almostrealism.hardware.mem.ByteBufferMemory} and both work on every
+	 * platform the native backend supports (the direct-buffer pointer and the calloc ByteBuffer view
+	 * are alike produced by runtime-compiled code — no prebuilt library). The difference is only how
+	 * memory is allocated and tracked: direct buffers participate in the JVM's
+	 * {@code -XX:MaxDirectMemorySize} accounting, calloc blocks do not. Controlled by
+	 * {@code AR_HARDWARE_DIRECT_MEMORY}.
 	 */
 	public static boolean enableDirectAllocation =
 			SystemUtils.isEnabled("AR_HARDWARE_DIRECT_MEMORY").orElse(true);
@@ -137,29 +149,34 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	private NativeRead read;
 	/** JNI wrapper for writing to native memory (calloc mode). */
 	private NativeWrite write;
+	/** JNI wrapper producing a direct buffer view over calloc memory (calloc mode). */
+	private NativeBufferView bufferView;
 
 	/** Total bytes currently allocated across all active memory in this provider. */
 	private long memoryUsed;
 
 	/**
-	 * Creates a direct-buffer provider with shared memory enabled and the default allocation mode.
+	 * Creates a NIO direct-buffer provider with shared memory enabled, for the shared-memory bridge.
+	 *
+	 * <p>Always allocates {@link NativeBuffer} (direct mode), which requires the {@code libNIO}
+	 * native library; use a compiler-bearing constructor for the portable calloc default.</p>
 	 *
 	 * @param precision Numeric precision for elements
 	 * @param memoryMax Maximum bytes that may be allocated
 	 */
 	public NativeMemoryProvider(Precision precision, long memoryMax) {
-		this(precision, memoryMax, true, null, enableDirectAllocation);
+		this(precision, memoryMax, true, null, true);
 	}
 
 	/**
-	 * Creates a direct-buffer provider with optional shared memory and the default allocation mode.
+	 * Creates a NIO direct-buffer provider ({@link NativeBuffer}) with optional shared memory.
 	 *
 	 * @param precision Numeric precision for elements
 	 * @param memoryMax Maximum bytes that may be allocated
 	 * @param shared    If true, use named shared memory when a memory name is available
 	 */
 	public NativeMemoryProvider(Precision precision, long memoryMax, boolean shared) {
-		this(precision, memoryMax, shared, null, enableDirectAllocation);
+		this(precision, memoryMax, shared, null, true);
 	}
 
 	/**
@@ -223,8 +240,11 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 			mem = allocated(NativeBuffer.create(this, size, shared ? getMemoryName().apply(size) : null));
 		} else {
 			if (malloc == null) malloc = new Malloc(getNativeCompiler());
-			mem = allocated(new NativeMemory(this,
-					malloc.apply(getNumberSize() * size), getNumberSize() * (long) size));
+			if (bufferView == null) bufferView = new NativeBufferView(getNativeCompiler());
+
+			long bytes = getNumberSize() * (long) size;
+			long pointer = malloc.apply(getNumberSize() * size);
+			mem = allocated(new NativeMemory(this, pointer, bytes, bufferView.apply(pointer, 0, bytes)));
 		}
 
 		memoryUsed += (long) getNumberSize() * size;
@@ -290,14 +310,16 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	@Override
 	public synchronized void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
-		if (mem instanceof NativeBuffer buffer) {
-			if (source instanceof NativeBuffer sourceBuffer) {
-				copyBuffer(buffer, offset, sourceBuffer, srcOffset, length);
-				return;
-			} else if (writeAdapters.containsKey(source.getClass())) {
-				writeAdapters.get(source.getClass()).setMem(buffer, offset, source, srcOffset, length);
-				return;
-			}
+		if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer) {
+			copyBuffer(buffer, offset, sourceBuffer, srcOffset, length);
+			return;
+		}
+
+		// A registered adapter can read a foreign source (e.g. an OpenCL buffer) directly into
+		// this destination's host buffer, for either the calloc or the NIO backing
+		if (mem instanceof ByteBufferMemory buffer && writeAdapters.containsKey(source.getClass())) {
+			writeAdapters.get(source.getClass()).setMem(buffer, offset, source, srcOffset, length);
+			return;
 		}
 
 		double[] value = new double[length];

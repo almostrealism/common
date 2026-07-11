@@ -17,18 +17,22 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.MemoryProvider;
-import org.almostrealism.hardware.mem.RAM;
+import org.almostrealism.hardware.mem.ByteBufferMemory;
+
+import java.nio.ByteBuffer;
 
 /**
- * {@link RAM} implementation backed by JNI-allocated native memory.
+ * {@link ByteBufferMemory} implementation backed by JNI-allocated native memory.
  *
- * <p>{@link NativeMemory} wraps a native memory pointer allocated via JNI malloc,
- * providing access to CPU memory for native code execution.</p>
+ * <p>{@link NativeMemory} wraps a native memory pointer allocated via JNI malloc, providing access
+ * to CPU memory for native code execution. Its {@link #getByteBuffer() ByteBuffer view} is produced
+ * by a runtime-compiled {@code NewDirectByteBuffer} operation ({@link NativeBufferView}) over that
+ * pointer, so the memory is host-accessible for bulk transfers without any prebuilt native library.</p>
  *
  * @see org.almostrealism.nio.NativeMemoryProvider
- * @see RAM
+ * @see ByteBufferMemory
  */
-public class NativeMemory extends RAM {
+public class NativeMemory extends ByteBufferMemory {
 	/** The memory provider that allocated this buffer. */
 	private final MemoryProvider provider;
 
@@ -38,17 +42,22 @@ public class NativeMemory extends RAM {
 	/** The size of this memory allocation in bytes. */
 	private final long size;
 
+	/** A non-owning direct buffer view over the allocation, for host-accessible bulk transfers. */
+	private final ByteBuffer byteBuffer;
+
 	/**
 	 * Creates a new NativeMemory wrapping a native memory pointer.
 	 *
 	 * @param provider      the memory provider that allocated this buffer
 	 * @param nativePointer the native pointer to the allocated memory
 	 * @param size          the size of the allocation in bytes
+	 * @param byteBuffer    a non-owning direct buffer view over the whole allocation
 	 */
-	public NativeMemory(MemoryProvider provider, long nativePointer, long size) {
+	public NativeMemory(MemoryProvider provider, long nativePointer, long size, ByteBuffer byteBuffer) {
 		this.provider = provider;
 		this.nativePointer = nativePointer;
 		this.size = size;
+		this.byteBuffer = byteBuffer;
 	}
 
 	/** {@inheritDoc} */
@@ -64,4 +73,8 @@ public class NativeMemory extends RAM {
 	/** {@inheritDoc} */
 	@Override
 	public long getSize() { return size; }
+
+	/** {@inheritDoc} */
+	@Override
+	public ByteBuffer getByteBuffer() { return byteBuffer; }
 }
