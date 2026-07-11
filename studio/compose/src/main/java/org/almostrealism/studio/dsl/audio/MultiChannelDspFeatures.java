@@ -328,7 +328,18 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 							.reshape(shape(channels * signalSize));
 
 					OperationList ops = new OperationList("delay_network");
-					ops.add(next.push(output));
+					// The delayed tap must be MATERIALIZED here, before the ring and head
+					// mutate below — not just pushed as a producer. A downstream consumer
+					// may defer evaluation past this block's ops (an accum_blocks branch
+					// captures its tail producer and sums it only after every branch's ops
+					// have run), and a deferred read of the live ring sees post-write state:
+					// one frame short of the requested delay, or the CURRENT frame outright
+					// at the band floor. Copying to scratch pins the read at this position
+					// in the ops order, making the stage's semantics consumer-independent.
+					PackedCollection outputScratch = new PackedCollection(multiShape);
+					ops.add(into("delay-network-tap-" + channels + "x" + signalSize,
+							output, cp(outputScratch), false));
+					ops.add(next.push(cp(outputScratch)));
 
 					if (bufSize == signalSize) {
 						// One-frame ring: the new frame replaces the whole buffer. Every
@@ -436,7 +447,14 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					// current input must already be in the ring when the read evaluates.
 					ops.add(into("delay-bank-buffer-write-" + channels + "x" + bufSize,
 							newBuffer, buffer, false));
-					ops.add(next.push(output));
+					// Materialize the read before the head advances (see the matching note
+					// in feedbackNetworkBlock): a consumer that defers evaluation past this
+					// block's ops would otherwise read against the advanced head — one
+					// frame off the requested delay.
+					PackedCollection outputScratch = new PackedCollection(multiShape);
+					ops.add(into("delay-bank-tap-" + channels + "x" + signalSize,
+							output, cp(outputScratch), false));
+					ops.add(next.push(cp(outputScratch)));
 					ops.add(into("delay-bank-head-write-" + channels + "x" + bufSize,
 							ringHeadAdvance(heads1D, channels, signalSize, bufSize),
 							heads, false));

@@ -278,16 +278,10 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 		wet.put("wet_filter_coeffs", identityFirBank(channels, taps));
 		wet.put("wet_hp_coeffs", identityFirBank(channels, taps));
 		wet.put("wet_level", WET_LEVEL);
-		PackedCollection delaySamples = new PackedCollection(channels);
-		double[] delayData = new double[channels];
-		Arrays.fill(delayData, 6500.0);
-		delaySamples.setMem(delayData);
-		wet.put("delay_samples", delaySamples);
 		wet.put("master_gain", 0.5);
-		// Two frames per channel so the 6500-sample delay sits inside the
-		// write-first ring band at the 8192 signal size used here.
-		wet.put("buffers", new PackedCollection(channels * 2 * signal).fill(0.0));
-		wet.put("heads", new PackedCollection(channels).fill(0.0));
+		// The bus-line network (delay_layers, bus_send, bus_delay_samples, bus_transmission,
+		// bus_wet_out, bus_buffers/bus_heads), the wet_in send, and both voicing arms' echo
+		// rings come from neutralEfxArgs above.
 		return wet;
 	}
 

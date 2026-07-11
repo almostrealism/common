@@ -72,6 +72,12 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 	 * (1.0), not the default zero — proving that delay state carried across the
 	 * tick boundary.</p>
 	 *
+	 * <p>The ring spans TWO frames: the {@code delay} primitive is write-first (the
+	 * current frame is in the ring before the delayed read evaluates), so a ring
+	 * holds samples of age {@code D} only for {@code D <= ring - signal_size} — a
+	 * one-frame ring supports only {@code D = 0} and would clamp the two-sample
+	 * delay away.</p>
+	 *
 	 * <p>This validates that a stateful PDSL block running tick() can call
 	 * {@link CompiledModel#forward} on successive invocations and rely on
 	 * state persisting between them.</p>
@@ -80,8 +86,8 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 	@TestDepth(2)
 	public void testStatePersistsAcrossTemporalTick() {
 		int delaySamples = 2;
-		PackedCollection buffer = new PackedCollection(BUFFER_SIZE);
-		buffer.setMem(new double[BUFFER_SIZE]);
+		PackedCollection buffer = new PackedCollection(2 * BUFFER_SIZE);
+		buffer.setMem(new double[2 * BUFFER_SIZE]);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(new double[]{0.0});
 

@@ -48,9 +48,11 @@ interface MixdownPdslTestFeatures {
 
 	/**
 	 * Builds the neutral efx/reverb argument entries for {@code mixdown_master_wet}: wet
-	 * level 0 (the per-channel feedforward reduces to dry), transmission 0 (the feedback
-	 * grid passes the delayed signal once without recirculating), identity passthrough,
-	 * and a zero reverb send, plus validly-shaped state buffers for every ring.
+	 * level 0 (the apply echo contributes nothing, so each voicing reduces to dry), echo
+	 * feedback 0 (an open echo would emit its delayed tap exactly once without
+	 * recirculating), a one-frame bus-line network with unity send and output taps and
+	 * zero recirculation, and a zero reverb send, plus validly-shaped state buffers for
+	 * every ring on both voicing arms.
 	 *
 	 * @param channels   number of channels
 	 * @param signalSize samples per channel per forward pass
@@ -67,12 +69,23 @@ interface MixdownPdslTestFeatures {
 		Arrays.fill(fbDelayData, PDSL_DELAY_SAMPLES);
 		fbDelay.setMem(fbDelayData);
 		PackedCollection fbTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
-		PackedCollection fbPassthrough = new PackedCollection(new TraversalPolicy(channels, channels));
-		double[] passthroughData = new double[channels * channels];
-		for (int i = 0; i < channels; i++) passthroughData[i * channels + i] = 1.0;
-		fbPassthrough.setMem(passthroughData);
-		PackedCollection fbBuffers = new PackedCollection(channels * signalSize);
-		PackedCollection fbHeads = new PackedCollection(channels);
+
+		// Bus-line network: a square (layers == channels) one-frame network whose send
+		// matrix sums every channel into the first line (the production routing shape),
+		// with zero recirculation and identity output taps.
+		PackedCollection busSend = new PackedCollection(new TraversalPolicy(channels, channels));
+		double[] busSendData = new double[channels * channels];
+		for (int ch = 0; ch < channels; ch++) busSendData[ch * channels] = 1.0;
+		busSend.setMem(busSendData);
+		PackedCollection busDelays = new PackedCollection(new TraversalPolicy(channels));
+		double[] busDelayData = new double[channels];
+		Arrays.fill(busDelayData, signalSize);
+		busDelays.setMem(busDelayData);
+		PackedCollection busTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
+		PackedCollection busWetOut = new PackedCollection(new TraversalPolicy(channels, channels));
+		double[] busWetOutData = new double[channels * channels];
+		for (int i = 0; i < channels; i++) busWetOutData[i * channels + i] = 1.0;
+		busWetOut.setMem(busWetOutData);
 
 		int reverbFrames = 4;
 		PackedCollection reverbSend = new PackedCollection(new TraversalPolicy(channels));
@@ -99,9 +112,22 @@ interface MixdownPdslTestFeatures {
 		neutralEfx.put("efx_automation_prev", efxAuto);
 		neutralEfx.put("efx_fb_delay", fbDelay);
 		neutralEfx.put("efx_fb_transmission", fbTransmission);
-		neutralEfx.put("efx_fb_passthrough", fbPassthrough);
-		neutralEfx.put("fb_buffers", fbBuffers);
-		neutralEfx.put("fb_heads", fbHeads);
+		// One echo ring bank per voicing arm (the apply echo runs on MAIN and WET alike).
+		neutralEfx.put("fb_buffers", new PackedCollection(channels * signalSize));
+		neutralEfx.put("fb_heads", new PackedCollection(channels));
+		neutralEfx.put("main_fb_buffers", new PackedCollection(channels * signalSize));
+		neutralEfx.put("main_fb_heads", new PackedCollection(channels));
+		// Unity wet-in send, aliased _prev for a constant ramp; square one-frame bus.
+		PackedCollection wetIn = onesCollection(channels);
+		neutralEfx.put("wet_in", wetIn);
+		neutralEfx.put("wet_in_prev", wetIn);
+		neutralEfx.put("delay_layers", channels);
+		neutralEfx.put("bus_send", busSend);
+		neutralEfx.put("bus_delay_samples", busDelays);
+		neutralEfx.put("bus_transmission", busTransmission);
+		neutralEfx.put("bus_wet_out", busWetOut);
+		neutralEfx.put("bus_buffers", new PackedCollection(channels * signalSize));
+		neutralEfx.put("bus_heads", new PackedCollection(channels));
 		// The neutral reverb overlay uses one line per channel, so reverb_taps must be
 		// overridden to match — every reverb argument's shape follows the tap count
 		// (the adapter's own map uses its production tap count with matching shapes).

@@ -46,12 +46,18 @@ Execution order (PDSL_DIFFERENCES §6):
    since the cutover (a composed filter `Factor` misread as a frequency, clamping
    near 20 Hz) plus a missing high-pass half, so the wet bus had been drastically
    over-filtered all along (PDSL_DIFFERENCES §3.5, revised). The efx-loop bank was
-   already legacy-faithful. **Option C is complete**; the audible-gap verdict now
-   rests on the owner's listening pass — at the production buffer size, since
-   `GenerateAudioFileTest` now renders at `AudioScene.DEFAULT_REALTIME_BUFFER_SIZE`
-   (previous audition renders were at 8192).
+   already legacy-faithful. Owner verdict on the C4 render: "much better; the gap is
+   starting to seem more subtle." C5 **done 2026-07-11** (pending by-ear verdict):
+   the **loop split** — the merged feedback stage is replaced by legacy's two distinct
+   regeneration structures (PDSL_DIFFERENCES §3.2 revised, §6-C5): the per-channel
+   pure-tap apply echo inside the apply chain on BOTH voicing arms (including the
+   newly-discovered legacy MAIN-bus echo, which the assessment had missed entirely),
+   and the bus-line network (clock-automated `wetInSimple` send into line 0 only,
+   3 shared lines with per-line drift, unscaled transposed genome transmission,
+   `wetOut` output taps, reverb send re-tapped to the apply output).
 5. **D — accept and document** what a block-parallel buffer cannot reproduce
-   (PDSL_DIFFERENCES §5).
+   (PDSL_DIFFERENCES §5). **Continuous delay-time modulation is NOT in this set** —
+   see the queue below (owner directive 2026-07-11, PDSL_DIFFERENCES §5a).
 
 Acceptance: long-render (≥ 3 min) A/B on the curated scene judged by ear on wet and
 reverb channels, with the Step-0 unit tests green and no grinding signature. Bit
@@ -73,19 +79,29 @@ performance items land.
 
 ## Queue after the audible gap
 
-1. **True stereo** — per-channel pan in the PDSL mixdown; the sink renders both stereo
+1. **Smooth delay-rate pitch modulation (`AdjustableDelayCell.scale`) — owner
+   directive 2026-07-11, highest priority after the current arc.** The continuous
+   pitch bend on regenerations is a defining feature of the application's efx chain;
+   the owner would "rather abandon real-time generation before abandoning it," so it
+   must never sit in the accepted-limits category. It is tractable block-parallel: a
+   rate-modulated read is a fractional-stride gather + lerp (the batched resampler's
+   construct), not the blocked intra-frame recurrence — a resampling variant of
+   `MultiChannelDspFeatures.ringValueAt` renders a genuine per-sample bend with the
+   rate held per buffer. Full sketch: PDSL_DIFFERENCES §5a. Likely a separate branch
+   (this one is already large).
+2. **True stereo** — per-channel pan in the PDSL mixdown; the sink renders both stereo
    sides in one forward. Feature work, not parity.
-2. **Adapter absorption** — `MixdownManagerPdslAdapter` is `@Deprecated` transitional
+3. **Adapter absorption** — `MixdownManagerPdslAdapter` is `@Deprecated` transitional
    glue; once PDSL is the only mixdown path, `MixdownManager` builds its own argument
    map and the adapter disappears (CellList mixdown retires with it, resolving the
    non-contiguous-channel fallback in KNOWN_ISSUES §6 one way or the other).
-3. **`runnerBuildMs` ≈ 16 s** — one-time PDSL mixdown model build per runner
+4. **`runnerBuildMs` ≈ 16 s** — one-time PDSL mixdown model build per runner
    construction; the largest remaining one-time cost. Profile before touching.
-4. **Run-ahead streams as a PDSL capability** — the generalized `stream()`/run-ahead
+5. **Run-ahead streams as a PDSL capability** — the generalized `stream()`/run-ahead
    idiom extracted to [../PDSL_STREAMS_IDIOM.md](../PDSL_STREAMS_IDIOM.md);
    `PatternRenderStream` is the shipped hand-built prototype. Pursue when the language
    work is prioritized, not as part of parity.
-5. **8192 rendered-peak nondeterminism** (0.63 vs 0.68 across identical runs; 4096 is
+6. **8192 rendered-peak nondeterminism** (0.63 vs 0.68 across identical runs; 4096 is
    stable) — a real determinism question, deprioritized while the production size is
    far below 8192.
 

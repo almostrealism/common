@@ -336,6 +336,9 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	/** Returns the delay-dynamics chromosome (package-private — exposed for the PDSL adapter). */
 	Chromosome<PackedCollection> getDelayDynamicsSimple() { return delayDynamicsSimple; }
 
+	/** Returns the per-channel wet-in chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getWetInSimple() { return wetInSimple; }
+
 	/** Returns the volume adjustment scale slot (package-private — exposed for the PDSL adapter). */
 	PackedCollection getVolumeAdjustmentScale() { return volumeAdjustmentScale; }
 

@@ -326,8 +326,9 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	/**
 	 * Builds the per-buffer refresh operation that re-evaluates every TIME-VARYING
 	 * automation producer into its argument slot ({@code hp_cutoff}, {@code volume},
-	 * {@code lp_cutoff}, and — when {@code efx} is provided — {@code efx_automation} and
-	 * {@code reverb_send}). The real-time runner runs this once per buffer, before the
+	 * {@code lp_cutoff}, and — when {@code efx} is provided — {@code efx_automation},
+	 * {@code reverb_send}, and {@code wet_in}). The real-time runner runs this once per
+	 * buffer, before the
 	 * model forward pass, so the compiled graph reads the automation values for the
 	 * buffer's clock position. Producer-valued model arguments cannot be used for these:
 	 * they are evaluated at model build time and frozen inside the compiled graph.
@@ -365,6 +366,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 			refresh.add(ADAPTER.a(config.channels,
 					ADAPTER.cp((PackedCollection) args.get("reverb_send_prev")),
 					ADAPTER.cp((PackedCollection) args.get("reverb_send"))));
+			PackedCollection wetInPrev = (PackedCollection) args.get("wet_in_prev");
+			if (wetInPrev != null) {
+				refresh.add(ADAPTER.a(config.channels, ADAPTER.cp(wetInPrev),
+						ADAPTER.cp((PackedCollection) args.get("wet_in"))));
+			}
 		}
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(ADAPTER.a(1, ADAPTER.cp(hpCutoff.range(ADAPTER.shape(1), ch)),
@@ -406,29 +412,42 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 						reverbSendProducer(manager, config.channel(ch))));
 			}
 
+			// wet_in: the clock-automated wetInSimple send gene (the gain at which each
+			// channel's wet voicing enters the bus-line network), refreshed per buffer
+			// like the other adjustment genes and ramped via wet_in_prev above.
+			PackedCollection wetIn = (PackedCollection) args.get("wet_in");
+			if (wetIn != null) {
+				for (int ch = 0; ch < config.channels; ch++) {
+					refresh.add(ADAPTER.a(1, ADAPTER.cp(wetIn.range(ADAPTER.shape(1), ch)),
+							wetInProducer(manager, config.channel(ch))));
+				}
+			}
+
 			// Bus-delay modulation: the legacy AdjustableDelayCells run their read cursor
 			// at the delayDynamics gene's polycyclic rate s(t) (a periodic wobble times a
 			// slow accelerando), so their delay time evolves as the integral of (1 - s).
 			// This accumulates that integral one buffer at a time — an Euler step of
 			// (1 - s(clock)) * signalSize per refresh into the bus_delay_drift slot the
-			// delay_samples producer reads live. The legacy accelerando (s > 1 growing)
-			// makes the wash progressively tighten over an arrangement; the per-buffer
-			// step is the block-parallel approximation of that continuous cursor motion
-			// (a rate change, i.e. pitch bend, is not representable — the drift changes
-			// the delay in whole-sample steps between buffers). Note the drift survives
-			// a runner reset by design intent but not by mechanism: the slot is not
-			// rewound with the clock, matching a tape delay that keeps its accumulated
-			// speed history.
+			// bus_delay_samples producer reads live. One drift slot per BUS LINE, rate
+			// gene indexed by line — exactly the legacy df.apply(i) per delay layer. The
+			// legacy accelerando (s > 1 growing) makes the wash progressively tighten
+			// over an arrangement; the per-buffer step is the block-parallel
+			// approximation of that continuous cursor motion (a rate change, i.e. pitch
+			// bend, is not representable — the drift changes the delay in whole-sample
+			// steps between buffers). Note the drift survives a runner reset by design
+			// intent but not by mechanism: the slot is not rewound with the clock,
+			// matching a tape delay that keeps its accumulated speed history.
 			PackedCollection busDrift = (PackedCollection) args.get("bus_delay_drift");
 			int dynamicsLayers = manager.getDelayDynamicsSimple().length();
 			if (busDrift != null && dynamicsLayers > 0) {
-				for (int ch = 0; ch < config.channels; ch++) {
+				int layers = busDrift.getShape().getTotalSize();
+				for (int j = 0; j < layers; j++) {
 					Producer<PackedCollection> rate = ADAPTER.toPolycyclicGene(
 									manager.getClock(), manager.getSampleRate(),
-									manager.getDelayDynamicsSimple(), ch % dynamicsLayers)
+									manager.getDelayDynamicsSimple(), j % dynamicsLayers)
 							.valueAt(0).getResultant(ADAPTER.c(1.0));
-					refresh.add(ADAPTER.a(1, ADAPTER.cp(busDrift.range(ADAPTER.shape(1), ch)),
-							ADAPTER.add(ADAPTER.cp(busDrift.range(ADAPTER.shape(1), ch)),
+					refresh.add(ADAPTER.a(1, ADAPTER.cp(busDrift.range(ADAPTER.shape(1), j)),
+							ADAPTER.add(ADAPTER.cp(busDrift.range(ADAPTER.shape(1), j)),
 									ADAPTER.multiply(
 											ADAPTER.subtract(ADAPTER.c(1.0), rate),
 											ADAPTER.c((double) config.signalSize)))));
@@ -559,13 +578,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 	/**
 	 * Builds the argument map for the {@code mixdown_master_wet} layer, adding the
-	 * per-channel {@link EfxManager} feedforward parameters on top of the mixdown
-	 * parameters from {@link #buildArgsMap(MixdownManager, Config)}.
+	 * per-channel {@link EfxManager} parameters and the bus-line network on top of the
+	 * mixdown parameters from {@link #buildArgsMap(MixdownManager, Config)}.
 	 *
-	 * <p>The added arguments render {@link EfxManager#apply} (the per-channel chain applied to
-	 * each voicing before the mixdown bus): the feedforward portion (gene-chosen filter, wet
-	 * level, automation) plus the recursive feedback grid — the PDSL analogue of the mixdown
-	 * efx bus's {@code .mself(transmission)} ({@code MixdownManager.createEfx}).</p>
+	 * <p>The added arguments render the two distinct legacy regeneration structures:
+	 * {@link EfxManager#apply}'s per-channel echo (gene-chosen filter, wet level,
+	 * automation, delay at the {@code delayTimes} gene with per-channel self-feedback —
+	 * applied to BOTH voicings, each arm with its own ring state) and
+	 * {@code MixdownManager.createEfx}'s bus-line network ({@code wetInSimple}-gated
+	 * send into the first line, {@code delay}-chromosome line lengths with per-line
+	 * drift, unscaled genome transmission recirculation, {@code wetOut} output taps).</p>
 	 *
 	 * @param manager constructed mixdown manager (chromosomes already populated)
 	 * @param efx     constructed effects manager (chromosomes already populated)
@@ -575,25 +597,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	public static Map<String, Object> buildArgsMap(MixdownManager manager, EfxManager efx, Config config) {
 		Map<String, Object> args = buildArgsMap(manager, config);
 
-		// delay_samples / buffers: the wet layer's per-channel feedforward delay renders
-		// the legacy mixdown-bus delay layer — createEfx's AdjustableDelayCells driven by
-		// the `delay` chromosome (4–20 s genes) — replacing the base map's static
-		// wire-first constant, which arrived ~30× too early and erased the slow-building
-		// wash character of the legacy efx bus. The bus_delay_drift slot carries the
-		// accumulated delay-time modulation (the legacy cells' gene-driven cursor-rate
-		// wobble and accelerando, integrated per buffer by automationRefresh); the
-		// producer folds it into each position's gene delay live. The ring is sized from
-		// the current genome's largest evaluated delay plus two frames of wobble
-		// headroom; the kernel's ring-band clamp bounds anything beyond it.
-		PackedCollection busDrift = new PackedCollection(config.channels).fill(0.0);
-		args.put("bus_delay_drift", busDrift);
-		Producer<PackedCollection> busDelays = busDelaySamples(manager, config, busDrift);
-		int busFrames = (maxEvaluated(busDelays, config.channels)
-				+ 3 * config.signalSize - 1) / config.signalSize;
-		((PackedCollection) args.get("buffers")).destroy();
-		args.put("buffers", new PackedCollection(
-				config.channels * busFrames * config.signalSize).fill(0.0));
-		args.put("delay_samples", busDelays);
+		// mixdown_master_wet renders the legacy mixdown-bus delay layer as the SHARED
+		// bus-line network below (bus_* arguments), not as the base map's per-channel
+		// feedforward delay — remove the base rings and the static delay so nothing
+		// holds their memory.
+		((PackedCollection) args.remove("buffers")).destroy();
+		((PackedCollection) args.remove("heads")).destroy();
+		args.remove("delay_samples");
 
 		// efx_filter_coeffs: producer([channels, fir_taps]) — the per-channel gene-chosen
 		// HP/LP coefficient bank matching EfxManager.applyFilter (decision gene picks HP vs LP).
@@ -619,49 +629,80 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("efx_automation_prev", new PackedCollection(config.channels).fill(0.0));
 		args.put("reverb_send_prev", new PackedCollection(config.channels).fill(0.0));
 
-		// Recursive feedback grid — the PDSL analogue of the two legacy regeneration
-		// loops (EfxManager.apply's per-channel self-echo and MixdownManager.createEfx's
-		// .mself(fi(), transmission, fc(wetOut)) bus grid), merged into one block-parallel
-		// stage that approximates the per-sample Java recurrences.
+		// wet_in: [channels] slot — the clock-automated wetInSimple send gene, the gain at
+		// which each channel enters the bus-line network (legacy delayGene routes every
+		// channel into delay layer 0 scaled by this adjustment; its range configuration
+		// starts the send closed and opens it over the arrangement). Time-varying, so a
+		// slot refreshed per buffer and ramped like the other hot-bus gains.
+		args.put("wet_in", new PackedCollection(config.channels).fill(0.0));
+		args.put("wet_in_prev", new PackedCollection(config.channels).fill(0.0));
+
+		// Per-channel apply echo — EfxManager.apply's AdjustableDelayCell: the filtered,
+		// leveled, automation-modulated wet branch feeds a per-channel delay at the
+		// delayTimes gene with per-channel self-feedback, and the branch emits the PURE
+		// DELAYED tap (delay_network semantics), summed with the undelayed dry by the
+		// surrounding accum. Legacy applies this at the pattern-channel level, so BOTH
+		// voicings carry it: the MAIN arm and the WET arm each run the stage with their
+		// own ring state (main_fb_* / fb_*) over the same gene-driven parameters.
 		//
-		// efx_fb_delay: producer([channels]) — per-channel feedback delay in samples from the
+		// efx_fb_delay: producer([channels]) — per-channel echo delay in samples from the
 		// EfxManager delay-time gene (delayTimes[ch,0] beat-multiple × beatDuration × sampleRate),
 		// mirroring the AdjustableDelayCell delay in EfxManager.apply. Floored to whole samples for
-		// an integer ring index; the ring below is sized so every gene delay fits.
+		// an integer ring index; the rings below are sized so every gene delay fits.
 		double beatSamples = efx.getBeatDuration() * efx.getSampleRate();
 		args.put("efx_fb_delay", perChannelProducer(config.channels, ch -> ADAPTER.floor(
 				ADAPTER.multiply(efx.getDelayTimes().valueAt(config.channel(ch), 0)
 						.getResultant(ADAPTER.c(1.0)), ADAPTER.c(beatSamples)))));
 
-		// efx_fb_transmission: producer([channels, channels]). The DIAGONAL carries the
+		// efx_fb_transmission: producer([channels, channels]) — DIAGONAL-ONLY: the
 		// per-channel self-feedback gene (delayLevels[ch,1], already bounded by the
-		// EfxManager maxFeedback transform) — the regeneration control of the legacy
-		// EfxManager.apply echo loop, previously read nowhere on the PDSL path, so every
-		// channel's echo decayed at the flat contraction rate instead of at its gene's
-		// rate. The OFF-DIAGONAL keeps the genome routing matrix scaled by
-		// feedbackGain/channels (a contraction, so cross-channel regeneration stays
-		// stable). Worst-case row sum is the maxFeedback diagonal cap plus the scaled
-		// off-diagonal budget — at saturated genes ~1.0, marginal in theory but well
-		// under 1 for real genomes; the wetOut passthrough sits outside the loop and
-		// does not affect stability.
-		args.put("efx_fb_transmission", feedbackGridMatrix(manager, efx, config));
+		// EfxManager maxFeedback transform). The legacy apply echo has no cross-channel
+		// coupling; the genome transmission matrix belongs to the bus-line network
+		// (bus_transmission below), where it recirculates at the bus-delay period.
+		args.put("efx_fb_transmission", echoFeedbackMatrix(efx, config));
 
-		// efx_fb_passthrough: producer([channels, channels]) — the per-position feedback output
-		// level on the diagonal, sourced from the wetOut gene (mirroring fc(wetOut.valueAt(0)) in
-		// MixdownManager.createEfx). Full gene value, no stability cap (owner: maximum fidelity).
-		args.put("efx_fb_passthrough", passthroughMatrix(manager, config));
-
-		// Fresh feedback ring state. The ring spans whole frames (feedbackNetworkBlock requires
-		// the per-channel buffer to be a multiple of signal_size) sized so the longest gene delay
-		// fits: ceil((maxDelay + 1) / signal_size) frames, where maxDelay covers the gene's delay
-		// ceiling (MAX_FEEDBACK_DELAY_BEATS). One write head per channel.
+		// Fresh echo ring state, one bank per voicing arm. Each ring spans whole frames
+		// (feedbackNetworkBlock requires the per-channel buffer to be a multiple of
+		// signal_size) sized so the longest gene delay fits: ceil((maxDelay + 1) /
+		// signal_size) frames, where maxDelay covers the gene's delay ceiling
+		// (MAX_FEEDBACK_DELAY_BEATS). One write head per channel per arm.
 		int maxDelaySamples = (int) Math.ceil(MAX_FEEDBACK_DELAY_BEATS * beatSamples);
 		int fbFrames = Math.max(1, (maxDelaySamples + 1 + config.signalSize - 1) / config.signalSize);
 		int fbRing = fbFrames * config.signalSize;
-		PackedCollection fbBuffers = new PackedCollection(config.channels * fbRing).fill(0.0);
-		PackedCollection fbHeads = new PackedCollection(config.channels).fill(0.0);
-		args.put("fb_buffers", fbBuffers);
-		args.put("fb_heads", fbHeads);
+		args.put("fb_buffers", new PackedCollection(config.channels * fbRing).fill(0.0));
+		args.put("fb_heads", new PackedCollection(config.channels).fill(0.0));
+		args.put("main_fb_buffers", new PackedCollection(config.channels * fbRing).fill(0.0));
+		args.put("main_fb_heads", new PackedCollection(config.channels).fill(0.0));
+
+		// Bus-line network — MixdownManager.createEfx's delay layers: every channel's
+		// wet voicing (post filter/volume, scaled by wet_in) is routed into the FIRST
+		// line ONLY (bus_send, the legacy delayGene routing); the remaining lines
+		// receive nothing but the
+		// M×M genome transmission recirculation (bus_transmission, UNSCALED — legacy runs
+		// the raw genes, whose row sums can exceed 1; runaway is real in the legacy path
+		// too and the master clip bounds it); each line is an AdjustableDelayCell whose
+		// length is the `delay` chromosome's 4-20 s gene plus the accumulated
+		// per-line drift (the cursor-rate wobble and accelerando, integrated per buffer
+		// by automationRefresh); the network emits wetOut[j] × line j's PURE DELAYED tap
+		// (bus_wet_out on the feedback stage's passthrough), summed to the mono efx bus.
+		int layers = Math.max(1, manager.getDelay().length());
+		args.put("delay_layers", layers);
+		PackedCollection busDrift = new PackedCollection(layers).fill(0.0);
+		args.put("bus_delay_drift", busDrift);
+		Producer<PackedCollection> busDelays = busDelaySamples(manager, config, busDrift, layers);
+		args.put("bus_delay_samples", busDelays);
+		args.put("bus_send", busSendMatrix(config.channels, layers));
+		args.put("bus_transmission", busTransmissionMatrix(manager, layers));
+		args.put("bus_wet_out", busWetOutMatrix(manager, layers));
+
+		// Bus ring state, sized from the current genome's largest evaluated delay plus
+		// two frames of drift headroom; the kernel's ring-band clamp bounds anything
+		// beyond it (e.g. a live-swapped genome with a longer gene delay).
+		int busFrames = (maxEvaluated(busDelays, layers)
+				+ 3 * config.signalSize - 1) / config.signalSize;
+		args.put("bus_buffers", new PackedCollection(
+				layers * busFrames * config.signalSize).fill(0.0));
+		args.put("bus_heads", new PackedCollection(layers).fill(0.0));
 
 		// Reverb bus — the PDSL analogue of MixdownManager.createEfx's
 		// reverb.sum().map(DelayNetwork): a mono send through a multi-tap closed-loop
@@ -735,19 +776,20 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	public static double reverbArmGain = 1.0;
 
 	/**
-	 * Feedback-grid contraction target: the scaled genome transmission's maximum row sum is
-	 * bounded by this value, keeping the block-parallel feedback stable (spectral radius is
-	 * bounded by the induced infinity-norm, i.e. the max row sum). Mutable so diagnostics can
-	 * bisect the efx feedback stage (set to 0 to disable feedback regeneration).
-	 */
-	public static double feedbackGain = 0.6;
-
-	/**
 	 * Global trim multiplier applied on top of the per-channel reverb send (the gene-driven
 	 * {@code reverbFactor}). {@code 1.0} is the faithful Java level; mutable so diagnostics can
 	 * bisect the reverb stage (set to 0 to disable the reverb bus).
 	 */
 	public static double reverbSend = 1.0;
+
+	/**
+	 * Diagnostic multiplier on both regeneration paths — the apply echo's self-feedback
+	 * diagonal and the bus-line transmission recirculation. {@code 1.0} is faithful (the
+	 * raw gene values); mutable so diagnostics can zero regeneration to localize runaway
+	 * or grit to the recirculating stages (at 0 the echo and the bus lines fire their
+	 * first delayed tap only, with no decay train). Read at argument-build time.
+	 */
+	public static double regenerationGain = 1.0;
 
 	/** Number of log-spaced cutoff bins in the filter impulse-response lookup tables. */
 	private static final int FILTER_TABLE_BINS = 1024;
@@ -919,7 +961,35 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @return wet-level producer
 	 */
 	private static Producer<PackedCollection> efxWetLevelProducer(EfxManager efx, int channel) {
+		if (!efx.getWetChannels().contains(channel)) {
+			// EfxManager.apply passes non-wet channels through untouched — no echo branch
+			// at all — so their wet level is zero, which silences the whole apply chain
+			// (filter, automation, echo) for that channel.
+			return ADAPTER.c(0.0);
+		}
 		return efx.getDelayLevels().valueAt(channel, 0).getResultant(ADAPTER.c(1.0));
+	}
+
+	/**
+	 * Produces the shape-{@code [1]} per-channel wet-in send gain — the clock-automated
+	 * {@code wetInSimple} adjustment gene that scales each channel's entry into the
+	 * bus-line network, mirroring {@code delayGene} in {@link MixdownManager#createEfx}
+	 * (which routes every channel into delay layer 0 at this gain). When
+	 * {@link MixdownManager#enableWetInAdjustment} is off, the legacy path uses a
+	 * constant {@code 0.2} send instead.
+	 *
+	 * @param manager the mixdown manager whose wet-in chromosome is read
+	 * @param channel the source channel index
+	 * @return the wet-in send gain producer
+	 */
+	private static Producer<PackedCollection> wetInProducer(MixdownManager manager, int channel) {
+		if (!MixdownManager.enableWetInAdjustment) {
+			return ADAPTER.c(0.2);
+		}
+		return ADAPTER.toAdjustmentGene(
+						manager.getClock(), manager.getSampleRate(), null,
+						manager.getWetInSimple(), channel)
+				.valueAt(0).getResultant(ADAPTER.c(1.0));
 	}
 
 	/**
@@ -1037,6 +1107,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		return manager.getVolumeSimple();
 	}
 
+	/** Diagnostic accessor for the transmission gene chromosome. */
+	public static Chromosome<PackedCollection> transmissionGene(MixdownManager manager) {
+		return manager.getTransmission();
+	}
+
 	/**
 	 * Produces a shape-{@code [1]} cutoff-frequency producer for the master
 	 * low-pass filter at the given channel.
@@ -1139,123 +1214,169 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private static Producer<PackedCollection> transmissionMatrix(MixdownManager manager, Config config) {
 		Chromosome<PackedCollection> chrom = manager.getTransmission();
-		return gridProducer(config, (n, m) -> transmissionCell(chrom, config, n, m));
+		return gridProducer(config.channels, (n, m) -> transmissionCell(chrom, config.channels, n, m));
 	}
 
 	/**
 	 * Produces one cell of the genome transmission matrix: the gene resultant inside the
-	 * chromosome's extent, zero beyond it.
+	 * chromosome's extent, zero beyond it. The chromosome's orientation is the legacy
+	 * {@code mself} convention — gene {@code n} holds the weights FROM line {@code n}
+	 * INTO each destination {@code m}.
 	 *
 	 * @param chrom  the transmission chromosome
-	 * @param config structural configuration
-	 * @param n      row (source bank position)
-	 * @param m      column (destination bank position)
+	 * @param extent the grid dimension the cell is read within
+	 * @param n      source line (gene index)
+	 * @param m      destination line (factor index)
 	 * @return the cell producer
 	 */
 	private static Producer<PackedCollection> transmissionCell(
-			Chromosome<PackedCollection> chrom, Config config, int n, int m) {
-		int rows = Math.min(chrom.length(), config.channels);
-		int cols = (n < rows) ? Math.min(chrom.valueAt(n).length(), config.channels) : 0;
+			Chromosome<PackedCollection> chrom, int extent, int n, int m) {
+		int rows = Math.min(chrom.length(), extent);
+		int cols = (n < rows) ? Math.min(chrom.valueAt(n).length(), extent) : 0;
 		return m < cols
 				? chrom.valueAt(n).valueAt(m).getResultant(ADAPTER.c(1.0))
 				: ADAPTER.c(0.0);
 	}
 
 	/**
-	 * Builds the {@code [channels, channels]} feedback transmission grid. The
-	 * <b>diagonal</b> carries the per-channel self-feedback gene
-	 * ({@code delayLevels[ch,1]}, already bounded by the {@link EfxManager}
-	 * {@code maxFeedback} transform) — the regeneration control of the legacy
-	 * {@link EfxManager#apply} echo loop, indexed by
+	 * Builds the {@code [channels, channels]} apply-echo feedback grid — DIAGONAL-ONLY:
+	 * the per-channel self-feedback gene ({@code delayLevels[ch,1]}, already bounded by
+	 * the {@link EfxManager} {@code maxFeedback} transform), indexed by
 	 * {@link Config#channel(int) selected scene channel} like the other EfxManager gene
-	 * reads. The <b>off-diagonal</b> cells are the genome transmission matrix scaled by
-	 * {@code feedbackGain / channels}, position-indexed like {@link #transmissionMatrix},
-	 * so cross-channel regeneration remains a stable contraction. (The genome
-	 * transmission's own diagonal entries are superseded by the self-feedback gene.)
+	 * reads. The legacy {@link EfxManager#apply} echo recirculates each channel into
+	 * itself only; cross-channel regeneration belongs to the bus-line network
+	 * ({@link #busTransmissionMatrix}), which recirculates at the bus-delay period.
 	 *
-	 * @param manager the mixdown manager whose transmission chromosome is sampled
-	 * @param efx     the effects manager whose self-feedback genes fill the diagonal
-	 * @param config  structural configuration
-	 * @return shape-{@code [channels, channels]} feedback grid producer
+	 * @param efx    the effects manager whose self-feedback genes fill the diagonal
+	 * @param config structural configuration
+	 * @return shape-{@code [channels, channels]} diagonal echo feedback producer
 	 */
-	private static Producer<PackedCollection> feedbackGridMatrix(MixdownManager manager,
-			EfxManager efx, Config config) {
-		Chromosome<PackedCollection> chrom = manager.getTransmission();
-		return gridProducer(config, (n, m) -> n.equals(m)
-				? efx.getDelayLevels().valueAt(config.channel(n), 1)
-						.getResultant(ADAPTER.c(1.0))
-				: ADAPTER.multiply(transmissionCell(chrom, config, n, m),
-						ADAPTER.c(feedbackGain / config.channels)));
+	private static Producer<PackedCollection> echoFeedbackMatrix(EfxManager efx, Config config) {
+		return gridProducer(config.channels, (n, m) -> n.equals(m)
+				? regenerationScaled(efx.getDelayLevels().valueAt(config.channel(n), 1)
+						.getResultant(ADAPTER.c(1.0)))
+				: ADAPTER.c(0.0));
 	}
 
 	/**
-	 * Assembles a {@code [channels, channels]} producer from a per-cell supplier.
+	 * Applies the {@link #regenerationGain} diagnostic multiplier to a regeneration
+	 * matrix cell; at the faithful {@code 1.0} the producer passes through unwrapped.
 	 *
-	 * @param config structural configuration
-	 * @param cell   supplies the producer for the cell at (row, column)
+	 * @param value the matrix cell producer
+	 * @return the (possibly scaled) cell producer
+	 */
+	private static Producer<PackedCollection> regenerationScaled(Producer<PackedCollection> value) {
+		return regenerationGain == 1.0 ? value
+				: ADAPTER.multiply(value, ADAPTER.c(regenerationGain));
+	}
+
+	/**
+	 * Assembles a square {@code [count, count]} producer from a per-cell supplier.
+	 *
+	 * @param count grid dimension
+	 * @param cell  supplies the producer for the cell at (row, column)
 	 * @return the assembled grid producer
 	 */
-	private static Producer<PackedCollection> gridProducer(Config config,
+	private static Producer<PackedCollection> gridProducer(int count,
 			BiFunction<Integer, Integer, Producer<PackedCollection>> cell) {
-		Producer<PackedCollection>[] cells = new Producer[config.channels * config.channels];
-		for (int n = 0; n < config.channels; n++) {
-			for (int m = 0; m < config.channels; m++) {
-				cells[n * config.channels + m] = cell.apply(n, m);
+		Producer<PackedCollection>[] cells = new Producer[count * count];
+		for (int n = 0; n < count; n++) {
+			for (int m = 0; m < count; m++) {
+				cells[n * count + m] = cell.apply(n, m);
 			}
 		}
-		return channelBank(cells, new TraversalPolicy(config.channels, config.channels));
+		return channelBank(cells, new TraversalPolicy(count, count));
 	}
 
 	/**
-	 * Builds the {@code [channels, channels]} feedback passthrough matrix — the diagonal output
-	 * level of the efx feedback grid, sourced from the {@code wetOut} gene to mirror
-	 * {@code fc(wetOut.valueAt(0))} in {@link MixdownManager#createEfx}. The single {@code wetOut}
-	 * gene's per-position factors fill the diagonal (bank position {@code n} reads factor {@code n},
-	 * matching {@link #transmissionMatrix}'s position-indexed convention); off-diagonal cells are
-	 * zero. Positions beyond the gene length read zero.
+	 * Builds the {@code [layers, layers]} bus-line recirculation matrix from the genome
+	 * transmission chromosome, UNSCALED — mirroring the raw genes the legacy
+	 * {@code .mself(fi(), transmission, …)} runs among its delay layers
+	 * ({@link MixdownManager#createEfx}). The legacy chromosome is oriented
+	 * {@code [from, into]} (gene {@code n} routes line {@code n}'s output), while the
+	 * feedback stage's matrix is {@code [into, from]}, so the grid transposes on read.
+	 * Row sums of the raw genes can exceed 1 — legacy regeneration genuinely runs away
+	 * on some genomes, and the master clip bounds it there as here.
+	 *
+	 * @param manager the mixdown manager whose transmission chromosome is sampled
+	 * @param layers  bus line count
+	 * @return shape-{@code [layers, layers]} recirculation matrix producer
+	 */
+	private static Producer<PackedCollection> busTransmissionMatrix(MixdownManager manager, int layers) {
+		Chromosome<PackedCollection> chrom = manager.getTransmission();
+		return gridProducer(layers, (j, m) ->
+				regenerationScaled(transmissionCell(chrom, layers, m, j)));
+	}
+
+	/**
+	 * Builds the {@code [layers, layers]} bus-line output matrix — the diagonal per-line
+	 * output level, sourced from the {@code wetOut} gene to mirror
+	 * {@code fc(wetOut.valueAt(0))} in {@link MixdownManager#createEfx}: the network
+	 * emits {@code wetOut[j]} times line {@code j}'s pure delayed tap. Applied as the
+	 * feedback stage's passthrough matrix; lines beyond the gene length read zero.
 	 *
 	 * @param manager the mixdown manager whose {@code wetOut} chromosome is sampled
-	 * @param config  structural configuration
-	 * @return shape-{@code [channels, channels]} diagonal passthrough producer
+	 * @param layers  bus line count
+	 * @return shape-{@code [layers, layers]} diagonal output-tap producer
 	 */
-	private static Producer<PackedCollection> passthroughMatrix(MixdownManager manager, Config config) {
+	private static Producer<PackedCollection> busWetOutMatrix(MixdownManager manager, int layers) {
 		Gene<PackedCollection> wetOut = manager.getWetOut().valueAt(0);
-		int diag = Math.min(wetOut.length(), config.channels);
-		return gridProducer(config, (n, m) -> (n.equals(m) && n < diag)
+		int diag = Math.min(wetOut.length(), layers);
+		return gridProducer(layers, (n, m) -> (n.equals(m) && n < diag)
 				? wetOut.valueAt(n).getResultant(ADAPTER.c(1.0))
 				: ADAPTER.c(0.0));
 	}
 
 	/**
-	 * Builds the {@code [channels]} per-position feedforward delay for the wet arm — the
-	 * PDSL rendition of the legacy mixdown-bus delay layer, whose
-	 * {@link org.almostrealism.graph.AdjustableDelayCell} lengths come from the
-	 * {@code delay} chromosome (4–20 s genes) in {@link MixdownManager#createEfx}. Bank
-	 * positions cycle across the {@code delayLayers} genes (position-indexed, like the
-	 * transmission grid, since the legacy fan of N channels into M delay layers has no
-	 * per-channel identity to preserve). The {@code drift} slot's accumulated
-	 * modulation offset (see {@link #automationRefresh}) is added live and the result
-	 * floored at one frame — the smallest delay the block-parallel stage renders — so
-	 * the legacy accelerando can tighten the wash without collapsing it into the dry
-	 * signal. Falls back to {@link Config#delaySamples} if the chromosome is empty.
+	 * Builds the static {@code [channels, layers]} bus send routing: the first column
+	 * is all ones and every other column is zero, so {@code route(bus_send)} sums
+	 * every channel's wet-in-scaled voicing into the first line and feeds the
+	 * remaining lines nothing — exactly the legacy {@code delayGene} routing, where
+	 * the later lines receive only the transmission recirculation.
+	 *
+	 * @param channels number of source channels
+	 * @param layers   bus line count
+	 * @return the {@code [channels, layers]} routing matrix
+	 */
+	private static PackedCollection busSendMatrix(int channels, int layers) {
+		PackedCollection send = new PackedCollection(new TraversalPolicy(channels, layers));
+		double[] data = new double[channels * layers];
+		for (int ch = 0; ch < channels; ch++) {
+			data[ch * layers] = 1.0;
+		}
+		send.setMem(data);
+		return send;
+	}
+
+	/**
+	 * Builds the {@code [layers]} per-line bus delay — the legacy mixdown-bus delay
+	 * layer, whose {@link org.almostrealism.graph.AdjustableDelayCell} lengths come
+	 * from the {@code delay} chromosome (4–20 s genes) in
+	 * {@link MixdownManager#createEfx}, one gene per line. The {@code drift} slot's
+	 * accumulated per-line modulation offset (see {@link #automationRefresh}) is added
+	 * live and the result floored at one frame — the smallest delay the block-parallel
+	 * stage renders — so the legacy accelerando can tighten the wash without collapsing
+	 * it into the dry signal. Falls back to {@link Config#delaySamples} if the
+	 * chromosome is empty.
 	 *
 	 * @param manager the mixdown manager whose delay chromosome is read
 	 * @param config  structural configuration
-	 * @param drift   shape-{@code [channels]} accumulated delay-modulation offsets
-	 * @return shape-{@code [channels]} delay-length producer (samples)
+	 * @param drift   shape-{@code [layers]} accumulated delay-modulation offsets
+	 * @param layers  bus line count
+	 * @return shape-{@code [layers]} delay-length producer (samples)
 	 */
 	private static Producer<PackedCollection> busDelaySamples(MixdownManager manager, Config config,
-			PackedCollection drift) {
+			PackedCollection drift, int layers) {
 		Chromosome<PackedCollection> delay = manager.getDelay();
-		int layers = delay.length();
-		return perChannelProducer(config.channels, pos -> {
-			Producer<PackedCollection> base = layers <= 0
+		int genes = delay.length();
+		return perChannelProducer(layers, j -> {
+			Producer<PackedCollection> base = genes <= 0
 					? ADAPTER.c((double) config.delaySamples)
 					: ADAPTER.multiply(
-							delay.valueAt(pos % layers, 0).getResultant(ADAPTER.c(1.0)),
+							delay.valueAt(j % genes, 0).getResultant(ADAPTER.c(1.0)),
 							ADAPTER.c((double) config.sampleRate));
 			return ADAPTER.floor(ADAPTER.max(
-					ADAPTER.add(base, ADAPTER.cp(drift.range(ADAPTER.shape(1), pos))),
+					ADAPTER.add(base, ADAPTER.cp(drift.range(ADAPTER.shape(1), j))),
 					ADAPTER.c((double) config.signalSize)));
 		});
 	}

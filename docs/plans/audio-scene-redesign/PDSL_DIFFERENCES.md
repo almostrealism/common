@@ -121,6 +121,27 @@ invariant:
   revision claimed the `ceil((maxDelay + 1)/signalSize)` formula was one frame short —
   wrong, since the read-first band extends to the full ring span.)
 
+### 2.4 Deferred tap reads under accum arms: every hosted delay ran one frame short
+**Found and fixed 2026-07-11, during C5.** The stateful ring stages emitted their
+delayed tap as a lazy producer (`next.push(output)`); a consumer that defers
+evaluation past the stage's own ops — which is exactly what `accum_blocks` does (each
+branch tail is a `CaptureReceptor`, summed only after every branch's ops have run) —
+evaluated the tap AFTER the ring write and head advance. Effective delay for any
+stage hosted under an accum arm: `D − signalSize`; and at the read-first band floor
+(`D` pinned to one frame) the read returned the **current frame outright** — an
+instantaneous leak through the feedback matrix. Standalone consumers evaluated
+eagerly, so the same stage had two different semantics depending on where it was
+composed, and every exact-timing receipt (which drives stages standalone) was blind
+to it. Concretely, in `mixdown_master_wet` before the fix: the merged feedback stage
+and the reverb network ran one frame short, and at 8192 the reverb tap floor
+(0.15 s = 6615 < 8192) pinned taps to one frame → a **per-frame current-frame leak
+recirculated by the Householder matrix** — another buffer-size-dependent artifact
+source. Fixed in `MultiChannelDspFeatures` (`feedbackNetworkBlock`,
+`multiChannelDelayBlock`): the tap is materialized into scratch at its position in
+the ops order, before the ring/head mutations, making the semantics
+consumer-independent. Receipt: `mainArmCarriesApplyEcho` (an accum-hosted echo now
+fires sample-exactly one frame later, exactly once).
+
 ---
 
 ## 3. Structural differences (PDSL ≠ legacy by design) — ranked by audible weight
@@ -156,20 +177,28 @@ Legacy has two distinct regeneration structures:
    `.mself(transmission, fc(wetOut))` cross-feedback with the **unscaled** genome
    transmission matrix.
 
-PDSL renders **one** feedback stage (`feedback(efx_fb_delay, efx_fb_transmission,
-efx_fb_passthrough, …)`) that takes its delay from loop 1's gene, its matrix from
-loop 2's chromosome scaled by `feedbackGain/channels = 0.1`
-(`MixdownManagerPdslAdapter`), and its output tap from `wetOut`. Consequences:
-- **`delayLevels[ch,1]` (the per-channel self-feedback gene) is read nowhere** in the
-  adapter — the strongest legacy regeneration control simply does not exist in PDSL.
-- The `delay` chromosome, `delayDynamicsSimple` (delay-rate modulation), and
-  `wetInSimple` (send automation) are likewise unread.
-- Loop gain 0.1 × gene vs legacy per-sample self-feedback up to 0.5 per delay period +
-  unscaled cross-matrix: PDSL regeneration is both **far tamer** (echoes die after
-  ~1–2 repeats) and **rigid** (static integer delays — no modulation, so what does
-  regenerate is a stationary comb; legacy tails shimmer and detune).
-- The wet channel's dry component goes through the (broken, §2.1) feedforward delay in
-  PDSL; legacy keeps it clean.
+**RESTORED 2026-07-11 (C5) — the loops are split again.** PDSL formerly rendered
+**one** feedback stage taking its delay from loop 1's gene and its matrix from loop 2's
+chromosome contraction-scaled; C1 put the self-feedback gene on its diagonal, and C5
+completed the split into the two legacy structures (§6-C5 for the full mechanism):
+- Loop 1 is a per-channel diagonal `delay_network` at the `delayTimes` gene with the
+  `delayLevels[ch,1]` self-feedback, emitting the **pure delayed tap** (the exact
+  `AdjustableDelayCell + mself` form), placed **inside the apply chain** — before the
+  wet-filter cascade and volume, where legacy runs it.
+- Loop 2 is the bus-line network: `wetInSimple`-automated send into **line 0 only**
+  (the legacy `delayGene` routing — later lines hear only recirculation), `delay`
+  chromosome line lengths with the C2 per-line drift, **unscaled** genome transmission
+  recirculation ([into, from] = the chromosome transposed), `wetOut` per-line output
+  taps.
+- **Discovery during C5 (the assessment had missed this):** legacy applies the
+  apply echo at the *pattern-channel* level (`AudioScene.getPatternChannel` →
+  `efx.apply` for **both** voicings), so the **MAIN bus of a wet channel carries the
+  echo too** — the only un-bus-delayed echo in the legacy mix, i.e. the most direct
+  echo character in the legacy sound. The PDSL main arm previously had no echo at all;
+  it now runs the same stage on its own ring state.
+- Remaining §3.2 residue (deliberate): the legacy bus regenerates through
+  `AdjustableDelayCell`s whose *rate* modulation is a pitch bend — see §5a (owner
+  reclassified; next arc).
 
 ### 3.3 Regeneration floor: one buffer — but sample-exact above it
 Correction to earlier revisions of this inventory (including the first draft of this
@@ -260,9 +289,29 @@ genome exercised low accumulated tail energy, different splice arithmetic, and a
 - **Per-sample automation and coefficient recompute**: per-buffer stepping is the
   design; in-kernel per-sample parameter interpolation (§6-C3) can smooth the staircase
   but not restore per-sample modulation semantics.
-- **Continuous delay-time modulation** (`AdjustableDelayCell.scale`): true per-sample
-  cursor-rate modulation is an intra-frame recurrence. A per-buffer delay drift is the
-  available approximation (§6-C2).
+
+### 5a. NOT an accepted limit: continuous delay-time modulation (owner directive, 2026-07-11)
+
+An earlier revision listed `AdjustableDelayCell.scale`'s continuous cursor-rate
+modulation — the pitch bend / tape-speed detune on every regeneration, the shimmer of
+the legacy tails — among the accepted limits. **The owner has explicitly reclassified
+it**: the smooth pitch modulation is a defining feature of the application's efx chain
+("I would probably rather abandon real-time generation before abandoning it"). The C2
+per-buffer drift restores the delay-time *trajectory* (whole-sample steps between
+buffers) but not the pitch-bend *character*, and is therefore an interim state, not an
+acceptance.
+
+It is also not actually blocked by the §2 invariant. The blocked construct is the
+intra-frame *recurrence*; a rate-modulated **read** is not one. With the rate held
+per-buffer (as C2 already computes it), the read position at frame sample `i` is
+`r0 + i·s` — a fractional-stride **gather + linear interpolation** over the ring, the
+same parallel construct the batched pattern resampler already ships
+(`BatchedPatternRenderer.buildResampleProducer`: `integers(0,N)·ratio → floor → gather
+→ lerp`). A resampling variant of the ring read in
+`MultiChannelDspFeatures.ringValueAt` (fractional delay, per-buffer-linear rate) would
+render a genuine per-sample pitch bend block-parallel, recirculation included (drifting
+reads still land in prior frames for `D ≥ signalSize`). This is the next arc after C5 —
+likely a separate branch; see [NEXT_STEP.md](NEXT_STEP.md).
 
 ---
 
@@ -314,11 +363,9 @@ each fix.
    whole wet bus passes through the 4–20 s delay layer; the wire-first 6500 ≈ 147 ms
    constant made it near-immediate — a major duration-dependent character gap). Wiring
    pinned by `MixdownManagerPdslVerificationTest.feedbackGridAndBusDelayFollowGenes`.
-   §3.2 residues deliberately out of scope here: the off-diagonal transmission
-   regeneration period is still `delayTimes`-based (legacy regenerates the bus grid at
-   the bus-delay period — a full loop split if audibly needed), `wetInSimple` send
-   automation is still unread, and the apply echo runs after (not before) the wet
-   filter/volume stages.
+   §3.2 residues deliberately out of scope here — the off-diagonal regeneration
+   period, `wetInSimple`, and the echo's placement — were subsequently restored by the
+   C5 loop split below.
 2. **DONE 2026-07-10 (pending the by-ear verdict).** Delay modulation is approximated
    as a per-buffer Euler step of the legacy cursor-rate integral: `automationRefresh`
    accumulates `(1 − s(clock)) × signalSize` into a `bus_delay_drift` slot per
@@ -353,6 +400,39 @@ each fix.
    the cutover, plus a missing high-pass cascade half (see the revised §3.5). The efx
    bank turned out to be already legacy-faithful (legacy `applyFilter` is itself
    windowed-sinc) and is unchanged.
+5. **DONE 2026-07-11 (pending the by-ear verdict) — the loop split.** The merged
+   feedback stage is gone; the two legacy regeneration structures are rendered
+   distinctly (revised §3.2):
+   - **Apply echo**: a diagonal-matrix `delay_network` (pure-tap semantics
+     `w[t]=u[t]+fb·w[t−D]`, `out=w[t−D]` — exactly the legacy cell) at the
+     `delayTimes` gene inside the apply chain, on BOTH voicing arms — including the
+     newly-discovered legacy MAIN-bus echo — each arm with its own ring state
+     (`fb_*`/`main_fb_*`). Cross-channel coupling removed from this stage entirely.
+   - **Bus-line network**: `route(bus_send)` sums every channel (scaled by the
+     clock-automated, C3-ramped `wet_in` gene — previously unread; its range starts
+     the send closed and opens it over the arrangement) into line 0 of a
+     `delay_layers`-line `feedback` network (production: 3 lines, decoupled from the
+     6 channels); recirculation is the **unscaled** genome transmission (transposed —
+     the feedback matrix is [into, from]; row sums can exceed 1, and legacy runaway
+     is real, bounded by the master clip as in Java); output taps are
+     `wetOut[j] × line j's pure delayed tap` via the passthrough matrix; per-line C2
+     drift replaces the per-channel version (`bus_delay_drift[layers]`, rate gene
+     indexed by line — the legacy `df.apply(i)`).
+   - The reverb send now taps the **apply output** (dry + echo), matching
+     `wetSources.branch(..., reverbFactor)` — it previously tapped the raw WET slice.
+   - The wet-filter cascade gains the legacy `AudioPassFilter` input clamp
+     (`clip(-0.99, 0.99)`), and non-wet channels (`EfxManager.getWetChannels`) now
+     bypass the apply chain via a zero wet level, as legacy's gate does.
+   - The C5 receipt test exposed a fourth ring defect — deferred tap reads under
+     accum arms (one frame short; current-frame leak at the band floor) — fixed in
+     the ring kernels themselves; see §2.4.
+   - Wiring pinned by the rewritten `feedbackGridAndBusDelayFollowGenes` (diagonal-only
+     echo grid, transposed unscaled bus matrix, wetOut taps, line-0-only send,
+     rectangular layers≠channels) and `busDelayDriftAccumulatesWithClock` (per-line);
+     placement and pure-tap semantics pinned end-to-end by `mainArmCarriesApplyEcho`
+     (impulse echoes exactly once, one frame later, on the MAIN arm). The
+     `feedbackGain` contraction knob is gone; `regenerationGain` (default 1 =
+     faithful) replaces it as the bisection diagnostic across both loops.
 
 **D. Accept (documented):** the one-buffer regeneration floor (§3.3), dual-mono until
 the pan feature, determinism-by-design, FP drift, per-buffer coefficient stepping after

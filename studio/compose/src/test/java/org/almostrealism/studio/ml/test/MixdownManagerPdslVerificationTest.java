@@ -96,6 +96,13 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Number of delay layers in the EFX bus. Matches CHANNELS for square routing. */
 	private static final int DELAY_LAYERS = CHANNELS;
 
+	/**
+	 * Rectangular bus-line count for the loop-split wiring test — deliberately different
+	 * from CHANNELS so the layers-independent-of-channels shape (the production case) is
+	 * exercised.
+	 */
+	private static final int BUS_LAYERS = 3;
+
 	/** Render duration in seconds. Short enough to keep CI runtime modest. */
 	private static final double DURATION_SECONDS = 2.0;
 
@@ -187,6 +194,19 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return the constructed mixdown manager
 	 */
 	private MixdownManager buildFixtureMixdown(boolean withEfx) {
+		return buildFixtureMixdown(withEfx, DELAY_LAYERS);
+	}
+
+	/**
+	 * Builds the shared test fixture with an explicit delay-layer count, so the
+	 * bus-line network's rectangular case (layers != channels — the production shape)
+	 * can be exercised alongside the square default.
+	 *
+	 * @param withEfx     whether to also construct the effects manager
+	 * @param delayLayers the mixdown bus delay-layer count
+	 * @return the constructed mixdown manager
+	 */
+	private MixdownManager buildFixtureMixdown(boolean withEfx, int delayLayers) {
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
 		MixdownManager.enableEfxFilters = true;
@@ -208,7 +228,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				genome.addChromosome(), fixtureTime.getClock(),
 				() -> measureDuration, SAMPLE_RATE);
 		MixdownManager mixdown = new MixdownManager(genome.addChromosome(),
-				CHANNELS, DELAY_LAYERS, fixtureAutomation, fixtureTime.getClock(), SAMPLE_RATE);
+				CHANNELS, delayLayers, fixtureAutomation, fixtureTime.getClock(), SAMPLE_RATE);
 		fixtureEfx = withEfx
 				? new EfxManager(genome.addChromosome(), CHANNELS, fixtureAutomation,
 						() -> measureDuration / 4.0, SAMPLE_RATE)
@@ -238,17 +258,24 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	}
 
 	/**
-	 * Verifies the gene wiring of the efx-layer argument map: the feedback grid's
-	 * diagonal carries the per-channel self-feedback gene (nonzero, bounded by
-	 * {@link EfxManager#maxFeedback}, and distinct from the scaled transmission the
-	 * off-diagonals carry), the off-diagonals are exactly the genome transmission matrix
-	 * scaled by the contraction factor, and the wet arm's feedforward delay is the
-	 * gene-driven bus delay — positions cycling over the delay chromosome's layers, every
-	 * value inside the configured 4–20 s gene range rather than at a static constant.
+	 * Verifies the gene wiring of the efx-layer argument map after the loop split. The
+	 * apply-echo grid ({@code efx_fb_transmission}) is DIAGONAL-ONLY: each diagonal cell
+	 * is the per-channel self-feedback gene (nonzero, bounded by
+	 * {@link EfxManager#maxFeedback}) and every off-diagonal cell is exactly zero — the
+	 * legacy apply echo has no cross-channel coupling. The bus-line network's
+	 * recirculation matrix ({@code bus_transmission}) is the UNSCALED genome
+	 * transmission chromosome TRANSPOSED (the feedback stage's matrix is
+	 * {@code [into, from]}; the chromosome is {@code [from, into]}); its output matrix
+	 * ({@code bus_wet_out}) is the diagonal wetOut gene inside its configured
+	 * {@code [0.5, 1.4]} range; the send matrix routes every channel into the FIRST
+	 * bus line only (the legacy {@code delayGene}); each bus line's delay is a 4–20 s gene; and the
+	 * {@code wet_in} slot follows {@code MixdownManager.enableWetInAdjustment} (the
+	 * fixture disables it, so the legacy constant 0.2 send applies). Built rectangular
+	 * ({@code BUS_LAYERS != CHANNELS}) to pin the production layers-independent shape.
 	 */
 	@Test(timeout = 120_000)
 	public void feedbackGridAndBusDelayFollowGenes() {
-		MixdownManager mixdown = buildFixtureMixdown(true);
+		MixdownManager mixdown = buildFixtureMixdown(true, BUS_LAYERS);
 		runFixtureSetup(mixdown);
 
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
@@ -257,17 +284,17 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Map<String, Object> args =
 				MixdownManagerPdslAdapter.buildArgsMap(mixdown, fixtureEfx, config);
 
-		double[] grid = evaluateProducer(args.get("efx_fb_transmission"), CHANNELS * CHANNELS);
-		double[] transmission = evaluateProducer(args.get("transmission"), CHANNELS * CHANNELS);
-		double offScale = MixdownManagerPdslAdapter.feedbackGain / CHANNELS;
+		Assert.assertEquals("delay_layers must follow the delay chromosome's gene count",
+				BUS_LAYERS, args.get("delay_layers"));
 
-		// Kernel outputs are single-precision, and the grid and its reference are two
+		// Kernel outputs are single-precision, and each matrix and its reference are
 		// separately compiled evaluations, so comparisons carry float32 rounding
 		// (~1e-8 relative); the wiring distinctions asserted here are at the 1e-1
 		// scale, so a 1e-6 tolerance is both safe and strict. Note the projected
 		// genome maps even a uniform parameter vector to DISTINCT per-gene values,
 		// so the diagonal entries are individually gene-driven, not identical.
 		double eps = 1e-6;
+		double[] grid = evaluateProducer(args.get("efx_fb_transmission"), CHANNELS * CHANNELS);
 		for (int n = 0; n < CHANNELS; n++) {
 			for (int m = 0; m < CHANNELS; m++) {
 				double cell = grid[n * CHANNELS + m];
@@ -280,40 +307,105 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 							"diagonal " + n + " self-feedback must respect the maxFeedback"
 									+ " bound; got " + cell,
 							cell <= EfxManager.maxFeedback + eps);
-					Assert.assertNotEquals(
-							"the diagonal must carry the self-feedback gene, not the scaled"
-									+ " transmission",
-							offScale * transmission[n * CHANNELS + m], cell, eps);
 				} else {
 					Assert.assertEquals(
-							"off-diagonal " + n + "," + m + " must be the transmission matrix"
-									+ " scaled by feedbackGain/channels",
-							offScale * transmission[n * CHANNELS + m], cell, eps);
+							"the apply echo has no cross-channel coupling; off-diagonal "
+									+ n + "," + m + " must be zero",
+							0.0, cell, eps);
 				}
 			}
 		}
 
-		double[] busDelays = evaluateProducer(args.get("delay_samples"), CHANNELS);
-		for (int p = 0; p < CHANNELS; p++) {
-			Assert.assertEquals(
-					"bus delay positions must cycle over the delay chromosome's layers",
-					busDelays[p % DELAY_LAYERS], busDelays[p], eps);
+		// The genome transmission chromosome is [from, into] (gene n routes line n's
+		// output); the feedback stage's matrix is [into, from] — assert the transpose,
+		// UNSCALED. The base map's [channels, channels] transmission grid holds the
+		// chromosome in its top-left [layers, layers] block, zero beyond.
+		double[] busT = evaluateProducer(args.get("bus_transmission"), BUS_LAYERS * BUS_LAYERS);
+		double[] transmission = evaluateProducer(args.get("transmission"), CHANNELS * CHANNELS);
+		for (int j = 0; j < BUS_LAYERS; j++) {
+			for (int m = 0; m < BUS_LAYERS; m++) {
+				double expected = (m < CHANNELS && j < CHANNELS)
+						? transmission[m * CHANNELS + j]
+						: transmissionReference(mixdown, m, j);
+				Assert.assertEquals(
+						"bus_transmission[" + j + "," + m + "] must be the UNSCALED genome"
+								+ " transmission [from=" + m + ", into=" + j + "]",
+						expected, busT[j * BUS_LAYERS + m], eps);
+			}
+		}
+
+		double[] wetOut = evaluateProducer(args.get("bus_wet_out"), BUS_LAYERS * BUS_LAYERS);
+		for (int n = 0; n < BUS_LAYERS; n++) {
+			for (int m = 0; m < BUS_LAYERS; m++) {
+				double cell = wetOut[n * BUS_LAYERS + m];
+				if (n == m) {
+					Assert.assertTrue(
+							"bus_wet_out diagonal " + n + " must carry the wetOut gene"
+									+ " inside its configured [0.5, 1.4] range; got " + cell,
+							cell >= 0.5 - eps && cell <= 1.4 + eps);
+				} else {
+					Assert.assertEquals("bus_wet_out must be diagonal (per-line output taps)",
+							0.0, cell, eps);
+				}
+			}
+		}
+
+		PackedCollection send = (PackedCollection) args.get("bus_send");
+		double[] sendData = send.toArray(0, CHANNELS * BUS_LAYERS);
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			for (int j = 0; j < BUS_LAYERS; j++) {
+				Assert.assertEquals(
+						"bus_send must route every channel into the first bus line only"
+								+ " (legacy delayGene)",
+						j == 0 ? 1.0 : 0.0, sendData[ch * BUS_LAYERS + j], eps);
+			}
+		}
+
+		double[] busDelays = evaluateProducer(args.get("bus_delay_samples"), BUS_LAYERS);
+		for (int j = 0; j < BUS_LAYERS; j++) {
 			Assert.assertTrue(
-					"bus delay " + busDelays[p] + " must sit inside the configured 4-20 s"
-							+ " gene range, not at a static constant",
-					busDelays[p] >= 4.0 * SAMPLE_RATE && busDelays[p] <= 20.0 * SAMPLE_RATE);
+					"bus line " + j + " delay " + busDelays[j] + " must sit inside the"
+							+ " configured 4-20 s gene range, not at a static constant",
+					busDelays[j] >= 4.0 * SAMPLE_RATE && busDelays[j] <= 20.0 * SAMPLE_RATE);
+		}
+
+		// The fixture disables enableWetInAdjustment, so the send gain is the legacy
+		// 0.2 constant (the gene-driven path shares the toAdjustmentGene machinery the
+		// volume wiring already pins).
+		double[] wetInData = ((PackedCollection) args.get("wet_in")).toArray(0, CHANNELS);
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			Assert.assertEquals(
+					"wet_in with enableWetInAdjustment=false must be the legacy 0.2 constant",
+					0.2, wetInData[ch], eps);
 		}
 	}
 
 	/**
-	 * Verifies the bus-delay modulation: {@code automationRefresh} integrates the
-	 * delay-dynamics gene's polycyclic cursor rate into the {@code bus_delay_drift} slot
-	 * one buffer-sized Euler step per refresh, and the {@code delay_samples} producer
-	 * folds the accumulated offset into each position's gene delay, floored at one
-	 * frame. At clock frame 0 the polycyclic rate is exactly 1 (zero step); for any
-	 * later clock position the accelerando term keeps the rate strictly above 1, so
-	 * refreshes must drive the drift strictly negative and tighten every position's
-	 * effective delay without crossing the one-frame floor.
+	 * Evaluates one raw transmission chromosome cell directly (used where the base
+	 * map's channel-bounded grid cannot serve as the reference, i.e. bus lines beyond
+	 * the channel count).
+	 *
+	 * @param mixdown the fixture manager
+	 * @param from    source line (gene index)
+	 * @param into    destination line (factor index)
+	 * @return the gene resultant
+	 */
+	private double transmissionReference(MixdownManager mixdown, int from, int into) {
+		return evaluateProducer(MixdownManagerPdslAdapter
+				.transmissionGene(mixdown).valueAt(from, into)
+				.getResultant(c(1.0)), 1)[0];
+	}
+
+	/**
+	 * Verifies the bus-delay modulation: {@code automationRefresh} integrates each bus
+	 * LINE's delay-dynamics gene rate into the {@code bus_delay_drift} slot one
+	 * buffer-sized Euler step per refresh (one drift per line — the legacy
+	 * {@code df.apply(i)} per delay layer), and the {@code bus_delay_samples} producer
+	 * folds the accumulated offset into each line's gene delay, floored at one frame.
+	 * At clock frame 0 the polycyclic rate is exactly 1 (zero step); for any later
+	 * clock position the accelerando term keeps the rate strictly above 1, so refreshes
+	 * must drive the drift strictly negative and tighten every line's effective delay
+	 * without crossing the one-frame floor.
 	 */
 	@Test(timeout = 120_000)
 	public void busDelayDriftAccumulatesWithClock() {
@@ -328,10 +420,13 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Runnable refresh = MixdownManagerPdslAdapter
 				.automationRefresh(mixdown, fixtureEfx, config, args).get();
 
-		double[] delaysBefore = evaluateProducer(args.get("delay_samples"), CHANNELS);
+		int layers = (Integer) args.get("delay_layers");
+		double[] delaysBefore = evaluateProducer(args.get("bus_delay_samples"), layers);
 		PackedCollection drift = (PackedCollection) args.get("bus_delay_drift");
 		Assert.assertNotNull("the wet argument map must carry the bus_delay_drift slot",
 				drift);
+		Assert.assertEquals("one drift slot per bus line",
+				layers, drift.getShape().getTotalSize());
 
 		// Advance the shared clock well past frame 0 and integrate several buffers.
 		fixtureTime.getClock().setFrame(7 * SAMPLE_RATE);
@@ -339,23 +434,23 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 			refresh.run();
 		}
 
-		double[] offsets = drift.toArray(0, CHANNELS);
-		double[] delaysAfter = evaluateProducer(args.get("delay_samples"), CHANNELS);
-		for (int p = 0; p < CHANNELS; p++) {
+		double[] offsets = drift.toArray(0, layers);
+		double[] delaysAfter = evaluateProducer(args.get("bus_delay_samples"), layers);
+		for (int j = 0; j < layers; j++) {
 			Assert.assertTrue(
-					"drift at position " + p + " must be strictly negative away from"
+					"drift at line " + j + " must be strictly negative away from"
 							+ " frame 0 (the accelerando keeps the cursor rate above 1);"
-							+ " got " + offsets[p],
-					offsets[p] < 0.0);
+							+ " got " + offsets[j],
+					offsets[j] < 0.0);
 			Assert.assertTrue(
-					"the effective delay at position " + p + " must tighten under the"
-							+ " accumulated drift; before=" + delaysBefore[p]
-							+ " after=" + delaysAfter[p],
-					delaysAfter[p] <= delaysBefore[p]);
+					"the effective delay at line " + j + " must tighten under the"
+							+ " accumulated drift; before=" + delaysBefore[j]
+							+ " after=" + delaysAfter[j],
+					delaysAfter[j] <= delaysBefore[j]);
 			Assert.assertTrue(
-					"the effective delay at position " + p + " must not cross the"
-							+ " one-frame floor; got " + delaysAfter[p],
-					delaysAfter[p] >= PDSL_SIGNAL_SIZE);
+					"the effective delay at line " + j + " must not cross the"
+							+ " one-frame floor; got " + delaysAfter[j],
+					delaysAfter[j] >= PDSL_SIGNAL_SIZE);
 		}
 	}
 
@@ -382,17 +477,105 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PackedCollection volumePrev = (PackedCollection) args.get("volume_prev");
 		Assert.assertNotNull("the wet argument map must carry the volume_prev slot",
 				volumePrev);
+		PackedCollection wetIn = (PackedCollection) args.get("wet_in");
+		PackedCollection wetInPrev = (PackedCollection) args.get("wet_in_prev");
+		Assert.assertNotNull("the wet argument map must carry the wet_in_prev slot",
+				wetInPrev);
 
 		double[] before = volume.toArray(0, CHANNELS);
+		double[] wetInBefore = wetIn.toArray(0, CHANNELS);
 		fixtureTime.getClock().setFrame(5 * SAMPLE_RATE);
 		refresh.run();
 
 		double[] prev = volumePrev.toArray(0, CHANNELS);
+		double[] wetInPrevData = wetInPrev.toArray(0, CHANNELS);
 		for (int ch = 0; ch < CHANNELS; ch++) {
 			Assert.assertEquals(
 					"volume_prev must hold the pre-refresh current value at channel " + ch,
 					before[ch], prev[ch], 1e-9);
+			Assert.assertEquals(
+					"wet_in_prev must hold the pre-refresh current value at channel " + ch,
+					wetInBefore[ch], wetInPrevData[ch], 1e-9);
 		}
+	}
+
+	/**
+	 * End-to-end receipt for the apply echo's placement and semantics: legacy
+	 * {@code EfxManager.apply} runs at the PATTERN-CHANNEL level, so the MAIN voicing
+	 * carries the echo too — an impulse on a MAIN row must reappear exactly one frame
+	 * later (the neutral one-frame echo ring pins the delay to {@code signal_size}),
+	 * shifted by the echo chain's FIR group delay and scaled by the wet chain, while
+	 * the WET region stays silent and the bus (wet_in zeroed) contributes nothing.
+	 * With the self-feedback gene zeroed the tap fires exactly ONCE — the
+	 * pure-delayed-tap semantics of the legacy {@code AdjustableDelayCell}, not an
+	 * input-plus-echo blend — so the frame after the echo must be silent again.
+	 */
+	@Test(timeout = 300_000)
+	public void mainArmCarriesApplyEcho() throws IOException {
+		MixdownManager mixdown = buildFixtureMixdown();
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES, 1.0);
+		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		args.putAll(neutralEfxArgs());
+
+		int taps = PDSL_FILTER_ORDER + 1;
+		// Open the echo chain: unity wet level and automation (the neutral overlay
+		// already aliases the automation ramp to a constant 1), identity (delta) echo
+		// filter, and a one-frame echo delay (the neutral rings are one frame, so the
+		// read-first band pins the delay to exactly signal_size). Zero the wet_in send
+		// so the bus-line network stays silent and frame 1 shows the MAIN echo alone.
+		args.put("efx_wet_level", onesCollection(CHANNELS));
+		args.put("efx_filter_coeffs", identityFirBank(CHANNELS, taps));
+		PackedCollection echoDelay = new PackedCollection(CHANNELS);
+		double[] echoDelayData = new double[CHANNELS];
+		Arrays.fill(echoDelayData, PDSL_SIGNAL_SIZE);
+		echoDelay.setMem(echoDelayData);
+		args.put("efx_fb_delay", echoDelay);
+		PackedCollection zeroSend = new PackedCollection(CHANNELS);
+		args.put("wet_in", zeroSend);
+		args.put("wet_in_prev", zeroSend);
+		// Neutralize the gene-driven main-arm and master stages for exact arithmetic.
+		args.put("volume", onesCollection(CHANNELS));
+		args.put("volume_prev", args.get("volume"));
+		args.put("hp_coeffs", identityFirBank(CHANNELS, taps));
+		args.put("lp_coeffs", identityFir(taps));
+		args.put("master_gain", 1.0);
+
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(2 * CHANNELS, PDSL_SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "mixdown_master_wet", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		int impulseAt = 100;
+		double amp = 0.5;
+		PackedCollection impulseFrame = new PackedCollection(inputShape);
+		double[] inData = new double[2 * CHANNELS * PDSL_SIGNAL_SIZE];
+		inData[impulseAt] = amp;  // MAIN row 0 only; the WET region stays silent
+		impulseFrame.setMem(inData);
+		PackedCollection silentFrame = new PackedCollection(inputShape);
+
+		double[] frame0 = compiled.forward(impulseFrame).toArray(0, PDSL_SIGNAL_SIZE);
+		double[] frame1 = compiled.forward(silentFrame).toArray(0, PDSL_SIGNAL_SIZE);
+		double[] frame2 = compiled.forward(silentFrame).toArray(0, PDSL_SIGNAL_SIZE);
+
+		// The FIR stages are CENTER-aligned (MultiOrderFilter: y[n] = sum h[i] *
+		// x[n - i + order/2]), so an identity bank's centered delta is an exact
+		// zero-shift passthrough — dry and echo both land at the impulse index, the
+		// echo exactly one frame later.
+		Assert.assertEquals("frame 0 must carry the dry impulse",
+				amp, frame0[impulseAt], 0.05);
+		Assert.assertEquals("frame 1 must carry the apply echo of the MAIN impulse,"
+						+ " exactly one frame later",
+				amp, frame1[impulseAt], 0.05);
+		Assert.assertEquals("with zero self-feedback the pure tap fires exactly once"
+						+ " (frame 2 must be silent at the echo index)",
+				0.0, frame2[impulseAt], 1e-4);
 	}
 
 	/**

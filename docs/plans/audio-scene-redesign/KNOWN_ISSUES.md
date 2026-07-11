@@ -6,27 +6,30 @@
 
 ---
 
-## 1. Open defects — PDSL delay/feedback ring arithmetic (2026-07-09)
+## 1. RESOLVED — PDSL delay/feedback ring arithmetic (found 2026-07-09, fixed 2026-07-09/11)
 
-The block-parallel ring stages violate their own sizing requirements in three places;
-each produces a per-buffer splice discontinuity and wrong-lap reads inside or feeding a
-feedback loop — the leading mechanical explanation for the reported PDSL-vs-CellList
-"grinding" divergence that grows with clip duration and EFX share. Full derivations,
-receipts, and the fix plan: [PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §2/§6.
+Four ring-stage defects, each generating per-buffer splices or wrong-age reads inside
+or feeding a feedback loop — the mechanical explanation for the PDSL-vs-CellList
+"grinding" divergence. All fixed; full derivations, receipts, and mechanisms:
+[PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §2.
 
-- **Feedforward wet-arm delay** (`pdslDelaySamples = 6500` into a one-frame ring): at
-  4096 the delay degenerates to a within-frame rotation with a non-causal region; the
-  intended 147 ms pre-delay has never been rendered at any buffer size.
-- **Reverb taps** (`reverbTapDelays` spans 0.6–1.7 frames of a 2-frame ring): the
-  read-first band is `[signalSize, bufSize]`, so the sub-frame taps (always the two
-  lowest fractions for 6 channels) splice to lap-stale reads every frame, recirculated
-  by the Householder feedback.
-- **Efx feedback gene delays**: the 0.25-beat `delayTimes` choice drops below one frame
-  at BPM > ~161 (below the read-first band → ~ring-lap-stale echoes).
+- **Feedforward delay into a one-frame ring** (§2.1) — fixed: rings sized from actual
+  delays; write/read order unified write-first across the vectorized and scalar forms.
+- **Sub-frame reverb taps** (§2.2) — fixed: seconds-denominated ring, taps floored at
+  one frame.
+- **Efx feedback gene delays below one frame at high BPM** (§2.3) — fixed: device-side
+  band clamps (write-first `delay ≤ ring − signalSize`; read-first
+  `signalSize ≤ delay ≤ ring`) enforced in every ring kernel.
+- **Deferred tap reads under accum arms** (§2.4, found during C5) — every stateful
+  stage hosted under an `accum_blocks` arm read post-write state: one frame short of
+  the requested delay, or the current frame outright at the band floor (at 8192 the
+  reverb tap floor pinned there → a per-frame leak recirculated by the Householder
+  matrix). Fixed: taps materialized at their ops position
+  (`MultiChannelDspFeatures`), consumer-independent.
 
-The governing bands (write-first `delay ≤ ring − signalSize`; read-first
-`signalSize ≤ delay ≤ ring`) are currently enforced nowhere. The vectorized and scalar
-forms of the `delay` primitive also disagree on write-vs-read order.
+Do not re-break: the band clamps and the tap materialization are load-bearing; the
+regression guards are `DelayBankBehaviorTest`, `DelayNetworkBehaviorTest`, and
+`MixdownManagerPdslVerificationTest.mainArmCarriesApplyEcho`.
 
 ## 2. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`
 

@@ -334,7 +334,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		}
 
 		String[] names = {"efx_wet_level",
-				"transmission", "efx_fb_transmission", "efx_fb_passthrough"};
+				"transmission", "efx_fb_transmission", "bus_transmission", "bus_wet_out"};
 		int[] frames = {0, 441000};
 
 		log("channelCount=" + channelCount + " seed=" + seed);
@@ -456,7 +456,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 
 		int frames = (int) (MUD_SECONDS * SAMPLE_RATE);
 		double prevReverb = MixdownManagerPdslAdapter.reverbSend;
-		double prevFeedback = MixdownManagerPdslAdapter.feedbackGain;
+		double prevFeedback = MixdownManagerPdslAdapter.regenerationGain;
 		boolean previous = MixdownManager.enablePdslMixdown;
 		boolean prevEnableReverb = MixdownManager.enableReverb;
 		try {
@@ -475,7 +475,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			// reverb is independent of MixdownManager.enableReverb.
 			MixdownManager.enablePdslMixdown = true;
 			MixdownManagerPdslAdapter.reverbSend = prevReverb;
-			MixdownManagerPdslAdapter.feedbackGain = prevFeedback;
+			MixdownManagerPdslAdapter.regenerationGain = prevFeedback;
 			reportLevels("pdsl-reverb-on", renderAndRead(scene, null, frames, REVIEW_BUFFER,
 					new File(outDir, "mud_pdsl_reverbon.wav")));
 
@@ -484,7 +484,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 					new File(outDir, "mud_pdsl_reverboff.wav")));
 		} finally {
 			MixdownManagerPdslAdapter.reverbSend = prevReverb;
-			MixdownManagerPdslAdapter.feedbackGain = prevFeedback;
+			MixdownManagerPdslAdapter.regenerationGain = prevFeedback;
 			MixdownManager.enablePdslMixdown = previous;
 			MixdownManager.enableReverb = prevEnableReverb;
 		}
@@ -710,9 +710,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 * Isolates the PDSL efx (wet) arm in a FRESH JVM, first render, so the measurement is not
 	 * perturbed by earlier renders in the same process (the efx arm has measured wildly
 	 * differently — near-zero vs instantly saturated — depending only on JVM render history).
-	 * Renders the efx arm alone with the feedback grid active, then with feedback disabled
-	 * ({@code feedbackGain = 0}), localizing any runaway to the feedback stage versus the
-	 * feedforward chain.
+	 * Renders the efx arm alone with regeneration active, then with regeneration disabled
+	 * ({@code regenerationGain = 0} — the apply echo and bus lines fire their first tap
+	 * only), localizing any runaway to the recirculating stages versus the feedforward
+	 * chain.
 	 *
 	 * @throws IOException if the scene cannot be loaded or a WAV read back
 	 */
@@ -744,28 +745,28 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		boolean prevPdsl = MixdownManager.enablePdslMixdown;
 		double prevReverbSend = MixdownManagerPdslAdapter.reverbSend;
 		double prevMainGain = MixdownManagerPdslAdapter.mainArmGain;
-		double prevFeedback = MixdownManagerPdslAdapter.feedbackGain;
+		double prevFeedback = MixdownManagerPdslAdapter.regenerationGain;
 		try {
-			// Feedback-off FIRST, feedback-on SECOND: the previous ordering (fb first) saturated
-			// on the first render of the JVM; if fb-second saturates too, JVM render history is
-			// not the trigger and the runaway is robust within the full-model context.
+			// Regeneration-off FIRST, regeneration-on SECOND: the previous ordering (fb first)
+			// saturated on the first render of the JVM; if fb-second saturates too, JVM render
+			// history is not the trigger and the runaway is robust within the full-model context.
 			MixdownManager.enablePdslMixdown = true;
 			MixdownManagerPdslAdapter.reverbSend = 0.0;
 			MixdownManagerPdslAdapter.mainArmGain = 0.0;
 			MixdownManagerPdslAdapter.reverbArmGain = 0.0;
 			MixdownManagerPdslAdapter.efxArmGain = 1.0;
-			MixdownManagerPdslAdapter.feedbackGain = 0.0;
+			MixdownManagerPdslAdapter.regenerationGain = 0.0;
 			reportLevels("pdsl-efx-only-nofb", renderAndRead(scene, null, frames, REVIEW_BUFFER,
 					new File(outDir, "efxprobe_nofb.wav")));
 
-			MixdownManagerPdslAdapter.feedbackGain = prevFeedback;
+			MixdownManagerPdslAdapter.regenerationGain = prevFeedback;
 			reportLevels("pdsl-efx-only-fb", renderAndRead(scene, null, frames, REVIEW_BUFFER,
 					new File(outDir, "efxprobe_fb.wav")));
 		} finally {
 			MixdownManager.enablePdslMixdown = prevPdsl;
 			MixdownManagerPdslAdapter.reverbSend = prevReverbSend;
 			MixdownManagerPdslAdapter.mainArmGain = prevMainGain;
-			MixdownManagerPdslAdapter.feedbackGain = prevFeedback;
+			MixdownManagerPdslAdapter.regenerationGain = prevFeedback;
 			MixdownManagerPdslAdapter.efxArmGain = 1.0;
 			MixdownManagerPdslAdapter.reverbArmGain = 1.0;
 		}
