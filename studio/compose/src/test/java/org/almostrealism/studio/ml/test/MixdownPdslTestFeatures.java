@@ -85,6 +85,10 @@ interface MixdownPdslTestFeatures {
 		PackedCollection reverbHeads = new PackedCollection(channels);
 
 		Map<String, Object> neutralEfx = new HashMap<>();
+		// Identity coefficients for the wet cascade's high-pass half keep the neutral
+		// configuration's wet arm a pure pass-through ahead of the (test-supplied or
+		// adapter-built) low-pass bank.
+		neutralEfx.put("wet_hp_coeffs", identityFirBank(channels, firTaps));
 		neutralEfx.put("efx_filter_coeffs", efxCoeffs);
 		neutralEfx.put("efx_wet_level", efxWet);
 		neutralEfx.put("efx_automation", efxAuto);

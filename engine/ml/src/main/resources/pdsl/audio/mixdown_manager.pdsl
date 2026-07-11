@@ -428,6 +428,7 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                          lp_coeffs: producer([fir_taps]),
                          sample_rate: scalar, filter_order: scalar,
                          wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
+                         wet_hp_coeffs: producer([channels, fir_taps]),
                          delay_samples: producer([channels]),
                          master_gain: producer([1]),
                          efx_filter_coeffs: producer([channels, fir_taps]),
@@ -502,6 +503,11 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                 // renders the legacy bus delay layer: gene-driven lengths from the `delay`
                 // chromosome (4-20 s), so the efx bus arrives as the slow-building regenerating
                 // wash the legacy path produces, not a near-immediate echo.
+                // The legacy wet filter is a cascade: AudioPassFilter high-pass THEN
+                // low-pass (FixedFilterGene), both rendered here as truncated-biquad
+                // FIR rows from the impulse-response tables (matching the main-bus
+                // filters' realisation and the legacy 12 dB/oct slope).
+                fir(wet_hp_coeffs[channel])
                 fir(wet_filter_coeffs[channel])
                 ramp_scale(volume_prev[channel], volume[channel])
                 delay(delay_samples[channel], buffers[channel], heads[channel])

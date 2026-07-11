@@ -194,17 +194,29 @@ owner hears trouble: a step applied to a **hot wet bus** is a level discontinuit
 then **recirculates through the feedback loops**. Distinct from §2's splices (which
 occur with automation frozen) but the same 10.77 Hz signature, and additive with them.
 
-### 3.5 Filters: FIR approximations, asymmetrically sourced
+### 3.5 Filters: FIR approximations, asymmetrically sourced — REVISED 2026-07-11
 - Main HP / master LP: 41-tap truncated-**biquad**-IR tables (1024 log-spaced bins,
   per-buffer device-side row select — `biquadResponseTable`/`tableRow`), deliberately
   matched to `AudioPassFilter`'s 12 dB/oct shape. Sub-perceptual per the sweep A/B.
-- Efx-loop and wet-bus filters: **windowed-sinc** FIR (`lowPassCoefficients` /
-  `highPassCoefficients` via `efxFilterCoefficients`/`wetFilterCoefficients`) — much
-  steeper than the legacy biquad *and sitting in the regeneration path*, where the
-  spectral difference compounds per pass. The biquad-table javadoc itself records that
-  windowed-sinc "audibly diverged" on the main-bus sweep; the efx bank was never given
-  the same treatment. **Lever:** source `efx_filter_coeffs`/`wet_filter_coeffs` from
-  the same biquad tables.
+- **Efx-loop filter: already legacy-faithful** — an earlier revision of this section
+  claimed it diverged, but legacy `EfxManager.applyFilter` itself uses windowed-sinc
+  FIR coefficients (`lowPassCoefficients`/`highPassCoefficients` via
+  `MultiOrderFilter`), which is exactly what `efx_filter_coeffs` renders. No change
+  needed or made.
+- **Wet-bus filter: was broken outright, fixed 2026-07-11 (C4).** The legacy wet
+  filter (`FixedFilterChromosome.FixedFilterGene`) is a *cascade* of two
+  `AudioPassFilter` biquads — high-pass (gene slot 0) then low-pass (gene slot 1).
+  The PDSL bank had two defects beyond slope shape: (a) it read
+  `wetFilter.valueAt(ch).valueAt(1).getResultant(c(1.0))` as its "cutoff" — but
+  `FixedFilterGene.valueAt` ignores its position and returns the whole composed
+  stateful filter `Factor`, so the value was the filter chain applied to a constant:
+  meaningless, clamping near the 20 Hz floor and leaving the wet bus drastically
+  over-filtered since the cutover; and (b) it rendered a low-pass only, dropping the
+  cascade's high-pass half entirely. C4 exposes the real cutoff genes
+  (`FixedFilterChromosome.highPassFrequency`/`lowPassFrequency`), renders both halves
+  as truncated-biquad table rows (`wet_hp_coeffs` + `wet_filter_coeffs`, a new HP
+  `fir` stage ahead of the LP in the wet arm), and bounds the cutoffs exactly as the
+  `AudioPassFilter` constructor does. Expect the wet bus to open up audibly.
 - Legacy `AudioPassFilter` recomputes coefficients **every frame** during sweeps;
   PDSL selects a table row per buffer (§3.4 granularity).
 
@@ -336,8 +348,11 @@ each fix.
    genome-static gains (`efx_wet_level`, `wet_level`) stay `scale()`. Pinned by
    `RampScaleBehaviorTest` (per-sample exactness and cross-frame continuity) and
    `automationRampSlotsTrackPreviousValues`.
-4. Source the efx/wet filter banks from the biquad response tables (§3.5) so the
-   in-loop filters match legacy slope.
+4. **DONE 2026-07-11.** The wet-filter bank is sourced from the biquad response
+   tables — and the investigation found the bank's cutoffs had been meaningless since
+   the cutover, plus a missing high-pass cascade half (see the revised §3.5). The efx
+   bank turned out to be already legacy-faithful (legacy `applyFilter` is itself
+   windowed-sinc) and is unchanged.
 
 **D. Accept (documented):** the one-buffer regeneration floor (§3.3), dual-mono until
 the pan feature, determinism-by-design, FP drift, per-buffer coefficient stepping after

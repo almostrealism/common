@@ -274,7 +274,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// FixedFilterChromosome at supplies dynamic IIR filters in
 		// the Java path; the PDSL path renders these as static FIR coefficients
 		// per channel by sampling the gene's HP/LP frequencies at args-build time.
-		args.put("wet_filter_coeffs", wetFilterCoefficients(manager, config));
+		args.put("wet_filter_coeffs", wetFilterCoefficients(manager, config, false));
+
+		// wet_hp_coeffs: producer([channels, fir_taps]) — the high-pass half of the
+		// legacy wet-filter cascade (AudioPassFilter HP then LP); only the
+		// mixdown_master_wet layer declares it, and unknown keys are ignored elsewhere.
+		args.put("wet_hp_coeffs", wetFilterCoefficients(manager, config, true));
 
 		// transmission: producer([channels, channels])
 		// Mirrors MixdownManager.createEfx():
@@ -382,8 +387,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// device-side gather: bin = round((bins-1) * ln(cutoff/10) / ln(20000/10)).
 		PackedCollection hpTable = biquadResponseTable(true, config.sampleRate, taps);
 		PackedCollection lpTable = biquadResponseTable(false, config.sampleRate, taps);
-		double binScale = (FILTER_TABLE_BINS - 1)
-				/ Math.log(20000.0 / AudioPassFilter.MIN_FREQUENCY);
+		double binScale = FILTER_TABLE_BIN_SCALE;
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(ADAPTER.a(taps,
 					ADAPTER.cp(hpCoeffs.range(ADAPTER.shape(taps), ch * taps)),
@@ -749,6 +753,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	private static final int FILTER_TABLE_BINS = 1024;
 
 	/**
+	 * Bin-selection scale for the impulse-response tables:
+	 * {@code (FILTER_TABLE_BINS - 1) / ln(20000 / MIN_FREQUENCY)} (see {@link #tableRow}).
+	 */
+	private static final double FILTER_TABLE_BIN_SCALE =
+			(FILTER_TABLE_BINS - 1) / Math.log(20000.0 / AudioPassFilter.MIN_FREQUENCY);
+
+	/**
 	 * Reverb delay-line count. Decoupled from the scene channel count so tap density is
 	 * a diffusion choice, not a topology accident: the Java {@link DelayNetwork} the
 	 * reverb arm mirrors defaults to 128 random lines, and per-line recirculation at
@@ -1062,38 +1073,44 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Builds a {@code [channels, fir_taps]} producer-form per-channel low-pass
-	 * FIR coefficient bank for the PDSL {@code wet_filter_coeffs} parameter.
-	 * Each channel's coefficient row is computed via
-	 * {@link org.almostrealism.time.TemporalFeatures#lowPassCoefficients(Producer, int, int)}
-	 * driven by the wet-filter chromosome's low-pass frequency producer
-	 * (gene factor 1, scaled to Hz and clamped to a valid Nyquist range).
-	 * The N per-channel producers are concatenated and reshaped to a single
-	 * {@code [channels, fir_taps]} producer.
+	 * Builds one half of the wet-filter cascade as a {@code [channels, fir_taps]}
+	 * coefficient bank: each channel's row is the truncated impulse response of the
+	 * {@link AudioPassFilter} biquad at that channel's gene cutoff, selected from the
+	 * {@link #biquadResponseTable} by a device-side gather — the same realisation the
+	 * main-bus swept filters use, so the wet bus carries the legacy 12 dB/oct slope
+	 * rather than a windowed-sinc brickwall.
 	 *
-	 * <p>The Java path's wet filter is an {@link org.almostrealism.audio.filter.AudioPassFilter}
-	 * IIR chain (see {@link FixedFilterChromosome.FixedFilterGene#valueAt}); the
-	 * PDSL {@code fir} primitive consumes FIR coefficients. This is the
-	 * structural mismatch the planning document calls out — the test in
-	 * {@code MixdownManagerPdslVerificationTest} compares the two with that
-	 * caveat documented.</p>
+	 * <p>The legacy wet filter ({@link FixedFilterChromosome.FixedFilterGene#valueAt})
+	 * is a high-pass <em>then</em> low-pass {@link AudioPassFilter} cascade over gene
+	 * slots 0 and 1. The cutoffs are read through
+	 * {@link FixedFilterChromosome#highPassFrequency(int)} /
+	 * {@link FixedFilterChromosome#lowPassFrequency(int)} and bounded to
+	 * {@code [MIN_FREQUENCY, 20000]} exactly as the {@code AudioPassFilter} constructor
+	 * bounds its frequency. (The previous rendition read
+	 * {@code wetFilter.valueAt(ch).valueAt(1)} — but {@code FixedFilterGene.valueAt}
+	 * ignores its position and returns the whole composed filter {@code Factor}, so the
+	 * "cutoff" was actually the stateful filter chain applied to a constant: a
+	 * meaningless value that clamped near the floor and left the wet bus over-filtered.
+	 * It also rendered only a low-pass, dropping the cascade's high-pass half.)</p>
 	 *
 	 * @param manager the mixdown manager whose wet-filter chromosome is sampled
 	 * @param config  structural configuration
+	 * @param high    {@code true} for the cascade's high-pass half (gene slot 0);
+	 *                {@code false} for the low-pass half (gene slot 1)
 	 * @return shape-{@code [channels, fir_taps]} coefficient producer
 	 */
-	private static Producer<PackedCollection> wetFilterCoefficients(MixdownManager manager, Config config) {
+	private static Producer<PackedCollection> wetFilterCoefficients(MixdownManager manager,
+			Config config, boolean high) {
 		final int firTaps = config.filterOrder + 1;
-		Chromosome<PackedCollection> wetFilter = manager.getWetFilter();
+		FixedFilterChromosome wetFilter = manager.getWetFilter();
+		PackedCollection table = biquadResponseTable(high, config.sampleRate, firTaps);
 		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
 		for (int ch = 0; ch < config.channels; ch++) {
-			Producer<PackedCollection> lpUnit = wetFilter.valueAt(config.channel(ch)).valueAt(1)
-					.getResultant(ADAPTER.c(1.0));
-			Producer<PackedCollection> lpHz = ADAPTER.multiply(lpUnit, ADAPTER.c(20000.0));
-			Producer<PackedCollection> lpHzClamped = ADAPTER.max(ADAPTER.c(20.0),
-					ADAPTER.min(lpHz, ADAPTER.c(0.49 * config.sampleRate)));
-			perChannel[ch] = ADAPTER.lowPassCoefficients(
-					lpHzClamped, config.sampleRate, config.filterOrder);
+			int src = config.channel(ch);
+			Producer<PackedCollection> cutoff = ADAPTER.bound(
+					high ? wetFilter.highPassFrequency(src) : wetFilter.lowPassFrequency(src),
+					AudioPassFilter.MIN_FREQUENCY, 20000);
+			perChannel[ch] = tableRow(table, cutoff, FILTER_TABLE_BIN_SCALE, firTaps);
 		}
 		return channelBank(perChannel, new TraversalPolicy(config.channels, firTaps));
 	}

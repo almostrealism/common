@@ -276,6 +276,7 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 		wet.put("volume_prev", wet.get("volume"));
 		wet.put("lp_coeffs", identityFir(taps));
 		wet.put("wet_filter_coeffs", identityFirBank(channels, taps));
+		wet.put("wet_hp_coeffs", identityFirBank(channels, taps));
 		wet.put("wet_level", WET_LEVEL);
 		PackedCollection delaySamples = new PackedCollection(channels);
 		double[] delayData = new double[channels];

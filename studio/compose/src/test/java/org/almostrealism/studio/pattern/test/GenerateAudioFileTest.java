@@ -48,8 +48,13 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 	/** Genome seed: the dense curated genome the breakdown harness renders (~1126 elements). */
 	private static final long GENOME_SEED = 58;
 
-	/** Frames per buffer. 8192 keeps the dispatch count (and tick count) low for file generation. */
-	private static final int BUFFER_SIZE = 8192;
+	/**
+	 * Frames per buffer — the production default, so listening evaluations of this
+	 * render exercise the same buffer-dependent behaviour (automation ramp rate, drift
+	 * step size, ring geometry) as the real-time app. Offline generation does not need
+	 * real-time headroom, so the smaller buffer only lengthens the render.
+	 */
+	private static final int BUFFER_SIZE = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
 
 	/** Seconds of audio to generate. */
 	private static final double TARGET_SECONDS = 120.0;

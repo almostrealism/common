@@ -40,8 +40,16 @@ Execution order (PDSL_DIFFERENCES §6):
    gains (volume, efx automation, reverb send) with per-sample linear ramps between
    per-buffer slot refreshes — removing the 43 Hz staircase at 1024, the leading
    mechanical grit suspect — pinned by `RampScaleBehaviorTest` and
-   `automationRampSlotsTrackPreviousValues`. Remaining: biquad-table coefficients for
-   the in-loop filters (C4).
+   `automationRampSlotsTrackPreviousValues`. C4 **done 2026-07-11**: the wet-filter
+   bank now renders the legacy HP-then-LP `AudioPassFilter` cascade as biquad-table
+   rows — and the investigation found the old bank's cutoffs had been meaningless
+   since the cutover (a composed filter `Factor` misread as a frequency, clamping
+   near 20 Hz) plus a missing high-pass half, so the wet bus had been drastically
+   over-filtered all along (PDSL_DIFFERENCES §3.5, revised). The efx-loop bank was
+   already legacy-faithful. **Option C is complete**; the audible-gap verdict now
+   rests on the owner's listening pass — at the production buffer size, since
+   `GenerateAudioFileTest` now renders at `AudioScene.DEFAULT_REALTIME_BUFFER_SIZE`
+   (previous audition renders were at 8192).
 5. **D — accept and document** what a block-parallel buffer cannot reproduce
    (PDSL_DIFFERENCES §5).
 
