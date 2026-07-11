@@ -307,10 +307,23 @@ each fix.
    the bus-delay period — a full loop split if audibly needed), `wetInSimple` send
    automation is still unread, and the apply echo runs after (not before) the wet
    filter/volume stages.
-2. Approximate delay modulation: drift `efx_fb_delay` by the `delayDynamicsSimple`
-   gene once per buffer in `automationRefresh` (integer sample steps; small amplitude).
-   Cheap; breaks the static-comb rigidity. Evaluate by ear whether per-buffer drift
-   reads as motion or as artifact before keeping.
+2. **DONE 2026-07-10 (pending the by-ear verdict).** Delay modulation is approximated
+   as a per-buffer Euler step of the legacy cursor-rate integral: `automationRefresh`
+   accumulates `(1 − s(clock)) × signalSize` into a `bus_delay_drift` slot per
+   position, where `s` is the `delayDynamicsSimple` polycyclic rate
+   (`toPolycyclicGene`), and the `delay_samples` producer folds the offset into each
+   position's gene delay, floored at one frame. Two corrections to this item's
+   earlier wording: the modulation target is the **bus delay** (`delay_samples`), not
+   `efx_fb_delay` — `delayDynamicsSimple` is indexed per delay *layer* and modulates
+   the legacy bus `AdjustableDelayCell`s, whose rate the apply-echo never had; and the
+   legacy rate is not a small symmetric wobble — the polycyclic form is a periodic
+   speed-up/slow-down *times a monotonically growing accelerando*, so the 4–20 s wash
+   progressively tightens over an arrangement (a temporal-evolution feature this
+   restores). Residues: a rate change is a pitch bend in legacy, which block-parallel
+   delays cannot express — the drift moves in whole-sample steps between buffers
+   (evaluate by ear whether that reads as motion or as splice artifacts, per the
+   original plan); and the drift is not rewound by a runner reset. Wiring pinned by
+   `MixdownManagerPdslVerificationTest.busDelayDriftAccumulatesWithClock`.
 3. Per-sample parameter ramps: interpolate each automation slot from its previous to
    current value across the buffer inside the kernel (slots become `[2]` or the ramp is
    computed from a `prev` bank) — removes the 10.77 Hz staircase where it multiplies

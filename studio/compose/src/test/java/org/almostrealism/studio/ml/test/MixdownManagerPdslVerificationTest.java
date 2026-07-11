@@ -306,6 +306,60 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	}
 
 	/**
+	 * Verifies the bus-delay modulation: {@code automationRefresh} integrates the
+	 * delay-dynamics gene's polycyclic cursor rate into the {@code bus_delay_drift} slot
+	 * one buffer-sized Euler step per refresh, and the {@code delay_samples} producer
+	 * folds the accumulated offset into each position's gene delay, floored at one
+	 * frame. At clock frame 0 the polycyclic rate is exactly 1 (zero step); for any
+	 * later clock position the accelerando term keeps the rate strictly above 1, so
+	 * refreshes must drive the drift strictly negative and tighten every position's
+	 * effective delay without crossing the one-frame floor.
+	 */
+	@Test(timeout = 120_000)
+	public void busDelayDriftAccumulatesWithClock() {
+		MixdownManager mixdown = buildFixtureMixdown(true);
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		Map<String, Object> args =
+				MixdownManagerPdslAdapter.buildArgsMap(mixdown, fixtureEfx, config);
+		Runnable refresh = MixdownManagerPdslAdapter
+				.automationRefresh(mixdown, fixtureEfx, config, args).get();
+
+		double[] delaysBefore = evaluateProducer(args.get("delay_samples"), CHANNELS);
+		PackedCollection drift = (PackedCollection) args.get("bus_delay_drift");
+		Assert.assertNotNull("the wet argument map must carry the bus_delay_drift slot",
+				drift);
+
+		// Advance the shared clock well past frame 0 and integrate several buffers.
+		fixtureTime.getClock().setFrame(7 * SAMPLE_RATE);
+		for (int i = 0; i < 3; i++) {
+			refresh.run();
+		}
+
+		double[] offsets = drift.toArray(0, CHANNELS);
+		double[] delaysAfter = evaluateProducer(args.get("delay_samples"), CHANNELS);
+		for (int p = 0; p < CHANNELS; p++) {
+			Assert.assertTrue(
+					"drift at position " + p + " must be strictly negative away from"
+							+ " frame 0 (the accelerando keeps the cursor rate above 1);"
+							+ " got " + offsets[p],
+					offsets[p] < 0.0);
+			Assert.assertTrue(
+					"the effective delay at position " + p + " must tighten under the"
+							+ " accumulated drift; before=" + delaysBefore[p]
+							+ " after=" + delaysAfter[p],
+					delaysAfter[p] <= delaysBefore[p]);
+			Assert.assertTrue(
+					"the effective delay at position " + p + " must not cross the"
+							+ " one-frame floor; got " + delaysAfter[p],
+					delaysAfter[p] >= PDSL_SIGNAL_SIZE);
+		}
+	}
+
+	/**
 	 * Evaluates a producer-valued argument-map entry once and returns its contents.
 	 *
 	 * @param producer the argument-map value (a {@link Producer})

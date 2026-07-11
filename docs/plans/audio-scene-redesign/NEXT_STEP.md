@@ -32,11 +32,13 @@ Execution order (PDSL_DIFFERENCES §6):
    self-feedback gene drives the grid diagonal and the wet arm's feedforward delay is
    the gene-driven bus delay (4–20 s `delay` chromosome — restoring the legacy efx
    bus's slow-building arrival); wiring pinned by
-   `MixdownManagerPdslVerificationTest.feedbackGridAndBusDelayFollowGenes`. Remaining:
-   per-buffer delay drift (C2, modulation approximation), per-sample parameter ramps
-   for hot-bus automation (C3), biquad-table coefficients for the in-loop filters
-   (C4). Tune the granularity-dependent pieces against the **1024** production buffer
-   (43 Hz update rate).
+   `MixdownManagerPdslVerificationTest.feedbackGridAndBusDelayFollowGenes`. C2 **done
+   2026-07-10** (pending by-ear verdict): per-buffer Euler integration of the
+   `delayDynamics` cursor rate into a `bus_delay_drift` slot — the legacy wash's
+   wobble and accelerando — pinned by `busDelayDriftAccumulatesWithClock`. Remaining:
+   per-sample parameter ramps for hot-bus automation (C3), biquad-table coefficients
+   for the in-loop filters (C4). Tune the granularity-dependent pieces against the
+   **1024** production buffer (43 Hz update rate).
 5. **D — accept and document** what a block-parallel buffer cannot reproduce
    (PDSL_DIFFERENCES §5).
 

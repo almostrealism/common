@@ -52,7 +52,19 @@ visible in the counters:
 
 ## The three work items
 
-### 1. Fix the argument-preparation NPE (prerequisite — it broke the benchmark)
+### 1. Fix the argument-preparation NPE — RESOLVED 2026-07-10 (PR #344)
+
+> Fixed on `defect/process-details-init` and merged: the cause was exception-unsafety
+> in `ProcessDetailsFactory.init` (a Metal 31-buffer compile failure thrown mid-init
+> poisoned the operation's fast path), **not** the concurrency race hypothesized
+> below; the fix builds an immutable `PreparedArguments` snapshot published once,
+> guarded by the ungated `ProcessDetailsFactoryRecoveryTest`. Full record:
+> `docs/plans/ARGUMENT_PREPARATION_NPE.md`. The benchmark passes in default (async)
+> mode again — post-fix baseline on the worker M1: p50 39.4 ms @ 4096 (ratio 0.42),
+> commits/tick ≈ 47 with `bridgeCommits = 0`, so items 2 and 3 below are unchanged.
+> The original brief is kept for context:
+
+### (original item 1) Fix the argument-preparation NPE (prerequisite — it broke the benchmark)
 
 `PdslHotPathBreakdownTest` dies on master with
 `NullPointerException: kernelArgEvaluables[i] is null` at
