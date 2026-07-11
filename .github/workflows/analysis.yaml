@@ -813,6 +813,12 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
+    # Native memory allocates as direct ByteBuffers (see test-media). Because direct
+    # buffers are reclaimed by the JVM cleaner on GC, a group can spike past the default
+    # 4 GiB direct limit before reclamation catches up (the intermittent failures seen
+    # here), so raise the forked test JVM's direct-memory ceiling. Heap is unchanged.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     strategy:
       # Let every group in the matrix run to completion even when a peer fails.
       # A failure in one group must not cancel the others: a simpler group often
@@ -1165,6 +1171,11 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # Same as test: native,cl runs the compute tests on direct-ByteBuffer native RAM
+    # (no Metal), so raise the forked test JVM's direct-memory ceiling without changing
+    # heap. See the test-media job for the full rationale.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     concurrency:
       group: test-cl-${{ github.ref }}-${{ matrix.group }}
       cancel-in-progress: true
