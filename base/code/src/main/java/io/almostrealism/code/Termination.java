@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
@@ -46,6 +47,11 @@ public class Termination implements Statement<Termination> {
 
 	@Override
 	public Termination simplify(KernelStructureContext context, int depth) {
+		return this;
+	}
+
+	@Override
+	public Termination replace(Expression target, Expression replacement) {
 		return this;
 	}
 }

@@ -388,8 +388,12 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 	}
 
 	/**
-	 * Assigns the given {@link OperationProfile} as the active profile, runs the runnable,
-	 * then clears the profile and returns it with captured timing data.
+	 * Runs the given runnable with the supplied {@link OperationProfile} collecting timing data,
+	 * and returns the profile.
+	 *
+	 * <p>The profile is assigned only when no profile is already active; if one is, this leaves
+	 * it in place (assigning neither the supplied profile nor clearing on exit) and logs that it
+	 * did so, so a profile established by an enclosing scope is never disturbed.</p>
 	 *
 	 * @param <T>     the profile type
 	 * @param profile the operation profile to assign
@@ -397,12 +401,15 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 	 * @return the profile, populated with timing data after the runnable completes
 	 */
 	default <T extends OperationProfile> T profile(T profile, Runnable r) {
+		boolean assign = !Hardware.getLocalHardware().isProfileAssigned();
+		if (!assign) log("A profile is already assigned; leaving it in place and not assigning or clearing");
+
 		try {
-			Hardware.getLocalHardware().assignProfile(profile);
+			if (assign) Hardware.getLocalHardware().assignProfile(profile);
 			r.run();
 			return profile;
 		} finally {
-			Hardware.getLocalHardware().clearProfile();
+			if (assign) Hardware.getLocalHardware().clearProfile();
 		}
 	}
 
@@ -420,22 +427,44 @@ public interface CodeFeatures extends LayerRoutingFeatures,
 
 	/**
 	 * Profiles the given operation supplier under the provided {@link OperationProfileNode},
-	 * using the profile for timing if the supplier is an {@link OperationList}.
+	 * capturing both timing and generated kernel source.
 	 *
-	 * @param profile the profile node to collect timing into; may be {@code null}
+	 * <p>The profile is assigned as the active profile <em>before</em> the operation is
+	 * compiled (the {@code get} call below triggers compilation). This ordering is
+	 * required for source capture: assigning the profile installs its compilation
+	 * listener (see {@link org.almostrealism.hardware.Hardware#assignProfile}), which
+	 * records the generated kernel source as each scope compiles. Compiling first and
+	 * assigning afterwards — as an earlier version of this method did — captures timing
+	 * but no source, so {@code ar-profile-analyzer get_source} returns nothing for the
+	 * saved profile.</p>
+	 *
+	 * <p>As with {@link #profile(OperationProfile, Runnable)}, the profile is assigned only when
+	 * no profile is already active; otherwise the existing one is left in place (and this logs
+	 * that it did so) so an enclosing profile is never disturbed.</p>
+	 *
+	 * @param profile the profile node to collect timing and source into; may be {@code null}
 	 * @param op      a supplier producing the runnable to profile
 	 * @return the profile node after the operation completes
 	 */
 	default OperationProfileNode profile(OperationProfileNode profile, Supplier<Runnable> op) {
-		Runnable r;
+		boolean assign = !Hardware.getLocalHardware().isProfileAssigned();
+		if (!assign) log("A profile is already assigned; leaving it in place and not assigning or clearing");
 
-		if (op instanceof OperationList && profile != null) {
-			r = ((OperationList) op).get(profile);
-		} else {
-			r = op.get();
+		try {
+			if (assign) Hardware.getLocalHardware().assignProfile(profile);
+
+			Runnable r;
+			if (op instanceof OperationList && profile != null) {
+				r = ((OperationList) op).get(profile);
+			} else {
+				r = op.get();
+			}
+
+			r.run();
+			return profile;
+		} finally {
+			if (assign) Hardware.getLocalHardware().clearProfile();
 		}
-
-		return profile(profile, r);
 	}
 
 	/**

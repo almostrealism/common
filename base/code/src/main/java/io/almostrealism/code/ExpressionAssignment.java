@@ -18,6 +18,8 @@ package io.almostrealism.code;
 
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
@@ -170,5 +172,37 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 		return new ExpressionAssignment<>(declaration,
 				ScopeSettings.reviewSimplification(destination, destination.simplify(context, depth + 1)),
 				ScopeSettings.reviewSimplification(expression, expression.simplify(context, depth + 1)));
+	}
+
+	@Override
+	public ExpressionAssignment<T> replace(Expression target, Expression replacement) {
+		Expression<T> newDestination = destination == null ? null : destination.replace(target, replacement);
+		Expression<T> newExpression = expression.replace(target, replacement);
+
+		if (newDestination == destination && newExpression == expression) return this;
+		return new ExpressionAssignment<>(declaration, newDestination, newExpression);
+	}
+
+	/**
+	 * Returns whether this assignment references {@code array} through an element other than
+	 * the promoted ones. Each promoted element is replaced by its accumulator; if a reference
+	 * to {@code array} survives in the destination or the expression, it addresses an element
+	 * that is not being promoted.
+	 *
+	 * @param array        the array being considered for accumulator promotion
+	 * @param elements     the promoted element references, replaced in order
+	 * @param accumulators the accumulator that replaces each promoted element
+	 * @return true if a reference to the array remains after substitution
+	 */
+	public boolean referencesArrayBeyond(Variable<?, ?> array, List<InstanceReference<?, ?>> elements,
+										 List<StaticReference<?>> accumulators) {
+		ExpressionAssignment<?> rewritten = this;
+		for (int i = 0; i < elements.size(); i++) {
+			rewritten = rewritten.replace(elements.get(i), accumulators.get(i));
+		}
+
+		Expression<?> dest = rewritten.getDestination();
+		if (dest != null && dest.containsReference(array)) return true;
+		return rewritten.getExpression().containsReference(array);
 	}
 }

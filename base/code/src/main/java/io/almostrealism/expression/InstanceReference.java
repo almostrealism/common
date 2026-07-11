@@ -30,6 +30,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiFunction;
 
 /**
@@ -134,7 +135,12 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 
 	@Override
 	public boolean containsReference(Variable var) {
-		return Objects.equals(getReferent().getName(), var.getName());
+		return Objects.equals(getReferent().getName(), var.getName()) || super.containsReference(var);
+	}
+
+	@Override
+	public boolean containsReference(Set<String> names) {
+		return (getReferent() != null && names.contains(getReferent().getName())) || super.containsReference(names);
 	}
 
 	@Override

@@ -270,6 +270,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	@Override
 	public void setMem(CLMemory mem, int offset, float[] source, int srcOffset, int length) {
 		long start = System.nanoTime();
+		mem.invalidateHostCache();
 
 		try {
 			if (context.getPrecision() == Precision.FP64) {
@@ -300,6 +301,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	@Override
 	public void setMem(CLMemory mem, int offset, double[] source, int srcOffset, int length) {
 		long start = System.nanoTime();
+		mem.invalidateHostCache();
 
 		try {
 			if (context.getPrecision() == Precision.FP64) {
@@ -330,6 +332,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	@Override
 	public void setMem(CLMemory mem, int offset, Memory srcRam, int srcOffset, int length) {
 		long start = System.nanoTime();
+		mem.invalidateHostCache();
 
 		if (srcRam instanceof CLMemory) {
 			CLMemory src = (CLMemory) srcRam;
@@ -378,6 +381,12 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
+			double[] cache = mem.snapshotForRead(length);
+			if (cache != null) {
+				for (int i = 0; i < length; i++) out[oOffset + i] = (float) cache[sOffset + i];
+				return;
+			}
+
 			if (getNumberSize() == 8) {
 				double d[] = new double[length];
 				Pointer dst = Pointer.to(d).withByteOffset(0);
@@ -412,6 +421,12 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		long start = System.nanoTime();
 
 		try {
+			double[] cache = mem.snapshotForRead(length);
+			if (cache != null) {
+				for (int i = 0; i < length; i++) out[oOffset + i] = cache[sOffset + i];
+				return;
+			}
+
 			if (getNumberSize() == 8) {
 				Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
 				cl_event event = new cl_event();
