@@ -496,7 +496,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return Process details ready for execution
 	 */
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args, Semaphore dependsOn) {
-		return getDetailsFactory().init(output, args).construct(dependsOn);
+		return getDetailsFactory().construct(output, args, dependsOn);
 	}
 
 	/**
