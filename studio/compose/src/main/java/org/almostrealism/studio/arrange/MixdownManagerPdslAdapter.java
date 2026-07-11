@@ -343,6 +343,24 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		PackedCollection hpCoeffs = (PackedCollection) args.get("hp_coeffs");
 		PackedCollection lpCoeffs = (PackedCollection) args.get("lp_coeffs");
 		int taps = config.filterOrder + 1;
+
+		// Ramp history: copy each hot-bus gain's current value into its _prev slot
+		// BEFORE the current slots are re-evaluated below, so the compiled ramp_scale
+		// stages interpolate from last buffer's end value to this buffer's target.
+		// These copies must stay ahead of the corresponding current-slot assignments;
+		// list order is preserved through compilation (read-after-write hazards
+		// subdivide the operation list).
+		PackedCollection volumePrev = (PackedCollection) args.get("volume_prev");
+		if (volumePrev != null) {
+			refresh.add(ADAPTER.a(config.channels, ADAPTER.cp(volumePrev),
+					ADAPTER.cp(volume)));
+			refresh.add(ADAPTER.a(config.channels,
+					ADAPTER.cp((PackedCollection) args.get("efx_automation_prev")),
+					ADAPTER.cp((PackedCollection) args.get("efx_automation"))));
+			refresh.add(ADAPTER.a(config.channels,
+					ADAPTER.cp((PackedCollection) args.get("reverb_send_prev")),
+					ADAPTER.cp((PackedCollection) args.get("reverb_send"))));
+		}
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(ADAPTER.a(1, ADAPTER.cp(hpCutoff.range(ADAPTER.shape(1), ch)),
 					hpCutoffProducer(manager, config.channel(ch))));
@@ -586,6 +604,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// EfxManager.apply() applies to the wet path. Time-varying (clock-driven), so it
 		// is a collection slot refreshed per buffer by automationRefresh (see hp_cutoff).
 		args.put("efx_automation", new PackedCollection(config.channels).fill(0.0));
+
+		// Ramp history slots: each hot-bus gain keeps the value its ramp ended on last
+		// buffer, copied from the current slot at the top of every automationRefresh, so
+		// the ramp_scale stages interpolate buffer-to-buffer instead of stepping. The
+		// per-buffer gain staircase (43 Hz at 1024) was a level discontinuity at every
+		// buffer boundary on loud buses, recirculated by the feedback loops — the
+		// legacy path applied these gains per sample.
+		args.put("volume_prev", new PackedCollection(config.channels).fill(0.0));
+		args.put("efx_automation_prev", new PackedCollection(config.channels).fill(0.0));
+		args.put("reverb_send_prev", new PackedCollection(config.channels).fill(0.0));
 
 		// Recursive feedback grid — the PDSL analogue of the two legacy regeneration
 		// loops (EfxManager.apply's per-channel self-echo and MixdownManager.createEfx's

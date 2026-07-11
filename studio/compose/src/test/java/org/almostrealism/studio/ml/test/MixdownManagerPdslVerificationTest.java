@@ -360,6 +360,42 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	}
 
 	/**
+	 * Verifies the ramp history plumbing: {@code automationRefresh} copies each
+	 * hot-bus gain's current value into its {@code _prev} slot before re-evaluating
+	 * the current slot, so the compiled {@code ramp_scale} stages interpolate from
+	 * last buffer's end value to this buffer's target.
+	 */
+	@Test(timeout = 120_000)
+	public void automationRampSlotsTrackPreviousValues() {
+		MixdownManager mixdown = buildFixtureMixdown(true);
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		Map<String, Object> args =
+				MixdownManagerPdslAdapter.buildArgsMap(mixdown, fixtureEfx, config);
+		Runnable refresh = MixdownManagerPdslAdapter
+				.automationRefresh(mixdown, fixtureEfx, config, args).get();
+
+		PackedCollection volume = (PackedCollection) args.get("volume");
+		PackedCollection volumePrev = (PackedCollection) args.get("volume_prev");
+		Assert.assertNotNull("the wet argument map must carry the volume_prev slot",
+				volumePrev);
+
+		double[] before = volume.toArray(0, CHANNELS);
+		fixtureTime.getClock().setFrame(5 * SAMPLE_RATE);
+		refresh.run();
+
+		double[] prev = volumePrev.toArray(0, CHANNELS);
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			Assert.assertEquals(
+					"volume_prev must hold the pre-refresh current value at channel " + ch,
+					before[ch], prev[ch], 1e-9);
+		}
+	}
+
+	/**
 	 * Evaluates a producer-valued argument-map entry once and returns its contents.
 	 *
 	 * @param producer the argument-map value (a {@link Producer})
@@ -704,6 +740,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// arithmetic: unity volume, identity (delta) FIR coefficients for the per-channel
 		// high-pass and the master low-pass, unity master gain.
 		args.put("volume", onesCollection(CHANNELS));
+		// ramp_scale(prev == curr) is a constant gain — the stepped behaviour this
+		// exact-arithmetic comparison expects.
+		args.put("volume_prev", args.get("volume"));
 		int taps = PDSL_FILTER_ORDER + 1;
 		args.put("hp_coeffs", identityFirBank(CHANNELS, taps));
 		args.put("lp_coeffs", identityFir(taps));
@@ -893,6 +932,13 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		int sig = config.signalSize;
 		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
 		args.putAll(extraArgs);
+		// The wet layer's ramp_scale stages need a volume history; aliasing it to the
+		// volume slot itself keeps the gain constant per buffer (the stepped behaviour
+		// these comparisons were written against). Harmless for layers that do not
+		// declare it (unknown argument-map keys are ignored).
+		if (!args.containsKey("volume_prev")) {
+			args.put("volume_prev", args.get("volume"));
+		}
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");

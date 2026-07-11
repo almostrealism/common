@@ -324,11 +324,18 @@ each fix.
    (evaluate by ear whether that reads as motion or as splice artifacts, per the
    original plan); and the drift is not rewound by a runner reset. Wiring pinned by
    `MixdownManagerPdslVerificationTest.busDelayDriftAccumulatesWithClock`.
-3. Per-sample parameter ramps: interpolate each automation slot from its previous to
-   current value across the buffer inside the kernel (slots become `[2]` or the ramp is
-   computed from a `prev` bank) — removes the 10.77 Hz staircase where it multiplies
-   hot buses (volume, efx automation, reverb send first; filter coefficient banks can
-   stay stepped).
+3. **DONE 2026-07-11 (pending the by-ear verdict).** Per-sample parameter ramps: a new
+   `ramp_scale(previous, current)` primitive interpolates each hot-bus gain linearly
+   across the frame, ending exactly at `current`, so per-buffer slot refreshes trace a
+   continuous piecewise-linear envelope instead of the buffer-rate staircase (43 Hz at
+   1024 — the leading mechanical grit suspect: a level step on a loud bus is a
+   discontinuity per buffer boundary, recirculated by the feedback loops).
+   `automationRefresh` copies each gain's current value into a `_prev` slot before
+   re-evaluating it; the ramped stages are volume (both arms), efx automation, and the
+   reverb send. Filter coefficient banks stay stepped per the original plan, and the
+   genome-static gains (`efx_wet_level`, `wet_level`) stay `scale()`. Pinned by
+   `RampScaleBehaviorTest` (per-sample exactness and cross-frame continuity) and
+   `automationRampSlotsTrackPreviousValues`.
 4. Source the efx/wet filter banks from the biquad response tables (§3.5) so the
    in-loop filters match legacy slope.
 

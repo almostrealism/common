@@ -35,10 +35,13 @@ Execution order (PDSL_DIFFERENCES §6):
    `MixdownManagerPdslVerificationTest.feedbackGridAndBusDelayFollowGenes`. C2 **done
    2026-07-10** (pending by-ear verdict): per-buffer Euler integration of the
    `delayDynamics` cursor rate into a `bus_delay_drift` slot — the legacy wash's
-   wobble and accelerando — pinned by `busDelayDriftAccumulatesWithClock`. Remaining:
-   per-sample parameter ramps for hot-bus automation (C3), biquad-table coefficients
-   for the in-loop filters (C4). Tune the granularity-dependent pieces against the
-   **1024** production buffer (43 Hz update rate).
+   wobble and accelerando — pinned by `busDelayDriftAccumulatesWithClock`. C3 **done 2026-07-11**
+   (pending by-ear verdict): the `ramp_scale` primitive replaces the stepped hot-bus
+   gains (volume, efx automation, reverb send) with per-sample linear ramps between
+   per-buffer slot refreshes — removing the 43 Hz staircase at 1024, the leading
+   mechanical grit suspect — pinned by `RampScaleBehaviorTest` and
+   `automationRampSlotsTrackPreviousValues`. Remaining: biquad-table coefficients for
+   the in-loop filters (C4).
 5. **D — accept and document** what a block-parallel buffer cannot reproduce
    (PDSL_DIFFERENCES §5).
 
@@ -86,8 +89,8 @@ performance items land.
   defects, so it is a level check only.
 - `PdslHotPathBreakdownTest` / `PdslSetupBreakdownTest` — the perf instruments; keep
   them green as regression guards (p50 ratio at the production buffer size, setup
-  seconds, exact-peak parity where applicable). The former is currently broken on
-  master by the argument-preparation NPE (see
-  [PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md)); run with
-  `-DAR_HARDWARE_ASYNC=disabled` until that fix lands.
+  seconds, exact-peak parity where applicable). The former measures {1024, 4096} as of
+  2026-07-11 and runs in default (async) mode again — the argument-preparation NPE
+  that briefly broke it was fixed by PR #344
+  (see [PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md) item 1).
 - The batched sentinel battery (`studio/music`) — unchanged; guards a2 dispatch parity.

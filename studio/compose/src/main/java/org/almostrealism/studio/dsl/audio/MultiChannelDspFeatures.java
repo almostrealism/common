@@ -34,6 +34,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
+import org.almostrealism.model.ForwardOnlyBlock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -111,6 +112,53 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> new OperationList("per-channel-backward"));
 		return new DefaultBlock(multiShape, multiShape, forward, backward);
+	}
+
+	/**
+	 * Builds a per-sample parameter-ramp gain block: sample {@code i} of each channel is
+	 * scaled by the linear interpolation from that channel's {@code previous} value to
+	 * its {@code current} value across the frame, ending exactly at {@code current} — so
+	 * consecutive frames whose slots are refreshed once per buffer trace a continuous
+	 * piecewise-linear envelope instead of a per-buffer staircase. This is the
+	 * de-zippering stage for hot-bus automation: a stepped gain on a loud bus is a level
+	 * discontinuity at every buffer boundary, which the mixdown's feedback loops then
+	 * recirculate.
+	 *
+	 * <p>{@code previous} and {@code current} are shape {@code [channels]} banks (or
+	 * {@code [1]} with a single channel); both are read live every pass, so per-buffer
+	 * slot refreshes flow straight into the ramp.</p>
+	 *
+	 * @param previous   per-channel gain at the end of the previous frame
+	 * @param current    per-channel gain to reach by the end of this frame
+	 * @param channels   number of channels
+	 * @param signalSize samples per channel per frame
+	 * @return a Block with shape {@code [channels, signalSize] → [channels, signalSize]}
+	 */
+	default Block rampScaleBlock(CollectionProducer previous, CollectionProducer current,
+								 int channels, int signalSize) {
+		TraversalPolicy shape = shape(channels, signalSize);
+		return new ForwardOnlyBlock(layer("ramp_scale", shape, shape, input ->
+				new DefaultTraversableExpressionComputation(
+						"rampScale-" + channels + "x" + signalSize, shape,
+						(Function<TraversableExpression[], CollectionExpression>) exprArgs ->
+								DefaultCollectionExpression.create(shape, idx -> {
+									// gain(i) = prev*(S-1-i)/S + curr*(i+1)/S — the two
+									// fractions sum to 1, so this is the linear ramp from
+									// prev (exclusive) to curr (inclusive at i = S-1).
+									Expression<?> ch = idx.divide((long) signalSize)
+											.imod((long) channels);
+									Expression<?> i = idx.imod((long) signalSize);
+									Expression<?> up = i.add(1)
+											.multiply(1.0 / signalSize);
+									Expression<?> down = i.multiply(-1.0)
+											.add(signalSize - 1)
+											.multiply(1.0 / signalSize);
+									Expression<?> gain = exprArgs[2].getValueAt(ch)
+											.multiply(down)
+											.add(exprArgs[3].getValueAt(ch).multiply(up));
+									return exprArgs[1].getValueAt(idx).multiply(gain);
+								}),
+						(Producer) input, (Producer) previous, (Producer) current)));
 	}
 
 	/**

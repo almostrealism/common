@@ -424,6 +424,7 @@ state mixdown_efx_feedback_state {
 // and efx_fb_transmission is scaled to a contraction for stability.
 layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                          hp_coeffs: producer([channels, fir_taps]), volume: producer([channels]),
+                         volume_prev: producer([channels]),
                          lp_coeffs: producer([fir_taps]),
                          sample_rate: scalar, filter_order: scalar,
                          wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
@@ -432,10 +433,12 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                          efx_filter_coeffs: producer([channels, fir_taps]),
                          efx_wet_level: producer([channels]),
                          efx_automation: producer([channels]),
+                         efx_automation_prev: producer([channels]),
                          efx_fb_delay: producer([channels]),
                          efx_fb_transmission: producer([channels, channels]),
                          efx_fb_passthrough: producer([channels, channels]),
                          reverb_send: producer([channels]),
+                         reverb_send_prev: producer([channels]),
                          reverb_taps: int,
                          reverb_delays: producer([reverb_taps]),
                          reverb_feedback: producer([reverb_taps, reverb_taps]),
@@ -466,7 +469,10 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                 // approximation.
                 clip(-0.99, 0.99)
                 fir(hp_coeffs[channel])
-                scale(volume[channel])
+                // Per-sample gain ramp from last buffer's volume to this buffer's —
+                // the legacy path applies volume per sample; a per-buffer step on a
+                // hot bus is a level discontinuity at every boundary (zipper).
+                ramp_scale(volume_prev[channel], volume[channel])
             }
             sum_channels()
             // Diagnostic arm-isolation gain (default 1.0). Lets the bisection test zero an
@@ -486,7 +492,7 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                     {
                         fir(efx_filter_coeffs[channel])
                         scale(efx_wet_level[channel])
-                        scale(efx_automation[channel])
+                        ramp_scale(efx_automation_prev[channel], efx_automation[channel])
                     }
                 )
                 // Mixdown efx bus: per-channel wet filter then the per-channel VOLUME, mirroring
@@ -497,7 +503,7 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                 // chromosome (4-20 s), so the efx bus arrives as the slow-building regenerating
                 // wash the legacy path produces, not a near-immediate echo.
                 fir(wet_filter_coeffs[channel])
-                scale(volume[channel])
+                ramp_scale(volume_prev[channel], volume[channel])
                 delay(delay_samples[channel], buffers[channel], heads[channel])
             }
             // Recursive cross-channel feedback grid — the decaying echo/tail. Replaces the
@@ -528,7 +534,7 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
             slice(channels * signal_size, channels * signal_size)
             reshape(shape(channels, signal_size))
             for each channel {
-                scale(reverb_send[channel])
+                ramp_scale(reverb_send_prev[channel], reverb_send[channel])
             }
             sum_channels()
             scale(reverb_network_gain)

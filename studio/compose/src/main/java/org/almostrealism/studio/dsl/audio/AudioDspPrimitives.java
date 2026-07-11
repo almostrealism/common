@@ -94,6 +94,7 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		interpreter.registerPrimitive("highpass", self::dispatchHighpass);
 		interpreter.registerPrimitive("biquad", self::dispatchBiquad);
 		interpreter.registerPrimitive("clip", self::dispatchClip);
+		interpreter.registerPrimitive("ramp_scale", self::dispatchRampScale);
 		interpreter.registerPrimitive("delay", self::dispatchDelay);
 		interpreter.registerPrimitive("lfo", self::dispatchLfo);
 		interpreter.registerPrimitive("route", self::dispatchRoute);
@@ -235,6 +236,51 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 							Supplier<Runnable>>) (in, next) -> new OperationList("biquad-backward"));
 			return new DefaultBlock(shape, shape, forward, backward);
 		};
+	}
+
+	/**
+	 * {@code ramp_scale(previous, current)} — per-sample gain ramp across the frame,
+	 * from each channel's {@code previous} slot value to its {@code current} slot value
+	 * (ending exactly at {@code current}, so per-buffer slot refreshes trace a
+	 * continuous piecewise-linear envelope instead of a buffer-rate staircase). The
+	 * de-zippering counterpart of {@code scale()} for time-varying hot-bus gains.
+	 *
+	 * @param args the two per-channel gain arguments (previous, current)
+	 * @param ctx  the primitive context
+	 * @return a ramp-gain block factory
+	 */
+	private Function<TraversalPolicy, Block> dispatchRampScale(List<Object> args, PdslPrimitiveContext ctx) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"ramp_scale() expects 2 arguments (previous, current), got " + args.size());
+		}
+
+		boolean prevBankForm = args.get(0) instanceof PdslChannelBank;
+		boolean currBankForm = args.get(1) instanceof PdslChannelBank;
+		if (prevBankForm != currBankForm) {
+			throw new PdslParseException("ramp_scale() requires previous and current"
+					+ " to both be per-channel banks when vectorized");
+		}
+
+		if (prevBankForm) {
+			// Vectorized for-each: both gain banks arrive whole and the ramp for every
+			// channel runs as one kernel over [channels, signalSize].
+			PdslChannelBank prevBank = (PdslChannelBank) args.get(0);
+			PdslChannelBank currBank = (PdslChannelBank) args.get(1);
+			CollectionProducer previous =
+					ctx.toProducer(prevBank.getSource(), null, "ramp_scale() previous");
+			CollectionProducer current =
+					ctx.toProducer(currBank.getSource(), null, "ramp_scale() current");
+			int channels = prevBank.getChannels();
+			return shape -> rampScaleBlock(previous, current,
+					channels, shape.getTotalSize() / channels);
+		}
+
+		CollectionProducer previous = ctx.toProducer(args.get(0), shape(1),
+				"ramp_scale() previous");
+		CollectionProducer current = ctx.toProducer(args.get(1), shape(1),
+				"ramp_scale() current");
+		return shape -> rampScaleBlock(previous, current, 1, shape.getTotalSize());
 	}
 
 	/** {@code delay(delaySamples, buffer, head)} — stateful integer-sample delay. */

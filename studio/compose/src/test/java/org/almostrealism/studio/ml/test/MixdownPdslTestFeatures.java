@@ -88,6 +88,11 @@ interface MixdownPdslTestFeatures {
 		neutralEfx.put("efx_filter_coeffs", efxCoeffs);
 		neutralEfx.put("efx_wet_level", efxWet);
 		neutralEfx.put("efx_automation", efxAuto);
+		// The ramp_scale stages interpolate previous -> current; aliasing each _prev
+		// slot to the SAME collection as its current slot makes every ramp a constant
+		// gain — exactly the stepped behaviour these neutral configurations compare
+		// against.
+		neutralEfx.put("efx_automation_prev", efxAuto);
 		neutralEfx.put("efx_fb_delay", fbDelay);
 		neutralEfx.put("efx_fb_transmission", fbTransmission);
 		neutralEfx.put("efx_fb_passthrough", fbPassthrough);
@@ -98,6 +103,7 @@ interface MixdownPdslTestFeatures {
 		// (the adapter's own map uses its production tap count with matching shapes).
 		neutralEfx.put("reverb_taps", channels);
 		neutralEfx.put("reverb_send", reverbSend);
+		neutralEfx.put("reverb_send_prev", reverbSend);
 		neutralEfx.put("reverb_delays", reverbDelays);
 		neutralEfx.put("reverb_feedback", reverbFeedback);
 		neutralEfx.put("reverb_buffers", reverbBuffers);
