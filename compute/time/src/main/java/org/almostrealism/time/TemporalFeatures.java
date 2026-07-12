@@ -909,7 +909,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 
 		// First value stays the same
 		double cumulative = wrappedPhase.toDouble(0);
-		unwrapped.setMem(0, cumulative);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(unwrapped.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(cumulative)).get().run();
 
 		// Process remaining values
 		for (int i = 1; i < size; i++) {
@@ -926,7 +926,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 			}
 
 			cumulative += diff;
-			unwrapped.setMem(i, cumulative);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(unwrapped.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(cumulative)).get().run();
 		}
 
 		return unwrapped;
@@ -1209,14 +1209,14 @@ public interface TemporalFeatures extends GeometryFeatures {
 			// Rising slope
 			for (int k = fStart; k < fCenter && k < numFreqBins; k++) {
 				if (fCenter != fStart) {
-					fb.setMem(m * numFreqBins + k, (double) (k - fStart) / (fCenter - fStart));
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(fb.range(new TraversalPolicy(1), m * numFreqBins + k)), CollectionFeatures.getInstance().c((double) (k - fStart) / (fCenter - fStart))).get().run();
 				}
 			}
 
 			// Falling slope
 			for (int k = fCenter; k < fEnd && k < numFreqBins; k++) {
 				if (fEnd != fCenter) {
-					fb.setMem(m * numFreqBins + k, (double) (fEnd - k) / (fEnd - fCenter));
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(fb.range(new TraversalPolicy(1), m * numFreqBins + k)), CollectionFeatures.getInstance().c((double) (fEnd - k) / (fEnd - fCenter))).get().run();
 				}
 			}
 		}
@@ -1320,7 +1320,7 @@ public interface TemporalFeatures extends GeometryFeatures {
 			}
 			// Apply orthogonal normalization
 			double scale = (k == 0) ? Math.sqrt(1.0 / numMelBands) : Math.sqrt(2.0 / numMelBands);
-			mfccs.setMem(k, sum * scale);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(mfccs.range(new TraversalPolicy(1), k)), CollectionFeatures.getInstance().c(sum * scale)).get().run();
 		}
 
 		return mfccs;

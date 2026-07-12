@@ -96,7 +96,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * is skipped entirely by this rule (its other detectors still apply).
 	 */
 	private static final List<String> UNMIGRATED_MODULES = List.of(
-			"/compute/time/",
 			"/domain/color/",
 			"/domain/graph/",
 			"/domain/heredity/",
