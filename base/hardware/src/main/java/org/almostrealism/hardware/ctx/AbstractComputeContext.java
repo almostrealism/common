@@ -180,7 +180,7 @@ public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> 
 		// TODO  result, never inside internal machinery like this fallback.
 		if (dependsOn != null) dependsOn.waitFor();
 
-		destination.setMem(0, source, 0, source.getMemLength());
+		destination.setFrom(0, source, 0, source.getMemLength());
 		return null;
 	}
 

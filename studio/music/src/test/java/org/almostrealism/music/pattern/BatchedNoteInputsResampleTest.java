@@ -71,7 +71,7 @@ public class BatchedNoteInputsResampleTest extends TestSuiteBase implements Audi
 	 */
 	private PackedCollection fit(PackedCollection raw) {
 		PackedCollection out = new PackedCollection(SOURCE_LENGTH);
-		out.setMem(0, raw, 0, Math.min(raw.getMemLength(), SOURCE_LENGTH));
+		out.setFrom(0, raw, 0, Math.min(raw.getMemLength(), SOURCE_LENGTH));
 		return out;
 	}
 

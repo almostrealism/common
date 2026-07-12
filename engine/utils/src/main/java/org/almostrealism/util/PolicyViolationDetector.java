@@ -109,6 +109,7 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 			"PolicyViolationDetector.java",            // This parent class
 			"CodePolicyViolationDetector.java",        // The orchestrator
 			"PackedCollectionDetector.java",           // Sub-detector
+			"SetMemLiteralsDetector.java",             // Sub-detector (scans for non-literal setMem)
 			"ProducerPatternDetector.java",            // Sub-detector
 			"NamingConventionDetector.java",           // Sub-detector
 			"VersionReferenceDetector.java",           // Sub-detector (scans for version markers)

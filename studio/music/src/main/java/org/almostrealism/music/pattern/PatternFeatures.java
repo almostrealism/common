@@ -313,7 +313,7 @@ public interface PatternFeatures extends CodeFeatures {
 									// than detaching the evaluated result) avoids any chance
 									// of a double free between the cache and the Heap stage.
 									fullResult[0] = new PackedCollection(evaluated.getShape());
-									fullResult[0].setMem(0, evaluated);
+									fullResult[0].setFrom(0, evaluated);
 									cache.put(noteStart, fullResult[0]);
 									sumToDestination(destination, fullResult[0], noteStart,
 											startFrame, endFrame, frameCount);

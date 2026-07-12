@@ -494,7 +494,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 			// of the relevant data rather than try and represent all the values it
 			// might take on as an Expression via DefaultTraversableExpressionComputation
 			PackedCollection copy = new PackedCollection(value.getShape());
-			copy.setMem(0, value);
+			copy.setFrom(0, value);
 			return cp(copy);
 		}
 	}

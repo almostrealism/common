@@ -216,7 +216,7 @@ public class ProjectedGenome implements Genome<PackedCollection> {
 		if (parameters.getShape().getTotalSize() != this.parameters.getShape().getTotalSize())
 			throw new IllegalArgumentException();
 
-		this.parameters.setMem(0, parameters);
+		this.parameters.setFrom(0, parameters);
 
 		initWeights();
 		refreshValues();

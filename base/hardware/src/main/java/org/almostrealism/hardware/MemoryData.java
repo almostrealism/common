@@ -748,11 +748,15 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	/**
 	 * Copies all data from another {@link MemoryData} to this memory starting at the specified offset.
 	 *
+	 * <p>This performs a {@link MemoryData}-to-{@link MemoryData} copy and is deliberately
+	 * named distinctly from the {@code setMem(...)} array/literal overloads so that the
+	 * copy surface can be told apart from host-array uploads at every call site.</p>
+	 *
 	 * @param offset Starting index in this memory
 	 * @param src Source memory data
 	 */
-	default void setMem(int offset, MemoryData src) {
-		setMem(offset, src, 0, src.getMemLength());
+	default void setFrom(int offset, MemoryData src) {
+		setFrom(offset, src, 0, src.getMemLength());
 	}
 
 	/**
@@ -762,8 +766,8 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param srcOffset Starting index in source
 	 * @param length Number of elements to copy
 	 */
-	default void setMem(MemoryData src, int srcOffset, int length) {
-		setMem(0, src, srcOffset, length);
+	default void setFrom(MemoryData src, int srcOffset, int length) {
+		setFrom(0, src, srcOffset, length);
 	}
 
 	/**
@@ -775,7 +779,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param length Number of elements to copy
 	 * @throws IllegalArgumentException If source or destination ranges are invalid
 	 */
-	default void setMem(int offset, MemoryData src, int srcOffset, int length) {
+	default void setFrom(int offset, MemoryData src, int srcOffset, int length) {
 		if (src.getMemLength() < srcOffset + length) {
 			throw new IllegalArgumentException("Source MemoryData is not long enough to provide the requested data");
 		} else if (offset + length > getMemLength()) {
@@ -783,9 +787,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 
 		if (getDelegate() == null) {
-			setMem(getMem(), getOffset() + offset, src, srcOffset, length);
+			setFrom(getMem(), getOffset() + offset, src, srcOffset, length);
 		} else {
-			getDelegate().setMem(getDelegateOffset() + offset, src, srcOffset, length);
+			getDelegate().setFrom(getDelegateOffset() + offset, src, srcOffset, length);
 		}
 	}
 
@@ -857,7 +861,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * Low-level method to copy data between {@link Memory} objects.
 	 *
 	 * <p>Delegates to the memory's {@link io.almostrealism.code.MemoryProvider} for the actual copy.
-	 * This is used internally by the default {@link #setMem} methods.</p>
+	 * This is used internally by the default {@link #setFrom} methods.</p>
 	 *
 	 * @param mem Target memory
 	 * @param offset Starting offset in target memory
@@ -865,7 +869,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param srcOffset Starting offset in source memory
 	 * @param length Number of elements to copy
 	 */
-	static void setMem(Memory mem, int offset, MemoryData src, int srcOffset, int length) {
+	static void setFrom(Memory mem, int offset, MemoryData src, int srcOffset, int length) {
 		mem.getProvider().setMem(mem, offset, src.getMem(), src.getOffset() + srcOffset, length);
 	}
 

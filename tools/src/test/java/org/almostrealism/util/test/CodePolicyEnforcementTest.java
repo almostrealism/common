@@ -253,6 +253,87 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the detector flags {@code setMem} calls whose arguments are a host array
+	 * or a computed scalar — the shapes that must instead use {@code setFrom}/{@code into} or a
+	 * producer assignment.
+	 */
+	@Test
+	public void testDetectorCatchesNonLiteralSetMem() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-setmem");
+		Path testFile = tempDir.resolve("SetMemViolation.java");
+
+		String violatingCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				public class SetMemViolation {
+				    public void bad(PackedCollection dest, double[] host, double scalar) {
+				        dest.setMem(0, host, 0, host.length);
+				        dest.setMem(0, scalar);
+				        dest.setMem(0, new double[] { 1.0, 2.0 });
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			long count = detector.getViolations().stream()
+					.filter(v -> "SETMEM_NON_LITERAL_ARGUMENT".equals(v.getRule()))
+					.count();
+			Assert.assertEquals("Should flag each non-literal setMem argument shape", 3, count);
+
+			log("Detector correctly identified " + count + " non-literal setMem violation(s).");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector allows literal {@code setMem} writes (at both fixed and variable
+	 * offsets) and does not flag a {@code setFrom} MemoryData copy.
+	 */
+	@Test
+	public void testDetectorAllowsLiteralSetMemAndSetFrom() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-setmem-clean");
+		Path testFile = tempDir.resolve("SetMemClean.java");
+
+		String cleanCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				public class SetMemClean {
+				    public void ok(PackedCollection dest, PackedCollection src, int i) {
+				        dest.setMem(0, 1.0, 2.0, 3.0);
+				        dest.setMem(i, 0.0);
+				        dest.setMem(0, -0.25);
+				        dest.setFrom(0, src);
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean flagged = detector.getViolations().stream()
+					.anyMatch(v -> "SETMEM_NON_LITERAL_ARGUMENT".equals(v.getRule()));
+			Assert.assertFalse("Should not flag literal setMem writes or a setFrom copy", flagged);
+
+			log("Detector correctly allowed literal setMem writes and a setFrom copy.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
 	 * Verifies that the detector catches a source-line reference in a comment.
 	 */
 	@Test

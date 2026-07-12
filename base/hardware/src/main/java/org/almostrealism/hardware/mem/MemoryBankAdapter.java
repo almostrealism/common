@@ -280,7 +280,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 
 	@Override
 	public void set(int index, T value) {
-		setMem(index * getAtomicMemLength(),
+		setFrom(index * getAtomicMemLength(),
 				value, 0,
 				getAtomicMemLength());
 	}
