@@ -182,14 +182,9 @@ import java.util.stream.Stream;
  * public class MyAcceleratedOperation extends AcceleratedOperation {
  *     @Override
  *     protected AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
- *         // Get factory (created in createDetailsFactory())
- *         ProcessDetailsFactory factory = getDetailsFactory();
- *
- *         // Initialize with output and args
- *         factory.init(output, args);
- *
- *         // Construct process details (evaluates arguments async)
- *         return factory.construct();
+ *         // Get factory (created in createDetailsFactory()), prepare the
+ *         // arguments, and construct process details (evaluates arguments async)
+ *         return getDetailsFactory().construct(output, args, null);
  *     }
  * }
  * }</pre>
@@ -258,23 +253,16 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	/** Supplier of the memory replacement manager, used to redirect memory from one provider to another. */
 	private Supplier<MemoryReplacementManager> replacements;
 
-	/** The output {@link MemoryBank} passed to the last {@link #init} call. */
-	private MemoryBank output;
-	/** The positional arguments passed to the last {@link #init} call. */
-	private Object args[];
-	/** True if all positional arguments passed to {@link #init} are {@link io.almostrealism.code.MemoryData} instances. */
-	private boolean allMemoryData;
-
-	/** Resolved kernel size (number of parallel work items) for the current invocation. */
-	private long kernelSize;
-	/** Pre-resolved {@link MemoryData} instances for each kernel argument slot. */
-	private MemoryData kernelArgs[];
-	/** {@link Evaluable} instances for kernel arguments that could not be statically resolved. */
-	private Evaluable kernelArgEvaluables[];
-	/** {@link StreamingEvaluable} instances for asynchronous kernel arguments. */
-	private StreamingEvaluable asyncEvaluables[];
-	/** The most recently built {@link AcceleratedProcessDetails} instance. */
-	private AcceleratedProcessDetails currentDetails;
+	/**
+	 * The most recently prepared argument snapshot, reused when {@link #init}
+	 * is called again with the same output and argument identities.
+	 *
+	 * <p>Only ever assigned a fully constructed {@link PreparedArguments}
+	 * instance, as the last step of preparation. A preparation that fails
+	 * partway through leaves the previous (complete) snapshot in place, so
+	 * no caller can observe argument state that is only partially resolved.</p>
+	 */
+	private PreparedArguments prepared;
 
 	/** Executor used to dispatch asynchronous kernel execution when {@link Hardware#isAsync()} is true. */
 	private Executor executor;
@@ -335,16 +323,39 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * @return This factory instance for chaining
 	 */
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
-		if (kernelArgEvaluables != null && output == this.output &&
-				Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
-			// The configuration is already valid as does not need to be repeated
-			return this;
+		prepare(output, args);
+		return this;
+	}
+
+	/**
+	 * Prepares (or reuses) the argument snapshot for the given output and arguments.
+	 *
+	 * <p>The snapshot is built entirely in local state and only published to
+	 * {@link #prepared} once every argument slot has been resolved. A failure
+	 * during preparation (for example, a kernel compilation error raised while
+	 * obtaining an argument's {@link Evaluable}) therefore leaves the previous
+	 * snapshot untouched, and a reentrant invocation triggered by evaluating a
+	 * constant argument can never observe a partially populated snapshot.</p>
+	 *
+	 * @param output Output {@link MemoryBank} to write results into; may be null for operations without output
+	 * @param args Positional arguments passed at evaluation time
+	 * @return The fully prepared argument snapshot for this combination of output and arguments
+	 */
+	protected PreparedArguments prepare(MemoryBank output, Object args[]) {
+		PreparedArguments existing = prepared;
+		if (existing != null && existing.matches(output, args)) {
+			// The prepared snapshot is already valid and does not need to be rebuilt
+			return existing;
 		}
 
-		this.output = output;
-		this.args = args;
+		if (outputArgIndex < 0 && output != null) {
+			// There is no output for this process
+			throw new UnsupportedOperationException();
+		}
 
-		allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
+		boolean allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
+
+		long kernelSize;
 
 		if (isFixedCount()) {
 			kernelSize = getCount();
@@ -377,14 +388,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			kernelSize = -1;
 		}
 
-		kernelArgs = new MemoryData[arguments.size()];
-		kernelArgEvaluables = new Evaluable[arguments.size()];
-		asyncEvaluables = new StreamingEvaluable[arguments.size()];
-
-		if (outputArgIndex < 0 && output != null) {
-			// There is no output for this process
-			throw new UnsupportedOperationException();
-		}
+		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
+		Evaluable kernelArgEvaluables[] = new Evaluable[arguments.size()];
 
 		/*
 		 * In the first pass, kernel size is inferred from Producer arguments that
@@ -427,17 +432,27 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 		}
 
-		return this;
+		/*
+		 * If the kernel size is still not known, the kernel size will be the count.
+		 */
+		if (kernelSize < 0) {
+			if (enableKernelSizeWarnings)
+				warn("Could not infer kernel size, it will be set to " + getCount());
+			kernelSize = getCount();
+		}
+
+		PreparedArguments result = new PreparedArguments(output, args, kernelSize, kernelArgs, kernelArgEvaluables);
+		prepared = result;
+		return result;
 	}
-	
+
 	/**
-	 * Clears cached evaluables so the next {@link #init} call fully re-evaluates all arguments.
+	 * Clears the prepared argument snapshot so the next {@link #init} call fully re-evaluates all arguments.
 	 *
 	 * <p>Call this when argument producers may have changed since the last {@link #init} call.</p>
 	 */
 	public void reset() {
-		this.kernelArgEvaluables = null;
-		this.asyncEvaluables = null;
+		this.prepared = null;
 	}
 
 	/**
@@ -449,12 +464,51 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 */
 	@Override
 	public AcceleratedProcessDetails construct() {
-		return construct(null);
+		return construct((Semaphore) null);
 	}
 
 	/**
-	 * Constructs an {@link AcceleratedProcessDetails} whose dispatch-backed argument
-	 * evaluations are ordered after the given completion.
+	 * Constructs an {@link AcceleratedProcessDetails} from the most recently
+	 * prepared arguments, ordering dispatch-backed argument evaluations after
+	 * the given completion.
+	 *
+	 * @param dependsOn completion that dispatch-backed argument evaluations must chain
+	 *                  on, or {@code null} when there is no dependency
+	 * @return the fully configured process details ready for execution
+	 * @throws IllegalStateException if no arguments have been prepared via {@link #init}
+	 */
+	public AcceleratedProcessDetails construct(Semaphore dependsOn) {
+		PreparedArguments current = prepared;
+
+		if (current == null) {
+			throw new IllegalStateException("No arguments have been prepared");
+		}
+
+		return construct(current, dependsOn);
+	}
+
+	/**
+	 * Prepares the given output and arguments, then constructs an
+	 * {@link AcceleratedProcessDetails} from the resulting snapshot.
+	 *
+	 * <p>This is the preferred entry point for a complete invocation: the
+	 * snapshot produced by preparation is carried directly into construction,
+	 * so an invocation that (through argument evaluation) reaches this same
+	 * factory again cannot substitute its own arguments into this one.</p>
+	 *
+	 * @param output Output {@link MemoryBank} to write results into; may be null for operations without output
+	 * @param args Positional arguments passed at evaluation time
+	 * @param dependsOn completion that dispatch-backed argument evaluations must chain
+	 *                  on, or {@code null} when there is no dependency
+	 * @return the fully configured process details ready for execution
+	 */
+	public AcceleratedProcessDetails construct(MemoryBank output, Object args[], Semaphore dependsOn) {
+		return construct(prepare(output, args), dependsOn);
+	}
+
+	/**
+	 * Constructs an {@link AcceleratedProcessDetails} from the given argument snapshot,
+	 * ordering dispatch-backed argument evaluations after the given completion.
 	 *
 	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn}.
 	 * An argument whose evaluation is itself a hardware dispatch chains the dependency
@@ -468,25 +522,32 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * host function that reads memory <em>contents</em> rather than returning a handle
 	 * is responsible for its own ordering.</p>
 	 *
+	 * <p>All working state lives in locals of this method, so overlapping
+	 * constructions (whether from another thread or from an argument evaluation
+	 * that reenters this factory) each operate on their own state and deliver
+	 * results to their own {@link AcceleratedProcessDetails}.</p>
+	 *
+	 * @param prepared the argument snapshot to construct from
 	 * @param dependsOn completion that dispatch-backed argument evaluations must chain
 	 *                  on, or {@code null} when there is no dependency
 	 * @return the fully configured process details ready for execution
 	 */
-	public AcceleratedProcessDetails construct(Semaphore dependsOn) {
+	protected AcceleratedProcessDetails construct(PreparedArguments prepared, Semaphore dependsOn) {
+		Evaluable kernelArgEvaluables[] = prepared.kernelArgEvaluables;
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 		for (int i = 0; i < kernelArgs.length; i++) {
-			if (this.kernelArgs[i] != null) kernelArgs[i] = this.kernelArgs[i];
+			if (prepared.kernelArgs[i] != null) kernelArgs[i] = prepared.kernelArgs[i];
 		}
 
 		/*
-		 * Reset asyncEvaluables for each construct() call.
-		 * This ensures fresh StreamingEvaluable instances are created with
-		 * new downstream consumers that point to the new AcceleratedProcessDetails.
-		 * Without this reset, reused asyncEvaluables would throw UnsupportedOperationException
-		 * when trying to set a different downstream consumer.
+		 * Fresh StreamingEvaluable instances are created for each construction,
+		 * so that each has a downstream consumer pointing at the specific
+		 * AcceleratedProcessDetails produced here. A reused StreamingEvaluable
+		 * would throw UnsupportedOperationException when trying to set a
+		 * different downstream consumer.
 		 */
-		asyncEvaluables = new StreamingEvaluable[arguments.size()];
+		StreamingEvaluable asyncEvaluables[] = new StreamingEvaluable[arguments.size()];
 
 		/*
 		 * First pass: determine which arguments need async evaluation and create
@@ -528,16 +589,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 		}
 
-		/*
-		 * If the kernel size is still not known, the kernel size will be the count.
-		 */
-		if (kernelSize < 0) {
-			if (enableKernelSizeWarnings)
-				warn("Could not infer kernel size, it will be set to " + getCount());
-			kernelSize = getCount();
-		}
-
-		int size = Math.toIntExact(kernelSize);
+		int size = Math.toIntExact(prepared.kernelSize);
 
 		/*
 		 * Second pass: create async evaluables for kernel arguments that need
@@ -555,34 +607,30 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		/*
 		 * Create AcceleratedProcessDetails BEFORE setting downstream on async evaluables.
 		 * This ensures that the downstream lambdas capture the specific details instance
-		 * rather than accessing the mutable currentDetails field at execution time.
+		 * produced by this construction.
 		 */
-		currentDetails = new AcceleratedProcessDetails(kernelArgs, size,
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(kernelArgs, size,
 											replacements.get(), executor);
 
-		/*
-		 * Set downstream on all async evaluables, passing the specific details instance.
-		 * FIX: Previously, result(i) created a lambda that accessed 'this.currentDetails'
-		 * at execution time. Now we pass the specific instance to avoid the mutable field.
-		 */
+		/* Set downstream on all async evaluables, passing the specific details instance */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
-			asyncEvaluables[i].setDownstream(result(i, currentDetails));
+			asyncEvaluables[i].setDownstream(result(i, details));
 		}
 
 		/*
 		 * Now that every StreamingEvaluable is configured to deliver
-		 * results to the current AcceleratedProcessDetails, their work
+		 * results to the new AcceleratedProcessDetails, their work
 		 * can be initiated via StreamingEvaluable#request
 		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
 
-			asyncEvaluables[i].request(args, dependsOn);
+			asyncEvaluables[i].request(prepared.args, dependsOn);
 		}
 
 		/* The details are ready */
-		return currentDetails;
+		return details;
 	}
 
 	/**
@@ -622,6 +670,63 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			executor.execute(r);
 		} else {
 			r.run();
+		}
+	}
+
+	/**
+	 * Immutable snapshot of the argument state prepared for one combination of
+	 * output and positional arguments.
+	 *
+	 * <p>An instance is only created once every argument slot has been fully
+	 * resolved, so any consumer can rely on the invariant that each slot holds
+	 * either a pre-resolved {@link MemoryData} in {@link #kernelArgs} or an
+	 * {@link Evaluable} in {@link #kernelArgEvaluables} (slots whose argument
+	 * variable is absent hold the pre-resolved null). Because the snapshot is
+	 * immutable, a construction that overlaps with the preparation of different
+	 * arguments — from another thread, or from an argument evaluation that
+	 * reenters the same operation — always observes consistent state.</p>
+	 */
+	protected static class PreparedArguments {
+		/** The output {@link MemoryBank} this snapshot was prepared for. */
+		private final MemoryBank output;
+		/** The positional arguments this snapshot was prepared for. */
+		private final Object args[];
+		/** Resolved kernel size (number of parallel work items). */
+		private final long kernelSize;
+		/** Pre-resolved {@link MemoryData} instances for each kernel argument slot. */
+		private final MemoryData kernelArgs[];
+		/** {@link Evaluable} instances for kernel arguments that could not be statically resolved. */
+		private final Evaluable kernelArgEvaluables[];
+
+		/**
+		 * Captures a fully resolved argument snapshot.
+		 *
+		 * @param output Output {@link MemoryBank} the snapshot was prepared for; may be null
+		 * @param args Positional arguments the snapshot was prepared for
+		 * @param kernelSize Resolved kernel size for the invocation
+		 * @param kernelArgs Pre-resolved {@link MemoryData} for each argument slot
+		 * @param kernelArgEvaluables {@link Evaluable} for each argument slot not covered by kernelArgs
+		 */
+		private PreparedArguments(MemoryBank output, Object args[], long kernelSize,
+								  MemoryData kernelArgs[], Evaluable kernelArgEvaluables[]) {
+			this.output = output;
+			this.args = args;
+			this.kernelSize = kernelSize;
+			this.kernelArgs = kernelArgs;
+			this.kernelArgEvaluables = kernelArgEvaluables;
+		}
+
+		/**
+		 * Returns true if this snapshot was prepared for exactly the given output
+		 * and argument identities.
+		 *
+		 * @param output Output {@link MemoryBank} for the invocation being prepared
+		 * @param args Positional arguments for the invocation being prepared
+		 * @return True if this snapshot can be reused for the invocation
+		 */
+		protected boolean matches(MemoryBank output, Object args[]) {
+			return output == this.output &&
+					Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1);
 		}
 	}
 

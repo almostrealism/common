@@ -1,6 +1,32 @@
 # Handoff — NPE in ProcessDetailsFactory after the argument-preparation chaining arc
 
-> **Status: open defect on `master`, 2026-07-09.** Found while verifying the PDSL ring
+> **Status: RESOLVED on `defect/process-details-init`, 2026-07-10.** Root cause was not
+> the suspected `init`/`construct` thread race (all factory access is under the
+> operation monitor — `AcceleratedOperation.apply` is `synchronized`, and the only
+> call site into the factory is `getProcessDetails`). It was **exception-unsafety in
+> `init`**: a Metal kernel compile failure (`'buffer' attribute parameter is out of
+> bounds: must be between 0 and 30` — the aggregate kernel exceeds Metal's 31-buffer
+> limit when `aggregationThresholdSweep` runs at low thresholds) threw out of `init`'s
+> second pass, *after* `this.output`/`this.args` were published and the arrays
+> recreated. Every later call with the same output/args identity took `init`'s fast
+> path over the half-populated `kernelArgEvaluables` and NPE'd in `construct` —
+> permanently poisoning the shared compiled operation (observed: threshold=2 fails
+> with the real `HardwareException`, thresholds 4→1024 and then `hotPathBreakdown`
+> all fail with the NPE). Fix: per-invocation state is now an immutable
+> `PreparedArguments` snapshot, built entirely in locals and published only once
+> complete; `construct` works entirely on locals (also removing the reentrancy hazard
+> where a nested invocation clobbered `asyncEvaluables`/`currentDetails`). Regression
+> guard: `ProcessDetailsFactoryRecoveryTest` (engine/utils, ungated) reproduces the
+> exact production NPE on the unfixed code and passes with the fix. After the fix,
+> `PdslHotPathBreakdownTest` passes; the sweep's threshold≤32 entries fail cleanly
+> with the genuine `HardwareException` every time. That buffer-limit overflow only
+> occurs when the sweep drives `MemoryDataArgumentMap.maxAggregateLength` below its
+> default of 1024 (lowering it excludes buffers from aggregation, so more raw
+> arguments reach the kernel signature); default configuration is unaffected. It
+> still matters to the sweep work itself: the low-threshold data points will read as
+> failures until the kernel compiler respects the device argument limit.
+
+> **Original report (2026-07-09):** Found while verifying the PDSL ring
 > fixes; **provenance verified against a pristine tree** (stash round-trip: the identical
 > failure occurs with and without the ring-fix changes), so it belongs to the
 > operation-list subdivision / argument-preparation work merged 2026-07-08 (PR #340),

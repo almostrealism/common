@@ -283,7 +283,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
 		Receptor<PackedCollection> outputReceptor = out ->
-				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength());
+				Ops.o().a("Model Forward Output", Ops.o().p(output), out);
 
 		// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
 		Cell<PackedCollection> lastForward = model.lastBlock().getForward();
@@ -299,7 +299,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		if (returnGradient) {
 			gradOut = new PackedCollection(model.firstBlock().getInputShape());
 			model.firstBlock().getBackward().setReceptor(out ->
-					Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
+					Ops.o().a("Model Backward Output", Ops.o().p(gradOut), out));
 		} else {
 			gradOut = null;
 		}
