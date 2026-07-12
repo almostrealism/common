@@ -19,6 +19,7 @@ package org.almostrealism.graph.temporal;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 
 /**
  * Base interface for audio data storage used in temporal audio processing.
@@ -87,7 +88,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param wavePosition the position within the waveform
 	 */
 	default void setWavePosition(double wavePosition) {
-		wavePosition().setMem(0, wavePosition);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(wavePosition()), CollectionFeatures.getInstance().c(wavePosition)).get().run();
 	}
 
 	/**
@@ -105,7 +106,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param waveLength the duration or size of the waveform
 	 */
 	default void setWaveLength(double waveLength) {
-		waveLength().setMem(0, waveLength);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(waveLength()), CollectionFeatures.getInstance().c(waveLength)).get().run();
 	}
 
 	/**
@@ -123,6 +124,6 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param amplitude the volume/intensity multiplier (1.0 = original level)
 	 */
 	default void setAmplitude(double amplitude) {
-		amplitude().setMem(0, amplitude);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(amplitude()), CollectionFeatures.getInstance().c(amplitude)).get().run();
 	}
 }

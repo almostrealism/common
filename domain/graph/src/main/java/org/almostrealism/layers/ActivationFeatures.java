@@ -449,8 +449,8 @@ public interface ActivationFeatures extends GeometryFeatures {
 		}
 
 		// Copy back to PackedCollections
-		alphaExpanded.setMem(0, alphaData, 0, alphaData.length);
-		betaExpanded.setMem(0, betaData, 0, betaData.length);
+		a(cp(alphaExpanded), c(alphaExpanded.getShape(), alphaData)).get().run();
+		a(cp(betaExpanded), c(betaExpanded.getShape(), betaData)).get().run();
 
 		return layer("snakeLearnable", shape, shape, input -> {
 			CollectionProducer x = c(input);
