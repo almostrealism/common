@@ -643,7 +643,7 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * @param values the per-note scalar values to write
 	 */
 	private void writeColumn(PackedCollection dest, double[] values) {
-		dest.setMem(values);
+		a(cp(dest), c(values)).get().run();
 	}
 
 	/**

@@ -103,7 +103,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/flowtree/graphpersist/",
 			"/studio/compose/",
 			"/studio/experiments/",
-			"/studio/music/",
 			"/studio/spatial/"
 	);
 

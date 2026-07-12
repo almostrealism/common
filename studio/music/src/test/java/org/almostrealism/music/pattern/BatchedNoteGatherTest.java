@@ -77,21 +77,16 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 
 	/** Creates a single-element {@link PackedCollection} containing the given value. */
 	private PackedCollection single(double value) {
-		PackedCollection c = new PackedCollection(1);
-		c.setMem(new double[] { value });
-		return c;
+		PackedCollection col = new PackedCollection(1);
+		c(value).into(col.traverseEach()).evaluate();
+		return col;
 	}
 
 	/** Generates a deterministic random audio sample of {@code SOURCE_LENGTH} frames using the given seed. */
 	private PackedCollection sample(long seed) {
-		Random rng = new Random(seed);
-		double[] data = new double[SOURCE_LENGTH];
-		for (int i = 0; i < SOURCE_LENGTH; i++) {
-			data[i] = rng.nextDouble() * 2.0 - 1.0;
-		}
-		PackedCollection c = new PackedCollection(SOURCE_LENGTH);
-		c.setMem(data);
-		return c;
+		PackedCollection col = new PackedCollection(SOURCE_LENGTH);
+		rand(col.getShape(), new Random(seed)).multiply(2.0).add(-1.0).into(col.traverseEach()).evaluate();
+		return col;
 	}
 
 	/**
@@ -157,20 +152,15 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 		PackedCollection dur = single(DURATION_SEC);
 		PackedCollection auto = single(AUTOMATION_LEVEL);
 
-		double[] merged = new double[TARGET_LENGTH];
+		PackedCollection mergedColl = new PackedCollection(TARGET_LENGTH);
 		for (int l = 0; l < LAYERS; l++) {
 			PackedCollection resampled = renderer.buildResampleProducer(in.getSources()[l], in.getRatios()[l])
 					.get().evaluate();
 			ParameterizedLayerEnvelope.Filter lf =
 					(ParameterizedLayerEnvelope.Filter) ((PatternNoteLayer) inner.getLayers().get(l)).getFilter();
 			PackedCollection enveloped = lf.apply(cp(resampled), cp(dur), cp(auto)).get().evaluate();
-			for (int i = 0; i < TARGET_LENGTH; i++) {
-				merged[i] += enveloped.toDouble(i);
-			}
+			a(cp(mergedColl), cp(mergedColl).add(cp(enveloped))).get().run();
 		}
-
-		PackedCollection mergedColl = new PackedCollection(TARGET_LENGTH);
-		mergedColl.setMem(merged);
 
 		ParameterizedFilterEnvelope.Filter filtF = (ParameterizedFilterEnvelope.Filter) mid.getFilter();
 		PackedCollection filtered = filtF.apply(cp(mergedColl), cp(dur), cp(auto)).get().evaluate();

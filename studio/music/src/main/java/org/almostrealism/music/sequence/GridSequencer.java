@@ -168,7 +168,7 @@ public class GridSequencer implements StatelessSource, TempoAware, CellFeatures 
 						(IntFunction<Producer<PackedCollection>>) i -> () -> args -> {
 							ParameterSet params = new ParameterSet(evX.evaluate().toDouble(0), evY.evaluate().toDouble(0), evZ.evaluate().toDouble(0));
 							PackedCollection s = new PackedCollection(1);
-							s.setMem(sequence.apply(i).apply(params));
+							c(sequence.apply(i).apply(params)).into(s.traverseEach()).evaluate();
 							return s;
 						})
 				.sum().map(i -> output.getWriterCell(0));
