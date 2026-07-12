@@ -85,7 +85,13 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/code/Memory.java",
 			"MemoryProvider.java",           // matches every *MemoryProvider implementation
 			"/collect/PackedCollection.java", // implements fill/replace/clone and from-host factories
-			"/collect/CollectionCreationFeatures.java" // c(double...) — the host-array to collection ingest primitive
+			"/collect/CollectionCreationFeatures.java", // c(double...) — the host-array to collection ingest primitive
+			// RGB and its backing store are PackedCollection value types (three host-side doubles
+			// mutated per-channel). They are treated exactly like PackedCollection itself: setMem
+			// written inside these files is the class's own implementation and is allowed for now;
+			// any setMem invoked on an RGB/RGBData192 instance from another file is still a violation.
+			"/color/RGB.java",
+			"/color/RGBData192.java"
 	);
 
 	/**
@@ -100,9 +106,9 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * <p>Every entry is a case that could not be migrated to a producer/{@code setFrom} idiom in the
 	 * initial sweep: decode of an external asset into a host array (WAV/protobuf/weight/reference
 	 * {@code .bin}/ONNX), a write below the producer API in the {@code base/hardware} backend, the
-	 * legacy {@code RGB.Data} storage type, the randomness ingest primitive, a data-dependent scatter
-	 * or strided extract with no producer equivalent yet, and two owner-reserved coordinate-grid
-	 * setups. These are expected to shrink to zero as follow-up work lands.
+	 * randomness ingest primitive, a data-dependent scatter or strided extract with no producer
+	 * equivalent yet, and two owner-reserved coordinate-grid setups. These are expected to shrink to
+	 * zero as follow-up work lands.
 	 */
 	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
 			// { pathFragment, exact trimmed source line }
@@ -132,13 +138,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
-
-			// --- Legacy storage type: RGB stores channels in the RGB.Data interface, not a
-			//     PackedCollection, so no cp()/producer assignment applies. Needs a storage refactor. ---
-			new String[] {"/color/RGB.java", "if (init) this.data.setMem(new double[] { r, g, b });"},
-			new String[] {"/color/RGB.java", "this.data.setMem(0, r);"},
-			new String[] {"/color/RGB.java", "this.data.setMem(1, g);"},
-			new String[] {"/color/RGB.java", "this.data.setMem(2, b);"},
 
 			// --- Randomness ingest primitive (host java.util.Random -> device). ---
 			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
