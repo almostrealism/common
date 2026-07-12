@@ -32,14 +32,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Flaky-test retry gate ────────────────────────────────────────────
+  # The main pipeline's test-execution jobs (test, test-*) are occasionally
+  # flaky and pass on re-run. Before an auto-resolve agent is dispatched,
+  # give a red pipeline more attempts: when the failed set contains a flaky-
+  # eligible test job and the run has had fewer than 5 total attempts, re-run
+  # the failed jobs instead of submitting. Each re-run increments the run's
+  # attempt count and fires this workflow again on completion, so the gate is
+  # re-evaluated until the failure either clears or survives 5 attempts. Only
+  # a failure that survives (or a deterministic failure with no test job in
+  # it) reaches `submit`.
+  #
+  # This lives here rather than in "Build and Test" because rerun-failed-jobs
+  # can only act on a completed run — a job cannot re-run its own in-progress
+  # run.
+  retry-flaky-tests:
+    if: >-
+      github.event.workflow_run.head_branch != 'master' &&
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    # rerun-failed-jobs requires write access to the Actions API.
+    permissions:
+      actions: write
+    outputs:
+      retried: ${{ steps.decide.outputs.retried }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Evaluate attempts and re-run flaky test jobs
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          MAX_ATTEMPTS: "5"
+        run: |
+          chmod +x ./tools/ci/rerun-flaky-tests.sh
+          ./tools/ci/rerun-flaky-tests.sh
+
   submit:
+    # Runs after the retry gate. On a green pipeline the gate is skipped (its
+    # `if` requires conclusion == 'failure'), so `!cancelled()` lets submit
+    # proceed; on a red pipeline that the gate re-ran, `retried == 'true'`
+    # suppresses submit until a later attempt clears or exhausts the retries.
+    needs: [retry-flaky-tests]
     # Only for non-master branches whose pipeline was not cancelled. Pushes to
     # master have head_branch == master and are excluded. The artifact presence
     # check below handles the "nothing to submit" and "auto_resolve disabled"
     # cases (no artifact is uploaded in those situations).
     if: >-
+      !cancelled() &&
       github.event.workflow_run.head_branch != 'master' &&
-      github.event.workflow_run.conclusion != 'cancelled'
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      needs.retry-flaky-tests.outputs.retried != 'true'
     runs-on: ubuntu-latest
     # Manual approval gate (required reviewers). Configure under:
     #   Settings -> Environments -> worker

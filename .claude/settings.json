@@ -134,6 +134,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
+            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
             "description": "Block edits to checkstyle configuration — abandon the task rather than tamper with enforcement"
           },
@@ -184,6 +189,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
+            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
             "description": "Block MultiEdit of checkstyle configuration — abandon the task rather than tamper with enforcement"
           },
@@ -209,6 +219,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
+            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
             "description": "Block NotebookEdit of checkstyle configuration — abandon the task rather than tamper with enforcement"
           },
@@ -227,6 +242,11 @@
       {
         "matcher": "Write",
         "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
+            "description": "Block writes adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+          },
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
