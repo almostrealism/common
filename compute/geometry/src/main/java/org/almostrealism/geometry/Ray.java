@@ -45,7 +45,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	 */
 	private Ray(double[] coords) {
 		this();
-		this.setMem(coords);
+		a(cp(this), c(coords)).get().run();
 	}
 	
 	/**
