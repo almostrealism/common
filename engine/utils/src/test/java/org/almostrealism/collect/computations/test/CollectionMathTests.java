@@ -608,10 +608,8 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		// Fill with test data: a[i] = i, b[i] = 255 - i
 		// Expected: min(i, 255-i)
-		for (int i = 0; i < batchSize; i++) {
-			valuesA.setMem(i, (double) i);
-			valuesB.setMem(i, (double) (255 - i));
-		}
+		integers(0, batchSize).into(valuesA.traverseEach()).evaluate();
+		integers(0, batchSize).multiply(-1.0).add(255.0).into(valuesB.traverseEach()).evaluate();
 
 		Producer a = v(shape(-1, 1), 0);
 		Producer b = v(shape(-1, 1), 1);

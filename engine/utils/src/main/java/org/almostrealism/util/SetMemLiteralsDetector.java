@@ -47,9 +47,10 @@ import java.util.regex.Pattern;
  * <p>Unlike {@link PackedCollectionDetector}, this rule has <b>no exemptions</b>: it applies
  * to test sources as well as main sources, honours no initialization-method or domain
  * whitelist, and cannot be suppressed with a {@code // nopolicy} comment. The only files it
- * skips are the memory backend that <em>implements</em> the array-accepting overloads and the
- * low-level host&harr;device primitive — {@link #isMemoryBackend(Path) the memory layer} — which
- * is the sole sanctioned location of a bulk host-array write.
+ * skips are the {@linkplain #isSanctionedWriteSurface(Path) sanctioned write surface} — the memory
+ * backend that <em>implements</em> the array-accepting overloads and the low-level host&harr;device
+ * primitive, together with the collection-population idioms — the sole sanctioned location of a
+ * bulk host-array write.
  *
  * <p>The scan is performed on a comment- and string-masked copy of each file, and each
  * {@code .setMem(} call's argument list is extracted with balanced-parenthesis matching, so
@@ -71,15 +72,19 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 					+ "or a producer assignment. A host double[]/float[] must never be uploaded via setMem.";
 
 	/**
-	 * File name fragments of the memory backend: the classes that implement the
-	 * array-accepting overloads or perform the low-level host&harr;device primitive. These are
-	 * the one sanctioned home of a bulk host-array write; every other file is subject to the rule.
+	 * File name fragments of the framework's sanctioned write surface: the classes that
+	 * implement the array-accepting overloads, the low-level host&harr;device primitive, and the
+	 * collection-population idioms this rule redirects authors toward ({@code fill},
+	 * {@code replace}, {@code clone}, and the from-host factories on {@code PackedCollection}).
+	 * These are the one legitimate home of a bulk host-array write; every other file is subject
+	 * to the rule.
 	 */
-	private static final List<String> MEMORY_BACKEND = List.of(
+	private static final List<String> SANCTIONED_WRITE_SURFACE = List.of(
 			"/hardware/MemoryData.java",
 			"/hardware/mem/MemoryDataAdapter.java",
 			"/code/Memory.java",
-			"MemoryProvider.java"   // matches every *MemoryProvider implementation
+			"MemoryProvider.java",           // matches every *MemoryProvider implementation
+			"/collect/PackedCollection.java" // implements fill/replace/clone and from-host factories
 	);
 
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */
@@ -109,7 +114,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public SetMemLiteralsDetector scanFile(Path file) {
-		if (isExcluded(file) || isMemoryBackend(file)) return this;
+		if (isExcluded(file) || isSanctionedWriteSurface(file)) return this;
 
 		try {
 			String content = Files.readString(file);
@@ -137,15 +142,16 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	}
 
 	/**
-	 * Returns {@code true} if the file is part of the memory backend that legitimately
-	 * implements the array-accepting overloads and the low-level host&harr;device primitive.
+	 * Returns {@code true} if the file is part of the framework's sanctioned write surface that
+	 * legitimately implements the array-accepting overloads, the low-level host&harr;device
+	 * primitive, or the {@code fill()}/{@code replace()}/{@code clone()} population idioms.
 	 *
 	 * @param file  the file to test
-	 * @return      whether the file is exempt as memory-backend implementation
+	 * @return      whether the file is exempt as sanctioned write-surface implementation
 	 */
-	private boolean isMemoryBackend(Path file) {
+	private boolean isSanctionedWriteSurface(Path file) {
 		String path = file.toString().replace('\\', '/');
-		for (String fragment : MEMORY_BACKEND) {
+		for (String fragment : SANCTIONED_WRITE_SURFACE) {
 			if (path.contains(fragment)) return true;
 		}
 		return false;

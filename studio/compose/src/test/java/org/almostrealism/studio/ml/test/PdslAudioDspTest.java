@@ -359,7 +359,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	@Test(timeout = 30000)
 	public void testBiquadStateBlockBuilds() {
 		PackedCollection history = new PackedCollection(4);
-		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
+		history.setMem(0.0, 0.0, 0.0, 0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
@@ -388,7 +388,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	@TestDepth(2)
 	public void testBiquadStatePersistence() {
 		PackedCollection history = new PackedCollection(4);
-		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
+		history.setMem(0.0, 0.0, 0.0, 0.0);
 
 		// One-sample delay: y[n] = x[n-1]
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
@@ -442,7 +442,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
 		buffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
-		head.setMem(new double[]{0.0});
+		head.setMem(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -497,15 +497,15 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		cd[0] = 1.0; // pass-through FIR (impulse) — keeps the test filter-shape agnostic
 		coeffs.setMem(cd);
 		PackedCollection wetLevel = new PackedCollection(1);
-		wetLevel.setMem(new double[]{0.5});
+		wetLevel.setMem(0.5);
 		PackedCollection automation = new PackedCollection(1);
-		automation.setMem(new double[]{1.0});
+		automation.setMem(1.0);
 		PackedCollection delaySlot = new PackedCollection(1);
 		delaySlot.setMem(new double[]{delaySamples});
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
 		buffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
-		head.setMem(new double[]{0.0});
+		head.setMem(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -557,7 +557,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		double freqHz = 440.0;
 		double sampleRate = 44100.0;
 		PackedCollection phase = new PackedCollection(1);
-		phase.setMem(new double[]{0.0});
+		phase.setMem(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
@@ -762,7 +762,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Wrong shape: 4 elements, but declared as producer([1]).
 		PackedCollection wrongShape = new PackedCollection(4);
-		wrongShape.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
+		wrongShape.setMem(0.0, 0.0, 0.0, 0.0);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("signal_size", SIGNAL_SIZE);

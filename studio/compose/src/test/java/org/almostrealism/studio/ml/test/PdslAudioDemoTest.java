@@ -147,7 +147,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		PackedCollection delayBuffer = new PackedCollection(SIGNAL_SIZE);
 		delayBuffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection delayHead = new PackedCollection(1);
-		delayHead.setMem(new double[]{0.0});
+		delayHead.setMem(0.0);
 
 		Map<String, Object> delayArgs = new HashMap<>();
 		delayArgs.put("signal_size", SIGNAL_SIZE);
@@ -207,7 +207,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		PackedCollection mixBuffer = new PackedCollection(SIGNAL_SIZE);
 		mixBuffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection mixHead = new PackedCollection(1);
-		mixHead.setMem(new double[]{0.0});
+		mixHead.setMem(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");

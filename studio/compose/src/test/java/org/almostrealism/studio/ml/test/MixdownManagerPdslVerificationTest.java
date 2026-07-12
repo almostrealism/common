@@ -443,7 +443,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// into slots instead; that only works if fir() re-reads its slot per forward).
 		int taps = 3;
 		PackedCollection coeffs = new PackedCollection(taps);
-		coeffs.setMem(new double[]{1.0, 0.0, 0.0});
+		coeffs.setMem(1.0, 0.0, 0.0);
 		Map<String, Object> firArgs = new HashMap<>();
 		firArgs.put("signal_size", sig);
 		firArgs.put("fir_taps", taps);
@@ -454,7 +454,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		CompiledModel firCompiled = firModel.compile();
 
 		double firFirst = firCompiled.forward(input).toArray(0, sig)[sig - 1];
-		coeffs.setMem(new double[]{0.5, 0.0, 0.0});
+		coeffs.setMem(0.5, 0.0, 0.0);
 		double firSecond = firCompiled.forward(input).toArray(0, sig)[sig - 1];
 		log(String.format("live-fir probe: first=%.4f (expect 1) second=%.4f (expect 0.5)",
 				firFirst, firSecond));
@@ -480,7 +480,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PdslNode.Program program = loader.parseResource(VERIFICATION_PDSL);
 
 		PackedCollection volume = new PackedCollection(new TraversalPolicy(channels));
-		volume.setMem(new double[]{2.0, 3.0});
+		volume.setMem(2.0, 3.0);
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);
 		args.put("signal_size", sig);

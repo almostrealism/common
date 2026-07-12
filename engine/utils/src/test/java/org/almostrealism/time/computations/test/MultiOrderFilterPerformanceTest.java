@@ -280,9 +280,7 @@ public class MultiOrderFilterPerformanceTest extends TestSuiteBase implements Co
 
 		// Create input collection with random data
 		PackedCollection inputSeries = new PackedCollection(collectionSize);
-		for (int i = 0; i < collectionSize; i++) {
-			inputSeries.setMem(i, Math.random());
-		}
+		rand(inputSeries.getShape()).into(inputSeries.traverseEach()).evaluate();
 		log("Created input collection with " + collectionSize + " random samples");
 
 		// Build high-pass filter using dynamic input via PassThroughProducer
