@@ -83,7 +83,7 @@ public class OperationListSubdivisionTest extends TestSuiteBase implements Model
 
 		for (int i = 0; i < inputs.length; i++) {
 			external[0] = new PackedCollection(shape(2));
-			external[0].setMem(0, inputs[i][0], inputs[i][1]);
+			a(cp(external[0]), c(inputs[i][0], inputs[i][1])).get().run();
 
 			run.run();
 			double result = modelOut.toDouble(0);

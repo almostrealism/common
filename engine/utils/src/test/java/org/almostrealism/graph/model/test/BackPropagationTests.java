@@ -17,6 +17,7 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
@@ -59,18 +60,18 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		for (int i = 0; i < size; i++) {
 			for (int j = 0; j < nodes; j++) {
-//				weights.setMem(weights.getShape().index(i, j), 1 + (i + j) * 0.1);
-				weights.setMem(weights.getShape().index(i, j), (i + j) * 0.01);
+//				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(weights.range(new TraversalPolicy(1), weights.getShape().index(i, j))), CollectionFeatures.getInstance().c(1 + (i + j) * 0.1)).get().run();
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(weights.range(new TraversalPolicy(1), weights.getShape().index(i, j))), CollectionFeatures.getInstance().c((i + j) * 0.01)).get().run();
 			}
 		}
 
 		PackedCollection biases = dense.getWeights().get(1);
 		for (int i = 0; i < nodes; i++) {
-			biases.setMem(i, 0.1 + i * 0.01);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(biases.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(0.1 + i * 0.01)).get().run();
 		}
 
 		PackedCollection input = new PackedCollection(size);
-		IntStream.range(0, size).forEach(i -> input.setMem(i, (double) i));
+		IntStream.range(0, size).forEach(i -> CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((double) i)).get().run());
 
 		CompiledModel runner = model.compile();
 

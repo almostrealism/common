@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -44,7 +45,7 @@ public class DynamicCollectionProducerTest extends TestSuiteBase {
 				new DynamicCollectionProducer(shape, args -> {
 					PackedCollection result = new PackedCollection(shape);
 					for (int i = 0; i < result.getMemLength(); i++) {
-						result.setMem(i, i + 1.0);
+						CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i + 1.0)).get().run();
 					}
 					return result;
 				});
@@ -163,9 +164,7 @@ public class DynamicCollectionProducerTest extends TestSuiteBase {
 							PackedCollection input = inputs[0];
 							PackedCollection result = new PackedCollection(shape);
 							// Double each value from the input
-							for (int i = 0; i < input.getMemLength(); i++) {
-								result.setMem(i, input.toDouble(i) * 2.0);
-							}
+							a(cp(result), cp(input).multiply(2.0)).get().run();
 							return result;
 						},
 						false, true, inputProducer);

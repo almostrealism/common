@@ -91,9 +91,11 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 	 */
 	private PackedCollection arrayToCollection(float[] data, int... dims) {
 		PackedCollection c = new PackedCollection(dims);
+		double[] values = new double[data.length];
 		for (int i = 0; i < data.length; i++) {
-			c.setMem(i, data[i]);
+			values[i] = data[i];
 		}
+		a(cp(c), c(values).reshape(c.getShape())).get().run();
 		return c;
 	}
 

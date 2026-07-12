@@ -60,9 +60,11 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 	private final UnaryOperator<PackedCollection> identityLikeFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					out.setMem(i, in.valueAt(i) + 0.1 * coeff[i % coeff.length]);
+				double[] data = new double[in.getMemLength()];
+				for (int i = 0; i < data.length; i++) {
+					data[i] = in.valueAt(i) + 0.1 * coeff[i % coeff.length];
 				}
+				a(cp(out), c(data).reshape(out.getShape())).get().run();
 				return out;
 			};
 
@@ -72,9 +74,11 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 	private final UnaryOperator<PackedCollection> scaleFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					out.setMem(i, coeff[i % coeff.length] * in.valueAt(i));
+				double[] data = new double[in.getMemLength()];
+				for (int i = 0; i < data.length; i++) {
+					data[i] = coeff[i % coeff.length] * in.valueAt(i);
 				}
+				a(cp(out), c(data).reshape(out.getShape())).get().run();
 				return out;
 			};
 

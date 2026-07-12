@@ -108,7 +108,7 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 
 		double[] coeffs = referenceLowPassCoefficients(5000, 44100, filterOrder);
 		PackedCollection coefficients = new PackedCollection(filterOrder + 1);
-		coefficients.setMem(coeffs);
+		a(cp(coefficients), c(coeffs)).get().run();
 
 		// Use pre-computed coefficients (plain buffer reference, not an expression tree)
 		MultiOrderFilter filter = MultiOrderFilter.create(
