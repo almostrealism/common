@@ -100,7 +100,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * is skipped entirely by this rule (its other detectors still apply).
 	 */
 	private static final List<String> UNMIGRATED_MODULES = List.of(
-			"/domain/space/",
 			"/engine/audio/",
 			"/engine/ml/",
 			"/engine/render/",
@@ -125,7 +124,10 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
-			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"}
+			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
+			new String[] {"/space/CachedMeshIntersectionKernel.java",
+					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
+			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"}
 	);
 
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */
