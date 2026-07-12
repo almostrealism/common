@@ -141,12 +141,12 @@ public class MoonbeamMidiGenerator {
 				token -> {
 					model.setAttributePositions(token);
 					PackedCollection emb = embedding.embed(token).evaluate();
-					input.setMem(0, emb.toArray(0, hiddenSize), 0, hiddenSize);
+					input.setFrom(0, emb, 0, hiddenSize);
 				},
 				() -> model.forward(input),
 				hidden -> {
 					PackedCollection vec = new PackedCollection(hiddenSize);
-					vec.setMem(0, hidden.toArray(0, hiddenSize), 0, hiddenSize);
+					vec.setFrom(0, hidden, 0, hiddenSize);
 					int[] decodeTokens = decoder.decode(vec, temperature.toDouble(0), topP, random);
 					return decodeToCompoundToken(decodeTokens);
 				},

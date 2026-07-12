@@ -23,6 +23,7 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.notes.NoteAudio;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 /**
@@ -114,7 +115,7 @@ public class InterpolatedAudioSynthesisModel implements AudioSynthesisModel, Cel
 		// TODO Rescaling by the number of bins should not be necessary, but for the
 		// TODO moment FourierTransform does not normalize the output on its own
 		double scale = WaveData.FFT_BINS;
-		frequencies.setMem(frequencies.doubleStream().map(l -> l / scale).toArray());
+		CollectionFeatures.getInstance().cp(frequencies).divide(scale).into(frequencies.traverseEach()).evaluate();
 		frequencies = frequencies.reshape(new TraversalPolicy(samples, frequencyCount)).transpose();
 
 		double fundamental = tuning.getTone(root).asHertz();

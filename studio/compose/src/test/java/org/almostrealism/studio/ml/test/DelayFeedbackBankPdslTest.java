@@ -90,9 +90,9 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 		// buffers: channels * signal_size elements (circular delay buffer per channel)
 		// heads:   channels elements (write-head counter per channel)
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.setMem(new double[CHANNELS * SIGNAL_SIZE]);
+		buffers.fill(0.0);
 		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.setMem(new double[CHANNELS]);
+		heads.fill(0.0);
 
 		// Routing matrix: near-identity with slight cross-channel bleed.
 		// Row i is output channel i. Each row sums to 1.0 for unity gain.

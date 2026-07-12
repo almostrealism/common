@@ -123,7 +123,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 		randn(shape(weights), new Random(seed)).into(weights).evaluate();
 		for (int pos = 0; pos < length(); pos++) {
 			double scale = Math.sqrt(weights.get(pos).doubleStream().map(d -> d * d).sum());
-			weights.get(pos).setMem(weights.get(pos).doubleStream().map(d -> d / scale).toArray());
+			cp(weights.get(pos)).divide(scale).into(weights.get(pos).traverseEach()).evaluate();
 		}
 	}
 

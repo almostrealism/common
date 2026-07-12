@@ -440,7 +440,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testDelayLineStatePersistence() {
 		int delaySamples = 2;
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
-		buffer.setMem(new double[SIGNAL_SIZE]);
+		buffer.fill(0.0);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 
@@ -503,7 +503,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection delaySlot = new PackedCollection(1);
 		delaySlot.setMem(new double[]{delaySamples});
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
-		buffer.setMem(new double[SIGNAL_SIZE]);
+		buffer.fill(0.0);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 

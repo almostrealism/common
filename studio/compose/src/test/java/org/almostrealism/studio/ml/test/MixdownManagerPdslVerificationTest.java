@@ -975,9 +975,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
 		passthrough.setMem(passthroughRowMajor);
 		PackedCollection buffers = new PackedCollection(channels * bufSize);
-		buffers.setMem(new double[channels * bufSize]);
+		buffers.fill(0.0);
 		PackedCollection heads = new PackedCollection(channels);
-		heads.setMem(new double[channels]);
+		heads.fill(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");

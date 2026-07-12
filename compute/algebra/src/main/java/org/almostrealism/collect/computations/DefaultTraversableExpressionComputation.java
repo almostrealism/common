@@ -242,7 +242,7 @@ public class DefaultTraversableExpressionComputation
 						.setDescription(children -> value.describe())
 						.setPostprocessor(postprocessor).setShortCircuit(args -> {
 							PackedCollection v = new PackedCollection(value.getShape());
-							v.setMem(value.toArray(0, value.getMemLength()));
+							v.setFrom(0, value, 0, value.getMemLength());
 							return postprocessor == null ? v : postprocessor.apply(v, 0);
 						});
 	}

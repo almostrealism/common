@@ -169,9 +169,7 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 	 * Initializes input vector with test values.
 	 */
 	private void initializeInput(PackedCollection input, int size) {
-		for (int i = 0; i < size; i++) {
-			input.setMem(i, 0.1 * (i + 1));
-		}
+		integers(1, size + 1).multiply(0.1).into(input.traverseEach()).evaluate();
 	}
 
 	/**
