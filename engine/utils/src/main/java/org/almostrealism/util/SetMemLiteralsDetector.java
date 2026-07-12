@@ -102,7 +102,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private static final List<String> UNMIGRATED_MODULES = List.of(
 			"/engine/audio/",
 			"/engine/ml/",
-			"/engine/render/",
 			"/engine/utils/",
 			"/extern/ml-onnx/",
 			"/flowtree/graphpersist/",
