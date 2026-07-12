@@ -85,7 +85,11 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/code/Memory.java",
 			"MemoryProvider.java",           // matches every *MemoryProvider implementation
 			"/collect/PackedCollection.java", // implements fill/replace/clone and from-host factories
-			"/collect/CollectionCreationFeatures.java" // c(double...) — the host-array to collection ingest primitive
+			"/collect/CollectionCreationFeatures.java", // c(double...) — the host-array to collection ingest primitive
+			// RGB and its backing store are PackedCollection value types (three host-side doubles
+			// mutated per-channel); treated exactly like PackedCollection itself.
+			"/color/RGB.java",
+			"/color/RGBData192.java"
 	);
 
 	/**
@@ -96,7 +100,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * is skipped entirely by this rule (its other detectors still apply).
 	 */
 	private static final List<String> UNMIGRATED_MODULES = List.of(
-			"/domain/color/",
 			"/domain/graph/",
 			"/domain/heredity/",
 			"/domain/space/",
