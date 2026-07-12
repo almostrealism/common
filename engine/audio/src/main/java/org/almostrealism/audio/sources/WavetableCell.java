@@ -17,6 +17,8 @@
 package org.almostrealism.audio.sources;
 
 import io.almostrealism.relation.Factor;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.data.PolymorphicAudioData;
@@ -115,7 +117,7 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 		PackedCollection table = new PackedCollection(size);
 		for (int i = 0; i < size; i++) {
 			double phase = (double) i / size;
-			table.setMem(i, Math.sin(2.0 * Math.PI * phase));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(table.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * phase))).get().run();
 		}
 		return table;
 	}
@@ -134,7 +136,7 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 		PackedCollection table = new PackedCollection(size);
 		int threshold = (int) (size * dutyCycle);
 		for (int i = 0; i < size; i++) {
-			table.setMem(i, i < threshold ? 1.0 : -1.0);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(table.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i < threshold ? 1.0 : -1.0)).get().run();
 		}
 		return table;
 	}
@@ -146,7 +148,7 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 		PackedCollection table = new PackedCollection(size);
 		for (int i = 0; i < size; i++) {
 			double phase = (double) i / size;
-			table.setMem(i, 2.0 * phase - 1.0);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(table.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(2.0 * phase - 1.0)).get().run();
 		}
 		return table;
 	}
@@ -159,9 +161,9 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 		for (int i = 0; i < size; i++) {
 			double phase = (double) i / size;
 			if (phase < 0.5) {
-				table.setMem(i, 4.0 * phase - 1.0);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(table.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(4.0 * phase - 1.0)).get().run();
 			} else {
-				table.setMem(i, 3.0 - 4.0 * phase);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(table.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(3.0 - 4.0 * phase)).get().run();
 			}
 		}
 		return table;

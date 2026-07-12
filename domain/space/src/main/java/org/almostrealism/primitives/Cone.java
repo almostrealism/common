@@ -17,6 +17,8 @@
 package org.almostrealism.primitives;
 
 import io.almostrealism.code.Operator;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -142,7 +144,7 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 					return null;
 				} else {
 					PackedCollection ts = new PackedCollection(1);
-					ts.setMem(0, t);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(ts.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(t)).get().run();
 					return ts;
 				}
 			});

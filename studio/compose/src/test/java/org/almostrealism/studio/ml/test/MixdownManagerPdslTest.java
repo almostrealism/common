@@ -815,14 +815,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * buffer boundaries.
 	 */
 	private PackedCollection monoTwoToneInput(double lowHz, double highHz, int sampleOffset) {
-		double[] data = new double[SIGNAL_SIZE];
-		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			double t = (double) (sampleOffset + i) / SAMPLE_RATE;
-			data[i] = 0.5 * Math.sin(2.0 * Math.PI * lowHz * t)
-					+ 0.5 * Math.sin(2.0 * Math.PI * highHz * t);
-		}
+		double wLow = 2.0 * Math.PI * lowHz / SAMPLE_RATE;
+		double wHigh = 2.0 * Math.PI * highHz / SAMPLE_RATE;
 		PackedCollection in = new PackedCollection(new TraversalPolicy(1, SIGNAL_SIZE));
-		in.setMem(data);
+		a(cp(in), add(sin(integers(0, SIGNAL_SIZE).multiply(wLow).add(wLow * sampleOffset)).multiply(0.5),
+				sin(integers(0, SIGNAL_SIZE).multiply(wHigh).add(wHigh * sampleOffset)).multiply(0.5)))
+				.get().run();
 		return in;
 	}
 
@@ -877,9 +875,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < REVERB_PASSES; pass++) {
 			PackedCollection input = new PackedCollection(inputShape);
-			double[] inData = new double[REVERB_SIGNAL_SIZE];
-			if (pass == 0) inData[0] = 1.0;       // impulse
-			input.setMem(inData);
+			input.fill(0.0);
+			if (pass == 0) input.setMem(0, 1.0);       // impulse
 
 			double[] passOut = compiled.forward(input).toArray(0, REVERB_SIGNAL_SIZE);
 			if (pass == 1) {
@@ -1227,7 +1224,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int sampleOffset = pass * SIGNAL_SIZE;
-			slot.setMem(0, schedule[pass]);
+			a(cp(slot), c(schedule[pass])).get().run();
 
 			double[] producerOut = producerCompiled
 					.forward(multiChannelCarrier(channelFreqs, sampleOffset))

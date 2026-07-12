@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.midi.GRUDecoder;
@@ -253,9 +254,8 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		// Test 2: Spike logit should produce concentrated samples
 		log("\nTest 3b: Spike logit at index 100");
 		PackedCollection spikeLogits = new PackedCollection(vocabSize);
-		double[] spikeData = new double[vocabSize];
-		spikeData[100] = 100.0; // Very strong preference
-		spikeLogits.setMem(0, spikeData, 0, vocabSize);
+		spikeLogits.fill(0.0);
+		spikeLogits.setMem(100, 100.0); // Very strong preference
 
 		int spikeCount = 0;
 		samplingRng = new Random(42);
@@ -270,10 +270,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 
 		// Test 3: Greedy (argmax) should always pick the max
 		log("\nTest 3c: Greedy argmax verification");
-		spikeData = new double[vocabSize];
-		spikeData[4242] = 10.0;
 		PackedCollection greedyLogits = new PackedCollection(vocabSize);
-		greedyLogits.setMem(0, spikeData, 0, vocabSize);
+		greedyLogits.fill(0.0);
+		greedyLogits.setMem(4242, 10.0);
 
 		// GRUDecoder.decode uses argmax internally, but we verify the static method
 		int argmaxResult = argmax(greedyLogits, vocabSize);
@@ -835,8 +834,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	private static PackedCollection getEmbeddingSlice(PackedCollection embedding,
 													  int tokenIndex, int dim) {
 		PackedCollection slice = new PackedCollection(dim);
-		double[] data = embedding.toArray(tokenIndex * dim, dim);
-		slice.setMem(0, data, 0, dim);
+		slice.setFrom(0, embedding, tokenIndex * dim, dim);
 		return slice;
 	}
 
@@ -845,8 +843,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 */
 	private static PackedCollection copyCollection(PackedCollection source, int size) {
 		PackedCollection copy = new PackedCollection(size);
-		double[] data = source.toArray(0, size);
-		copy.setMem(0, data, 0, size);
+		copy.setFrom(0, source, 0, size);
 		return copy;
 	}
 
@@ -855,12 +852,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 */
 	private static PackedCollection createRandomCollection(Random rng, int... dims) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(dims));
-		int total = collection.getShape().getTotalSize();
-		double[] data = new double[total];
-		for (int i = 0; i < total; i++) {
-			data[i] = rng.nextGaussian() * 0.02;
-		}
-		collection.setMem(0, data, 0, total);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection), CollectionFeatures.getInstance().randn(collection.getShape(), rng).multiply(0.02)).get().run();
 		return collection;
 	}
 
@@ -869,11 +861,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 */
 	private static PackedCollection createRandomLogits(Random rng, int size, double std) {
 		PackedCollection collection = new PackedCollection(size);
-		double[] data = new double[size];
-		for (int i = 0; i < size; i++) {
-			data[i] = rng.nextGaussian() * std;
-		}
-		collection.setMem(0, data, 0, size);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection), CollectionFeatures.getInstance().randn(collection.getShape(), rng).multiply(std)).get().run();
 		return collection;
 	}
 

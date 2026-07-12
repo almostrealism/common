@@ -11,6 +11,8 @@
 package org.almostrealism.audio.filter.test;
 
 import io.almostrealism.lifecycle.Setup;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
@@ -1222,7 +1224,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		double maxCapture = 0;
 		for (int i = 0; i < 100; i++) {
 			// Vary the source signal each iteration (simulated oscillation)
-			sourceVal.setMem(0, Math.sin(i * 0.1) * 0.5);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sourceVal.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(Math.sin(i * 0.1) * 0.5)).get().run();
 			tick.run();
 			double v = Math.abs(captured.toDouble(0));
 			if (v > maxCapture) maxCapture = v;
@@ -1298,7 +1300,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		int bufSize = 512;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
 		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.5 * Math.sin(i * 2 * Math.PI / 64.0));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(audioBuffer.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(0.5 * Math.sin(i * 2 * Math.PI / 64.0))).get().run();
 		}
 
 		// External frame index (incremented in the outer loop)
@@ -1349,7 +1351,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		int bufSize = 512;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
 		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.5 * Math.sin(i * 2 * Math.PI / 64.0));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(audioBuffer.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(0.5 * Math.sin(i * 2 * Math.PI / 64.0))).get().run();
 		}
 
 		PackedCollection frameIndex = new PackedCollection(1);
@@ -1396,7 +1398,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		int bufSize = 512;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
 		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.5 * Math.sin(i * 2 * Math.PI / 64.0));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(audioBuffer.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(0.5 * Math.sin(i * 2 * Math.PI / 64.0))).get().run();
 		}
 
 		PackedCollection frameIndex = new PackedCollection(1);
@@ -1514,7 +1516,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		int bufSize = 256;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
 		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.1 + i * 0.001);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(audioBuffer.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(0.1 + i * 0.001)).get().run();
 		}
 
 		PackedCollection frameIndex = new PackedCollection(1);

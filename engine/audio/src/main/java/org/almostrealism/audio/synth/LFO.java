@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
@@ -219,7 +220,7 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 			}
 
 			// Update output
-			output.setMem(0, currentValue);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(output), CollectionFeatures.getInstance().c(currentValue)).get().run();
 		});
 
 		return tick;

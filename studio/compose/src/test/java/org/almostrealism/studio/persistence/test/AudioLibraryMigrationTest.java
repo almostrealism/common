@@ -17,6 +17,8 @@
 package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.studio.persistence.AudioLibraryMigration;
@@ -257,8 +259,7 @@ public class AudioLibraryMigrationTest extends TestSuiteBase {
 		PackedCollection featureData = new PackedCollection(frames, bins, 1);
 		for (int f = 0; f < frames; f++) {
 			for (int b = 0; b < bins; b++) {
-				featureData.setMem(f * bins + b,
-						(identifier.hashCode() + f * bins + b) * 0.001);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(featureData.range(new TraversalPolicy(1), f * bins + b)), CollectionFeatures.getInstance().c((identifier.hashCode() + f * bins + b) * 0.001)).get().run();
 			}
 		}
 		details.setFeatureData(featureData);

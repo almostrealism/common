@@ -18,6 +18,7 @@ package org.almostrealism.audio.data;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.graph.temporal.BaseAudioData;
 
 /**
@@ -60,13 +61,13 @@ public interface AudioFilterData extends BaseAudioData {
 	default PackedCollection outputHistory2() { return get(14); }
 
 	default Producer<PackedCollection> getFrequency() { return p(frequency()); }
-	default void setFrequency(double frequency) { frequency().setMem(0, frequency); }
+	default void setFrequency(double frequency) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(frequency()), CollectionFeatures.getInstance().c(frequency)).get().run(); }
 
 	default Producer<PackedCollection> getResonance() { return p(resonance()); }
-	default void setResonance(double resonance) { resonance().setMem(0, resonance); }
+	default void setResonance(double resonance) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(resonance()), CollectionFeatures.getInstance().c(resonance)).get().run(); }
 
 	default Producer<PackedCollection> getSampleRate() { return p(sampleRate()); }
-	default void setSampleRate(double sampleRate) { sampleRate().setMem(0, sampleRate); }
+	default void setSampleRate(double sampleRate) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sampleRate()), CollectionFeatures.getInstance().c(sampleRate)).get().run(); }
 
 	default Producer<PackedCollection> getC() { return p(c()); }
 	default Producer<PackedCollection> getA1() { return p(a1()); }

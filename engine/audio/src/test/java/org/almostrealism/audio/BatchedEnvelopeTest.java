@@ -90,7 +90,7 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		double[] reference = new double[N * TARGET_LENGTH];
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
-			ones.setMem(onesData);
+			ones.fill(1.0);
 			PackedCollection ref = AudioProcessingUtils.getVolumeEnv().evaluate(
 					ones.traverse(1),
 					single(durationV[n]), single(attackV[n]), single(decayV[n]),
@@ -145,7 +145,7 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		double[] reference = new double[N * TARGET_LENGTH];
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
-			ones.setMem(onesData);
+			ones.fill(1.0);
 			PackedCollection ref = AudioProcessingUtils.getLayerEnv().evaluate(
 					ones.traverse(1),
 					single(md[n]), single(f0[n]), single(f1[n]), single(f2[n]),

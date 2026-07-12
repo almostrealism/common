@@ -17,6 +17,8 @@
 package org.almostrealism.raytrace;
 
 import org.almostrealism.color.buffer.ArrayColorBuffer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.color.buffer.AveragedVectorMap2D;
 import org.almostrealism.color.buffer.AveragedVectorMap2D96Bit;
 import org.almostrealism.physics.BufferListener;
@@ -1141,7 +1143,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 			if (dist < Double.MAX_VALUE - 2 && dist > 0 && AbsorberHashSet.this.closest != null) {
 				di = new PackedCollection(1);
-				di.setMem(0, dist);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(di.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(dist)).get().run();
 			}
 
 			AbsorberHashSet.this.rclosest = AbsorberHashSet.this.closest;

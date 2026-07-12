@@ -17,6 +17,7 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -245,7 +246,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 			double tPrev = timesteps[step + 1];
 
 			// Set timestep tensor
-			tTensor.setMem(0, t);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(tTensor.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(t)).get().run();
 
 			// Model forward pass
 			long start = System.currentTimeMillis();

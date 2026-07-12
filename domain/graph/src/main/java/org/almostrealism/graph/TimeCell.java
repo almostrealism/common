@@ -17,6 +17,8 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
@@ -127,9 +129,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	 * Initializes all reset slots to -1 (disabled).
 	 */
 	protected void initResets() {
-		double[] initial = new double[resets.getMemLength()];
-		IntStream.range(0, initial.length).forEach(i -> initial[i] = -1);
-		resets.setMem(initial);
+		resets.fill(-1.0);
 	}
 
 	/**
@@ -139,7 +139,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	 * @param value the frame number at which to reset, or -1 to disable
 	 */
 	public void setReset(int index, int value) {
-		resets.setMem(index, (double) value);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(resets.range(new TraversalPolicy(1), index)), CollectionFeatures.getInstance().c((double) value)).get().run();
 	}
 
 	/**
@@ -241,7 +241,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	 */
 	public void setFrame(double frame) {
 		double f = Math.floor(frame);
-		time.setMem(f, f);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(time), CollectionFeatures.getInstance().c(f, f)).get().run();
 	}
 
 	/**
@@ -262,7 +262,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 		if (loopDurationFrames <= 0) return;
 		double right = time.toDouble(1);
 		double newLeft = right - Math.floor(right / loopDurationFrames) * loopDurationFrames;
-		time.setMem(0, newLeft);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(time.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(newLeft)).get().run();
 	}
 
 	/**

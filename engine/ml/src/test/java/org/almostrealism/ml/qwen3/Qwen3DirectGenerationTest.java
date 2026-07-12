@@ -1,6 +1,8 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -107,7 +109,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 			log("--- Step " + step + ": Input token " + inputToken + " ---");
 
 			// Set position
-			position.setMem(0, (double) step);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 
 			// Create input from embedding
 			PackedCollection input = new PackedCollection(compiledModel.getInputShape());

@@ -18,6 +18,7 @@ package org.almostrealism.audio.sources;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.graph.temporal.BaseAudioData;
 
 /**
@@ -50,7 +51,7 @@ public interface SineWaveCellData extends BaseAudioData {
 	 * @param notePosition note position value in seconds
 	 */
 	default void setNotePosition(double notePosition) {
-		notePosition().setMem(0, notePosition);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(notePosition()), CollectionFeatures.getInstance().c(notePosition)).get().run();
 	}
 
 	/**
@@ -68,7 +69,7 @@ public interface SineWaveCellData extends BaseAudioData {
 	 * @param noteLength note length in seconds
 	 */
 	default void setNoteLength(double noteLength) {
-		noteLength().setMem(0, noteLength);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(noteLength()), CollectionFeatures.getInstance().c(noteLength)).get().run();
 	}
 
 	/**
@@ -86,7 +87,7 @@ public interface SineWaveCellData extends BaseAudioData {
 	 * @param phase phase value in radians
 	 */
 	default void setPhase(double phase) {
-		phase().setMem(0, phase);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(phase()), CollectionFeatures.getInstance().c(phase)).get().run();
 	}
 
 	/**
@@ -103,5 +104,5 @@ public interface SineWaveCellData extends BaseAudioData {
 	 *
 	 * @param depth depth value (0.0–1.0)
 	 */
-	default void setDepth(double depth) { depth().setMem(0, depth); }
+	default void setDepth(double depth) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(depth()), CollectionFeatures.getInstance().c(depth)).get().run(); }
 }

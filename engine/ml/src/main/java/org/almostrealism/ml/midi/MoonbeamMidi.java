@@ -17,6 +17,8 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
@@ -233,7 +235,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 * @param step the current position in the sequence
 	 */
 	public void setPosition(int step) {
-		position.setMem(0, (double) step);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 	}
 
 	/**
@@ -248,7 +250,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 		double[] values = token.isSpecial()
 				? new double[MoonbeamConfig.NUM_ATTRIBUTES]
 				: token.toDoubleArray();
-		attributePositions.setMem(0, values);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(attributePositions.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(values)).get().run();
 	}
 
 	/** Returns the compound MIDI embedding layer. */

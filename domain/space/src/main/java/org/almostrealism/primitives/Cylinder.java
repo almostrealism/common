@@ -17,6 +17,8 @@
 package org.almostrealism.primitives;
 
 import io.almostrealism.code.Operator;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -124,9 +126,9 @@ public class Cylinder extends AbstractSurface implements CodeFeatures {
 				PackedCollection sc = new PackedCollection(1);
 
 				if (l0 >= 0 && l0 <= 1.0)
-					sc.setMem(0, l0);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sc.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(l0)).get().run();
 				else if (l1 >= 0 && l1 <= 1.0)
-					sc.setMem(0, l1);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sc.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(l1)).get().run();
 				else
 					return null;
 

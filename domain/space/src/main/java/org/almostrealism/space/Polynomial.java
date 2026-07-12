@@ -17,6 +17,8 @@
 package org.almostrealism.space;
 
 import io.almostrealism.code.Constant;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.code.Operator;
 import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -464,7 +466,7 @@ public class Polynomial extends AbstractSurface {
 			}
 
 			PackedCollection result = new PackedCollection(1);
-			result.setMem(0, closest);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(closest)).get().run();
 			return result;
 		};
 
@@ -487,7 +489,7 @@ public class Polynomial extends AbstractSurface {
 					// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
 					Vector v = getInput().get().evaluate(args);
 					PackedCollection result = new PackedCollection(1);
-					result.setMem(0, Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()));
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()))).get().run();
 					return result;
 				};
 			}

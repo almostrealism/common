@@ -17,6 +17,7 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Factor;
@@ -690,7 +691,7 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 				for (int k = 0; k < kernelSize; k++) {
 					int idx = oc * vSize + ic * kernelSize + k;
 					double v = weightV.toDouble(idx);
-					result.setMem(idx, v * scale);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(v * scale)).get().run();
 				}
 			}
 		}
@@ -782,7 +783,7 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 				for (int k = 0; k < kernelSize; k++) {
 					int idx = ic * vSize + oc * kernelSize + k;
 					double v = weightV.toDouble(idx);
-					result.setMem(idx, v * scale);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(v * scale)).get().run();
 				}
 			}
 		}

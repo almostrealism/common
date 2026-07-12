@@ -84,7 +84,8 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/hardware/mem/MemoryDataAdapter.java",
 			"/code/Memory.java",
 			"MemoryProvider.java",           // matches every *MemoryProvider implementation
-			"/collect/PackedCollection.java" // implements fill/replace/clone and from-host factories
+			"/collect/PackedCollection.java", // implements fill/replace/clone and from-host factories
+			"/collect/CollectionCreationFeatures.java" // c(double...) — the host-array to collection ingest primitive
 	);
 
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */

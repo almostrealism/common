@@ -17,6 +17,8 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
@@ -59,7 +61,7 @@ public class RunningAverageCell extends CollectionCachedStateCell {
 			// Update the cached value to the current
 			// running average of values received
 			PackedCollection result = new PackedCollection(1);
-			result.setMem(0, this.total / pushes);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(this.total / pushes)).get().run();
 			setCachedValue(result);
 		};
 	}

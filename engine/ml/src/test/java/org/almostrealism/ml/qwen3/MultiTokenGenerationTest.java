@@ -17,6 +17,8 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -117,7 +119,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 			// CRITICAL: Update position before forward pass
 			// Maintains proper RoPE rotation, causal masking, and KV cache indexing
-			position.setMem(0, (double) step);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 
 			// Get embedding for current token
 			PackedCollection input = new PackedCollection(shape(1, config.dim));
@@ -283,8 +285,8 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 			for (int i = 0; i < freqDim; i++) {
 				double freq = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
 				double angle = pos * freq;
-				freqCis.setMem((pos * freqDim + i) * 2, Math.cos(angle));
-				freqCis.setMem((pos * freqDim + i) * 2 + 1, Math.sin(angle));
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), (pos * freqDim + i) * 2)), CollectionFeatures.getInstance().c(Math.cos(angle))).get().run();
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), (pos * freqDim + i) * 2 + 1)), CollectionFeatures.getInstance().c(Math.sin(angle))).get().run();
 			}
 		}
 

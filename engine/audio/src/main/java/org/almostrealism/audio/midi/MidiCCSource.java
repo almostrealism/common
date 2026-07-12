@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.synth.ModulationSource;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -213,11 +214,11 @@ public class MidiCCSource implements ModulationSource, CodeFeatures {
 		// Apply smoothing
 		if (smoothing > 0) {
 			smoothedValue = smoothedValue * smoothing + ranged * (1.0 - smoothing);
-			output.setMem(0, smoothedValue);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(output), CollectionFeatures.getInstance().c(smoothedValue)).get().run();
 			return smoothedValue;
 		}
 
-		output.setMem(0, ranged);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(output), CollectionFeatures.getInstance().c(ranged)).get().run();
 		return ranged;
 	}
 

@@ -17,6 +17,8 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Producer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -369,7 +371,7 @@ public class CollectionPadTests extends TestSuiteBase {
 
 		int batchSize = 256;
 		PackedCollection scalars = new PackedCollection(shape(batchSize, 1).traverse(1));
-		integers(0, batchSize).into(scalars.traverseEach()).evaluate();
+		a(cp(scalars), integers(0, batchSize)).get().run();
 
 		PackedCollection result = new PackedCollection(shape(batchSize, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);
@@ -409,11 +411,7 @@ public class CollectionPadTests extends TestSuiteBase {
 		int h = 16;
 		int w = 16;
 		PackedCollection scalars = new PackedCollection(shape(h, w, 1).traverse(2));
-		for (int y = 0; y < h; y++) {
-			for (int x = 0; x < w; x++) {
-				scalars.setMem(scalars.getShape().index(y, x, 0), (double) (y * w + x));
-			}
-		}
+		a(cp(scalars), integers(0, h * w).reshape(scalars.getShape())).get().run();
 
 		PackedCollection result = new PackedCollection(shape(h, w, 2).traverse(2));
 		concatenated.get().into(result.each()).evaluate(scalars);

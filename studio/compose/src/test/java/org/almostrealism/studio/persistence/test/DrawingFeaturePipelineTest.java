@@ -17,6 +17,8 @@
 package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
@@ -288,7 +290,7 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 			for (int b = 0; b < FREQ_BINS; b++) {
 				double value = Math.sin(2.0 * Math.PI * b / FREQ_BINS) *
 						Math.cos(2.0 * Math.PI * f / FREQ_FRAMES);
-				freqData.setMem(f * FREQ_BINS + b, Math.max(0, value * 10));
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqData.range(new TraversalPolicy(1), f * FREQ_BINS + b)), CollectionFeatures.getInstance().c(Math.max(0, value * 10))).get().run();
 			}
 		}
 		details.setFreqData(freqData);
@@ -321,7 +323,7 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 							energy += sample * Math.cos(angle);
 						}
 					}
-					features.setMem(f * FEATURE_BINS + b, Math.abs(energy) / windowSize);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(features.range(new TraversalPolicy(1), f * FEATURE_BINS + b)), CollectionFeatures.getInstance().c(Math.abs(energy) / windowSize)).get().run();
 				}
 			}
 

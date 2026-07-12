@@ -17,6 +17,7 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Named;
@@ -211,7 +212,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 		PackedCollection a = new PackedCollection(shape(inputSize, rank));
 		double std = 1.0 / Math.sqrt(inputSize);
 		for (int i = 0; i < inputSize * rank; i++) {
-			a.setMem(i, random.nextGaussian() * std);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(a.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(random.nextGaussian() * std)).get().run();
 		}
 		return a;
 	}
@@ -366,7 +367,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 					loraVal += aVal * bVal;
 				}
 
-				merged.setMem(i * inputSize + j, baseVal + scale * loraVal);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(merged.range(new TraversalPolicy(1), i * inputSize + j)), CollectionFeatures.getInstance().c(baseVal + scale * loraVal)).get().run();
 			}
 		}
 

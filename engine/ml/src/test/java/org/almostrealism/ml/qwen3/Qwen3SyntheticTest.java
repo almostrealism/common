@@ -1,6 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.ml.StateDictionary;
@@ -115,7 +116,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		// Fill with small random values (-0.1 to 0.1)
 		int size = shape.getTotalSize();
 		for (int i = 0; i < size; i++) {
-			collection.setMem(i, (random.nextDouble() - 0.5) * 0.2);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((random.nextDouble() - 0.5) * 0.2)).get().run();
 		}
 
 		return collection;

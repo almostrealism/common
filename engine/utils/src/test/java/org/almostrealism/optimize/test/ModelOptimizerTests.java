@@ -17,6 +17,8 @@
 package org.almostrealism.optimize.test;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.model.CompiledModel;
@@ -95,7 +97,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 				for (int k = 0; k < inputSize; k++) {
 					val += input.toDouble(k) * ((k + j) % 3 == 0 ? 0.5 : -0.3);
 				}
-				target.setMem(j, val);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(target.range(new TraversalPolicy(1), j)), CollectionFeatures.getInstance().c(val)).get().run();
 			}
 			trainingSamples.add(ValueTarget.of(input, target));
 		}

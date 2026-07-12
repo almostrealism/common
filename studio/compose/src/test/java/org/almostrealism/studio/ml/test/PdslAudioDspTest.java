@@ -798,11 +798,10 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
 
 		// Identity matrix - each output channel passes its input unchanged.
-		double[] identity = new double[channels * channels];
-		for (int i = 0; i < channels; i++) identity[i * channels + i] = 1.0;
 		PackedCollection identitySlot =
 				new PackedCollection(new TraversalPolicy(channels, channels));
-		identitySlot.setMem(identity);
+		identitySlot.fill(0.0);
+		for (int i = 0; i < channels; i++) identitySlot.setMem(i * channels + i, 1.0);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);
@@ -816,12 +815,10 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		CompiledModel identityCompiled = identityModel.compile();
 
 		// Build the input: distinct constant per channel.
-		double[] inData = new double[channels * SIGNAL_SIZE];
-		for (int c = 0; c < channels; c++)
-			for (int t = 0; t < SIGNAL_SIZE; t++)
-				inData[c * SIGNAL_SIZE + t] = (c + 1) * 0.1;
 		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(inData);
+		input.fill(0.0);
+		for (int ch = 0; ch < channels; ch++)
+			a(cp(input.range(shape(SIGNAL_SIZE), ch * SIGNAL_SIZE)), c((ch + 1) * 0.1)).get().run();
 
 		double[] out1 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
 		for (int c = 0; c < channels; c++) {

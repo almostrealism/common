@@ -141,9 +141,7 @@ interface MixdownPdslTestFeatures {
 	 */
 	default PackedCollection onesCollection(int size) {
 		PackedCollection ones = new PackedCollection(new TraversalPolicy(size));
-		double[] data = new double[size];
-		Arrays.fill(data, 1.0);
-		ones.setMem(data);
+		ones.fill(1.0);
 		return ones;
 	}
 
@@ -157,11 +155,10 @@ interface MixdownPdslTestFeatures {
 	 */
 	default PackedCollection identityFirBank(int channels, int taps) {
 		PackedCollection bank = new PackedCollection(new TraversalPolicy(channels, taps));
-		double[] data = new double[channels * taps];
+		bank.fill(0.0);
 		for (int ch = 0; ch < channels; ch++) {
-			data[ch * taps + taps / 2] = 1.0;
+			bank.setMem(ch * taps + taps / 2, 1.0);
 		}
-		bank.setMem(data);
 		return bank;
 	}
 
@@ -173,9 +170,8 @@ interface MixdownPdslTestFeatures {
 	 */
 	default PackedCollection identityFir(int taps) {
 		PackedCollection coeffs = new PackedCollection(taps);
-		double[] data = new double[taps];
-		data[taps / 2] = 1.0;
-		coeffs.setMem(data);
+		coeffs.fill(0.0);
+		coeffs.setMem(taps / 2, 1.0);
 		return coeffs;
 	}
 }

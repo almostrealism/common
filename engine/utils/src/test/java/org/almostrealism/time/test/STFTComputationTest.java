@@ -17,6 +17,8 @@
 package org.almostrealism.time.test;
 
 import org.almostrealism.collect.CollectionProducer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.computations.WindowComputation;
@@ -42,7 +44,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		double frequency = 4.0; // 4 cycles over the signal
 		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * frequency * i / signalLength));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * frequency * i / signalLength))).get().run();
 		}
 
 		// Compute STFT
@@ -67,7 +69,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * 2.0 * i / signalLength));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * 2.0 * i / signalLength))).get().run();
 		}
 
 		for (WindowComputation.Type windowType : WindowComputation.Type.values()) {
@@ -110,7 +112,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 		// Create a non-zero signal
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, 1.0 + Math.sin(2.0 * Math.PI * i / 32.0));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(1.0 + Math.sin(2.0 * Math.PI * i / 32.0))).get().run();
 		}
 
 		CollectionProducer stftProducer = stft(fftSize, hopSize, cp(signal));
@@ -170,7 +172,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.random());
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.random())).get().run();
 		}
 
 		// Default uses Hann window - just verify it produces valid output
@@ -194,7 +196,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * i / 64.0));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * i / 64.0))).get().run();
 		}
 
 		int expectedFrames = TemporalFeatures.computeNumFrames(signalLength, fftSize, hopSize);

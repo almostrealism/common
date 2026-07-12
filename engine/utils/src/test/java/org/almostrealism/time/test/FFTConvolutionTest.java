@@ -17,6 +17,8 @@
 package org.almostrealism.time.test;
 
 import org.almostrealism.collect.CollectionProducer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestFeatures;
@@ -152,7 +154,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, i + 1.0);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i + 1.0)).get().run();
 		}
 
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
@@ -278,13 +280,13 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		// Generate random-ish signal
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * i / 128.0));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * i / 128.0))).get().run();
 		}
 
 		// Generate impulse response kernel
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
 		for (int i = 0; i < kernelLength; i++) {
-			kernel.setMem(i, Math.exp(-i / 10.0) * Math.cos(Math.PI * i / 8.0));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(kernel.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.exp(-i / 10.0) * Math.cos(Math.PI * i / 8.0))).get().run();
 		}
 
 		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));

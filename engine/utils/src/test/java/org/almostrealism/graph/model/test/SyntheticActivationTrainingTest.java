@@ -17,6 +17,8 @@
 package org.almostrealism.graph.model.test;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.model.Model;
@@ -65,7 +67,7 @@ public class SyntheticActivationTrainingTest extends TestSuiteBase implements Mo
 				PackedCollection out = new PackedCollection(in.getShape());
 				for (int i = 0; i < in.getMemLength(); i++) {
 					double v = coeff[i % coeff.length] * in.valueAt(i);
-					out.setMem(i, Math.max(0, v));  // ReLU-like
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(out.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.max(0, v))).get().run();  // ReLU-like
 				}
 				return out;
 			};

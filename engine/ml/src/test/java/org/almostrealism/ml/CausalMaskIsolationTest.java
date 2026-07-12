@@ -1,6 +1,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.code.Precision;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -147,7 +148,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		// Test at different positions
 		for (int pos = 0; pos < seqLen; pos++) {
 			log("\nPosition " + pos + ":");
-			position.setMem(0, (double) pos);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) pos)).get().run();
 
 			PackedCollection output = compiled.forward(input);
 

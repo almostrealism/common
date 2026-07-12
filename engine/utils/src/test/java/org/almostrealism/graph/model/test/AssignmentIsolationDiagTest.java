@@ -264,7 +264,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		double[] expected = { 0.35, 0.6, 1.1 };
 
 		for (int i = 0; i < inputs.length; i++) {
-			external.setMem(0, inputs[i][0], inputs[i][1]);
+			a(cp(external), c(inputs[i][0], inputs[i][1])).get().run();
 			run.run();
 			log("optimizedListRecordThenDense pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -305,7 +305,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		double[] expected = { 0.35, 0.6, 1.1 };
 
 		for (int i = 0; i < inputs.length; i++) {
-			external.setMem(0, inputs[i][0], inputs[i][1]);
+			a(cp(external), c(inputs[i][0], inputs[i][1])).get().run();
 			run.run();
 			log("optimizedListRecordThenMatmul pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -349,7 +349,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		for (int i = 0; i < inputs.length; i++) {
 			external[0] = new PackedCollection(shape(2));
-			external[0].setMem(0, inputs[i][0], inputs[i][1]);
+			a(cp(external[0]), c(inputs[i][0], inputs[i][1])).get().run();
 			run.run();
 			log("optimizedListDynamicRecordThenDense pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -400,7 +400,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		for (int i = 0; i < inputs.length; i++) {
 			external[0] = new PackedCollection(shape(2));
-			external[0].setMem(0, inputs[i][0], inputs[i][1]);
+			a(cp(external[0]), c(inputs[i][0], inputs[i][1])).get().run();
 			run.run();
 			log("optimizedNestedIntoComposite pass=" + (i + 1) +
 					" result=" + modelOut.toDouble(0) + " expected=" + expected[i]);
@@ -481,9 +481,9 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		for (int i = 0; i < inputs.length; i++) {
 			if (dynamic) {
 				external[0] = new PackedCollection(shape(2));
-				external[0].setMem(0, inputs[i][0], inputs[i][1]);
+				a(cp(external[0]), c(inputs[i][0], inputs[i][1])).get().run();
 			} else {
-				providerExternal.setMem(0, inputs[i][0], inputs[i][1]);
+				a(cp(providerExternal), c(inputs[i][0], inputs[i][1])).get().run();
 			}
 
 			run.run();
@@ -543,7 +543,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		double[] expected = { 0.35, 0.6, 1.1 };
 
 		for (int i = 0; i < inputs.length; i++) {
-			external.setMem(0, inputs[i][0], inputs[i][1]);
+			a(cp(external), c(inputs[i][0], inputs[i][1])).get().run();
 			run.run();
 			log("optimizedListRecordThenIsolatedDense pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -706,7 +706,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		double[] results = new double[inputs.length];
 		for (int i = 0; i < inputs.length; i++) {
-			input.setMem(0, inputs[i][0], inputs[i][1]);
+			a(cp(input), c(inputs[i][0], inputs[i][1])).get().run();
 			PackedCollection out = compiled.forward(input);
 			results[i] = out.toDouble(0);
 		}

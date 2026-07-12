@@ -17,6 +17,8 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.studio.AudioSceneLoader;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
@@ -223,7 +225,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 		PackedCollection genomeParams = scene.getGenome().getParameters();
 		PackedCollection seededParams = new PackedCollection(genomeParams.getShape());
 		for (int i = 0; i < seededParams.getMemLength(); i++) {
-			seededParams.setMem(i, random.nextDouble());
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(seededParams.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(random.nextDouble())).get().run();
 		}
 
 		return new ProjectedGenome(seededParams);

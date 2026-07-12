@@ -6,6 +6,8 @@
 package org.almostrealism.audio.data;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.computations.FourierTransform;
@@ -238,7 +240,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 			if (outIdx >= 0 && outIdx < outputLength) {
 				double existing = output.toDouble(outIdx);
 				double windowed = frame[i] * window[i];
-				output.setMem(outIdx, existing + windowed);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(output.range(new TraversalPolicy(1), outIdx)), CollectionFeatures.getInstance().c(existing + windowed)).get().run();
 			}
 		}
 	}

@@ -17,6 +17,8 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -402,7 +404,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			double bufferMax = 0;
 			for (int i = 0; i < BUFFER_SIZE; i++) {
 				double val = tempBuffer.valueAt(i);
-				concatenatedResult.setMem(startFrame + i, val);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(concatenatedResult.range(new TraversalPolicy(1), startFrame + i)), CollectionFeatures.getInstance().c(val)).get().run();
 				if (Math.abs(val) > bufferMax) bufferMax = Math.abs(val);
 			}
 
@@ -949,7 +951,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		int bufferSize = 64;  // Small for quick test
 		PackedCollection sourceBuffer = new PackedCollection(bufferSize);
 		for (int i = 0; i < bufferSize; i++) {
-			sourceBuffer.setMem(i, (i + 1) * 0.01);  // 0.01, 0.02, ..., 0.64
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sourceBuffer.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i + 1) * 0.01)).get().run();  // 0.01, 0.02, ..., 0.64
 		}
 		log("Source buffer filled with values 0.01 to 0.64");
 
@@ -1304,7 +1306,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						if (overlapLength <= 0) continue;
 
 						// --- Partial evaluation ---
-						note.getOffsetArg().setMem(0, sourceOffset);
+						CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(note.getOffsetArg().range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(sourceOffset)).get().run();
 						Producer<PackedCollection> partialProducer =
 								note.getProducer(overlapLength);
 

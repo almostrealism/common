@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
@@ -256,7 +257,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @param x  the new X coordinate
 	 */
 	public void setX(double x) {
-		this.setMem(0, x);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(x)).get().run();
 	}
 
 	/**
@@ -265,7 +266,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @param y  the new Y coordinate
 	 */
 	public void setY(double y) {
-		this.setMem(1, y);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.range(new TraversalPolicy(1), 1)), CollectionFeatures.getInstance().c(y)).get().run();
 	}
 
 	/**
@@ -274,7 +275,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @param z  the new Z coordinate
 	 */
 	public void setZ(double z) {
-		this.setMem(2, z);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.range(new TraversalPolicy(1), 2)), CollectionFeatures.getInstance().c(z)).get().run();
 	}
 
 	/**
@@ -523,7 +524,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * </p>
 	 */
 	public void normalize() {
-		normalize(cp(this)).into(this).evaluate();
+		a(cp(this), normalize(cp(this))).get().run();
 	}
 
 	/**

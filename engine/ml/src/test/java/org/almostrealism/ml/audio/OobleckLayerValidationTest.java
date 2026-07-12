@@ -17,6 +17,7 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
@@ -185,7 +186,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 		int inputSize = inChannels * seqLength;
 		for (int i = 0; i < inputSize; i++) {
 			// Linear gradient with some variation
-			input.setMem(i, (i % 100) * 0.01 + Math.sin(i * 0.1) * 0.5);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i % 100) * 0.01 + Math.sin(i * 0.1) * 0.5)).get().run();
 		}
 
 		float[] inputValues = new float[inputSize];
@@ -1357,7 +1358,7 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 		for (int c = 0; c < inputChannels; c++) {
 			for (int s = 0; s < sequenceLength; s++) {
 				double value = inputMean + inputStd * rand.nextGaussian();
-				input.setMem(c * sequenceLength + s, value);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), c * sequenceLength + s)), CollectionFeatures.getInstance().c(value)).get().run();
 			}
 		}
 

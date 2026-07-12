@@ -17,6 +17,7 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
@@ -61,7 +62,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		start = System.currentTimeMillis();
 		for (int i = 0; i < Math.min(1000, vocabSize); i++) {
 			for (int j = 0; j < inputDim; j++) {
-				weights.setMem(i * inputDim + j, 0.001 * (i + j));
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(weights.range(new TraversalPolicy(1), i * inputDim + j)), CollectionFeatures.getInstance().c(0.001 * (i + j))).get().run();
 			}
 		}
 		log("    Partial init in " + (System.currentTimeMillis() - start) + "ms");

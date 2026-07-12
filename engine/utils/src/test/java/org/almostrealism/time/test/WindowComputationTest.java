@@ -17,6 +17,8 @@
 package org.almostrealism.time.test;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.time.computations.WindowComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -431,7 +433,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		// Create a sine wave signal
 		PackedCollection signal = new PackedCollection(size);
 		for (int i = 0; i < size; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * frequency * i / size));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * frequency * i / size))).get().run();
 		}
 
 		// Apply Hann window

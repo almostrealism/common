@@ -17,6 +17,8 @@
 package org.almostrealism.studio.generate.test;
 
 import org.almostrealism.audio.AudioLibrary;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.SentencePieceTokenizer;
@@ -166,7 +168,7 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 
 			PackedCollection position = new PackedCollection(AudioModel.DIM);
 			for (int i = 0; i < AudioModel.DIM; i++) {
-				position.setMem(i, Math.random());
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.random())).get().run();
 			}
 
 			String outputPath = tempDir.resolve("generated_output.wav").toString();
@@ -210,7 +212,7 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 				value += Math.exp(-0.5 * Math.pow((freq - 0.36) / 0.02, 2)) * 1.5;
 				value *= Math.sin(Math.PI * t);
 
-				freqData.setMem(f * FREQ_BINS + b, Math.max(0, value));
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqData.range(new TraversalPolicy(1), f * FREQ_BINS + b)), CollectionFeatures.getInstance().c(Math.max(0, value))).get().run();
 			}
 		}
 		details.setFreqData(freqData);
