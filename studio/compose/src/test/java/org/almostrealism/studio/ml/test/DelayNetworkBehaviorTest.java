@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Block;
@@ -111,7 +112,9 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 			Assert.assertEquals(channels * signalSize, flatInput.length);
 			PackedCollection input = new PackedCollection(
 					new TraversalPolicy(channels, signalSize));
-			input.setMem(flatInput);
+			CollectionFeatures.getInstance().a(
+					CollectionFeatures.getInstance().cp(input),
+					CollectionFeatures.getInstance().c(flatInput)).get().run();
 			PackedCollection out = model.forward(input);
 			return out.toArray(0, channels * signalSize);
 		}
@@ -173,10 +176,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				channels * channels, feedbackMatrixRowMajor.length);
 
 		PackedCollection delays = new PackedCollection(channels);
-		delays.setMem(tapDelays);
+		a(cp(delays), c(tapDelays)).get().run();
 		PackedCollection feedback = new PackedCollection(
 				new TraversalPolicy(channels, channels));
-		feedback.setMem(feedbackMatrixRowMajor);
+		a(cp(feedback), c(feedbackMatrixRowMajor)).get().run();
 		PackedCollection buffer = new PackedCollection(channels * bufSize);
 		buffer.fill(0.0);
 		PackedCollection heads = new PackedCollection(channels);
@@ -188,7 +191,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 					channels * channels, passthroughMatrixRowMajor.length);
 			PackedCollection pass = new PackedCollection(
 					new TraversalPolicy(channels, channels));
-			pass.setMem(passthroughMatrixRowMajor);
+			a(cp(pass), c(passthroughMatrixRowMajor)).get().run();
 			passthrough = cp(pass);
 		}
 
@@ -626,7 +629,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		double[] flat = new double[channels * signalSize];
 		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
-		input.setMem(flat);
+		a(cp(input), c(flat)).get().run();
 		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 		for (int ch = 0; ch < channels; ch++) {
@@ -672,7 +675,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		double[] flat = new double[channels * signalSize];
 		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
-		input.setMem(flat);
+		a(cp(input), c(flat)).get().run();
 		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 		for (int ch = 0; ch < channels; ch++) {
@@ -720,7 +723,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		double[] flat = new double[channels * signalSize];
 		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
 		PackedCollection input = new PackedCollection(multiShape);
-		input.setMem(flat);
+		a(cp(input), c(flat)).get().run();
 		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 		for (int ch = 0; ch < channels; ch++) {

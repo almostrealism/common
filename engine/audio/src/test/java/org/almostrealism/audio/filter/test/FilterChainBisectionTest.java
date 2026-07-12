@@ -1457,9 +1457,9 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		for (int s = 0; s < numSources; s++) {
 			buffers[s] = new PackedCollection(bufSize);
 			double freq = 64.0 / (s + 1);
-			for (int i = 0; i < bufSize; i++) {
-				buffers[s].setMem(i, 0.3 * Math.sin(i * 2 * Math.PI / freq));
-			}
+			a(cp(buffers[s]),
+					sin(integers(0, bufSize).multiply(2 * Math.PI / freq)).multiply(0.3))
+					.get().run();
 		}
 
 		PackedCollection frameIndex = new PackedCollection(1);

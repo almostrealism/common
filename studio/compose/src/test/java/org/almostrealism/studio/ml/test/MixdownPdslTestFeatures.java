@@ -18,6 +18,7 @@ package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Arrays;
@@ -65,12 +66,16 @@ interface MixdownPdslTestFeatures {
 		PackedCollection fbDelay = new PackedCollection(new TraversalPolicy(channels));
 		double[] fbDelayData = new double[channels];
 		Arrays.fill(fbDelayData, PDSL_DELAY_SAMPLES);
-		fbDelay.setMem(fbDelayData);
+		CollectionFeatures.getInstance().a(
+				CollectionFeatures.getInstance().cp(fbDelay),
+				CollectionFeatures.getInstance().c(fbDelayData)).get().run();
 		PackedCollection fbTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
 		PackedCollection fbPassthrough = new PackedCollection(new TraversalPolicy(channels, channels));
 		double[] passthroughData = new double[channels * channels];
 		for (int i = 0; i < channels; i++) passthroughData[i * channels + i] = 1.0;
-		fbPassthrough.setMem(passthroughData);
+		CollectionFeatures.getInstance().a(
+				CollectionFeatures.getInstance().cp(fbPassthrough),
+				CollectionFeatures.getInstance().c(passthroughData)).get().run();
 		PackedCollection fbBuffers = new PackedCollection(channels * signalSize);
 		PackedCollection fbHeads = new PackedCollection(channels);
 
@@ -79,7 +84,9 @@ interface MixdownPdslTestFeatures {
 		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
 		double[] reverbDelayData = new double[channels];
 		Arrays.fill(reverbDelayData, signalSize);
-		reverbDelays.setMem(reverbDelayData);
+		CollectionFeatures.getInstance().a(
+				CollectionFeatures.getInstance().cp(reverbDelays),
+				CollectionFeatures.getInstance().c(reverbDelayData)).get().run();
 		PackedCollection reverbFeedback = new PackedCollection(new TraversalPolicy(channels, channels));
 		PackedCollection reverbBuffers = new PackedCollection(channels * reverbFrames * signalSize);
 		PackedCollection reverbHeads = new PackedCollection(channels);
@@ -123,7 +130,9 @@ interface MixdownPdslTestFeatures {
 		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
 		double[] delayData = new double[channels];
 		Arrays.fill(delayData, signal);
-		reverbDelays.setMem(delayData);
+		CollectionFeatures.getInstance().a(
+				CollectionFeatures.getInstance().cp(reverbDelays),
+				CollectionFeatures.getInstance().c(delayData)).get().run();
 		reverb.put("delay_samples", reverbDelays);
 		reverb.put("feedback_matrix", new PackedCollection(
 				new TraversalPolicy(channels, channels)).fill(0.0));

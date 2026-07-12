@@ -933,7 +933,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		}
 
 		PackedCollection result = new PackedCollection(dh);
-		result.setMem(0, hNew, 0, dh);
+		CollectionFeatures.getInstance().a(
+				CollectionFeatures.getInstance().cp(result),
+				CollectionFeatures.getInstance().c(hNew)).get().run();
 		return result;
 	}
 
@@ -957,7 +959,9 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 			resultArr[i] = sum;
 		}
 		PackedCollection result = new PackedCollection(outputSize);
-		result.setMem(0, resultArr, 0, outputSize);
+		CollectionFeatures.getInstance().a(
+				CollectionFeatures.getInstance().cp(result),
+				CollectionFeatures.getInstance().c(resultArr)).get().run();
 		return result;
 	}
 

@@ -52,7 +52,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 
 		double[] coeffs = referenceLowPassCoefficients(5000, 44100, filterOrder);
 		PackedCollection coefficients = new PackedCollection(filterOrder + 1);
-		coefficients.setMem(coeffs);
+		a(cp(coefficients), c(coeffs)).get().run();
 
 		MultiOrderFilter filter = MultiOrderFilter.create(
 				traverseEach(cp(signal)), p(coefficients));

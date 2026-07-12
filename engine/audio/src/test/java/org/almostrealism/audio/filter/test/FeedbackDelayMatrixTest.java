@@ -114,11 +114,13 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 		Evaluable<PackedCollection> ev = network.getResultant(p(current)).get();
 		Runnable tick = network.tick().get();
 
+		double[] outputData = new double[input.getMemLength()];
 		for (int i = 0; i < input.getMemLength(); i++) {
-			current.setMem(input.toDouble(i));
-			output.setMem(i, ev.evaluate().toDouble(0));
+			current.setFrom(0, input, i, 1);
+			outputData[i] = ev.evaluate().toDouble(0);
 			tick.run();
 		}
+		a(cp(output), c(outputData)).get().run();
 
 		return output;
 	}

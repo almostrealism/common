@@ -38,6 +38,7 @@ import org.almostrealism.music.pattern.PatternElementFactory;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
@@ -219,9 +220,13 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 			PackedCollection combined = new PackedCollection(len);
 
 			double scale = (1 + Math.random()) * magnitude / 2;
+			double[] perturbed = new double[len];
 			for (int i = 0; i < len; i++) {
-				combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));
+				perturbed[i] = Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale);
 			}
+			CollectionFeatures.getInstance().a(
+					CollectionFeatures.getInstance().cp(combined),
+					CollectionFeatures.getInstance().c(perturbed)).get().run();
 
 			return new ProjectedGenome(new PackedCollection(combined));
 		};

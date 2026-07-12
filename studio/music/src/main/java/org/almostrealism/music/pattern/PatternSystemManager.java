@@ -236,7 +236,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 * @param volume the new volume value
 	 */
 	public void setVolume(double volume) {
-		c(volume).into(this.volume.traverseEach()).evaluate();
+		a(cp(this.volume), c(volume)).get().run();
 		this.volumeValue = volume;
 	}
 

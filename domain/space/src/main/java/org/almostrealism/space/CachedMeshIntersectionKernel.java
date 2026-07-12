@@ -164,7 +164,7 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 		} else {
 			Pair pos = (Pair) args[0];
 			int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-			result.setMem(0, cache.toDouble(n * 2));
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(cache.toDouble(n * 2))).get().run();
 		}
 		return result;
 	}

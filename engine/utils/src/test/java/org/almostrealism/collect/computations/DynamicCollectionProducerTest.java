@@ -164,9 +164,7 @@ public class DynamicCollectionProducerTest extends TestSuiteBase {
 							PackedCollection input = inputs[0];
 							PackedCollection result = new PackedCollection(shape);
 							// Double each value from the input
-							for (int i = 0; i < input.getMemLength(); i++) {
-								result.setMem(i, input.toDouble(i) * 2.0);
-							}
+							a(cp(result), cp(input).multiply(2.0)).get().run();
 							return result;
 						},
 						false, true, inputProducer);

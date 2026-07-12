@@ -107,7 +107,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		filterCoeffs.setMem(coeffs);
+		a(cp(filterCoeffs), c(coeffs)).get().run();
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -197,7 +197,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		filterCoeffs.setMem(coeffs);
+		a(cp(filterCoeffs), c(coeffs)).get().run();
 
 		// Build fir_filter
 		Map<String, Object> firArgs = new HashMap<>();
@@ -252,7 +252,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		filterCoeffs.setMem(coeffs);
+		a(cp(filterCoeffs), c(coeffs)).get().run();
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -495,13 +495,13 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection coeffs = new PackedCollection(firTaps);
 		double[] cd = new double[firTaps];
 		cd[0] = 1.0; // pass-through FIR (impulse) — keeps the test filter-shape agnostic
-		coeffs.setMem(cd);
+		a(cp(coeffs), c(cd)).get().run();
 		PackedCollection wetLevel = new PackedCollection(1);
 		wetLevel.setMem(0.5);
 		PackedCollection automation = new PackedCollection(1);
 		automation.setMem(1.0);
 		PackedCollection delaySlot = new PackedCollection(1);
-		delaySlot.setMem(new double[]{delaySamples});
+		a(cp(delaySlot), c((double) delaySamples)).get().run();
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
 		buffer.fill(0.0);
 		PackedCollection head = new PackedCollection(1);
@@ -834,7 +834,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		swapped[1 * channels + 0] = 1.0;
 		swapped[2 * channels + 2] = 1.0;
 		swapped[3 * channels + 3] = 1.0;
-		identitySlot.setMem(swapped);
+		a(cp(identitySlot), c(swapped)).get().run();
 
 		double[] out2 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
 		assertEquals("output channel 0 must now read input channel 1",
@@ -864,7 +864,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// First coefficient set: low-pass.
 		double[] lpCoeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection coeffSlot = new PackedCollection(firTaps);
-		coeffSlot.setMem(lpCoeffs);
+		a(cp(coeffSlot), c(lpCoeffs)).get().run();
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("signal_size", SIGNAL_SIZE);
@@ -890,7 +890,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// Mutate the slot to a much narrower low-pass — the producer-bound FIR must
 		// re-read the slot on the next forward pass and produce a different output.
 		double[] narrowCoeffs = referenceLowPassCoefficients(500.0, SAMPLE_RATE, FILTER_ORDER);
-		coeffSlot.setMem(narrowCoeffs);
+		a(cp(coeffSlot), c(narrowCoeffs)).get().run();
 
 		double[] narrowOut = compiled.forward(signal.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 		double diffEnergy = 0.0;
@@ -917,7 +917,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Wrong size: only 9 elements, but declared as producer([4, 4]) (16 elements).
 		PackedCollection wrongShape = new PackedCollection(9);
-		wrongShape.setMem(new double[9]);
+		wrongShape.fill(0.0);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);

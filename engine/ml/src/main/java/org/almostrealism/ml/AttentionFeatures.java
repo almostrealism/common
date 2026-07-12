@@ -211,10 +211,13 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 			}
 		}
 
-		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
+		double[] indexValues = new double[outputSize];
 		for (int i = 0; i < outputSize; i++) {
-			indexCollection.setMem(i, indexMap[i]);
+			indexValues[i] = indexMap[i];
 		}
+
+		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
+		a(cp(indexCollection), c(shape(outputSize), indexValues)).get().run();
 
 		return layer("reshapeToSplitHalfRope", inputShape, outputShape, input -> {
 			// Use index-based gathering: output[i] = input[indexMap[i]]
@@ -258,10 +261,13 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 			}
 		}
 
-		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
+		double[] indexValues = new double[outputSize];
 		for (int i = 0; i < outputSize; i++) {
-			indexCollection.setMem(i, indexMap[i]);
+			indexValues[i] = indexMap[i];
 		}
+
+		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
+		a(cp(indexCollection), c(shape(outputSize), indexValues)).get().run();
 
 		return layer("reshapeFromSplitHalfRope", inputShape, outputShape, input -> {
 			// Use index-based gathering: output[i] = input[indexMap[i]]
@@ -430,10 +436,13 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		}
 
 		// Create index producer from the precomputed map
-		PackedCollection indexCollection = new PackedCollection(shape(dim));
+		double[] indexValues = new double[dim];
 		for (int i = 0; i < dim; i++) {
-			indexCollection.setMem(i, indexMap[i]);
+			indexValues[i] = indexMap[i];
 		}
+
+		PackedCollection indexCollection = new PackedCollection(shape(dim));
+		a(cp(indexCollection), c(shape(dim), indexValues)).get().run();
 
 		return layer("gqa_expand", inputShape, outputShape, input -> {
 			// Use index-based gathering: output[i] = input[indexMap[i]]

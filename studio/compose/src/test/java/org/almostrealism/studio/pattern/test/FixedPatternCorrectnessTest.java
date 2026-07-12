@@ -317,9 +317,8 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 				int end = Math.min(start + bufferSize, totalFrames);
 
 				// Copy the reference content for this buffer
-				for (int i = start; i < end; i++) {
-					rendered.setMem(i, reference.toDouble(i));
-				}
+				a(cp(rendered.range(shape(end - start), start)),
+						cp(reference.range(shape(end - start), start))).get().run();
 			}
 
 			// Compare with reference

@@ -139,7 +139,7 @@ public class ArgumentPreparationChainTest extends TestSuiteBase implements TestF
 				values[i] = base + (i % 100);
 				expected += values[i];
 			}
-			source.setMem(0, values, 0, n);
+			a(cp(source), c(values)).get().run();
 
 			long commits = runner.getCommitCount();
 			long hostCommits = runner.getHostCompleteCommitCount();

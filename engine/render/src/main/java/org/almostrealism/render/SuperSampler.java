@@ -16,6 +16,8 @@
 
 package org.almostrealism.render;
 
+import org.almostrealism.collect.CollectionFeatures;
+
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
@@ -150,7 +152,7 @@ public class SuperSampler implements Producer<PackedCollection>, ConsoleFeatures
 								pairs[2 * k + 1] = pos[2 * k + 1] + ((double) j / (double) ev[i].length);
 							}
 
-							allSamples.setMem(pairs);
+							CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(allSamples), CollectionFeatures.getInstance().c(allSamples.getShape(), pairs)).get().run();
 
 							out[i][j] = RGB.bank(allSamples.getCount());
 							ev[i][j].into(out[i][j]).evaluate(allSamples);

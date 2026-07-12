@@ -123,9 +123,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 			// Get embedding for current token
 			PackedCollection input = new PackedCollection(shape(1, config.dim));
-			for (int i = 0; i < config.dim; i++) {
-				input.setMem(i, tokenEmbeddings.toDouble(currentToken * config.dim + i));
-			}
+			a(cp(input), cp(tokenEmbeddings.range(shape(config.dim), currentToken * config.dim))).get().run();
 
 			// Forward pass
 			long forwardStart = System.currentTimeMillis();

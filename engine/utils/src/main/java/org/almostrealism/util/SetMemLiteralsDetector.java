@@ -88,6 +88,72 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/collect/CollectionCreationFeatures.java" // c(double...) — the host-array to collection ingest primitive
 	);
 
+	/**
+	 * Temporary burn-down whitelist of individually-acknowledged pre-existing violations that are
+	 * not yet resolved. This is <b>not</b> a general escape hatch and is <b>not</b> keyed by file:
+	 * an entry suppresses a single call only when the file path contains {@code pathFragment}
+	 * <em>and</em> the offending source line, trimmed, is exactly {@code sourceLine}. Because the
+	 * match is on the exact line text, the entry re-triggers the moment the line is edited (forcing
+	 * a real resolution), and adding a new exclusion requires deliberately pasting the exact call —
+	 * it cannot be used to broadly silence a class.
+	 *
+	 * <p>Every entry is a case that could not be migrated to a producer/{@code setFrom} idiom in the
+	 * initial sweep: decode of an external asset into a host array (WAV/protobuf/weight/reference
+	 * {@code .bin}/ONNX), a write below the producer API in the {@code base/hardware} backend, the
+	 * legacy {@code RGB.Data} storage type, the randomness ingest primitive, a data-dependent scatter
+	 * or strided extract with no producer equivalent yet, and two owner-reserved coordinate-grid
+	 * setups. These are expected to shrink to zero as follow-up work lands.
+	 */
+	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
+			// { pathFragment, exact trimmed source line }
+
+			// --- External-asset decode: a host double[]/float[] read from a WAV, protobuf, weight,
+			//     reference .bin, or ONNX tensor. This is the intended, permanent exception. ---
+			new String[] {"/audio/WavFile.java", "waveform.setMem(0, data[chan]);"},
+			new String[] {"/audio/WavFile.java", "for (double frame : data[chan]) waveform.setMem(index++, frame);"},
+			new String[] {"/audio/WavFile.java", "for (int frame : data[chan]) waveform.setMem(index++, frame);"},
+			new String[] {"/audio/data/WaveData.java", "in.setMem(Math.toIntExact(c * w.getNumFrames()), wave[c]);"},
+			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset, f);"},
+			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset,"},
+			new String[] {"/llama2/Llama2Weights.java", "c.setMem(0, data, 0, shape.getTotalSize());"},
+			new String[] {"/ml/OnnxFeatures.java", "result.setMem(0, data);"},
+			new String[] {"SAMEResamplingParityTest.java", "pc.setMem(0, data, 0, data.length);"},
+			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
+			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
+			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},
+			new String[] {"OobleckLayerValidationTest.java", "input.setMem(i, latentInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, latentInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, testInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, inputConvOutput[i]);"},
+			new String[] {"OobleckValidationTest.java", "block2Input.setMem(i, refAfterBlock1[i]);"},
+
+			// --- Below the producer API: base/hardware cannot import the collect layer. Candidates
+			//     for the memory-backend sanctioned surface. ---
+			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
+			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
+			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
+
+			// --- Legacy storage type: RGB stores channels in the RGB.Data interface, not a
+			//     PackedCollection, so no cp()/producer assignment applies. Needs a storage refactor. ---
+			new String[] {"/color/RGB.java", "if (init) this.data.setMem(new double[] { r, g, b });"},
+			new String[] {"/color/RGB.java", "this.data.setMem(0, r);"},
+			new String[] {"/color/RGB.java", "this.data.setMem(1, g);"},
+			new String[] {"/color/RGB.java", "this.data.setMem(2, b);"},
+
+			// --- Randomness ingest primitive (host java.util.Random -> device). ---
+			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
+
+			// --- Framework-feature gaps: a data-dependent scatter and a strided column extract with
+			//     no producer equivalent yet. ---
+			new String[] {"/space/CachedMeshIntersectionKernel.java",
+					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
+			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
+
+			// --- Owner-reserved coordinate-grid ray setups (100x100). ---
+			new String[] {"/primitives/test/SphereTest.java",
+					"rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);"}
+	);
+
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */
 	private static final Pattern NUMERIC_LITERAL = Pattern.compile(
 			"[-+]?(?:0[xX][0-9a-fA-F_]+|(?:\\d[\\d_]*)?\\.?\\d[\\d_]*(?:[eE][-+]?\\d+)?)[fFdDlL]?");
@@ -131,6 +197,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 				String argString = masked.substring(argsStart, argsEnd);
 				if (!isSanctioned(argString, masked)) {
 					int lineNum = countLines(content, call.start());
+						if (isKnownExclusion(file, lineText(content, lineNum))) continue;
 					violations.add(new Violation(file, lineNum, lineText(content, lineNum),
 							RULE, GUIDANCE));
 				}
@@ -154,6 +221,23 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		String path = file.toString().replace('\\', '/');
 		for (String fragment : SANCTIONED_WRITE_SURFACE) {
 			if (path.contains(fragment)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if the offending call is an individually-acknowledged entry on the
+	 * temporary {@link #KNOWN_EXCLUSIONS} burn-down list — i.e. the file path contains the entry's
+	 * path fragment and the trimmed source line matches exactly. Every other call is reported.
+	 *
+	 * @param file  the file containing the call
+	 * @param line  the trimmed source line of the {@code setMem} call
+	 * @return      whether this specific call is a known, temporarily-excluded violation
+	 */
+	private boolean isKnownExclusion(Path file, String line) {
+		String path = file.toString().replace('\\', '/');
+		for (String[] entry : KNOWN_EXCLUSIONS) {
+			if (path.contains(entry[0]) && line.equals(entry[1])) return true;
 		}
 		return false;
 	}

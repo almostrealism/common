@@ -202,9 +202,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	private double[] applyIfft(double[] complexSpectrum, int fftSize) {
 		// Create input collection
 		PackedCollection input = new PackedCollection(fftSize * 2);
-		for (int i = 0; i < complexSpectrum.length; i++) {
-			input.setMem(i, complexSpectrum[i]);
-		}
+		a(cp(input), c(complexSpectrum)).get().run();
 
 		// Apply IFFT
 		FourierTransform ifft = new FourierTransform(1, fftSize, true, c(input));
@@ -260,9 +258,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		// Normalize if needed
 		if (maxAbs > 1e-6) {
 			double scale = 0.9 / maxAbs; // Leave some headroom
-			for (int i = 0; i < length; i++) {
-				audio.setMem(i, audio.toDouble(i) * scale);
-			}
+			a(cp(audio), cp(audio).multiply(scale)).get().run();
 		}
 	}
 }

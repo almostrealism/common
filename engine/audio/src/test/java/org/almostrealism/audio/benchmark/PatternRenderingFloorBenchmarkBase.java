@@ -119,7 +119,7 @@ public abstract class PatternRenderingFloorBenchmarkBase extends TestSuiteBase
 	protected PackedCollection buildLpCoeffs() {
 		double[] data = referenceLowPassCoefficients(LP_CUTOFF_HZ, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection lpCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		lpCoeffs.setMem(data);
+		a(cp(lpCoeffs), c(data)).get().run();
 		return lpCoeffs;
 	}
 
@@ -142,7 +142,7 @@ public abstract class PatternRenderingFloorBenchmarkBase extends TestSuiteBase
 		double[] data = new double[NOTE_SIZE];
 		fillAdsrShape(data, 0, NOTE_SIZE, 0.0, 1.0, 0.7, 0.0, 0.05, 0.10, 0.15);
 		PackedCollection env = new PackedCollection(NOTE_SIZE);
-		env.setMem(data);
+		a(cp(env), c(data)).get().run();
 		return env;
 	}
 

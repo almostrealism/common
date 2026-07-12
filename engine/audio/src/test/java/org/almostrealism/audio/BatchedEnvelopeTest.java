@@ -48,14 +48,14 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 	/** Returns a single-element {@link PackedCollection} holding the given value. */
 	private PackedCollection single(double value) {
 		PackedCollection c = new PackedCollection(1);
-		c.setMem(new double[] { value });
+		a(cp(c), c(value)).get().run();
 		return c;
 	}
 
 	/** Returns a {@link PackedCollection} populated with the given array of values. */
 	private PackedCollection col(double[] values) {
 		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
+		a(cp(c), c(values)).get().run();
 		return c;
 	}
 

@@ -92,7 +92,7 @@ public class PeriodicTest extends TestSuiteBase {
 		counter.setMem(0, 0.0);
 
 		OperationList body = new OperationList("Periodic Fallback Body");
-		body.add(() -> () -> target.setMem(0, target.toDouble(0) + 1.0));
+		body.add(() -> () -> a(cp(target), cp(target).add(c(1.0))).get().run());
 
 		Supplier<Runnable> periodic = periodic(body, period);
 		Runnable compiled = periodic.get();

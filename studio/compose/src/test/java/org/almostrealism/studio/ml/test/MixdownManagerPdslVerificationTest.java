@@ -237,7 +237,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		}
 		double inRms = Math.sqrt(inEnergy / n);
 		PackedCollection signal = new PackedCollection(n);
-		signal.setMem(s);
+		a(cp(signal), c(s)).get().run();
 
 		for (double cutoff : new double[] {50.0, 200.0, 1000.0, 5000.0}) {
 			PackedCollection out = highPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
@@ -575,7 +575,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 			Arrays.fill(inData, ch * PDSL_SIGNAL_SIZE, (ch + 1) * PDSL_SIGNAL_SIZE,
 					channelValues[ch]);
 		}
-		input.setMem(inData);
+		a(cp(input), c(inData)).get().run();
 
 		double[] out = compiled.forward(input).toArray(0, PDSL_SIGNAL_SIZE);
 		// Skip the FIR settling region at the start of the buffer.
@@ -774,7 +774,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 					inData[c * sig + t] = v;
 				}
 			}
-			input.setMem(inData);
+			a(cp(input), c(inData)).get().run();
 			double[] passOut = compiled.forward(input).toArray(0, sig);
 			System.arraycopy(passOut, 0, samples, sampleOffset, sig);
 			for (int i = 0; i < sig; i++) {
@@ -966,11 +966,11 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 			double[] passthroughRowMajor, IntToDoubleFunction sampleAt, int totalFrames) {
 		int bufSize = bufFrames * sig;
 		PackedCollection delaySamples = new PackedCollection(channels);
-		delaySamples.setMem(delaySamplesData);
+		a(cp(delaySamples), c(delaySamplesData)).get().run();
 		PackedCollection transmission = new PackedCollection(new TraversalPolicy(channels, channels));
-		transmission.setMem(transmissionRowMajor);
+		a(cp(transmission), c(transmissionRowMajor)).get().run();
 		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
-		passthrough.setMem(passthroughRowMajor);
+		a(cp(passthrough), c(passthroughRowMajor)).get().run();
 		PackedCollection buffers = new PackedCollection(channels * bufSize);
 		buffers.fill(0.0);
 		PackedCollection heads = new PackedCollection(channels);
@@ -1007,7 +1007,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 					inData[c * sig + t] = v;
 				}
 			}
-			input.setMem(inData);
+			a(cp(input), c(inData)).get().run();
 			double[] passOut = compiled.forward(input).toArray(0, channels * sig);
 			for (int t = 0; t < sig; t++) {
 				double s = 0.0;

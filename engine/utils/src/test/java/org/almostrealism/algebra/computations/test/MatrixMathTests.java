@@ -182,7 +182,7 @@ public class MatrixMathTests extends TestSuiteBase {
 			}
 		}
 
-		destination.setMem(result);
+		a(cp(destination), c(result).reshape(destination.getShape())).get().run();
 	}
 
 	/**

@@ -41,7 +41,7 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 	/** Creates a {@link PackedCollection} pre-populated with the given values. */
 	private PackedCollection collection(double... values) {
 		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
+		a(cp(c), c(values)).get().run();
 		return c;
 	}
 

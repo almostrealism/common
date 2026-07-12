@@ -16,6 +16,8 @@
 
 package org.almostrealism.raytrace;
 
+import org.almostrealism.collect.CollectionFeatures;
+
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -118,13 +120,16 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 		PackedCollection pixelLocations = Pair.bank(totalWidth * totalHeight);
 
+		double[] locations = new double[(int) (totalWidth * totalHeight) * 2];
 		for (double i = 0; i < totalWidth; i++) {
 			for (double j = 0; j < totalHeight; j++) {
 				int index = (int) (j * totalWidth + i);
-				Pair p = new Pair(pixelLocations, index * 2);
-				p.setMem(new double[] { i / ssw, j / ssh });
+				locations[index * 2] = i / ssw;
+				locations[index * 2 + 1] = j / ssh;
 			}
 		}
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(pixelLocations),
+				CollectionFeatures.getInstance().c(pixelLocations.getShape(), locations)).get().run();
 
 		setKernelInput(pixelLocations);
 

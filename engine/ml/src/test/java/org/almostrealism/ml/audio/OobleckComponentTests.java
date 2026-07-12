@@ -316,7 +316,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		// Snake 1
 		PackedCollection alpha1 = randomWeights(channels);
 		PackedCollection beta1 = randomWeights(channels);
-		for (int i = 0; i < channels; i++) beta1.setMem(i, Math.abs(beta1.toDouble(i)) + 0.1);
+		a(cp(beta1), abs(cp(beta1)).add(0.1)).get().run();
 		mainPath.add(snake(inputShape, alpha1, beta1));
 
 		// WNConv(k=7)
@@ -328,7 +328,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		// Snake 2
 		PackedCollection alpha2 = randomWeights(channels);
 		PackedCollection beta2 = randomWeights(channels);
-		for (int i = 0; i < channels; i++) beta2.setMem(i, Math.abs(beta2.toDouble(i)) + 0.1);
+		a(cp(beta2), abs(cp(beta2)).add(0.1)).get().run();
 		mainPath.add(snake(inputShape, alpha2, beta2));
 
 		// WNConv(k=1)
@@ -436,7 +436,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 		PackedCollection alpha1 = randomWeights(channels);
 		PackedCollection beta1 = randomWeights(channels);
-		for (int i = 0; i < channels; i++) beta1.setMem(i, Math.abs(beta1.toDouble(i)) + 0.1);
+		a(cp(beta1), abs(cp(beta1)).add(0.1)).get().run();
 		mainPath.add(snake(inputShape, alpha1, beta1));
 
 		mainPath.add(wnConv1d(BATCH_SIZE, channels, channels, seqLen, 7, 1, 3,
@@ -446,7 +446,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 		PackedCollection alpha2 = randomWeights(channels);
 		PackedCollection beta2 = randomWeights(channels);
-		for (int i = 0; i < channels; i++) beta2.setMem(i, Math.abs(beta2.toDouble(i)) + 0.1);
+		a(cp(beta2), abs(cp(beta2)).add(0.1)).get().run();
 		mainPath.add(snake(inputShape, alpha2, beta2));
 
 		mainPath.add(wnConv1d(BATCH_SIZE, channels, channels, seqLen, 1, 1, 0,

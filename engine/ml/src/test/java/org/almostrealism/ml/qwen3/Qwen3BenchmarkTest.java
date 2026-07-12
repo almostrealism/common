@@ -229,9 +229,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	 */
 	private PackedCollection createInput(PackedCollection embeddings, int token, int dim) {
 		PackedCollection input = new PackedCollection(shape(1, dim));
-		for (int i = 0; i < dim; i++) {
-			input.setMem(i, embeddings.toDouble(token * dim + i));
-		}
+		a(cp(input), cp(embeddings.range(shape(dim), token * dim))).get().run();
 		return input;
 	}
 

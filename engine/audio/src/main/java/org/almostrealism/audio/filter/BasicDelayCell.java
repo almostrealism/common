@@ -124,7 +124,7 @@ public class BasicDelayCell extends SummationCell implements CodeFeatures {
 
 			this.buffer[dPos] = buffer[dPos] + protein.get().evaluate().toDouble(0);
 
-			value.setMem(buffer[cursor], 1.0);
+			a(cp(value), c(buffer[cursor])).get().run();
 
 			if (updatable != null && cursor % updatable.getResolution() == 0) updatable.update();
 

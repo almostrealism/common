@@ -654,8 +654,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * sits on the diagonal, yielding a near-identity matrix.
 	 */
 	private PackedCollection rectangularTransmission(int inputChannels, int outputChannels, double main) {
-		double[] data = new double[inputChannels * outputChannels];
 		double bleed = (1.0 - main) / Math.max(1, outputChannels - 1);
+		double[] data = new double[inputChannels * outputChannels];
 		for (int n = 0; n < inputChannels; n++) {
 			int rowMain = n % outputChannels;
 			for (int m = 0; m < outputChannels; m++) {
@@ -664,7 +664,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection matrix = new PackedCollection(
 				new TraversalPolicy(inputChannels, outputChannels));
-		matrix.setMem(data);
+		a(cp(matrix), c(data)).get().run();
 		return matrix;
 	}
 
@@ -679,7 +679,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		for (int n = 0; n < inputChannels; n++) {
 			data[n * outputChannels + colToZero] = 0.0;
 		}
-		matrix.setMem(data);
+		a(cp(matrix), c(data)).get().run();
 	}
 
 	/**
@@ -969,7 +969,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		input.setMem(data);
+		a(cp(input), c(data)).get().run();
 		return input;
 	}
 
@@ -987,7 +987,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		input.setMem(data);
+		a(cp(input), c(data)).get().run();
 		return input;
 	}
 
@@ -1008,7 +1008,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		input.setMem(data);
+		a(cp(input), c(data)).get().run();
 		return input;
 	}
 
@@ -1059,7 +1059,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		double[] delaysData = new double[REVERB_TAPS];
 		for (int i = 0; i < REVERB_TAPS; i++) delaysData[i] = REVERB_DELAY_SAMPLES[i];
 		PackedCollection delaySamples = new PackedCollection(REVERB_TAPS);
-		delaySamples.setMem(delaysData);
+		a(cp(delaySamples), c(delaysData)).get().run();
 		args.put("delay_samples", delaySamples);
 
 		double diag = 0.4;
@@ -1072,7 +1072,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection feedback = new PackedCollection(
 				new TraversalPolicy(REVERB_TAPS, REVERB_TAPS));
-		feedback.setMem(matrixData);
+		a(cp(feedback), c(matrixData)).get().run();
 		args.put("feedback_matrix", feedback);
 
 		PackedCollection reverbBuffers = new PackedCollection(
@@ -1123,13 +1123,13 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private PackedCollection perChannelWetCoeffs() {
 		int perChannel = FILTER_ORDER + 1;
-		double[] data = new double[CHANNELS * perChannel];
 		double[] coeffs = referenceLowPassCoefficients(WET_LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
+		double[] data = new double[CHANNELS * perChannel];
 		for (int c = 0; c < CHANNELS; c++) {
 			System.arraycopy(coeffs, 0, data, c * perChannel, perChannel);
 		}
 		PackedCollection all = new PackedCollection(CHANNELS * perChannel);
-		all.setMem(data);
+		a(cp(all), c(data)).get().run();
 		return all;
 	}
 

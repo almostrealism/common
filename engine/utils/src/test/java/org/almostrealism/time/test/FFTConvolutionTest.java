@@ -64,14 +64,10 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 
 		// FFT convolution
 		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		for (int i = 0; i < signalArray.length; i++) {
-			signal.setMem(i, signalArray[i]);
-		}
+		a(cp(signal), c(signalArray)).get().run();
 
 		PackedCollection kernel = new PackedCollection(shape(kernelArray.length));
-		for (int i = 0; i < kernelArray.length; i++) {
-			kernel.setMem(i, kernelArray[i]);
-		}
+		a(cp(kernel), c(kernelArray)).get().run();
 
 		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
 		PackedCollection result = fftConv.evaluate();
@@ -95,9 +91,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		double[] kernelArray = {1};  // Delta function
 
 		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		for (int i = 0; i < signalArray.length; i++) {
-			signal.setMem(i, signalArray[i]);
-		}
+		a(cp(signal), c(signalArray)).get().run();
 
 		PackedCollection kernel = new PackedCollection(shape(kernelArray.length));
 		kernel.setMem(0, 1.0);
@@ -121,14 +115,10 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		double[] bArray = {0.5, -0.5, 0.5};
 
 		PackedCollection a = new PackedCollection(shape(aArray.length));
-		for (int i = 0; i < aArray.length; i++) {
-			a.setMem(i, aArray[i]);
-		}
+		a(cp(a), c(aArray)).get().run();
 
 		PackedCollection b = new PackedCollection(shape(bArray.length));
-		for (int i = 0; i < bArray.length; i++) {
-			b.setMem(i, bArray[i]);
-		}
+		a(cp(b), c(bArray)).get().run();
 
 		// a * b
 		PackedCollection result1 = fftConvolve(cp(a), cp(b)).evaluate();
@@ -180,14 +170,10 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		double[] expected = directConvolve(signalArray, kernelArray);
 
 		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		for (int i = 0; i < signalArray.length; i++) {
-			signal.setMem(i, signalArray[i]);
-		}
+		a(cp(signal), c(signalArray)).get().run();
 
 		PackedCollection kernel = new PackedCollection(shape(kernelArray.length));
-		for (int i = 0; i < kernelArray.length; i++) {
-			kernel.setMem(i, kernelArray[i]);
-		}
+		a(cp(kernel), c(kernelArray)).get().run();
 
 		PackedCollection result = fftConvolve(cp(signal), cp(kernel)).evaluate();
 
@@ -251,9 +237,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 
 		// Create delayed impulse: [0, 0, 0, 1]
 		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		for (int i = 0; i < signalArray.length; i++) {
-			signal.setMem(i, signalArray[i]);
-		}
+		a(cp(signal), c(signalArray)).get().run();
 
 		PackedCollection kernel = new PackedCollection(shape(delay + 1));
 		kernel.setMem(delay, 1.0);
