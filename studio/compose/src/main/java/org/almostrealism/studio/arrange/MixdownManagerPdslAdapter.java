@@ -423,34 +423,28 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 				}
 			}
 
-			// Bus-delay modulation: the legacy AdjustableDelayCells run their read cursor
-			// at the delayDynamics gene's polycyclic rate s(t) (a periodic wobble times a
-			// slow accelerando), so their delay time evolves as the integral of (1 - s).
-			// This accumulates that integral one buffer at a time — an Euler step of
-			// (1 - s(clock)) * signalSize per refresh into the bus_delay_drift slot the
-			// bus_delay_samples producer reads live. One drift slot per BUS LINE, rate
-			// gene indexed by line — exactly the legacy df.apply(i) per delay layer. The
-			// legacy accelerando (s > 1 growing) makes the wash progressively tighten
-			// over an arrangement; the per-buffer step is the block-parallel
-			// approximation of that continuous cursor motion (a rate change, i.e. pitch
-			// bend, is not representable — the drift changes the delay in whole-sample
-			// steps between buffers). Note the drift survives a runner reset by design
-			// intent but not by mechanism: the slot is not rewound with the clock,
-			// matching a tape delay that keeps its accumulated speed history.
-			PackedCollection busDrift = (PackedCollection) args.get("bus_delay_drift");
-			int dynamicsLayers = manager.getDelayDynamicsSimple().length();
-			if (busDrift != null && dynamicsLayers > 0) {
-				int layers = busDrift.getShape().getTotalSize();
+			// Bus-line delay modulation: the legacy AdjustableDelayCells advance BOTH
+			// cursors at the delayDynamics gene's polycyclic rate s(t) (a periodic
+			// wobble times a slow accelerando), so the write-read separation is a FIXED
+			// timeline distance and the EFFECTIVE delay is the ratio gene / s(t) —
+			// bounded, memoryless, re-evaluated here once per buffer, one rate gene per
+			// BUS LINE (the legacy df.apply(i) per delay layer). Because s reads the
+			// clock, it re-runs from its curve's start at every arrangement-section
+			// reset, snapping the wash back wide — the legacy sectional structure. (An
+			// earlier revision integrated (1 - s) per buffer instead; the unbounded
+			// integral dragged every line to the one-frame floor within a minute of
+			// audio, and the faithful unscaled recirculation then blew the loop up into
+			// a permanent full-scale buzz.) The rate change's pitch bend — content
+			// written at rate s1 and read at s2 emerges resampled by s2/s1 — is the
+			// resampling-read arc; here the delay moves in whole-sample per-buffer
+			// steps.
+			Object busDelaySlot = args.get("bus_delay_samples");
+			if (busDelaySlot instanceof PackedCollection) {
+				PackedCollection busDelays = (PackedCollection) busDelaySlot;
+				int layers = busDelays.getShape().getTotalSize();
 				for (int j = 0; j < layers; j++) {
-					Producer<PackedCollection> rate = ADAPTER.toPolycyclicGene(
-									manager.getClock(), manager.getSampleRate(),
-									manager.getDelayDynamicsSimple(), j % dynamicsLayers)
-							.valueAt(0).getResultant(ADAPTER.c(1.0));
-					refresh.add(ADAPTER.a(1, ADAPTER.cp(busDrift.range(ADAPTER.shape(1), j)),
-							ADAPTER.add(ADAPTER.cp(busDrift.range(ADAPTER.shape(1), j)),
-									ADAPTER.multiply(
-											ADAPTER.subtract(ADAPTER.c(1.0), rate),
-											ADAPTER.c((double) config.signalSize)))));
+					refresh.add(ADAPTER.a(1, ADAPTER.cp(busDelays.range(ADAPTER.shape(1), j)),
+							busLineDelay(manager, config, j)));
 				}
 			}
 		}
@@ -681,24 +675,30 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// M×M genome transmission recirculation (bus_transmission, UNSCALED — legacy runs
 		// the raw genes, whose row sums can exceed 1; runaway is real in the legacy path
 		// too and the master clip bounds it); each line is an AdjustableDelayCell whose
-		// length is the `delay` chromosome's 4-20 s gene plus the accumulated
-		// per-line drift (the cursor-rate wobble and accelerando, integrated per buffer
-		// by automationRefresh); the network emits wetOut[j] × line j's PURE DELAYED tap
-		// (bus_wet_out on the feedback stage's passthrough), summed to the mono efx bus.
+		// EFFECTIVE length is the `delay` chromosome's 4-20 s gene divided by the
+		// clock-driven cursor rate (see automationRefresh — the legacy cell advances
+		// BOTH cursors at the rate, so the write-read separation is fixed and the rate
+		// rescales the delay, never accumulates); the network emits wetOut[j] × line j's
+		// PURE DELAYED tap (bus_wet_out on the feedback stage's passthrough), summed to
+		// the mono efx bus.
 		int layers = Math.max(1, manager.getDelay().length());
 		args.put("delay_layers", layers);
-		PackedCollection busDrift = new PackedCollection(layers).fill(0.0);
-		args.put("bus_delay_drift", busDrift);
-		Producer<PackedCollection> busDelays = busDelaySamples(manager, config, busDrift, layers);
+
+		// bus_delay_samples: [layers] slot — the effective per-line delay, re-evaluated
+		// once per buffer by automationRefresh (time-varying: the cursor rate reads the
+		// clock). Initialised by the refresh run at the end of this method.
+		PackedCollection busDelays = new PackedCollection(layers).fill(0.0);
 		args.put("bus_delay_samples", busDelays);
 		args.put("bus_send", busSendMatrix(config.channels, layers));
 		args.put("bus_transmission", busTransmissionMatrix(manager, layers));
 		args.put("bus_wet_out", busWetOutMatrix(manager, layers));
 
-		// Bus ring state, sized from the current genome's largest evaluated delay plus
-		// two frames of drift headroom; the kernel's ring-band clamp bounds anything
-		// beyond it (e.g. a live-swapped genome with a longer gene delay).
-		int busFrames = (maxEvaluated(busDelays, layers)
+		// Bus ring state, sized from the current genome's largest evaluated BASE delay
+		// plus headroom for slow-down excursions (a cursor rate below 1 lengthens the
+		// effective delay past the gene); the kernel's ring-band clamp bounds anything
+		// beyond it (e.g. a deeper slow-down or a live-swapped genome with longer genes).
+		int busFrames = (maxEvaluated(perChannelProducer(layers,
+				j -> busLineBaseDelay(manager, config, j)), layers) * 5 / 4
 				+ 3 * config.signalSize - 1) / config.signalSize;
 		args.put("bus_buffers", new PackedCollection(
 				layers * busFrames * config.signalSize).fill(0.0));
@@ -1349,36 +1349,57 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Builds the {@code [layers]} per-line bus delay — the legacy mixdown-bus delay
-	 * layer, whose {@link org.almostrealism.graph.AdjustableDelayCell} lengths come
-	 * from the {@code delay} chromosome (4–20 s genes) in
-	 * {@link MixdownManager#createEfx}, one gene per line. The {@code drift} slot's
-	 * accumulated per-line modulation offset (see {@link #automationRefresh}) is added
-	 * live and the result floored at one frame — the smallest delay the block-parallel
-	 * stage renders — so the legacy accelerando can tighten the wash without collapsing
-	 * it into the dry signal. Falls back to {@link Config#delaySamples} if the
-	 * chromosome is empty.
+	 * Produces one bus line's BASE delay in samples — the {@code delay} chromosome's
+	 * 4–20 s gene ({@link MixdownManager#createEfx}, one gene per line) times the
+	 * sample rate, before the cursor-rate modulation. Falls back to
+	 * {@link Config#delaySamples} if the chromosome is empty.
 	 *
 	 * @param manager the mixdown manager whose delay chromosome is read
 	 * @param config  structural configuration
-	 * @param drift   shape-{@code [layers]} accumulated delay-modulation offsets
-	 * @param layers  bus line count
-	 * @return shape-{@code [layers]} delay-length producer (samples)
+	 * @param j       bus line index
+	 * @return the shape-{@code [1]} base delay producer (samples)
 	 */
-	private static Producer<PackedCollection> busDelaySamples(MixdownManager manager, Config config,
-			PackedCollection drift, int layers) {
+	private static Producer<PackedCollection> busLineBaseDelay(MixdownManager manager,
+			Config config, int j) {
 		Chromosome<PackedCollection> delay = manager.getDelay();
 		int genes = delay.length();
-		return perChannelProducer(layers, j -> {
-			Producer<PackedCollection> base = genes <= 0
-					? ADAPTER.c((double) config.delaySamples)
-					: ADAPTER.multiply(
-							delay.valueAt(j % genes, 0).getResultant(ADAPTER.c(1.0)),
-							ADAPTER.c((double) config.sampleRate));
-			return ADAPTER.floor(ADAPTER.max(
-					ADAPTER.add(base, ADAPTER.cp(drift.range(ADAPTER.shape(1), j))),
-					ADAPTER.c((double) config.signalSize)));
-		});
+		return genes <= 0
+				? ADAPTER.c((double) config.delaySamples)
+				: ADAPTER.multiply(
+						delay.valueAt(j % genes, 0).getResultant(ADAPTER.c(1.0)),
+						ADAPTER.c((double) config.sampleRate));
+	}
+
+	/**
+	 * Produces one bus line's EFFECTIVE delay in samples: the base gene delay divided
+	 * by the line's clock-driven cursor rate {@code s(t)} (the {@code delayDynamics}
+	 * polycyclic gene), floored at one frame. The legacy
+	 * {@link org.almostrealism.graph.AdjustableDelayCell} advances both its cursors at
+	 * the rate, so the write-read separation is a fixed timeline distance and the
+	 * effective delay is the RATIO {@code gene / s(t)} — bounded and memoryless (it
+	 * follows the clock, including section resets), never an accumulating drift. The
+	 * rate is floored well above zero so a pathological gene cannot divide the delay
+	 * toward infinity; the ring clamp bounds slow-down excursions past the ring.
+	 *
+	 * @param manager the mixdown manager whose delay and dynamics chromosomes are read
+	 * @param config  structural configuration
+	 * @param j       bus line index
+	 * @return the shape-{@code [1]} effective delay producer (samples)
+	 */
+	private static Producer<PackedCollection> busLineDelay(MixdownManager manager,
+			Config config, int j) {
+		Producer<PackedCollection> base = busLineBaseDelay(manager, config, j);
+		int dynamics = manager.getDelayDynamicsSimple().length();
+		if (dynamics > 0) {
+			Producer<PackedCollection> rate = ADAPTER.max(
+					ADAPTER.toPolycyclicGene(manager.getClock(), manager.getSampleRate(),
+									manager.getDelayDynamicsSimple(), j % dynamics)
+							.valueAt(0).getResultant(ADAPTER.c(1.0)),
+					ADAPTER.c(0.05));
+			base = ADAPTER.divide(base, rate);
+		}
+		return ADAPTER.floor(ADAPTER.max(base,
+				ADAPTER.c((double) config.signalSize)));
 	}
 
 	/**

@@ -422,7 +422,7 @@ state mixdown_efx_feedback_state {
 // Bus-line network ring state — MixdownManager.createEfx's delay layers (the
 // [delay_layers]-line network fed through bus_send, recirculated by bus_transmission).
 // Sized [delay_layers * ring] / [delay_layers] where ring spans the largest gene delay
-// plus drift headroom in whole frames.
+// plus slow-down (cursor rate below 1) headroom in whole frames.
 state mixdown_bus_state {
     bus_buffers: weight
     bus_heads: weight
@@ -439,7 +439,9 @@ state mixdown_bus_state {
 // scaled by the clock-automated wet_in send, is routed into the FIRST line only
 // (bus_send); the remaining lines receive nothing but the UNSCALED genome transmission
 // recirculation (bus_transmission, [into, from]); each line delays by its 4-20 s
-// `delay`-chromosome gene plus drift (bus_delay_samples); the network emits
+// `delay`-chromosome gene divided by the clock-driven cursor rate — the legacy
+// AdjustableDelayCell advances both cursors together, so the rate rescales the delay
+// as a bounded, memoryless ratio (bus_delay_samples, refreshed per buffer); the network emits
 // wetOut[j] x line j's pure delayed tap (bus_wet_out as the feedback passthrough).
 // PDSL feedback is block-parallel (frame-quantized), so both structures approximate
 // the per-sample Java recurrences at buffer granularity.
@@ -563,7 +565,7 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                     // opening over the arrangement). route(bus_send) sums every channel into
                     // the FIRST line of the delay_layers-line network (the others hear only the
                     // recirculation); feedback() delays each line by its 4-20 s
-                    // `delay`-chromosome gene plus drift, recirculates the UNSCALED genome
+                    // `delay`-chromosome gene over the cursor rate, recirculates the UNSCALED genome
                     // transmission among the lines at that bus-delay period, and emits
                     // wetOut[j] x line j's pure delayed tap (bus_wet_out passthrough) —
                     // the slow-building regenerating wash of the legacy efx bus.

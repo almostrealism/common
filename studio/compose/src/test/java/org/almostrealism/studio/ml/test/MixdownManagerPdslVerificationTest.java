@@ -361,12 +361,16 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 			}
 		}
 
-		double[] busDelays = evaluateProducer(args.get("bus_delay_samples"), BUS_LAYERS);
+		// The bus delays live in a per-buffer-refreshed slot (the build-time refresh
+		// ran with the clock at frame 0, where the cursor rate is exactly 1, so the
+		// slot holds the raw gene delays here).
+		double[] busDelays = ((PackedCollection) args.get("bus_delay_samples"))
+				.toArray(0, BUS_LAYERS);
 		for (int j = 0; j < BUS_LAYERS; j++) {
 			Assert.assertTrue(
 					"bus line " + j + " delay " + busDelays[j] + " must sit inside the"
 							+ " configured 4-20 s gene range, not at a static constant",
-					busDelays[j] >= 4.0 * SAMPLE_RATE && busDelays[j] <= 20.0 * SAMPLE_RATE);
+					busDelays[j] >= 4.0 * SAMPLE_RATE - 1 && busDelays[j] <= 20.0 * SAMPLE_RATE);
 		}
 
 		// The fixture disables enableWetInAdjustment, so the send gain is the legacy
@@ -397,18 +401,22 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	}
 
 	/**
-	 * Verifies the bus-delay modulation: {@code automationRefresh} integrates each bus
-	 * LINE's delay-dynamics gene rate into the {@code bus_delay_drift} slot one
-	 * buffer-sized Euler step per refresh (one drift per line — the legacy
-	 * {@code df.apply(i)} per delay layer), and the {@code bus_delay_samples} producer
-	 * folds the accumulated offset into each line's gene delay, floored at one frame.
-	 * At clock frame 0 the polycyclic rate is exactly 1 (zero step); for any later
-	 * clock position the accelerando term keeps the rate strictly above 1, so refreshes
-	 * must drive the drift strictly negative and tighten every line's effective delay
-	 * without crossing the one-frame floor.
+	 * Verifies the bus-delay modulation semantics: the legacy
+	 * {@code AdjustableDelayCell} advances BOTH cursors at the {@code delayDynamics}
+	 * rate {@code s(t)}, so the write-read separation is fixed and the effective delay
+	 * is the RATIO {@code gene / s(t)} — bounded and MEMORYLESS.
+	 * {@code automationRefresh} re-evaluates the {@code [layers]} bus_delay_samples
+	 * slot from the clock each buffer: at frame 0 the polycyclic rate is exactly 1
+	 * (delay == the 4–20 s gene); away from frame 0 the accelerando keeps {@code s}
+	 * strictly above 1, tightening every line while staying far from the one-frame
+	 * floor; repeated refreshes at the same clock position change nothing — the
+	 * anti-regression for the drift-integral bug, whose unbounded accumulation dragged
+	 * every line to the floor and blew the unscaled recirculation up into a permanent
+	 * buzz; and returning the clock to frame 0 restores the gene delay exactly — the
+	 * sectional snap-back that arrangement-break clock resets produce.
 	 */
 	@Test(timeout = 120_000)
-	public void busDelayDriftAccumulatesWithClock() {
+	public void busDelayFollowsCursorRate() {
 		MixdownManager mixdown = buildFixtureMixdown(true);
 		runFixtureSetup(mixdown);
 
@@ -421,36 +429,53 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				.automationRefresh(mixdown, fixtureEfx, config, args).get();
 
 		int layers = (Integer) args.get("delay_layers");
-		double[] delaysBefore = evaluateProducer(args.get("bus_delay_samples"), layers);
-		PackedCollection drift = (PackedCollection) args.get("bus_delay_drift");
-		Assert.assertNotNull("the wet argument map must carry the bus_delay_drift slot",
-				drift);
-		Assert.assertEquals("one drift slot per bus line",
-				layers, drift.getShape().getTotalSize());
+		PackedCollection slot = (PackedCollection) args.get("bus_delay_samples");
+		Assert.assertNotNull("the wet argument map must carry the bus_delay_samples slot",
+				slot);
+		Assert.assertEquals("one delay slot per bus line",
+				layers, slot.getShape().getTotalSize());
 
-		// Advance the shared clock well past frame 0 and integrate several buffers.
-		fixtureTime.getClock().setFrame(7 * SAMPLE_RATE);
-		for (int i = 0; i < 3; i++) {
-			refresh.run();
-		}
-
-		double[] offsets = drift.toArray(0, layers);
-		double[] delaysAfter = evaluateProducer(args.get("bus_delay_samples"), layers);
+		double eps = 1e-6;
+		fixtureTime.getClock().setFrame(0);
+		refresh.run();
+		double[] atZero = slot.toArray(0, layers);
 		for (int j = 0; j < layers; j++) {
 			Assert.assertTrue(
-					"drift at line " + j + " must be strictly negative away from"
-							+ " frame 0 (the accelerando keeps the cursor rate above 1);"
-							+ " got " + offsets[j],
-					offsets[j] < 0.0);
+					"line " + j + " delay at frame 0 must be the 4-20 s gene (the rate"
+							+ " is exactly 1 there); got " + atZero[j],
+					atZero[j] >= 4.0 * SAMPLE_RATE - 1 && atZero[j] <= 20.0 * SAMPLE_RATE);
+		}
+
+		fixtureTime.getClock().setFrame(7 * SAMPLE_RATE);
+		refresh.run();
+		double[] tightened = slot.toArray(0, layers);
+		refresh.run();
+		refresh.run();
+		double[] repeated = slot.toArray(0, layers);
+		for (int j = 0; j < layers; j++) {
 			Assert.assertTrue(
-					"the effective delay at line " + j + " must tighten under the"
-							+ " accumulated drift; before=" + delaysBefore[j]
-							+ " after=" + delaysAfter[j],
-					delaysAfter[j] <= delaysBefore[j]);
+					"line " + j + " must tighten away from frame 0 (the accelerando"
+							+ " keeps the rate above 1); atZero=" + atZero[j]
+							+ " tightened=" + tightened[j],
+					tightened[j] < atZero[j]);
 			Assert.assertTrue(
-					"the effective delay at line " + j + " must not cross the"
-							+ " one-frame floor; got " + delaysAfter[j],
-					delaysAfter[j] >= PDSL_SIGNAL_SIZE);
+					"line " + j + " must remain a multi-second wash, far from the"
+							+ " one-frame floor; got " + tightened[j],
+					tightened[j] > 8 * PDSL_SIGNAL_SIZE);
+			Assert.assertEquals(
+					"repeated refreshes at one clock position must not move line " + j
+							+ " (the ratio is memoryless — no accumulating drift)",
+					tightened[j], repeated[j], eps);
+		}
+
+		fixtureTime.getClock().setFrame(0);
+		refresh.run();
+		double[] restored = slot.toArray(0, layers);
+		for (int j = 0; j < layers; j++) {
+			Assert.assertEquals(
+					"returning the clock to frame 0 must restore line " + j + "'s gene"
+							+ " delay exactly (sectional snap-back)",
+					atZero[j], restored[j], eps);
 		}
 	}
 

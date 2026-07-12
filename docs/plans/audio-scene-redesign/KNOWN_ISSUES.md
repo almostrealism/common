@@ -26,10 +26,20 @@ or feeding a feedback loop — the mechanical explanation for the PDSL-vs-CellLi
   reverb tap floor pinned there → a per-frame leak recirculated by the Householder
   matrix). Fixed: taps materialized at their ops position
   (`MultiChannelDspFeatures`), consumer-independent.
+- **Bus-delay drift integral** (found by ear after C5: full-scale buzz from ~40 s,
+  spectrogram reads music → tightening chirp → solid full-band saturation) — the C2
+  modulation accumulated `(1 − s)·signalSize` per buffer without bound, dragging
+  every bus line to the one-frame floor within a minute, where the C5-faithful
+  unscaled recirculation blew up. The legacy `AdjustableDelayCell` advances BOTH
+  cursors at the rate, so the effective delay is the bounded, memoryless ratio
+  `gene / s(clock)` (PDSL_DIFFERENCES §6-C2, corrected). Fixed: `bus_delay_samples`
+  is a per-buffer-refreshed slot computing that ratio; no drift state exists.
 
-Do not re-break: the band clamps and the tap materialization are load-bearing; the
-regression guards are `DelayBankBehaviorTest`, `DelayNetworkBehaviorTest`, and
-`MixdownManagerPdslVerificationTest.mainArmCarriesApplyEcho`.
+Do not re-break: the band clamps, the tap materialization, and the ratio (never
+integral) delay modulation are load-bearing; the regression guards are
+`DelayBankBehaviorTest`, `DelayNetworkBehaviorTest`,
+`MixdownManagerPdslVerificationTest.mainArmCarriesApplyEcho`, and
+`MixdownManagerPdslVerificationTest.busDelayFollowsCursorRate`.
 
 ## 2. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`
 

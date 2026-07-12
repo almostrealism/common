@@ -33,9 +33,13 @@ Execution order (PDSL_DIFFERENCES §6):
    the gene-driven bus delay (4–20 s `delay` chromosome — restoring the legacy efx
    bus's slow-building arrival); wiring pinned by
    `MixdownManagerPdslVerificationTest.feedbackGridAndBusDelayFollowGenes`. C2 **done
-   2026-07-10** (pending by-ear verdict): per-buffer Euler integration of the
-   `delayDynamics` cursor rate into a `bus_delay_drift` slot — the legacy wash's
-   wobble and accelerando — pinned by `busDelayDriftAccumulatesWithClock`. C3 **done 2026-07-11**
+   2026-07-10; mechanism corrected 2026-07-11** — the first rendition integrated the
+   `delayDynamics` cursor rate into an unbounded drift slot, which C5's faithful
+   recirculation detonated (full-scale buzz from ~40 s: the integral dragged every
+   bus line to the one-frame floor). The legacy `AdjustableDelayCell` advances BOTH
+   cursors at the rate, so the effective delay is the bounded, memoryless ratio
+   `gene / s(clock)` — snapping back at arrangement-break clock resets
+   (PDSL_DIFFERENCES §6-C2, corrected) — pinned by `busDelayFollowsCursorRate`. C3 **done 2026-07-11**
    (pending by-ear verdict): the `ramp_scale` primitive replaces the stepped hot-bus
    gains (volume, efx automation, reverb send) with per-sample linear ramps between
    per-buffer slot refreshes — removing the 43 Hz staircase at 1024, the leading
@@ -52,9 +56,13 @@ Execution order (PDSL_DIFFERENCES §6):
    regeneration structures (PDSL_DIFFERENCES §3.2 revised, §6-C5): the per-channel
    pure-tap apply echo inside the apply chain on BOTH voicing arms (including the
    newly-discovered legacy MAIN-bus echo, which the assessment had missed entirely),
-   and the bus-line network (clock-automated `wetInSimple` send into line 0 only,
-   3 shared lines with per-line drift, unscaled transposed genome transmission,
-   `wetOut` output taps, reverb send re-tapped to the apply output).
+   and the bus-line network (clock-automated `wetInSimple` send into the first line
+   only, 3 shared lines with per-line cursor-rate modulation, unscaled transposed
+   genome transmission, `wetOut` output taps, reverb send re-tapped to the apply
+   output). Evaluation renders are 4 minutes at the production buffer size and
+   produce a spectrogram PNG alongside the WAV (`GenerateAudioFileTest`), so render
+   pathologies — runaway feedback, dropouts, a lost second half — are inspectable
+   without a listening pass.
 5. **D — accept and document** what a block-parallel buffer cannot reproduce
    (PDSL_DIFFERENCES §5). **Continuous delay-time modulation is NOT in this set** —
    see the queue below (owner directive 2026-07-11, PDSL_DIFFERENCES §5a).

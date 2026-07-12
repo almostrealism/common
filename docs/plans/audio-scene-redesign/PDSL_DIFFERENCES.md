@@ -187,9 +187,9 @@ completed the split into the two legacy structures (§6-C5 for the full mechanis
   wet-filter cascade and volume, where legacy runs it.
 - Loop 2 is the bus-line network: `wetInSimple`-automated send into **line 0 only**
   (the legacy `delayGene` routing — later lines hear only recirculation), `delay`
-  chromosome line lengths with the C2 per-line drift, **unscaled** genome transmission
-  recirculation ([into, from] = the chromosome transposed), `wetOut` per-line output
-  taps.
+  chromosome line lengths modulated by the per-line cursor rate (the corrected C2
+  ratio, §6-C2), **unscaled** genome transmission recirculation ([into, from] = the
+  chromosome transposed), `wetOut` per-line output taps.
 - **Discovery during C5 (the assessment had missed this):** legacy applies the
   apply echo at the *pattern-channel* level (`AudioScene.getPatternChannel` →
   `efx.apply` for **both** voicings), so the **MAIN bus of a wet channel carries the
@@ -297,9 +297,10 @@ modulation — the pitch bend / tape-speed detune on every regeneration, the shi
 the legacy tails — among the accepted limits. **The owner has explicitly reclassified
 it**: the smooth pitch modulation is a defining feature of the application's efx chain
 ("I would probably rather abandon real-time generation before abandoning it"). The C2
-per-buffer drift restores the delay-time *trajectory* (whole-sample steps between
-buffers) but not the pitch-bend *character*, and is therefore an interim state, not an
-acceptance.
+per-buffer ratio (`gene / s(t)`, per the corrected §6-C2) restores the delay-time
+*trajectory* in whole-sample steps but not the pitch-bend *character* — the resample
+ratio `s(read)/s(write)` on regenerating content — and is therefore an interim state,
+not an acceptance.
 
 It is also not actually blocked by the §2 invariant. The blocked construct is the
 intra-frame *recurrence*; a rate-modulated **read** is not one. With the rate held
@@ -366,23 +367,30 @@ each fix.
    §3.2 residues deliberately out of scope here — the off-diagonal regeneration
    period, `wetInSimple`, and the echo's placement — were subsequently restored by the
    C5 loop split below.
-2. **DONE 2026-07-10 (pending the by-ear verdict).** Delay modulation is approximated
-   as a per-buffer Euler step of the legacy cursor-rate integral: `automationRefresh`
-   accumulates `(1 − s(clock)) × signalSize` into a `bus_delay_drift` slot per
-   position, where `s` is the `delayDynamicsSimple` polycyclic rate
-   (`toPolycyclicGene`), and the `delay_samples` producer folds the offset into each
-   position's gene delay, floored at one frame. Two corrections to this item's
-   earlier wording: the modulation target is the **bus delay** (`delay_samples`), not
-   `efx_fb_delay` — `delayDynamicsSimple` is indexed per delay *layer* and modulates
-   the legacy bus `AdjustableDelayCell`s, whose rate the apply-echo never had; and the
-   legacy rate is not a small symmetric wobble — the polycyclic form is a periodic
-   speed-up/slow-down *times a monotonically growing accelerando*, so the 4–20 s wash
-   progressively tightens over an arrangement (a temporal-evolution feature this
-   restores). Residues: a rate change is a pitch bend in legacy, which block-parallel
-   delays cannot express — the drift moves in whole-sample steps between buffers
-   (evaluate by ear whether that reads as motion or as splice artifacts, per the
-   original plan); and the drift is not rewound by a runner reset. Wiring pinned by
-   `MixdownManagerPdslVerificationTest.busDelayDriftAccumulatesWithClock`.
+2. **DONE 2026-07-10; MECHANISM CORRECTED 2026-07-11 after the C5 buzz regression.**
+   The first rendition modeled the legacy cursor-rate modulation as an *integral* —
+   a `bus_delay_drift` slot accumulating `(1 − s(clock)) × signalSize` per buffer,
+   never rewound. **That model was wrong, and it detonated under C5**: reading
+   `AdjustableDelayCell.tick` shows `cursors.increment(scale)` advances BOTH cursors
+   together, so the write-read separation is a *fixed timeline distance* and the
+   effective delay is the bounded, memoryless **ratio `gene / s(t)`** — it follows
+   the clock (including the arrangement-break resets, snapping the wash back wide at
+   every section) and never migrates. The integral instead dragged every line
+   monotonically to the one-frame floor within ~a minute of audio (accelerando keeps
+   `s > 1`; ≈ −4 s of delay per 40 s), where the C5-faithful unscaled recirculation
+   (spectral radius ≈ 1.35) blew up a 23 ms three-line loop into a permanent
+   full-scale buzz — the owner-reported "nothing but a buzz after ~40 seconds," whose
+   spectrogram reads music → tightening chirp → solid full-band saturation. Current
+   rendition: `bus_delay_samples` is a per-buffer-refreshed `[layers]` slot,
+   `floor(max(gene×sr / s_j(clock), signalSize))`, one polycyclic rate gene per line
+   (`df.apply(i)`). What the correct legacy mechanism actually contributes: the
+   in-section tightening is a *bounded ratio* (never below `gene/s_max`), and the
+   pitch character is the resample ratio `s(read)/s(write)` on regenerating content —
+   shimmer while `s` changes — which remains the §5a resampling-read arc. Pinned by
+   `MixdownManagerPdslVerificationTest.busDelayFollowsCursorRate` (rate-1 identity at
+   frame 0, tightening away from it, refresh idempotence at a fixed clock — the
+   anti-regression for the integral — and exact snap-back when the clock returns
+   to 0).
 3. **DONE 2026-07-11 (pending the by-ear verdict).** Per-sample parameter ramps: a new
    `ramp_scale(previous, current)` primitive interpolates each hot-bus gain linearly
    across the frame, ending exactly at `current`, so per-buffer slot refreshes trace a
@@ -415,9 +423,10 @@ each fix.
      6 channels); recirculation is the **unscaled** genome transmission (transposed —
      the feedback matrix is [into, from]; row sums can exceed 1, and legacy runaway
      is real, bounded by the master clip as in Java); output taps are
-     `wetOut[j] × line j's pure delayed tap` via the passthrough matrix; per-line C2
-     drift replaces the per-channel version (`bus_delay_drift[layers]`, rate gene
-     indexed by line — the legacy `df.apply(i)`).
+     `wetOut[j] × line j's pure delayed tap` via the passthrough matrix; the C2
+     modulation becomes per-line (one rate gene per line — the legacy `df.apply(i)`)
+     and, after the buzz regression, the corrected ratio semantics (revised C2 entry
+     above).
    - The reverb send now taps the **apply output** (dry + echo), matching
      `wetSources.branch(..., reverbFactor)` — it previously tapped the raw WET slice.
    - The wet-filter cascade gains the legacy `AudioPassFilter` input clamp
