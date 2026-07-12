@@ -1197,6 +1197,9 @@ jobs:
       cancel-in-progress: true
     strategy:
       fail-fast: false
+      # Cap concurrency at 3 so the 7 groups do not monopolize the self-hosted
+      # runners when several pipelines run at once; remaining groups queue behind.
+      max-parallel: 3
       matrix:
         # More groups than test-mac (7 vs 3): the CL backend reaches its memory
         # ceiling under the larger per-group test loads (AR_HARDWARE_MEMORY_SCALE
@@ -1370,14 +1373,19 @@ jobs:
     runs-on: [self-hosted, macos, ar-ci]
     # Same as test-media: native,cl runs the media tests on direct-ByteBuffer native RAM
     # (no Metal). Cap direct memory at 8g (below the runner's RAM, so a spike is a catchable
-    # limit rather than an OOM kill) and split the tests across two groups. See test-media.
+    # limit rather than an OOM kill) and split the tests across three groups — the CL backend's
+    # direct-ByteBuffer reservations exceed the two-group budget, so it needs one more split than
+    # test-media-mac (still two groups under Metal). See test-media.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
       fail-fast: false
+      # Cap concurrency at 2 even with 3 groups so this job does not monopolize the
+      # self-hosted runners when several pipelines run at once; the third group just
+      # queues behind the first two.
       max-parallel: 2
       matrix:
-        group: [0, 1]
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1406,7 +1414,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_TEST_GROUPS=3
 
       - name: Run Music Tests
         run: |
@@ -1415,7 +1423,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_TEST_GROUPS=3
 
       - name: Run Compose Tests
         run: |
@@ -1425,7 +1433,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_TEST_GROUPS=3
 
   analysis:
     needs: [build, test, test-flowtree, test-media]
