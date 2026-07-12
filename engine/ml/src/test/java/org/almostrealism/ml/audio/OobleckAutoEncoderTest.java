@@ -17,6 +17,8 @@
 package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -279,7 +281,7 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 
 		PackedCollection weights = new PackedCollection(dims);
 		for (int i = 0; i < total; i++) {
-			weights.setMem(i, (rand.nextDouble() - 0.5) * 0.1);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(weights.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((rand.nextDouble() - 0.5) * 0.1)).get().run();
 		}
 		return weights;
 	}

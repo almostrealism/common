@@ -101,7 +101,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	private static final List<String> UNMIGRATED_MODULES = List.of(
 			"/engine/audio/",
-			"/engine/ml/",
 			"/engine/utils/",
 			"/extern/ml-onnx/",
 			"/flowtree/graphpersist/",
@@ -126,7 +125,19 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
 			new String[] {"/space/CachedMeshIntersectionKernel.java",
 					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
-			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"}
+			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
+			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset, f);"},
+			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset,"},
+			new String[] {"/llama2/Llama2Weights.java", "c.setMem(0, data, 0, shape.getTotalSize());"},
+			new String[] {"SAMEResamplingParityTest.java", "pc.setMem(0, data, 0, data.length);"},
+			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
+			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
+			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},
+			new String[] {"OobleckLayerValidationTest.java", "input.setMem(i, latentInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, latentInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, testInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, inputConvOutput[i]);"},
+			new String[] {"OobleckValidationTest.java", "block2Input.setMem(i, refAfterBlock1[i]);"}
 	);
 
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */

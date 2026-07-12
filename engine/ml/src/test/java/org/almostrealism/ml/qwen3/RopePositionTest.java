@@ -17,6 +17,7 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -61,8 +62,8 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 				double freq = 1.0 / Math.pow(10000.0, (2.0 * i) / headSize);
 				double angle = pos * freq;
 				int idx = (pos * freqDim + i) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(Math.cos(angle))).get().run();
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), idx + 1)), CollectionFeatures.getInstance().c(Math.sin(angle))).get().run();
 			}
 		}
 

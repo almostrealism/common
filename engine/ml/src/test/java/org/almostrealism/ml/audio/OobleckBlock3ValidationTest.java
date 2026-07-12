@@ -17,6 +17,7 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
@@ -131,7 +132,7 @@ public class OobleckBlock3ValidationTest extends OobleckValidationBase {
 		for (int c = 0; c < inChannels; c++) {
 			for (int s = 0; s < inputLength; s++) {
 				double value = inputMean + inputStd * rand.nextGaussian();
-				input.setMem(c * inputLength + s, value);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), c * inputLength + s)), CollectionFeatures.getInstance().c(value)).get().run();
 			}
 		}
 

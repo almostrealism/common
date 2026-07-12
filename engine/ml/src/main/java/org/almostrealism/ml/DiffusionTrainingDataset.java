@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.audio.DiffusionNoiseScheduler;
 import org.almostrealism.optimize.Dataset;
@@ -224,7 +225,9 @@ public class DiffusionTrainingDataset implements Dataset<PackedCollection> {
 		private PackedCollection createTimestepTensor(int t) {
 			double normalizedT = (double) t / scheduler.getNumSteps();
 			PackedCollection timestep = new PackedCollection(1);
-			timestep.setMem(0, normalizedT);
+			CollectionFeatures.getInstance().a(
+					CollectionFeatures.getInstance().cp(timestep),
+					CollectionFeatures.getInstance().c(normalizedT)).get().run();
 			return timestep;
 		}
 	}

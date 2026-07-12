@@ -1,6 +1,8 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -49,7 +51,7 @@ public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, C
 		for (int kv = 0; kv < kvHeads; kv++) {
 			for (int h = 0; h < headSize; h++) {
 				int idx = kv * headSize + h;
-				input.setMem(idx, kv * 1000 + h);  // 0-63 for kv0, 1000-1063 for kv1
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(kv * 1000 + h)).get().run();  // 0-63 for kv0, 1000-1063 for kv1
 			}
 		}
 

@@ -1,6 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
@@ -96,7 +97,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 			int warmupPasses = 1;
 			log("Running " + warmupPasses + " warm-up forward passes...");
 			for (int w = 0; w < warmupPasses; w++) {
-				position.setMem(0, (double) w);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) w)).get().run();
 				PackedCollection input = createInput(embeddings, w % config.vocabSize, config.dim);
 				compiledModel.forward(input);
 			}
@@ -108,7 +109,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 
 			for (int p = 0; p < profiledPasses; p++) {
 				int step = warmupPasses + p;
-				position.setMem(0, (double) step);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 				PackedCollection input = createInput(embeddings, step % config.vocabSize, config.dim);
 
 				long start = System.nanoTime();
@@ -154,9 +155,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	 */
 	private PackedCollection createInput(PackedCollection embeddings, int token, int dim) {
 		PackedCollection input = new PackedCollection(shape(1, dim));
-		for (int i = 0; i < dim; i++) {
-			input.setMem(i, embeddings.toDouble(token * dim + i));
-		}
+		a(cp(input), cp(embeddings.range(shape(dim), token * dim))).get().run();
 		return input;
 	}
 
@@ -228,12 +227,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	private static PackedCollection randomCollection(Random random, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection collection = new PackedCollection(shape);
-		int size = shape.getTotalSize();
-		double[] data = new double[size];
-		for (int i = 0; i < size; i++) {
-			data[i] = (random.nextDouble() - 0.5) * 0.2;
-		}
-		collection.setMem(0, data, 0, size);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection), CollectionFeatures.getInstance().rand(collection.getShape(), random).add(-0.5).multiply(0.2)).get().run();
 		return collection;
 	}
 }

@@ -196,7 +196,7 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 		transformer.add(dense(weights.wcls));
 
 		return AutoregressiveModel.of(transformer.compile(false, profile),
-				step -> position.setMem((double) step),
+				step -> a(cp(position), c((double) step)).get().run(),
 				t -> weights.tokenEmbeddings.range(shape(config.dim), t * config.dim));
 	}
 

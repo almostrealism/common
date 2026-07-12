@@ -1,6 +1,8 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -178,8 +180,8 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 			for (int i = 0; i < freqDim; i++) {
 				double angle = pos * freqs[i];
 				int idx = (pos * freqDim + i) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(Math.cos(angle))).get().run();
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), idx + 1)), CollectionFeatures.getInstance().c(Math.sin(angle))).get().run();
 			}
 		}
 		return freqCis;
