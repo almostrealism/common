@@ -21,12 +21,9 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
-import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
-import java.util.stream.IntStream;
 
 /**
  * A computation that generates arithmetic sequences (linear sequences) with configurable
@@ -187,6 +184,7 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 		this.fixedCount = fixedCount;
 		this.initial = initial;
 		this.rate = rate;
+		init();
 	}
 
 	/**
@@ -254,28 +252,6 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return new ArithmeticSequenceExpression(getShape(), initial, rate);
-	}
-
-	/**
-	 * Returns an {@link Evaluable} that directly computes the arithmetic sequence using Java streams.
-	 *
-	 * <p>This method provides a fallback implementation for direct evaluation outside of
-	 * kernel execution contexts. It generates the sequence using {@link IntStream} with
-	 * the formula {@code value[i] = initial + i * rate}.</p>
-	 *
-	 * <p><strong>Warning:</strong> This method logs a warning when used, as direct evaluation
-	 * bypasses kernel optimization and hardware acceleration. It should primarily be used
-	 * for testing or in contexts where kernel compilation is not available.</p>
-	 *
-	 * @return An {@link Evaluable} that computes the arithmetic sequence directly
-	 */
-	@Override
-	public Evaluable<PackedCollection> get() {
-		return args -> {
-			warn("Direct evaluation of arithmetic sequence");
-			return pack(IntStream.range(0, getShape().getTotalSize())
-					.mapToDouble(i -> initial + i * rate).toArray());
-		};
 	}
 
 	/**
