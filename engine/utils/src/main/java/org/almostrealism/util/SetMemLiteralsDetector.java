@@ -84,7 +84,49 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/hardware/mem/MemoryDataAdapter.java",
 			"/code/Memory.java",
 			"MemoryProvider.java",           // matches every *MemoryProvider implementation
-			"/collect/PackedCollection.java" // implements fill/replace/clone and from-host factories
+			"/collect/PackedCollection.java", // implements fill/replace/clone and from-host factories
+			"/collect/CollectionCreationFeatures.java" // c(double...) — the host-array to collection ingest primitive
+	);
+
+	/**
+	 * Module directory fragments whose {@code setMem} violations are temporarily tolerated because
+	 * that module has not yet been migrated under the phased roll-out. Enforcement is turned on one
+	 * module at a time; a module is removed from this list in the phase that migrates it, so that a
+	 * failing phase exposes only that module's changes. A file whose path contains any fragment here
+	 * is skipped entirely by this rule (its other detectors still apply).
+	 */
+	private static final List<String> UNMIGRATED_MODULES = List.of(
+			"/compute/geometry/",
+			"/compute/time/",
+			"/domain/color/",
+			"/domain/graph/",
+			"/domain/heredity/",
+			"/domain/space/",
+			"/engine/audio/",
+			"/engine/ml/",
+			"/engine/render/",
+			"/engine/utils/",
+			"/extern/ml-onnx/",
+			"/flowtree/graphpersist/",
+			"/studio/compose/",
+			"/studio/experiments/",
+			"/studio/music/",
+			"/studio/spatial/"
+	);
+
+	/**
+	 * Burn-down whitelist of individually-acknowledged violations in already-enforced modules that
+	 * could not be migrated to a producer/{@code setFrom} idiom. An entry suppresses a single call
+	 * only when the file path contains {@code pathFragment} and the offending source line, trimmed,
+	 * is exactly {@code sourceLine}, so the entry re-triggers the moment the line is edited. Every
+	 * entry here is a write below the producer API in {@code base/hardware} (which cannot import the
+	 * collect layer) or the randomness ingest primitive; these are expected to shrink to zero.
+	 */
+	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
+			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
+			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
+			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
+			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"}
 	);
 
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */
@@ -114,7 +156,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public SetMemLiteralsDetector scanFile(Path file) {
-		if (isExcluded(file) || isSanctionedWriteSurface(file)) return this;
+		if (isExcluded(file) || isSanctionedWriteSurface(file) || isUnmigratedModule(file)) return this;
 
 		try {
 			String content = Files.readString(file);
@@ -130,6 +172,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 				String argString = masked.substring(argsStart, argsEnd);
 				if (!isSanctioned(argString, masked)) {
 					int lineNum = countLines(content, call.start());
+					if (isKnownExclusion(file, lineText(content, lineNum))) continue;
 					violations.add(new Violation(file, lineNum, lineText(content, lineNum),
 							RULE, GUIDANCE));
 				}
@@ -153,6 +196,38 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		String path = file.toString().replace('\\', '/');
 		for (String fragment : SANCTIONED_WRITE_SURFACE) {
 			if (path.contains(fragment)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if the file belongs to a module that has not yet been migrated under the
+	 * phased roll-out and is therefore temporarily exempt from this rule.
+	 *
+	 * @param file  the file to test
+	 * @return      whether the file is in an as-yet-unmigrated module
+	 */
+	private boolean isUnmigratedModule(Path file) {
+		String path = file.toString().replace('\\', '/');
+		for (String fragment : UNMIGRATED_MODULES) {
+			if (path.contains(fragment)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if the offending call is an individually-acknowledged entry on the
+	 * {@link #KNOWN_EXCLUSIONS} burn-down list — the file path contains the entry's path fragment
+	 * and the trimmed source line matches exactly.
+	 *
+	 * @param file  the file containing the call
+	 * @param line  the trimmed source line of the {@code setMem} call
+	 * @return      whether this specific call is a known, temporarily-excluded violation
+	 */
+	private boolean isKnownExclusion(Path file, String line) {
+		String path = file.toString().replace('\\', '/');
+		for (String[] entry : KNOWN_EXCLUSIONS) {
+			if (path.contains(entry[0]) && line.equals(entry[1])) return true;
 		}
 		return false;
 	}
