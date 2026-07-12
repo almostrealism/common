@@ -101,7 +101,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	private static final List<String> UNMIGRATED_MODULES = List.of(
 			"/domain/graph/",
-			"/domain/heredity/",
 			"/domain/space/",
 			"/engine/audio/",
 			"/engine/ml/",

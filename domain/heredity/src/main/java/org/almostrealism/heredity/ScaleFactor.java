@@ -69,7 +69,7 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	 */
 	public ScaleFactor(double scale) {
 		this.scale = new PackedCollection(1);
-		this.scale.setMem(0, scale);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.scale), CollectionFeatures.getInstance().c(scale)).get().run();
 	}
 
 	/**
@@ -93,7 +93,7 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 //			if (value instanceof StaticCollectionComputation) {
 //				result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * scale.toDouble(0));
 //			} else {
-				result.setMem(value.get().evaluate(args).toDouble(0) * scale.toDouble(0));
+				a(cp(result), c(value.get().evaluate(args).toDouble(0) * scale.toDouble(0))).get().run();
 //			}
 
 			return result;
@@ -107,7 +107,7 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	 */
 	public void setScaleValue(double s) {
 		this.scale = new PackedCollection(1);
-		this.scale.setMem(0, s);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.scale), CollectionFeatures.getInstance().c(s)).get().run();
 	}
 
 	/**

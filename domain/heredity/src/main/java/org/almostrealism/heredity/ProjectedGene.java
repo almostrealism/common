@@ -17,6 +17,7 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.VectorFeatures;
@@ -120,10 +121,10 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @param seed the random seed for reproducible initialization
 	 */
 	public void initWeights(long seed) {
-		randn(shape(weights), new Random(seed)).into(weights).evaluate();
+		a(cp(weights), randn(shape(weights), new Random(seed))).get().run();
 		for (int pos = 0; pos < length(); pos++) {
 			double scale = Math.sqrt(weights.get(pos).doubleStream().map(d -> d * d).sum());
-			weights.get(pos).setMem(weights.get(pos).doubleStream().map(d -> d / scale).toArray());
+			a(cp(weights.get(pos)), cp(weights.get(pos)).divide(scale)).get().run();
 		}
 	}
 
@@ -148,7 +149,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 			double phase = value / period;
 			value = phase < 0.5 ? 2 * phase : 2 * (1 - phase);
 
-			values.setMem(pos, start + value * range);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(values.range(new TraversalPolicy(1), pos)), CollectionFeatures.getInstance().c(start + value * range)).get().run();
 		}
 	}
 
@@ -177,7 +178,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @param max the maximum output value
 	 */
 	public void setRange(int index, double min, double max) {
-		ranges.get(index).setMem(min, max);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(ranges.get(index)), CollectionFeatures.getInstance().c(min, max)).get().run();
 	}
 
 	/**
