@@ -17,6 +17,8 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.audio.CellFeatures;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
@@ -78,7 +80,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		double angularFreq = 2.0 * Math.PI * frequency / SAMPLE_RATE;
 		for (int i = 0; i < frames; i++) {
 			double sample = amplitude * Math.sin(angularFreq * i);
-			audio.setMem(i, sample);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(audio.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(sample)).get().run();
 		}
 
 		return audio;
@@ -99,7 +101,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		for (int i = 0; i < frames; i++) {
 			double envelope = Math.exp(-5.0 * i / frames);
 			double sample = amplitude * envelope * Math.sin(2.0 * Math.PI * 1000 * i / SAMPLE_RATE);
-			audio.setMem(i, sample);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(audio.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(sample)).get().run();
 		}
 
 		return audio;
@@ -163,7 +165,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		for (int i = 0; i < sourceLen && (startFrame + i) < destLen; i++) {
 			double existing = destination.toDouble(startFrame + i);
 			double newVal = source.toDouble(i);
-			destination.setMem(startFrame + i, existing + newVal);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(destination.range(new TraversalPolicy(1), startFrame + i)), CollectionFeatures.getInstance().c(existing + newVal)).get().run();
 		}
 	}
 
@@ -315,9 +317,8 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 				int end = Math.min(start + bufferSize, totalFrames);
 
 				// Copy the reference content for this buffer
-				for (int i = start; i < end; i++) {
-					rendered.setMem(i, reference.toDouble(i));
-				}
+				a(cp(rendered.range(shape(end - start), start)),
+						cp(reference.range(shape(end - start), start))).get().run();
 			}
 
 			// Compare with reference

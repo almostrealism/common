@@ -123,11 +123,11 @@ public class EfxManager implements CellFeatures {
 				.mapToDouble(d -> d)
 				.toArray();
 
-		PackedCollection c = new PackedCollection(choices.length);
-		c.setMem(choices);
+		PackedCollection choicesCollection = new PackedCollection(choices.length);
+		a(cp(choicesCollection), c(choices)).get().run();
 
 		delayTimes = chromosome(IntStream.range(0, channels)
-				.mapToObj(i -> chromosome.addChoiceGene(c, 1))
+				.mapToObj(i -> chromosome.addChoiceGene(choicesCollection, 1))
 				.collect(Collectors.toList()));
 
 		delayLevels = chromosome(IntStream.range(0, channels).mapToObj(i -> {

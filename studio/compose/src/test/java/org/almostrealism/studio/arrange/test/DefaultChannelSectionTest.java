@@ -53,7 +53,7 @@ public class DefaultChannelSectionTest extends TestSuiteBase implements CellFeat
 
 		WaveData data = WaveData.load(getTestWavFile());
 		PackedCollection input = new PackedCollection(samples);
-		input.setMem(data.getChannelData(0).toArray());
+		input.setFrom(0, data.getChannelData(0));
 
 		PackedCollection result = new PackedCollection(samples);
 		Producer<PackedCollection> destination = p(result);

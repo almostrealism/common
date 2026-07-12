@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
@@ -124,7 +125,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * Scalar position for the main transformer KV cache.
 	 *
 	 * <p>Increments by one for each new event position processed by {@code net}.
-	 * Set via {@code netPosition.setMem(0, pos)} before each {@link #netCompiledModel}
+	 * Set via {@code CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(netPosition.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(pos)).get().run()} before each {@link #netCompiledModel}
 	 * forward pass.</p>
 	 */
 	private final PackedCollection netPosition;
@@ -329,7 +330,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		// The return value of the last call is the hidden state for the last prompt position.
 		PackedCollection lastHidden = null;
 		for (int pos = 0; pos < sequence.size(); pos++) {
-			netPosition.setMem(0, pos);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(netPosition.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(pos)).get().run();
 			lastHidden = netCompiledModel.forward(embedAndSumNet(sequence.get(pos)));
 		}
 
@@ -352,7 +353,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 						? lastHidden
 						: embedNetToken(newEventTokens[step - 1]);
 
-				netTokenPosition.setMem(0, step);
+				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(netTokenPosition.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(step)).get().run();
 				PackedCollection rawLogits = netTokenCompiledModel.forward(tokenInput);
 
 				// Apply validity mask: zero out logits for tokens that are not valid
@@ -390,7 +391,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 
 			// Advance net's KV cache to the newly generated event position
 			int newPos = sequence.size() - 1;
-			netPosition.setMem(0, newPos);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(netPosition.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(newPos)).get().run();
 			lastHidden = netCompiledModel.forward(embedAndSumNet(newEventTokens));
 		}
 
@@ -759,7 +760,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			values[id] = logits.toDouble(id);
 		}
 		PackedCollection masked = new PackedCollection(config.vocabSize);
-		masked.setMem(0, values);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(masked.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(values)).get().run();
 		return masked;
 	}
 
@@ -797,7 +798,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 				filtered[i] = values[i] >= threshold ? values[i] : -1e9;
 			}
 			PackedCollection topKLogits = new PackedCollection(config.vocabSize);
-			topKLogits.setMem(0, filtered);
+			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(topKLogits.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(filtered)).get().run();
 			return AutoregressiveModel.sampleToken(topKLogits, config.vocabSize,
 					temperature, topP, random);
 		}

@@ -17,6 +17,8 @@
 package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
@@ -450,7 +452,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 					}
 
 					double magnitude = Math.sqrt(real * real + imag * imag) / len;
-					features.setMem(f * FEATURE_BINS + b, magnitude);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(features.range(new TraversalPolicy(1), f * FEATURE_BINS + b)), CollectionFeatures.getInstance().c(magnitude)).get().run();
 				}
 			}
 

@@ -17,6 +17,8 @@
 package org.almostrealism.studio.discovery.test;
 
 import org.almostrealism.audio.AudioLibrary;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
@@ -202,7 +204,7 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 					}
 
 					double magnitude = Math.sqrt(real * real + imag * imag) / len;
-					features.setMem(f * FEATURE_BINS + b, magnitude);
+					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(features.range(new TraversalPolicy(1), f * FEATURE_BINS + b)), CollectionFeatures.getInstance().c(magnitude)).get().run();
 				}
 			}
 

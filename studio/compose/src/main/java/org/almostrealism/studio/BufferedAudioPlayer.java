@@ -34,6 +34,7 @@ import org.almostrealism.audio.line.DelegatedAudioLine;
 import org.almostrealism.audio.line.MultiChannelOutputLine;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.SourceDataOutputLine;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.graph.TimeCell;
@@ -449,7 +450,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	 * @param v the amplitude value to set
 	 */
 	protected void setLevel(int c, double v) {
-		level[c].setMem(0, v);
+		a(cp(level[c]), c(v)).get().run();
 	}
 
 	/**
@@ -470,7 +471,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	protected void setLoopDuration(int c, double duration) {
 		double previous = loopDuration[c].toDouble(0);
 
-		loopDuration[c].setMem(duration);
+		a(cp(loopDuration[c]), CollectionFeatures.getInstance().c(duration)).get().run();
 
 		if (enableUnifiedClock) {
 			clock.setReset(0, (int) (duration * sampleRate));

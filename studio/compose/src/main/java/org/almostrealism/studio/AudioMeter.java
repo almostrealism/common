@@ -86,7 +86,7 @@ public class AudioMeter implements Receptor<PackedCollection>, Lifecycle, Scalar
 	 *
 	 * @param value the silence threshold
 	 */
-	public void setSilenceValue(double value) { this.silenceValue.setMem(value); }
+	public void setSilenceValue(double value) { a(cp(this.silenceValue), c(value)).get().run(); }
 
 	/**
 	 * Returns the accumulated count of consecutive silent samples since the last reset.

@@ -90,24 +90,18 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 		// buffers: channels * signal_size elements (circular delay buffer per channel)
 		// heads:   channels elements (write-head counter per channel)
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.setMem(new double[CHANNELS * SIGNAL_SIZE]);
+		buffers.fill(0.0);
 		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.setMem(new double[CHANNELS]);
+		heads.fill(0.0);
 
 		// Routing matrix: near-identity with slight cross-channel bleed.
 		// Row i is output channel i. Each row sums to 1.0 for unity gain.
-		double[][] m = {
-				{0.4, 0.3, 0.3},
-				{0.3, 0.4, 0.3},
-				{0.3, 0.3, 0.4}
-		};
 		PackedCollection transmission = new PackedCollection(
 				new TraversalPolicy(CHANNELS, CHANNELS));
-		for (int i = 0; i < CHANNELS; i++) {
-			for (int j = 0; j < CHANNELS; j++) {
-				transmission.setMem(i * CHANNELS + j, m[i][j]);
-			}
-		}
+		a(cp(transmission), c(
+				0.4, 0.3, 0.3,
+				0.3, 0.4, 0.3,
+				0.3, 0.3, 0.4).reshape(transmission.getShape())).get().run();
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/delay_feedback_bank.pdsl");
