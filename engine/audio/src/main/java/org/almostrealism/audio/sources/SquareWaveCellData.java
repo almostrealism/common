@@ -18,6 +18,7 @@ package org.almostrealism.audio.sources;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 
 /**
  * Data interface for square wave generation state.
@@ -55,6 +56,6 @@ public interface SquareWaveCellData extends SineWaveCellData {
 	 * @param dutyCycle the duty cycle (0.0 to 1.0, default 0.5)
 	 */
 	default void setDutyCycle(double dutyCycle) {
-		dutyCycle().setMem(0, dutyCycle);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(dutyCycle()), CollectionFeatures.getInstance().c(dutyCycle)).get().run();
 	}
 }

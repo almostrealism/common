@@ -28,6 +28,7 @@ import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.audio.data.WaveDetailsJob;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.IncrementalSimilarityComputation;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
@@ -953,10 +954,12 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 
 		double invFrames = 1.0 / frames;
-		PackedCollection result = new PackedCollection(bins);
 		for (int b = 0; b < bins; b++) {
-			result.setMem(b, embedding[b] * invFrames);
+			embedding[b] *= invFrames;
 		}
+		PackedCollection result = new PackedCollection(bins);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result),
+				CollectionFeatures.getInstance().c(embedding)).get().run();
 		return result;
 	}
 

@@ -43,7 +43,6 @@ import java.util.function.Supplier;
  * </ul>
  *
  * @see TemporalFactor
- * @see BasicDelayCell
  */
 public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle, CodeFeatures {
 	/** When true, wraps tick operations in an isolated process for debugging. */

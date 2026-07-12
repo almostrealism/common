@@ -19,6 +19,7 @@ package org.almostrealism.audio.filter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
 
 /**
  * Data interface for biquad filter state.
@@ -71,15 +72,15 @@ public interface BiquadFilterData extends CodeFeatures {
 	default Producer<PackedCollection> getY1() { return p(y1().range(shape(1))); }
 	default Producer<PackedCollection> getY2() { return p(y2().range(shape(1))); }
 
-	default void setB0(double v) { b0().setMem(0, v); }
-	default void setB1(double v) { b1().setMem(0, v); }
-	default void setB2(double v) { b2().setMem(0, v); }
-	default void setA1(double v) { a1().setMem(0, v); }
-	default void setA2(double v) { a2().setMem(0, v); }
-	default void setX1(double v) { x1().setMem(0, v); }
-	default void setX2(double v) { x2().setMem(0, v); }
-	default void setY1(double v) { y1().setMem(0, v); }
-	default void setY2(double v) { y2().setMem(0, v); }
+	default void setB0(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(b0()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setB1(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(b1()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setB2(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(b2()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setA1(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(a1()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setA2(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(a2()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setX1(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(x1()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setX2(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(x2()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setY1(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(y1()), CollectionFeatures.getInstance().c(v)).get().run(); }
+	default void setY2(double v) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(y2()), CollectionFeatures.getInstance().c(v)).get().run(); }
 
 	/**
 	 * Sets all filter coefficients at once.

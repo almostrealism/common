@@ -100,7 +100,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * is skipped entirely by this rule (its other detectors still apply).
 	 */
 	private static final List<String> UNMIGRATED_MODULES = List.of(
-			"/engine/audio/",
 			"/engine/utils/",
 			"/extern/ml-onnx/",
 			"/flowtree/graphpersist/",
@@ -123,6 +122,10 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
 			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
+			new String[] {"/audio/WavFile.java", "waveform.setMem(0, data[chan]);"},
+			new String[] {"/audio/WavFile.java", "for (double frame : data[chan]) waveform.setMem(index++, frame);"},
+			new String[] {"/audio/WavFile.java", "for (int frame : data[chan]) waveform.setMem(index++, frame);"},
+			new String[] {"/audio/data/WaveData.java", "in.setMem(Math.toIntExact(c * w.getNumFrames()), wave[c]);"},
 			new String[] {"/space/CachedMeshIntersectionKernel.java",
 					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},

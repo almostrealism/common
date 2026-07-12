@@ -64,7 +64,7 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 	 */
 	private PackedCollection col(double[] values) {
 		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
+		a(cp(c), c(values)).get().run();
 		return c;
 	}
 
@@ -110,7 +110,7 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 				v3[nn] = 0.0;
 			}
 			sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
-			sources[l].setMem(batchData);
+			a(cp(sources[l]), c(sources[l].getShape(), batchData)).get().run();
 			ratios[l] = col(ratioData);
 			layerEnvParams[l] = new PackedCollection[] {
 					col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3)

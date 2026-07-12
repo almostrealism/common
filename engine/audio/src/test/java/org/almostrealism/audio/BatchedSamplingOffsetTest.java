@@ -48,7 +48,7 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 	/** Returns a single-element {@link PackedCollection} containing the given value. */
 	private PackedCollection single(double value) {
 		PackedCollection c = new PackedCollection(1);
-		c.setMem(new double[] { value });
+		a(cp(c), c(value)).get().run();
 		return c;
 	}
 

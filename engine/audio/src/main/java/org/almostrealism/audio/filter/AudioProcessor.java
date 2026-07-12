@@ -69,7 +69,7 @@ public interface AudioProcessor extends Lifecycle {
 							len = data.getFrameCount() - pos;
 						}
 
-						out.setMem(data.getChannelData(channel).range(new TraversalPolicy(len), pos).toArray());
+						out.setFrom(0, data.getChannelData(channel).range(new TraversalPolicy(len), pos));
 						position.set(0, position.toDouble(0) + len);
 					};
 				};
