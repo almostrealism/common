@@ -384,7 +384,7 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 				PackedCollection frameOut = outRoot.range(shape(FFT_BINS, 2));
 
 				for (int i = 0; i < count; i++) {
-					frameIn.setMem(0, getChannelData(channel), i * FFT_BINS,
+					frameIn.setFrom(0, getChannelData(channel), i * FFT_BINS,
 							Math.min(FFT_BINS, getFrameCount()- i * FFT_BINS));
 					fft.into(frameOut).evaluate(frameIn);
 
@@ -423,12 +423,12 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 
 				for (int i = 0; i < pcount; i++) {
 					int remaining = out.getMemLength() - i * window;
-					poolIn.setMem(0, out, i * window, Math.min(window, remaining));
+					poolIn.setFrom(0, out, i * window, Math.min(window, remaining));
 
 					pool2d.into(poolOut.traverseEach()).evaluate(poolIn.traverseEach());
 
 					remaining = pool.getMemLength() - i * poolWindow;
-					pool.setMem(i * poolWindow, poolOut, 0, Math.min(poolWindow, remaining));
+					pool.setFrom(i * poolWindow, poolOut, 0, Math.min(poolWindow, remaining));
 				}
 
 				return pool.range(shape(resultSize, FFT_POOL_BINS, 1));
@@ -597,7 +597,7 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 		PackedCollection flipped = new PackedCollection(bins, timeSlices);
 		for (int b = 0; b < bins; b++) {
 			int srcBin = bins - 1 - b;  // Flip: low frequencies at bottom
-			flipped.setMem(b * timeSlices, normalizedData, srcBin * timeSlices, timeSlices);
+			flipped.setFrom(b * timeSlices, normalizedData, srcBin * timeSlices, timeSlices);
 		}
 
 		// Create RGB image by repeating grayscale values across 3 channels

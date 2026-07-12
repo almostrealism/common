@@ -271,7 +271,7 @@ public class Tensor<T> {
 		AtomicInteger index = new AtomicInteger();
 		shape.stream().forEach(pos -> {
 			MemoryData d = (MemoryData) get(pos);
-			c.setMem(index.getAndIncrement() * d.getMemLength(), d, 0, d.getMemLength());
+			c.setFrom(index.getAndIncrement() * d.getMemLength(), d, 0, d.getMemLength());
 		});
 
 		return c;

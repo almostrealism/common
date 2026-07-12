@@ -160,7 +160,7 @@ public class WaveDetailsOutputLine implements OutputLine, CodeFeatures, ConsoleF
 			throw new IllegalArgumentException();
 		}
 
-		output.setMem(cursor, sample);
+		output.setFrom(cursor, sample);
 		silence[cursor / framesPerBatch] = silenceDetector != null && silenceDetector.getAsBoolean();
 		cursor = (cursor + sample.getMemLength()) % output.getMemLength();
 

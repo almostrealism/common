@@ -339,7 +339,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 */
 	public Vector setTo(Vector v) {
 		if (v.getMem().getProvider() == this.getMem().getProvider()) {
-			setMem(0, v, 0, 3);
+			setFrom(0, v, 0, 3);
 		} else {
 			setMem(v.toArray(), 0);
 		}

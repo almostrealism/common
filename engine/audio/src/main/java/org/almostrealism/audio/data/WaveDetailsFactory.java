@@ -368,7 +368,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 
 			PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, bins, 1));
 			for (int b = 0; b < batchSize; b++) {
-				stackedQuery.setMem(b * elementsPerItem, queryRange, 0, elementsPerItem);
+				stackedQuery.setFrom(b * elementsPerItem, queryRange, 0, elementsPerItem);
 			}
 
 			PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, bins, 1));
@@ -379,7 +379,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 				int targetFrames = targetData.getShape().length(0);
 				PackedCollection targetRange = frames < targetFrames
 						? targetData.range(rangeShape) : targetData;
-				stackedTargets.setMem(b * elementsPerItem, targetRange, 0, elementsPerItem);
+				stackedTargets.setFrom(b * elementsPerItem, targetRange, 0, elementsPerItem);
 			}
 
 			double[] allValues = cosineSimilarityEvaluable(totalFrames, bins)
@@ -465,7 +465,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 			PackedCollection in;
 
 			if (fft.getMemLength() < (i + 1) * inShape.getTotalSize()) {
-				buffer.setMem(0, fft, i * inShape.getTotalSize(), fft.getMemLength() - i * inShape.getTotalSize());
+				buffer.setFrom(0, fft, i * inShape.getTotalSize(), fft.getMemLength() - i * inShape.getTotalSize());
 				in = buffer;
 			} else {
 				in = fft.range(inShape, i * inShape.getTotalSize());

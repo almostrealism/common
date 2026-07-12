@@ -81,21 +81,21 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	 */
 	public Ray(Ray source) {
 		this();
-		this.setMem(0, source, 0, 6);
+		this.setFrom(0, source, 0, 6);
 	}
 
 	/**
 	 * Sets the origin of this {@link Ray} to the specified origin {@link Vector}.
 	 */
 	public void setOrigin(Vector origin) {
-		setMem(0, origin, 0, 3);
+		setFrom(0, origin, 0, 3);
 	}
 	
 	/**
 	 * Sets the direction of this {@link Ray} to the specified direction {@link Vector}.
 	 */
 	public void setDirection(Vector direction) {
-		setMem(3, direction, 0, 3);
+		setFrom(3, direction, 0, 3);
 	}
 	
 	/**

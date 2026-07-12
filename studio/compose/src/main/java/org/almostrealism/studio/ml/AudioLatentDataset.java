@@ -232,14 +232,14 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 		if (audio.getChannelCount() == 1) {
 			// Duplicate mono to stereo using bulk copy
 			PackedCollection mono = audio.getChannelData(0);
-			audioData.setMem(0, mono);                // Left channel (bulk copy)
-			audioData.setMem(frameCount, mono);       // Right channel (bulk copy of same data)
+			audioData.setFrom(0, mono);                // Left channel (bulk copy)
+			audioData.setFrom(frameCount, mono);       // Right channel (bulk copy of same data)
 		} else {
 			// Already stereo - bulk copy both channels
 			PackedCollection left = audio.getChannelData(0);
 			PackedCollection right = audio.getChannelData(1);
-			audioData.setMem(0, left);                // Left channel (bulk copy)
-			audioData.setMem(frameCount, right);      // Right channel (bulk copy)
+			audioData.setFrom(0, left);                // Left channel (bulk copy)
+			audioData.setFrom(frameCount, right);      // Right channel (bulk copy)
 		}
 
 		// Release the raw WaveData now that we have copied its samples
@@ -259,9 +259,9 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 			// Extract segment using bulk copy operations
 			PackedCollection segment = new PackedCollection(new TraversalPolicy(1, 2, segmentSamples));
 			// Copy left channel segment
-			segment.setMem(0, audioData, offset, segmentSamples);
+			segment.setFrom(0, audioData, offset, segmentSamples);
 			// Copy right channel segment
-			segment.setMem(segmentSamples, audioData, frameCount + offset, segmentSamples);
+			segment.setFrom(segmentSamples, audioData, frameCount + offset, segmentSamples);
 
 			// Encode segment
 			PackedCollection latent = encoder.forward(segment);
@@ -271,7 +271,7 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 
 			// Clone the latent using bulk copy (encoder may reuse buffers)
 			PackedCollection latentCopy = new PackedCollection(latent.getShape());
-			latentCopy.setMem(0, latent);
+			latentCopy.setFrom(0, latent);
 
 			latents.add(latentCopy);
 			offset += segmentSamples;

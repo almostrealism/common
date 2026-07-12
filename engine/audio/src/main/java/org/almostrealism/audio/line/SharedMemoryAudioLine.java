@@ -112,7 +112,7 @@ public class SharedMemoryAudioLine implements AudioLine, ConsoleFeatures {
 			throw new IllegalArgumentException("Sample is too large for source");
 		}
 
-		sample.setMem(0, input, cursor, sample.getMemLength());
+		sample.setFrom(0, input, cursor, sample.getMemLength());
 	}
 
 	@Override
@@ -121,7 +121,7 @@ public class SharedMemoryAudioLine implements AudioLine, ConsoleFeatures {
 			throw new IllegalArgumentException("Sample is too large for destination");
 		}
 
-		output.setMem(cursor, sample);
+		output.setFrom(cursor, sample);
 		cursor = (cursor + sample.getMemLength()) % output.getMemLength();
 	}
 

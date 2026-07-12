@@ -317,7 +317,7 @@ public class MemoryDataCopy implements ParallelProcess<Process<?, Runnable>, Run
 
 			if (context == null) {
 				// Unmanaged memory (plain JVM heap, for example); host-mediated transfer
-				target.setMem(targetPosition, source, sourcePosition, length);
+				target.setFrom(targetPosition, source, sourcePosition, length);
 			} else {
 				Semaphore done = context.copy(
 						new Bytes(length, source, sourcePosition),

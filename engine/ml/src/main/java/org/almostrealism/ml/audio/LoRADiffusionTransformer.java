@@ -243,8 +243,8 @@ public class LoRADiffusionTransformer extends DiffusionTransformer implements At
 			}
 
 			// Copy weights into existing collections using bulk copy
-			lora.getLoraA().setMem(0, loraA);
-			lora.getLoraB().setMem(0, loraB);
+			lora.getLoraA().setFrom(0, loraA);
+			lora.getLoraB().setFrom(0, loraB);
 		}
 
 		log("Loaded " + loraLayers.size() + " LoRA adapters from bundle: " + bundlePath);

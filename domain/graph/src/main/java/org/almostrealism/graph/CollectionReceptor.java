@@ -100,7 +100,7 @@ public class CollectionReceptor implements Receptor<PackedCollection> {
 			int length = pos == null ? dest.getShape().getTotalSize() : dest.getShape().length(1);
 			int offset = p * length;
 
-			dest.setMem(offset, in, 0, length);
+			dest.setFrom(offset, in, 0, length);
 			if (r != null) r.run();
 		};
 	}

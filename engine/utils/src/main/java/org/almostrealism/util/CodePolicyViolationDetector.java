@@ -101,6 +101,10 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		packed.scan();
 		violations.addAll(packed.getViolations());
 
+		SetMemLiteralsDetector setMem = new SetMemLiteralsDetector(rootDir);
+		setMem.scan();
+		violations.addAll(setMem.getViolations());
+
 		ProducerPatternDetector producer = new ProducerPatternDetector(rootDir);
 		producer.scan();
 		violations.addAll(producer.getViolations());
@@ -141,6 +145,10 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		PackedCollectionDetector packed = new PackedCollectionDetector(rootDir);
 		packed.scanFile(file);
 		violations.addAll(packed.getViolations());
+
+		SetMemLiteralsDetector setMem = new SetMemLiteralsDetector(rootDir);
+		setMem.scanFile(file);
+		violations.addAll(setMem.getViolations());
 
 		ProducerPatternDetector producer = new ProducerPatternDetector(rootDir);
 		producer.scanFile(file);

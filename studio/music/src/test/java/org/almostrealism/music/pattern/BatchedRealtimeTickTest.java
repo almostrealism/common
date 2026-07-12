@@ -111,7 +111,7 @@ public class BatchedRealtimeTickTest extends TestSuiteBase implements AudioTestF
 		} finally {
 			PatternLayerManager.enableBatched = previous;
 		}
-		full.setMem(startFrame, dest, 0, BUFFER);
+		full.setFrom(startFrame, dest, 0, BUFFER);
 		return elapsed;
 	}
 

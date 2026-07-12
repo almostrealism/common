@@ -383,7 +383,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		int frames = resetPlayer(player, source.getFrameCount());
 
 		for (int c = 0; c < source.getChannelCount(); c++) {
-			getData(player).getChannelData(c).setMem(source.getChannelData(c), 0, frames);
+			getData(player).getChannelData(c).setFrom(source.getChannelData(c), 0, frames);
 		}
 	}
 
@@ -409,7 +409,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 		int frames = resetPlayer(player, data.getFrameCount());
 
 		for (int c = 0; c < data.getChannelCount(); c++) {
-			getData(player).getChannelData(c).setMem(data.getChannelData(c), 0, frames);
+			getData(player).getChannelData(c).setFrom(data.getChannelData(c), 0, frames);
 		}
 	}
 
