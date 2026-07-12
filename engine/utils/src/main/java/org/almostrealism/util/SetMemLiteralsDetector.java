@@ -100,7 +100,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * is skipped entirely by this rule (its other detectors still apply).
 	 */
 	private static final List<String> UNMIGRATED_MODULES = List.of(
-			"/extern/ml-onnx/",
 			"/flowtree/graphpersist/",
 			"/studio/compose/",
 			"/studio/experiments/",
@@ -133,6 +132,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset, f);"},
 			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset,"},
 			new String[] {"/llama2/Llama2Weights.java", "c.setMem(0, data, 0, shape.getTotalSize());"},
+			new String[] {"/ml/OnnxFeatures.java", "result.setMem(0, data);"},
 			new String[] {"SAMEResamplingParityTest.java", "pc.setMem(0, data, 0, data.length);"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
