@@ -93,17 +93,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	);
 
 	/**
-	 * Module directory fragments whose {@code setMem} violations are temporarily tolerated because
-	 * that module has not yet been migrated under the phased roll-out. Enforcement is turned on one
-	 * module at a time; a module is removed from this list in the phase that migrates it, so that a
-	 * failing phase exposes only that module's changes. A file whose path contains any fragment here
-	 * is skipped entirely by this rule (its other detectors still apply).
-	 */
-	private static final List<String> UNMIGRATED_MODULES = List.of(
-			"/flowtree/graphpersist/"
-	);
-
-	/**
 	 * Burn-down whitelist of individually-acknowledged violations in already-enforced modules that
 	 * could not be migrated to a producer/{@code setFrom} idiom. An entry suppresses a single call
 	 * only when the file path contains {@code pathFragment} and the offending source line, trimmed,
@@ -167,7 +156,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public SetMemLiteralsDetector scanFile(Path file) {
-		if (isExcluded(file) || isSanctionedWriteSurface(file) || isUnmigratedModule(file)) return this;
+		if (isExcluded(file) || isSanctionedWriteSurface(file)) return this;
 
 		try {
 			String content = Files.readString(file);
@@ -206,21 +195,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private boolean isSanctionedWriteSurface(Path file) {
 		String path = file.toString().replace('\\', '/');
 		for (String fragment : SANCTIONED_WRITE_SURFACE) {
-			if (path.contains(fragment)) return true;
-		}
-		return false;
-	}
-
-	/**
-	 * Returns {@code true} if the file belongs to a module that has not yet been migrated under the
-	 * phased roll-out and is therefore temporarily exempt from this rule.
-	 *
-	 * @param file  the file to test
-	 * @return      whether the file is in an as-yet-unmigrated module
-	 */
-	private boolean isUnmigratedModule(Path file) {
-		String path = file.toString().replace('\\', '/');
-		for (String fragment : UNMIGRATED_MODULES) {
 			if (path.contains(fragment)) return true;
 		}
 		return false;

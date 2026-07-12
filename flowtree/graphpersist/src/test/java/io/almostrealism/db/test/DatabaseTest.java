@@ -1,6 +1,7 @@
 package io.almostrealism.db.test;
 
 import io.almostrealism.GraphPersist;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
@@ -16,7 +17,7 @@ public class DatabaseTest extends TestSuiteBase {
 	 */
 	private static PackedCollection scalarValue(double value) {
 		PackedCollection s = new PackedCollection(1);
-		s.setMem(0, value);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(s.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(value)).get().run();
 		return s;
 	}
 
