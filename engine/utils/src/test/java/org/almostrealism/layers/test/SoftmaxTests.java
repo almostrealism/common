@@ -144,7 +144,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 	@Test(timeout = 60000)
 	public void softmaxBackwards() {
 		PackedCollection input = new PackedCollection(10);
-		IntStream.range(0, 10).forEach(i -> input.setMem(i, i + 1.0));
+		integers(1, 11).into(input.traverseEach()).evaluate();
 
 		PackedCollection gradient = new PackedCollection(10);
 		gradient.setMem(3, 1.0);
@@ -192,7 +192,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		TraversalPolicy shape = shape(1, 4, 25088);
 
 		PackedCollection input = new PackedCollection(shape);
-		IntStream.range(0, shape.getTotalSize()).forEach(i -> input.setMem(i, i + 1.0));
+		integers(1, shape.getTotalSize() + 1).into(input.traverseEach()).evaluate();
 
 		PackedCollection gradient = new PackedCollection(shape);
 		gradient.setMem(100, 1.0);
@@ -231,7 +231,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		int size = 2;
 
 		PackedCollection input = new PackedCollection(shape(1, size));
-		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
+		integers(1, size + 1).divide(10.0).into(input.traverseEach()).evaluate();
 
 		PackedCollection gradient = new PackedCollection(shape(1, size)).fill(0.0, -1.0);
 
@@ -272,7 +272,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		int size = 10;
 
 		PackedCollection input = new PackedCollection(1, size);
-		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
+		integers(1, size + 1).divide(10.0).into(input.traverseEach()).evaluate();
 
 		PackedCollection gradient = new PackedCollection(1, size);
 		gradient.setMem(3, 1.0);
@@ -321,7 +321,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		int size = 2;
 
 		PackedCollection input = new PackedCollection(size);
-		IntStream.range(0, size).forEach(i -> input.setMem(i, (i + 1.0) / 10.0));
+		integers(1, size + 1).divide(10.0).into(input.traverseEach()).evaluate();
 
 		PackedCollection gradient = new PackedCollection(size).fill(0.0, -1.0);
 

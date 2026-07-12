@@ -52,7 +52,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		PackedCollection actualOutput = new PackedCollection(shape(size));
 		snake.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
-			actualOutput.setMem(0, result.toArray(0, size), 0, size);
+			actualOutput.setFrom(0, result, 0, size);
 		});
 
 		// Execute
@@ -93,7 +93,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		PackedCollection actualOutput = new PackedCollection(shape(size));
 		snake.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
-			actualOutput.setMem(0, result.toArray(0, size), 0, size);
+			actualOutput.setFrom(0, result, 0, size);
 		});
 
 		OperationList op = (OperationList) snake.getForward().push(p(input));
@@ -146,7 +146,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		model.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
 			int totalSize = batchSize * outputChannels * seqLength;
-			actualOutput.setMem(0, result.toArray(0, totalSize), 0, totalSize);
+			actualOutput.setFrom(0, result, 0, totalSize);
 		});
 
 		OperationList op = (OperationList) model.getForward().push(p(input));
@@ -366,7 +366,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		model.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
 			int totalSize = batchSize * outputChannels * seqLength;
-			actualOutput.setMem(0, result.toArray(0, totalSize), 0, totalSize);
+			actualOutput.setFrom(0, result, 0, totalSize);
 		});
 
 		OperationList op = (OperationList) model.getForward().push(p(input));
@@ -503,7 +503,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		model.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
 			int totalSize = batchSize * outputChannels * outLength;
-			actualOutput.setMem(0, result.toArray(0, totalSize), 0, totalSize);
+			actualOutput.setFrom(0, result, 0, totalSize);
 		});
 
 		OperationList op = (OperationList) model.getForward().push(p(input));
