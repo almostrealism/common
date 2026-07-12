@@ -813,10 +813,7 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
-    # Native memory allocates as direct ByteBuffers (see test-media). Because direct
-    # buffers are reclaimed by the JVM cleaner on GC, a group can spike past the default
-    # 4 GiB direct limit before reclamation catches up (the intermittent failures seen
-    # here), so raise the forked test JVM's direct-memory ceiling. Heap is unchanged.
+    # Direct ByteBuffers are GC-reclaimed, so a group can spike past the 4 GiB default before reclamation catches up.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     strategy:
@@ -977,12 +974,7 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
-    # Native memory allocates as direct ByteBuffers, which count against the JVM's
-    # MaxDirectMemorySize (default: -Xmx). Cap it at 8g: enough for one split group's
-    # share of the scale-7 media tests, but deliberately not so high that committing it
-    # would exceed the runner's RAM and get the process OOM-killed (worse than a catchable
-    # limit). Heap is unchanged. _JAVA_OPTIONS reaches the surefire fork (MAVEN_OPTS would
-    # not) and leaves the JaCoCo argLine alone.
+    # Cap direct memory at 8g: enough for one split group, but below runner RAM so an overshoot is a catchable limit, not an OOM kill.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
@@ -1371,18 +1363,12 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
-    # Same as test-media: native,cl runs the media tests on direct-ByteBuffer native RAM
-    # (no Metal). Cap direct memory at 8g (below the runner's RAM, so a spike is a catchable
-    # limit rather than an OOM kill) and split the tests across three groups — the CL backend's
-    # direct-ByteBuffer reservations exceed the two-group budget, so it needs one more split than
-    # test-media-mac (still two groups under Metal). See test-media.
+    # native,cl media tests on direct-ByteBuffer RAM (no Metal); cap direct memory at 8g. Split into 3 groups since CL reserves more than the 2-group budget. See test-media.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
       fail-fast: false
-      # Cap concurrency at 2 even with 3 groups so this job does not monopolize the
-      # self-hosted runners when several pipelines run at once; the third group just
-      # queues behind the first two.
+      # Cap at 2 even with 3 groups so the job does not monopolize the runners.
       max-parallel: 2
       matrix:
         group: [0, 1, 2]

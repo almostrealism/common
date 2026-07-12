@@ -25,7 +25,7 @@ import java.nio.ByteBuffer;
  * Runtime-compiled JNI operation that unmaps a shared-memory region via {@code munmap}. Compiled at
  * runtime by {@link NativeCompiler}, so it needs no prebuilt native library.
  *
- * @see NIO
+ * @see NativeMemoryProvider
  */
 class SharedMemoryUnmap extends BaseNative {
 	/**

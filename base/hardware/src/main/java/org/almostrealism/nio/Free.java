@@ -14,9 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.c;
+package org.almostrealism.nio;
 
 import io.almostrealism.code.Precision;
+import org.almostrealism.c.BaseNative;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
 /**

@@ -26,7 +26,7 @@ import java.nio.ByteBuffer;
  * {@code msync}. Compiled at runtime by {@link NativeCompiler}, so it needs no prebuilt native
  * library.
  *
- * @see NIO
+ * @see NativeMemoryProvider
  */
 class SharedMemorySync extends BaseNative {
 	/**

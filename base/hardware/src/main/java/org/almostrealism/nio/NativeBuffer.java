@@ -20,7 +20,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.mem.ByteBufferMemory;
+import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
 import java.io.File;
@@ -35,16 +35,15 @@ import java.util.function.Consumer;
  * JNI-backed direct memory buffer used as the native RAM representation for CPU-side hardware execution.
  *
  * <p>Each {@link NativeBuffer} wraps a Java NIO direct {@link Buffer} allocated either via
- * {@link ByteBuffer#allocateDirect} or via shared memory ({@link NIO#mapSharedMemory}).
+ * {@link ByteBuffer#allocateDirect} or via shared memory ({@link NativeMemoryProvider#mapSharedMemory}).
  * The raw native pointer to the buffer is exposed for kernel argument passing.</p>
  *
  * <p>When the buffer is backed by shared memory, {@link #destroy()} unmaps the region.
  * Deallocation listeners are called by {@link NativeMemoryProvider} after GC cleanup.</p>
  *
  * @see NativeMemoryProvider
- * @see NIO
  */
-public class NativeBuffer extends ByteBufferMemory implements Destroyable {
+public class NativeBuffer extends DirectMemory implements Destroyable {
 	/** The memory provider that allocated this buffer. */
 	private final NativeMemoryProvider provider;
 	/** Root byte buffer used for shared memory mapping and capacity queries. */
@@ -80,7 +79,7 @@ public class NativeBuffer extends ByteBufferMemory implements Destroyable {
 	public MemoryProvider getProvider() { return provider; }
 
 	@Override
-	public long getContentPointer() { return NIO.pointerForBuffer(buffer); }
+	public long getContentPointer() { return provider.pointerForBuffer(buffer); }
 
 	public Buffer getBuffer() { return buffer; }
 
@@ -91,7 +90,7 @@ public class NativeBuffer extends ByteBufferMemory implements Destroyable {
 	 * {@link #getBuffer()} shares the same storage.</p>
 	 */
 	@Override
-	public ByteBuffer getByteBuffer() { return rootBuffer; }
+	public ByteBuffer asByteBuffer() { return rootBuffer; }
 
 	/**
 	 * Returns the root {@link ByteBuffer} backing this native buffer.
@@ -120,7 +119,7 @@ public class NativeBuffer extends ByteBufferMemory implements Destroyable {
 	 */
 	public void sync() {
 		if (sharedLocation != null) {
-			NIO.syncSharedMemory(rootBuffer, rootBuffer.capacity());
+			provider.syncSharedMemory(rootBuffer, rootBuffer.capacity());
 		}
 	}
 
@@ -133,7 +132,7 @@ public class NativeBuffer extends ByteBufferMemory implements Destroyable {
 				getContentPointer(), getAllocationStackTrace(), "NativeBuffer");
 
 		if (sharedLocation != null) {
-			NIO.unmapSharedMemory(rootBuffer, rootBuffer.capacity());
+			provider.unmapSharedMemory(rootBuffer, rootBuffer.capacity());
 		}
 	}
 
@@ -163,13 +162,14 @@ public class NativeBuffer extends ByteBufferMemory implements Destroyable {
 	/**
 	 * Allocates or maps a direct {@link ByteBuffer} for the given size.
 	 *
+	 * @param provider       Provider whose shared-memory operations map a named region
 	 * @param bytes          Number of bytes to allocate
 	 * @param sharedLocation Shared memory path, or null for private allocation
 	 * @return Direct byte buffer backed by private or shared memory
 	 */
-	protected static ByteBuffer buffer(int bytes, String sharedLocation) {
+	protected static ByteBuffer buffer(NativeMemoryProvider provider, int bytes, String sharedLocation) {
 		if (sharedLocation != null) {
-			ByteBuffer buffer = NIO.mapSharedMemory(sharedLocation, bytes)
+			ByteBuffer buffer = provider.mapSharedMemory(sharedLocation, bytes)
 					.order(ByteOrder.nativeOrder());
 			Runtime.getRuntime().addShutdownHook(
 					new Thread(() -> new File(sharedLocation).delete()));
@@ -190,13 +190,13 @@ public class NativeBuffer extends ByteBufferMemory implements Destroyable {
 	 */
 	public static NativeBuffer create(NativeMemoryProvider provider, int len, String sharedLocation) {
 		if (provider.getPrecision() == Precision.FP16) {
-			ByteBuffer bufferByte = buffer(len * 2, sharedLocation);
+			ByteBuffer bufferByte = buffer(provider, len * 2, sharedLocation);
 			return new NativeBuffer(provider, bufferByte, bufferByte.asShortBuffer(), sharedLocation);
 		} else if (provider.getPrecision() == Precision.FP32) {
-			ByteBuffer bufferByte = buffer(len * 4, sharedLocation);
+			ByteBuffer bufferByte = buffer(provider, len * 4, sharedLocation);
 			return new NativeBuffer(provider, bufferByte, bufferByte.asFloatBuffer(), sharedLocation);
 		} else if (provider.getPrecision() == Precision.FP64) {
-			ByteBuffer bufferByte = buffer(len * 8, sharedLocation);
+			ByteBuffer bufferByte = buffer(provider, len * 8, sharedLocation);
 			return new NativeBuffer(provider, bufferByte, bufferByte.asDoubleBuffer(), sharedLocation);
 		} else {
 			throw new HardwareException("Unsupported precision");

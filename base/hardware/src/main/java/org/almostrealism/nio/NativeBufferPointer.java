@@ -27,7 +27,7 @@ import java.nio.Buffer;
  * <p>Wraps {@code GetDirectBufferAddress}. Compiled at runtime by {@link NativeCompiler}, so it needs
  * no prebuilt native library and works on any platform the native backend supports.</p>
  *
- * @see NIO
+ * @see NativeMemoryProvider
  */
 class NativeBufferPointer extends BaseNative {
 	/**

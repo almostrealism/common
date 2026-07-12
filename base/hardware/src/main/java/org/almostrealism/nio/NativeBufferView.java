@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.c;
+package org.almostrealism.nio;
 
+import org.almostrealism.c.BaseNative;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
 import java.nio.ByteBuffer;
@@ -25,7 +26,7 @@ import java.nio.ByteBuffer;
  *
  * <p>Wraps a region of {@link Malloc}-allocated memory in a direct buffer via
  * {@code NewDirectByteBuffer}, without copying. This lets a {@link NativeMemory} satisfy the
- * {@link org.almostrealism.hardware.mem.ByteBufferMemory} contract — so bulk transfer APIs that
+ * {@link org.almostrealism.hardware.mem.DirectMemory} contract — so bulk transfer APIs that
  * accept NIO buffers (such as OpenCL's buffer read and write) can move data directly between calloc
  * memory and a device.</p>
  *
@@ -40,7 +41,7 @@ import java.nio.ByteBuffer;
  * strongly reachable for as long as the buffer is in use.</p>
  *
  * @see NativeMemory
- * @see org.almostrealism.nio.NativeMemoryProvider
+ * @see NativeMemoryProvider
  * @see BaseNative
  */
 public class NativeBufferView extends BaseNative {

@@ -29,7 +29,7 @@ import java.nio.ByteBuffer;
  * required POSIX headers are pulled in by the generated source. Compiled at runtime by
  * {@link NativeCompiler}, so it needs no prebuilt native library.</p>
  *
- * @see NIO
+ * @see NativeMemoryProvider
  */
 class SharedMemoryMap extends BaseNative {
 	/**

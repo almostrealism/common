@@ -21,7 +21,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.mem.ByteBufferMemory;
+import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.DistributionMetric;
@@ -94,7 +94,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 
 					// Address the position-stable root ByteBuffer rather than the typed view,
 					// whose position is left advanced by element-wise host writes
-					Pointer dst = Pointer.to(mem.getByteBuffer())
+					Pointer dst = Pointer.to(mem.asByteBuffer())
 							.withByteOffset((long) offset * source.getProvider().getNumberSize());
 					cl_event event = new cl_event();
 					CL.clEnqueueReadBuffer(source.getProvider().queue, source.getMem(),
@@ -354,7 +354,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			} finally {
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
-		} else if (srcRam instanceof ByteBufferMemory) {
+		} else if (srcRam instanceof DirectMemory) {
 			// A source backed by a host-accessible ByteBuffer is written with a single bulk
 			// transfer, avoiding the double[] mediation of the array fallback
 			if (srcRam.getProvider().getNumberSize() != getNumberSize()) {
@@ -364,7 +364,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			}
 
 			try {
-				Pointer src = Pointer.to(((ByteBufferMemory) srcRam).getByteBuffer())
+				Pointer src = Pointer.to(((DirectMemory) srcRam).asByteBuffer())
 						.withByteOffset((long) srcOffset * getNumberSize());
 				cl_event event = new cl_event();
 				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
