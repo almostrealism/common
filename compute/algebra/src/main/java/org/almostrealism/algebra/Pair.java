@@ -17,7 +17,6 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.util.NumberFormats;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
@@ -132,7 +131,7 @@ public class Pair extends PackedCollection {
 	 */
 	public Pair(double x, double y) {
 		this();
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this), CollectionFeatures.getInstance().c(x, y)).get().run();
+		this.setMem(x, y);
 	}
 	
 	/**
@@ -142,7 +141,7 @@ public class Pair extends PackedCollection {
 	 * @return this {@link Pair} for method chaining
 	 */
 	public Pair setX(double x) {
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(x)).get().run();
+		setMem(0, x);
 		return this;
 	}
 
@@ -153,7 +152,7 @@ public class Pair extends PackedCollection {
 	 * @return this {@link Pair} for method chaining
 	 */
 	public Pair setY(double y) {
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.range(new TraversalPolicy(1), 1)), CollectionFeatures.getInstance().c(y)).get().run();
+		setMem(1, y);
 		return this;
 	}
 
