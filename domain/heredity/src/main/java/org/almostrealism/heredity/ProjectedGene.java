@@ -17,14 +17,14 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.VectorFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Random;
-import java.util.stream.IntStream;
 
 /**
  * A {@link Gene} that produces factor values by projecting source data through weighted transformations.
@@ -121,10 +121,10 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @param seed the random seed for reproducible initialization
 	 */
 	public void initWeights(long seed) {
-		a(cp(weights), randn(shape(weights), new Random(seed))).get().run();
+		randn(shape(weights), new Random(seed)).into(weights).evaluate();
 		for (int pos = 0; pos < length(); pos++) {
-			double scale = Math.sqrt(weights.get(pos).doubleStream().map(d -> d * d).sum());
-			a(cp(weights.get(pos)), cp(weights.get(pos)).divide(scale)).get().run();
+			PackedCollection row = weights.get(pos);
+			a(cp(row), cp(row).divide(sqrt(cp(row).multiply(cp(row)).sum()))).get().run();
 		}
 	}
 
@@ -133,24 +133,32 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * <p>This method should be called after the source data has been modified to update
 	 * the factor values. The computation applies a triangular wave function to map the
 	 * dot product result to the configured range for each factor.
+	 *
+	 * <p>The projection, the triangular wave, and the range mapping are one computation
+	 * graph over the gene's collections: the dot products are a matrix-vector product, the
+	 * wave is a positive mod followed by a comparison select, and the range bounds are read
+	 * from the columns of {@link #ranges}. Every operand is a runtime argument, so a single
+	 * compiled kernel serves every gene and every refresh.
 	 */
 	public void refreshValues() {
-		for (int pos = 0; pos < length(); pos++) {
-			int p = pos;
-			double start = ranges.get(pos).toDouble(0);
-			double range = ranges.get(pos).toDouble(1) - start;
-			double value = IntStream.range(0, source.getMemLength())
-					.mapToDouble(i -> source.toDouble(i) * weights.valueAt(p, i))
-					.sum();
+		int len = length();
+		int sourceLength = source.getShape().length(0);
 
-			double period = 2.0;
-			value = ((value % period) + period) % period;
+		CollectionProducer projected = MatrixFeatures.getInstance()
+				.matmul(cp(weights).reshape(shape(len, sourceLength)), cp(source))
+				.reshape(shape(len));
 
-			double phase = value / period;
-			value = phase < 0.5 ? 2 * phase : 2 * (1 - phase);
+		CollectionProducer value = mod(mod(projected, c(2.0)).add(c(2.0)), c(2.0));
+		CollectionProducer phase = value.divide(c(2.0));
+		CollectionProducer wave = greaterThan(phase, c(0.5),
+				c(2.0).subtract(phase.multiply(c(2.0))),
+				phase.multiply(c(2.0)));
 
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(values.range(new TraversalPolicy(1), pos)), CollectionFeatures.getInstance().c(start + value * range)).get().run();
-		}
+		CollectionProducer bounds = cp(ranges).reshape(shape(len, 2));
+		CollectionProducer start = subset(shape(len, 1), bounds, 0, 0).reshape(shape(len));
+		CollectionProducer end = subset(shape(len, 1), bounds, 0, 1).reshape(shape(len));
+
+		a(cp(values), start.add(wave.multiply(end.subtract(start)))).get().run();
 	}
 
 	/**
@@ -178,7 +186,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @param max the maximum output value
 	 */
 	public void setRange(int index, double min, double max) {
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(ranges.get(index)), CollectionFeatures.getInstance().c(min, max)).get().run();
+		ranges.get(index).fill(min, max);
 	}
 
 	/**

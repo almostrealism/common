@@ -68,8 +68,7 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	 * @param scale the scalar multiplier value
 	 */
 	public ScaleFactor(double scale) {
-		this.scale = new PackedCollection(1);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.scale), CollectionFeatures.getInstance().c(scale)).get().run();
+		this.scale = new PackedCollection(1).fill(scale);
 	}
 
 	/**
@@ -82,22 +81,15 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	/**
 	 * Returns a producer that multiplies the input by this factor's scale value.
 	 *
+	 * <p>The scale is referenced as a runtime argument, so every {@code ScaleFactor}
+	 * shares one compiled multiply regardless of its current value.</p>
+	 *
 	 * @param value the input producer to scale
 	 * @return a producer that produces the scaled result
 	 */
 	@Override
 	public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
-		return multiply(value, (Producer) p(scale), args -> {
-			PackedCollection result = new PackedCollection(1);
-
-//			if (value instanceof StaticCollectionComputation) {
-//				result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * scale.toDouble(0));
-//			} else {
-				a(cp(result), c(value.get().evaluate(args).toDouble(0) * scale.toDouble(0))).get().run();
-//			}
-
-			return result;
-		});
+		return multiply(value, (Producer) p(scale));
 	}
 
 	/**
@@ -106,8 +98,7 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	 * @param s the new scale value
 	 */
 	public void setScaleValue(double s) {
-		this.scale = new PackedCollection(1);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(this.scale), CollectionFeatures.getInstance().c(s)).get().run();
+		this.scale = new PackedCollection(1).fill(s);
 	}
 
 	/**
