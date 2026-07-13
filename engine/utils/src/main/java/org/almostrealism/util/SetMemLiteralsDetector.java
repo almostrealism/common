@@ -17,10 +17,15 @@
 package org.almostrealism.util;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -123,26 +128,17 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	);
 
 	/**
-	 * Module directory fragments whose {@code setMem} violations are temporarily tolerated because
-	 * that module has not yet been migrated under the phased roll-out. Enforcement is turned on one
-	 * module at a time; a module is removed from this list in the phase that migrates it, so that a
-	 * failing phase exposes only that module's changes. A file whose path contains any fragment here
-	 * is skipped entirely by this rule (its other detectors still apply).
+	 * Classpath location of the grandfathered-violation baseline: the inventory of every
+	 * violation that already existed when full-tree enforcement was turned on. Each line is
+	 * tab-delimited as {@code rule\tpath\tcount\tsource}, where {@code path} is repo-relative
+	 * and {@code source} is the trimmed offending line. A scan tolerates at most {@code count}
+	 * occurrences of each entry; any occurrence beyond that — and any violation not in the
+	 * inventory at all — is reported immediately, in every module. Matching is exact on the
+	 * source text, so editing a grandfathered line re-triggers enforcement for it, and the
+	 * inventory is the burn-down artifact that migration work shrinks. Regenerate with
+	 * {@code java org.almostrealism.util.SetMemLiteralsDetector <rootDir> --generate <file>}.
 	 */
-	private static final List<String> UNMIGRATED_MODULES = List.of(
-			"/domain/graph/",
-			"/domain/space/",
-			"/engine/audio/",
-			"/engine/ml/",
-			"/engine/render/",
-			"/engine/utils/",
-			"/extern/ml-onnx/",
-			"/flowtree/graphpersist/",
-			"/studio/compose/",
-			"/studio/experiments/",
-			"/studio/music/",
-			"/studio/spatial/"
-	);
+	public static final String BASELINE_RESOURCE = "/org/almostrealism/util/setmem-violation-baseline.tsv";
 
 	/**
 	 * Burn-down whitelist of individually-acknowledged violations in already-enforced modules that
@@ -176,12 +172,85 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_$][\\w$]*");
 
 	/**
-	 * Creates a detector that will scan Java source files under the given directory.
+	 * Remaining tolerated occurrences of each grandfathered violation, keyed by
+	 * {@code path source} and decremented as matching occurrences are found
+	 * during the scan. Loaded from {@link #BASELINE_RESOURCE}; empty when the
+	 * baseline is disabled or absent.
+	 */
+	private final Map<String, Integer> baseline;
+
+	/**
+	 * Creates a detector that will scan Java source files under the given directory,
+	 * tolerating the violations grandfathered in {@link #BASELINE_RESOURCE}.
 	 *
 	 * @param rootDir  the root directory to scan
 	 */
 	public SetMemLiteralsDetector(Path rootDir) {
+		this(rootDir, true);
+	}
+
+	/**
+	 * Creates a detector that will scan Java source files under the given directory.
+	 *
+	 * @param rootDir      the root directory to scan
+	 * @param useBaseline  whether to tolerate the violations grandfathered in
+	 *                     {@link #BASELINE_RESOURCE}; disabled when generating a
+	 *                     fresh baseline
+	 */
+	public SetMemLiteralsDetector(Path rootDir, boolean useBaseline) {
 		super(rootDir);
+		this.baseline = useBaseline ? loadBaseline() : new HashMap<>();
+	}
+
+	/**
+	 * Loads the grandfathered-violation inventory from {@link #BASELINE_RESOURCE}.
+	 *
+	 * @return remaining tolerated occurrences keyed by {@code path source};
+	 *         empty when the resource is absent
+	 */
+	private static Map<String, Integer> loadBaseline() {
+		Map<String, Integer> entries = new HashMap<>();
+
+		try (InputStream in = SetMemLiteralsDetector.class.getResourceAsStream(BASELINE_RESOURCE)) {
+			if (in == null) return entries;
+
+			for (String line : new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
+				String[] parts = line.split("\t", 4);
+				if (parts.length != 4) continue;
+				entries.merge(parts[1] + ' ' + parts[3], Integer.parseInt(parts[2]), Integer::sum);
+			}
+		} catch (IOException e) {
+			throw new RuntimeException("Could not read " + BASELINE_RESOURCE, e);
+		}
+
+		return entries;
+	}
+
+	/**
+	 * Consumes one tolerated occurrence of the given violation from the grandfathered
+	 * baseline, if any budget remains for its file and source line.
+	 *
+	 * @param file  the file containing the violation
+	 * @param line  the trimmed source line of the violation
+	 * @return      {@code true} if the occurrence was grandfathered and should not be reported
+	 */
+	private boolean consumeBaseline(Path file, String line) {
+		String path = file.toString().replace('\\', '/');
+
+		for (Map.Entry<String, Integer> entry : baseline.entrySet()) {
+			if (entry.getValue() <= 0) continue;
+
+			int split = entry.getKey().indexOf(' ');
+			String entryPath = entry.getKey().substring(0, split);
+			String entryLine = entry.getKey().substring(split + 1);
+
+			if (line.equals(entryLine) && (path.endsWith("/" + entryPath) || path.equals(entryPath))) {
+				entry.setValue(entry.getValue() - 1);
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -193,7 +262,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public SetMemLiteralsDetector scanFile(Path file) {
-		if (isExcluded(file) || isSanctionedWriteSurface(file) || isUnmigratedModule(file)) return this;
+		if (isExcluded(file) || isSanctionedWriteSurface(file)) return this;
 
 		try {
 			String content = Files.readString(file);
@@ -212,9 +281,52 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	}
 
 	/**
+	 * Scans the given directory for violations and either reports them or emits a fresh
+	 * grandfathered-violation baseline.
+	 *
+	 * <p>With only a root directory argument, runs the scan (honouring the current baseline)
+	 * and exits with status 1 when any unbaselined violation is found. With
+	 * {@code --generate <file>}, scans with the baseline disabled and writes the resulting
+	 * inventory to the given file in {@link #BASELINE_RESOURCE} format.</p>
+	 *
+	 * @param args  the root directory, optionally followed by {@code --generate} and an output file
+	 * @throws IOException if the scan or the baseline write fails
+	 */
+	public static void main(String[] args) throws IOException {
+		Path root = Path.of(args[0]);
+		boolean generate = args.length > 2 && "--generate".equals(args[1]);
+
+		SetMemLiteralsDetector detector = new SetMemLiteralsDetector(root, !generate);
+		detector.scan();
+
+		if (generate) {
+			Map<String, Integer> counts = new TreeMap<>();
+			for (Violation v : detector.getViolations()) {
+				String path = root.toAbsolutePath().relativize(
+						v.getFile().toAbsolutePath()).toString().replace('\\', '/');
+				counts.merge(v.getRule() + '\t' + path + ' ' + v.getLine().trim(), 1, Integer::sum);
+			}
+
+			StringBuilder out = new StringBuilder();
+			for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+				int split = entry.getKey().indexOf(' ');
+				out.append(entry.getKey(), 0, split).append('\t')
+						.append(entry.getValue()).append('\t')
+						.append(entry.getKey().substring(split + 1)).append('\n');
+			}
+
+			Files.writeString(Path.of(args[2]), out.toString());
+		} else {
+			detector.log(detector.generateReport());
+			if (detector.hasViolations()) System.exit(1);
+		}
+	}
+
+	/**
 	 * Scans the masked file content for every call matched by {@code call}, reporting a
 	 * violation with the given rule and guidance for each argument list that the sanction
-	 * test rejects and that is not an acknowledged {@link #KNOWN_EXCLUSIONS} entry.
+	 * test rejects and that is neither an acknowledged {@link #KNOWN_EXCLUSIONS} entry nor
+	 * a remaining occurrence of a {@linkplain #BASELINE_RESOURCE grandfathered} violation.
 	 *
 	 * @param file      the file being scanned
 	 * @param content   the raw file content, used for line numbers and display text
@@ -235,9 +347,9 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			String argString = masked.substring(argsStart, argsEnd);
 			if (!sanction.test(argString)) {
 				int lineNum = countLines(content, m.start());
-				if (isKnownExclusion(file, lineText(content, lineNum))) continue;
-				violations.add(new Violation(file, lineNum, lineText(content, lineNum),
-						rule, guidance));
+				String line = lineText(content, lineNum);
+				if (isKnownExclusion(file, line) || consumeBaseline(file, line)) continue;
+				violations.add(new Violation(file, lineNum, line, rule, guidance));
 			}
 		}
 	}
@@ -272,21 +384,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private boolean isSanctionedWriteSurface(Path file) {
 		String path = file.toString().replace('\\', '/');
 		for (String fragment : SANCTIONED_WRITE_SURFACE) {
-			if (path.contains(fragment)) return true;
-		}
-		return false;
-	}
-
-	/**
-	 * Returns {@code true} if the file belongs to a module that has not yet been migrated under the
-	 * phased roll-out and is therefore temporarily exempt from this rule.
-	 *
-	 * @param file  the file to test
-	 * @return      whether the file is in an as-yet-unmigrated module
-	 */
-	private boolean isUnmigratedModule(Path file) {
-		String path = file.toString().replace('\\', '/');
-		for (String fragment : UNMIGRATED_MODULES) {
 			if (path.contains(fragment)) return true;
 		}
 		return false;
