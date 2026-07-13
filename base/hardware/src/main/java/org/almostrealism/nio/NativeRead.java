@@ -14,9 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.c;
+package org.almostrealism.nio;
 
 import io.almostrealism.code.Precision;
+import org.almostrealism.c.BaseNative;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
@@ -24,7 +25,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  * JNI wrapper for reading data from native memory into Java arrays.
  *
  * <p>{@link NativeRead} provides a native operation that copies data from native memory
- * (allocated via {@link Malloc} or {@link NativeMemoryProvider}) into Java double arrays.
+ * (allocated via {@link Malloc} or {@link org.almostrealism.nio.NativeMemoryProvider}) into Java double arrays.
  * It handles precision conversion automatically based on the compiler's precision setting.</p>
  *
  * <h2>Usage</h2>
@@ -63,7 +64,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *
  * @see NativeWrite
  * @see NativeMemory
- * @see NativeMemoryProvider
+ * @see org.almostrealism.nio.NativeMemoryProvider
  * @see BaseNative
  */
 public class NativeRead extends BaseNative {
@@ -96,9 +97,7 @@ public class NativeRead extends BaseNative {
 					(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
 					"\tdouble* input = (double *) arg;\n" +
 					"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
-					"\tfor (int i = 0; i < len; i++) {\n" +
-					"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, (const jdouble*)&input[offset + i]);\n" +
-					"\t}\n" +
+					"\t(*env)->SetDoubleArrayRegion(env, output, 0, (jsize) len, (const jdouble*) &input[offset]);\n" +
 					"return output;\n" +
 					"}\n";
 		} else {
@@ -107,10 +106,12 @@ public class NativeRead extends BaseNative {
 					(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
 					"\tfloat* input = (float *) arg;\n" +
 					"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
+					"\tjdouble* values = (jdouble*) malloc(sizeof(jdouble) * len);\n" +
 					"\tfor (int i = 0; i < len; i++) {\n" +
-					"\t\tjdouble value = (jdouble) input[offset + i];\n" +
-					"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, &value);\n" +
-					"\t}" +
+					"\t\tvalues[i] = (jdouble) input[offset + i];\n" +
+					"\t}\n" +
+					"\t(*env)->SetDoubleArrayRegion(env, output, 0, (jsize) len, values);\n" +
+					"\tfree(values);\n" +
 					"return output;\n" +
 					"}\n";
 		}

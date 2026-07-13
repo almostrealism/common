@@ -47,7 +47,7 @@ import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.nio.NativeBufferMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -585,7 +585,13 @@ public final class Hardware implements ConsoleFeatures {
 	/** Location strategy for CL memory allocation (DEVICE, HEAP, HOST, or DELEGATE). */
 	private Location location;
 	/** Optional NIO-based memory provider for Metal/NIO shared memory mode; null if not enabled. */
-	private NativeBufferMemoryProvider nioMemory;
+	private NativeMemoryProvider nioMemory;
+	/**
+	 * Whether the standalone native (JNI) provider allocates NIO direct buffers rather than JNI malloc
+	 * blocks. Resolved from {@code AR_HARDWARE_NATIVE_DIRECT_BUFFERS}. Distinct from NIO memory, which
+	 * instead shares one host provider across backends rather than choosing an allocation strategy.
+	 */
+	private final boolean nativeDirectBuffers;
 
 	/** High-level orchestrator for submitting and sequencing hardware operations. */
 	private DefaultComputer computer;
@@ -625,11 +631,12 @@ public final class Hardware implements ConsoleFeatures {
 		this.kernelMemoryGuard = new KernelMemoryGuard();
 		this.contextListeners = Collections.synchronizedList(new ArrayList<>());
 		this.contexts = new ArrayList<>();
+		this.nativeDirectBuffers = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_DIRECT_BUFFERS").orElse(true);
 
 		int count;
 
 		if (nioMemory) {
-			this.nioMemory = new NativeBufferMemoryProvider(Precision.FP32, Precision.FP32.bytes() * maxReservation);
+			this.nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32, Precision.FP32.bytes() * maxReservation);
 			count = processRequirements(reqs, Precision.FP32);
 		} else {
 			count = processRequirements(reqs);
@@ -724,7 +731,7 @@ public final class Hardware implements ConsoleFeatures {
 					ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
 					kernelFriendly = true;
 				} else {
-					ctx = new NativeDataContext("JNI", precision, this.maxReservation);
+					ctx = new NativeDataContext("JNI", precision, this.maxReservation, false, nativeDirectBuffers);
 				}
 
 				if (locationUsed) {
@@ -768,6 +775,11 @@ public final class Hardware implements ConsoleFeatures {
 		}
 
 		if (provider == null && nioMemory != null) {
+			if (!nioMemory.isShared()) {
+				throw new IllegalStateException(
+						"NIO memory bridge must be created via NativeMemoryProvider.sharedBridge");
+			}
+
 			provider = nioMemory;
 		}
 
@@ -1038,7 +1050,7 @@ public final class Hardware implements ConsoleFeatures {
 		} else if (dc instanceof MetalDataContext) {
 			next = new MetalDataContext("MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
 		} else if (dc instanceof NativeDataContext) {
-			next = new NativeDataContext("JNI", getDataContext().getPrecision(), maxReservation);
+			next = new NativeDataContext("JNI", getDataContext().getPrecision(), maxReservation, false, nativeDirectBuffers);
 		} else {
 			return null;
 		}
