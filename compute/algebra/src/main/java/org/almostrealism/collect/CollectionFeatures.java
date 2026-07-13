@@ -484,7 +484,7 @@ public interface CollectionFeatures extends GradientFeatures {
 				PackedCollection col = c.evaluate(args);
 				PackedCollection idx = i.evaluate(args);
 				PackedCollection dest = out.evaluate(args);
-				a(cp(dest), c(col.toDouble((int) idx.toDouble(0)))).get().run();
+				dest.setFrom(0, col, (int) idx.toDouble(0), 1);
 				return dest;
 			});
 		}
