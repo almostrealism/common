@@ -674,35 +674,4 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 
 		return new PackedCollectionPad(shape, position, collection);
 	}
-
-	/**
-	 * Computes the cumulative product of the elements of the input collection.
-	 * If {@code pad} is true, the result is shifted by one position with 1.0 prepended
-	 * (making element i the product of input elements 0 through i-1).
-	 *
-	 * @param input the input collection
-	 * @param pad   if true, prepend 1.0 and compute the exclusive cumulative product
-	 * @return a producer for the cumulative product collection
-	 */
-	default CollectionProducer cumulativeProduct(Producer<PackedCollection> input, boolean pad) {
-		return func(shape(input), inputs -> args -> {
-			PackedCollection in = inputs[0];
-			PackedCollection result = new PackedCollection(in.getShape());
-
-			double r = 1.0;
-			int offset = 0;
-
-			if (pad) {
-				result.setMem(0, r);
-				offset = 1;
-			}
-
-			for (int i = offset; i < in.getMemLength(); i++) {
-				r *= in.toDouble(i - offset);
-				result.setMem(i, r);
-			}
-
-			return result;
-		}, input);
-	}
 }
