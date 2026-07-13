@@ -87,7 +87,9 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/collect/PackedCollection.java", // implements fill/replace/clone and from-host factories
 			"/collect/CollectionCreationFeatures.java", // c(double...) — the host-array to collection ingest primitive
 			"/algebra/Pair.java",            // PackedCollection subclass; setters are its storage-layer write surface
-			"/algebra/Vector.java"           // PackedCollection subclass; setters are its storage-layer write surface
+			"/algebra/Vector.java",          // PackedCollection subclass; setters are its storage-layer write surface
+			"/geometry/Ray.java",            // PackedCollection subclass; setters are its storage-layer write surface
+			"/geometry/TransformMatrix.java" // PackedCollection subclass; setters are its storage-layer write surface
 	);
 
 	/**
