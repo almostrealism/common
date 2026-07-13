@@ -248,13 +248,23 @@ jobs:
             "engine/utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/PackedCollectionDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/SetMemLiteralsDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/ProducerPatternDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/NamingConventionDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/VersionReferenceDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PlanningDocumentReferenceDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/LineNumberReferenceDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/ReflectiveInvocationDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
+            "engine/utils/src/main/resources/org/almostrealism/util/setmem-violation-baseline.tsv"
             "tools/src/test/java/org/almostrealism/util/test/CodePolicyEnforcementTest.java"
             "tools/ci/agent-protection/detect-test-hiding.sh"
             "tools/ci/agent-protection/check-quality-gates.sh"
+            "tools/ci/agent-protection/validate-agent-commit.sh"
+            "tools/ci/agent-protection/deception-audit.sh"
+            "tools/ci/agent-protection/verify-sensitive-bypass.sh"
+            "tools/ci/agent-protection/verify-memory-claim.sh"
           )
 
           TAMPERED=""
@@ -782,6 +792,7 @@ jobs:
       - name: Flowtree Tests
         run: |
           mvn test -Dcheckstyle.skip=true -pl flowtree/runtime \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_TEST_PROFILE=pipeline
 
       - name: Collect Coverage Data
@@ -852,6 +863,7 @@ jobs:
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            2>&1 | tee "${{ runner.temp }}/mvn-hardware-test.log"
 
@@ -871,6 +883,7 @@ jobs:
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=7 \
@@ -892,6 +905,7 @@ jobs:
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
@@ -915,6 +929,7 @@ jobs:
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            2>&1 | tee "${{ runner.temp }}/mvn-render-test.log"
 
@@ -1009,6 +1024,7 @@ jobs:
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
@@ -1021,6 +1037,7 @@ jobs:
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
@@ -1033,6 +1050,7 @@ jobs:
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
