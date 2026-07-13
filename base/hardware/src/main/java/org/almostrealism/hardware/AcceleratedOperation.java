@@ -29,7 +29,7 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
-import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.InstructionSetManager;

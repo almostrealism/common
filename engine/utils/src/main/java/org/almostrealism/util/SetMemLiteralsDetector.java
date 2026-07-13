@@ -21,28 +21,37 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Enforces that {@code setMem(...)} writes device memory only from numeric literals.
+ * Enforces the policy that <b>no value computed by Java code may move from the JVM heap
+ * into device memory</b>, by requiring that every bulk write surface — {@code setMem(...)}
+ * and {@code PackedCollection.of(...)} — is called only with numeric literals.
  *
- * <p>A device-memory write may enter the framework by exactly two routes:
+ * <p>Exactly three kinds of numbers may cross from the JVM into device memory:
  * <ul>
- *   <li>copying from another {@link org.almostrealism.hardware.MemoryData} — expressed
+ *   <li>numeric literals written directly in the source, which is convenient
+ *       for small constant vectors: {@code setMem(0, 1.0, 2.0)} / {@code setMem(i, 0.0)}
+ *       / {@code PackedCollection.of(1.0, 2.0)};</li>
+ *   <li>data copied from another {@link org.almostrealism.hardware.MemoryData} — expressed
  *       through the distinctly-named {@code setFrom(...)} surface (or, better, a tracked
- *       {@code cp(src).into(dest).evaluate()} assignment); or</li>
- *   <li>assigning numeric literals written directly in the source, which is convenient
- *       for small constant vectors: {@code setMem(0, 1.0, 2.0)} / {@code setMem(i, 0.0)}.</li>
+ *       {@code cp(src).into(dest).evaluate()} assignment), which never involves host
+ *       values at all; and</li>
+ *   <li>data entering the JVM from outside the system (deserialization, file and network
+ *       I/O), which crosses only through the sanctioned ingest surface listed below.</li>
  * </ul>
  *
- * <p>Every other {@code setMem} argument shape is a violation. In particular a host
+ * <p>Every other argument shape is a violation. In particular a host
  * {@code double[]}/{@code float[]} (identifier, {@code new double[...]}, an array index,
  * or a {@code toArray()}/{@code toDouble()}/{@code toFloat()} result) and any computed
  * scalar (a variable, cast, or arithmetic expression) are forbidden: if a value is being
  * <em>computed</em>, it must be produced by a {@link io.almostrealism.relation.Producer}
- * and materialised with {@code fill(value)}, {@code fill(pos -> ...)}, or a producer
- * assignment — never staged in a Java array and uploaded.
+ * so the computation happens on the device. The question is never where the data
+ * originated, but whether Java code computed it; a table of {@code Math.cos} results is
+ * computed data no matter how few parameters it derives from, and shipping it in one bulk
+ * transfer is the same violation as writing it element by element.
  *
  * <p>Unlike {@link PackedCollectionDetector}, this rule has <b>no exemptions</b>: it applies
  * to test sources as well as main sources, honours no initialization-method or domain
@@ -64,12 +73,24 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	/** Rule code reported for a non-literal {@code setMem} argument. */
 	public static final String RULE = "SETMEM_NON_LITERAL_ARGUMENT";
 
+	/** Rule code reported for a non-literal {@code PackedCollection.of} argument. */
+	public static final String OF_RULE = "PACKED_COLLECTION_OF_NON_LITERAL";
+
 	/** Guidance appended to every violation, naming the sanctioned idioms. */
 	private static final String GUIDANCE =
 			"setMem writes device memory only from numeric literals (e.g. setMem(0, 1.0, 2.0)). "
 					+ "To copy from another MemoryData use setFrom(...) or cp(src).into(dest).evaluate(); "
 					+ "to materialise computed values use a Producer with fill(value) / fill(pos -> ...) "
 					+ "or a producer assignment. A host double[]/float[] must never be uploaded via setMem.";
+
+	/** Guidance appended to every {@code PackedCollection.of} violation. */
+	private static final String OF_GUIDANCE =
+			"PackedCollection.of bulk-copies host values to the device and accepts only numeric "
+					+ "literals (e.g. PackedCollection.of(1.0, 2.0)). Values computed in Java must be "
+					+ "produced by the computation graph instead (integers(), producer arithmetic, or a "
+					+ "producer assignment); data from outside the system enters through the sanctioned "
+					+ "ingest surface. Staging computed values in a double[] and shipping them in one "
+					+ "transfer is the same violation as writing them element by element.";
 
 	/**
 	 * File name fragments of the framework's sanctioned write surface: the classes that
@@ -78,6 +99,13 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * {@code replace}, {@code clone}, and the from-host factories on {@code PackedCollection}).
 	 * These are the one legitimate home of a bulk host-array write; every other file is subject
 	 * to the rule.
+	 *
+	 * <p>The entries under {@code algebra}, {@code geometry}, and {@code color} are
+	 * {@code PackedCollection} value types (and, for {@code RGBData192}, the backing store of
+	 * one). Their setters are the storage-layer write surface of the type itself, exactly like
+	 * {@code PackedCollection}'s own population methods; the migration work for these types is
+	 * eliminating the <em>call sites</em> that push computed values through those setters, not
+	 * rewriting the types' internals.</p>
 	 */
 	private static final List<String> SANCTIONED_WRITE_SURFACE = List.of(
 			"/hardware/MemoryData.java",
@@ -86,8 +114,10 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"MemoryProvider.java",           // matches every *MemoryProvider implementation
 			"/collect/PackedCollection.java", // implements fill/replace/clone and from-host factories
 			"/collect/CollectionCreationFeatures.java", // c(double...) — the host-array to collection ingest primitive
-			// RGB and its backing store are PackedCollection value types (three host-side doubles
-			// mutated per-channel); treated exactly like PackedCollection itself.
+			"/algebra/Pair.java",
+			"/algebra/Vector.java",
+			"/geometry/Ray.java",
+			"/geometry/TransformMatrix.java",
 			"/color/RGB.java",
 			"/color/RGBData192.java"
 	);
@@ -119,15 +149,18 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * Burn-down whitelist of individually-acknowledged violations in already-enforced modules that
 	 * could not be migrated to a producer/{@code setFrom} idiom. An entry suppresses a single call
 	 * only when the file path contains {@code pathFragment} and the offending source line, trimmed,
-	 * is exactly {@code sourceLine}, so the entry re-triggers the moment the line is edited. Every
-	 * entry here is a write below the producer API in {@code base/hardware} (which cannot import the
-	 * collect layer) or the randomness ingest primitive; these are expected to shrink to zero.
+	 * is exactly {@code sourceLine}, so the entry re-triggers the moment the line is edited. Entries
+	 * are writes below the producer API in {@code base/hardware} (which cannot import the collect
+	 * layer), the randomness ingest primitive, and the {@code Tensor} bridge for host-resident boxed
+	 * values (whose correct long-term treatment is an open question); these are expected to shrink
+	 * to zero.
 	 */
 	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
-			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"}
+			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
+			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"}
 	);
 
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */
@@ -136,6 +169,9 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Locates the start of each {@code .setMem(} call. */
 	private static final Pattern SETMEM_CALL = Pattern.compile("\\.setMem\\s*\\(");
+
+	/** Locates the start of each {@code PackedCollection.of(} call. */
+	private static final Pattern OF_CALL = Pattern.compile("PackedCollection\\s*\\.\\s*of\\s*\\(");
 
 	/** A bare Java identifier (used to recognise a lone offset/source argument). */
 	private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_$][\\w$]*");
@@ -150,7 +186,8 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	}
 
 	/**
-	 * Scans a single file for non-literal {@code setMem} argument usage.
+	 * Scans a single file for non-literal {@code setMem} and {@code PackedCollection.of}
+	 * argument usage.
 	 *
 	 * @param file  the file to scan
 	 * @return this detector for chaining
@@ -161,28 +198,68 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 		try {
 			String content = Files.readString(file);
-			if (!content.contains(".setMem(")) return this;
+			if (!content.contains(".setMem(") && !content.contains(".of(")) return this;
 
 			String masked = maskCommentsAndStrings(content);
-			Matcher call = SETMEM_CALL.matcher(masked);
-			while (call.find()) {
-				int argsStart = call.end();
-				int argsEnd = matchingParen(masked, argsStart);
-				if (argsEnd < 0) continue;
-
-				String argString = masked.substring(argsStart, argsEnd);
-				if (!isSanctioned(argString, masked)) {
-					int lineNum = countLines(content, call.start());
-					if (isKnownExclusion(file, lineText(content, lineNum))) continue;
-					violations.add(new Violation(file, lineNum, lineText(content, lineNum),
-							RULE, GUIDANCE));
-				}
-			}
+			scanCalls(file, content, masked, SETMEM_CALL,
+					args -> isSanctioned(args, masked), RULE, GUIDANCE);
+			scanCalls(file, content, masked, OF_CALL,
+					this::isSanctionedIngest, OF_RULE, OF_GUIDANCE);
 		} catch (IOException e) {
 			warn("Could not read file " + file, e);
 		}
 
 		return this;
+	}
+
+	/**
+	 * Scans the masked file content for every call matched by {@code call}, reporting a
+	 * violation with the given rule and guidance for each argument list that the sanction
+	 * test rejects and that is not an acknowledged {@link #KNOWN_EXCLUSIONS} entry.
+	 *
+	 * @param file      the file being scanned
+	 * @param content   the raw file content, used for line numbers and display text
+	 * @param masked    the comment- and string-masked content, used for matching
+	 * @param call      the pattern locating the start of each call's argument list
+	 * @param sanction  the test a call's argument text must pass to be permitted
+	 * @param rule      the rule code to report for rejected calls
+	 * @param guidance  the guidance to attach to reported violations
+	 */
+	private void scanCalls(Path file, String content, String masked, Pattern call,
+						   Predicate<String> sanction, String rule, String guidance) {
+		Matcher m = call.matcher(masked);
+		while (m.find()) {
+			int argsStart = m.end();
+			int argsEnd = matchingParen(masked, argsStart);
+			if (argsEnd < 0) continue;
+
+			String argString = masked.substring(argsStart, argsEnd);
+			if (!sanction.test(argString)) {
+				int lineNum = countLines(content, m.start());
+				if (isKnownExclusion(file, lineText(content, lineNum))) continue;
+				violations.add(new Violation(file, lineNum, lineText(content, lineNum),
+						rule, guidance));
+			}
+		}
+	}
+
+	/**
+	 * Determines whether a {@code PackedCollection.of} argument list is sanctioned: every
+	 * argument must be a numeric literal. Unlike {@code setMem} there is no offset argument,
+	 * so no identifier of any kind is permitted — a host array, a {@code List}, a stream
+	 * pipeline, or a computed scalar are all violations.
+	 *
+	 * @param argString  the raw text between the call's parentheses (comment/string masked)
+	 * @return           {@code true} if the call is sanctioned
+	 */
+	private boolean isSanctionedIngest(String argString) {
+		List<String> args = splitTopLevel(argString);
+		if (args.isEmpty()) return false;
+
+		for (String arg : args) {
+			if (isArrayish(arg) || !isNumericLiteral(arg)) return false;
+		}
+		return true;
 	}
 
 	/**
