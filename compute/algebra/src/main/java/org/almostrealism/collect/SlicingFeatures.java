@@ -17,7 +17,6 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.collect.Algebraic;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -694,13 +693,13 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 			int offset = 0;
 
 			if (pad) {
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(r)).get().run();
+				result.setMem(0, r);
 				offset = 1;
 			}
 
 			for (int i = offset; i < in.getMemLength(); i++) {
 				r *= in.toDouble(i - offset);
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(r)).get().run();
+				result.setMem(i, r);
 			}
 
 			return result;
