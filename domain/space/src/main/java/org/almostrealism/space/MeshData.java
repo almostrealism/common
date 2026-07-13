@@ -101,9 +101,9 @@ public class MeshData extends PackedCollection {
 		PackedCollection out = Pair.bank(1);
 
 		PackedCollection conf = Pair.bank(1);
-		conf.setMem(0, new Pair(getCountLong(), Intersection.e), 0, 2);
+		conf.setFrom(0, new Pair(getCountLong(), Intersection.e), 0, 2);
 
-		in.setMem(0, ray.evaluate(args), 0, 6);
+		in.setFrom(0, ray.evaluate(args), 0, 6);
 		Triangle.intersectAt.into(distances).evaluate(in, this);
 		RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
 		PackedCollection result = out.range(shape(2), 0);
@@ -150,7 +150,7 @@ public class MeshData extends PackedCollection {
 		}
 
 		PackedCollection dim = Pair.bank(1);
-		dim.setMem(0, new Pair(this.getCount(), rays.getCount()), 0, 2);
+		dim.setFrom(0, new Pair(this.getCount(), rays.getCount()), 0, 2);
 
 		if (enablePartialKernel) {
 			PackedCollection distances = new PackedCollection(new TraversalPolicy(getCount(), 1));
@@ -158,13 +158,13 @@ public class MeshData extends PackedCollection {
 			PackedCollection out = Pair.bank(1);
 
 			PackedCollection conf = Pair.bank(1);
-			conf.setMem(0, new Pair(getCount(), Intersection.e), 0, 2);
+			conf.setFrom(0, new Pair(getCount(), Intersection.e), 0, 2);
 
 			for (int i = 0; i < rays.getCount(); i++) {
-				in.setMem(0, rays.range(shape(6), i * 6), 0, 6);
+				in.setFrom(0, rays.range(shape(6), i * 6), 0, 6);
 				Triangle.intersectAt.into(distances).evaluate(in, this, dim);
 				RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
-				destination.setMem(i * 2, out, 0, 2);
+				destination.setFrom(i * 2, out, 0, 2);
 			}
 
 			if (HardwareOperator.enableVerboseLog)

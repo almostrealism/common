@@ -378,7 +378,7 @@ public class AutoregressiveModel<T> {
 
 		return new AutoregressiveModel<>(
 				step,
-				t -> in.setMem(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
+				t -> in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
 				() -> model.forward(in),
 				sample,
 				temperature);

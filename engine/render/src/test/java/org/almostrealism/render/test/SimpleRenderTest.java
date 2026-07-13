@@ -208,7 +208,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 		// Create input like initRankCache does
 		PackedCollection input =
 				Pair.bank(1);
-		input.get(0).setMem(new double[]{0.0, 0.0});  // Single pixel at (0, 0)
+		input.get(0).setMem(0.0, 0.0);  // Single pixel at (0, 0)
 
 		// Evaluate with batch input like rank cache does
 		PackedCollection rankCollection =

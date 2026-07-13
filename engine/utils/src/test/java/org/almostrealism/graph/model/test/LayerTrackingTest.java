@@ -77,7 +77,7 @@ public class LayerTrackingTest extends TestSuiteBase {
 		CompiledModel compiled = model.compile(false);
 
 		PackedCollection input = new PackedCollection(shape(inputSize));
-		IntStream.range(0, inputSize).forEach(i -> input.setMem(i, 1.0 + i * 0.5));
+		integers(0, inputSize).multiply(0.5).add(1.0).into(input.traverseEach()).evaluate();
 
 		PackedCollection output = compiled.forward(input);
 		Assert.assertNotNull("Output should not be null", output);
@@ -107,7 +107,7 @@ public class LayerTrackingTest extends TestSuiteBase {
 		CompiledModel trainingCompiled = trainingModel.compile(true);
 
 		PackedCollection input = new PackedCollection(shape(inputSize));
-		IntStream.range(0, inputSize).forEach(i -> input.setMem(i, 1.0 + i * 0.5));
+		integers(0, inputSize).multiply(0.5).add(1.0).into(input.traverseEach()).evaluate();
 
 		PackedCollection trainingOutput = trainingCompiled.forward(input);
 

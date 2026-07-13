@@ -430,12 +430,12 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				int elementsPerItem = FRAMES * BINS;
 				PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < batchSize; b++) {
-					stackedQuery.setMem(b * elementsPerItem, tensors[i], 0, elementsPerItem);
+					stackedQuery.setFrom(b * elementsPerItem, tensors[i], 0, elementsPerItem);
 				}
 
 				PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < actualBatch; b++) {
-					stackedTargets.setMem(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
+					stackedTargets.setFrom(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
 				}
 
 				long t1 = System.nanoTime();
@@ -510,12 +510,12 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 		PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
 		for (int b = 0; b < batchSize; b++) {
-			stackedQuery.setMem(b * elementsPerItem, tensors[0], 0, elementsPerItem);
+			stackedQuery.setFrom(b * elementsPerItem, tensors[0], 0, elementsPerItem);
 		}
 
 		PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
 		for (int b = 0; b < batchSize; b++) {
-			stackedTargets.setMem(b * elementsPerItem, tensors[1 + b], 0, elementsPerItem);
+			stackedTargets.setFrom(b * elementsPerItem, tensors[1 + b], 0, elementsPerItem);
 		}
 
 		PackedCollection batchResult = batchEval.evaluate(stackedQuery, stackedTargets);
@@ -608,12 +608,12 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 				PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < batchSize; b++) {
-					stackedQuery.setMem(b * elementsPerItem, tensors[i], 0, elementsPerItem);
+					stackedQuery.setFrom(b * elementsPerItem, tensors[i], 0, elementsPerItem);
 				}
 
 				PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < actualBatch; b++) {
-					stackedTargets.setMem(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
+					stackedTargets.setFrom(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
 				}
 
 				PackedCollection allResults = batchEval.evaluate(stackedQuery, stackedTargets);

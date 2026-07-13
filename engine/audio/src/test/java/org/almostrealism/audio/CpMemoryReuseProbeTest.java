@@ -47,7 +47,7 @@ public class CpMemoryReuseProbeTest extends TestSuiteBase implements CollectionF
 	@TestDepth(1)
 	public void cpRereadsBufferMemoryOnReevaluate() {
 		PackedCollection buf = new PackedCollection(4);
-		buf.setMem(new double[] { 1.0, 2.0, 3.0, 4.0 });
+		buf.setMem(1.0, 2.0, 3.0, 4.0);
 
 		CollectionProducer producer = cp(buf).multiply(c(2.0));
 		Evaluable<PackedCollection> evaluable = producer.get();
@@ -57,7 +57,7 @@ public class CpMemoryReuseProbeTest extends TestSuiteBase implements CollectionF
 				+ first.toDouble(2) + "," + first.toDouble(3));
 
 		// Mutate the same buffer's memory and re-run the SAME compiled evaluable.
-		buf.setMem(new double[] { 10.0, 20.0, 30.0, 40.0 });
+		buf.setMem(10.0, 20.0, 30.0, 40.0);
 		PackedCollection second = evaluable.evaluate();
 		log("second: " + second.toDouble(0) + "," + second.toDouble(1) + ","
 				+ second.toDouble(2) + "," + second.toDouble(3));

@@ -24,6 +24,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -114,6 +115,18 @@ import java.util.stream.IntStream;
  */
 public class ArithmeticSequenceComputation extends TraversableExpressionComputation {
 	/**
+	 * Controls how {@link #get()} produces the sequence.
+	 *
+	 * <p>When {@code true}, a native kernel is compiled for the sequence, exactly like any other
+	 * {@link TraversableExpressionComputation}. When {@code false} (the default), the sequence is
+	 * generated on the host with a Java stream. Index sequences are pervasive, and each distinct
+	 * {@code (shape, initial, rate)} would otherwise reserve a slot in the finite native operator
+	 * pool; the host path avoids that while still supporting {@link Evaluable#into(Object)} so it
+	 * composes with destination-based evaluation.</p>
+	 */
+	public static boolean enableKernel = false;
+
+	/**
 	 * Whether the sequence length is fixed at construction time (true) or
 	 * can be determined dynamically at runtime (false).
 	 */
@@ -187,6 +200,7 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 		this.fixedCount = fixedCount;
 		this.initial = initial;
 		this.rate = rate;
+		init();
 	}
 
 	/**
@@ -257,25 +271,47 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	}
 
 	/**
-	 * Returns an {@link Evaluable} that directly computes the arithmetic sequence using Java streams.
+	 * Returns an {@link Evaluable} for the sequence. When {@link #enableKernel} is set the compiled
+	 * kernel path of the superclass is used; otherwise the sequence is produced on the host, which
+	 * avoids reserving a native operator slot per distinct sequence.
 	 *
-	 * <p>This method provides a fallback implementation for direct evaluation outside of
-	 * kernel execution contexts. It generates the sequence using {@link IntStream} with
-	 * the formula {@code value[i] = initial + i * rate}.</p>
+	 * <p>The host evaluable supports {@link Evaluable#into(Object)}: it writes the generated values
+	 * into an existing destination with a {@link MemoryData} copy rather than compiling a kernel, so
+	 * {@code sequence.into(dest).evaluate()} works without native compilation.</p>
 	 *
-	 * <p><strong>Warning:</strong> This method logs a warning when used, as direct evaluation
-	 * bypasses kernel optimization and hardware acceleration. It should primarily be used
-	 * for testing or in contexts where kernel compilation is not available.</p>
-	 *
-	 * @return An {@link Evaluable} that computes the arithmetic sequence directly
+	 * @return an {@link Evaluable} producing the arithmetic sequence
 	 */
 	@Override
 	public Evaluable<PackedCollection> get() {
-		return args -> {
-			warn("Direct evaluation of arithmetic sequence");
-			return pack(IntStream.range(0, getShape().getTotalSize())
-					.mapToDouble(i -> initial + i * rate).toArray());
+		if (enableKernel) {
+			return super.get();
+		}
+
+		return new Evaluable<>() {
+			@Override
+			public PackedCollection evaluate(Object... args) {
+				return pack(values());
+			}
+
+			@Override
+			public Evaluable<PackedCollection> into(Object destination) {
+				return args -> {
+					PackedCollection sequence = pack(values());
+					((MemoryData) destination).setFrom(0, sequence, 0, sequence.getMemLength());
+					return (PackedCollection) destination;
+				};
+			}
 		};
+	}
+
+	/**
+	 * Computes the sequence values on the host as {@code value[i] = initial + i * rate}.
+	 *
+	 * @return the host array of sequence values
+	 */
+	private double[] values() {
+		return IntStream.range(0, getShape().getTotalSize())
+				.mapToDouble(i -> initial + i * rate).toArray();
 	}
 
 	/**

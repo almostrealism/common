@@ -79,7 +79,7 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		PackedCollection input = t.pack();
 
 		PackedCollection biases = dense.getWeights().get(1);
-		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
+		rand(biases.getShape()).into(biases.traverseEach()).evaluate();
 
 		model.compile().forward(input);
 

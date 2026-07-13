@@ -381,7 +381,7 @@ public class BatchedNoteInputs {
 	private static PackedCollection fit(PackedCollection raw, int length) {
 		PackedCollection out = new PackedCollection(length);
 		int copy = Math.min(raw.getMemLength(), length);
-		out.setMem(0, raw, 0, copy);
+		out.setFrom(0, raw, 0, copy);
 		return out;
 	}
 }

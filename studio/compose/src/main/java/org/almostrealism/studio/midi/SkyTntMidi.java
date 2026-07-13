@@ -649,7 +649,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 */
 	private PackedCollection embedNetToken(int tokenId) {
 		PackedCollection result = new PackedCollection(new TraversalPolicy(1, config.hiddenSize));
-		result.setMem(0, netTokenEmbedTokens, tokenId * config.hiddenSize, config.hiddenSize);
+		result.setFrom(0, netTokenEmbedTokens, tokenId * config.hiddenSize, config.hiddenSize);
 		return result;
 	}
 

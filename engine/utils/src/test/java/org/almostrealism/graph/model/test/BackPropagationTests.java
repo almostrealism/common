@@ -153,7 +153,7 @@ public class BackPropagationTests extends TestSuiteBase {
 
 				log(Arrays.toString(out.toArray(0, out.getMemLength())));
 
-				result.setMem(0, out, 0, out.getMemLength());
+				result.setFrom(0, out, 0, out.getMemLength());
 			};
 		});
 
@@ -197,7 +197,7 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		TraversalPolicy filterShape = conv.getWeights().get(0).getShape();
 		PackedCollection originalFilter = new PackedCollection(filterShape);
-		originalFilter.setMem(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
+		originalFilter.setFrom(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
 
 		TraversalPolicy gradientShape = model.getOutputShape();
 		PackedCollection gradient = new PackedCollection(gradientShape);

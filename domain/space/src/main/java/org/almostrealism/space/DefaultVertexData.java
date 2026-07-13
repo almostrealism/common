@@ -210,7 +210,7 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 		Evaluable<PackedCollection> ev = producer.get();
 
 		for (int i = 0; i < triangles.length; i++) {
-			points.setMem(i * 9, ev.evaluate(triangles[i]), 0, 9);
+			points.setFrom(i * 9, ev.evaluate(triangles[i]), 0, 9);
 		}
 
 		return points;

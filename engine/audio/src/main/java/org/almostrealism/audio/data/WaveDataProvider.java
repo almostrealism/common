@@ -153,7 +153,7 @@ public interface WaveDataProvider extends AudioDataProvider, Supplier<WaveData>,
 		WaveData result = new WaveData(getChannelCount(), frames, sampleRate);
 
 		for (int i = 0; i < getChannelCount(); i++) {
-			result.getData().setMem(i * frames, getChannelData(i, 1.0, sampleRate));
+			result.getData().setFrom(i * frames, getChannelData(i, 1.0, sampleRate));
 		}
 
 		return result;
