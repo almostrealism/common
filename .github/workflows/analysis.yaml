@@ -813,6 +813,9 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
+    # Direct ByteBuffers are GC-reclaimed, so a group can spike past the 4 GiB default before reclamation catches up.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     strategy:
       # Let every group in the matrix run to completion even when a peer fails.
       # A failure in one group must not cancel the others: a simpler group often
@@ -971,6 +974,18 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
+    # Cap direct memory at 8g: enough for one split group, but below runner RAM so an overshoot is a catchable limit, not an OOM kill.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
+    strategy:
+      # Split the (growing) media test set across two groups: each group runs half of
+      # every module's tests (AR_TEST_GROUPS=2 on the steps below). Self-hosted runners
+      # run one job at a time, so each group lands on its own runner with half the tests,
+      # halving peak memory per runner while parallelising the suite.
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -996,6 +1011,8 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
@@ -1006,6 +1023,8 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
@@ -1016,13 +1035,15 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=2 \
            2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-media
+          name: surefire-media-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
@@ -1039,7 +1060,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: crash-reports-media
+          name: crash-reports-media-${{ matrix.group }}
           path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
@@ -1054,7 +1075,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-media
+          name: coverage-media-${{ matrix.group }}
           path: coverage-data/
           retention-days: 1
 
@@ -1158,11 +1179,19 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # Same as test: native,cl runs the compute tests on direct-ByteBuffer native RAM
+    # (no Metal), so raise the forked test JVM's direct-memory ceiling without changing
+    # heap. See the test-media job for the full rationale.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
     concurrency:
       group: test-cl-${{ github.ref }}-${{ matrix.group }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
+      # Cap concurrency at 3 so the 7 groups do not monopolize the self-hosted
+      # runners when several pipelines run at once; remaining groups queue behind.
+      max-parallel: 3
       matrix:
         # More groups than test-mac (7 vs 3): the CL backend reaches its memory
         # ceiling under the larger per-group test loads (AR_HARDWARE_MEMORY_SCALE
@@ -1227,8 +1256,12 @@ jobs:
   test-media-mac:
     needs: [changes, build, test-media, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: studio tests run when any layer is modified.
-    # Depends on test-media (non-matrix, skipped status propagates correctly)
-    # rather than test-mac (matrix job whose skipped status does not propagate).
+    # Depends on test-media rather than test-mac because test-media shares this job's
+    # exact layer gate, so the two always skip or run together. That makes the skipped-
+    # status matrix-propagation caveat moot: whenever this job should run, test-media
+    # also ran (its success/failure propagate normally), and whenever test-media is
+    # skipped this job's identical gate skips it too — regardless of test-media now
+    # being a matrix.
     if: >-
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -1243,6 +1276,14 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    strategy:
+      # Split the growing media test set across two groups (see test-media): each group
+      # runs half of every module's tests via AR_TEST_GROUPS=2, on its own runner. This
+      # job uses the Metal provider (driver *), so no direct-memory ceiling is needed.
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        group: [0, 1]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1277,14 +1318,18 @@ jobs:
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=2
 
       - name: Run Music Tests
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=2
 
       - name: Run Compose Tests
         run: |
@@ -1292,7 +1337,9 @@ jobs:
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=2
 
   test-media-cl:
     needs: [changes, build, test-media, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
@@ -1316,6 +1363,15 @@ jobs:
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # native,cl media tests on direct-ByteBuffer RAM (no Metal); cap direct memory at 8g. Split into 3 groups since CL reserves more than the 2-group budget. See test-media.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
+    strategy:
+      fail-fast: false
+      # Cap at 2 even with 3 groups so the job does not monopolize the runners.
+      max-parallel: 2
+      matrix:
+        group: [0, 1, 2]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1342,14 +1398,18 @@ jobs:
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=3
 
       - name: Run Music Tests
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=3
 
       - name: Run Compose Tests
         run: |
@@ -1357,7 +1417,9 @@ jobs:
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=3
 
   analysis:
     needs: [build, test, test-flowtree, test-media]
