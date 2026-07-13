@@ -40,6 +40,7 @@ import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.time.computations.Interpolate;
 import org.almostrealism.time.computations.MultiOrderFilter;
+import org.almostrealism.time.computations.PhaseUnwrapComputation;
 import org.almostrealism.time.computations.WindowComputation;
 
 import java.util.List;
@@ -903,33 +904,11 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 */
 	default PackedCollection unwrapPhase(PackedCollection wrappedPhase) {
 		int size = wrappedPhase.getShape().getTotalSize();
-		PackedCollection unwrapped = new PackedCollection(shape(size));
 
-		if (size == 0) return unwrapped;
+		if (size == 0) return new PackedCollection(shape(size));
 
-		// First value stays the same
-		double cumulative = wrappedPhase.toDouble(0);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(unwrapped.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(cumulative)).get().run();
-
-		// Process remaining values
-		for (int i = 1; i < size; i++) {
-			double current = wrappedPhase.toDouble(i);
-			double previous = wrappedPhase.toDouble(i - 1);
-			double diff = current - previous;
-
-			// Detect and correct phase jumps
-			while (diff > Math.PI) {
-				diff -= 2 * Math.PI;
-			}
-			while (diff < -Math.PI) {
-				diff += 2 * Math.PI;
-			}
-
-			cumulative += diff;
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(unwrapped.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(cumulative)).get().run();
-		}
-
-		return unwrapped;
+		return new PhaseUnwrapComputation(shape(size).traverseEach(), cp(wrappedPhase))
+				.get().evaluate();
 	}
 
 	// ==================== Short-Time Fourier Transform (STFT) ====================
@@ -1198,8 +1177,8 @@ public interface TemporalFeatures extends GeometryFeatures {
 			binPoints[i] = (int) Math.floor((fftSize + 1) * hzPoints[i] / sampleRate);
 		}
 
-		// Create the filterbank matrix as a PackedCollection
-		PackedCollection fb = new PackedCollection(shape(numMelBands, numFreqBins));
+		// Stage the host-born filter weights and ingest them in a single transfer
+		double[] weights = new double[numMelBands * numFreqBins];
 
 		for (int m = 0; m < numMelBands; m++) {
 			int fStart = binPoints[m];
@@ -1209,19 +1188,19 @@ public interface TemporalFeatures extends GeometryFeatures {
 			// Rising slope
 			for (int k = fStart; k < fCenter && k < numFreqBins; k++) {
 				if (fCenter != fStart) {
-					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(fb.range(new TraversalPolicy(1), m * numFreqBins + k)), CollectionFeatures.getInstance().c((double) (k - fStart) / (fCenter - fStart))).get().run();
+					weights[m * numFreqBins + k] = (double) (k - fStart) / (fCenter - fStart);
 				}
 			}
 
 			// Falling slope
 			for (int k = fCenter; k < fEnd && k < numFreqBins; k++) {
 				if (fEnd != fCenter) {
-					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(fb.range(new TraversalPolicy(1), m * numFreqBins + k)), CollectionFeatures.getInstance().c((double) (fEnd - k) / (fEnd - fCenter))).get().run();
+					weights[m * numFreqBins + k] = (double) (fEnd - k) / (fEnd - fCenter);
 				}
 			}
 		}
 
-		return fb;
+		return PackedCollection.of(weights).reshape(shape(numMelBands, numFreqBins));
 	}
 
 	/**
@@ -1303,27 +1282,23 @@ public interface TemporalFeatures extends GeometryFeatures {
 					"Number of MFCC coefficients (" + numCoeffs + ") cannot exceed number of mel bands (" + numMelBands + ")");
 		}
 
-		// Take log of mel energies (add small epsilon to avoid log(0))
-		double[] logMelEnergies = new double[numMelBands];
-		for (int i = 0; i < numMelBands; i++) {
-			logMelEnergies[i] = Math.log(melEnergies.toDouble(i) + 1e-10);
-		}
-
-		// Apply DCT-II to get MFCCs
+		// Stage the host-born, orthogonally-normalized DCT-II basis and ingest it in one transfer
 		// DCT-II formula: X[k] = sum_{n=0}^{N-1} x[n] * cos(PI * k * (2n + 1) / (2N))
-		PackedCollection mfccs = new PackedCollection(shape(numCoeffs));
+		double[] basis = new double[numCoeffs * numMelBands];
 
 		for (int k = 0; k < numCoeffs; k++) {
-			double sum = 0.0;
-			for (int n = 0; n < numMelBands; n++) {
-				sum += logMelEnergies[n] * Math.cos(Math.PI * k * (2 * n + 1) / (2.0 * numMelBands));
-			}
-			// Apply orthogonal normalization
 			double scale = (k == 0) ? Math.sqrt(1.0 / numMelBands) : Math.sqrt(2.0 / numMelBands);
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(mfccs.range(new TraversalPolicy(1), k)), CollectionFeatures.getInstance().c(sum * scale)).get().run();
+			for (int n = 0; n < numMelBands; n++) {
+				basis[k * numMelBands + n] = scale * Math.cos(Math.PI * k * (2 * n + 1) / (2.0 * numMelBands));
+			}
 		}
 
-		return mfccs;
+		PackedCollection dctBasis = PackedCollection.of(basis).reshape(shape(numCoeffs, numMelBands));
+
+		// Log of mel energies (with epsilon to avoid log(0)) and the DCT are one computation graph
+		return MatrixFeatures.getInstance()
+				.matmul(cp(dctBasis), log(cp(melEnergies).add(c(1e-10))))
+				.reshape(shape(numCoeffs)).evaluate();
 	}
 
 	// ==================== FFT Convolution ====================
