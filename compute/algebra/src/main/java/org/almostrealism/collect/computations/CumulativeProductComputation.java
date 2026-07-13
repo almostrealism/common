@@ -45,17 +45,20 @@ import java.util.List;
  *       the product of input elements 0 through i - 1.</li>
  * </ul>
  *
- * <p>Unlike {@link TraversableRepeatedProducerComputation}, this computation deliberately does
- * not implement {@link TraversableExpression}: consumers read its materialised output rather
- * than embedding the scan, since embedding would unroll the entire iteration into a single
- * expression tree.</p>
+ * <p>In both the compiled loop and the {@linkplain #getValueAt(Expression) expression-embedding}
+ * form, each step contributes one multiplicative factor — the input element when its index falls
+ * inside the prefix, or 1.0 otherwise — so the accumulator is referenced exactly once per step.
+ * The unrolled embedding is therefore a flat product whose size is linear in the collection
+ * length. (Referencing the accumulator in both branches of a conditional instead would double
+ * the expression tree at every step, making embedding infeasible for any consumer compiled
+ * without {@link Process#optimize()}, where isolation is never consulted.)</p>
  *
- * @see ConstantRepeatedProducerComputation
+ * @see TraversableRepeatedProducerComputation
  * @see org.almostrealism.collect.AggregationFeatures#cumulativeProduct(Producer, boolean)
  *
  * @author Michael Murray
  */
-public class CumulativeProductComputation extends ConstantRepeatedProducerComputation {
+public class CumulativeProductComputation extends TraversableRepeatedProducerComputation {
 
 	/** Whether the scan is exclusive: element i is the product of elements 0 through i - 1. */
 	private final boolean pad;
@@ -80,24 +83,62 @@ public class CumulativeProductComputation extends ConstantRepeatedProducerComput
 	}
 
 	/**
-	 * Returns the accumulation expression for one loop iteration: the current accumulator value,
-	 * multiplied by the input element at the loop index whenever that index falls inside this
-	 * thread's prefix (indices below the kernel index, or at it for the inclusive form).
+	 * Returns the multiplicative factor contributed by input element {@code position} to the
+	 * product for output element {@code target}: the input value when {@code position} falls
+	 * inside the target's prefix, and 1.0 otherwise.
+	 *
+	 * @param input    The traversable input collection
+	 * @param target   The output element index whose prefix is being accumulated
+	 * @param position The input element index under consideration
+	 * @return An {@link Expression} for the factor
+	 */
+	private Expression<?> factor(TraversableExpression input, Expression<?> target, Expression<?> position) {
+		Expression<Boolean> include = pad ?
+				target.greaterThan(position) :
+				target.greaterThanOrEqual(position);
+		return conditional(include, input.getValueAt(position), e(1.0));
+	}
+
+	/**
+	 * Returns the value of output element {@code index} as a flat product of one factor per
+	 * input element, for consumers that embed this computation rather than reading its
+	 * materialised output. The prefix comparison uses the queried index itself, so the
+	 * expression is correct for any consumer indexing pattern.
+	 *
+	 * @param index The output element index being queried
+	 * @return An {@link Expression} for the prefix product at that index
+	 */
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		TraversableExpression[] args = getTraversableArguments(index);
+
+		Expression value = e(1.0);
+
+		for (int j = 0; j < count; j++) {
+			value = value.multiply(factor(args[1], index, e(j)));
+			value = value.generate(value.flatten());
+		}
+
+		return value;
+	}
+
+	/**
+	 * Returns the accumulation expression for one iteration of the compiled loop: the current
+	 * accumulator value multiplied by the factor for the input element at the loop index,
+	 * relative to this thread's output element (the kernel index).
 	 *
 	 * @param args        The traversable arguments, where args[0] is the output and args[1] the input
-	 * @param globalIndex The global index (unused; the kernel index is referenced directly)
+	 * @param globalIndex The global index, a {@link KernelIndex} when compiling the loop scope
 	 * @param localIndex  The loop iteration index
 	 * @return The updated accumulator {@link Expression}
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
 		CollectionVariable output = (CollectionVariable) args[0];
-		Expression<?> currentValue = output.reference(new KernelIndex().multiply(output.length()));
-		Expression<Boolean> include = pad ?
-				localIndex.lessThan(new KernelIndex()) :
-				localIndex.lessThanOrEqual(new KernelIndex());
-		return conditional(include,
-				currentValue.multiply(args[1].getValueAt(localIndex)), currentValue);
+
+		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
+		Expression currentValue = output.reference(k.multiply(output.length()));
+		return currentValue.multiply(factor(args[1], k, localIndex));
 	}
 
 	/**
