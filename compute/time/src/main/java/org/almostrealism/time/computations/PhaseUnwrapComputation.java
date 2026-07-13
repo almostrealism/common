@@ -46,7 +46,7 @@ import java.util.List;
  * within (-2 * PI, 2 * PI) and a single correction suffices.</p>
  *
  * @see PrefixAccumulationComputation
- * @see org.almostrealism.time.TemporalFeatures#unwrapPhase(PackedCollection)
+ * @see org.almostrealism.time.TemporalFeatures#unwrapPhase(Producer)
  *
  * @author Michael Murray
  */

@@ -893,22 +893,17 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * Producer<PackedCollection> signal = ...;
 	 * FourierTransform fft = fft(1024, signal);
 	 *
-	 * // Get phase and unwrap
+	 * // Get phase and unwrap, all in one computation graph
 	 * CollectionProducer complex = fft.reshape(512, 2);
-	 * CollectionProducer wrappedPhase = phase(complex);
-	 * PackedCollection unwrapped = unwrapPhase(wrappedPhase.get().evaluate());
+	 * CollectionProducer unwrapped = unwrapPhase(phase(complex));
 	 * }</pre>
 	 *
-	 * @param wrappedPhase The wrapped phase values (from phase() method)
-	 * @return A PackedCollection with unwrapped (continuous) phase values
+	 * @param wrappedPhase Producer of the wrapped phase values (from phase() method)
+	 * @return A producer for the unwrapped (continuous) phase values
 	 */
-	default PackedCollection unwrapPhase(PackedCollection wrappedPhase) {
-		int size = wrappedPhase.getShape().getTotalSize();
-
-		if (size == 0) return new PackedCollection(shape(size));
-
-		return new PhaseUnwrapComputation(shape(size).traverseEach(), cp(wrappedPhase))
-				.get().evaluate();
+	default CollectionProducer unwrapPhase(Producer<PackedCollection> wrappedPhase) {
+		int size = shape(wrappedPhase).getTotalSize();
+		return new PhaseUnwrapComputation(shape(size).traverseEach(), wrappedPhase);
 	}
 
 	// ==================== Short-Time Fourier Transform (STFT) ====================
