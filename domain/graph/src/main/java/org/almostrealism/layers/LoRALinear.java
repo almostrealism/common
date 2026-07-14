@@ -18,6 +18,7 @@ package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Named;
 import org.almostrealism.collect.CollectionProducer;
@@ -352,8 +353,12 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 		int inputSize = baseWeights.getShape().length(1);
 
 		PackedCollection merged = new PackedCollection(shape(outputSize, inputSize));
-		a(cp(merged), cp(baseWeights).add(
-				matmul(cp(loraB).transpose(), cp(loraA).transpose()).multiply(c(scale)))).get().run();
+
+		// Optimizing ahead of compilation isolates the matrix product into its
+		// own kernel; embedding it would unroll the inner-product sums into
+		// every element of the generated expression
+		Process.optimized(a(cp(merged), cp(baseWeights).add(
+				matmul(cp(loraB).transpose(), cp(loraA).transpose()).multiply(c(scale))))).get().run();
 		return merged;
 	}
 

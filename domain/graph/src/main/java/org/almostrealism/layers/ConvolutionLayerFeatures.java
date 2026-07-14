@@ -18,6 +18,7 @@ package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Factor;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -697,7 +698,12 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 
 		CollectionProducer v = cp(direction);
 		CollectionProducer norm = sqrt(v.multiply(v).sum());
-		a(cp(destination), v.multiply(cp(magnitude).divide(norm.add(c(1e-12))))).get().run();
+
+		// Optimizing ahead of compilation isolates the norm reduction into its
+		// own kernel; embedding it would unroll the sum into every element of
+		// the generated expression
+		Process.optimized(a(cp(destination),
+				v.multiply(cp(magnitude).divide(norm.add(c(1e-12)))))).get().run();
 
 		return result;
 	}
