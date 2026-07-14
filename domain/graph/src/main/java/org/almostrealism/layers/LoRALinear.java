@@ -210,9 +210,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	private PackedCollection initializeLoraA(int inputSize, int rank) {
 		PackedCollection a = new PackedCollection(shape(inputSize, rank));
 		double std = 1.0 / Math.sqrt(inputSize);
-		for (int i = 0; i < inputSize * rank; i++) {
-			a.setMem(i, random.nextGaussian() * std);
-		}
+		randn(shape(inputSize, rank), random).multiply(c(std)).into(a).evaluate();
 		return a;
 	}
 
@@ -223,7 +221,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	 */
 	private PackedCollection initializeLoraB(int rank, int outputSize) {
 		PackedCollection b = new PackedCollection(shape(rank, outputSize));
-		b.fill(pos -> 0.0);
+		b.fill(0.0);
 		return b;
 	}
 

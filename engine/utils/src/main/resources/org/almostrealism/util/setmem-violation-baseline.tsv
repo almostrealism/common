@@ -1,3 +1,113 @@
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/hardware/computations/Assignment.java	1	return JVMMemory.fill(d, len, s.getAsDouble());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/graph/algorithm/TraversalFeatures.java	1	Arrays.fill(dist, Double.POSITIVE_INFINITY);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/graph/algorithm/TraversalFeatures.java	1	Arrays.fill(prev, -1);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/layers/ActivationFeatures.java	1	Arrays.fill(alphaData, baseIdx, baseIdx + seqLen, alphaVal);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/layers/ActivationFeatures.java	1	Arrays.fill(betaData, baseIdx, baseIdx + seqLen, betaVal);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/layers/DefaultGradientPropagation.java	2	Arrays.fill(updates, update);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/main/java/org/almostrealism/audio/data/WaveDetailsFactory.java	1	Arrays.fill(results, -Double.MAX_VALUE);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/BatchedEnvelopeTest.java	2	Arrays.fill(onesData, 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	: pack(take(buffer, config.vocabSize, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	pack(take(buffer, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	pack(take(buffer, config.layerCount, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	pack(take(buffer, config.vocabSize, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.rmsFfn = pack(take(buffer, config.layerCount, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.w1 = pack(take(buffer, config.layerCount, config.hiddenDim, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.w2 = pack(take(buffer, config.layerCount, config.dim, config.hiddenDim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.w3 = pack(take(buffer, config.layerCount, config.hiddenDim, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wk = pack(take(buffer, config.layerCount, config.dim, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wo = pack(take(buffer, config.layerCount, config.dim, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wq = pack(take(buffer, config.layerCount, config.dim, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wv = pack(take(buffer, config.layerCount, config.dim, config.dim))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	1	input.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	2	input.fill(pos -> {
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/CausalMaskIsolationTest.java	1	input.fill(pos -> 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/CausalMaskIsolationTest.java	1	input0.fill(Math::random); // Random input
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/CausalMaskIsolationTest.java	1	input2.fill(Math::random);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/audio/OobleckComponentTests.java	1	input.fill(pos -> Math.random() * 0.1);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/audio/OobleckComponentTests.java	1	w.fill(pos -> (Math.random() - 0.5) * 0.1);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/MultiTokenGenerationTest.java	1	Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/MultiTokenGenerationTest.java	1	Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/Qwen3DirectGenerationTest.java	1	Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/Qwen3DirectGenerationTest.java	1	Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/unet/test/UNetTest.java	1	.fill(() -> (int) (Math.random() * timesteps));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/unet/test/UNetTest.java	1	PackedCollection values = new PackedCollection(hd).fill(pos -> pos[0] * -scale);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/main/java/org/almostrealism/util/ModelTestFeatures.java	1	PackedCollection input = new PackedCollection(inShape).fill(Math::random);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/main/java/org/almostrealism/util/ModelTestFeatures.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(Math::random)));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/algebra/computations/test/MatrixMathTests.java	1	PackedCollection a = new PackedCollection(shape(n, m)).fill(Math::random);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/algebra/computations/test/MatrixMathTests.java	1	PackedCollection b = new PackedCollection(shape(m, p)).fill(Math::random);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/algebra/computations/test/MatrixMathTests.java	1	matrix.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/algebra/computations/test/MatrixMathTests.java	1	vector.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/algebra/computations/test/MatrixMathTests.java	1	vectors.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/algebra/computations/test/ScalarBankDotProductTest.java	1	PackedCollection given = pack(IntStream.range(0, SIZE)
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionComputationTests.java	2	.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionComputationTests.java	1	.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionComputationTests.java	2	PackedCollection va = new PackedCollection(hd).fill(pos -> 1.0 + pos[0]);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionComputationTests.java	1	PackedCollection va = new PackedCollection(n, hd).fill(pos -> 1.0 + pos[1] + 10 * pos[0]);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionComputationTests.java	1	PackedCollection value = new PackedCollection(shape(count)).fill(pos -> 1 + Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionComputationTests.java	1	PackedCollection vb = new PackedCollection(n, hd).fill(pos -> -(1.0 + pos[1] + 10 * pos[0]));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionMathTests.java	2	a.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionMathTests.java	1	a.fill(pos -> aOrig.valueAt(pos));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionMathTests.java	1	aOrig.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionMathTests.java	1	b.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionMathTests.java	8	o.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionMathTests.java	3	weight.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/CollectionMathTests.java	3	x.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/TraversableExpressionComputationTest.java	1	input.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/BackPropagationTests.java	2	gradient.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/BackPropagationTests.java	1	input.fill(pos -> (double) (int) (100 * Math.random()));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	2	input.fill(pos -> {
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	1	new PackedCollection(outShape).fill(pos -> pos[0] % 2 == v ? 1.0 : 0.0)));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/DenseLayerTests.java	1	.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	.map(input -> input.fill(pos -> 2.0 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	2	.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	.map(input -> input.fill(pos -> 5 + 2 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/LayerTrackingTest.java	1	b1.fill(pos -> 0.1);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/LayerTrackingTest.java	1	b2.fill(pos -> 0.05);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/LayerTrackingTest.java	1	input.fill(pos -> 0.01 * pos[0]);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/LayerTrackingTest.java	1	w1.fill(pos -> 0.01 * (pos[0] + 1));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/LayerTrackingTest.java	1	w2.fill(pos -> 0.02 * (pos[0] + 1));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/StrictShapeEnforcementTest.java	1	.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticActivationTrainingTest.java	3	.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticCompositionTrainingTest.java	2	.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticDenseTrainingTest.java	1	.fill(Math::random);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticDenseTrainingTest.java	2	.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticDenseTrainingTest.java	1	.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticNormTrainingTest.java	2	.map(input -> input.fill(pos -> (1 + 10 * Math.random()) * (Math.random() - 0.5)))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticNormTrainingTest.java	1	.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/hardware/test/ArgumentPreparationChainTest.java	1	weights.fill(pos -> 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/hardware/test/CommitCauseMeasurementTest.java	1	input.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/hardware/test/OperationProvenanceTests.java	5	a.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/hardware/test/SemaphoreChainBatchingTest.java	1	a.fill(pos -> Math.random() + 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/hardware/test/SemaphoreChainBatchingTest.java	4	src.fill(pos -> Math.random() + 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/DenseLayerShapeInvestigationTest.java	1	testInput.fill(pos -> 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/DenseLayerShapeInvestigationTest.java	1	weights.fill(pos -> (pos[0] + 1) * 0.1);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/DenseLayerShapeInvestigationTest.java	1	weights.fill(pos -> 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/LayersTests.java	2	.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/LayersTests.java	2	in.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/LayersTests.java	1	input.fill(pos -> (Math.random() - 0.5) * 4.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/LayersTests.java	2	weights.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/SoftmaxTests.java	2	originalInput.fill(pos -> Math.random());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/layers/test/SoftmaxTests.java	1	output.fill(pos -> input.valueAt(pos));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/optimize/test/ModelOptimizerTests.java	2	baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/optimize/test/ModelOptimizerTests.java	4	input.fill(pos -> random.nextGaussian());
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/optimize/test/ModelOptimizerTests.java	2	target.fill(pos -> random.nextGaussian() * 0.2);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/optimize/test/ModelOptimizerTests.java	1	target.fill(pos -> random.nextGaussian() * 0.5);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/optimize/test/ModelOptimizerTests.java	2	weights.fill(pos -> random.nextGaussian() * 0.1);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	Arrays.fill(values, -1e9);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java	1	Arrays.fill(values, Double.NEGATIVE_INFINITY);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	Arrays.fill(inData, 0, sig, 0.01);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	Arrays.fill(inData, ch * PDSL_SIGNAL_SIZE, (ch + 1) * PDSL_SIGNAL_SIZE,
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	Arrays.fill(inData, sig, 2 * sig, 0.02);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	Arrays.fill(ones, 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownPdslTestFeatures.java	1	Arrays.fill(data, 1.0);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownPdslTestFeatures.java	1	Arrays.fill(delayData, signal);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownPdslTestFeatures.java	1	Arrays.fill(fbDelayData, PDSL_DELAY_SAMPLES);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownPdslTestFeatures.java	1	Arrays.fill(reverbDelayData, signalSize);
 PACKED_COLLECTION_OF_NON_LITERAL	domain/graph/src/main/java/org/almostrealism/layers/ParameterUpdate.java	1	return scaled(CollectionFeatures.getInstance().cp(PackedCollection.of(learningRate)));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.automationLevel);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.filterAttack);
@@ -31,7 +141,6 @@ SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/t
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/layers/ActivationFeatures.java	1	alphaExpanded.setMem(0, alphaData, 0, alphaData.length);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/layers/ActivationFeatures.java	1	betaExpanded.setMem(0, betaData, 0, betaData.length);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/layers/ConvolutionLayerFeatures.java	2	result.setMem(idx, v * scale);
-SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/layers/LoRALinear.java	1	a.setMem(i, random.nextGaussian() * std);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/layers/LoRALinear.java	1	merged.setMem(i * inputSize + j, baseVal + scale * loraVal);
 SETMEM_NON_LITERAL_ARGUMENT	domain/space/src/main/java/org/almostrealism/primitives/Cone.java	1	ts.setMem(0, t);
 SETMEM_NON_LITERAL_ARGUMENT	domain/space/src/main/java/org/almostrealism/primitives/Cylinder.java	1	sc.setMem(0, l0);

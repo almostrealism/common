@@ -18,6 +18,7 @@ package org.almostrealism.music.pattern;
 
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.arrange.ChannelSection;
 import org.almostrealism.music.data.ChannelInfo;
@@ -615,8 +616,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	protected void layer(ParameterSet params) {
 		Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(depth());
 		PackedCollection automationParams =
-				PackedCollection.factory().apply(AUTOMATION_GENE_LENGTH).fill(pos ->
-						automationGene.valueAt(pos[0]).getResultant(null).evaluate().toDouble());
+				PackedCollection.factory().apply(AUTOMATION_GENE_LENGTH);
+		concat(shape(AUTOMATION_GENE_LENGTH),
+				IntStream.range(0, AUTOMATION_GENE_LENGTH)
+						.mapToObj(i -> automationGene.valueAt(i).getResultant(null))
+						.toArray(Producer[]::new))
+				.into(automationParams).evaluate();
 
 		if (rootCount() <= 0) {
 			PatternLayerSeeds seeds = getSeeds(params);

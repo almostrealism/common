@@ -154,7 +154,8 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 					"addNoise",                 // Schedule-table scalar lookup at step boundary
 					"step",                     // DDPM step-boundary scalar lookups
 					"stepDDIM",                 // DDIM step-boundary scalar lookups
-					"getAlphaCumprod"           // Single-scalar schedule accessor
+					"getAlphaCumprod",          // Single-scalar schedule accessor
+					"getAlpha"                  // Single-scalar schedule accessor
 			),
 			"SkyTntMidi.java", Set.of(
 					"applyMask",                // Token-selection orchestration (post-model)
