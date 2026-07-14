@@ -16,11 +16,14 @@
 
 package org.almostrealism.heredity.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.ProjectedGene;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
+
+import java.util.stream.IntStream;
 
 /**
  * Tests that {@link ProjectedGene}'s device-computed projection matches a host-computed
@@ -93,6 +96,40 @@ public class ProjectedGeneTests extends TestSuiteBase {
 			}
 
 			assertEquals(1.0, Math.sqrt(sumSquares));
+		}
+	}
+
+	/**
+	 * Tests that combining a gene's factor producers with concat yields exactly the
+	 * values obtained by evaluating each factor individually. This is the equivalence
+	 * PatternLayerManager.layer relies on when it assembles a layer's automation
+	 * parameters from its gene in a single computation graph rather than one
+	 * evaluation per factor.
+	 */
+	@Test(timeout = 120000)
+	public void factorConcat() {
+		int factors = 6;
+		int sourceLength = 8;
+
+		PackedCollection source = new PackedCollection(shape(sourceLength));
+		source.fill(pos -> 2.0 * Math.random() - 1.0);
+
+		PackedCollection weights = new PackedCollection(shape(factors, sourceLength)).traverse(1);
+		weights.fill(pos -> 2.0 * Math.random() - 1.0);
+
+		ProjectedGene gene = new ProjectedGene(source, weights);
+		gene.refreshValues();
+
+		PackedCollection combined = PackedCollection.factory().apply(factors);
+		concat(shape(factors),
+				IntStream.range(0, factors)
+						.mapToObj(i -> gene.valueAt(i).getResultant(null))
+						.toArray(Producer[]::new))
+				.into(combined).evaluate();
+
+		for (int i = 0; i < factors; i++) {
+			double expected = gene.valueAt(i).getResultant(null).get().evaluate().toDouble(0);
+			assertEquals(expected, combined.toDouble(i));
 		}
 	}
 
