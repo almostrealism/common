@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,11 +15,7 @@
  */
 
 /**
- * C language code generation infrastructure.
- *
- * <p>This package provides the C language operations and print writers used to produce compilable
- * kernel source code, along with {@link org.almostrealism.c.BaseNative}, the base class for
- * operations that compile and invoke C via JNI. These classes are used by both the JNI and OpenCL
- * backends. Native memory allocation itself lives in {@code org.almostrealism.nio}.</p>
+ * Tests for genetic algorithm types from the heredity module: projected genes,
+ * chromosomes, and scale factors.
  */
-package org.almostrealism.c;
+package org.almostrealism.heredity.test;

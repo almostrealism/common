@@ -20,6 +20,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalFactor;
@@ -61,8 +62,6 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 	/** When true, uses parallel (each-traversal) operations; when false, uses sequential. */
 	private final boolean parallel;
 
-	/** The Householder feedback matrix used to mix delay line outputs. */
-	private final double[][] matrix;
 
 	/** The incoming audio producer whose output is fed into the network. */
 	private Producer<PackedCollection> input;
@@ -124,9 +123,6 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		this.maxDelayFrames = (int) (duration * sampleRate);
 		this.parallel = parallel;
 
-		this.matrix = randomHouseholderMatrix(size, 1.0);
-		// this.matrix = householderMatrix(_normalize(c(1).repeat(size)), 1.3 / size);
-
 		this.delayIn = new PackedCollection(size);
 		this.delayOut = new PackedCollection(size);
 		this.delayBuffer = new PackedCollection(shape(size, maxDelayFrames));
@@ -135,9 +131,19 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		this.feedback = new PackedCollection(shape(size, size));
 		this.output = new PackedCollection(1);
 
-		this.feedback.fill(pos -> matrix[pos[0]][pos[1]]);
-		this.bufferLengths.fill(pos -> Math.max(1, Math.floor(0.1 * maxDelayFrames + 0.9 * Math.random() * maxDelayFrames)));
-		this.bufferIndices.fill(pos -> 0.0);
+		// Householder feedback H = (1/size) * (I - 2 * v * v^T) from a random unit vector
+		PackedCollection reflection = normalize(rand(size)).evaluate();
+		identity(size)
+				.subtract(matmul(cp(reflection).reshape(shape(size, 1)),
+						cp(reflection).reshape(shape(1, size))).multiply(c(2.0)))
+				.multiply(c(1.0 / size))
+				.into(feedback).evaluate();
+
+		CollectionProducer lengths = floor(rand(size)
+				.multiply(c(0.9 * maxDelayFrames)).add(c(0.1 * maxDelayFrames)));
+		greaterThan(lengths, c(1.0), lengths, c(1.0)).into(bufferLengths).evaluate();
+
+		this.bufferIndices.fill(0.0);
 	}
 
 	@Override
@@ -242,58 +248,6 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		this.delayOut.fill(0.0);
 		this.delayBuffer.fill(0.0);
 		this.bufferIndices.fill(0.0);
-	}
-
-	/**
-	 * Generates a Householder reflection matrix from a random unit vector, scaled by {@code scale/size}.
-	 *
-	 * @param size  matrix dimension and length of the random vector
-	 * @param scale overall scale factor applied to each element (divided by size)
-	 * @return a size-by-size Householder feedback matrix
-	 */
-	public double[][] randomHouseholderMatrix(int size, double scale) {
-		return householderMatrix(rand(size), scale / size);
-	}
-
-	/**
-	 * Generates a Householder reflection matrix from the given unit-vector producer.
-	 *
-	 * @param v     producer of the reflection vector (will be normalized before use)
-	 * @param scale overall scale factor applied to each matrix element
-	 * @return the resulting Householder matrix as a 2D double array
-	 */
-	public double[][] householderMatrix(Producer<PackedCollection> v, double scale) {
-		return householderMatrix((normalize(v).evaluate()).toArray(), scale);
-	}
-
-	/**
-	 * Constructs a scaled Householder reflection matrix H = scale * (I - 2*v*v^T).
-	 *
-	 * @param v     the unit-length reflection vector
-	 * @param scale overall scale factor applied to each element
-	 * @return the resulting Householder matrix as a 2D double array
-	 */
-	public double[][] householderMatrix(double[] v, double scale) {
-		int size = v.length;
-		double[][] householder = new double[size][size];
-
-		// Compute outer product of v
-		double[][] outerProduct = new double[size][size];
-		for (int i = 0; i < size; i++) {
-			for (int j = 0; j < size; j++) {
-				outerProduct[i][j] = 2 * v[i] * v[j];
-			}
-		}
-
-		// Subtract the outer product from identity matrix
-		for (int i = 0; i < size; i++) {
-			for (int j = 0; j < size; j++) {
-				householder[i][j] = scale * ((i == j ? 1.0 : 0.0) - outerProduct[i][j]);
-//				householder[i][j] = ((i == j ? id : 0.0) - outerProduct[i][j]);
-			}
-		}
-
-		return householder;
 	}
 
 	/**
