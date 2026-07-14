@@ -263,9 +263,10 @@ two stages above cannot see extend the Stage 1 result with that state:
   rendering of its two index functions.
 
 Because the metadata signature is recorded during superclass construction, before subclass
-state is assigned, each of these classes refreshes it at the end of its own constructor
-(and after any post-construction mutation that affects code generation, such as
-`setReplaceLoop`).
+state is assigned, each of these classes calls `init()` again at the end of its own
+constructor. Signature-bearing state is fixed at construction; where a different setting is
+needed, a new computation is constructed (for example
+`AggregatedProducerComputation.withReplaceLoop`) rather than mutating an existing one.
 
 ### Signature Format
 

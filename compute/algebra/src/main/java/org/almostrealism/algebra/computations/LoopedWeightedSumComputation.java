@@ -150,10 +150,8 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 		this.inputIndexer = inputIndexer;
 		this.weightIndexer = weightIndexer;
 
-		// The signature recorded during superclass construction was computed
-		// before the indexers above were assigned, so it must be refreshed
-		// now that the state is complete
-		setMetadata(getMetadata().withSignature(signature()));
+		// Refresh the signature captured before the indexers were assigned
+		init();
 	}
 
 	/**
@@ -256,6 +254,22 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	}
 
 	/**
+	 * Returns this computation unchanged when the setting already matches.
+	 * The generated loop is determined by this computation's index functions,
+	 * which the base implementation's reconstruction would not carry, so a
+	 * change to the loop replacement setting is not supported here.
+	 *
+	 * @param replaceLoop the requested loop replacement setting
+	 * @return this computation
+	 * @throws UnsupportedOperationException if the setting differs from the current one
+	 */
+	@Override
+	public LoopedWeightedSumComputation withReplaceLoop(boolean replaceLoop) {
+		if (isReplaceLoop() == replaceLoop) return this;
+		throw new UnsupportedOperationException();
+	}
+
+	/**
 	 * Extends the aggregation signature with the state that determines the
 	 * generated loop: the inner element count, the operand shapes, and the
 	 * structure of the two index functions (rendered against placeholder
@@ -263,8 +277,8 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	 * shapes but different index arithmetic would share a signature while
 	 * generating different kernels.
 	 *
-	 * @return The signature string, or null when the base signature or the
-	 *         structural identity of the index functions is unavailable
+	 * @return The signature string, or null when the base signature is
+	 *         unavailable or the indexers have not been assigned yet
 	 */
 	@Override
 	public String signature() {
@@ -275,23 +289,17 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 		String signature = super.signature();
 		if (signature == null) return null;
 
-		try {
-			Expression output = new StaticReference(Integer.class, "signatureOutput");
-			Expression outer = new StaticReference(Integer.class, "signatureOuter");
-			Expression inner = new StaticReference(Integer.class, "signatureInner");
-			String indexers = inputIndexer.index(output, outer, inner)
-					.getExpression(Expression.defaultLanguage()) + ";" +
-					weightIndexer.index(output, outer, inner)
-							.getExpression(Expression.defaultLanguage());
+		Expression output = new StaticReference(Integer.class, "signatureOutput");
+		Expression outer = new StaticReference(Integer.class, "signatureOuter");
+		Expression inner = new StaticReference(Integer.class, "signatureInner");
+		String indexers = inputIndexer.index(output, outer, inner)
+				.getExpression(Expression.defaultLanguage()) + ";" +
+				weightIndexer.index(output, outer, inner)
+						.getExpression(Expression.defaultLanguage());
 
-			return signature + "{innerCount:" + innerCount +
-					",input:" + inputShape.toStringDetail() +
-					",weight:" + weightShape.toStringDetail() +
-					",indexers:" + indexers + "}";
-		} catch (Exception e) {
-			// An index function that inspects its arguments cannot be
-			// rendered structurally, so no signature is available
-			return null;
-		}
+		return signature + "{innerCount:" + innerCount +
+				",input:" + inputShape.toStringDetail() +
+				",weight:" + weightShape.toStringDetail() +
+				",indexers:" + indexers + "}";
 	}
 }

@@ -136,10 +136,8 @@ public class WeightedSumComputation
 			throw new IllegalArgumentException();
 		}
 
-		// The signature recorded during superclass construction was computed
-		// before the traversal policies above were assigned, so it must be
-		// refreshed now that the state is complete
-		setMetadata(getMetadata().withSignature(signature()));
+		// Refresh the signature captured before the traversal policies were assigned
+		init();
 	}
 
 	/**
