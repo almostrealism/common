@@ -40,6 +40,7 @@ import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.time.computations.Interpolate;
 import org.almostrealism.time.computations.MultiOrderFilter;
+import org.almostrealism.time.computations.PhaseUnwrapComputation;
 import org.almostrealism.time.computations.WindowComputation;
 
 import java.util.List;
@@ -892,44 +893,17 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * Producer<PackedCollection> signal = ...;
 	 * FourierTransform fft = fft(1024, signal);
 	 *
-	 * // Get phase and unwrap
+	 * // Get phase and unwrap, all in one computation graph
 	 * CollectionProducer complex = fft.reshape(512, 2);
-	 * CollectionProducer wrappedPhase = phase(complex);
-	 * PackedCollection unwrapped = unwrapPhase(wrappedPhase.get().evaluate());
+	 * CollectionProducer unwrapped = unwrapPhase(phase(complex));
 	 * }</pre>
 	 *
-	 * @param wrappedPhase The wrapped phase values (from phase() method)
-	 * @return A PackedCollection with unwrapped (continuous) phase values
+	 * @param wrappedPhase Producer of the wrapped phase values (from phase() method)
+	 * @return A producer for the unwrapped (continuous) phase values
 	 */
-	default PackedCollection unwrapPhase(PackedCollection wrappedPhase) {
-		int size = wrappedPhase.getShape().getTotalSize();
-		PackedCollection unwrapped = new PackedCollection(shape(size));
-
-		if (size == 0) return unwrapped;
-
-		// First value stays the same
-		double cumulative = wrappedPhase.toDouble(0);
-		unwrapped.setMem(0, cumulative);
-
-		// Process remaining values
-		for (int i = 1; i < size; i++) {
-			double current = wrappedPhase.toDouble(i);
-			double previous = wrappedPhase.toDouble(i - 1);
-			double diff = current - previous;
-
-			// Detect and correct phase jumps
-			while (diff > Math.PI) {
-				diff -= 2 * Math.PI;
-			}
-			while (diff < -Math.PI) {
-				diff += 2 * Math.PI;
-			}
-
-			cumulative += diff;
-			unwrapped.setMem(i, cumulative);
-		}
-
-		return unwrapped;
+	default CollectionProducer unwrapPhase(Producer<PackedCollection> wrappedPhase) {
+		int size = shape(wrappedPhase).getTotalSize();
+		return new PhaseUnwrapComputation(shape(size).traverseEach(), wrappedPhase);
 	}
 
 	// ==================== Short-Time Fourier Transform (STFT) ====================
@@ -1165,6 +1139,17 @@ public interface TemporalFeatures extends GeometryFeatures {
 	 * <p>This method is useful when you want to reuse the same filterbank matrix across
 	 * multiple frames without recomputing it each time.</p>
 	 *
+	 * <p>Every weight is computed on the device as a function of the element's band index m
+	 * and frequency bin index k. The FFT bin index of mel point p is
+	 * {@code floor((fftSize + 1) / sampleRate * melToHz(melMin + p * melStep))}, and band m's
+	 * weight at bin k is the triangle {@code max(0, min(rising, falling))} over the band's
+	 * three consecutive bin points b0, b1, b2, restricted to bins in [b0, b2). A degenerate
+	 * (empty) rising or falling region is given the out-of-range slope 2 so the other slope
+	 * governs, matching the loop formulation this replaces, and its unused denominator is
+	 * clamped to 1 so every lane's arithmetic stays finite even though only one branch of
+	 * each selection is meaningful. Bin indices are integer-valued, so the closed and open
+	 * range bounds are expressed exactly with strict comparisons.</p>
+	 *
 	 * @param fftSize     The FFT size
 	 * @param sampleRate  The sample rate
 	 * @param numMelBands The number of mel bands
@@ -1176,52 +1161,37 @@ public interface TemporalFeatures extends GeometryFeatures {
 													   int numMelBands, double fMin, double fMax) {
 		int numFreqBins = fftSize / 2 + 1;
 
-		// Convert frequency bounds to mel
 		double melMin = hzToMel(fMin);
-		double melMax = hzToMel(fMax);
+		double melStep = (hzToMel(fMax) - melMin) / (numMelBands + 1);
+		double binScale = (fftSize + 1.0) / sampleRate;
 
-		// Create numMelBands + 2 points (for filter edges)
-		double[] melPoints = new double[numMelBands + 2];
-		for (int i = 0; i < numMelBands + 2; i++) {
-			melPoints[i] = melMin + (melMax - melMin) * i / (numMelBands + 1);
-		}
+		Function<CollectionProducer, CollectionProducer> bin = p ->
+				floor(pow(c(10.0), p.multiply(c(melStep)).add(c(melMin)).divide(c(2595.0)))
+						.subtract(c(1.0)).multiply(c(700.0 * binScale)));
 
-		// Convert mel points back to Hz
-		double[] hzPoints = new double[numMelBands + 2];
-		for (int i = 0; i < numMelBands + 2; i++) {
-			hzPoints[i] = melToHz(melPoints[i]);
-		}
+		CollectionProducer index = integers(0, numMelBands * numFreqBins);
+		CollectionProducer m = floor(index.divide(c(numFreqBins)));
+		CollectionProducer k = mod(index, c(numFreqBins));
 
-		// Convert Hz points to FFT bin indices
-		int[] binPoints = new int[numMelBands + 2];
-		for (int i = 0; i < numMelBands + 2; i++) {
-			binPoints[i] = (int) Math.floor((fftSize + 1) * hzPoints[i] / sampleRate);
-		}
+		CollectionProducer b0 = bin.apply(m);
+		CollectionProducer b1 = bin.apply(m.add(c(1.0)));
+		CollectionProducer b2 = bin.apply(m.add(c(2.0)));
 
-		// Create the filterbank matrix as a PackedCollection
-		PackedCollection fb = new PackedCollection(shape(numMelBands, numFreqBins));
+		CollectionProducer rising = greaterThan(b1, b0,
+				k.subtract(b0).divide(greaterThan(b1.subtract(b0), c(0.5), b1.subtract(b0), c(1.0))),
+				c(2.0));
+		CollectionProducer falling = greaterThan(b2, b1,
+				b2.subtract(k).divide(greaterThan(b2.subtract(b1), c(0.5), b2.subtract(b1), c(1.0))),
+				c(2.0));
 
-		for (int m = 0; m < numMelBands; m++) {
-			int fStart = binPoints[m];
-			int fCenter = binPoints[m + 1];
-			int fEnd = binPoints[m + 2];
+		CollectionProducer slope = greaterThan(rising, falling, falling, rising);
+		CollectionProducer weight = greaterThan(slope, c(0.0), slope, c(0.0));
 
-			// Rising slope
-			for (int k = fStart; k < fCenter && k < numFreqBins; k++) {
-				if (fCenter != fStart) {
-					fb.setMem(m * numFreqBins + k, (double) (k - fStart) / (fCenter - fStart));
-				}
-			}
+		CollectionProducer mask = greaterThan(b0, k, c(0.0), c(1.0))
+				.multiply(greaterThan(b2, k, c(1.0), c(0.0)));
 
-			// Falling slope
-			for (int k = fCenter; k < fEnd && k < numFreqBins; k++) {
-				if (fEnd != fCenter) {
-					fb.setMem(m * numFreqBins + k, (double) (fEnd - k) / (fEnd - fCenter));
-				}
-			}
-		}
-
-		return fb;
+		return mask.multiply(weight)
+				.reshape(shape(numMelBands, numFreqBins)).evaluate();
 	}
 
 	/**
@@ -1303,27 +1273,23 @@ public interface TemporalFeatures extends GeometryFeatures {
 					"Number of MFCC coefficients (" + numCoeffs + ") cannot exceed number of mel bands (" + numMelBands + ")");
 		}
 
-		// Take log of mel energies (add small epsilon to avoid log(0))
-		double[] logMelEnergies = new double[numMelBands];
-		for (int i = 0; i < numMelBands; i++) {
-			logMelEnergies[i] = Math.log(melEnergies.toDouble(i) + 1e-10);
-		}
-
-		// Apply DCT-II to get MFCCs
+		// The orthogonally-normalized DCT-II basis is computed on the device from its indices
 		// DCT-II formula: X[k] = sum_{n=0}^{N-1} x[n] * cos(PI * k * (2n + 1) / (2N))
-		PackedCollection mfccs = new PackedCollection(shape(numCoeffs));
+		CollectionProducer index = integers(0, numCoeffs * numMelBands);
+		CollectionProducer k = floor(index.divide(c(numMelBands)));
+		CollectionProducer n = mod(index, c(numMelBands));
 
-		for (int k = 0; k < numCoeffs; k++) {
-			double sum = 0.0;
-			for (int n = 0; n < numMelBands; n++) {
-				sum += logMelEnergies[n] * Math.cos(Math.PI * k * (2 * n + 1) / (2.0 * numMelBands));
-			}
-			// Apply orthogonal normalization
-			double scale = (k == 0) ? Math.sqrt(1.0 / numMelBands) : Math.sqrt(2.0 / numMelBands);
-			mfccs.setMem(k, sum * scale);
-		}
+		CollectionProducer angle = k.multiply(n.multiply(c(2.0)).add(c(1.0)))
+				.multiply(c(Math.PI / (2.0 * numMelBands)));
+		CollectionProducer scale = greaterThan(k, c(0.5),
+				c(Math.sqrt(2.0 / numMelBands)), c(Math.sqrt(1.0 / numMelBands)));
+		CollectionProducer dctBasis = scale.multiply(cos(angle))
+				.reshape(shape(numCoeffs, numMelBands));
 
-		return mfccs;
+		// Log of mel energies (with epsilon to avoid log(0)) and the DCT are one computation graph
+		return MatrixFeatures.getInstance()
+				.matmul(dctBasis, log(cp(melEnergies).add(c(1e-10))))
+				.reshape(shape(numCoeffs)).evaluate();
 	}
 
 	// ==================== FFT Convolution ====================

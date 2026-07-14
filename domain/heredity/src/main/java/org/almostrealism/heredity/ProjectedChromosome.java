@@ -142,9 +142,7 @@ public class ProjectedChromosome implements Chromosome<PackedCollection>, Collec
 			PackedCollection geneValues = gene.getValues();
 
 			// Copy current values to the consolidated buffer
-			for (int i = 0; i < len; i++) {
-				consolidatedValues.setMem(offset + i, geneValues.toDouble(i));
-			}
+			consolidatedValues.setFrom(offset, geneValues);
 
 			// Replace gene's values with a view of the consolidated buffer
 			gene.replaceValues(consolidatedValues.range(shape(len), offset));
