@@ -17,7 +17,6 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Named;
@@ -353,22 +352,8 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 		int inputSize = baseWeights.getShape().length(1);
 
 		PackedCollection merged = new PackedCollection(shape(outputSize, inputSize));
-
-		for (int i = 0; i < outputSize; i++) {
-			for (int j = 0; j < inputSize; j++) {
-				double baseVal = baseWeights.toDouble(i * inputSize + j);
-
-				double loraVal = 0.0;
-				for (int r = 0; r < rank; r++) {
-					double aVal = loraA.toDouble(j * rank + r);
-					double bVal = loraB.toDouble(r * outputSize + i);
-					loraVal += aVal * bVal;
-				}
-
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(merged.range(new TraversalPolicy(1), i * inputSize + j)), CollectionFeatures.getInstance().c(baseVal + scale * loraVal)).get().run();
-			}
-		}
-
+		a(cp(merged), cp(baseWeights).add(
+				matmul(cp(loraB).transpose(), cp(loraA).transpose()).multiply(c(scale)))).get().run();
 		return merged;
 	}
 

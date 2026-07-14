@@ -17,6 +17,7 @@
 package org.almostrealism.raytrace;
 
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
@@ -65,7 +66,7 @@ import java.util.List;
  *
  * @see LightingEngine
  */
-public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware, ConsoleFeatures {
+public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware, ConsoleFeatures, CollectionFeatures {
 	/** When true, additional ranked-choice selection details are logged to stdout. */
 	public static boolean enableVerbose = false;
 
@@ -120,16 +121,14 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 		PackedCollection pixelLocations = Pair.bank(totalWidth * totalHeight);
 
-		double[] locations = new double[(int) (totalWidth * totalHeight) * 2];
-		for (double i = 0; i < totalWidth; i++) {
-			for (double j = 0; j < totalHeight; j++) {
-				int index = (int) (j * totalWidth + i);
-				locations[index * 2] = i / ssw;
-				locations[index * 2 + 1] = j / ssh;
-			}
-		}
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(pixelLocations),
-				CollectionFeatures.getInstance().c(pixelLocations.getShape(), locations)).get().run();
+		// Pixel grid computed on the device: pair p holds (p % totalWidth) / ssw
+		// and floor(p / totalWidth) / ssh
+		CollectionProducer index = integers(0, 2 * totalWidth * totalHeight);
+		CollectionProducer position = floor(index.divide(c(2.0)));
+		CollectionProducer x = mod(position, c((double) totalWidth)).divide(c((double) ssw));
+		CollectionProducer y = floor(position.divide(c((double) totalWidth))).divide(c((double) ssh));
+		a(cp(pixelLocations), greaterThan(mod(index, c(2.0)), c(0.5), y, x)
+				.reshape(pixelLocations.getShape())).get().run();
 
 		setKernelInput(pixelLocations);
 
