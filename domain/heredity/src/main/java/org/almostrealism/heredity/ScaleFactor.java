@@ -42,9 +42,6 @@ import java.util.Optional;
  * // Apply factor to a producer
  * Producer<PackedCollection> input = ...;
  * Producer<PackedCollection> scaled = half.getResultant(input);
- *
- * // Modify scale value
- * half.setScaleValue(0.75);
  * }</pre>
  *
  * @see HeredityFeatures#g(double...)
@@ -52,7 +49,7 @@ import java.util.Optional;
  */
 public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, CollectionFeatures {
 	/** The scalar multiplier applied to the input collection during factor evaluation. */
-	private PackedCollection scale;
+	private final PackedCollection scale;
 
 	/**
 	 * Constructs a new {@code ScaleFactor} with a scale of 0.0.
@@ -91,22 +88,6 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	@Override
 	public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
 		return multiply(value, (Producer) p(scale));
-	}
-
-	/**
-	 * Sets the scale value.
-	 *
-	 * <p>This replaces the identity of the underlying {@link PackedCollection}: any
-	 * already-compiled program that captured the previous collection as a runtime
-	 * argument (via {@link #getResultant}) will not observe the new value. Prefer
-	 * constructing a new {@code ScaleFactor}, or supplying the collection directly,
-	 * over mutating one that is already wired into a compiled computation.</p>
-	 *
-	 * @param s the new scale value
-	 */
-	public void setScaleValue(double s) {
-		this.scale = new PackedCollection(1);
-		this.scale.setMem(0, s);
 	}
 
 	/**
