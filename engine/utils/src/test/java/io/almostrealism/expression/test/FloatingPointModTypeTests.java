@@ -21,6 +21,7 @@ import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.lang.LanguageOperationsStub;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -43,15 +44,35 @@ import org.junit.Test;
 public class FloatingPointModTypeTests extends TestSuiteBase implements ExpressionFeatures {
 
 	/**
-	 * Verifies that a floating-point modulo over an integer-typed dividend is
-	 * floating-point typed, so integer consumers apply the casts they need.
+	 * Verifies that a modulo of an integer-typed dividend by a floating-point
+	 * constant that an integer represents without loss is converted to an
+	 * integer modulo, so the generated code contains no {@code fmod}.
+	 */
+	@Test(timeout = 30000)
+	public void integralConstantDivisorProducesIntegerMod() {
+		Expression index = new KernelIndex();
+		Assert.assertFalse(index.isFP());
+
+		Expression mod = Mod.of(index, new DoubleConstant(128.0), true);
+		Assert.assertFalse("An integer value modulo an integral constant must be integer typed",
+				mod.isFP());
+
+		String rendered = mod.getExpression(new LanguageOperationsStub());
+		Assert.assertFalse("An integer value modulo an integral constant must not render fmod: " + rendered,
+				rendered.contains("fmod"));
+	}
+
+	/**
+	 * Verifies that a genuinely floating-point modulo over an integer-typed
+	 * dividend is floating-point typed, so integer consumers apply the casts
+	 * they need.
 	 */
 	@Test(timeout = 30000)
 	public void fpModOfIntegerDividendIsFloatingPoint() {
 		Expression index = new KernelIndex();
 		Assert.assertFalse(index.isFP());
 
-		Expression mod = Mod.of(index, new DoubleConstant(128.0), true);
+		Expression mod = Mod.of(index, new DoubleConstant(128.5), true);
 		Assert.assertTrue("A floating-point modulo must be floating-point typed",
 				mod.isFP());
 
