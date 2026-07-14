@@ -605,9 +605,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// ---- Full bus: rectangular route + per-delay delay + mono sum ----
 		PackedCollection fullMatrix = rectangularTransmission(inChannels, outChannels, 0.5);
 		PackedCollection delayBuffers = new PackedCollection(outChannels * SIGNAL_SIZE);
-		delayBuffers.setMem(new double[outChannels * SIGNAL_SIZE]);
 		PackedCollection delayHeads = new PackedCollection(outChannels);
-		delayHeads.setMem(new double[outChannels]);
 
 		Map<String, Object> busArgs = new HashMap<>();
 		busArgs.put("channels", inChannels);
@@ -1000,7 +998,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	private PackedCollection zeroInput(int channels, int signalSize) {
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(channels, signalSize));
-		input.setMem(new double[channels * signalSize]);
 		return input;
 	}
 
@@ -1088,9 +1085,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// one-frame ring supports only a zero delay (the delay clamps to it), which
 		// would make delayed and undelayed configurations indistinguishable.
 		PackedCollection buffers = new PackedCollection(CHANNELS * 2 * SIGNAL_SIZE);
-		buffers.setMem(new double[CHANNELS * 2 * SIGNAL_SIZE]);
 		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.setMem(new double[CHANNELS]);
 		args.put("buffers", buffers);
 		args.put("heads", heads);
 		return args;
@@ -1130,9 +1125,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// the ring must span the longest tap (REVERB_SIGNAL_SIZE + 619 < 2 frames).
 		PackedCollection reverbBuffers = new PackedCollection(
 				REVERB_TAPS * 2 * REVERB_SIGNAL_SIZE);
-		reverbBuffers.setMem(new double[REVERB_TAPS * 2 * REVERB_SIGNAL_SIZE]);
 		PackedCollection reverbHeads = new PackedCollection(REVERB_TAPS);
-		reverbHeads.setMem(new double[REVERB_TAPS]);
 		args.put("reverb_buffers", reverbBuffers);
 		args.put("reverb_heads", reverbHeads);
 
@@ -1155,9 +1148,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
 		args.put("transmission", rectangularTransmission(CHANNELS, CHANNELS, 0.55));
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.setMem(new double[CHANNELS * SIGNAL_SIZE]);
 		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.setMem(new double[CHANNELS]);
 		args.put("buffers", buffers);
 		args.put("heads", heads);
 		// Master-bus gain stage — the PDSL `mixdown_master` ends with

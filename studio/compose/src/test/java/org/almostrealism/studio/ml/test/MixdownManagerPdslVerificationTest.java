@@ -554,11 +554,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// so the bus-line network stays silent and frame 1 shows the MAIN echo alone.
 		args.put("efx_wet_level", onesCollection(CHANNELS));
 		args.put("efx_filter_coeffs", identityFirBank(CHANNELS, taps));
-		PackedCollection echoDelay = new PackedCollection(CHANNELS);
-		double[] echoDelayData = new double[CHANNELS];
-		Arrays.fill(echoDelayData, PDSL_SIGNAL_SIZE);
-		echoDelay.setMem(echoDelayData);
-		args.put("efx_fb_delay", echoDelay);
+		args.put("efx_fb_delay",
+				new PackedCollection(CHANNELS).fill(PDSL_SIGNAL_SIZE));
 		PackedCollection zeroSend = new PackedCollection(CHANNELS);
 		args.put("wet_in", zeroSend);
 		args.put("wet_in_prev", zeroSend);
@@ -580,9 +577,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		int impulseAt = 100;
 		double amp = 0.5;
 		PackedCollection impulseFrame = new PackedCollection(inputShape);
-		double[] inData = new double[2 * CHANNELS * PDSL_SIGNAL_SIZE];
-		inData[impulseAt] = amp;  // MAIN row 0 only; the WET region stays silent
-		impulseFrame.setMem(inData);
+		// MAIN row 0 only; the WET region stays silent. A literal value at a variable
+		// offset is the sanctioned scalar-write shape.
+		impulseFrame.setMem(impulseAt, 0.5);
 		PackedCollection silentFrame = new PackedCollection(inputShape);
 
 		double[] frame0 = compiled.forward(impulseFrame).toArray(0, PDSL_SIGNAL_SIZE);
@@ -1385,9 +1382,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
 		passthrough.setMem(passthroughRowMajor);
 		PackedCollection buffers = new PackedCollection(channels * bufSize);
-		buffers.setMem(new double[channels * bufSize]);
 		PackedCollection heads = new PackedCollection(channels);
-		heads.setMem(new double[channels]);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");

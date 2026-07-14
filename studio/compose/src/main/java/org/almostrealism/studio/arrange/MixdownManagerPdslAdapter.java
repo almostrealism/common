@@ -1332,7 +1332,10 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * is all ones and every other column is zero, so {@code route(bus_send)} sums
 	 * every channel's wet-in-scaled voicing into the first line and feeds the
 	 * remaining lines nothing — exactly the legacy {@code delayGene} routing, where
-	 * the later lines receive only the transmission recirculation.
+	 * the later lines receive only the transmission recirculation. The pattern is
+	 * produced on the device by one structural assignment —
+	 * {@code max(1 - (i mod layers)^2, 0)} over the flat extent — like the other
+	 * matrix builders here, never staged in a host array.
 	 *
 	 * @param channels number of source channels
 	 * @param layers   bus line count
@@ -1340,11 +1343,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private static PackedCollection busSendMatrix(int channels, int layers) {
 		PackedCollection send = new PackedCollection(new TraversalPolicy(channels, layers));
-		double[] data = new double[channels * layers];
-		for (int ch = 0; ch < channels; ch++) {
-			data[ch * layers] = 1.0;
-		}
-		send.setMem(data);
+		CollectionProducer column = ADAPTER.mod(
+				ADAPTER.integers(0, channels * layers), ADAPTER.c((double) layers));
+		ADAPTER.a(channels * layers, ADAPTER.cp(send),
+				ADAPTER.max(ADAPTER.c(1.0).subtract(column.multiply(column)),
+						ADAPTER.c(0.0))).get().run();
 		return send;
 	}
 

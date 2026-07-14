@@ -26,8 +26,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
-
 /**
  * Exactness tests for {@link MultiChannelDspFeatures#rampScaleBlock} — the per-sample
  * parameter ramp behind the {@code ramp_scale} primitive. Sample {@code i} of channel
@@ -63,16 +61,13 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 		int channels = 2;
 		int signalSize = 8;
 		PackedCollection prev = new PackedCollection(channels);
-		prev.setMem(new double[]{1.0, 4.0});
+		prev.setMem(0, 1.0, 4.0);
 		PackedCollection curr = new PackedCollection(channels);
-		curr.setMem(new double[]{2.0, 0.0});
+		curr.setMem(0, 2.0, 0.0);
 		CompiledModel compiled = build(prev, curr, channels, signalSize);
 
 		PackedCollection input = new PackedCollection(
-				new TraversalPolicy(channels, signalSize));
-		double[] ones = new double[channels * signalSize];
-		Arrays.fill(ones, 1.0);
-		input.setMem(ones);
+				new TraversalPolicy(channels, signalSize)).fill(1.0);
 		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 		for (int ch = 0; ch < channels; ch++) {
@@ -98,23 +93,21 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 	public void testCrossFrameContinuity() {
 		int signalSize = 8;
 		PackedCollection prev = new PackedCollection(1);
-		prev.setMem(new double[]{1.0});
+		prev.setMem(0, 1.0);
 		PackedCollection curr = new PackedCollection(1);
-		curr.setMem(new double[]{2.0});
+		curr.setMem(0, 2.0);
 		CompiledModel compiled = build(prev, curr, 1, signalSize);
 
-		PackedCollection input = new PackedCollection(new TraversalPolicy(1, signalSize));
-		double[] ones = new double[signalSize];
-		Arrays.fill(ones, 1.0);
-		input.setMem(ones);
+		PackedCollection input = new PackedCollection(
+				new TraversalPolicy(1, signalSize)).fill(1.0);
 
 		double[] frame1 = compiled.forward(input).toArray(0, signalSize);
 		Assert.assertEquals("frame 1 must end at the current gain",
 				2.0, frame1[signalSize - 1], EPS);
 
 		// The per-buffer refresh: prev takes the value the last ramp ended on.
-		prev.setMem(new double[]{2.0});
-		curr.setMem(new double[]{4.0});
+		prev.setMem(0, 2.0);
+		curr.setMem(0, 4.0);
 		double[] frame2 = compiled.forward(input).toArray(0, signalSize);
 
 		double increment = (4.0 - 2.0) / signalSize;

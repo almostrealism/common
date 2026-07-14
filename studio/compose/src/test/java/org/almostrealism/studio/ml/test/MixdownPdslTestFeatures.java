@@ -17,10 +17,11 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,9 +31,10 @@ import java.util.Map;
  * banks, and standalone reverb-bus arguments. Used by both the correctness suite
  * ({@link MixdownManagerPdslVerificationTest}) and the performance suite
  * ({@link MixdownLayerPerformanceTest}) so the two exercise identical layer
- * configurations.
+ * configurations. Extends {@link CellFeatures} so patterned fixture constants are
+ * produced on the device (producer assignments) rather than staged in host arrays.
  */
-interface MixdownPdslTestFeatures {
+interface MixdownPdslTestFeatures extends CellFeatures {
 
 	/** Sample rate used for layer construction. */
 	int SAMPLE_RATE = OutputLine.sampleRate;
@@ -64,35 +66,25 @@ interface MixdownPdslTestFeatures {
 		PackedCollection efxWet = new PackedCollection(new TraversalPolicy(channels));
 		PackedCollection efxAuto = onesCollection(channels);
 
-		PackedCollection fbDelay = new PackedCollection(new TraversalPolicy(channels));
-		double[] fbDelayData = new double[channels];
-		Arrays.fill(fbDelayData, PDSL_DELAY_SAMPLES);
-		fbDelay.setMem(fbDelayData);
+		PackedCollection fbDelay = new PackedCollection(new TraversalPolicy(channels))
+				.fill(PDSL_DELAY_SAMPLES);
 		PackedCollection fbTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
 
 		// Bus-line network: a square (layers == channels) one-frame network whose send
 		// matrix sums every channel into the first line (the production routing shape),
 		// with zero recirculation and identity output taps.
-		PackedCollection busSend = new PackedCollection(new TraversalPolicy(channels, channels));
-		double[] busSendData = new double[channels * channels];
-		for (int ch = 0; ch < channels; ch++) busSendData[ch * channels] = 1.0;
-		busSend.setMem(busSendData);
-		PackedCollection busDelays = new PackedCollection(new TraversalPolicy(channels));
-		double[] busDelayData = new double[channels];
-		Arrays.fill(busDelayData, signalSize);
-		busDelays.setMem(busDelayData);
+		PackedCollection busSend = oneHotStride(
+				new PackedCollection(new TraversalPolicy(channels, channels)), channels, 0);
+		PackedCollection busDelays = new PackedCollection(new TraversalPolicy(channels))
+				.fill(signalSize);
 		PackedCollection busTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
 		PackedCollection busWetOut = new PackedCollection(new TraversalPolicy(channels, channels));
-		double[] busWetOutData = new double[channels * channels];
-		for (int i = 0; i < channels; i++) busWetOutData[i * channels + i] = 1.0;
-		busWetOut.setMem(busWetOutData);
+		a(channels * channels, cp(busWetOut), identity(channels)).get().run();
 
 		int reverbFrames = 4;
 		PackedCollection reverbSend = new PackedCollection(new TraversalPolicy(channels));
-		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
-		double[] reverbDelayData = new double[channels];
-		Arrays.fill(reverbDelayData, signalSize);
-		reverbDelays.setMem(reverbDelayData);
+		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels))
+				.fill(signalSize);
 		PackedCollection reverbFeedback = new PackedCollection(new TraversalPolicy(channels, channels));
 		PackedCollection reverbBuffers = new PackedCollection(channels * reverbFrames * signalSize);
 		PackedCollection reverbHeads = new PackedCollection(channels);
@@ -160,16 +152,12 @@ interface MixdownPdslTestFeatures {
 		Map<String, Object> reverb = new HashMap<>();
 		reverb.put("channels", channels);
 		reverb.put("signal_size", signal);
-		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
-		double[] delayData = new double[channels];
-		Arrays.fill(delayData, signal);
-		reverbDelays.setMem(delayData);
-		reverb.put("delay_samples", reverbDelays);
+		reverb.put("delay_samples",
+				new PackedCollection(new TraversalPolicy(channels)).fill(signal));
 		reverb.put("feedback_matrix", new PackedCollection(
-				new TraversalPolicy(channels, channels)).fill(0.0));
-		reverb.put("reverb_buffers",
-				new PackedCollection(channels * frames * signal).fill(0.0));
-		reverb.put("reverb_heads", new PackedCollection(channels).fill(0.0));
+				new TraversalPolicy(channels, channels)));
+		reverb.put("reverb_buffers", new PackedCollection(channels * frames * signal));
+		reverb.put("reverb_heads", new PackedCollection(channels));
 		return reverb;
 	}
 
@@ -180,11 +168,28 @@ interface MixdownPdslTestFeatures {
 	 * @return a ones-filled collection
 	 */
 	default PackedCollection onesCollection(int size) {
-		PackedCollection ones = new PackedCollection(new TraversalPolicy(size));
-		double[] data = new double[size];
-		Arrays.fill(data, 1.0);
-		ones.setMem(data);
-		return ones;
+		return new PackedCollection(new TraversalPolicy(size)).fill(1.0);
+	}
+
+	/**
+	 * Fills {@code dest} with a repeating one-hot pattern, produced on the device:
+	 * element {@code i} is {@code 1.0} where {@code i % stride == hot} and {@code 0.0}
+	 * elsewhere, via the producer expression {@code max(1 - (i mod stride - hot)^2, 0)}
+	 * — a single structural kernel, never a host-staged array.
+	 *
+	 * @param dest   the collection to populate (any shape; the pattern runs over its
+	 *               flat extent)
+	 * @param stride the repeat period
+	 * @param hot    the in-period index that receives {@code 1.0}
+	 * @return {@code dest}
+	 */
+	default PackedCollection oneHotStride(PackedCollection dest, int stride, int hot) {
+		int total = dest.getShape().getTotalSize();
+		CollectionProducer offset = mod(integers(0, total), c((double) stride))
+				.subtract(c((double) hot));
+		a(total, cp(dest),
+				max(c(1.0).subtract(offset.multiply(offset)), c(0.0))).get().run();
+		return dest;
 	}
 
 	/**
@@ -196,13 +201,8 @@ interface MixdownPdslTestFeatures {
 	 * @return the identity coefficient bank
 	 */
 	default PackedCollection identityFirBank(int channels, int taps) {
-		PackedCollection bank = new PackedCollection(new TraversalPolicy(channels, taps));
-		double[] data = new double[channels * taps];
-		for (int ch = 0; ch < channels; ch++) {
-			data[ch * taps + taps / 2] = 1.0;
-		}
-		bank.setMem(data);
-		return bank;
+		return oneHotStride(new PackedCollection(new TraversalPolicy(channels, taps)),
+				taps, taps / 2);
 	}
 
 	/**
@@ -212,10 +212,6 @@ interface MixdownPdslTestFeatures {
 	 * @return the identity coefficients
 	 */
 	default PackedCollection identityFir(int taps) {
-		PackedCollection coeffs = new PackedCollection(taps);
-		double[] data = new double[taps];
-		data[taps / 2] = 1.0;
-		coeffs.setMem(data);
-		return coeffs;
+		return oneHotStride(new PackedCollection(taps), taps, taps / 2);
 	}
 }

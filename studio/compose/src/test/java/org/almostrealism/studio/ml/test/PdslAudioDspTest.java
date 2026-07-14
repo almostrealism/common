@@ -443,7 +443,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// [0, ring - signal_size]; a one-frame ring supports only a zero delay (the
 		// kernel clamps to it), which would turn this delay line into a pass-through.
 		PackedCollection buffer = new PackedCollection(2 * SIGNAL_SIZE);
-		buffer.setMem(new double[2 * SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 
@@ -506,7 +505,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection delaySlot = new PackedCollection(1);
 		delaySlot.setMem(new double[]{delaySamples});
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
-		buffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 
@@ -923,7 +921,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Wrong size: only 9 elements, but declared as producer([4, 4]) (16 elements).
 		PackedCollection wrongShape = new PackedCollection(9);
-		wrongShape.setMem(new double[9]);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);

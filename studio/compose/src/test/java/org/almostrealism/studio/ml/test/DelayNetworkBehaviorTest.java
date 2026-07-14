@@ -178,9 +178,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				new TraversalPolicy(channels, channels));
 		feedback.setMem(feedbackMatrixRowMajor);
 		PackedCollection buffer = new PackedCollection(channels * bufSize);
-		buffer.setMem(new double[channels * bufSize]);
 		PackedCollection heads = new PackedCollection(channels);
-		heads.setMem(new double[channels]);
 
 		CollectionProducer passthrough = null;
 		if (passthroughMatrixRowMajor != null) {

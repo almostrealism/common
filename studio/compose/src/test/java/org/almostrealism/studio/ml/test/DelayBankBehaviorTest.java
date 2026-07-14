@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -58,12 +59,9 @@ public class DelayBankBehaviorTest extends TestSuiteBase
 	 * @return the compiled model
 	 */
 	private CompiledModel build(int channels, int signalSize, int bufSize, double delay) {
-		PackedCollection delaySamples = new PackedCollection(1);
-		delaySamples.setMem(new double[]{delay});
+		PackedCollection delaySamples = new PackedCollection(1).fill(delay);
 		PackedCollection buffer = new PackedCollection(channels * bufSize);
-		buffer.setMem(new double[channels * bufSize]);
 		PackedCollection heads = new PackedCollection(channels);
-		heads.setMem(new double[channels]);
 
 		Block block = multiChannelDelayBlock(cp(delaySamples), cp(buffer), cp(heads),
 				channels, signalSize);
@@ -76,6 +74,11 @@ public class DelayBankBehaviorTest extends TestSuiteBase
 	 * Runs {@code passes} ramp passes through the bank and asserts the effective delay
 	 * equals {@code expectedDelay} at every (channel, sample).
 	 *
+	 * <p>The test signal gives each channel a distinct ramp — {@code in[ch][i] =
+	 * (ch + 1) * 1000 + passOffset + i + 1} — so cross-channel mix-ups are visible.
+	 * It is produced on the device by ONE compiled assignment whose per-pass offset is
+	 * read live from a slot, never staged in a host array.</p>
+	 *
 	 * @param channels      channel count
 	 * @param signalSize    samples per channel per pass
 	 * @param bufSize       ring size per channel in samples
@@ -86,17 +89,20 @@ public class DelayBankBehaviorTest extends TestSuiteBase
 	private void assertEffectiveDelay(int channels, int signalSize, int bufSize,
 									  double requested, int expectedDelay, int passes) {
 		CompiledModel compiled = build(channels, signalSize, bufSize, requested);
+
+		PackedCollection input = new PackedCollection(
+				new TraversalPolicy(channels, signalSize));
+		PackedCollection passOffset = new PackedCollection(1);
+		CollectionProducer idx = integers(0, channels * signalSize);
+		CollectionProducer row = floor(idx.divide(c((double) signalSize)));
+		CollectionProducer col = mod(idx, c((double) signalSize));
+		Runnable fillInput = a(channels * signalSize, cp(input),
+				row.add(c(1.0)).multiply(c(1000.0))
+						.add(cp(passOffset)).add(col).add(c(1.0))).get();
+
 		for (int pass = 0; pass < passes; pass++) {
-			PackedCollection input = new PackedCollection(
-					new TraversalPolicy(channels, signalSize));
-			double[] in = new double[channels * signalSize];
-			for (int ch = 0; ch < channels; ch++) {
-				for (int i = 0; i < signalSize; i++) {
-					// Distinct per-channel ramps so cross-channel mix-ups are visible.
-					in[ch * signalSize + i] = (ch + 1) * 1000.0 + pass * signalSize + i + 1;
-				}
-			}
-			input.setMem(in);
+			passOffset.fill(pass * signalSize);
+			fillInput.run();
 			double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 			for (int ch = 0; ch < channels; ch++) {
