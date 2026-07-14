@@ -295,11 +295,12 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "mcp__ar-test-runner__start_test_run|mcp__ar-build-validator__start_validation",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\""
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\"",
+            "description": "Verdict on ~/.m2 artifact staleness before the test runner or build validator invokes Maven out-of-band — these MCP tools bypass the Bash hook, which is exactly how stale artifacts from a previous branch produced false local test results"
           }
         ]
       }
