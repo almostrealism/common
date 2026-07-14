@@ -657,6 +657,6 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 	 * @param length      the number of samples to copy
 	 */
 	private void copyRow(PackedCollection dest, int frameOffset, PackedCollection src, int length) {
-		dest.setMem(frameOffset, src, 0, length);
+		dest.setFrom(frameOffset, src, 0, length);
 	}
 }

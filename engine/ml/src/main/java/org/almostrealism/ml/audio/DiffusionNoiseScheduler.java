@@ -97,6 +97,14 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	/**
 	 * Creates a noise scheduler with specified random generator.
 	 *
+	 * <p>The cosine schedule is computed on the device from the timestep indices:
+	 * with progress p(t) = (t + 1) / numSteps and offset s = 0.008 (avoiding the
+	 * singularity at t = 0), alphas_cumprod[t] = cos((p(t) + s) / (1 + s) * pi/2)^2
+	 * clipped to [0.0001, 0.9999]. The square roots follow directly, and
+	 * alpha[t] = alphas_cumprod[t] / alphas_cumprod[t - 1] with alpha[0] equal to
+	 * alphas_cumprod[0] (expressed by dividing against the schedule shifted one
+	 * position with a leading one).</p>
+	 *
 	 * @param numSteps Number of diffusion timesteps
 	 * @param random Random number generator
 	 */
@@ -104,41 +112,32 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 		this.numSteps = numSteps;
 		this.random = random;
 
-		// Create schedule collections
 		this.alphasCumprod = new PackedCollection(numSteps);
 		this.alphas = new PackedCollection(numSteps);
 		this.sqrtAlphasCumprod = new PackedCollection(numSteps);
 		this.sqrtOneMinusAlphasCumprod = new PackedCollection(numSteps);
 
-		// Compute cosine schedule
-		// Small offset to avoid singularity at t=0
 		final double s = 0.008;
 		final int steps = numSteps;
 
-		// Compute alphas_cumprod using cosine schedule:
-		// progress = (t+1) / numSteps for t in [0, numSteps)
-		// f_t = cos((progress + s) / (1 + s) * pi/2)
-		// alpha_bar = f_t^2, clipped to [0.0001, 0.9999]
-		alphasCumprod.fill(pos -> {
-			double progress = (pos[0] + 1.0) / steps;
-			double f_t = Math.cos((progress + s) / (1 + s) * Math.PI / 2);
-			double alphaBar = f_t * f_t;
-			return Math.max(0.0001, Math.min(0.9999, alphaBar));
-		});
+		CollectionProducer f = cos(integers(1, steps + 1)
+				.divide(c((double) steps)).add(c(s)).divide(c(1 + s)).multiply(c(Math.PI / 2)));
+		CollectionProducer alphaBar = f.multiply(f);
+		greaterThan(alphaBar, c(0.9999), c(0.9999),
+				greaterThan(alphaBar, c(0.0001), alphaBar, c(0.0001)))
+				.into(alphasCumprod).evaluate();
 
-		// Compute sqrt values
-		sqrtAlphasCumprod.fill(pos -> Math.sqrt(alphasCumprod.toDouble(pos[0])));
-		sqrtOneMinusAlphasCumprod.fill(pos -> Math.sqrt(1.0 - alphasCumprod.toDouble(pos[0])));
+		sqrt(cp(alphasCumprod)).into(sqrtAlphasCumprod).evaluate();
+		sqrt(c(1.0).subtract(cp(alphasCumprod))).into(sqrtOneMinusAlphasCumprod).evaluate();
 
-		// Compute individual alphas: alpha[0] = alphasCumprod[0], alpha[t] = alphasCumprod[t] / alphasCumprod[t-1]
-		alphas.fill(pos -> {
-			int i = pos[0];
-			if (i == 0) {
-				return alphasCumprod.toDouble(0);
-			} else {
-				return alphasCumprod.toDouble(i) / alphasCumprod.toDouble(i - 1);
-			}
-		});
+		if (steps > 1) {
+			CollectionProducer previous =
+					pad(shape(steps), subset(shape(steps - 1), cp(alphasCumprod), 0), 1)
+							.add(pad(shape(steps), c(1.0), 0));
+			cp(alphasCumprod).divide(previous).into(alphas).evaluate();
+		} else {
+			cp(alphasCumprod).into(alphas).evaluate();
+		}
 	}
 
 	/**
@@ -318,6 +317,17 @@ public class DiffusionNoiseScheduler implements CodeFeatures {
 	 */
 	public double getAlphaCumprod(int t) {
 		return alphasCumprod.toDouble(t);
+	}
+
+	/**
+	 * Gets the per-step alpha at timestep t: the ratio of consecutive cumulative
+	 * alphas, with alpha at step zero equal to the first cumulative alpha.
+	 *
+	 * @param t Timestep
+	 * @return Alpha at t
+	 */
+	public double getAlpha(int t) {
+		return alphas.toDouble(t);
 	}
 
 	/**

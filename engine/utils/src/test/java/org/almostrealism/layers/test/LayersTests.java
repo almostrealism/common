@@ -233,7 +233,7 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		PackedCollection actualOutput = new PackedCollection(shape(size));
 		model.getForward().setReceptor(out -> () -> () -> {
 			PackedCollection result = out.get().evaluate();
-			actualOutput.setMem(0, result.toArray(0, size), 0, size);
+			actualOutput.setFrom(0, result, 0, size);
 		});
 		
 		// Execute the model

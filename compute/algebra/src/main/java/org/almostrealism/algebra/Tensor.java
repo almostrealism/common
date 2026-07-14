@@ -251,11 +251,9 @@ public class Tensor<T> {
 			return packMem(shape, targetShape);
 		}
 
-		PackedCollection c = new PackedCollection(shape);
-
-		AtomicInteger index = new AtomicInteger();
-		shape.stream().forEach(pos -> c.setMem(index.getAndIncrement(), ((Number) get(pos)).doubleValue()));
-		return c;
+		double[] values = shape.stream()
+				.mapToDouble(pos -> ((Number) get(pos)).doubleValue()).toArray();
+		return PackedCollection.of(values).reshape(shape);
 	}
 
 	/**
@@ -271,7 +269,7 @@ public class Tensor<T> {
 		AtomicInteger index = new AtomicInteger();
 		shape.stream().forEach(pos -> {
 			MemoryData d = (MemoryData) get(pos);
-			c.setMem(index.getAndIncrement() * d.getMemLength(), d, 0, d.getMemLength());
+			c.setFrom(index.getAndIncrement() * d.getMemLength(), d, 0, d.getMemLength());
 		});
 
 		return c;

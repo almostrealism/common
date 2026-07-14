@@ -443,7 +443,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
 		buffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
-		head.setMem(new double[]{0.0});
+		head.setMem(0.0);
 		args.put("buffer", buffer);
 		args.put("head", head);
 

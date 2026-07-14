@@ -369,9 +369,7 @@ public class CollectionPadTests extends TestSuiteBase {
 
 		int batchSize = 256;
 		PackedCollection scalars = new PackedCollection(shape(batchSize, 1).traverse(1));
-		for (int i = 0; i < batchSize; i++) {
-			scalars.setMem(i, (double) i);
-		}
+		integers(0, batchSize).into(scalars.traverseEach()).evaluate();
 
 		PackedCollection result = new PackedCollection(shape(batchSize, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);

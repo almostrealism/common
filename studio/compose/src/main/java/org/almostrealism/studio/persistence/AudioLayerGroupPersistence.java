@@ -290,7 +290,7 @@ public final class AudioLayerGroupPersistence {
 		PackedCollection sliced = new PackedCollection(channels.size(), frameCount);
 		for (int outIdx = 0; outIdx < channels.size(); outIdx++) {
 			int srcIdx = channels.get(outIdx);
-			sliced.setMem(outIdx * frameCount, full, srcIdx * frameCount, frameCount);
+			sliced.setFrom(outIdx * frameCount, full, srcIdx * frameCount, frameCount);
 		}
 		return sliced;
 	}
