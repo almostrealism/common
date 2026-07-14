@@ -17,14 +17,18 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Input;
 
+import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A {@link Gene} that produces factor values by projecting source data through weighted transformations.
@@ -79,8 +83,32 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	/** Per-factor value ranges used to clamp or scale projected outputs. */
 	private final PackedCollection ranges;
 
+	/**
+	 * Compiled projection kernels shared across all genes, keyed by
+	 * (factor count, source length). The gene collections are supplied as
+	 * runtime arguments, so one kernel serves every gene of a given shape.
+	 * Matrix products do not support signature-based instruction reuse,
+	 * so without this cache every {@link #refreshValues()} call on every
+	 * gene would compile a fresh kernel.
+	 */
+	private static final Map<String, Evaluable<PackedCollection>> REFRESH_KERNELS = new ConcurrentHashMap<>();
+
+	/**
+	 * Compiled row-normalization kernels shared across all genes, keyed by
+	 * (factor count, source length), for the same reason as
+	 * {@link #REFRESH_KERNELS}.
+	 */
+	private static final Map<String, Evaluable<PackedCollection>> NORMALIZE_KERNELS = new ConcurrentHashMap<>();
+
 	/** Cache of the most recently computed factor values for this gene. */
 	private PackedCollection values;
+
+	/**
+	 * Scratch buffer holding the unnormalized random weights during
+	 * {@link #initWeights(long)}, so the normalization kernel never reads
+	 * and writes the same memory.
+	 */
+	private PackedCollection weightsScratch;
 
 	/**
 	 * Constructs a new {@code ProjectedGene} with the specified source data and weights.
@@ -121,11 +149,32 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * @param seed the random seed for reproducible initialization
 	 */
 	public void initWeights(long seed) {
-		randn(shape(weights), new Random(seed)).into(weights).evaluate();
-		for (int pos = 0; pos < length(); pos++) {
-			PackedCollection row = weights.get(pos);
-			a(cp(row), cp(row).divide(sqrt(cp(row).multiply(cp(row)).sum()))).get().run();
+		int len = length();
+		int sourceLength = source.getShape().length(0);
+
+		if (weightsScratch == null) {
+			weightsScratch = new PackedCollection(shape(len, sourceLength));
 		}
+
+		randn(shape(weightsScratch), new Random(seed)).into(weightsScratch).evaluate();
+
+		Evaluable<PackedCollection> normalize = NORMALIZE_KERNELS.computeIfAbsent(kernelKey(), key -> {
+			CollectionProducer w = c(Input.value(shape(len, sourceLength), 0)).traverse(1);
+			return w.divide(sqrt(w.multiply(w).sum())).get();
+		});
+
+		normalize.into(weights.reshape(shape(len, sourceLength)).traverse(1))
+				.evaluate(weightsScratch);
+	}
+
+	/**
+	 * Returns the key identifying the compiled kernel that serves genes of
+	 * this shape.
+	 *
+	 * @return a key combining the factor count and source length
+	 */
+	private String kernelKey() {
+		return length() + ":" + source.getShape().length(0);
 	}
 
 	/**
@@ -135,30 +184,37 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * dot product result to the configured range for each factor.
 	 *
 	 * <p>The projection, the triangular wave, and the range mapping are one computation
-	 * graph over the gene's collections: the dot products are a matrix-vector product, the
+	 * graph over argument placeholders: the dot products are a matrix-vector product, the
 	 * wave is a positive mod followed by a comparison select, and the range bounds are read
-	 * from the columns of {@link #ranges}. Every operand is a runtime argument, so a single
-	 * compiled kernel serves every gene and every refresh.
+	 * from the columns of {@link #ranges}. The gene's collections are supplied as runtime
+	 * arguments, so a single compiled kernel serves every gene of this shape and every
+	 * refresh.
 	 */
 	public void refreshValues() {
 		int len = length();
 		int sourceLength = source.getShape().length(0);
 
-		CollectionProducer projected = MatrixFeatures.getInstance()
-				.matmul(cp(weights).reshape(shape(len, sourceLength)), cp(source))
-				.reshape(shape(len));
+		Evaluable<PackedCollection> refresh = REFRESH_KERNELS.computeIfAbsent(kernelKey(), key -> {
+			CollectionProducer w = c(Input.value(shape(len, sourceLength), 0));
+			CollectionProducer src = c(Input.value(shape(sourceLength), 1));
+			CollectionProducer bounds = c(Input.value(shape(len, 2), 2));
 
-		CollectionProducer value = mod(mod(projected, c(2.0)).add(c(2.0)), c(2.0));
-		CollectionProducer phase = value.divide(c(2.0));
-		CollectionProducer wave = greaterThan(phase, c(0.5),
-				c(2.0).subtract(phase.multiply(c(2.0))),
-				phase.multiply(c(2.0)));
+			CollectionProducer projected = MatrixFeatures.getInstance()
+					.matmul(w, src).reshape(shape(len));
 
-		CollectionProducer bounds = cp(ranges).reshape(shape(len, 2));
-		CollectionProducer start = subset(shape(len, 1), bounds, 0, 0).reshape(shape(len));
-		CollectionProducer end = subset(shape(len, 1), bounds, 0, 1).reshape(shape(len));
+			CollectionProducer value = mod(mod(projected, c(2.0)).add(c(2.0)), c(2.0));
+			CollectionProducer phase = value.divide(c(2.0));
+			CollectionProducer wave = greaterThan(phase, c(0.5),
+					c(2.0).subtract(phase.multiply(c(2.0))),
+					phase.multiply(c(2.0)));
 
-		a(cp(values), start.add(wave.multiply(end.subtract(start)))).get().run();
+			CollectionProducer start = subset(shape(len, 1), bounds, 0, 0).reshape(shape(len));
+			CollectionProducer end = subset(shape(len, 1), bounds, 0, 1).reshape(shape(len));
+
+			return start.add(wave.multiply(end.subtract(start))).get();
+		});
+
+		refresh.into(values).evaluate(weights, source, ranges);
 	}
 
 	/**

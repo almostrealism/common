@@ -18,6 +18,7 @@ package org.almostrealism.music.pattern;
 
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationWithInfo;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.arrange.ChannelSection;
@@ -168,6 +169,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	/** Chromosome controlling envelope automation per layer. */
 	private Chromosome<PackedCollection> envelopeAutomationChromosome;
 
+	/**
+	 * Compiled evaluables that gather the automation gene values for each layer
+	 * depth. The gather is a concat over gene factor producers, which do not
+	 * support signature-based instruction reuse, so without this cache every
+	 * {@link #layer(ParameterSet)} call would compile a fresh kernel.
+	 */
+	private final Map<Integer, Evaluable<PackedCollection>> automationParamEvaluables = new HashMap<>();
+
 	/** Parameter function used to select which note choice to use. */
 	private ParameterFunction noteSelection;
 	/** Position function used to determine section activity. */
@@ -302,6 +311,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		envelopeAutomationChromosome = chromosome(IntStream.range(0, MAX_LAYERS)
 				.mapToObj(i -> chromosome.addGene(AUTOMATION_GENE_LENGTH))
 				.collect(Collectors.toList()));
+		automationParamEvaluables.clear();
 	}
 
 	/** Returns the destination buffer map, keyed by channel info. */
@@ -614,14 +624,15 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * @param params the parameter set for this layer
 	 */
 	protected void layer(ParameterSet params) {
-		Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(depth());
 		PackedCollection automationParams =
 				PackedCollection.factory().apply(AUTOMATION_GENE_LENGTH);
-		concat(shape(AUTOMATION_GENE_LENGTH),
-				IntStream.range(0, AUTOMATION_GENE_LENGTH)
-						.mapToObj(i -> automationGene.valueAt(i).getResultant(null))
-						.toArray(Producer[]::new))
-				.into(automationParams).evaluate();
+		automationParamEvaluables.computeIfAbsent(depth(), d -> {
+			Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(d);
+			return concat(shape(AUTOMATION_GENE_LENGTH),
+					IntStream.range(0, AUTOMATION_GENE_LENGTH)
+							.mapToObj(i -> automationGene.valueAt(i).getResultant(null))
+							.toArray(Producer[]::new)).get();
+		}).into(automationParams).evaluate();
 
 		if (rootCount() <= 0) {
 			PatternLayerSeeds seeds = getSeeds(params);
