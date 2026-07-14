@@ -208,17 +208,198 @@ cause of the CL gap: with the RMW eliminated at source level, per-run time is
 unchanged and still scales with reduction width. The `(long)` index claim was
 already disproven separately (Metal emits the identical cast and is fast).
 
-### Where the CL time actually goes (next investigation)
+### Where the CL time actually goes (investigated — root cause found)
 
 The marginal cost is linear in **input buffer size**, not loop trip count:
 dims 2/16/64 → 4.8/38.4/153.6 KB input → 1.56/2.17/4.56 ms. The marginal rate
-is ~20 MB/s, plus ~1.5 ms fixed per dispatch. That profile matches per-dispatch
-host↔device data movement (e.g. argument copy-in of buffers that live in native
-CPU memory under `AR_HARDWARE_DRIVER=native,cl`), not kernel execution. The next
-contained step is in the CL operator dispatch path (argument
-preparation/synchronization for device-resident reuse), not in codegen.
+is ~20 MB/s, plus ~1.5 ms fixed per dispatch.
+
+**Confirmed by a profiled run plus JMX thread dumps** (per-row sum, 600×64,
+`AR_HARDWARE_DRIVER=native,cl`, Apple OpenCL):
+
+- The kernels are fast. Recorded device work is ~93 µs/run — the sum kernel
+  itself is 25.5 µs, the output copy kernel 67 µs — out of ~4.6 ms wall per
+  run. 98% of per-dispatch time is host-side.
+- Thread dumps show the `ComputeContext-0..3` executor threads RUNNABLE with
+  ~6.5 s of CPU each (~62% of wall combined) inside
+  `AbstractComputeContext.copy` (line 183): `NativeRead.apply` (JNI) →
+  `NativeMemoryProvider.getMem` → `Memory.toArray` (a Java `double[]`
+  round-trip) → `CLMemoryProvider.setMem` (line 374). The host thread parks in
+  `LatchSemaphore.waitFor` under `ProcessDetailsFactory.construct` (line 581) /
+  `DestinationEvaluable.request` (line 373) waiting for these copies and the
+  dispatch handoffs.
+
+**The mechanism is `MemoryReplacementManager`.** On every dispatch
+(`AcceleratedOperation.apply`, prepare at line 625, postprocess at line 640),
+each `MemoryData` argument whose provider differs from the kernel's target
+provider and is ≤ 1M elements is replaced with a temporary buffer on the
+target provider, copied in before the kernel, and copied **back** after it —
+both directions, every run, including read-only inputs. Under `native,cl`
+collections allocate native-resident, so the sum's whole input and output
+round-trip through a `double[]` on every single dispatch. This explains both
+the ~20 MB/s linear-in-bytes cost (per-element JNI reads plus the `double[]`
+conversion) and the ~1.5 ms fixed cost (temp allocation, semaphore chains, and
+host↔executor thread handoffs). Metal never pays any of this: collections are
+Metal/NIO-resident under `mtl`, so no replacement occurs. Arguments above the
+1M-element threshold (`matmulLarge`'s 8.4 MB matrix) skip replacement and are
+instead permanently migrated once by `HardwareOperator.reassignMemory`.
+
+### Contained fixes, ranked
+
+1. **Bulk copy path.** `AbstractComputeContext.copy` between native and CL
+   memory goes element-by-element through JNI into a `double[]`. Both sides
+   are host-accessible memory; a direct bulk transfer
+   (`clEnqueueWriteBuffer`/`ReadBuffer` against the native host pointer, or at
+   minimum one bulk JNI read) is contained to
+   `CLMemoryProvider.setMem`/`getMem` for `NativeMemory` sources and should
+   move the ~20 MB/s to something in the GB/s range.
+2. **Replacement caching across dispatches.** Reuse the temp buffers when the
+   same compiled operation runs with the same argument identities; skip the
+   copy-in when the source has not been written since the last dispatch (the
+   `CLMemory.dispatchGeneration` machinery added on this branch is exactly the
+   right primitive); skip the copy-back for arguments the kernel does not
+   write. This eliminates steady-state replacement traffic entirely for the
+   repeated-dispatch pattern that `sumPowers`, `matmulLarge`, and realtime
+   audio ticks all share.
+3. **Allocation-side residency.** Prefer allocating collections on the kernel
+   provider under multi-context configurations. Larger blast radius; only
+   worth considering if 1 and 2 prove insufficient.
+
+With replacement traffic gone, the per-dispatch floor is the ~0.2 ms that
+`matmulPowers` already demonstrates (CL ≈ Metal there), which would put
+`sumPowers` around 60 s against its 240 s budget. Approximate parity with
+Metal is therefore a realistic target for these tests, not a lost cause.
+
+### Bulk copy implemented (fix 1) — outcome
+
+Per the owner's direction, fix 1 was implemented and fixes 2/3 will NOT be
+pursued. If bulk copy proves insufficient on CI, the plan is instead to use
+`CLMemory` everywhere and automatically switch from the JNI backend to the
+CLJNI backend for the native portion when only `native` and `cl` are present:
+CLJNI compiles C the way the native backend does, but reads and writes
+`CLMemory` directly through its pointer, making the cross-provider problem
+disappear rather than be optimized (requires the CL library to be available
+for native compilation at runtime, which takes setup, especially on macOS).
+
+What was changed:
+
+- `MemoryProvider` gained two capability methods (default no-op):
+  `getHostBuffer(mem, offset, length)` returning a direct `ByteBuffer` view,
+  and `getMem(mem, sOffset, ByteBuffer, length)` for bulk reads. Raw bytes in
+  the provider's element format; callers must check `getNumberSize()` matches.
+- `NativeBufferView` (new JNI op, `org.almostrealism.c`) wraps a native
+  allocation range via `NewDirectByteBuffer` — no copy.
+- `NativeMemoryProvider` implements `getHostBuffer`, and its
+  `setMem(…, Memory source, …)` reads bulk from the source provider directly
+  into that view when element sizes match (CL→native copy-back direction).
+- `CLMemoryProvider.setMem(…, Memory, …)` writes with a single
+  `clEnqueueWriteBuffer` from the source's host-buffer view (native→CL
+  prepare direction), resolving the long-standing TODO there; it also
+  implements the bulk `getMem(ByteBuffer)` read.
+- `NativeRead`'s generated C previously called `SetDoubleArrayRegion` once
+  **per element** (the measured ~20 MB/s); it now performs one bulk region
+  copy (FP64) or one conversion pass plus one region copy (FP32). This
+  benefits every native host read, not just CL copies.
+- Regression test: `CrossProviderMemoryCopyTest` (engine/utils) covers both
+  directions with offsets and sentinels, and skips cleanly when CL or JNI is
+  unavailable.
+
+Measured effect (per-row sum, 600 rows, Apple OpenCL, `native,cl`):
+
+| dim | before      | after       |
+|-----|-------------|-------------|
+| 2   | 1.56 ms/run | 1.28 ms/run |
+| 16  | 2.17 ms/run | 1.32 ms/run |
+| 64  | 4.56 ms/run | 1.30 ms/run |
+
+The linear-in-bytes component is gone — per-dispatch time is now flat across
+reduction widths — and `sumPowers` dims now complete in ~63 s each (previously
+~80 s and growing with width). **However, the fixed ~1.3 ms per dispatch
+remains** (temporary-buffer allocation per dispatch, semaphore chains, and
+host↔executor thread handoffs in the replacement machinery), so `sumPowers`
+(300k dispatches ≈ 390 s) still exceeds its 240 s budget locally, and
+`matmulLarge` now surfaces the same underlying issue as `Memory Max Reached`:
+with copies no longer throttling the dispatch rate, per-dispatch CL temp
+allocation outpaces GC-driven reclamation. Both are the per-dispatch
+replacement cost itself, which is exactly what the CLMemory-everywhere/CLJNI
+direction eliminates.
 
 The accumulator promotion is still a correct, verified codegen improvement — the
 loop body is loads-only on every backend, which removes the dependence on each
 backend compiler's aliasing analysis — but it is not sufficient to fix the
 `sumPowers` timeout on OpenCL.
+
+### Revised: unify the native memory providers (supersedes the capability-method approach)
+
+Review of the first bulk-copy implementation — the `getHostBuffer` /
+`getMem(ByteBuffer)` capability methods, `NativeBufferView`, and the
+`NativeMemoryProvider.setMem` fast path described above — found it was
+reinventing machinery the framework already had. `CLMemoryProvider` already
+performs a bulk `clEnqueueWriteBuffer` / `clEnqueueReadBuffer` against a
+ByteBuffer-backed `NativeBuffer` (the write path inline in `setMem`, the read
+path via a registered NIO-provider adapter). The only reason it did not fire
+under `native,cl` is that the native execution RAM was the calloc-backed
+`NativeMemory`, which exposes no `ByteBuffer`. `NativeBufferView` existed solely
+to graft a `ByteBuffer` onto that calloc memory — duplicating what `NativeBuffer`
+already is.
+
+The revision removes the special-case surface entirely and unifies the two
+CPU-side providers.
+
+**Root-caused a prerequisite along the way: `libNIO` was the odd one out.**
+Making `NativeBuffer` the native RAM first surfaced that `NIO` — the class
+`NativeBuffer` uses for its content pointer — loaded a *prebuilt* library, and only
+`libNIO.dylib` (macOS) shipped in resources. There was never a `libNIO.so`, so on
+Linux CI `NIO` could not initialize and every test touching a `NativeBuffer` threw
+`NoClassDefFoundError`. Rather than route around it, `NIO` was fixed to match the
+rest of the native backend: its four operations (direct-buffer pointer via
+`GetDirectBufferAddress`, and shared-memory `mmap`/`msync`/`munmap`) are now
+compiled at runtime by `NativeCompiler` as `BaseNative` ops, exactly like `Malloc`.
+`libNIO.dylib` and `NIO.cpp` are deleted. `NativeBuffer` now works on every
+platform the native backend supports, so there is no platform constraint on the
+default.
+
+The design:
+
+- The NIO provider and the calloc provider are merged into a single
+  `org.almostrealism.nio.NativeMemoryProvider` with a per-instance `direct` mode.
+  **Direct mode is the default** (`AR_HARDWARE_NATIVE_DIRECT_BUFFERS`, default true —
+  resolved by `Hardware` and threaded into the provider/`NativeDataContext`
+  constructors, distinct from `AR_HARDWARE_NIO_MEMORY` which instead shares one host
+  provider across backends via `NativeMemoryProvider.sharedBridge`): allocate a
+  `NativeBuffer` via `allocateDirect`, whose content pointer comes from a
+  runtime-compiled op the provider owns. Calloc mode allocates a `NativeMemory` via
+  `Malloc`; the native pointer is its sole source of truth and it derives its
+  `ByteBuffer` view on demand via a runtime-compiled `NewDirectByteBuffer`
+  (`NativeBufferView`), avoiding the JVM's direct-memory accounting. All of these
+  runtime-compiled ops (calloc `Malloc`/`Free`/`NativeRead`/`NativeWrite`/
+  `NativeBufferView`, and direct-buffer pointer/`mmap`/`msync`/`munmap`) live in
+  `org.almostrealism.nio` and are owned and lazily compiled by the provider — the
+  former static `NIO` facade is gone. Both modes work on every platform and support
+  the bulk copy. Allocation tracking, metrics, and leak detection run in both modes;
+  deallocation frees calloc memory explicitly but leaves direct buffers to the JVM's
+  own `DirectByteBuffer` cleaner — distinguished by reference type (`NativeBufferRef`
+  vs plain `NativeRef`) so there is no double free.
+- The ByteBuffer capability is expressed through the type hierarchy — an abstract
+  `DirectMemory extends RAM` that both `NativeMemory` and `NativeBuffer` extend — and
+  consumers check `instanceof DirectMemory` + `asByteBuffer()`, rather than a
+  `MemoryProvider` method that returns `null` on unsupported memory. The two
+  capability methods are deleted; `NativeBufferView` survives only as the internal
+  implementation of `NativeMemory.asByteBuffer()`. `CLMemoryProvider`'s bulk `setMem`
+  and its registered copy-back adapter both key off `DirectMemory` and address the
+  position-stable root `ByteBuffer` at the correct offset (fixing a latent adapter bug
+  that used the typed view — whose position advances with host writes — and ignored
+  the destination offset).
+- The `NativeRead` bulk-region change is retained — it benefits calloc-mode host
+  reads regardless of the cross-provider path.
+
+Net: the branch delivers the bulk cross-provider transfer with zero new
+`MemoryProvider` surface, using only runtime-generated code on every path — no
+prebuilt native library anywhere. Verified with `libNIO.dylib` deleted from the
+build: `CrossProviderMemoryCopyTest` (under `native,cl`) and native-only matmul
+tests pass with `NativeBuffer` as the default RAM and `NIO` compiled at runtime.
+The device-side
+operation is the same bulk `clEnqueue*Buffer`, so the transfer characteristics and
+per-dispatch timing conclusions from the table above are unchanged; the
+per-dispatch replacement floor remains the open item, addressed by the
+CLMemory-everywhere / CLJNI direction rather than by this change.
