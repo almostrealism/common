@@ -68,7 +68,8 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	 * @param scale the scalar multiplier value
 	 */
 	public ScaleFactor(double scale) {
-		this.scale = new PackedCollection(1).fill(scale);
+		this.scale = new PackedCollection(1);
+		this.scale.setMem(0, scale);
 	}
 
 	/**
@@ -95,10 +96,17 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	/**
 	 * Sets the scale value.
 	 *
+	 * <p>This replaces the identity of the underlying {@link PackedCollection}: any
+	 * already-compiled program that captured the previous collection as a runtime
+	 * argument (via {@link #getResultant}) will not observe the new value. Prefer
+	 * constructing a new {@code ScaleFactor}, or supplying the collection directly,
+	 * over mutating one that is already wired into a compiled computation.</p>
+	 *
 	 * @param s the new scale value
 	 */
 	public void setScaleValue(double s) {
-		this.scale = new PackedCollection(1).fill(s);
+		this.scale = new PackedCollection(1);
+		this.scale.setMem(0, s);
 	}
 
 	/**

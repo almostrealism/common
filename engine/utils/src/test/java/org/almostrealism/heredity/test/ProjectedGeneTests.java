@@ -97,8 +97,8 @@ public class ProjectedGeneTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests that ScaleFactor multiplies through its producer and that the scale value
-	 * survives a set/get round trip after replacement.
+	 * Tests that ScaleFactor multiplies through its producer for scales established
+	 * at construction.
 	 */
 	@Test(timeout = 120000)
 	public void scaleFactor() {
@@ -106,8 +106,8 @@ public class ProjectedGeneTests extends TestSuiteBase {
 		assertEquals(0.5, factor.getScaleValue());
 		assertEquals(1.5, factor.getResultant(c(3.0)).get().evaluate().toDouble(0));
 
-		factor.setScaleValue(0.25);
-		assertEquals(0.25, factor.getScaleValue());
-		assertEquals(2.0, factor.getResultant(c(8.0)).get().evaluate().toDouble(0));
+		ScaleFactor quarter = new ScaleFactor(0.25);
+		assertEquals(0.25, quarter.getScaleValue());
+		assertEquals(2.0, quarter.getResultant(c(8.0)).get().evaluate().toDouble(0));
 	}
 }

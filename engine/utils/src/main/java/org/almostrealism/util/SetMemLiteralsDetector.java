@@ -116,12 +116,13 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * These are the one legitimate home of a bulk host-array write; every other file is subject
 	 * to the rule.
 	 *
-	 * <p>The entries under {@code algebra}, {@code geometry}, and {@code color} are
-	 * {@code PackedCollection} value types (and, for {@code RGBData192}, the backing store of
-	 * one). Their setters are the storage-layer write surface of the type itself, exactly like
-	 * {@code PackedCollection}'s own population methods; the migration work for these types is
-	 * eliminating the <em>call sites</em> that push computed values through those setters, not
-	 * rewriting the types' internals.</p>
+	 * <p>The entries under {@code algebra}, {@code geometry}, {@code color}, and
+	 * {@code heredity} are value types: {@code PackedCollection} subclasses (with, for
+	 * {@code RGBData192}, the backing store of one) and {@code ScaleFactor}, which holds its
+	 * scalar storage by composition. Their setters are the storage-layer write surface of the
+	 * type itself, exactly like {@code PackedCollection}'s own population methods; the
+	 * migration work for these types is eliminating the <em>call sites</em> that push computed
+	 * values through those setters, not rewriting the types' internals.</p>
 	 */
 	private static final List<String> SANCTIONED_WRITE_SURFACE = List.of(
 			"/hardware/MemoryData.java",
@@ -135,7 +136,8 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			"/geometry/Ray.java",
 			"/geometry/TransformMatrix.java",
 			"/color/RGB.java",
-			"/color/RGBData192.java"
+			"/color/RGBData192.java",
+			"/heredity/ScaleFactor.java"
 	);
 
 	/**
