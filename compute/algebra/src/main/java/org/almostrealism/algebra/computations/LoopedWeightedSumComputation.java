@@ -24,6 +24,7 @@ import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
@@ -148,6 +149,11 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 		this.weightShape = weightShape;
 		this.inputIndexer = inputIndexer;
 		this.weightIndexer = weightIndexer;
+
+		// The signature recorded during superclass construction was computed
+		// before the indexers above were assigned, so it must be refreshed
+		// now that the state is complete
+		setMetadata(getMetadata().withSignature(signature()));
 	}
 
 	/**
@@ -247,5 +253,45 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 				inputIndexer, weightIndexer,
 				(Producer<PackedCollection>) children.get(1),
 				(Producer<PackedCollection>) children.get(2));
+	}
+
+	/**
+	 * Extends the aggregation signature with the state that determines the
+	 * generated loop: the inner element count, the operand shapes, and the
+	 * structure of the two index functions (rendered against placeholder
+	 * references). Without this, two looped weighted sums with matching
+	 * shapes but different index arithmetic would share a signature while
+	 * generating different kernels.
+	 *
+	 * @return The signature string, or null when the base signature or the
+	 *         structural identity of the index functions is unavailable
+	 */
+	@Override
+	public String signature() {
+		// Superclass construction requests the signature before the indexers
+		// are assigned; the constructor refreshes it once they are
+		if (inputIndexer == null || weightIndexer == null) return null;
+
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		try {
+			Expression output = new StaticReference(Integer.class, "signatureOutput");
+			Expression outer = new StaticReference(Integer.class, "signatureOuter");
+			Expression inner = new StaticReference(Integer.class, "signatureInner");
+			String indexers = inputIndexer.index(output, outer, inner)
+					.getExpression(Expression.defaultLanguage()) + ";" +
+					weightIndexer.index(output, outer, inner)
+							.getExpression(Expression.defaultLanguage());
+
+			return signature + "{innerCount:" + innerCount +
+					",input:" + inputShape.toStringDetail() +
+					",weight:" + weightShape.toStringDetail() +
+					",indexers:" + indexers + "}";
+		} catch (Exception e) {
+			// An index function that inspects its arguments cannot be
+			// rendered structurally, so no signature is available
+			return null;
+		}
 	}
 }

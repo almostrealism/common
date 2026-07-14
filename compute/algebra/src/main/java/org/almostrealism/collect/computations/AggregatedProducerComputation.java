@@ -26,6 +26,7 @@ import io.almostrealism.compute.ParallelProcessContext;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelIndex;
@@ -246,6 +247,11 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 
 		if (enableLogging)
 			log("Created AggregatedProducerComputation (" + count + " items)");
+
+		// The signature recorded during superclass construction was computed
+		// before the aggregation state above was assigned, so it must be
+		// refreshed now that the state is complete
+		setMetadata(getMetadata().withSignature(signature()));
 	}
 
 	/**
@@ -272,6 +278,10 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 */
 	public AggregatedProducerComputation setReplaceLoop(boolean replaceLoop) {
 		this.replaceLoop = replaceLoop;
+
+		// Loop replacement changes the generated kernel, so the signature
+		// recorded when this computation was constructed must be refreshed
+		setMetadata(getMetadata().withSignature(signature()));
 		return this;
 	}
 
@@ -279,12 +289,16 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 * Indicates whether signature generation is supported for this aggregation.
 	 * Signatures are used for caching and deduplication of computations.
 	 *
-	 * <p>Aggregations typically do not support signatures due to their complex
-	 * and dynamic nature.</p>
+	 * <p>The signature produced by {@link #signature()} captures the aggregation
+	 * state that determines the generated kernel: the iteration count, the loop
+	 * replacement setting, and the structure of the initial and combining
+	 * functions (rendered against placeholder references). When that structure
+	 * cannot be rendered, {@link #signature()} returns null on its own, so
+	 * there is no need to disable support here.</p>
 	 *
-	 * @return Always {@code false} for base aggregated computations
+	 * @return Always {@code true} for base aggregated computations
 	 */
-	protected boolean isSignatureSupported() { return false; }
+	protected boolean isSignatureSupported() { return true; }
 
 	@Override
 	public boolean isChainRuleSupported() {
@@ -499,6 +513,54 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return c;
 	}
 
+	/**
+	 * Renders the structural identity of the aggregation functions by applying
+	 * {@link #expression} to opaque placeholder references and {@code initial}
+	 * to an empty argument list. Two aggregations whose functions build the
+	 * same expression tree render identically, while different combining
+	 * functions (for example sum and product) render differently even when
+	 * they share a name and shape.
+	 *
+	 * @return The rendered expression structure, or null when the functions
+	 *         cannot be rendered without real arguments
+	 */
+	protected String expressionSignature() {
+		try {
+			Expression left = new StaticReference(Double.class, "signatureLeft");
+			Expression right = new StaticReference(Double.class, "signatureRight");
+			String combined = expression.apply(left, right)
+					.getExpression(Expression.defaultLanguage());
+			String start = initial.apply(new TraversableExpression[0], e(0))
+					.getExpression(Expression.defaultLanguage());
+			return start + ";" + combined;
+		} catch (Exception e) {
+			// An initial or combining function that inspects its arguments
+			// cannot be rendered structurally, so no signature is available
+			return null;
+		}
+	}
+
+	/**
+	 * Extends the standard computation signature with the aggregation state
+	 * that determines the generated kernel: the iteration count, the loop
+	 * replacement setting, and the structural identity of the initial and
+	 * combining functions.
+	 *
+	 * @return The signature string, or null when the base signature or the
+	 *         structural identity of the aggregation functions is unavailable
+	 */
 	@Override
-	public String signature() { return isSignatureSupported() ? super.signature() : null; }
+	public String signature() {
+		if (!isSignatureSupported()) return null;
+
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		String functions = expressionSignature();
+		if (functions == null) return null;
+
+		return signature + "{count:" + count +
+				",replaceLoop:" + replaceLoop +
+				",functions:" + functions + "}";
+	}
 }
