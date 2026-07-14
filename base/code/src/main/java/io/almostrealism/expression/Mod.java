@@ -83,12 +83,18 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/**
 	 * Constructs a modulo expression.
 	 *
+	 * <p>A floating-point modulo is always {@link Double} typed, regardless of the
+	 * dividend type, because {@code fmod} produces a floating-point result. Typing
+	 * it after the dividend would let an integer-typed expression render as a
+	 * floating-point value, so consumers (integer modulo, casts, array subscripts)
+	 * would generate invalid code around it.</p>
+	 *
 	 * @param a  the dividend
 	 * @param b  the divisor
 	 * @param fp {@code true} for floating-point modulo, {@code false} for integer modulo
 	 */
 	protected Mod(Expression<T> a, Expression<T> b, boolean fp) {
-		super(a.getType(), a, b);
+		super((Class<T>) (fp ? Double.class : a.getType()), a, b);
 		this.fp = fp;
 
 		if (fp && !a.isFP() && !b.isFP()) {
