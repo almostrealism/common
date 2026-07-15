@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.c;
+package org.almostrealism.nio;
 
+import org.almostrealism.c.BaseNative;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
 /**
@@ -43,7 +44,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *
  * <p>Memory allocated by {@link Malloc} is not garbage collected. Failure to
  * call {@link Free#apply(long)} results in memory leaks. For automatic memory
- * management, consider using {@link NativeMemoryProvider} instead.</p>
+ * management, consider using {@link org.almostrealism.nio.NativeMemoryProvider} instead.</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -51,7 +52,7 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  * can allocate memory concurrently.</p>
  *
  * @see Free
- * @see NativeMemoryProvider
+ * @see org.almostrealism.nio.NativeMemoryProvider
  * @see BaseNative
  */
 public class Malloc extends BaseNative {

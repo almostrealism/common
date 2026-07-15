@@ -15,11 +15,11 @@
  */
 
 /**
- * C language code generation and native memory management infrastructure.
+ * C language code generation infrastructure.
  *
- * <p>This package provides C language operations for generating kernel source code,
- * native memory allocation via JNI ({@link org.almostrealism.c.NativeMemoryProvider}),
- * and C print writers for producing compilable kernel code. These classes are used
- * by both the JNI and OpenCL backends.</p>
+ * <p>This package provides the C language operations and print writers used to produce compilable
+ * kernel source code, along with {@link org.almostrealism.c.BaseNative}, the base class for
+ * operations that compile and invoke C via JNI. These classes are used by both the JNI and OpenCL
+ * backends. Native memory allocation itself lives in {@code org.almostrealism.nio}.</p>
  */
 package org.almostrealism.c;
