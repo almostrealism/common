@@ -354,34 +354,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	/**
-	 * Returns the equivalent integer constant when the given expression is a
-	 * floating-point constant whose value an integer represents without loss,
-	 * or null when no such representation exists.
-	 *
-	 * @param e the expression to examine
-	 * @return an integer constant with the same value, or null
-	 */
-	private static Expression<? extends Number> integerConstant(Expression<?> e) {
-		if (!e.isFP()) return null;
-
-		OptionalDouble d = e.doubleValue();
-		if (d.isEmpty()) return null;
-
-		double v = d.getAsDouble();
-		if ((double) ((long) v) != v) return null;
-
-		long l = (long) v;
-		return l == (int) l ? new IntegerConstant((int) l) : new LongConstant(l);
-	}
-
-	/**
 	 * Creates a modulo expression, applying the full suite of simplification passes.
 	 *
-	 * <p>When one operand is a floating-point constant that an integer represents
-	 * without loss and the other operand is integer typed, the constant is converted
-	 * and an integer modulo is produced instead, so the generated code uses integer
-	 * arithmetic rather than the floating-point modulo function. The integer dividend
-	 * keeps the framework's integer modulo semantics.</p>
+	 * <p>When one operand is a floating-point expression whose value a {@code long}
+	 * reports without loss and the other operand is integer typed, the operand is
+	 * replaced with the equivalent integer constant and an integer modulo is
+	 * produced instead, so the generated code uses integer arithmetic rather than
+	 * the floating-point modulo function. The integer dividend keeps the
+	 * framework's integer modulo semantics.</p>
 	 *
 	 * @param input the dividend expression
 	 * @param mod   the divisor expression
@@ -390,13 +370,15 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 */
 	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {
 		if (fp) {
-			Expression<? extends Number> intInput = integerConstant(input);
-			Expression<? extends Number> intMod = integerConstant(mod);
+			boolean demoteMod = !input.isFP() && mod.isFP() && mod.longValue().isPresent();
+			boolean demoteInput = !mod.isFP() && input.isFP() && input.longValue().isPresent();
 
-			if (intMod != null && !input.isFP()) {
-				return create(input, intMod, false);
-			} else if (intInput != null && !mod.isFP()) {
-				return create(intInput, mod, false);
+			if (demoteMod || demoteInput) {
+				long l = (demoteMod ? mod : (Expression) input).longValue().getAsLong();
+				Expression<? extends Number> converted =
+						l == (int) l ? new IntegerConstant((int) l) : new LongConstant(l);
+				return demoteMod ? create(input, converted, false)
+						: create(converted, mod, false);
 			}
 		}
 

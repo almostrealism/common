@@ -44,6 +44,26 @@ import org.junit.Test;
 public class FloatingPointModTypeTests extends TestSuiteBase implements ExpressionFeatures {
 
 	/**
+	 * Verifies that a floating-point constant reports its value through the
+	 * integer value accessors whenever the integer type represents it without
+	 * loss. These are value accessors, not type conversions, so integral
+	 * doubles must report and fractional doubles must not.
+	 */
+	@Test(timeout = 30000)
+	public void doubleConstantIntegerValues() {
+		Assert.assertEquals(128, new DoubleConstant(128.0).intValue().getAsInt());
+		Assert.assertEquals(128L, new DoubleConstant(128.0).longValue().getAsLong());
+		Assert.assertEquals(100000000000L, new DoubleConstant(100000000000.0).longValue().getAsLong());
+
+		Assert.assertTrue("A value beyond the 32-bit range must not report as an int",
+				new DoubleConstant(100000000000.0).intValue().isEmpty());
+		Assert.assertTrue("A fractional value must not report as an int",
+				new DoubleConstant(128.5).intValue().isEmpty());
+		Assert.assertTrue("A fractional value must not report as a long",
+				new DoubleConstant(128.5).longValue().isEmpty());
+	}
+
+	/**
 	 * Verifies that a modulo of an integer-typed dividend by a floating-point
 	 * constant that an integer represents without loss is converted to an
 	 * integer modulo, so the generated code contains no {@code fmod}.

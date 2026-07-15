@@ -303,6 +303,16 @@
             "description": "Verdict on ~/.m2 artifact staleness before the test runner or build validator invokes Maven out-of-band — these MCP tools bypass the Bash hook, which is exactly how stale artifacts from a previous branch produced false local test results"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-static-method.py\"",
+            "description": "Remind the agent when it introduces a static method in Java source: behavior belongs on the type whose state it reads, and the agent's trained-in first instinct is reliably procedural — reconsider placement before proceeding"
+          }
+        ]
       }
     ],
     "PostToolUse": [
