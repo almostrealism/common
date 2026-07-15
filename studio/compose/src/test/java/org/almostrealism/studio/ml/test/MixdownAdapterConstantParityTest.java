@@ -69,26 +69,41 @@ public class MixdownAdapterConstantParityTest extends TestSuiteBase {
 		}
 	}
 
-	/** The producer-built reverb tap delays must equal {@code floor(fraction*ring)} per channel. */
+	/**
+	 * The producer-built reverb tap delays must equal the seconds-denominated
+	 * golden-ratio spread the adapter now uses: {@code reverbTaps} lines (independent of
+	 * the channel count), each at {@code floor(lo + frac((k + 1) * phi^-1) * (hi - lo))}
+	 * where {@code lo = max(0.15 * sampleRate, signalSize)} and
+	 * {@code hi = 1.5 * sampleRate} — the legacy DelayNetwork's 0.15–1.5 s per-line
+	 * range, quasi-randomly but deterministically spaced. (An earlier revision of this
+	 * test encoded the previous frames-denominated per-channel spread, which the reverb
+	 * room redesign replaced.)
+	 *
+	 * <p>The device evaluates in float32 and the golden-ratio multiplier reaches ~20, so
+	 * the fraction — and its floor — can land one sample either side of the
+	 * double-precision truncation; a one-sample window on these multi-thousand-sample
+	 * delays is the only allowed deviation.</p>
+	 */
 	@Test(timeout = 60000)
 	public void reverbTapDelaysMatchReference() {
 		int channels = 7;
 		int signalSize = 1024;
-		int reverbFrames = 2;
+		int sampleRate = 44100;
 		MixdownManagerPdslAdapter.Config config =
-				new MixdownManagerPdslAdapter.Config(channels, signalSize, 44100, 40, 1.0, 100);
+				new MixdownManagerPdslAdapter.Config(channels, signalSize, sampleRate, 40, 1.0, 100);
 
 		PackedCollection delays = MixdownManagerPdslAdapter.reverbTapDelays(config);
 
-		int ring = reverbFrames * signalSize;
-		for (int ch = 0; ch < channels; ch++) {
-			double fraction = 0.3 + 0.55 * (ch + 1.0) / (channels + 1.0);
-			double reference = (int) (fraction * ring);
-			double actual = delays.toDouble(ch);
-			// floor() is evaluated in device float32, so at an exact integer boundary it can land one
-			// below the double-precision (int) truncation; off-by-one there is the only allowed deviation.
-			Assert.assertTrue("delay[" + ch + "]=" + actual + " expected " + reference + " or one below",
-					actual == reference || actual == reference - 1.0);
+		int taps = MixdownManagerPdslAdapter.reverbTaps;
+		double lo = Math.max(0.15 * sampleRate, signalSize);
+		double hi = 1.5 * sampleRate;
+		double phiInverse = 2.0 / (1.0 + Math.sqrt(5.0));
+		for (int k = 0; k < taps; k++) {
+			double fraction = ((k + 1) * phiInverse) % 1.0;
+			double reference = (int) (lo + fraction * (hi - lo));
+			double actual = delays.toDouble(k);
+			Assert.assertTrue("delay[" + k + "]=" + actual + " expected " + reference + " within 1",
+					Math.abs(actual - reference) <= 1.0);
 		}
 	}
 }
