@@ -28,7 +28,7 @@ import java.util.function.Supplier;
  * <p>{@code CollectionCachedStateCell} provides a concrete implementation of
  * {@link CachedStateCell} that uses standard assignment ({@code a(1, ...)}) for
  * copying values and resets values to zero. It is the base class for common
- * collection-based cells such as {@link SummationCell} and {@link RunningAverageCell}.</p>
+ * collection-based cells such as {@link SummationCell}.</p>
  *
  * @see CachedStateCell
  * @see SummationCell

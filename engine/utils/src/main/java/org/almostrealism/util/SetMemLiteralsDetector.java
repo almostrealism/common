@@ -159,15 +159,18 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * only when the file path contains {@code pathFragment} and the offending source line, trimmed,
 	 * is exactly {@code sourceLine}, so the entry re-triggers the moment the line is edited. Entries
 	 * are writes below the producer API in {@code base/hardware} (which cannot import the collect
-	 * layer), the randomness ingest primitive, and the {@code Tensor} bridge for host-resident boxed
-	 * values (whose correct long-term treatment is an open question); these are expected to shrink
-	 * to zero.
+	 * layer), the randomness ingest primitive, the mesh-intersection kernel read-back writes in
+	 * {@code domain/space}, and the {@code Tensor} bridge for host-resident boxed values (whose
+	 * correct long-term treatment is an open question); these are expected to shrink to zero.
 	 */
 	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
 			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
+			new String[] {"/space/CachedMeshIntersectionKernel.java",
+					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
+			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"}
 	);
 
@@ -195,7 +198,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/**
 	 * Remaining tolerated occurrences of each grandfathered violation, keyed by
-	 * {@code path source} and decremented as matching occurrences are found
+	 * {@code path\0source} and decremented as matching occurrences are found
 	 * during the scan. Loaded from {@link #BASELINE_RESOURCE}; empty when the
 	 * baseline is disabled or absent.
 	 */
@@ -227,7 +230,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	/**
 	 * Loads the grandfathered-violation inventory from {@link #BASELINE_RESOURCE}.
 	 *
-	 * @return remaining tolerated occurrences keyed by {@code path source};
+	 * @return remaining tolerated occurrences keyed by {@code path\0source};
 	 *         empty when the resource is absent
 	 */
 	private static Map<String, Integer> loadBaseline() {
@@ -239,7 +242,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			for (String line : new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
 				String[] parts = line.split("\t", 4);
 				if (parts.length != 4) continue;
-				entries.merge(parts[1] + ' ' + parts[3], Integer.parseInt(parts[2]), Integer::sum);
+				entries.merge(parts[1] + '\0' + parts[3], Integer.parseInt(parts[2]), Integer::sum);
 			}
 		} catch (IOException e) {
 			throw new RuntimeException("Could not read " + BASELINE_RESOURCE, e);
@@ -262,7 +265,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		for (Map.Entry<String, Integer> entry : baseline.entrySet()) {
 			if (entry.getValue() <= 0) continue;
 
-			int split = entry.getKey().indexOf(' ');
+			int split = entry.getKey().indexOf('\0');
 			String entryPath = entry.getKey().substring(0, split);
 			String entryLine = entry.getKey().substring(split + 1);
 
@@ -330,12 +333,12 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			for (Violation v : detector.getViolations()) {
 				String path = root.toAbsolutePath().relativize(
 						v.getFile().toAbsolutePath()).toString().replace('\\', '/');
-				counts.merge(v.getRule() + '\t' + path + ' ' + v.getLine().trim(), 1, Integer::sum);
+				counts.merge(v.getRule() + '\t' + path + '\0' + v.getLine().trim(), 1, Integer::sum);
 			}
 
 			StringBuilder out = new StringBuilder();
 			for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-				int split = entry.getKey().indexOf(' ');
+				int split = entry.getKey().indexOf('\0');
 				out.append(entry.getKey(), 0, split).append('\t')
 						.append(entry.getValue()).append('\t')
 						.append(entry.getKey().substring(split + 1)).append('\n');
