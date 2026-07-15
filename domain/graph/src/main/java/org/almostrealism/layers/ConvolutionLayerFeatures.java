@@ -18,6 +18,7 @@ package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Factor;
 import org.almostrealism.algebra.MatrixFeatures;
@@ -666,34 +667,43 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 		// weightG shape: (outChannels, 1, 1)
 		// weightV shape: (outChannels, inChannels, kernelSize)
 		// Output shape: (outChannels, inChannels, kernelSize)
+		return weightNormWeights(weightG, weightV,
+				shape(outChannels, inChannels, kernelSize));
+	}
 
-		int vSize = inChannels * kernelSize;
-		PackedCollection result = new PackedCollection(outChannels, inChannels, kernelSize);
+	/**
+	 * Computes weight-normalized weights W = g * v / ||v||, where the L2 norm of the
+	 * direction tensor v is taken per leading-dimension channel and g supplies one
+	 * magnitude per channel.
+	 *
+	 * <p>The whole normalization is a single computation over the weight collections:
+	 * the per-channel norms are a banked reduction, and the scaled result is a
+	 * broadcast multiply, so no weight value ever visits the host.</p>
+	 *
+	 * @param weightG Magnitude parameter, one value per leading-dimension channel
+	 * @param weightV Direction parameter matching {@code resultShape}
+	 * @param resultShape The output shape, whose leading dimension is the channel count
+	 * @return The normalized weights with shape {@code resultShape}
+	 */
+	default PackedCollection weightNormWeights(PackedCollection weightG,
+											   PackedCollection weightV,
+											   TraversalPolicy resultShape) {
+		int channels = resultShape.length(0);
+		int vSize = resultShape.getTotalSize() / channels;
 
-		for (int oc = 0; oc < outChannels; oc++) {
-			// Compute L2 norm of v for this output channel
-			double normSq = 0.0;
-			for (int ic = 0; ic < inChannels; ic++) {
-				for (int k = 0; k < kernelSize; k++) {
-					double v = weightV.toDouble(oc * vSize + ic * kernelSize + k);
-					normSq += v * v;
-				}
-			}
-			double norm = Math.sqrt(normSq);
+		PackedCollection result = new PackedCollection(resultShape);
+		PackedCollection direction = weightV.reshape(shape(channels, vSize)).traverse(1);
+		PackedCollection magnitude = weightG.reshape(shape(channels, 1)).traverse(1);
+		PackedCollection destination = result.reshape(shape(channels, vSize)).traverse(1);
 
-			// Get magnitude g for this output channel
-			double g = weightG.toDouble(oc);
+		CollectionProducer v = cp(direction);
+		CollectionProducer norm = sqrt(v.multiply(v).sum());
 
-			// Compute W = g * v / ||v||
-			double scale = g / (norm + 1e-12);
-			for (int ic = 0; ic < inChannels; ic++) {
-				for (int k = 0; k < kernelSize; k++) {
-					int idx = oc * vSize + ic * kernelSize + k;
-					double v = weightV.toDouble(idx);
-					result.setMem(idx, v * scale);
-				}
-			}
-		}
+		// Optimizing ahead of compilation isolates the norm reduction into its
+		// own kernel; embedding it would unroll the sum into every element of
+		// the generated expression
+		Process.optimized(a(cp(destination),
+				v.multiply(cp(magnitude).divide(norm.add(c(1e-12)))))).get().run();
 
 		return result;
 	}
@@ -759,34 +769,7 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 	default PackedCollection computeWeightNormWeightsTransposed(PackedCollection weightG,
 																PackedCollection weightV,
 																int inChannels, int outChannels, int kernelSize) {
-		int vSize = outChannels * kernelSize;
-		PackedCollection result = new PackedCollection(inChannels, outChannels, kernelSize);
-
-		for (int ic = 0; ic < inChannels; ic++) {
-			// Compute L2 norm of v for this input channel
-			double normSq = 0.0;
-			for (int oc = 0; oc < outChannels; oc++) {
-				for (int k = 0; k < kernelSize; k++) {
-					double v = weightV.toDouble(ic * vSize + oc * kernelSize + k);
-					normSq += v * v;
-				}
-			}
-			double norm = Math.sqrt(normSq);
-
-			// Get magnitude g for this input channel
-			double g = weightG.toDouble(ic);
-
-			// Compute W = g * v / ||v||
-			double scale = g / (norm + 1e-12);
-			for (int oc = 0; oc < outChannels; oc++) {
-				for (int k = 0; k < kernelSize; k++) {
-					int idx = ic * vSize + oc * kernelSize + k;
-					double v = weightV.toDouble(idx);
-					result.setMem(idx, v * scale);
-				}
-			}
-		}
-
-		return result;
+		return weightNormWeights(weightG, weightV,
+				shape(inChannels, outChannels, kernelSize));
 	}
 }

@@ -56,7 +56,6 @@ public class PackedCollectionDetector extends PolicyViolationDetector {
 			// Audio processing - FFT interfacing, format conversion, testing
 			"WavetableCell.java",
 			"BufferOutputLine.java",
-			"RunningAverageCell.java",
 			"FrequencyToAudioConverter.java",
 			"WaveData.java",
 			// Ray tracing - kernel result extraction and setup

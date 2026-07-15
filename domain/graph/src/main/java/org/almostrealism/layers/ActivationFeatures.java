@@ -23,7 +23,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.GeometryFeatures;
 
-import java.util.Arrays;
 import java.util.function.Function;
 
 /**
@@ -434,23 +433,11 @@ public interface ActivationFeatures extends GeometryFeatures {
 		PackedCollection alphaExpanded = new PackedCollection(shape(batch, channels, seqLen));
 		PackedCollection betaExpanded = new PackedCollection(shape(batch, channels, seqLen));
 
-		// Use direct memory access for efficient broadcasting
-		double[] alphaData = alphaExpanded.toArray(0, (int) alphaExpanded.getMemLength());
-		double[] betaData = betaExpanded.toArray(0, (int) betaExpanded.getMemLength());
-
-		for (int b = 0; b < batch; b++) {
-			for (int c = 0; c < channels; c++) {
-				double alphaVal = alpha.valueAt(c);
-				double betaVal = beta.valueAt(c);
-				int baseIdx = (b * channels + c) * seqLen;
-				Arrays.fill(alphaData, baseIdx, baseIdx + seqLen, alphaVal);
-				Arrays.fill(betaData, baseIdx, baseIdx + seqLen, betaVal);
-			}
-		}
-
-		// Copy back to PackedCollections
-		alphaExpanded.setMem(0, alphaData, 0, alphaData.length);
-		betaExpanded.setMem(0, betaData, 0, betaData.length);
+		CollectionProducer channelIndex = mod(
+				floor(integers(0, batch * channels * seqLen).divide(c((double) seqLen))),
+				c((double) channels));
+		a(cp(alphaExpanded), c(alphaExpanded.getShape(), cp(alpha), channelIndex)).get().run();
+		a(cp(betaExpanded), c(betaExpanded.getShape(), cp(beta), channelIndex)).get().run();
 
 		return layer("snakeLearnable", shape, shape, input -> {
 			CollectionProducer x = c(input);
