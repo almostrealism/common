@@ -281,8 +281,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
-		Map<String, Object> args =
-				MixdownManagerPdslAdapter.buildArgsMap(mixdown, fixtureEfx, config);
+		Map<String, Object> args = new MixdownManagerPdslAdapter(
+				mixdown, fixtureEfx, config).buildArgsMap();
 
 		Assert.assertEquals("delay_layers must follow the delay chromosome's gene count",
 				BUS_LAYERS, args.get("delay_layers"));
@@ -395,8 +395,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return the gene resultant
 	 */
 	private double transmissionReference(MixdownManager mixdown, int from, int into) {
-		return evaluateProducer(MixdownManagerPdslAdapter
-				.transmissionGene(mixdown).valueAt(from, into)
+		return evaluateProducer(mixdown.getTransmission().valueAt(from, into)
 				.getResultant(c(1.0)), 1)[0];
 	}
 
@@ -423,10 +422,10 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
-		Map<String, Object> args =
-				MixdownManagerPdslAdapter.buildArgsMap(mixdown, fixtureEfx, config);
-		Runnable refresh = MixdownManagerPdslAdapter
-				.automationRefresh(mixdown, fixtureEfx, config, args).get();
+		MixdownManagerPdslAdapter adapter =
+				new MixdownManagerPdslAdapter(mixdown, fixtureEfx, config);
+		Map<String, Object> args = adapter.buildArgsMap();
+		Runnable refresh = adapter.automationRefresh(args).get();
 
 		int layers = (Integer) args.get("delay_layers");
 		PackedCollection slot = (PackedCollection) args.get("bus_delay_samples");
@@ -493,10 +492,10 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
-		Map<String, Object> args =
-				MixdownManagerPdslAdapter.buildArgsMap(mixdown, fixtureEfx, config);
-		Runnable refresh = MixdownManagerPdslAdapter
-				.automationRefresh(mixdown, fixtureEfx, config, args).get();
+		MixdownManagerPdslAdapter adapter =
+				new MixdownManagerPdslAdapter(mixdown, fixtureEfx, config);
+		Map<String, Object> args = adapter.buildArgsMap();
+		Runnable refresh = adapter.automationRefresh(args).get();
 
 		PackedCollection volume = (PackedCollection) args.get("volume");
 		PackedCollection volumePrev = (PackedCollection) args.get("volume_prev");
@@ -543,7 +542,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES, 1.0);
-		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		Map<String, Object> args = new MixdownManagerPdslAdapter(mixdown, config).buildArgsMap();
 		args.putAll(neutralEfxArgs());
 
 		int taps = PDSL_FILTER_ORDER + 1;
@@ -938,7 +937,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES, 1.0);
 
-		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		Map<String, Object> args = new MixdownManagerPdslAdapter(mixdown, config).buildArgsMap();
 		args.putAll(neutralEfxArgs());
 
 		// Neutralise the gene-driven main-arm stages so the expected output is exact
@@ -1135,7 +1134,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 			Map<String, Object> extraArgs, IntToDoubleFunction sampleAt,
 			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
 		int sig = config.signalSize;
-		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		MixdownManagerPdslAdapter adapter = new MixdownManagerPdslAdapter(mixdown, config);
+		Map<String, Object> args = adapter.buildArgsMap();
 		args.putAll(extraArgs);
 		// The wet layer's ramp_scale stages need a volume history; aliasing it to the
 		// volume slot itself keeps the gain constant per buffer (the stepped behaviour
@@ -1159,7 +1159,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// We don't actually drive the CellList here (the comparison runs the
 		// CompiledModel directly), but the helper is exercised so any breakage
 		// in its narrow contract surfaces as part of this test.
-		CellList wrapped = MixdownManagerPdslAdapter.wrapBlockAsCellList(block);
+		CellList wrapped = adapter.wrapBlockAsCellList(block);
 		Assert.assertEquals("wrapBlockAsCellList must produce a single-cell list",
 				1, wrapped.size());
 

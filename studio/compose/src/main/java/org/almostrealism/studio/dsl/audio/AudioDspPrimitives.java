@@ -413,8 +413,8 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 	 * @param ctx    the primitive context supplying the fallback channel count
 	 * @return the network line count
 	 */
-	private static int networkLineCount(CollectionProducer delays, PdslPrimitiveContext ctx) {
-		int taps = INSTANCE.shape(delays).getTotalSize();
+	private int networkLineCount(CollectionProducer delays, PdslPrimitiveContext ctx) {
+		int taps = shape(delays).getTotalSize();
 		return taps > 1 ? taps : ctx.channels();
 	}
 

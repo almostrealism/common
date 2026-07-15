@@ -967,16 +967,17 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	@Test(timeout = 60000)
 	public void testReverbTapDelaysWithinRingBand() {
 		int signalSize = 4096;
-		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
-				CHANNELS, signalSize, SAMPLE_RATE, FILTER_ORDER, 0.5, 6500);
-		PackedCollection taps = MixdownManagerPdslAdapter.reverbTapDelays(config);
+		MixdownManagerPdslAdapter adapter = new MixdownManagerPdslAdapter(
+				new MixdownManagerPdslAdapter.Config(
+						CHANNELS, signalSize, SAMPLE_RATE, FILTER_ORDER, 0.5, 6500));
+		PackedCollection taps = adapter.reverbTapDelays();
 		int count = taps.getMemLength();
 		Assert.assertEquals("one tap per configured reverb line",
 				MixdownManagerPdslAdapter.reverbTaps, count);
 
 		double lo = Math.max(0.15 * SAMPLE_RATE, signalSize);
 		double hi = 1.5 * SAMPLE_RATE;
-		int ring = MixdownManagerPdslAdapter.reverbRingFrames(config) * signalSize;
+		int ring = adapter.reverbRingFrames() * signalSize;
 		double[] values = taps.toArray(0, count);
 		Set<Long> distinct = new HashSet<>();
 		for (double v : values) {

@@ -312,17 +312,17 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	/** Returns the configured audio sample rate (package-private — exposed for the PDSL adapter). */
 	int getSampleRate() { return sampleRate; }
 
-	/** Returns the per-channel volume chromosome (package-private — exposed for the PDSL adapter). */
-	Chromosome<PackedCollection> getVolumeSimple() { return volumeSimple; }
+	/** Returns the per-channel volume chromosome (read by the PDSL adapter and gene diagnostics). */
+	public Chromosome<PackedCollection> getVolumeSimple() { return volumeSimple; }
 
-	/** Returns the per-channel main-filter-up (HP) chromosome (package-private — exposed for the PDSL adapter). */
-	Chromosome<PackedCollection> getMainFilterUpSimple() { return mainFilterUpSimple; }
+	/** Returns the per-channel main-filter-up (HP) chromosome (read by the PDSL adapter and gene diagnostics). */
+	public Chromosome<PackedCollection> getMainFilterUpSimple() { return mainFilterUpSimple; }
 
 	/** Returns the per-channel master-filter-down (LP) chromosome (package-private — exposed for the PDSL adapter). */
 	Chromosome<PackedCollection> getMainFilterDownSimple() { return mainFilterDownSimple; }
 
-	/** Returns the cross-channel transmission chromosome (package-private — exposed for the PDSL adapter). */
-	Chromosome<PackedCollection> getTransmission() { return transmission; }
+	/** Returns the cross-channel transmission chromosome (read by the PDSL adapter and gene diagnostics). */
+	public Chromosome<PackedCollection> getTransmission() { return transmission; }
 
 	/** Returns the wet-bus FixedFilterChromosome (package-private — exposed for the PDSL adapter). */
 	FixedFilterChromosome getWetFilter() { return wetFilter; }

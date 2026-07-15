@@ -59,7 +59,9 @@ public class BiquadResponseTableParityTest extends TestSuiteBase {
 	private void assertTableMatches(boolean high) {
 		int taps = FILTER_ORDER + 1;
 
-		PackedCollection table = MixdownManagerPdslAdapter.biquadResponseTable(high, SAMPLE_RATE, taps);
+		PackedCollection table = new MixdownManagerPdslAdapter(
+				new MixdownManagerPdslAdapter.Config(1, 1024, SAMPLE_RATE, FILTER_ORDER, 0.5, 100))
+				.biquadResponseTable(high);
 
 		double[] reference = referenceTable(high, taps);
 		double maxDiff = 0.0;

@@ -20,6 +20,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.heredity.Chromosome;
+import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
@@ -307,17 +309,16 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		runner.setup().get().run();
 
 		MixdownManager mixdown = scene.getMixdownManager();
-		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
-				channelCount, 8192, SAMPLE_RATE, 40, 0.5, 6500);
-		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(
-				mixdown, scene.getEfxManager(), config);
+		MixdownManagerPdslAdapter adapter = new MixdownManagerPdslAdapter(mixdown,
+				scene.getEfxManager(), new MixdownManagerPdslAdapter.Config(
+						channelCount, 8192, SAMPLE_RATE, 40, 0.5, 6500));
+		Map<String, Object> args = adapter.buildArgsMap();
 
 		// The time-varying values are now collection SLOTS refreshed per buffer; run the
 		// runner's refresh op at each probed clock frame and read the slots back, so this
 		// validates the exact mechanism the real-time tick uses (compiled refresh ops
 		// tracking the clock), not just standalone producer evaluation.
-		Runnable refresh = MixdownManagerPdslAdapter.automationRefresh(
-				mixdown, scene.getEfxManager(), config, args).get();
+		Runnable refresh = adapter.automationRefresh(args).get();
 		String[] slotNames = {"volume", "hp_cutoff", "lp_cutoff", "efx_automation", "reverb_send"};
 		int[] slotFrames = {0, 441000, 661500, 882000, 1102500, 1323000, 1764000};
 		for (int frame : slotFrames) {
@@ -395,24 +396,23 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		applyGenome(scene, 46);
 		MixdownManager mixdown = scene.getMixdownManager();
 
-		logGeneComponents("mainFilterUp",
-				MixdownManagerPdslAdapter.geneComponents(
-						MixdownManagerPdslAdapter.mainFilterUpGene(mixdown), 0));
-		logGeneComponents("volume",
-				MixdownManagerPdslAdapter.geneComponents(
-						MixdownManagerPdslAdapter.volumeGene(mixdown), 0));
+		logGeneComponents("mainFilterUp", mixdown.getMainFilterUpSimple());
+		logGeneComponents("volume", mixdown.getVolumeSimple());
 	}
 
 	/**
-	 * Logs the six evaluated component values of an automation gene for channel 0.
+	 * Logs the six evaluated raw component values (phase 0-2, magnitude 3-5) of an
+	 * automation gene for channel 0.
 	 *
-	 * @param name       label for the gene
-	 * @param components the six component producers
+	 * @param name label for the gene
+	 * @param gene the per-channel gene chromosome (e.g. the mainFilterUp chromosome)
 	 */
-	private void logGeneComponents(String name, Producer<PackedCollection>[] components) {
+	private void logGeneComponents(String name, Chromosome<PackedCollection> gene) {
+		Gene<PackedCollection> g = gene.valueAt(0);
 		StringBuilder sb = new StringBuilder("gene " + name + " ch0 components ->");
-		for (Producer<PackedCollection> component : components) {
+		for (int k = 0; k < 6; k++) {
 			try {
+				Producer<PackedCollection> component = g.valueAt(k).getResultant(c(1.0));
 				sb.append(' ').append(component.get().evaluate().toDouble(0));
 			} catch (Exception e) {
 				sb.append(" ERR");

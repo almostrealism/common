@@ -58,7 +58,9 @@ public class MixdownAdapterConstantParityTest extends TestSuiteBase {
 		int n = 6;
 		double gain = 1.0 / n;
 
-		PackedCollection matrix = MixdownManagerPdslAdapter.householderMatrix(n, gain);
+		PackedCollection matrix = new MixdownManagerPdslAdapter(
+				new MixdownManagerPdslAdapter.Config(1, 1024, 44100, 40, 1.0, 100))
+				.householderMatrix(n, gain);
 
 		double off = 2.0 / n;
 		for (int i = 0; i < n; i++) {
@@ -89,10 +91,10 @@ public class MixdownAdapterConstantParityTest extends TestSuiteBase {
 		int channels = 7;
 		int signalSize = 1024;
 		int sampleRate = 44100;
-		MixdownManagerPdslAdapter.Config config =
-				new MixdownManagerPdslAdapter.Config(channels, signalSize, sampleRate, 40, 1.0, 100);
+		MixdownManagerPdslAdapter adapter = new MixdownManagerPdslAdapter(
+				new MixdownManagerPdslAdapter.Config(channels, signalSize, sampleRate, 40, 1.0, 100));
 
-		PackedCollection delays = MixdownManagerPdslAdapter.reverbTapDelays(config);
+		PackedCollection delays = adapter.reverbTapDelays();
 
 		int taps = MixdownManagerPdslAdapter.reverbTaps;
 		double lo = Math.max(0.15 * sampleRate, signalSize);
