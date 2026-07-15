@@ -137,7 +137,7 @@ public class MoonbeamMidiGenerator {
 		PackedCollection temperature = new PackedCollection(1);
 
 		this.inner = new AutoregressiveModel<>(
-				step -> model.setPosition(step),
+				model.getPosition(),
 				token -> {
 					model.setAttributePositions(token);
 					PackedCollection emb = embedding.embed(token).evaluate();
@@ -166,7 +166,7 @@ public class MoonbeamMidiGenerator {
 	public void setPrompt(MidiCompoundToken[] promptTokens) {
 		this.promptLength = promptTokens != null ? promptTokens.length : 0;
 		inner.setPrompt(promptTokens, promptLength);
-		inner.setCurrentStep(0);
+		inner.reset();
 		inner.setCurrentToken(MidiCompoundToken.sos());
 		this.primed = false;
 	}
@@ -322,10 +322,8 @@ public class MoonbeamMidiGenerator {
 		for (int i = fillEndIdx; i < maskedSequence.size(); i++) {
 			MidiCompoundToken token = maskedSequence.get(i);
 			if (token.isEOS()) break;
-			int step = inner.getCurrentStep();
-			model.setPosition(step);
 			model.setAttributePositions(token);
-			inner.setCurrentStep(step + 1);
+			inner.advance();
 		}
 
 		return fillTokens;

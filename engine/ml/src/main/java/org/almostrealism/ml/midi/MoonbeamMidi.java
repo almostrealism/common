@@ -17,8 +17,6 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.compute.ComputeRequirement;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
@@ -230,13 +228,15 @@ public class MoonbeamMidi implements AttentionFeatures {
 	}
 
 	/**
-	 * Update the sequential position for the current step.
+	 * Returns the sequential position for the current step.
 	 *
-	 * @param step the current position in the sequence
+	 * <p>The collection is device-resident and is advanced on the device by the
+	 * {@link org.almostrealism.ml.AutoregressiveModel} driving generation; it is
+	 * never written from the host.</p>
+	 *
+	 * @return the position collection consumed by this model's computation graph
 	 */
-	public void setPosition(int step) {
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
-	}
+	public PackedCollection getPosition() { return position; }
 
 	/**
 	 * Update per-attribute positions for MRA RoPE from a compound token.
@@ -250,7 +250,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 		double[] values = token.isSpecial()
 				? new double[MoonbeamConfig.NUM_ATTRIBUTES]
 				: token.toDoubleArray();
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(attributePositions.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(values)).get().run();
+		attributePositions.setMem(0, values);
 	}
 
 	/** Returns the compound MIDI embedding layer. */
