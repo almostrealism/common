@@ -18,6 +18,8 @@ package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
@@ -182,12 +184,13 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 		TraversalPolicy inputShape = shape(batchSize, inChannels, seqLength);
 		PackedCollection input = new PackedCollection(inputShape);
 
-		// Fill with varying values
+		// Fill with a linear gradient plus some variation: (i % 100) * 0.01 + sin(i * 0.1) * 0.5
 		int inputSize = inChannels * seqLength;
-		for (int i = 0; i < inputSize; i++) {
-			// Linear gradient with some variation
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i % 100) * 0.01 + Math.sin(i * 0.1) * 0.5)).get().run();
-		}
+		RotationFeatures gradientOps = new RotationFeatures() {};
+		CollectionProducer index = gradientOps.integers(0, inputSize);
+		gradientOps.a(gradientOps.cp(input),
+				index.mod(100.0).multiply(0.01)
+						.add(gradientOps.sin(index.multiply(0.1)).multiply(0.5))).get().run();
 
 		float[] inputValues = new float[inputSize];
 		for (int i = 0; i < inputSize; i++) {
@@ -1355,12 +1358,10 @@ public class OobleckLayerValidationTest extends OobleckValidationBase {
 		Random rand = new Random(42);
 		double inputMean = -22.94;  // Match blocks 1+2 output stats
 		double inputStd = 300.48;   // Match blocks 1+2 output stats
-		for (int c = 0; c < inputChannels; c++) {
-			for (int s = 0; s < sequenceLength; s++) {
-				double value = inputMean + inputStd * rand.nextGaussian();
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), c * sequenceLength + s)), CollectionFeatures.getInstance().c(value)).get().run();
-			}
-		}
+		CollectionFeatures gaussianOps = CollectionFeatures.getInstance();
+		TraversalPolicy filled = new TraversalPolicy(inputChannels * sequenceLength);
+		gaussianOps.a(gaussianOps.cp(input.range(filled, 0)),
+				gaussianOps.randn(filled, inputMean, inputStd, rand)).get().run();
 
 		// Verify input is varying
 		float[] inputValues = new float[Math.min(10000, inputChannels * sequenceLength)];

@@ -126,9 +126,13 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 
 		Producer<PackedCollection>[] positions =
 				createPositionProducers(MoonbeamConfig.NUM_ATTRIBUTES);
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		PackedCollection attributeIndices =
+				ops.integers(0, MoonbeamConfig.NUM_ATTRIBUTES).evaluate();
+
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
 			PackedCollection posVal = new PackedCollection(1);
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(posVal.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(i)).get().run();
+			posVal.setFrom(0, attributeIndices, i, 1);
 			positions[i] = () -> args -> posVal;
 		}
 
