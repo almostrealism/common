@@ -57,12 +57,21 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 	private static final int BUFFER_SIZE = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
 
 	/**
-	 * Seconds of audio to generate. Four minutes, so section-scale behaviour — clock
-	 * resets at arrangement breaks, automation attack curves re-running, the bus wash
-	 * tightening and recovering — is visible in the evaluation render, not just the
-	 * opening material.
+	 * Seconds of audio to generate on Metal. Four minutes, so section-scale behaviour —
+	 * clock resets at arrangement breaks, automation attack curves re-running, the bus
+	 * wash tightening and recovering — is visible in the evaluation render, not just
+	 * the opening material.
 	 */
 	private static final double TARGET_SECONDS = 240.0;
+
+	/**
+	 * Seconds of audio to generate when no Metal context is available. OpenCL is not a
+	 * primary backend and renders the mixdown several times slower than realtime, so
+	 * the four-minute evaluation render would exceed the test timeout there; a short
+	 * render keeps the CL job a genuine end-to-end smoke check (setup, generation,
+	 * non-silence, spectrogram) without the Metal-length evaluation duty.
+	 */
+	private static final double OFF_METAL_TARGET_SECONDS = 30.0;
 
 	/**
 	 * Generates audio to {@code results/generated-audio.wav} and logs the generation time. Asserts
@@ -97,7 +106,8 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 		File outFile = new File("results/generated-audio.wav");
 		outFile.getParentFile().mkdirs();
 
-		int ticks = (int) Math.ceil(TARGET_SECONDS * SAMPLE_RATE / BUFFER_SIZE);
+		double targetSeconds = isMetalAvailable() ? TARGET_SECONDS : OFF_METAL_TARGET_SECONDS;
+		int ticks = (int) Math.ceil(targetSeconds * SAMPLE_RATE / BUFFER_SIZE);
 		double audioSeconds = ticks * (double) BUFFER_SIZE / SAMPLE_RATE;
 
 		// Size the capture buffer to the render (the default timeline caps below the

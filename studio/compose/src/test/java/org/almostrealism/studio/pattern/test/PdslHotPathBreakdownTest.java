@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Measures the real-time PDSL tick's hot-path wall time on a dense curated scene at both the
@@ -188,8 +189,11 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	 * @return the Metal command runner, or {@code null}
 	 */
 	private static MetalCommandRunner metalRunner() {
-		return Hardware.getLocalHardware()
-				.getComputeContexts(false, true, ComputeRequirement.MTL).stream()
+		// getComputeContexts throws when no data context matches the requirement, so
+		// probe via getDataContext (which returns null off-Metal) before listing.
+		return Optional.ofNullable(Hardware.getLocalHardware()
+						.getDataContext(false, true, ComputeRequirement.MTL))
+				.stream().flatMap(dc -> dc.getComputeContexts().stream())
 				.filter(MetalComputeContext.class::isInstance)
 				.map(MetalComputeContext.class::cast)
 				.map(MetalComputeContext::getCommandRunner)

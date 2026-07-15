@@ -16,6 +16,8 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.compute.ComputeRequirement;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneLoader;
 import org.almostrealism.audio.AudioTestFeatures;
@@ -75,6 +77,20 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	protected File getSamplesDir() {
 		File dir = new File(SAMPLES_PATH);
 		return dir.exists() ? dir : null;
+	}
+
+	/**
+	 * Returns whether a Metal data context is available. Render tests scale their
+	 * durations and skip Metal-specific measurements off-Metal: OpenCL is not a
+	 * primary backend and runs the mixdown several times slower, so CL-only
+	 * environments (the {@code test-media-cl} job) get shorter smoke renders
+	 * rather than the full Metal-length evaluation renders.
+	 *
+	 * @return whether a Metal data context is available
+	 */
+	protected boolean isMetalAvailable() {
+		return Hardware.getLocalHardware()
+				.getDataContext(false, true, ComputeRequirement.MTL) != null;
 	}
 
 	/** Curated pattern factory; the real arrangement that decides which samples play where. */
