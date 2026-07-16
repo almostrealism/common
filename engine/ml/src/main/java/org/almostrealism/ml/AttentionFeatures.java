@@ -173,32 +173,6 @@ import java.util.function.Function;
 public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
 
 	/**
-	 * Creates a layer that produces each output element by gathering the input element
-	 * named by the corresponding index of {@code indices}.
-	 *
-	 * <p>{@code indices} is an operand of the gather, so a structural permutation expressed
-	 * as arithmetic over {@link #integers(int, int)} is evaluated within the gather's own
-	 * kernel. Precomputing the same permutation into a collection would instead hold an
-	 * index table in memory and move it from the host.</p>
-	 *
-	 * @param name         the name of the resulting layer
-	 * @param inputShape   the shape of the layer's input
-	 * @param outputShape  the shape of the layer's output
-	 * @param indices      producer of one input index per output element
-	 * @param requirements optional compute requirements
-	 * @return a {@link CellularLayer} gathering input elements by index
-	 */
-	default CellularLayer gather(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
-								 Producer<PackedCollection> indices, ComputeRequirement... requirements) {
-		int inputSize = inputShape.getTotalSize();
-		int outputSize = outputShape.getTotalSize();
-
-		return layer(name, inputShape, outputShape,
-				input -> c(shape(outputSize), c(input).reshape(shape(inputSize)), indices)
-						.reshape(outputShape), requirements);
-	}
-
-	/**
 	 * Creates a layer that reshapes input for split-half RoPE format.
 	 *
 	 * <p>Transforms from flat dimension layout to (heads, freqDim, 2) where:
