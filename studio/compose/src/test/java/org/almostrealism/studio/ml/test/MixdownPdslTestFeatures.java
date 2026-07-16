@@ -17,10 +17,11 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -30,9 +31,10 @@ import java.util.Map;
  * banks, and standalone reverb-bus arguments. Used by both the correctness suite
  * ({@link MixdownManagerPdslVerificationTest}) and the performance suite
  * ({@link MixdownLayerPerformanceTest}) so the two exercise identical layer
- * configurations.
+ * configurations. Extends {@link CellFeatures} so patterned fixture constants are
+ * produced on the device (producer assignments) rather than staged in host arrays.
  */
-interface MixdownPdslTestFeatures {
+interface MixdownPdslTestFeatures extends CellFeatures {
 
 	/** Sample rate used for layer construction. */
 	int SAMPLE_RATE = OutputLine.sampleRate;
@@ -48,9 +50,11 @@ interface MixdownPdslTestFeatures {
 
 	/**
 	 * Builds the neutral efx/reverb argument entries for {@code mixdown_master_wet}: wet
-	 * level 0 (the per-channel feedforward reduces to dry), transmission 0 (the feedback
-	 * grid passes the delayed signal once without recirculating), identity passthrough,
-	 * and a zero reverb send, plus validly-shaped state buffers for every ring.
+	 * level 0 (the apply echo contributes nothing, so each voicing reduces to dry), echo
+	 * feedback 0 (an open echo would emit its delayed tap exactly once without
+	 * recirculating), a one-frame bus-line network with unity send and output taps and
+	 * zero recirculation, and a zero reverb send, plus validly-shaped state buffers for
+	 * every ring on both voicing arms.
 	 *
 	 * @param channels   number of channels
 	 * @param signalSize samples per channel per forward pass
@@ -62,38 +66,66 @@ interface MixdownPdslTestFeatures {
 		PackedCollection efxWet = new PackedCollection(new TraversalPolicy(channels));
 		PackedCollection efxAuto = onesCollection(channels);
 
-		PackedCollection fbDelay = new PackedCollection(new TraversalPolicy(channels));
-		double[] fbDelayData = new double[channels];
-		Arrays.fill(fbDelayData, PDSL_DELAY_SAMPLES);
-		fbDelay.setMem(fbDelayData);
+		PackedCollection fbDelay = new PackedCollection(new TraversalPolicy(channels))
+				.fill(PDSL_DELAY_SAMPLES);
 		PackedCollection fbTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
-		PackedCollection fbPassthrough = new PackedCollection(new TraversalPolicy(channels, channels));
-		double[] passthroughData = new double[channels * channels];
-		for (int i = 0; i < channels; i++) passthroughData[i * channels + i] = 1.0;
-		fbPassthrough.setMem(passthroughData);
-		PackedCollection fbBuffers = new PackedCollection(channels * signalSize);
-		PackedCollection fbHeads = new PackedCollection(channels);
+
+		// Bus-line network: a square (layers == channels) one-frame network whose send
+		// matrix sums every channel into the first line (the production routing shape),
+		// with zero recirculation and identity output taps.
+		PackedCollection busSend = oneHotStride(
+				new PackedCollection(new TraversalPolicy(channels, channels)), channels, 0);
+		PackedCollection busDelays = new PackedCollection(new TraversalPolicy(channels))
+				.fill(signalSize);
+		PackedCollection busTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
+		PackedCollection busWetOut = new PackedCollection(new TraversalPolicy(channels, channels));
+		a(channels * channels, cp(busWetOut), identity(channels)).get().run();
 
 		int reverbFrames = 4;
 		PackedCollection reverbSend = new PackedCollection(new TraversalPolicy(channels));
-		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
-		double[] reverbDelayData = new double[channels];
-		Arrays.fill(reverbDelayData, signalSize);
-		reverbDelays.setMem(reverbDelayData);
+		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels))
+				.fill(signalSize);
 		PackedCollection reverbFeedback = new PackedCollection(new TraversalPolicy(channels, channels));
 		PackedCollection reverbBuffers = new PackedCollection(channels * reverbFrames * signalSize);
 		PackedCollection reverbHeads = new PackedCollection(channels);
 
 		Map<String, Object> neutralEfx = new HashMap<>();
+		// Identity coefficients for the wet cascade's high-pass half keep the neutral
+		// configuration's wet arm a pure pass-through ahead of the (test-supplied or
+		// adapter-built) low-pass bank.
+		neutralEfx.put("wet_hp_coeffs", identityFirBank(channels, firTaps));
 		neutralEfx.put("efx_filter_coeffs", efxCoeffs);
 		neutralEfx.put("efx_wet_level", efxWet);
 		neutralEfx.put("efx_automation", efxAuto);
+		// The ramp_scale stages interpolate previous -> current; aliasing each _prev
+		// slot to the SAME collection as its current slot makes every ramp a constant
+		// gain — exactly the stepped behaviour these neutral configurations compare
+		// against.
+		neutralEfx.put("efx_automation_prev", efxAuto);
 		neutralEfx.put("efx_fb_delay", fbDelay);
 		neutralEfx.put("efx_fb_transmission", fbTransmission);
-		neutralEfx.put("efx_fb_passthrough", fbPassthrough);
-		neutralEfx.put("fb_buffers", fbBuffers);
-		neutralEfx.put("fb_heads", fbHeads);
+		// One echo ring bank per voicing arm (the apply echo runs on MAIN and WET alike).
+		neutralEfx.put("fb_buffers", new PackedCollection(channels * signalSize));
+		neutralEfx.put("fb_heads", new PackedCollection(channels));
+		neutralEfx.put("main_fb_buffers", new PackedCollection(channels * signalSize));
+		neutralEfx.put("main_fb_heads", new PackedCollection(channels));
+		// Unity wet-in send, aliased _prev for a constant ramp; square one-frame bus.
+		PackedCollection wetIn = onesCollection(channels);
+		neutralEfx.put("wet_in", wetIn);
+		neutralEfx.put("wet_in_prev", wetIn);
+		neutralEfx.put("delay_layers", channels);
+		neutralEfx.put("bus_send", busSend);
+		neutralEfx.put("bus_delay_samples", busDelays);
+		neutralEfx.put("bus_transmission", busTransmission);
+		neutralEfx.put("bus_wet_out", busWetOut);
+		neutralEfx.put("bus_buffers", new PackedCollection(channels * signalSize));
+		neutralEfx.put("bus_heads", new PackedCollection(channels));
+		// The neutral reverb overlay uses one line per channel, so reverb_taps must be
+		// overridden to match — every reverb argument's shape follows the tap count
+		// (the adapter's own map uses its production tap count with matching shapes).
+		neutralEfx.put("reverb_taps", channels);
 		neutralEfx.put("reverb_send", reverbSend);
+		neutralEfx.put("reverb_send_prev", reverbSend);
 		neutralEfx.put("reverb_delays", reverbDelays);
 		neutralEfx.put("reverb_feedback", reverbFeedback);
 		neutralEfx.put("reverb_buffers", reverbBuffers);
@@ -120,16 +152,12 @@ interface MixdownPdslTestFeatures {
 		Map<String, Object> reverb = new HashMap<>();
 		reverb.put("channels", channels);
 		reverb.put("signal_size", signal);
-		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
-		double[] delayData = new double[channels];
-		Arrays.fill(delayData, signal);
-		reverbDelays.setMem(delayData);
-		reverb.put("delay_samples", reverbDelays);
+		reverb.put("delay_samples",
+				new PackedCollection(new TraversalPolicy(channels)).fill(signal));
 		reverb.put("feedback_matrix", new PackedCollection(
-				new TraversalPolicy(channels, channels)).fill(0.0));
-		reverb.put("reverb_buffers",
-				new PackedCollection(channels * frames * signal).fill(0.0));
-		reverb.put("reverb_heads", new PackedCollection(channels).fill(0.0));
+				new TraversalPolicy(channels, channels)));
+		reverb.put("reverb_buffers", new PackedCollection(channels * frames * signal));
+		reverb.put("reverb_heads", new PackedCollection(channels));
 		return reverb;
 	}
 
@@ -140,11 +168,28 @@ interface MixdownPdslTestFeatures {
 	 * @return a ones-filled collection
 	 */
 	default PackedCollection onesCollection(int size) {
-		PackedCollection ones = new PackedCollection(new TraversalPolicy(size));
-		double[] data = new double[size];
-		Arrays.fill(data, 1.0);
-		ones.setMem(data);
-		return ones;
+		return new PackedCollection(new TraversalPolicy(size)).fill(1.0);
+	}
+
+	/**
+	 * Fills {@code dest} with a repeating one-hot pattern, produced on the device:
+	 * element {@code i} is {@code 1.0} where {@code i % stride == hot} and {@code 0.0}
+	 * elsewhere, via the producer expression {@code max(1 - (i mod stride - hot)^2, 0)}
+	 * — a single structural kernel, never a host-staged array.
+	 *
+	 * @param dest   the collection to populate (any shape; the pattern runs over its
+	 *               flat extent)
+	 * @param stride the repeat period
+	 * @param hot    the in-period index that receives {@code 1.0}
+	 * @return {@code dest}
+	 */
+	default PackedCollection oneHotStride(PackedCollection dest, int stride, int hot) {
+		int total = dest.getShape().getTotalSize();
+		CollectionProducer offset = mod(integers(0, total), c((double) stride))
+				.subtract(c((double) hot));
+		a(total, cp(dest),
+				max(c(1.0).subtract(offset.multiply(offset)), c(0.0))).get().run();
+		return dest;
 	}
 
 	/**
@@ -156,13 +201,8 @@ interface MixdownPdslTestFeatures {
 	 * @return the identity coefficient bank
 	 */
 	default PackedCollection identityFirBank(int channels, int taps) {
-		PackedCollection bank = new PackedCollection(new TraversalPolicy(channels, taps));
-		double[] data = new double[channels * taps];
-		for (int ch = 0; ch < channels; ch++) {
-			data[ch * taps + taps / 2] = 1.0;
-		}
-		bank.setMem(data);
-		return bank;
+		return oneHotStride(new PackedCollection(new TraversalPolicy(channels, taps)),
+				taps, taps / 2);
 	}
 
 	/**
@@ -172,10 +212,6 @@ interface MixdownPdslTestFeatures {
 	 * @return the identity coefficients
 	 */
 	default PackedCollection identityFir(int taps) {
-		PackedCollection coeffs = new PackedCollection(taps);
-		double[] data = new double[taps];
-		data[taps / 2] = 1.0;
-		coeffs.setMem(data);
-		return coeffs;
+		return oneHotStride(new PackedCollection(taps), taps, taps / 2);
 	}
 }

@@ -45,9 +45,11 @@
 // Per-channel delay state for the efx bus
 //
 // Each of the `channels` delay lines owns its own slice of `buffers` and
-// `heads`. `buffers` must have total size `channels * signal_size` and
-// `heads` must have total size `channels`; the subscript operator
-// (e.g., `buffers[channel]`) carves a per-channel view at build time.
+// `heads`. `buffers` must have total size `channels * ring` where `ring` is a
+// whole multiple of `signal_size` spanning at least `delay_samples +
+// signal_size` (the write-first ring invariant — a one-frame ring can only
+// hold a zero delay); `heads` must have total size `channels`. The subscript
+// operator (e.g., `buffers[channel]`) carves a per-channel view at build time.
 // ---------------------------------------------------------------------------
 state mixdown_efx_state {
     buffers: weight
@@ -58,9 +60,11 @@ state mixdown_efx_state {
 // Per-line delay state for the reverb bus
 //
 // The closed-loop multi-tap reverb structure (delay_network) requires its
-// own per-line buffers and heads, sized [taps * signal_size] and [taps]
-// respectively. These are independent of mixdown_efx_state's slots so the
-// reverb path can be exercised in isolation by tests like
+// own per-line buffers and heads, sized [taps * ring] and [taps] where `ring`
+// is a whole multiple of `signal_size` spanning at least the longest tap
+// delay (the read-first ring invariant: a tap is representable for
+// signal_size <= delay <= ring). These are independent of mixdown_efx_state's
+// slots so the reverb path can be exercised in isolation by tests like
 // testMixdownManagerReverbPath.
 // ---------------------------------------------------------------------------
 state mixdown_reverb_state {
@@ -402,38 +406,71 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
 // count (NOT the doubled input row count). Requires mixdown_efx_state populated
 // as in mixdown_efx_bus.
 // ---------------------------------------------------------------------------
-// Per-channel feedback ring state for the efx bus's recursive feedback grid
-// (the PDSL analogue of MixdownManager.createEfx's .mself(transmission)). Distinct
-// from mixdown_efx_state (the feedforward per-channel delay) so the two delay stages
-// keep independent ring buffers.
+// Per-channel apply-echo ring state — EfxManager.apply's per-channel AdjustableDelayCell,
+// rendered as a diagonal delay_network (pure delayed tap out, self-feedback recirculation).
+// Legacy applies the echo at the pattern-channel level, so BOTH voicings carry it: the
+// WET arm's rings (fb_*) and the MAIN arm's rings (main_fb_*) are independent state over
+// the same gene-driven delays and feedback levels, exactly like the two separate
+// AdjustableDelayCell instances the legacy path builds per channel.
 state mixdown_efx_feedback_state {
     fb_buffers: weight
     fb_heads: weight
+    main_fb_buffers: weight
+    main_fb_heads: weight
 }
 
-// The {@code efx_*} parameters render EfxManager.apply() (the per-channel chain applied
-// to each voicing before the mixdown bus): the feedforward portion (gene-chosen filter,
-// wet level, automation, blended with the channel's dry signal) plus the recursive
-// feedback grid (efx_fb_*) that replaces the feedforward route — the PDSL analogue of
-// the mixdown efx bus's .mself(transmission) decaying echo/tail. PDSL feedback is
-// block-parallel (frame-quantized), so it approximates the per-sample Java recurrence,
-// and efx_fb_transmission is scaled to a contraction for stability.
+// Bus-line network ring state — MixdownManager.createEfx's delay layers (the
+// [delay_layers]-line network fed through bus_send, recirculated by bus_transmission).
+// Sized [delay_layers * ring] / [delay_layers] where ring spans the largest gene delay
+// plus slow-down (cursor rate below 1) headroom in whole frames.
+state mixdown_bus_state {
+    bus_buffers: weight
+    bus_heads: weight
+}
+
+// The {@code efx_*} parameters render EfxManager.apply() — the per-channel chain the
+// legacy path applies to EVERY pattern channel (both voicings): dry blended with the
+// echo of the gene-filtered, leveled, automation-modulated wet branch, where the echo
+// is a per-channel delay at the delayTimes gene (efx_fb_delay) with per-channel
+// self-feedback (efx_fb_transmission, diagonal-only) emitting the PURE delayed tap
+// (delay_network semantics — exactly the legacy AdjustableDelayCell + mself form).
+// The {@code bus_*} parameters render MixdownManager.createEfx's bus-line network,
+// the second (distinct) legacy regeneration structure: every channel's wet voicing,
+// scaled by the clock-automated wet_in send, is routed into the FIRST line only
+// (bus_send); the remaining lines receive nothing but the UNSCALED genome transmission
+// recirculation (bus_transmission, [into, from]); each line delays by its 4-20 s
+// `delay`-chromosome gene divided by the clock-driven cursor rate — the legacy
+// AdjustableDelayCell advances both cursors together, so the rate rescales the delay
+// as a bounded, memoryless ratio (bus_delay_samples, refreshed per buffer); the network emits
+// wetOut[j] x line j's pure delayed tap (bus_wet_out as the feedback passthrough).
+// PDSL feedback is block-parallel (frame-quantized), so both structures approximate
+// the per-sample Java recurrences at buffer granularity.
 layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
+                         delay_layers: int,
                          hp_coeffs: producer([channels, fir_taps]), volume: producer([channels]),
+                         volume_prev: producer([channels]),
                          lp_coeffs: producer([fir_taps]),
                          sample_rate: scalar, filter_order: scalar,
                          wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
-                         delay_samples: producer([1]),
+                         wet_hp_coeffs: producer([channels, fir_taps]),
+                         wet_in: producer([channels]),
+                         wet_in_prev: producer([channels]),
                          master_gain: producer([1]),
                          efx_filter_coeffs: producer([channels, fir_taps]),
                          efx_wet_level: producer([channels]),
                          efx_automation: producer([channels]),
+                         efx_automation_prev: producer([channels]),
                          efx_fb_delay: producer([channels]),
                          efx_fb_transmission: producer([channels, channels]),
-                         efx_fb_passthrough: producer([channels, channels]),
+                         bus_send: producer([channels, delay_layers]),
+                         bus_delay_samples: producer([delay_layers]),
+                         bus_transmission: producer([delay_layers, delay_layers]),
+                         bus_wet_out: producer([delay_layers, delay_layers]),
                          reverb_send: producer([channels]),
-                         reverb_delays: producer([channels]),
-                         reverb_feedback: producer([channels, channels]),
+                         reverb_send_prev: producer([channels]),
+                         reverb_taps: int,
+                         reverb_delays: producer([reverb_taps]),
+                         reverb_feedback: producer([reverb_taps, reverb_taps]),
                          reverb_network_gain: producer([1]),
                          reverb_tap_mean: producer([1]),
                          main_arm_gain: producer([1]),
@@ -446,6 +483,25 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
             reshape(shape(2 * channels * signal_size))
             slice(0, channels * signal_size)
             reshape(shape(channels, signal_size))
+            // EfxManager.apply runs at the PATTERN-CHANNEL level in the legacy path, so
+            // the MAIN voicing of a wet channel carries the apply echo too — the only
+            // un-bus-delayed echo in the legacy mix. Dry blended with the echo of the
+            // gene-filtered, leveled, automation-modulated wet branch; the echo emits
+            // the PURE delayed tap with per-channel self-feedback (diagonal-matrix
+            // delay_network — exactly the legacy AdjustableDelayCell + mself form), on
+            // the MAIN arm's own ring state (main_fb_*).
+            accum_blocks(
+                { identity() },
+                {
+                    for each channel {
+                        fir(efx_filter_coeffs[channel])
+                        scale(efx_wet_level[channel])
+                        ramp_scale(efx_automation_prev[channel], efx_automation[channel])
+                    }
+                    delay_network(efx_fb_delay, efx_fb_transmission,
+                                  main_fb_buffers, main_fb_heads)
+                }
+            )
             for each channel {
                 // mainFilterUp, matching Java's AudioPassFilter: the Java filter hard clamps
                 // its input to [-0.99, 0.99] EVERY sample before filtering
@@ -461,7 +517,10 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                 // approximation.
                 clip(-0.99, 0.99)
                 fir(hp_coeffs[channel])
-                scale(volume[channel])
+                // Per-sample gain ramp from last buffer's volume to this buffer's —
+                // the legacy path applies volume per sample; a per-buffer step on a
+                // hot bus is a level discontinuity at every boundary (zipper).
+                ramp_scale(volume_prev[channel], volume[channel])
             }
             sum_channels()
             // Diagnostic arm-isolation gain (default 1.0). Lets the bisection test zero an
@@ -473,58 +532,86 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
             reshape(shape(2 * channels * signal_size))
             slice(channels * signal_size, channels * signal_size)
             reshape(shape(channels, signal_size))
-            for each channel {
-                // EfxManager.apply() feedforward: dry + (HP/LP filter -> wet level ->
-                // automation modulation).
-                accum_blocks(
-                    { identity() },
-                    {
+            // EfxManager.apply on the WET voicing: dry blended with the PURE-TAP echo of
+            // the gene-filtered, leveled, automation-modulated wet branch — the same
+            // stage as the MAIN arm's, on independent ring state (fb_*). The echo sits
+            // INSIDE the apply chain (before the wet-filter cascade and volume), where
+            // the legacy AdjustableDelayCell sits — not after the bus as before.
+            accum_blocks(
+                { identity() },
+                {
+                    for each channel {
                         fir(efx_filter_coeffs[channel])
                         scale(efx_wet_level[channel])
-                        scale(efx_automation[channel])
+                        ramp_scale(efx_automation_prev[channel], efx_automation[channel])
                     }
-                )
-                // Mixdown efx bus: per-channel wet filter then the per-channel VOLUME, mirroring
-                // Java's efxFactor = v ∘ wetFilter (MixdownManager.createCells:654-656). The
-                // previous static wet_level here was spurious (no Java counterpart) and, together
-                // with the missing volume, made the efx bus ~1/v too hot.
-                fir(wet_filter_coeffs[channel])
-                scale(volume[channel])
-                delay(delay_samples, buffers[channel], heads[channel])
-            }
-            // Recursive cross-channel feedback grid — the decaying echo/tail. Replaces the
-            // feedforward route(transmission) with MixdownManager.createEfx's .mself(transmission):
-            // delayed output is routed back through efx_fb_transmission and emitted through
-            // efx_fb_passthrough. Frame-quantized (block-parallel) and contraction-scaled.
-            feedback(efx_fb_delay, efx_fb_transmission, efx_fb_passthrough, fb_buffers, fb_heads)
-            sum_channels()
-            scale(efx_arm_gain)
-        },
-        {
-            // Reverb bus — MixdownManager.createEfx's reverb.sum().map(DelayNetwork). Java sends
-            // only the reverb-channel SUBSET, scaled per channel by reverbFactor, from the WET
-            // voicing (wetSources.branch(..., reverbFactor)). So slice the WET region, apply the
-            // per-channel reverb send (reverb_send[channel], 0 for non-reverb channels), sum to a
-            // mono send, then fan across the reverb taps and run the closed-loop multi-tap
-            // feedback delay network (Householder feedback for a stable, diffuse tail). The
-            // network's GAIN STRUCTURE mirrors Java's DelayNetwork: the send enters the lines
-            // scaled by reverb_network_gain (DelayNetwork's `gain`, 0.1) and the wet output is
-            // the MEAN over the lines (sum * 1/size), so the wet level sits at roughly
-            // input * gain. Without these two stages the arm ran ~15x hotter than Java once
-            // the reverb automation grew past unity, swamping the swept dry bus.
-            reshape(shape(2 * channels * signal_size))
-            slice(channels * signal_size, channels * signal_size)
-            reshape(shape(channels, signal_size))
-            for each channel {
-                scale(reverb_send[channel])
-            }
-            sum_channels()
-            scale(reverb_network_gain)
-            repeat(channels)
-            delay_network(reverb_delays, reverb_feedback, reverb_buffers, reverb_heads)
-            sum_channels()
-            scale(reverb_tap_mean)
-            scale(reverb_arm_gain)
+                    delay_network(efx_fb_delay, efx_fb_transmission,
+                                  fb_buffers, fb_heads)
+                }
+            )
+            // The apply output (the wet voicing) fans to the two mixdown consumers the
+            // legacy wetSources.branch(...) feeds — the efx bus-line network and the
+            // reverb send — whose mono outputs this accum sums, exactly as the outer
+            // accum sums the arms.
+            accum_blocks(
+                {
+                    // Mixdown efx bus: per-channel wet-filter cascade then VOLUME, mirroring
+                    // Java's efxFactor = v ∘ wetFilter. The legacy wet filter is
+                    // AudioPassFilter high-pass THEN low-pass (FixedFilterGene), rendered as
+                    // truncated-biquad FIR rows from the impulse-response tables; the Java
+                    // filter clamps its input to [-0.99, 0.99] every sample, mirrored here.
+                    // Then the clock-automated wet_in send gain — the gain at which each
+                    // channel enters the bus network (legacy delayGene, initially closed and
+                    // opening over the arrangement). route(bus_send) sums every channel into
+                    // the FIRST line of the delay_layers-line network (the others hear only the
+                    // recirculation); feedback() delays each line by its 4-20 s
+                    // `delay`-chromosome gene over the cursor rate, recirculates the UNSCALED genome
+                    // transmission among the lines at that bus-delay period, and emits
+                    // wetOut[j] x line j's pure delayed tap (bus_wet_out passthrough) —
+                    // the slow-building regenerating wash of the legacy efx bus.
+                    for each channel {
+                        clip(-0.99, 0.99)
+                        fir(wet_hp_coeffs[channel])
+                        fir(wet_filter_coeffs[channel])
+                        ramp_scale(volume_prev[channel], volume[channel])
+                        ramp_scale(wet_in_prev[channel], wet_in[channel])
+                    }
+                    route(bus_send)
+                    feedback(bus_delay_samples, bus_transmission, bus_wet_out,
+                             bus_buffers, bus_heads)
+                    sum_channels()
+                    scale(efx_arm_gain)
+                },
+                {
+                    // Reverb bus — MixdownManager.createEfx's reverb.sum().map(DelayNetwork).
+                    // Java branches the reverb send from wetSources — the APPLY OUTPUT
+                    // (dry + echo), which is the signal this branch receives — scaled per
+                    // channel by reverbFactor (reverb_send[channel], 0 for non-reverb
+                    // channels), summed to a mono send, fanned across the reverb taps, and
+                    // run through the closed-loop multi-tap feedback delay network
+                    // (Householder feedback for a stable, diffuse tail). The tap count
+                    // (reverb_taps) is independent of the scene channel count — density is a
+                    // diffusion choice, mirroring Java's 128-line DelayNetwork — and
+                    // delay_network derives its line count from the [reverb_taps]-shaped
+                    // delay argument, so the repeat() fan-out needs no channel bookkeeping.
+                    // The network's GAIN STRUCTURE mirrors Java's DelayNetwork: the send
+                    // enters the lines scaled by reverb_network_gain (DelayNetwork's `gain`,
+                    // 0.1) and the wet output is the MEAN over the lines (sum * 1/size), so
+                    // the wet level sits at roughly input * gain. Without these two stages
+                    // the arm ran ~15x hotter than Java once the reverb automation grew past
+                    // unity, swamping the swept dry bus.
+                    for each channel {
+                        ramp_scale(reverb_send_prev[channel], reverb_send[channel])
+                    }
+                    sum_channels()
+                    scale(reverb_network_gain)
+                    repeat(reverb_taps)
+                    delay_network(reverb_delays, reverb_feedback, reverb_buffers, reverb_heads)
+                    sum_channels()
+                    scale(reverb_tap_mean)
+                    scale(reverb_arm_gain)
+                }
+            )
         }
     )
     // Master tail, mirroring MixdownManager.createEfx exactly: the Java masterFilterDown is an

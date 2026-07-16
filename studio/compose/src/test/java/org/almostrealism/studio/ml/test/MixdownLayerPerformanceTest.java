@@ -271,13 +271,17 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 		wet.put("filter_order", (double) PDSL_FILTER_ORDER);
 		wet.put("hp_coeffs", identityFirBank(channels, taps));
 		wet.put("volume", onesCollection(channels));
+		// ramp_scale(prev == curr) is a constant gain, matching the stepped
+		// behaviour this synthetic configuration was written against.
+		wet.put("volume_prev", wet.get("volume"));
 		wet.put("lp_coeffs", identityFir(taps));
 		wet.put("wet_filter_coeffs", identityFirBank(channels, taps));
+		wet.put("wet_hp_coeffs", identityFirBank(channels, taps));
 		wet.put("wet_level", WET_LEVEL);
-		wet.put("delay_samples", 6500);
 		wet.put("master_gain", 0.5);
-		wet.put("buffers", new PackedCollection(channels * signal).fill(0.0));
-		wet.put("heads", new PackedCollection(channels).fill(0.0));
+		// The bus-line network (delay_layers, bus_send, bus_delay_samples, bus_transmission,
+		// bus_wet_out, bus_buffers/bus_heads), the wet_in send, and both voicing arms' echo
+		// rings come from neutralEfxArgs above.
 		return wet;
 	}
 
