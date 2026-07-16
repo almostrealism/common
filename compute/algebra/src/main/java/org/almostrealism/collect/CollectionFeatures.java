@@ -464,6 +464,12 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * Retrieves values from a collection at positions given by another collection,
 	 * producing output with the given explicit shape.
 	 *
+	 * <p>The gather generates an instruction-cache signature: its expression form is
+	 * fixed for the {@code valueAtIndex} name, the base signature appends the output
+	 * shape, and input signatures are included recursively — so the signature fully
+	 * identifies the generated kernel and structurally identical gathers reuse one
+	 * compiled program instead of poisoning their enclosing scope's signature.</p>
+	 *
 	 * @param shape the output shape
 	 * @param collection the collection to read values from
 	 * @param index the producer of indices into the collection
@@ -473,6 +479,7 @@ public interface CollectionFeatures extends GradientFeatures {
 											Producer<PackedCollection> collection,
 											Producer<PackedCollection> index) {
 		DefaultTraversableExpressionComputation exp = new DefaultTraversableExpressionComputation("valueAtIndex", shape,
+				DeltaFeatures.MultiTermDeltaStrategy.NONE, true,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx).toInt())),
 				collection, index);
 		if (shape.getTotalSize() == 1 && Countable.isFixedCount(index)) {

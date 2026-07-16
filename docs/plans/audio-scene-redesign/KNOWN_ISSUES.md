@@ -1,245 +1,158 @@
 # Known Issues & Platform Constraints
 
-> Live constraints relevant to the audio-scene-redesign / real-time / PDSL DSP work.
-> The PDSL mixdown path is merged to `master`. Verify against current code before
-> acting — entries reflect what was true when written. Referenced from
-> [NEXT_STEP.md](NEXT_STEP.md) and the other docs in this folder.
->
-> §1–§5 and §7 are **live**. §6 and §8 are a **resolved-issues record** kept so the
-> fixes are not re-litigated or re-broken.
+> Live constraints relevant to the audio-scene / PDSL work. Verify against current code
+> before acting — entries reflect what was true when written. §1–§7 are **live**; §8 is
+> a compressed **resolved-issues record** kept so the fixes are not re-broken.
 
 ---
 
-## 1. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`
+## 1. RESOLVED — PDSL delay/feedback ring arithmetic (found 2026-07-09, fixed 2026-07-09/11)
 
-The framework is designed to use JNI (CPU) and Metal *together*; the default (unset)
-router assigns each operation to the backend that suits it. Pinning one backend breaks:
+Four ring-stage defects, each generating per-buffer splices or wrong-age reads inside
+or feeding a feedback loop — the mechanical explanation for the PDSL-vs-CellList
+"grinding" divergence. All fixed; full derivations, receipts, and mechanisms:
+[PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md) §2.
+
+- **Feedforward delay into a one-frame ring** (§2.1) — fixed: rings sized from actual
+  delays; write/read order unified write-first across the vectorized and scalar forms.
+- **Sub-frame reverb taps** (§2.2) — fixed: seconds-denominated ring, taps floored at
+  one frame.
+- **Efx feedback gene delays below one frame at high BPM** (§2.3) — fixed: device-side
+  band clamps (write-first `delay ≤ ring − signalSize`; read-first
+  `signalSize ≤ delay ≤ ring`) enforced in every ring kernel.
+- **Deferred tap reads under accum arms** (§2.4, found during C5) — every stateful
+  stage hosted under an `accum_blocks` arm read post-write state: one frame short of
+  the requested delay, or the current frame outright at the band floor (at 8192 the
+  reverb tap floor pinned there → a per-frame leak recirculated by the Householder
+  matrix). Fixed: taps materialized at their ops position
+  (`MultiChannelDspFeatures`), consumer-independent.
+- **Bus-delay drift integral** (found by ear after C5: full-scale buzz from ~40 s,
+  spectrogram reads music → tightening chirp → solid full-band saturation) — the C2
+  modulation accumulated `(1 − s)·signalSize` per buffer without bound, dragging
+  every bus line to the one-frame floor within a minute, where the C5-faithful
+  unscaled recirculation blew up. The legacy `AdjustableDelayCell` advances BOTH
+  cursors at the rate, so the effective delay is the bounded, memoryless ratio
+  `gene / s(clock)` (PDSL_DIFFERENCES §6-C2, corrected). Fixed: `bus_delay_samples`
+  is a per-buffer-refreshed slot computing that ratio; no drift state exists.
+
+Do not re-break: the band clamps, the tap materialization, and the ratio (never
+integral) delay modulation are load-bearing; the regression guards are
+`DelayBankBehaviorTest`, `DelayNetworkBehaviorTest`,
+`MixdownManagerPdslVerificationTest.mainArmCarriesApplyEcho`, and
+`MixdownManagerPdslVerificationTest.busDelayFollowsCursorRate`.
+
+## 1b. OpenCL single-channel render silence on CI (unreproduced; gated off-Metal)
+
+The `test-media-cl` job saw `AudioSceneSingleVsMultiChannelTest`'s single-channel
+mode render total silence on the CI runners while the multi-channel mode rendered
+fine, and the same mode passes locally under `native,cl` with both the curated and
+the synthetic libraries — an environmental effect (runner memory pressure and/or
+the per-run arrangement roll) not yet reproduced. Since CL is not a primary
+backend, the single/silenced parity modes are skipped off-Metal (the multi render
+remains the CL smoke check), the CL job now runs the native provider on malloc
+blocks (`AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled`, matching the other CL jobs),
+and evaluation renders shorten off-Metal. Revisit when the CL backend effort
+resumes; the gate is in `singleVsMultiChannel` and keys on
+`AudioSceneTestBase.isMetalAvailable`.
+
+## 2. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`
+
+The framework uses JNI (CPU) and Metal *together*; the default (unset) router assigns
+each operation to the backend that suits it. Pinning breaks:
 
 - **`AR_HARDWARE_DRIVER=mtl` fails to compile the mixdown loop.** Metal limits a kernel
-  to **31 buffer arguments** (indices 0–30); the full fx/mixdown per-frame loop
-  (`f_loop_*`) exceeds it → `MetalProgram.compile`: *"'buffer' attribute parameter is
-  out of bounds: must be between 0 and 30."*
-- **`AR_HARDWARE_DRIVER=native` is ~14× over budget.** The parallel pattern kernels
-  belong on Metal; putting them on the CPU is wasteful.
-- **Default hybrid is ~3–4× faster than native-only** and is the only configuration
-  that both compiles and approaches real-time.
+  to **31 buffer arguments**; the full fx/mixdown per-frame loop exceeds it
+  (`MetalProgram.compile`: *"'buffer' attribute parameter is out of bounds"*).
+- **`AR_HARDWARE_DRIVER=native` is ~14× over budget** — the parallel pattern kernels
+  belong on Metal.
+- **Default hybrid is ~3–4× faster than native-only** and the only configuration that
+  both compiles and reaches real-time.
 
-The 31-buffer limit is unaddressed and is the reason the recurrent DSP loop stays on
-CPU/JNI; the optimization lever is moving the *parallelizable* parts (across
-channels/voices, non-recurrent ops) onto Metal, not forcing the whole loop onto one
-backend.
+The 31-buffer limit is why the recurrent DSP loop stays on CPU/JNI; the lever is moving
+the *parallelizable* parts onto Metal, not forcing the whole loop onto one backend.
 
-## 2. Continuous rendering requires `-DAR_PATTERN_CACHE_PERSIST=true`
+## 3. Continuous rendering requires `-DAR_PATTERN_CACHE_PERSIST=true`
 
-Without it, a sustained render leaks native (Metal/CL) memory (~150 MB/buffer observed)
-from per-loop note-audio deallocation churn, and the per-tick ratio explodes from ~1.1×
-to 70×+ within a couple hundred buffers before hitting the memory cap (OOM). With it,
-the note-audio cache is never evicted, memory is bounded by arrangement length, and the
-render holds its steady-state ratio.
+Without it, a sustained render leaks native memory (~150 MB/buffer) from note-audio
+deallocation churn and the per-tick ratio explodes within a couple hundred buffers.
+`PatternLayerManager.cachePersist` is a `static final` read at class load — it **must
+be a JVM `-D` arg** (inside surefire `argLine` for tests). Callers that switch
+arrangements at runtime must leave it disabled or call `invalidateCaches()`.
 
-`PatternLayerManager.cachePersist` is a `static final` read at class load, so it **must
-be a JVM `-D` arg** (not a runtime `System.setProperty`, and not a bare Maven `-D` that
-fails to fork into the test JVM — it must be inside the surefire `argLine`). Callers that
-switch arrangements at runtime must leave it disabled (or call `invalidateCaches()`) so
-stale audio is evicted.
-
-## 3. Metal `floor()` resample compile ambiguity (watch)
+## 4. Metal `floor()` resample compile ambiguity (watch)
 
 `BatchedPatternRenderer.buildResampleProducer` uses `integers(0,N).multiply(ratio)` →
 `floor` → gather → lerp. The `floor()` over a `(long)global_id`-derived expression has
-hit a Metal math-intrinsic overload ambiguity at codegen in the past. A prior instance
-was resolved (commits `385bb1c0a`, `85cc1f12d`), but the construct remains in shipped
-code and is worth watching when extending the batched resample path on Metal.
+hit a Metal math-intrinsic overload ambiguity before (resolved in `385bb1c0a`,
+`85cc1f12d`); the construct remains in shipped code — watch when extending the batched
+resample path on Metal.
 
-## 4. Production envelope classes remain hybrid (by design, for now)
+## 5. Production envelope classes remain hybrid (by design, for now)
 
 `ParameterizedVolumeEnvelope.apply()` / `ParameterizedFilterEnvelope.apply()` still use
-a hybrid `evaluate()`/`toDouble(0)` pattern. The batched path does **not** route through
-them — it regenerates the envelope curves in-kernel from the `[N]` ADSR scalar tensors
-(`BatchedPatternRenderer`), leaving the legacy per-note classes untouched. The earlier
-plan to refactor these into pure Producers was deliberately **not** done because the
-batched path bypasses them. Only revisit if the legacy per-note path is retired.
+a hybrid `evaluate()`/`toDouble(0)` pattern. The batched path regenerates envelopes
+in-kernel from `[N]` ADSR scalar tensors and does not route through them. Revisit only
+if the legacy per-note path is retired.
 
-## 5. Design constraint — Block-outward (never wrap a Block in a Cell/CellList)
+## 6. Design constraint — Block-outward (never wrap a Block in a Cell/CellList)
 
-A `Block` is essentially a `Cell` (forward) plus a second cell that runs the other
-direction (backprop); audio DSP needs no backprop, so a `Block` and a `Cell` are
-approximately the same thing. When integrating a compiled PDSL `Block` into a
-`Cell`/`CellList` consumer, **make the consumer accept a `Block`** — do not make the
-`Block` masquerade as a `CellList`. If a compatibility adapter is unavoidable, `Block`
-stays on the outside (adapt `Cell` → `Block`, never the reverse): a consumer that accepts
-`Block` can hold any `Cell` implementation, so this is the universal direction.
-
-**In practice the chosen cutover does not adapt at the cell level at all.** The
-integration contract for real-time rendering is `TemporalCellular`
-(`setup()`/`tick()`/`reset()`), **not** `CellList` — every consumer outside `AudioScene`
-(the health computation, `BufferedOutputScheduler`, `RealtimeContinuousRenderer`) drives
-that contract and is blind to whatever backs it. So the PDSL path is a **Block-forward
-`TemporalCellular` runner** (`AudioSceneRealtimeRunner`): its `tick()` keeps the Java
-pattern-prepare phase, calls `compiledModel.forward(buffer)` once per buffer for the DSP,
-and writes the result straight to the output line. `wrapBlockAsCellList` is **not** used.
+When integrating a compiled PDSL `Block` into a `Cell`/`CellList` consumer, **make the
+consumer accept a `Block`** — never make the `Block` masquerade as a `CellList`. In
+practice the cutover does not adapt at the cell level at all: the real-time integration
+contract is `TemporalCellular` (`setup()`/`tick()`/`reset()`), and the PDSL path is a
+Block-forward `TemporalCellular` runner (`AudioSceneRealtimeRunner`); every consumer
+outside `AudioScene` drives that contract and is blind to what backs it.
+`wrapBlockAsCellList` is **not** used in the production path.
 
 Two runtime constraints remain live for callers:
-- **Single channel or zero-based contiguous multi-channel.** `AudioSceneRealtimeRunner.supportsPdsl`
-  accepts any single-channel selection (including `AudioScene.renderChannel`'s non-zero
-  `[c]`, mapping its genome reads to the selected scene channel via
-  `MixdownManagerPdslAdapter.Config.channel`) and the zero-based contiguous prefix
-  `[0,1,…,n-1]`. A *non-contiguous* multi-channel subset (e.g. `[0,2]`) falls back to the
-  CellList path — the cross-channel transmission feedback grid is indexed by bank
-  position rather than scene channel, so an arbitrary subset would not reproduce the
-  routing.
-- **Stereo write gating.** `WaveOutput.write` gates on the *minimum* frame count across
-  channels; the mono master output is streamed to **both** stereo writers (dual-mono) so
-  the file is actually written. True stereo is outstanding (see
-  [NEXT_STEP.md](NEXT_STEP.md)).
-
-## 6. a2 batched dispatch on the full real-scene pattern path — RESOLVED
-
-The batched-pattern *mechanism* was first correctness-validated on the **synthetic**
-sentinel path (`studio/music`: `BatchedDispatchSentinelTest`, `BatchedVsPerNoteRmsTest`,
-`BatchedRealtimeTickTest`). It now also fires on the **full curated-library scene**: both
-melodic-SSS and percussion note shapes are classified and dispatched
-(`BatchedPatternLayerRenderer.dispatchWindow` / `dispatchWindowPercussion`), so the
-earlier `peak=0.0` silence on unhandled shapes is gone, and the old argument-aggregation /
-`GeneratedOperation`-pool co-blocker is itself resolved (§8.1).
-`studio/compose/.../pattern/test/BatchedRealSceneRenderTest.java` is **re-enabled** (no
-longer `@Ignore`d); its `singleMelodicChannelFullPipeline` uses a random `realGenome()` and
-is therefore flaky (peak can be `0.0` on some seeds). Full treatment:
-[A2_BATCHED_DISPATCH.md](A2_BATCHED_DISPATCH.md).
-
-## 6.1 Batched renderer bound buffers — RESOLVED via JVM-wide renderer sharing (2026-07-06)
-
-Each `BatchedPatternRenderer` compiled for a `(bucket, sourceLength, targetLength)` shape
-owns large fixed-shape bound input buffers (`bucketN × sourceLength × 8 B × layers` per
-source set — hundreds of MB at the larger buckets), plus compiled evaluables. Originally
-the renderer cache lived on each `BatchedPatternLayerRenderer` (per pattern, per scene)
-and nothing destroyed it when the scene was discarded, so **scene-churn workloads
-leaked**: once `enableBatched` became the default, test classes creating a scene per
-method OOM-killed the CI fork (exit 137 — `HeapPatternRenderingTest`, then
-`AudioSceneRealTimeCorrectnessTest` one class later in the same single-fork module run,
-2026-07-06).
-
-Resolved by making `rendererCache` **static** (keyed `[bucket, sourceLength,
-targetLength, sampleRate, filterOrder]`): renderers are shared across patterns, scenes,
-and genomes, so total renderer memory is bounded by the distinct-shape set for the JVM's
-lifetime instead of growing with every scene built. This is safe because a renderer's
-bound buffers are fully re-marshalled on every dispatch (sources zeroed and rewritten,
-scalars overwritten) — the same guarantee that already allowed cross-tick reuse within a
-scene — and dispatches now synchronize on the renderer instance so concurrent renders of
-the same shape cannot interleave buffer writes. Side benefit: a new scene reuses
-existing renderers outright instead of re-building its own.
-
-The renderers are now deliberately JVM-lifetime (never destroyed); if a bounded-memory
-teardown is ever needed (e.g. embedding hosts), an explicit static drain belongs with
-the copy/lifecycle migration effort, which still owes per-note source buffers a real
-destroy story.
+- **Single channel or zero-based contiguous multi-channel.**
+  `AudioSceneRealtimeRunner.supportsPdsl` accepts any single-channel selection (genome
+  reads mapped via `MixdownManagerPdslAdapter.Config.channel`) and the contiguous
+  prefix `[0..n-1]`; a non-contiguous subset falls back to CellList (the feedback grid
+  is indexed by bank position).
+- **Stereo write gating.** `WaveOutput.write` gates on the minimum frame count across
+  channels; the mono master streams to **both** stereo writers (dual-mono). True
+  stereo/pan is outstanding ([NEXT_STEP.md](NEXT_STEP.md)).
 
 ## 7. Real-scene tests depend on the absolute-path curated library
 
-The real-scene tests and any full-render experiment read `/Users/Shared/Music/Samples`
-and `/Users/Shared/Music/pattern-factory.json` (overridable via `AR_RINGS_LIBRARY` /
-`AR_RINGS_PATTERNS`). Tests skip gracefully where they are absent (CI). If a future
-render comes out silent / "no working genome," re-check that the pattern factory is still
-a valid non-empty JSON (it was briefly `[]` once). Reproducibility additionally depends
-on the persisted `results/pdsl-cutover/scene-settings.json` (`AR_RINGS_SETTINGS`):
-deleting it makes the next run draw a fresh random arrangement. Note that `results/` is
-git-ignored, so these artifacts are local-only.
+Real-scene tests read `/Users/Shared/Music/Samples` and
+`/Users/Shared/Music/pattern-factory.json` (`AR_RINGS_LIBRARY` / `AR_RINGS_PATTERNS`),
+skipping gracefully where absent (CI). If a render comes out silent, re-check the
+pattern factory is valid non-empty JSON. Reproducibility additionally depends on the
+persisted `results/pdsl-cutover/scene-settings.json` (`AR_RINGS_SETTINGS`) — deleting
+it draws a fresh random arrangement. `results/` is git-ignored (local-only).
 
 ---
 
-## 8. Resolved (kept so the fixes are not re-broken)
+## 8. Resolved record (compressed — do not re-break, do not re-litigate)
 
-### 8.1 Argument-aggregation / compile-reuse — RESOLVED (the subsystem was rebuilt)
-
-The earlier blocker: structurally-identical computations did not reuse a compiled native
-kernel because `CollectionProviderProducer.signature()` returned **`null`** for
-argument-aggregation-target buffers (one null leaf nulled the whole graph signature),
-disabling instruction-set caching; every rebuild then consumed a slot from a fixed,
-monotonically-consumed `GeneratedOperation` pool until a full-scene render exhausted it
-and cascaded into unrelated `AudioScene` test failures.
-
-The argument-aggregation subsystem was **torn out and reintroduced with a new design**
-(removed `5f0648eab`, 2026-06-20; rebuilt `9732295ff` "A new approach to argument
-aggregation", 2026-06-23, PR #317; `aggregate-on-kernel-provider` PR #318; enabled by
-default `13ce711c5`; perf `b4b23f0c5`). The null-signature premise is **gone**:
-`CollectionProviderProducer.signature()` now emits a real signature with an
-`&aggRoot=<rootLen>` qualifier that scopes reuse to compatible aggregate layouts, and
-`MemoryDataArgumentMap.isAggregationTarget` is a pure size test
-(`enableArgumentAggregation && memLength <= maxAggregateLength`, default 1024). Reuse
-works, so identical rebuilds no longer force a fresh kernel.
-
-The fixed `GeneratedOperation` pool (max `GeneratedOperation5999`,
-`OperatorPoolExhaustedException` from `AcceleratedOperation.load()`) still physically
-exists, but a slot is now reserved only on a **cache miss** — the "every rebuild burns a
-slot → exhaustion" mechanism is precisely what was fixed. (The full standalone analysis
-that used to live in `../SIGNATURE_AGGREGATION_GAP.md` is obsolete and has been removed;
-its premise no longer holds.)
-
-### 8.2 Instruction-set cross-context reuse — RESOLVED (2026-06-12)
-
-The reuse path had an inverse defect: two models with structurally-identical computations
-hash to the same signature (leaf signatures are offset/length/shape-based, intentional),
-but a compiled kernel is permanently bound to the `ComputeContext` it compiled under. A
-second model under a *different* context that adopted the kernel via the bare signature
-match encoded its dispatches into the first context's `MetalCommandRunner`, which nothing
-in the second pipeline commits — the kernel never executed, no error surfaced, and the
-second model produced exactly-zero output. The fix (`19fa029a6`) makes `MetalDataContext`
-share a single `MetalComputeContext`, so a cached kernel always encodes into and is
-committed by the one command runner; `DefaultComputer.getScopeInstructionsManager` stays
-keyed by signature alone. This is what made `AR_PDSL_VECTOR_FOREACH` safe to enable by
-default.
-
-### 8.3 Metal sustained-dispatch ceiling — RESOLVED (merged, regression-guarded)
-
-Sustained Metal rendering used to wedge at **~2300–2560 cumulative kernel dispatches**:
-the host parked forever in `MTL.waitUntilCompleted` on a committed command buffer that
-never reported completion. Root cause: `MetalCommandRunner` spanned one Objective-C
-autorelease pool across its separate encode and commit/await tasks, so the *second*
-command buffer to commit wedged. Fix: each executor task runs in its own autorelease pool
-and command buffers are explicitly retained across tasks (`MetalCommandRunner.runInPool`;
-`base/hardware/src/main/cpp/MTL.cpp`). **3000+ sustained dispatches verified;**
-regression-guarded by `OperationDispatchBatchingTests` (engine/utils).
-
-**Durable invariants from this fix (govern all future Metal dispatch work):**
-- **The platform is a compiler, not a player piano.** N `OperationList` statements
-  typically compile to **one** kernel program (one dispatch), not N. Capture dispatch /
-  kernel / command-buffer counts from the *compiled program* (`OperationProfileNode`,
-  `ar-profile-analyzer`), never infer them from how many operations a tick contains.
-- **At most ONE active command buffer per `ComputeContext`.** Within one buffer, Metal's
-  hazard tracking orders every read-after-write among encoded dispatches; the buffer
-  commits only at a genuine boundary (an explicit host wait — `run()`/`evaluate()`/
-  read-back — or a hand-off to a different `ComputeContext`). Per-dispatch `dependsOn` /
-  event chaining is a *cross-context* tool only; it is neither needed nor wanted within a
-  context.
-- Two performance follow-ups were tried and reverted; their lessons: nothing on the
-  shared bounded executor pool may block on the runner; never manufacture a second
-  command buffer to "order" same-context dispatches; never carve exceptions into the
-  completion contract (every provider always returns a real `Semaphore`).
-
-The full durable model lives in
-[docs/internals/backend-compilation-and-dispatch.md](../../internals/backend-compilation-and-dispatch.md).
-This fix unblocked Metal as a *sustained* backend; it did not by itself make rendering
-real-time (that was the DSP/mixdown loop, since migrated to PDSL — see
-[NEXT_STEP.md](NEXT_STEP.md)).
-
-### 8.4 First-evaluate probe explosion (setup front-load / mid-stream spike) — RESOLVED (2026-07-03)
-
-Every distinct batched pattern kernel shape paid **14–29 s on its first `evaluate()`** — in
-setup (as ~129 s of "setup" cost per scene) and again on any shape first reached mid-stream
-(the ~29–33 s dropout spike that motivated the whole-arrangement pre-warm). The cost was the
-`replaceLoop` gather-collapse probe (`AggregatedProducerComputation.prepareScope` →
-`TraversableExpression.uniqueNonZeroOffset`), which builds an `ExpressionMatrix` over
-`[windowWidth × bucketN]` substituting each index into the deep fused chain — and which can
-**never succeed** on the batched chains (their scatter-add sums overlapping notes, so no unique
-non-zero contributor exists). It burned the time and returned null every time; the production
-loop scope was always the fallback anyway.
-
-Fix: `BatchedPatternRenderer.sumNoteAxis` disables `replaceLoop` on the note-axis sums of
-`reduceAligned` / `scatterAddFlat`. Zero output change (bit-identical peak). Setup 128.6 s →
-~2.3 s; honest `generateRealtimeX` 0.63 → 1.46 (then 1.79 after the 2026-07-04 tooling merge);
-`preWarmMaxSeconds` now defaults to 0 and the render ring prefills a single buffer. Do **not**
-re-introduce a whole-arrangement pre-warm — front-loading rendering into setup is the
-anti-pattern this fix removed. The existing `ScopeSettings.maxGatherAnalysisDepth`/`Nodes`
-gates do not cover this case (they inspect only the target *index* expression); a matrix-size
-gate is a candidate framework hygiene follow-up. Full record:
-[`SETUP_FRONT_LOADING_HANDOFF.md`](SETUP_FRONT_LOADING_HANDOFF.md).
+- **Argument aggregation / compile reuse** — the null-signature blocker is gone; the
+  subsystem was rebuilt (PR #317/#318, default-on). `CollectionProviderProducer`
+  signatures carry an `&aggRoot` qualifier; `GeneratedOperation` pool slots are consumed
+  only on cache miss.
+- **Instruction-set cross-context reuse** — `MetalDataContext` shares a single
+  `MetalComputeContext` (`19fa029a6`), so a signature-matched kernel always encodes into
+  the runner that commits it. This made `AR_PDSL_VECTOR_FOREACH` safe by default.
+- **Metal sustained-dispatch ceiling** — per-task autorelease pools + explicit command
+  buffer retention (`MetalCommandRunner.runInPool`); regression-guarded by
+  `OperationDispatchBatchingTests`. Durable invariants: the platform is a compiler
+  (count dispatches from the compiled program, never from op counts); at most ONE active
+  command buffer per `ComputeContext`; nothing on the shared executor pool may block on
+  the runner. Full model:
+  [backend-compilation-and-dispatch.md](../../internals/backend-compilation-and-dispatch.md).
+- **First-evaluate probe explosion** (129 s setup front-load / mid-stream spikes) — the
+  `uniqueNonZeroOffset` gather-collapse probe can never succeed on scatter-add chains;
+  disabled via `BatchedPatternRenderer.sumNoteAxis` (`setReplaceLoop(false)`),
+  bit-identical output. Do **not** re-introduce a whole-arrangement pre-warm; setup must
+  stay at seconds. (Full record in git history: `SETUP_FRONT_LOADING_HANDOFF.md`,
+  removed 2026-07-09.)
+- **a2 batched dispatch on real scenes** — fires on the full pattern path (sentinel
+  tests guard it); mechanism documented in the `BatchedPatternLayerRenderer` /
+  `BatchedPatternRenderer` javadocs. Per-shape renderers are shared JVM-wide
+  (`79b297c5b`) so scene churn cannot accumulate bound-buffer memory.
+- **Realtime performance** — the 5× goal was met (owner-measured ~0.163 s per generated
+  second on M4, 2026-07, including compile/warmup) after the probe fix, adjustVolume
+  skip, Semaphore copy-chaining (`a3b20e285`), `MTLSharedEvent` bridging (PR #337), and
+  the operation-list subdivision / argument-preparation chaining arc (PR #340).
+  Performance is no longer this folder's concern.

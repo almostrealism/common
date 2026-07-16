@@ -50,8 +50,9 @@ which commits and drains the open command buffer. Two independent workstreams hi
   `meanDispatchesPerCommit ≈ 1.07` (vs `MAX_OPEN=256`); **100 %** of commits are host-`waitFor`
   completions; the per-op host waits come from `AcceleratedOperation.apply()` on the
   `processing || aggregateCopyOut` copy-back path (≈ 87 + 68 waits/tick, overlapping). Both of those
-  copy paths are `MemoryDataCopy`. See
-  [`audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`](audio-scene-redesign/BATCHED_AGGREGATE_COPY.md).
+  copy paths are `MemoryDataCopy`. (The audio-side diagnosis lived in
+  `audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`, removed 2026-07-09 as superseded by the
+  Semaphore chaining arc — full text in git history.)
 - **ML (Qwen).** [`QWEN_PERFORMANCE.md`](QWEN_PERFORMANCE.md) records `copy_4864` (11.0 %) +
   `copy_896` (6.8 %) = **17.8 % of total inference time** in memory copies, and names
   "`Assignment` in place of `MemoryDataCopy` via `MemoryDataFeatures.enableAssignmentCopy`" as a
@@ -132,10 +133,11 @@ that the surrounding code not insert a host `waitFor` around it.
 
 ## 5. Scope & sequencing
 
-- **Sub-scope already specified (audio, all-Metal):**
-  [`audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`](audio-scene-redesign/BATCHED_AGGREGATE_COPY.md)
-  — route the two `MemoryDataArgumentMap` aggregation copies through the `Assignment` path under
-  `OFF_HEAP_SIZE=0`, prove batching + parity. This is the smallest correctness-provable beachhead.
+- **Sub-scope formerly specified (audio, all-Metal):** `BATCHED_AGGREGATE_COPY.md`
+  (removed 2026-07-09; git history) routed the two `MemoryDataArgumentMap` aggregation copies
+  through the `Assignment` path under `OFF_HEAP_SIZE=0`. Its batching motivation was addressed
+  by the Semaphore chaining arc (`a3b20e285`, PR #340), so the beachhead is no longer required
+  for batching — only for the `Assignment`-default goal itself.
 - **Global migration (this doc):** progressively route *every* direct `new MemoryDataCopy` site
   (§3 table) through the `Assignment` path (or the `copy()` helper), implement the **inverted
   short-circuit** (§2), and make `Assignment`-copy the default — once the baseline (§6) says what
@@ -198,8 +200,8 @@ that the surrounding code not insert a host `waitFor` around it.
 
 ## 9. Intersecting materials (the "one place" index)
 
-- [`audio-scene-redesign/BATCHED_AGGREGATE_COPY.md`](audio-scene-redesign/BATCHED_AGGREGATE_COPY.md)
-  — the audio aggregation sub-case (all-Metal beachhead), with the full batching diagnosis.
+- `audio-scene-redesign/BATCHED_AGGREGATE_COPY.md` (removed 2026-07-09; git history) — the
+  audio aggregation sub-case, whose batching diagnosis was superseded by the Semaphore chaining arc.
 - [`QWEN_PERFORMANCE.md`](QWEN_PERFORMANCE.md) — ML motivation (copies = 17.8 % of Qwen); names the
   `enableAssignmentCopy` lever (§1/§2 there).
 - [`EXPANSION_WIDTH_OPTIMIZATION.md`](EXPANSION_WIDTH_OPTIMIZATION.md) — how `MemoryDataCopy` vs
@@ -222,10 +224,11 @@ also starves the new `MTLSharedEvent` foreign-dependency bridge (`bridgeCommits=
 since each wait resets the dependency chain before a cross-context handoff can reach
 `MetalCommandRunner.submit`. Routing just those call sites through the `Submittable`
 copy machinery (per §5's incremental path, not the global flag flip) is the plan of
-record in [`audio-scene-redesign/NEXT_STEP.md`](audio-scene-redesign/NEXT_STEP.md);
+record, handed to the performance effort in
+[`audio-scene-redesign/PERFORMANCE_HANDOFF.md`](audio-scene-redesign/PERFORMANCE_HANDOFF.md);
 its parity gates and measurements can serve as the first §7 case study.
 
-## 10. Open questions / next actions (updated 2026-07-06)
+## 10. Open questions / next actions (updated 2026-07-11)
 
 1. **Resolve the recording divergence (the flip-blocker).** Root-cause why assignment-based
    layer input/output recording diverges gradient-descent trainings, using
@@ -236,18 +239,19 @@ its parity gates and measurements can serve as the first §7 case study.
    **DONE** on master: `MemoryDataArgumentMap` aggregation and `MemoryReplacementManager`
    replacement copies run through `ComputeContext.copy` `Submittable`s;
    `meanDispatchesPerCommit` recovered 1.07 → ~3.9 and the per-op `waitFor` collapse is gone
-   (see `audio-scene-redesign/NEXT_STEP.md` for the measured history).
+   (measured history in `audio-scene-redesign/PERFORMANCE_HANDOFF.md` and the pre-2026-07-09
+   revisions of `audio-scene-redesign/NEXT_STEP.md` in git history).
 3. **Inverted short-circuit / kernel-source `Assignment` (§2).** The remaining structural gap:
    `Assignment.get()` returns a host-side `DestinationEvaluable` when the source is an
    `AcceleratedOperation` (`Assignment.java:419-421`) — exactly the "source is itself a kernel
    program" case. Design the `Submittable` path for it (compile the kernel and chain it, with a
    standalone-execution fallback to direct `setMem` where cheaper).
-4. **Route the audio tick's non-submittable members** — the current plan of record, specified in
-   `audio-scene-redesign/NEXT_STEP.md`: migrate the `copy()`-helper members of the tick/forward
-   composites (`CompiledModel` Forward/Backward Output capture, `DefaultChannelSection`
-   Input/Output, `WaveOutput` Export, plus glue lambdas) to `Submittable` form per call site,
-   scoped, parity-gated — NOT via the global flag flip. Success metric: host-complete
-   commits/tick 42.7 → ≲ 5 at 4096.
+4. **Route the audio tick's non-submittable members** — the current plan of record, handed to
+   the performance effort in `audio-scene-redesign/PERFORMANCE_HANDOFF.md` (item 2): migrate
+   the `copy()`-helper members of the tick/forward composites (`CompiledModel`
+   Forward/Backward Output capture, `DefaultChannelSection` Input/Output, `WaveOutput` Export,
+   plus glue lambdas) to `Submittable` form per call site, scoped, parity-gated — NOT via the
+   global flag flip. Success metric: host-complete commits/tick ~42-47 → ≲ 5.
 5. **Route the remaining direct sites** (`PackedCollection:229`, `CollectionProvider:163`,
    `FilterEnvelopeProcessor:150,152`) through the helper or `Assignment` path — lower priority;
    the first two are standalone/setup-time copies where the §2 short-circuit would apply anyway.
