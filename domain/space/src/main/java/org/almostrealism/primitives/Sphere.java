@@ -17,8 +17,6 @@
 package org.almostrealism.primitives;
 
 import io.almostrealism.code.Constant;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.code.Operator;
 import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -277,7 +275,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 					return result;
 				}
 
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(st)).get().run();
+				result.setMem(0, st);
 				return result;
 			};
 
@@ -298,7 +296,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 			public Evaluable<PackedCollection> get() {
 				return args -> {
 					PackedCollection result = new PackedCollection(1);
-					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(getInput().get().evaluate(args).lengthSq())).get().run();
+					result.setMem(0, getInput().get().evaluate(args).lengthSq());
 					return result;
 				};
 			}

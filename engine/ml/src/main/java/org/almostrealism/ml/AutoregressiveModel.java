@@ -27,7 +27,6 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -44,10 +43,20 @@ import java.util.function.Supplier;
  *   <li><strong>Position tracking:</strong> Maintains the current step in the sequence</li>
  * </ul>
  *
- * <p>For standard integer-token text models use the {@link #of(CompiledModel, IntConsumer, IntFunction)}
- * factory, which returns {@code AutoregressiveModel<Integer>} and handles all
- * sampling infrastructure internally. For compound or structured token types, use the
- * generic constructor directly.</p>
+ * <p>For standard integer-token text models use the
+ * {@link #of(CompiledModel, PackedCollection, IntFunction)} factory, which returns
+ * {@code AutoregressiveModel<Integer>} and handles all sampling infrastructure internally.
+ * For compound or structured token types, use the generic constructor directly.</p>
+ *
+ * <h2>Position</h2>
+ * <p>The caller supplies the single-element collection that its computation graph reads as
+ * the sequence position, and this class maintains it <em>on the device</em>: {@link #reset()}
+ * zeroes it and {@link #advance()} adds one to it, each as a compiled operation over an
+ * invariant constant. Both compile exactly once and are reused for every token of every
+ * sequence, so generation transfers no position value from the host and adds no compiled
+ * operations as a sequence grows. Writing the position per step from the host instead —
+ * for example by assigning a constant built from the step index — would compile a distinct
+ * operation for every position in the sequence.</p>
  *
  * <h2>Generation Modes</h2>
  * <ul>
@@ -60,7 +69,7 @@ import java.util.function.Supplier;
  * // Create from compiled transformer model
  * AutoregressiveModel<Integer> model = AutoregressiveModel.of(
  *     compiledTransformer,
- *     step -> position.setMem((double) step),
+ *     position,
  *     tokenId -> embeddings.range(shape(dim), tokenId * dim)
  * );
  *
@@ -96,8 +105,20 @@ public class AutoregressiveModel<T> {
 
 	/** Singleton for accessing {@link DistributionFeatures#softmax} from static context. */
 	private static final DistributionFeatures DIST = new DistributionFeatures() {};
-	/** Consumer invoked with the current position index before each forward pass. */
-	private final IntConsumer step;
+
+	/**
+	 * The device-resident sequence position, shared with the model's computation graph
+	 * (attention consumes it as {@code p(position)} to index the KV cache and apply
+	 * rotary embeddings). It is never written from the host: {@link #resetPosition} and
+	 * {@link #advancePosition} maintain it entirely on the device.
+	 */
+	private final PackedCollection position;
+
+	/** Returns {@link #position} to zero. Compiled once; reused for every sequence. */
+	private final Runnable resetPosition;
+
+	/** Advances {@link #position} by one. Compiled once; reused for every token. */
+	private final Runnable advancePosition;
 
 	/**
 	 * Consumer invoked with the current token before each forward pass.
@@ -137,20 +158,33 @@ public class AutoregressiveModel<T> {
 	/**
 	 * Creates a new autoregressive model with the specified components.
 	 *
-	 * @param step        consumer to update the current position in the sequence (called before each forward pass)
+	 * @param position    single-element collection holding the sequence position, shared with
+	 *                    the model's computation graph
 	 * @param token       consumer to load the current input token before each forward pass
 	 * @param forward     supplier that executes the model forward pass and returns output
 	 * @param sample      function that converts the cached model output to the next token
 	 * @param temperature shared temperature collection (may be updated via {@link #setTemperature(double)})
 	 */
-	public AutoregressiveModel(IntConsumer step, Consumer<T> token, Supplier<PackedCollection> forward,
+	public AutoregressiveModel(PackedCollection position, Consumer<T> token, Supplier<PackedCollection> forward,
 							   Function<PackedCollection, T> sample, PackedCollection temperature) {
-		this.step = step;
+		this.position = position;
 		this.token = token;
 		this.forward = forward;
 		this.sample = sample;
 		this.temperature = temperature;
+
+		Ops ops = Ops.o();
+		this.resetPosition = ops.a(ops.cp(position), ops.c(0.0)).get();
+		this.advancePosition = ops.a(ops.cp(position),
+				ops.add(ops.cp(position), ops.c(1.0))).get();
 	}
+
+	/**
+	 * Returns the device-resident collection holding the current sequence position.
+	 *
+	 * @return the position collection shared with the model's computation graph
+	 */
+	public PackedCollection getPosition() { return position; }
 
 	/**
 	 * Returns the current step (position) in the generation sequence.
@@ -160,13 +194,29 @@ public class AutoregressiveModel<T> {
 	public int getCurrentStep() { return currentStep; }
 
 	/**
-	 * Sets the current step (position) in the generation sequence.
+	 * Returns to the start of a sequence, zeroing both the device-resident
+	 * {@link #position} and the host-side step index, and discarding any cached output.
 	 *
-	 * @param currentStep the step index to set
+	 * <p>The zeroing runs as a compiled operation over a constant of zero, so it compiles
+	 * once and no value is transferred from the host.</p>
 	 */
-	public void setCurrentStep(int currentStep) {
-		this.currentStep = currentStep;
+	public void reset() {
+		resetPosition.run();
+		this.currentStep = 0;
 		this.cachedOutput = null;
+	}
+
+	/**
+	 * Advances to the next position in the sequence, moving the device-resident
+	 * {@link #position} and the host-side step index together so that they remain equal.
+	 *
+	 * <p>The advance runs as a compiled operation adding a constant of one, so it compiles
+	 * once and is reused for every token of every sequence; no value is transferred from
+	 * the host per token.</p>
+	 */
+	public void advance() {
+		advancePosition.run();
+		this.currentStep++;
 	}
 
 	/**
@@ -227,37 +277,33 @@ public class AutoregressiveModel<T> {
 	/**
 	 * Generates and returns the next token in the sequence.
 	 *
-	 * <p>This method performs one step of autoregressive generation:</p>
-	 * <ol>
-	 *   <li>Updates the position callback with the current step</li>
-	 *   <li>Updates the token callback with the current token</li>
-	 *   <li>Executes the model forward pass to get the model output</li>
-	 *   <li>Selects the next token (from prompt or by applying the sample function)</li>
-	 *   <li>Increments the step counter</li>
-	 * </ol>
+	 * <p>This method performs one step of autoregressive generation: it loads the current
+	 * token, executes the forward pass, selects the token for this step, and then
+	 * {@linkplain #advance() advances} to the next position.</p>
+	 *
+	 * <p>While the step index remains below the prompt length, each prompt token is fed at
+	 * its own position to build the KV cache across the whole prompt. Thereafter each step
+	 * samples from the <em>previous</em> step's output to decide what comes next, feeds that
+	 * token at the current position, and caches this step's output for the step after it.</p>
+	 *
+	 * <p>The forward pass reads the position from the device, where {@link #advance()} left
+	 * it; {@link #reset()} establishes the invariant that the device-resident position
+	 * always holds {@link #getCurrentStep()}.</p>
 	 *
 	 * @return the selected token for this step
 	 */
 	public T next() {
 		if (currentStep < promptLength) {
-			// Prompt phase: feed each prompt token at its correct position
-			// to build the KV cache for the entire prompt
-			step.accept(currentStep);
 			token.accept(prompt[currentStep]);
 			cachedOutput = forward.get();
 			currentToken = prompt[currentStep];
 		} else {
-			// Generation phase:
-			// 1. Sample from PREVIOUS step's output (what comes next?)
-			// 2. Feed the sampled token at current position
-			// 3. Cache current output for next step
 			currentToken = sample.apply(cachedOutput);
-			step.accept(currentStep);
 			token.accept(currentToken);
 			cachedOutput = forward.get();
 		}
 
-		currentStep++;
+		advance();
 		return currentToken;
 	}
 
@@ -343,18 +389,20 @@ public class AutoregressiveModel<T> {
 	 *
 	 * <p>This factory method creates an autoregressive model that:</p>
 	 * <ul>
-	 *   <li>Updates position via the provided step consumer</li>
+	 *   <li>Advances the position on the device for each generation step</li>
 	 *   <li>Copies token embeddings into a reusable input buffer</li>
 	 *   <li>Executes the compiled model's forward pass for logits</li>
 	 *   <li>Samples the next token using temperature scaling and softmax</li>
 	 * </ul>
 	 *
 	 * @param model      the compiled transformer model
-	 * @param step       consumer to update the position for each generation step
+	 * @param position   single-element collection that {@code model} reads as the sequence
+	 *                   position, maintained on the device by {@link #reset()}/{@link #advance()}
 	 * @param tokenEmbed function that returns the embedding for a given token ID
 	 * @return a new {@code AutoregressiveModel<Integer>} ready for generation
 	 */
-	public static AutoregressiveModel<Integer> of(CompiledModel model, IntConsumer step, IntFunction<PackedCollection> tokenEmbed) {
+	public static AutoregressiveModel<Integer> of(CompiledModel model, PackedCollection position,
+												 IntFunction<PackedCollection> tokenEmbed) {
 		PackedCollection in = new PackedCollection(model.getInputShape());
 		int vocabSize = model.getOutputShape().getTotalSize();
 
@@ -377,7 +425,7 @@ public class AutoregressiveModel<T> {
 		};
 
 		return new AutoregressiveModel<>(
-				step,
+				position,
 				t -> in.setFrom(0, tokenEmbed.apply(t), 0, model.getInputShape().getTotalSize()),
 				() -> model.forward(in),
 				sample,

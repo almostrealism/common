@@ -276,13 +276,9 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	 * Creates a random weight tensor with small values.
 	 */
 	private PackedCollection randomWeights(Random rand, int... dims) {
-		int total = 1;
-		for (int d : dims) total *= d;
-
 		PackedCollection weights = new PackedCollection(dims);
-		for (int i = 0; i < total; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(weights.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((rand.nextDouble() - 0.5) * 0.1)).get().run();
-		}
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		ops.a(ops.cp(weights), ops.rand(weights.getShape(), rand).add(-0.5).multiply(0.1)).get().run();
 		return weights;
 	}
 }

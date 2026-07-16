@@ -145,7 +145,6 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		// Buffer size equals signal size so the circular buffer holds exactly one frame.
 		int delaySamples = SIGNAL_SIZE / 4;
 		PackedCollection delayBuffer = new PackedCollection(SIGNAL_SIZE);
-		delayBuffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection delayHead = new PackedCollection(1);
 		delayHead.setMem(0.0);
 
@@ -205,7 +204,6 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		double wetLevel = 0.5;
 
 		PackedCollection mixBuffer = new PackedCollection(SIGNAL_SIZE);
-		mixBuffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection mixHead = new PackedCollection(1);
 		mixHead.setMem(0.0);
 

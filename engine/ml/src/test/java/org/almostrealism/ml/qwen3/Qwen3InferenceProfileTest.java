@@ -93,13 +93,18 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		Hardware.getLocalHardware().assignProfile(profile);
 
 		try {
+			CollectionFeatures ops = CollectionFeatures.getInstance();
+			Runnable advancePosition = ops.a(ops.cp(position),
+					ops.add(ops.cp(position), ops.c(1.0))).get();
+			ops.a(ops.cp(position), ops.c(0.0)).get().run();
+
 			// Warm-up passes (JIT, cache priming)
 			int warmupPasses = 1;
 			log("Running " + warmupPasses + " warm-up forward passes...");
 			for (int w = 0; w < warmupPasses; w++) {
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) w)).get().run();
 				PackedCollection input = createInput(embeddings, w % config.vocabSize, config.dim);
 				compiledModel.forward(input);
+				advancePosition.run();
 			}
 
 			// Profiled forward passes
@@ -109,13 +114,13 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 
 			for (int p = 0; p < profiledPasses; p++) {
 				int step = warmupPasses + p;
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 				PackedCollection input = createInput(embeddings, step % config.vocabSize, config.dim);
 
 				long start = System.nanoTime();
 				PackedCollection output = compiledModel.forward(input);
 				long elapsed = System.nanoTime() - start;
 				totalNanos += elapsed;
+				advancePosition.run();
 
 				log(String.format("  Pass %d: %.2f ms (output size: %d)",
 						p, elapsed / 1_000_000.0, output.getShape().getTotalSize()));

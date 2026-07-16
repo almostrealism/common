@@ -7,6 +7,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
@@ -169,22 +170,7 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 	 * @return the frequency tensor with shape (seqLen, headSize/2, 2)
 	 */
 	private PackedCollection computeRopeFreqs(int seqLen, int headSize, double theta) {
-		int freqDim = headSize / 2;
-		double[] freqs = new double[freqDim];
-		for (int i = 0; i < freqDim; i++) {
-			freqs[i] = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
-		}
-
-		PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double angle = pos * freqs[i];
-				int idx = (pos * freqDim + i) * 2;
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(Math.cos(angle))).get().run();
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqCis.range(new TraversalPolicy(1), idx + 1)), CollectionFeatures.getInstance().c(Math.sin(angle))).get().run();
-			}
-		}
-		return freqCis;
+		return RotationFeatures.computeRopeFreqs(theta, headSize, seqLen).evaluate();
 	}
 
 	/**
