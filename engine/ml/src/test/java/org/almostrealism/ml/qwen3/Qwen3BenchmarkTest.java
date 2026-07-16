@@ -1,6 +1,8 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -136,29 +138,31 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 
 			List<Double> tokenTimes = new ArrayList<>();
 			currentToken = 9707;  // Reset to "Hello"
-			int step = 0;
+
+			CollectionFeatures ops = CollectionFeatures.getInstance();
+			Runnable advancePosition = ops.a(ops.cp(position),
+					ops.add(ops.cp(position), ops.c(1.0))).get();
+			ops.a(ops.cp(position), ops.c(0.0)).get().run();
 
 			// Warmup phase (not timed)
 			for (int w = 0; w < warmupTokens; w++) {
-				position.setMem(0, (double) step);
 				PackedCollection input = createInput(embeddings, currentToken, dim);
 				PackedCollection logits = compiledModel.forward(input);
 				currentToken = findArgmax(logits, vocabSize);
-				step++;
+				advancePosition.run();
 			}
 
 			// Timed generation phase
 			for (int t = 0; t < numTokens; t++) {
 				long start = System.nanoTime();
 
-				position.setMem(0, (double) step);
 				PackedCollection input = createInput(embeddings, currentToken, dim);
 				PackedCollection logits = compiledModel.forward(input);
 				currentToken = findArgmax(logits, vocabSize);
+				advancePosition.run();
 
 				double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 				tokenTimes.add(elapsedMs);
-				step++;
 			}
 
 			allRunTimes.add(tokenTimes);
@@ -227,9 +231,7 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	 */
 	private PackedCollection createInput(PackedCollection embeddings, int token, int dim) {
 		PackedCollection input = new PackedCollection(shape(1, dim));
-		for (int i = 0; i < dim; i++) {
-			input.setMem(i, embeddings.toDouble(token * dim + i));
-		}
+		a(cp(input), cp(embeddings.range(shape(dim), token * dim))).get().run();
 		return input;
 	}
 

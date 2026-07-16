@@ -228,13 +228,15 @@ public class MoonbeamMidi implements AttentionFeatures {
 	}
 
 	/**
-	 * Update the sequential position for the current step.
+	 * Returns the sequential position for the current step.
 	 *
-	 * @param step the current position in the sequence
+	 * <p>The collection is device-resident and is advanced on the device by the
+	 * {@link org.almostrealism.ml.AutoregressiveModel} driving generation; it is
+	 * never written from the host.</p>
+	 *
+	 * @return the position collection consumed by this model's computation graph
 	 */
-	public void setPosition(int step) {
-		position.setMem(0, (double) step);
-	}
+	public PackedCollection getPosition() { return position; }
 
 	/**
 	 * Update per-attribute positions for MRA RoPE from a compound token.

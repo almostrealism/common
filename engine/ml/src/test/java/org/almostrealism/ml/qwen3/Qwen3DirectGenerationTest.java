@@ -1,6 +1,8 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -102,18 +104,16 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 
 		int[] generatedTokens = new int[5];
 
+		Runnable advancePosition = a(cp(position), add(cp(position), c(1.0))).get();
+		a(cp(position), c(0.0)).get().run();
+
 		for (int step = 0; step < 5; step++) {
 			int inputToken = inputSequence[step];
 			log("--- Step " + step + ": Input token " + inputToken + " ---");
 
-			// Set position
-			position.setMem(0, (double) step);
-
 			// Create input from embedding
 			PackedCollection input = new PackedCollection(compiledModel.getInputShape());
-			for (int i = 0; i < config.dim; i++) {
-				input.setMem(i, embeddings.toDouble(inputToken * config.dim + i));
-			}
+			a(cp(input), cp(embeddings.range(shape(config.dim), inputToken * config.dim))).get().run();
 
 			// Forward pass - output is already logits!
 			PackedCollection logitsCollection = compiledModel.forward(input);
@@ -164,6 +164,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 				log("Generated token " + top5[0] + " but expected " + expectedOutputs[step]);
 			}
 
+			advancePosition.run();
 			log("");
 		}
 

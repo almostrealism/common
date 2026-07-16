@@ -410,7 +410,7 @@ public class Qwen3 implements AttentionFeatures, ConsoleFeatures {
 		// Wrap in autoregressive model with token embeddings
 		return AutoregressiveModel.of(
 				compiledModel,
-				step -> position.setMem((double) step),
+				position,
 				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 	}
 
@@ -445,7 +445,7 @@ public class Qwen3 implements AttentionFeatures, ConsoleFeatures {
 		long start = 0;
 		int next;
 
-		model.setCurrentStep(0);  // Reset step counter for new generation
+		model.reset();
 		model.setCurrentToken(Qwen3Tokenizer.BOS_TOKEN);
 		model.setPrompt(promptTokens, promptTokenCount);
 

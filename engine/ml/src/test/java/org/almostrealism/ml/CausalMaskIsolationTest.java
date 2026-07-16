@@ -1,6 +1,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.code.Precision;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -145,9 +146,11 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		input.fill(pos -> 1.0);
 
 		// Test at different positions
+		Runnable advancePosition = a(cp(position), add(cp(position), c(1.0))).get();
+		a(cp(position), c(0.0)).get().run();
+
 		for (int pos = 0; pos < seqLen; pos++) {
 			log("\nPosition " + pos + ":");
-			position.setMem(0, (double) pos);
 
 			PackedCollection output = compiled.forward(input);
 
@@ -161,6 +164,8 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 				assertEquals("At position " + pos + ", index " + i,
 						expected, actual, tolerance);
 			}
+
+			advancePosition.run();
 		}
 
 		log("\n[OK] Dynamic position updates work correctly!");

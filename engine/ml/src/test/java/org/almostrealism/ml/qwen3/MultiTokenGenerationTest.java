@@ -17,10 +17,13 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -112,18 +115,17 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		int matches = 0;
 		int total = 0;
 
+		// The position advances on the device before each forward pass, maintaining proper
+		// RoPE rotation, causal masking, and KV cache indexing
+		Runnable advancePosition = a(cp(position), add(cp(position), c(1.0))).get();
+		a(cp(position), c(0.0)).get().run();
+
 		for (int step = 0; step < 5; step++) {
 			log("--- Step " + step + ": Input token " + currentToken + " ---");
 
-			// CRITICAL: Update position before forward pass
-			// Maintains proper RoPE rotation, causal masking, and KV cache indexing
-			position.setMem(0, (double) step);
-
 			// Get embedding for current token
 			PackedCollection input = new PackedCollection(shape(1, config.dim));
-			for (int i = 0; i < config.dim; i++) {
-				input.setMem(i, tokenEmbeddings.toDouble(currentToken * config.dim + i));
-			}
+			a(cp(input), cp(tokenEmbeddings.range(shape(config.dim), currentToken * config.dim))).get().run();
 
 			// Forward pass
 			long forwardStart = System.currentTimeMillis();
@@ -193,6 +195,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 			log("");
 			currentToken = nextToken;
+			advancePosition.run();
 		}
 
 		// Summary
@@ -276,19 +279,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		int seqLen = 10;
 		double theta = config.ropeTheta;
 
-		int freqDim = headSize / 2;
-		PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
-
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double freq = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
-				double angle = pos * freq;
-				freqCis.setMem((pos * freqDim + i) * 2, Math.cos(angle));
-				freqCis.setMem((pos * freqDim + i) * 2 + 1, Math.sin(angle));
-			}
-		}
-
-		return freqCis;
+		return RotationFeatures.computeRopeFreqs(theta, headSize, seqLen).evaluate();
 	}
 
 	/**

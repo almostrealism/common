@@ -17,6 +17,8 @@
 package org.almostrealism.ml.audio;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -274,13 +276,9 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	 * Creates a random weight tensor with small values.
 	 */
 	private PackedCollection randomWeights(Random rand, int... dims) {
-		int total = 1;
-		for (int d : dims) total *= d;
-
 		PackedCollection weights = new PackedCollection(dims);
-		for (int i = 0; i < total; i++) {
-			weights.setMem(i, (rand.nextDouble() - 0.5) * 0.1);
-		}
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		ops.a(ops.cp(weights), ops.rand(weights.getShape(), rand).add(-0.5).multiply(0.1)).get().run();
 		return weights;
 	}
 }

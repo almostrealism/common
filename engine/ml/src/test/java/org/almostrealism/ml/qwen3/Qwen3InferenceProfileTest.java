@@ -1,6 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
@@ -92,13 +93,18 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		Hardware.getLocalHardware().assignProfile(profile);
 
 		try {
+			CollectionFeatures ops = CollectionFeatures.getInstance();
+			Runnable advancePosition = ops.a(ops.cp(position),
+					ops.add(ops.cp(position), ops.c(1.0))).get();
+			ops.a(ops.cp(position), ops.c(0.0)).get().run();
+
 			// Warm-up passes (JIT, cache priming)
 			int warmupPasses = 1;
 			log("Running " + warmupPasses + " warm-up forward passes...");
 			for (int w = 0; w < warmupPasses; w++) {
-				position.setMem(0, (double) w);
 				PackedCollection input = createInput(embeddings, w % config.vocabSize, config.dim);
 				compiledModel.forward(input);
+				advancePosition.run();
 			}
 
 			// Profiled forward passes
@@ -108,13 +114,13 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 
 			for (int p = 0; p < profiledPasses; p++) {
 				int step = warmupPasses + p;
-				position.setMem(0, (double) step);
 				PackedCollection input = createInput(embeddings, step % config.vocabSize, config.dim);
 
 				long start = System.nanoTime();
 				PackedCollection output = compiledModel.forward(input);
 				long elapsed = System.nanoTime() - start;
 				totalNanos += elapsed;
+				advancePosition.run();
 
 				log(String.format("  Pass %d: %.2f ms (output size: %d)",
 						p, elapsed / 1_000_000.0, output.getShape().getTotalSize()));
@@ -154,9 +160,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	 */
 	private PackedCollection createInput(PackedCollection embeddings, int token, int dim) {
 		PackedCollection input = new PackedCollection(shape(1, dim));
-		for (int i = 0; i < dim; i++) {
-			input.setMem(i, embeddings.toDouble(token * dim + i));
-		}
+		a(cp(input), cp(embeddings.range(shape(dim), token * dim))).get().run();
 		return input;
 	}
 
@@ -228,12 +232,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 	private static PackedCollection randomCollection(Random random, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection collection = new PackedCollection(shape);
-		int size = shape.getTotalSize();
-		double[] data = new double[size];
-		for (int i = 0; i < size; i++) {
-			data[i] = (random.nextDouble() - 0.5) * 0.2;
-		}
-		collection.setMem(0, data, 0, size);
+		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection), CollectionFeatures.getInstance().rand(collection.getShape(), random).add(-0.5).multiply(0.2)).get().run();
 		return collection;
 	}
 }

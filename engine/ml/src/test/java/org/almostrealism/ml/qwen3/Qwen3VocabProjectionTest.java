@@ -17,6 +17,8 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
@@ -56,14 +58,15 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		PackedCollection weights = new PackedCollection(new TraversalPolicy(vocabSize, inputDim));
 		log("    Weights created in " + (System.currentTimeMillis() - start) + "ms");
 
-		// Fill with small values to avoid overflow
+		// Fill the leading rows with small values to avoid overflow, leaving the rest zero:
+		// weights[i, j] = 0.001 * (i + j)
 		log("\n[2] Initializing weights...");
 		start = System.currentTimeMillis();
-		for (int i = 0; i < Math.min(1000, vocabSize); i++) {
-			for (int j = 0; j < inputDim; j++) {
-				weights.setMem(i * inputDim + j, 0.001 * (i + j));
-			}
-		}
+		int initRows = Math.min(1000, vocabSize);
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		CollectionProducer index = ops.integers(0, initRows * inputDim);
+		ops.a(ops.cp(weights.range(new TraversalPolicy(initRows * inputDim), 0)),
+				ops.floor(index.divide(inputDim)).add(index.mod(inputDim)).multiply(0.001)).get().run();
 		log("    Partial init in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Create dense layer

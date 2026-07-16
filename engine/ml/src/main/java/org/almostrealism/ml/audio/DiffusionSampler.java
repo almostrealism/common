@@ -244,7 +244,8 @@ public class DiffusionSampler implements ConsoleFeatures {
 			double t = timesteps[step];
 			double tPrev = timesteps[step + 1];
 
-			// Set timestep tensor
+			// TODO  The schedule is a device-resident table indexed by the step, once
+			// TODO  SamplingStrategy can express it as a producer instead of a double[].
 			tTensor.setMem(0, t);
 
 			// Model forward pass

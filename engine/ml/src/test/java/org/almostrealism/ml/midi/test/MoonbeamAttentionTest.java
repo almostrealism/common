@@ -17,6 +17,8 @@
 package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.relation.Producer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.midi.GRUDecoder;
@@ -124,9 +126,13 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 
 		Producer<PackedCollection>[] positions =
 				createPositionProducers(MoonbeamConfig.NUM_ATTRIBUTES);
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		PackedCollection attributeIndices =
+				ops.integers(0, MoonbeamConfig.NUM_ATTRIBUTES).evaluate();
+
 		for (int i = 0; i < MoonbeamConfig.NUM_ATTRIBUTES; i++) {
 			PackedCollection posVal = new PackedCollection(1);
-			posVal.setMem(0, i);
+			posVal.setFrom(0, attributeIndices, i, 1);
 			positions[i] = () -> args -> posVal;
 		}
 
