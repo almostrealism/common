@@ -19,7 +19,6 @@ package org.almostrealism.audio.filter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.CollectionFeatures;
 
 /**
  * Data interface for ADSR envelope generator state.
@@ -92,16 +91,16 @@ public interface ADSREnvelopeData extends CodeFeatures {
 	default Producer<PackedCollection> getGateOpen() { return p(gateOpen().range(shape(1))); }
 	default Producer<PackedCollection> getReleaseLevel() { return p(releaseLevel().range(shape(1))); }
 
-	default void setAttackTime(double seconds) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(attackTime()), CollectionFeatures.getInstance().c(seconds)).get().run(); }
-	default void setDecayTime(double seconds) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(decayTime()), CollectionFeatures.getInstance().c(seconds)).get().run(); }
-	default void setSustainLevel(double level) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sustainLevel()), CollectionFeatures.getInstance().c(level)).get().run(); }
-	default void setReleaseTime(double seconds) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(releaseTime()), CollectionFeatures.getInstance().c(seconds)).get().run(); }
-	default void setSampleRate(double rate) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sampleRate()), CollectionFeatures.getInstance().c(rate)).get().run(); }
-	default void setPhase(int p) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(phase()), CollectionFeatures.getInstance().c(p)).get().run(); }
-	default void setPosition(double pos) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position()), CollectionFeatures.getInstance().c(pos)).get().run(); }
-	default void setCurrentLevel(double level) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(currentLevel()), CollectionFeatures.getInstance().c(level)).get().run(); }
-	default void setGateOpen(boolean open) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(gateOpen()), CollectionFeatures.getInstance().c(open ? 1.0 : 0.0)).get().run(); }
-	default void setReleaseLevel(double level) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(releaseLevel()), CollectionFeatures.getInstance().c(level)).get().run(); }
+	default void setAttackTime(double seconds) { attackTime().setMem(0, seconds); }
+	default void setDecayTime(double seconds) { decayTime().setMem(0, seconds); }
+	default void setSustainLevel(double level) { sustainLevel().setMem(0, level); }
+	default void setReleaseTime(double seconds) { releaseTime().setMem(0, seconds); }
+	default void setSampleRate(double rate) { sampleRate().setMem(0, rate); }
+	default void setPhase(int p) { phase().setMem(0, p); }
+	default void setPosition(double pos) { position().setMem(0, pos); }
+	default void setCurrentLevel(double level) { currentLevel().setMem(0, level); }
+	default void setGateOpen(boolean open) { gateOpen().setMem(0, open ? 1.0 : 0.0); }
+	default void setReleaseLevel(double level) { releaseLevel().setMem(0, level); }
 
 	/**
 	 * Sets all ADSR parameters at once.

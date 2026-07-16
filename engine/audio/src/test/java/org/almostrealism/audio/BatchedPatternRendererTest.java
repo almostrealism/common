@@ -18,7 +18,6 @@ package org.almostrealism.audio;
 
 import org.almostrealism.audio.benchmark.PatternRenderingFloorBenchmark;
 import org.almostrealism.audio.line.OutputLine;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
@@ -90,7 +89,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 				data[i] = rng.nextDouble() * 2.0 - 1.0;
 			}
 			sources[n] = new PackedCollection(SOURCE_LENGTH);
-			a(cp(sources[n]), c(data)).get().run();
+			sources[n].setMem(data);
 		}
 
 		// Per-note pitch ratios: 1.0, 1.1, ..., 1.7.
@@ -102,7 +101,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 			ratioData[n] = ratioValues[n];
 		}
 		PackedCollection ratios = new PackedCollection(N);
-		a(cp(ratios), c(ratioData)).get().run();
+		ratios.setMem(ratioData);
 
 		// Per-row filter cutoff envelopes: shape [N, TARGET_LENGTH].
 		// Each row is an ADSR-shaped Hz curve with distinct peak, sustain, and base values.
@@ -116,7 +115,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
 		}
 		PackedCollection filterCutoffs = new PackedCollection(shape(N, TARGET_LENGTH));
-		a(cp(filterCutoffs), c(filterCutoffs.getShape(), filterCutoffData)).get().run();
+		filterCutoffs.setMem(filterCutoffData);
 
 		// Per-row volume envelopes: shape [N, TARGET_LENGTH].
 		double[] volumeEnvData = new double[N * TARGET_LENGTH];
@@ -127,7 +126,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
 		}
 		PackedCollection volumeEnvelopes = new PackedCollection(shape(N, TARGET_LENGTH));
-		a(cp(volumeEnvelopes), c(volumeEnvelopes.getShape(), volumeEnvData)).get().run();
+		volumeEnvelopes.setMem(volumeEnvData);
 
 		// ── Per-note sequential reference path ────────────────────────────────
 		// For each note: resample → lowPass(cutoff) → × volume → accumulate.
@@ -142,7 +141,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 			double[] cutoffNData = new double[TARGET_LENGTH];
 			System.arraycopy(filterCutoffData, n * TARGET_LENGTH, cutoffNData, 0, TARGET_LENGTH);
 			PackedCollection cutoffN = new PackedCollection(TARGET_LENGTH);
-			a(cp(cutoffN), c(cutoffNData)).get().run();
+			cutoffN.setMem(cutoffNData);
 
 			// Apply filter envelope: lowPass with per-sample Hz cutoff from cutoffN.
 			PackedCollection filtered =
@@ -154,7 +153,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 			double[] volNData = new double[TARGET_LENGTH];
 			System.arraycopy(volumeEnvData, n * TARGET_LENGTH, volNData, 0, TARGET_LENGTH);
 			PackedCollection volN = new PackedCollection(TARGET_LENGTH);
-			a(cp(volN), c(volNData)).get().run();
+			volN.setMem(volNData);
 
 			// Apply volume envelope: elementwise multiply.
 			PackedCollection voiced = cp(filtered).multiply(cp(volN)).get().evaluate();
@@ -175,7 +174,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 			}
 		}
 		PackedCollection batchedSource = new PackedCollection(shape(N, SOURCE_LENGTH));
-		a(cp(batchedSource), c(batchedSource.getShape(), batchData)).get().run();
+		batchedSource.setMem(batchData);
 
 		PackedCollection batchedOutput =
 				renderer.buildBatchedChain(batchedSource, ratios, filterCutoffs, volumeEnvelopes)
@@ -244,8 +243,7 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 			for (int i = 0; i < data.length; i++) {
 				data[i] = 1.0 + (i % 7);
 			}
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer),
-					CollectionFeatures.getInstance().c(buffer.getShape(), data)).get().run();
+			buffer.setMem(data);
 		}
 	}
 

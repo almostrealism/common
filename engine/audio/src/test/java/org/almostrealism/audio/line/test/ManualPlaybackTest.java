@@ -17,8 +17,6 @@
 package org.almostrealism.audio.line.test;
 
 import org.almostrealism.audio.line.SourceDataOutputLine;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
@@ -85,8 +83,8 @@ public class ManualPlaybackTest extends TestSuiteBase {
 				double sample = amplitude * Math.sin(2 * Math.PI * frequency * t);
 
 				// Interleaved stereo: left, right, left, right, ...
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), frame * 2)), CollectionFeatures.getInstance().c(sample)).get().run();     // left channel
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), frame * 2 + 1)), CollectionFeatures.getInstance().c(sample)).get().run(); // right channel
+				buffer.setMem(frame * 2, sample);     // left channel
+				buffer.setMem(frame * 2 + 1, sample); // right channel
 			}
 
 			// Write to the line
@@ -139,8 +137,8 @@ public class ManualPlaybackTest extends TestSuiteBase {
 			for (int i = 0; i < bufferSize; i++) {
 				double t = (w * bufferSize + i) / (double) sampleRate;
 				double sample = 0.3 * Math.sin(2 * Math.PI * 440.0 * t);
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), i * 2)), CollectionFeatures.getInstance().c(sample)).get().run();
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), i * 2 + 1)), CollectionFeatures.getInstance().c(sample)).get().run();
+				buffer.setMem(i * 2, sample);
+				buffer.setMem(i * 2 + 1, sample);
 			}
 
 			outputLine.write(buffer);
