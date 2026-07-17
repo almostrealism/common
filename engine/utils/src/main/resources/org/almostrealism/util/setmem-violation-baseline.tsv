@@ -192,8 +192,6 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/f
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/line/BufferOutputLine.java	1	buffer.setMem(writePosition, sample.toDouble(i));
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/line/BufferOutputLine.java	1	result.setMem(i, buffer.toDouble(i));
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/line/SharedMemoryAudioLine.java	1	controls.setMem(PASSTHROUGH_LEVEL, level);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/midi/MidiCCSource.java	1	output.setMem(0, ranged);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/midi/MidiCCSource.java	1	output.setMem(0, smoothedValue);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/sources/SineWaveCellData.java	1	default void setDepth(double depth) { depth().setMem(0, depth); }
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/sources/SineWaveCellData.java	1	noteLength().setMem(0, noteLength);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/sources/SineWaveCellData.java	1	notePosition().setMem(0, notePosition);
