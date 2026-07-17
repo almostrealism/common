@@ -223,6 +223,14 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	private List<Runnable> listeners;
 
 	/**
+	 * Release callbacks for destination buffers leased to this invocation from a
+	 * per-argument reuse slot (see {@code ProcessDetailsFactory}). Run exactly once
+	 * by {@link #releaseDestinationLeases()} when the invocation's full completion
+	 * chain has fired, returning each buffer to its slot for the next invocation.
+	 */
+	private List<Runnable> destinationLeases;
+
+	/**
 	 * Creates a new process details instance with the specified configuration.
 	 *
 	 * @param args                Original arguments (may contain nulls for async results)
@@ -312,6 +320,53 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 */
 	public void setSemaphore(Semaphore semaphore) {
 		this.semaphore = semaphore;
+	}
+
+	/**
+	 * Records a release callback for a destination buffer leased to this invocation
+	 * from a per-argument reuse slot.
+	 *
+	 * @param release returns the leased buffer to its slot; run once by
+	 *                {@link #releaseDestinationLeases()}
+	 */
+	public synchronized void addDestinationLease(Runnable release) {
+		if (destinationLeases == null) {
+			destinationLeases = new ArrayList<>();
+		}
+
+		destinationLeases.add(release);
+	}
+
+	/**
+	 * Returns true when this invocation holds leased destination buffers that must be
+	 * released once its completion chain has fired.
+	 *
+	 * @return true when {@link #addDestinationLease(Runnable)} has been called
+	 */
+	public synchronized boolean hasDestinationLeases() {
+		return destinationLeases != null && !destinationLeases.isEmpty();
+	}
+
+	/**
+	 * Releases every leased destination buffer back to its reuse slot, exactly once.
+	 *
+	 * <p>Safe to call only when nothing can still read or write the leased buffers —
+	 * in practice, when the completion from {@link #getSemaphore()} has fired, since
+	 * that is adopted from the end of the kernel/copy-back/copy-out chain. If this is
+	 * never called (an invocation that failed before dispatch), the leased slots stay
+	 * checked out and later invocations simply allocate fresh buffers.</p>
+	 */
+	public void releaseDestinationLeases() {
+		List<Runnable> leases;
+
+		synchronized (this) {
+			leases = destinationLeases;
+			destinationLeases = null;
+		}
+
+		if (leases != null) {
+			leases.forEach(Runnable::run);
+		}
 	}
 
 	/**
