@@ -250,6 +250,18 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public static boolean enableDestinationReuse =
 			SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_REUSE").orElse(true);
 
+	/**
+	 * If true (strict mode, the default), the result an invocation hands back from a plain
+	 * {@code evaluate()} is portable: the caller may hold it indefinitely, so its buffer is
+	 * never served from a reuse slot. When disabled, that buffer participates in destination
+	 * reuse like any other — improving allocation rate and memory use — and the contract
+	 * changes: a result of {@code evaluate()} is only valid until the same operation's next
+	 * invocation, unless the caller supplied the destination via {@code into(...)}.
+	 * Controlled by {@code AR_HARDWARE_PORTABLE_RESULTS}.
+	 */
+	public static boolean enablePortableResults =
+			SystemUtils.isEnabled("AR_HARDWARE_PORTABLE_RESULTS").orElse(true);
+
 	/** True if the count is fixed at construction time and cannot be inferred from arguments. */
 	private boolean fixedCount;
 	/** Declared number of parallel work items (kernel size) for fixed-count operations. */
@@ -614,16 +626,24 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 * sized destinations. Destinations come from this factory's per-argument
 		 * reuse slots when one is free; a slot that is still leased to an
 		 * overlapping invocation falls back to a fresh allocation, which is
-		 * tracked by the active Heap stage exactly as before.
+		 * tracked by the active Heap stage exactly as before. Under portable
+		 * results (strict mode), the output argument is leased only when the
+		 * caller supplied an output bank — its factory-created buffer is then
+		 * internal staging, delivered to the caller by copy-out; without a
+		 * caller output that buffer is what evaluate() hands back, so it is
+		 * allocated fresh. With portable results disabled, the output buffer
+		 * is leased like any other and evaluate() results are transient (see
+		 * enablePortableResults).
 		 */
 		List<Runnable> leases = null;
+		boolean outputEscapes = enablePortableResults && prepared.output == null;
 
 		for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null || asyncEvaluables[i] != null) continue;
 
 			MemoryData result = null;
 
-			if (enableDestinationReuse) {
+			if (enableDestinationReuse && (i != outputArgIndex || !outputEscapes)) {
 				DestinationSlot slot = destinationSlot(i);
 				Evaluable allocator = kernelArgEvaluables[i];
 				result = slot.acquire(size,
@@ -849,6 +869,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * {@link org.almostrealism.hardware.mem.MemoryBankProvider}. A buffer destroyed
 	 * externally (its memory released elsewhere) is detected via {@link MemoryData#getMem()}
 	 * and replaced.</p>
+	 *
+	 * <p>Buffers are leased only while they remain internal to the invocation. The
+	 * output argument's buffer participates when the caller supplied an output bank
+	 * (the factory buffer is then staging, delivered by copy-out); when no output was
+	 * supplied it is what {@code evaluate()} returns to the caller, so under
+	 * {@link #enablePortableResults} (the default) it is allocated fresh, and with
+	 * portable results disabled it is leased like any other — trading the
+	 * hold-it-indefinitely guarantee for allocation-rate and memory improvements.</p>
 	 */
 	public static class DestinationSlot {
 		/** The cached destination buffer, or null before first use or after destruction. */
