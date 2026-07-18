@@ -40,16 +40,41 @@ public class MTLEvent extends MTLObject {
 	 * for values up to and including it. The signaled value must never decrease.
 	 *
 	 * @param value Value to signal
+	 * @throws IllegalStateException if the event has been released
 	 */
 	public void setSignaledValue(long value) {
 		MTL.setSignaledValue(getNativePointer(), value);
 	}
 
 	/**
-	 * Releases the native shared event.
+	 * Signals this event to the given value if it has not been released, mutually
+	 * excluded with {@link #release()} so the native object cannot be freed while
+	 * the signal call is in flight.
+	 *
+	 * <p>This is the safe form for a host signal that is delivered asynchronously
+	 * (a completion callback): the event may legitimately be gone by the time the
+	 * callback runs — its sole waiting command buffer already finished by another
+	 * path (an error or teardown completion) and released it — in which case the
+	 * signal has no observer and is skipped rather than throwing or touching freed
+	 * native memory.</p>
+	 *
+	 * @param value Value to signal
+	 * @return true if the event was signaled, false if it was already released
+	 */
+	public synchronized boolean signal(long value) {
+		if (isReleased()) return false;
+		MTL.setSignaledValue(getNativePointer(), value);
+		return true;
+	}
+
+	/**
+	 * Releases the native shared event. Mutually excluded with {@link #signal(long)},
+	 * so a late asynchronous signal observes either a live event or the released
+	 * state — never a freed native pointer mid-call.
 	 */
 	@Override
-	public void release() {
+	public synchronized void release() {
+		if (isReleased()) return;
 		MTL.releaseSharedEvent(getNativePointer());
 		super.release();
 	}

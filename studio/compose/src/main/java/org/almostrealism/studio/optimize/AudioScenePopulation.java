@@ -189,16 +189,26 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * Enables the given genome as the active genome for the current evaluation,
 	 * verifying that no other genome is already active.
 	 *
+	 * <p>The active-genome latch is recorded only after the scene has accepted
+	 * the genome. A failed assignment (an incompatible genome, or a failure
+	 * inside the scene's parameter refresh) therefore leaves this population
+	 * ready for the next genome — previously the latch was set first, so one
+	 * failed genome caused every later {@code enableGenome} in an optimizer
+	 * batch to throw the already-active {@link IllegalStateException},
+	 * flooding the log with latch errors that hid the one real failure.</p>
+	 *
 	 * @param newGenome the genome to activate
 	 * @throws IllegalStateException if a genome is already active
 	 */
 	private void enableGenome(Genome newGenome) {
 		if (currentGenome != null) {
-			throw new IllegalStateException();
+			throw new IllegalStateException(
+					"A genome is already active; disableGenome must run before" +
+					" another genome can be enabled");
 		}
 
+		scene.assignGenome((ProjectedGenome) newGenome);
 		currentGenome = newGenome;
-		scene.assignGenome((ProjectedGenome) currentGenome);
 	}
 
 	@Override

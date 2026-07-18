@@ -132,6 +132,13 @@ public class MetalCommandRunner {
 	private volatile long destroyCommits;
 	/** Commits forced so a bridged dispatch starts a fresh buffer. Executor-thread written. */
 	private volatile long bridgeCommits;
+
+	/**
+	 * Foreign-completion signals that arrived after their bridge event was already
+	 * released (the bridged buffer finished by an error or teardown path first).
+	 * Written from completion-callback threads.
+	 */
+	private final AtomicLong lateBridgeSignals = new AtomicLong();
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -181,6 +188,16 @@ public class MetalCommandRunner {
 	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
 	 * before the dispatch is encoded.</p>
 	 *
+	 * <p><b>Bridge event lifecycle:</b> the per-bridge event is released with its buffer's
+	 * completion callbacks. On the success path the buffer's encoded wait guarantees the host
+	 * signal already ran before the buffer could complete. A buffer that finishes by another
+	 * path — a GPU error or watchdog kill, or a teardown completion — releases the event while
+	 * the foreign completion callback is still pending, so the callback signals through
+	 * {@link MTLEvent#signal(long)}, which skips a released event instead of touching freed
+	 * native state; such skipped signals are counted by {@link #getLateBridgeSignalCount()}.
+	 * A skipped signal has no observer to lose: the event's only encoded wait was in the
+	 * buffer whose completion released it.</p>
+	 *
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
 	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
 	 * @param command   encodes the kernel into the supplied command buffer
@@ -227,14 +244,17 @@ public class MetalCommandRunner {
 			}
 
 			if (foreign != null) {
-				// Each bridge uses its own event because a host signal releases every encoded
-				// wait at or below the signaled value; sharing an event across bridges would let
-				// an out-of-order foreign completion release another bridge's wait. The event is
-				// released with the buffer, which cannot complete before the wait is satisfied.
+				// Each bridge uses its own event; sharing one would let an out-of-order
+				// foreign completion release another bridge's wait (see the bridging
+				// lifecycle in this method's javadoc).
 				MTLEvent bridge = queue.getDevice().newSharedEvent();
 				openBuffer.encodeWaitForEvent(bridge, 1);
 				openOnComplete.add(bridge::release);
-				foreign.onComplete(() -> bridge.setSignaledValue(1));
+				foreign.onComplete(() -> {
+					if (!bridge.signal(1)) {
+						lateBridgeSignals.incrementAndGet();
+					}
+				});
 			}
 
 			command.encode(openBuffer);
@@ -358,6 +378,17 @@ public class MetalCommandRunner {
 	 * @return the number of commits caused by foreign-dependency bridges
 	 */
 	public long getBridgeCommitCount() { return bridgeCommits; }
+
+	/**
+	 * Returns the number of foreign-completion signals that arrived after their bridge
+	 * event had already been released — the bridged buffer finished by an error or
+	 * teardown path before the foreign work completed. Each is skipped safely by
+	 * {@link MTLEvent#signal(long)}; a persistently non-zero count indicates bridged
+	 * dispatches whose gated work never ran.
+	 *
+	 * @return the number of skipped late bridge signals
+	 */
+	public long getLateBridgeSignalCount() { return lateBridgeSignals.get(); }
 
 	/**
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
