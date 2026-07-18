@@ -18,19 +18,30 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.streams.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProcessDetailsFactory;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.metal.MetalCommandRunner;
+import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Verifies completion-gated destination reuse in {@link ProcessDetailsFactory}.
@@ -109,13 +120,13 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 		PackedCollection weights = new PackedCollection(shape(SIZE));
 		PackedCollection values = new PackedCollection(shape(SIZE));
 		PackedCollection out = new PackedCollection(shape(1));
-		weights.fill(pos -> 2.0);
+		weights.fill(2.0);
 
 		Evaluable<PackedCollection> ev = isolatedDotProduct(weights, values);
 
 		for (int iter = 0; iter < ITERATIONS; iter++) {
 			double v = 1.0 + iter;
-			values.fill(pos -> v);
+			values.fill(v);
 
 			ev.into(out).evaluate();
 			assertEquals(2.0 * v * SIZE, out.toDouble(0));
@@ -139,8 +150,8 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 		PackedCollection weights = new PackedCollection(shape(SIZE));
 		PackedCollection values = new PackedCollection(shape(SIZE));
 		PackedCollection out = new PackedCollection(shape(1));
-		weights.fill(pos -> 3.0);
-		values.fill(pos -> 5.0);
+		weights.fill(3.0);
+		values.fill(5.0);
 
 		try {
 			ProcessDetailsFactory.enableDestinationReuse = false;
@@ -171,15 +182,15 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 
 		PackedCollection weights = new PackedCollection(shape(SIZE));
 		PackedCollection values = new PackedCollection(shape(SIZE));
-		weights.fill(pos -> 2.0);
-		values.fill(pos -> 3.0);
+		weights.fill(2.0);
+		values.fill(3.0);
 
 		Evaluable<PackedCollection> ev = isolatedDotProduct(weights, values);
 
 		PackedCollection first = ev.evaluate();
 		assertEquals(2.0 * 3.0 * SIZE, first.toDouble(0));
 
-		values.fill(pos -> 5.0);
+		values.fill(5.0);
 		PackedCollection second = ev.evaluate();
 		assertEquals(2.0 * 5.0 * SIZE, second.toDouble(0));
 
@@ -199,7 +210,7 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 	public void transientResultsRemainCorrectOnImmediateRead() {
 		PackedCollection weights = new PackedCollection(shape(SIZE));
 		PackedCollection values = new PackedCollection(shape(SIZE));
-		weights.fill(pos -> 2.0);
+		weights.fill(2.0);
 
 		try {
 			ProcessDetailsFactory.enablePortableResults = false;
@@ -208,7 +219,7 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 
 			for (int iter = 0; iter < ITERATIONS; iter++) {
 				double v = 1.0 + iter;
-				values.fill(pos -> v);
+				values.fill(v);
 
 				PackedCollection result = ev.evaluate();
 				assertEquals(2.0 * v * SIZE, result.toDouble(0));
@@ -230,8 +241,8 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 	public void concurrentEvaluationNeverSharesLeasedDestinations() throws Exception {
 		PackedCollection weights = new PackedCollection(shape(SIZE));
 		PackedCollection values = new PackedCollection(shape(SIZE));
-		weights.fill(pos -> 2.0);
-		values.fill(pos -> 7.0);
+		weights.fill(2.0);
+		values.fill(7.0);
 
 		Evaluable<PackedCollection> ev = isolatedDotProduct(weights, values);
 		PackedCollection warm = new PackedCollection(shape(1));
@@ -262,6 +273,76 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 			if (failure != null) {
 				throw new AssertionError("Concurrent evaluation failed", failure);
 			}
+		}
+	}
+
+	/**
+	 * Pins the {@link Semaphore#whenComplete(Runnable)} contract on Metal directly:
+	 * registering the callback must not commit the still-open command buffer or wait
+	 * for it (the callback has not run and no commit was recorded), and the callback
+	 * must run once the buffer genuinely completes. The eager
+	 * {@link Semaphore#onComplete(Runnable)} default would fail the first half —
+	 * its waiting thread forces a host commit — which is how lease release collapsed
+	 * command-buffer batching for realtime playback on the mac CI runner.
+	 *
+	 * @throws Exception if interrupted while waiting for the callback
+	 */
+	@Test(timeout = 120000)
+	public void whenCompleteImposesNoCommit() throws Exception {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		PackedCollection weights = new PackedCollection(shape(SIZE));
+		PackedCollection values = new PackedCollection(shape(SIZE));
+		PackedCollection out = new PackedCollection(shape(1));
+		weights.fill(2.0);
+		values.fill(3.0);
+
+		CollectionProducer mul = multiply(
+				traverseEach(p(weights)), traverseEach(p(values)));
+		Assignment<PackedCollection> assign = new Assignment<>(1,
+				() -> (Evaluable<PackedCollection>) args -> out,
+				sum(traverse(0, mul)), List.of(ComputeRequirement.MTL));
+
+		boolean aggregation = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+
+		try {
+			Hardware.getLocalHardware().getComputer()
+					.pushRequirements(List.of(ComputeRequirement.MTL));
+			Submittable op;
+
+			try {
+				op = (Submittable) assign.get();
+			} finally {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
+
+			Semaphore warm = op.submit(null);
+			if (warm != null) warm.waitFor();
+
+			MetalCommandRunner runner = metal.getCommandRunner();
+			long total0 = runner.getCommitCount();
+
+			Semaphore sem = op.submit(null);
+			Assert.assertNotNull(sem);
+
+			CountDownLatch ran = new CountDownLatch(1);
+			sem.whenComplete(ran::countDown);
+
+			Assert.assertTrue("Registering a whenComplete callback must not commit",
+					runner.getCommitCount() == total0);
+			Assert.assertTrue("The callback must not have run while the buffer is open",
+					ran.getCount() == 1);
+
+			sem.waitFor();
+			Assert.assertTrue("The callback must run once the buffer completes",
+					ran.await(10, TimeUnit.SECONDS));
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = aggregation;
 		}
 	}
 

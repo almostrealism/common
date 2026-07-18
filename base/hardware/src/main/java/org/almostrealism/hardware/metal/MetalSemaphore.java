@@ -84,6 +84,19 @@ public class MetalSemaphore implements OperationSemaphore {
 		runner.complete(commandBuffer, requester);
 	}
 
+	/**
+	 * Registers the callback with the command buffer's completion callbacks (see
+	 * {@link MetalCommandRunner#whenComplete}) rather than waiting for it. The default
+	 * implementation's waiting callback would invoke {@link #waitFor()}, which commits
+	 * the buffer if it is still open — a host-forced commit per registration that
+	 * defeats command-buffer batching. Registered this way, the callback runs when the
+	 * buffer completes on its own schedule and imposes no commit.
+	 */
+	@Override
+	public void whenComplete(Runnable r) {
+		runner.whenComplete(commandBuffer, r);
+	}
+
 	@Override
 	public Semaphore withRequester(OperationMetadata requester) {
 		return new MetalSemaphore(requester, runner, commandBuffer, event, value);

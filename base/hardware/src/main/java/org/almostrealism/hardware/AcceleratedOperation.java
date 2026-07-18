@@ -663,12 +663,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				if (process.hasDestinationLeases()) {
-					// Leased argument destinations are returned to their reuse slots at the
-					// end of the full chain — the same point heap lifecycle waits for above.
+					// Release at the end of the full chain, passively — an actively waiting
+					// callback (onComplete) forces a per-invocation commit on Metal.
 					if (completion == null) {
 						process.releaseDestinationLeases();
 					} else {
-						completion.onComplete(process::releaseDestinationLeases);
+						completion.whenComplete(process::releaseDestinationLeases);
 					}
 				}
 			} finally {
