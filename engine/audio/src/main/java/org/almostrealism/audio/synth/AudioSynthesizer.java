@@ -95,21 +95,18 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	/** Optional ADSR envelope for modulating filter cutoff frequency over time. */
 	private ADSREnvelope filterEnvelope;
 
-	/** Depth in Hz of the filter envelope modulation applied to the base cutoff. */
-	private double filterEnvelopeAmount;
-
-	/** Base filter cutoff frequency in Hz before envelope modulation is applied. */
-	private double filterBaseCutoff;
-
 	/**
-	 * Device buffer mirroring {@link #filterBaseCutoff}, read by the per-tick device operation that
-	 * recomputes the modulated filter coefficients. Written at the control boundary via {@code fill}.
+	 * Base filter cutoff frequency in Hz before envelope modulation is applied. This one-element
+	 * buffer is the source of truth for the cutoff: it is read by the per-tick device operation that
+	 * recomputes the modulated filter coefficients, and written at the control boundary via
+	 * {@code fill}.
 	 */
 	private final PackedCollection filterBaseCutoffData;
 
 	/**
-	 * Device buffer mirroring {@link #filterEnvelopeAmount}, read by the per-tick device operation that
-	 * recomputes the modulated filter coefficients. Written at the control boundary via {@code fill}.
+	 * Depth in Hz of the filter envelope modulation applied to the base cutoff. This one-element
+	 * buffer is the source of truth for the amount: it is read by the per-tick device operation and by
+	 * {@link #getFilterEnvelopeAmount()}, and written at the control boundary via {@code fill}.
 	 */
 	private final PackedCollection filterEnvelopeAmountData;
 
@@ -190,12 +187,10 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 		this.output = new SummationCell();
 		this.cells = new ArrayList<>();
 		this.velocity = 1.0;
-		this.filterBaseCutoff = 5000.0;
-		this.filterEnvelopeAmount = 0.0;
 		this.filterBaseCutoffData = new PackedCollection(1);
 		this.filterEnvelopeAmountData = new PackedCollection(1);
-		this.filterBaseCutoffData.fill(filterBaseCutoff);
-		this.filterEnvelopeAmountData.fill(filterEnvelopeAmount);
+		this.filterBaseCutoffData.fill(5000.0);
+		this.filterEnvelopeAmountData.fill(0.0);
 
 		createOscillators(voices.count());
 	}
@@ -323,7 +318,6 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * @param resonance Q factor (typically 0.5-10)
 	 */
 	public void setLowPassFilter(double cutoffHz, double resonance) {
-		this.filterBaseCutoff = cutoffHz;
 		this.filterBaseCutoffData.fill(cutoffHz);
 		this.filter = BiquadFilterCell.lowPass(cutoffHz, resonance);
 	}
@@ -335,7 +329,6 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * @param resonance Q factor (typically 0.5-10)
 	 */
 	public void setHighPassFilter(double cutoffHz, double resonance) {
-		this.filterBaseCutoff = cutoffHz;
 		this.filterBaseCutoffData.fill(cutoffHz);
 		this.filter = BiquadFilterCell.highPass(cutoffHz, resonance);
 	}
@@ -347,7 +340,6 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * @param q Q factor (bandwidth control)
 	 */
 	public void setBandPassFilter(double centerHz, double q) {
-		this.filterBaseCutoff = centerHz;
 		this.filterBaseCutoffData.fill(centerHz);
 		this.filter = BiquadFilterCell.bandPass(centerHz, q);
 	}
@@ -376,7 +368,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	/**
 	 * Returns the filter envelope modulation amount.
 	 */
-	public double getFilterEnvelopeAmount() { return filterEnvelopeAmount; }
+	public double getFilterEnvelopeAmount() { return filterEnvelopeAmountData.toDouble(0); }
 
 	/**
 	 * Sets how much the filter envelope affects the cutoff frequency.
@@ -386,7 +378,6 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * @param amount modulation depth in Hz
 	 */
 	public void setFilterEnvelopeAmount(double amount) {
-		this.filterEnvelopeAmount = amount;
 		this.filterEnvelopeAmountData.fill(amount);
 	}
 
@@ -408,7 +399,6 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * @param resonance Q factor
 	 */
 	public void setFilterCutoff(double cutoffHz, double resonance) {
-		this.filterBaseCutoff = cutoffHz;
 		this.filterBaseCutoffData.fill(cutoffHz);
 		if (filter != null) {
 			filter.configureLowPass(cutoffHz, resonance);
@@ -623,7 +613,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 			tick.add(filterEnvelope.tick());
 
 			// Update filter cutoff based on envelope
-			if (filter != null && filterEnvelopeAmount != 0) {
+			if (filter != null && filterEnvelopeAmountData.toDouble(0) != 0) {
 				BiquadFilterData data = filter.getData();
 				CollectionProducer cutoff = min(max(
 						add(cp(filterBaseCutoffData),

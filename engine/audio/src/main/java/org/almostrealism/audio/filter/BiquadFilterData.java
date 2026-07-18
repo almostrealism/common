@@ -165,7 +165,7 @@ public interface BiquadFilterData extends CodeFeatures {
 		CollectionProducer cosW0 = cos(omega(cutoff, sampleRate));
 		CollectionProducer alpha = alpha(cutoff, q, sampleRate);
 		CollectionProducer onePlusCos = add(c(1.0), cosW0);
-		return simpleCoefficients(onePlusCos.divide(2.0), onePlusCos.multiply(-1.0),
+		return simpleCoefficients(onePlusCos.divide(2.0), onePlusCos.minus(),
 				onePlusCos.divide(2.0), cosW0, alpha);
 	}
 
@@ -182,7 +182,7 @@ public interface BiquadFilterData extends CodeFeatures {
 			Producer<PackedCollection> center, Producer<PackedCollection> q, int sampleRate) {
 		CollectionProducer cosW0 = cos(omega(center, sampleRate));
 		CollectionProducer alpha = alpha(center, q, sampleRate);
-		return simpleCoefficients(alpha, c(0.0), alpha.multiply(-1.0), cosW0, alpha);
+		return simpleCoefficients(alpha, c(0.0), alpha.minus(), cosW0, alpha);
 	}
 
 	/**

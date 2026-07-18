@@ -19,6 +19,7 @@ package org.almostrealism.audio.computations;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Min;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -126,9 +127,9 @@ public class ADSREnvelopeComputation extends CollectionProducerComputationBase
 										conditional(releasePos.greaterThanOrEqual(e(1.0)), e(0.0), releasePos),
 										position))));
 
-		Expression attackLevel = clampToOne(attackPos);
-		Expression decayLevel = e(1.0).subtract(e(1.0).subtract(sustainLevel).multiply(clampToOne(decayPos)));
-		Expression releaseLevelOut = releaseLevel.multiply(e(1.0).subtract(clampToOne(releasePos)));
+		Expression attackLevel = Min.of(attackPos, e(1.0));
+		Expression decayLevel = e(1.0).subtract(e(1.0).subtract(sustainLevel).multiply(Min.of(decayPos, e(1.0))));
+		Expression releaseLevelOut = releaseLevel.multiply(e(1.0).subtract(Min.of(releasePos, e(1.0))));
 
 		Expression newLevel = conditional(isAttack, attackLevel,
 				conditional(isDecay, decayLevel,
@@ -158,13 +159,4 @@ public class ADSREnvelopeComputation extends CollectionProducerComputationBase
 				position.add(e(dt).divide(time)), e(1.0));
 	}
 
-	/**
-	 * Clamps an expression to a maximum of one, the device equivalent of {@code min(1, x)}.
-	 *
-	 * @param x the expression to clamp
-	 * @return {@code min(1, x)}
-	 */
-	private Expression clampToOne(Expression x) {
-		return conditional(x.greaterThan(e(1.0)), e(1.0), x);
-	}
 }
