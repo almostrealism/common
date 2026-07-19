@@ -54,7 +54,6 @@ public class PackedCollectionDetector extends PolicyViolationDetector {
 			"/heredity/",
 			"/optimize/",
 			// Audio processing - FFT interfacing, format conversion, testing
-			"WavetableCell.java",
 			"BufferOutputLine.java",
 			"FrequencyToAudioConverter.java",
 			"WaveData.java",

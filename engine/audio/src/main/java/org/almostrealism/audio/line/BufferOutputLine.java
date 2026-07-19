@@ -105,7 +105,7 @@ public class BufferOutputLine implements OutputLine {
 				}
 			}
 
-			buffer.setMem(writePosition, sample.toDouble(i));
+			buffer.setFrom(writePosition, sample, i, 1);
 			writePosition++;
 			totalFramesWritten++;
 		}
@@ -194,9 +194,7 @@ public class BufferOutputLine implements OutputLine {
 		int framesToCopy = (int) Math.min(totalFramesWritten, bufferSize);
 		PackedCollection result = new PackedCollection(framesToCopy);
 
-		for (int i = 0; i < framesToCopy; i++) {
-			result.setMem(i, buffer.toDouble(i));
-		}
+		result.setFrom(0, buffer, 0, framesToCopy);
 
 		return result;
 	}

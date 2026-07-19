@@ -98,6 +98,15 @@ public class BiquadFilterCell extends CollectionTemporalCellAdapter implements C
 	}
 
 	/**
+	 * Returns the sample rate in Hz used for coefficient calculation.
+	 *
+	 * @return the sample rate in Hz
+	 */
+	public int getSampleRate() {
+		return sampleRate;
+	}
+
+	/**
 	 * Sets the filter coefficients directly.
 	 *
 	 * @param b0 feedforward coefficient for x[n]

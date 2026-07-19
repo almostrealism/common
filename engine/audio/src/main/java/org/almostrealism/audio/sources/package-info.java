@@ -17,8 +17,7 @@
 /**
  * Audio source implementations and aggregation for signal generation.
  *
- * <p>This package provides audio signal sources including wavetable synthesis
- * ({@link org.almostrealism.audio.sources.WavetableCell}), audio buffer management
+ * <p>This package provides audio signal sources including audio buffer management
  * ({@link org.almostrealism.audio.sources.AudioBuffer}), and source aggregation
  * with normalization and EQ ({@link org.almostrealism.audio.sources.ModularSourceAggregator}).
  * These are the building blocks for constructing audio signal chains in the engine.</p>
