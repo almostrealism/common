@@ -120,6 +120,7 @@ jobs:
           BRANCH: ${{ steps.qa_branch.outputs.branch }}
           BASE_BRANCH: master
           DESCRIPTION: "Review documentation for staleness"
+          PROTECT_TEST_FILES: "true"
           AUTO_CREATE_PR: "true"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"

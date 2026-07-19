@@ -25,7 +25,7 @@ Establish what changed:
 - To see the code that actually moved, resolve the commit as of the start of the window and
   diff from there (this uses commit dates, not reflog, so it is reliable on a fresh checkout):
   `SINCE_REF=$(git rev-list -1 --before="${REVIEW_SINCE}" origin/${BASE_BRANCH})`
-  then `git diff "$SINCE_REF" origin/${BASE_BRANCH} -- '*.java' '**/pom.xml'`
+  then `git diff "$SINCE_REF" origin/${BASE_BRANCH} -- '**/*.java' '**/pom.xml'`
   (add `--stat` first for a high-level view of which production code, APIs, and module
   structure changed).
 
