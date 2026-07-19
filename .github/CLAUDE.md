@@ -154,32 +154,60 @@ Skipped when none of those layers change. Uploads `coverage-group-{0..7}`.
 
 ### What the `test-media` job covers
 
-Runs audio/music/studio tests on a self-hosted runner.
-Skipped when none of studio/extern/engine/domain/compute/base change.
-Uploads `coverage-media`.
+Runs audio/music/studio tests on a self-hosted runner. Runs after `test` (CPU
+lane, below). Skipped when none of studio/extern/engine/domain/compute/base
+change. Uploads `coverage-media`.
+
+### Two lanes: CPU (linux) and GPU (macOS)
+
+The self-hosted test jobs run as two independent, parallel lanes, each serialised
+internally so heavy suites do not contend on their fleet:
+
+- **CPU lane (linux):** `test` → `test-media`.
+- **GPU lane (macOS):** `test-mac` → `test-media-mac` → `test-cl` → `test-media-cl`.
+  Only one GPU-heavy Metal/CL suite runs on the macOS fleet at a time — this keeps
+  the studio benchmark tick tails from ballooning under GPU contention (the
+  mechanism behind the PDSL hot-path timeouts).
+
+Each stage gates on the four validation checks directly (it no longer inherits
+them by depending on `test`). Within a lane, each stage gates on ALL earlier
+stages with success-or-skipped, so a failure anywhere earlier skips the rest of
+the lane; a stage skipped by its own layer gate is tolerated. Because the lanes
+run in parallel, the mac jobs now run even when the linux `test` job fails.
+(Follow-up idea, deferred: replace the coarse job-level layer skip — which loses
+the reason a job was skipped and forced the cross-stage gating — with per-job
+change-awareness that only runs the modules that changed.)
 
 ### What the `test-cl` and `test-media-cl` jobs cover
 
 OpenCL-backend duplicates of `test-mac` and `test-media-mac`, running on the
 same self-hosted macOS runners with `AR_HARDWARE_DRIVER=native,cl` instead of
 `*` — under `*`, Metal always wins GPU context selection, so the CL backend is
-otherwise never exercised by CI. Each runs after its Metal counterpart
-(`test-cl` needs `test-mac`; `test-media-cl` needs `test-media-mac`), tolerating
-a skipped predecessor, with the same layer gates so all four skip together.
-Every step in the CL variants uses `native,cl` where its counterpart uses `*`
-(the compose step in `test-media-mac` was formerly pinned to `native`; it now
-runs under `*` so GPU coverage is not silently excluded there either).
+otherwise never exercised by CI. They are the last two stages of the GPU lane
+(`test-cl` after `test-media-mac`; `test-media-cl` after `test-cl`). Every step in
+the CL variants uses `native,cl` where its counterpart uses `*`.
 
-All four macOS/CL jobs (`test-mac`, `test-cl`, `test-media-mac`, `test-media-cl`)
-and the two Linux self-hosted jobs (`test`, `test-media`) use an 8-group matrix.
-The CL backend hits its memory ceiling under large per-group loads even at
-`AR_HARDWARE_MEMORY_SCALE=7` (the highest scale used anywhere — the scale is
-exponential, so raising it further is not an option), so spreading the tests
-across eight JVMs keeps each group's load small. Eight groups also shrink the
-retry unit: re-running failed jobs re-runs only the failed group, not the whole
-suite.
+Most self-hosted jobs use an 8-group matrix (`test`, `test-media`, `test-mac`,
+`test-cl`, `test-media-cl`). The CL backend hits its memory ceiling under large
+per-group loads even at `AR_HARDWARE_MEMORY_SCALE=7` (the highest scale used
+anywhere — the scale is exponential, so raising it further is not an option), so
+spreading the tests across eight JVMs keeps each group's load small. Eight groups
+also shrink the retry unit: re-running failed jobs re-runs only the failed group,
+not the whole suite.
 
-Neither job uploads coverage, so neither appears in `analysis` needs — and
+`test-media-mac` is the exception: it uses **4 groups at `max-parallel: 1`**
+(one group at a time) rather than eight. As the second GPU-lane stage it already
+runs alone on the fleet, and the studio benchmark tick tails are the contention-
+sensitive ones, so it trades retry granularity for the smallest possible GPU
+footprint per moment.
+
+The `test-mac` and `test-media-mac` (Metal) jobs upload surefire reports
+(`surefire-mac-group-*`, `surefire-media-mac-group-*`) so a Metal-specific test
+failure a Linux run would not surface is still parsed and auto-resolved. The CL
+jobs (`test-cl`, `test-media-cl`) upload no surefire and are the **only** test
+results not eligible for auto-resolution.
+
+The CL jobs upload no coverage, so neither appears in `analysis` needs, and
 **neither is part of the `all-checks` merge gate**: the CL backend has not been
 a focus for some time and carries known flakiness/timeouts predating this
 coverage, so the jobs are informational. They report their own pass/fail status
@@ -189,10 +217,14 @@ backend is considered stable again.
 
 ### What the `analysis` job does
 
-Waits for `build`, `test`, `test-flowtree`, and `test-media` (any may be
-skipped). Downloads all `coverage-*` artifacts, merges them with JaCoCo CLI,
-generates an XML report for Qodana. The `mkdir -p all-coverage` guard ensures
-it tolerates missing artifacts when test jobs are skipped.
+Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`, and
+`test-media-mac` (any may be skipped). The mac jobs upload no coverage; they are
+in `needs` so that the input to `analysis` is not narrower than the input to
+`all-checks` — `auto-resolve` depends on `analysis`, so it does not proceed until
+the same set of jobs that decide `all-checks` has reported. Downloads all
+`coverage-*` artifacts, merges them with JaCoCo CLI, generates an XML report for
+Qodana. The `mkdir -p all-coverage` guard ensures it tolerates missing artifacts
+when test jobs are skipped.
 
 ---
 
