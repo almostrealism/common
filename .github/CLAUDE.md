@@ -149,8 +149,8 @@ because flowtree tests are slow and would otherwise block every other job.
 
 ### What the `test` job covers
 
-Runs the main test matrix (7 groups) for engine/domain/compute/base layers.
-Skipped when none of those layers change. Uploads `coverage-group-{0..6}`.
+Runs the main test matrix (8 groups) for engine/domain/compute/base layers.
+Skipped when none of those layers change. Uploads `coverage-group-{0..7}`.
 
 ### What the `test-media` job covers
 
@@ -170,11 +170,14 @@ Every step in the CL variants uses `native,cl` where its counterpart uses `*`
 (the compose step in `test-media-mac` was formerly pinned to `native`; it now
 runs under `*` so GPU coverage is not silently excluded there either).
 
-`test-cl` uses a 7-group matrix (vs. `test-mac`'s 3): the CL backend hits its
-memory ceiling under the larger per-group loads even at
+All four macOS/CL jobs (`test-mac`, `test-cl`, `test-media-mac`, `test-media-cl`)
+and the two Linux self-hosted jobs (`test`, `test-media`) use an 8-group matrix.
+The CL backend hits its memory ceiling under large per-group loads even at
 `AR_HARDWARE_MEMORY_SCALE=7` (the highest scale used anywhere — the scale is
-exponential, so raising it further is not an option), so the same tests are
-spread across more JVMs instead.
+exponential, so raising it further is not an option), so spreading the tests
+across eight JVMs keeps each group's load small. Eight groups also shrink the
+retry unit: re-running failed jobs re-runs only the failed group, not the whole
+suite.
 
 Neither job uploads coverage, so neither appears in `analysis` needs — and
 **neither is part of the `all-checks` merge gate**: the CL backend has not been

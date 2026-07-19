@@ -52,6 +52,11 @@ public class DefaultBiquadFilterData implements BiquadFilterData {
 		return storage.range(shape(1), index);
 	}
 
+	@Override
+	public PackedCollection coefficients() {
+		return storage.range(shape(5), 0);
+	}
+
 	/**
 	 * Returns the underlying storage collection.
 	 */

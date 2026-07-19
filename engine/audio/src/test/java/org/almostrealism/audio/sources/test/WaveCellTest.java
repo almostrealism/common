@@ -191,7 +191,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		double rate = 2 * Math.PI / 1000;
 
 		PackedCollection data = new PackedCollection(OutputLine.sampleRate).traverseEach();
-		data.setMem(IntStream.range(0, OutputLine.sampleRate).mapToDouble(i -> Math.sin(i * rate)).toArray());
+		a(cp(data), sin(integers(0, OutputLine.sampleRate).multiply(rate))).get().run();
 
 		WaveCell cell = new WaveCell(data, OutputLine.sampleRate);
 		PackedCollection out = new PackedCollection(1);
@@ -223,7 +223,7 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		double rate = 2 * Math.PI / 1000;
 
 		PackedCollection data = new PackedCollection(OutputLine.sampleRate).traverseEach();
-		data.setMem(IntStream.range(0, OutputLine.sampleRate).mapToDouble(i -> Math.sin(i * rate)).toArray());
+		a(cp(data), sin(integers(0, OutputLine.sampleRate).multiply(rate))).get().run();
 
 		TimeCell clock = new TimeCell();
 		WaveCell cell = new WaveCell(data, clock);
