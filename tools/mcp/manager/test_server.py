@@ -4164,6 +4164,102 @@ class TestGithubPrCheckStatus(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# github_list_workflow_runs / github_workflow_run_status
+# -----------------------------------------------------------------------
+
+
+class TestGithubWorkflowRuns(unittest.TestCase):
+    """Tests for the arbitrary workflow-run search and status tools."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_list_runs_shapes_and_applies_filters(self, mock_gh, mock_repo):
+        mock_gh.return_value = {
+            "total_count": 7,
+            "workflow_runs": [
+                {"id": 101, "name": "Build and Test", "event": "push",
+                 "status": "completed", "conclusion": "failure",
+                 "head_branch": "master", "head_sha": "deadbeef",
+                 "run_number": 12, "run_attempt": 2,
+                 "html_url": "https://github.com/owner/repo/actions/runs/101"},
+            ],
+        }
+        result = server.github_list_workflow_runs(
+            branch="master", status="failure", event="push", limit=5)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["total_count"], 7)
+        self.assertEqual(result["returned"], 1)
+        run = result["workflow_runs"][0]
+        self.assertEqual(run["run_id"], 101)
+        self.assertEqual(run["conclusion"], "failure")
+        self.assertEqual(run["run_attempt"], 2)
+        # Filters and the repo-wide endpoint must reach the API path.
+        path = mock_gh.call_args[0][1]
+        self.assertIn("/repos/owner/repo/actions/runs?", path)
+        self.assertIn("branch=master", path)
+        self.assertIn("status=failure", path)
+        self.assertIn("event=push", path)
+        self.assertIn("per_page=5", path)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_list_runs_workflow_scoped_endpoint(self, mock_gh, mock_repo):
+        mock_gh.return_value = {"total_count": 0, "workflow_runs": []}
+        result = server.github_list_workflow_runs(workflow="analysis.yaml")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["returned"], 0)
+        path = mock_gh.call_args[0][1]
+        self.assertIn(
+            "/repos/owner/repo/actions/workflows/analysis.yaml/runs?", path)
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_run_status_reports_jobs_and_failed_steps(self, mock_gh, mock_repo):
+        mock_gh.side_effect = [
+            {"id": 101, "name": "Build and Test", "status": "completed",
+             "conclusion": "failure", "head_branch": "master",
+             "run_started_at": "2026-07-18T00:00:00Z",
+             "html_url": "https://github.com/owner/repo/actions/runs/101"},
+            {"jobs": [
+                {"id": 1, "name": "build", "status": "completed",
+                 "conclusion": "success", "steps": []},
+                {"id": 2, "name": "test (0)", "status": "completed",
+                 "conclusion": "failure", "steps": [
+                     {"name": "Checkout", "number": 1, "conclusion": "success"},
+                     {"name": "Run Tests", "number": 2, "conclusion": "failure"},
+                 ]},
+            ]},
+        ]
+        result = server.github_workflow_run_status(run_id=101)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["summary"]["total_jobs"], 2)
+        self.assertEqual(result["summary"]["failed_jobs"], 1)
+        self.assertEqual(result["run"]["run_started_at"], "2026-07-18T00:00:00Z")
+        failed = [j for j in result["jobs"] if j["conclusion"] == "failure"]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0]["failed_steps"][0]["name"], "Run Tests")
+
+    def test_run_status_requires_run_id(self):
+        result = server.github_workflow_run_status(run_id=0)
+        self.assertFalse(result["ok"])
+        self.assertIn("run_id", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_list_runs_propagates_api_error(self, mock_gh, mock_repo):
+        mock_gh.return_value = {"ok": False, "error": "GitHub returned HTTP 404"}
+        result = server.github_list_workflow_runs()
+        self.assertFalse(result["ok"])
+
+
+# -----------------------------------------------------------------------
 # Tool registration (no duplicate names)
 # -----------------------------------------------------------------------
 
@@ -4217,6 +4313,8 @@ class TestToolRegistration(unittest.TestCase):
             "github_request_copilot_review",
             "github_read_file",
             "github_pr_check_status",
+            "github_list_workflow_runs",
+            "github_workflow_run_status",
             "tracker_list_projects",
             "tracker_create_project",
             "tracker_update_project",
