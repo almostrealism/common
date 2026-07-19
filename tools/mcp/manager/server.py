@@ -2819,20 +2819,23 @@ def memory_recall(
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory search failed: {e}"}
 
-    # Merge results from the "messages" namespace if requested
-    if include_messages and namespace != "messages":
+    # Messages are a non-semantic namespace: retrieved by branch/recency, not
+    # embedded in the FAISS index (see MemoryStore NON_SEMANTIC_NAMESPACES).
+    # When both repo and branch are known, merge the most recent messages in
+    # by recency. They are appended after the semantic results and capped, so
+    # they never displace a primary (semantically ranked) hit. Messages are
+    # most completely retrieved via workstream_context.
+    if (include_messages and namespace != "messages"
+            and effective_repo and effective_branch):
         try:
-            msg_memories = client.search(
-                query=query,
+            msg_memories = client.search_by_branch(
+                repo_url=effective_repo,
+                branch=effective_branch,
                 namespace="messages",
                 limit=limit,
-                repo_url=effective_repo or None,
-                branch=effective_branch or None,
             )
             if msg_memories:
-                memories = memories + msg_memories
-                memories.sort(key=lambda m: m.get("score", 999))
-                memories = memories[:limit]
+                memories = (memories + msg_memories)[:limit]
         except ConnectionError:
             pass  # Non-critical: proceed without messages
 

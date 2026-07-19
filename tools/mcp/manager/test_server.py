@@ -2524,19 +2524,43 @@ class TestMemoryRecall(unittest.TestCase):
 
     @patch.object(server, "_get_llm", return_value=None)
     @patch.object(server, "_get_memory_client")
-    def test_include_messages(self, mock_client_fn, _):
+    def test_include_messages_requires_branch_context(self, mock_client_fn, _):
+        # Messages are a non-semantic namespace, merged by branch/recency only
+        # when both repo and branch are known. With scope="all" (no branch),
+        # no messages lookup happens: semantic search runs once and
+        # search_by_branch is not called.
         _grant_all_scopes()
         client = MagicMock()
-        client.search.side_effect = [
-            [{"id": "m1", "content": "memory", "score": 0.5}],
-            [{"id": "m2", "content": "message", "score": 0.3}],
-        ]
+        client.search.return_value = [
+            {"id": "m1", "content": "memory", "score": 0.5}]
         mock_client_fn.return_value = client
         result = server.memory_recall(
             query="test", include_messages=True, scope="all")
-        self.assertEqual(client.search.call_count, 2)
-        second_call = client.search.call_args_list[1]
-        self.assertEqual(second_call[1]["namespace"], "messages")
+        self.assertEqual(client.search.call_count, 1)
+        client.search_by_branch.assert_not_called()
+        self.assertTrue(result["ok"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_include_messages_merges_by_branch(self, mock_client_fn, _):
+        # With repo+branch known, recent messages are pulled via
+        # search_by_branch (NOT semantic search) and merged into the results.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [
+            {"id": "m1", "content": "memory", "score": 0.5,
+             "created_at": "2026-01-01T00:00:00+00:00"}]
+        client.search_by_branch.return_value = [
+            {"id": "m2", "content": "message",
+             "created_at": "2026-06-01T00:00:00+00:00"}]
+        mock_client_fn.return_value = client
+        result = server.memory_recall(
+            query="test", include_messages=True, scope="branch",
+            repo_url="git@github.com:almostrealism/common.git", branch="master")
+        client.search_by_branch.assert_called_once()
+        self.assertEqual(
+            client.search_by_branch.call_args[1]["namespace"], "messages")
+        self.assertIn("m2", {m["id"] for m in result["memories"]})
 
     def test_requires_memory_read_scope(self):
         _grant_scopes("read", "write", "memory-write")
