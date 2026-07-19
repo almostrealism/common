@@ -76,30 +76,21 @@ public class ManualPlaybackTest extends TestSuiteBase {
 
 		// Generate and play 440 Hz sine wave for 3 seconds
 		int sampleRate = 44100;
-		int channels = 2; // stereo
 		int bufferSizeFrames = 512; // frames per write
 		int duration = 3; // seconds
 		double frequency = 440.0; // A4
 		double amplitude = 0.3;
 
 		int totalFrames = sampleRate * duration;
+		PackedCollection audio = monoTone(totalFrames, frequency, amplitude, sampleRate);
 
 		playWithinTimeout(line, "manualSineWavePlayback", () -> {
 			int framesWritten = 0;
 
 			while (framesWritten < totalFrames) {
-				PackedCollection buffer = new PackedCollection(bufferSizeFrames * channels);
-
-				for (int frame = 0; frame < bufferSizeFrames; frame++) {
-					double t = (framesWritten + frame) / (double) sampleRate;
-					double sample = amplitude * Math.sin(2 * Math.PI * frequency * t);
-
-					buffer.setMem(frame * 2, sample);
-					buffer.setMem(frame * 2 + 1, sample);
-				}
-
-				outputLine.write(buffer);
-				framesWritten += bufferSizeFrames;
+				int len = Math.min(bufferSizeFrames, totalFrames - framesWritten);
+				outputLine.write(audio.range(shape(len), framesWritten));
+				framesWritten += len;
 			}
 
 			line.drain();
@@ -127,22 +118,17 @@ public class ManualPlaybackTest extends TestSuiteBase {
 
 		// Play for 1 second
 		int sampleRate = 44100;
-		int channels = 2;
 		int bufferSize = 512;
-		int writes = sampleRate / bufferSize; // ~86 writes for 1 second
+		int totalFrames = sampleRate;
+		PackedCollection audio = monoTone(totalFrames, 440.0, 0.3, sampleRate);
 
 		playWithinTimeout(line, "manualToneBurst", () -> {
-			for (int w = 0; w < writes; w++) {
-				PackedCollection buffer = new PackedCollection(bufferSize * channels);
+			int framesWritten = 0;
 
-				for (int i = 0; i < bufferSize; i++) {
-					double t = (w * bufferSize + i) / (double) sampleRate;
-					double sample = 0.3 * Math.sin(2 * Math.PI * 440.0 * t);
-					buffer.setMem(i * 2, sample);
-					buffer.setMem(i * 2 + 1, sample);
-				}
-
-				outputLine.write(buffer);
+			while (framesWritten < totalFrames) {
+				int len = Math.min(bufferSize, totalFrames - framesWritten);
+				outputLine.write(audio.range(shape(len), framesWritten));
+				framesWritten += len;
 			}
 
 			line.drain();
@@ -151,6 +137,26 @@ public class ManualPlaybackTest extends TestSuiteBase {
 		outputLine.destroy();
 
 		log("Tone burst completed");
+	}
+
+	/**
+	 * Generates a mono sine of {@code frames} frames on the device, so the samples fed to the output
+	 * line are produced by the graph rather than written one at a time from the host. A one-dimensional
+	 * (mono) collection is duplicated across the line's output channels by
+	 * {@link org.almostrealism.audio.line.LineUtilities#toFrame}, so no interleaving is needed here.
+	 *
+	 * @param frames     the number of frames to generate
+	 * @param frequency  the tone frequency in Hz
+	 * @param amplitude  the peak amplitude (0-1)
+	 * @param sampleRate the sample rate in Hz
+	 * @return a {@code (frames)} collection of samples
+	 */
+	private PackedCollection monoTone(int frames, double frequency, double amplitude, int sampleRate) {
+		double phaseIncrement = 2 * Math.PI * frequency / sampleRate;
+		PackedCollection buffer = new PackedCollection(frames);
+		a(cp(buffer.traverseEach()),
+				sin(integers(0, frames).multiply(phaseIncrement)).multiply(amplitude)).get().run();
+		return buffer;
 	}
 
 	/**
