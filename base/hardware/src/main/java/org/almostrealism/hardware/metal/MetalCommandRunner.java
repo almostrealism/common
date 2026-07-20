@@ -301,6 +301,36 @@ public class MetalCommandRunner {
 	}
 
 	/**
+	 * Registers a callback to run once the given dispatch's command buffer has completed,
+	 * without committing the buffer or waiting for it. The callback joins the buffer's
+	 * released-memory callbacks — the same list a dispatch's own {@code onComplete}
+	 * argument joins (see {@link #submit}) — so it runs when the buffer completes on its
+	 * own schedule ({@link #MAX_OPEN} cadence or a genuine host wait). A buffer that has
+	 * already completed and been drained runs the callback immediately. Invoked by
+	 * {@link MetalSemaphore#whenComplete(Runnable)}.
+	 *
+	 * @param commandBuffer the dispatch's command buffer
+	 * @param callback      the callback to run after that buffer completes
+	 */
+	public void whenComplete(MTLCommandBuffer commandBuffer, Runnable callback) {
+		await(executor.submit(() -> runInPool(() -> {
+			if (commandBuffer == openBuffer) {
+				openOnComplete.add(callback);
+				return;
+			}
+
+			for (CommittedBuffer c : committed) {
+				if (c.buffer == commandBuffer) {
+					c.onComplete.add(callback);
+					return;
+				}
+			}
+
+			callback.run();
+		})));
+	}
+
+	/**
 	 * Runs {@code task} on the executor's thread inside a per-task Objective-C autorelease pool, so
 	 * transient autoreleased Metal objects (compute command encoders, and the command buffer's own
 	 * autorelease reference) are drained when the task ends rather than accumulating in the driver
