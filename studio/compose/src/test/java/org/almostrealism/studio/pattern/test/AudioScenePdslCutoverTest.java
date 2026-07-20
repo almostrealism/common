@@ -33,6 +33,8 @@ import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -98,6 +100,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void realSceneAbReview() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -248,6 +251,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logSceneChannelConfig() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -270,6 +274,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logAutomationProducerValues() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -371,6 +376,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logMainFilterUpGene() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -415,6 +421,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslMudBisection() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -482,6 +489,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_200_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslArmIsolation() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -560,6 +568,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 600_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logConsolidatedRegionLevels() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -690,6 +699,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 900_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslEfxArmProbe() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -750,6 +760,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 900_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslMainVsEfxQuick() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -807,6 +818,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_200_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslHpIsolation() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -879,6 +891,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_200_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslHpForcedSweep() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);

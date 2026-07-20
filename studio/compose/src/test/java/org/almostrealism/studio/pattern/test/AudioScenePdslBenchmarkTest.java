@@ -27,6 +27,8 @@ import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -109,6 +111,7 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslRealtimeBenchmark() throws IOException {
 		AudioScene<?> scene = loadBenchmarkScene("pdslRealtimeBenchmark");
 		if (scene == null) return;
@@ -153,6 +156,7 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslTickProfile() throws IOException {
 		AudioScene<?> scene = loadBenchmarkScene("pdslTickProfile");
 		if (scene == null) return;
@@ -216,6 +220,7 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslTickStageTiming() throws IOException {
 		AudioScene<?> scene = loadBenchmarkScene("pdslTickStageTiming");
 		if (scene == null) return;

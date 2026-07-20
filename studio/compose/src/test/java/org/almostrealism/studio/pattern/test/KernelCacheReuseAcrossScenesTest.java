@@ -25,6 +25,8 @@ import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -76,6 +78,7 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_500_000)
 	@TestDepth(1)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void reuseAcrossScenes() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);

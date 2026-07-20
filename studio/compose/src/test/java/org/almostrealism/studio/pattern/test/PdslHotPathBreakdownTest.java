@@ -30,6 +30,8 @@ import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -72,6 +74,7 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void hotPathBreakdown() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
@@ -125,6 +128,7 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void aggregationThresholdSweep() throws IOException {
 		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
