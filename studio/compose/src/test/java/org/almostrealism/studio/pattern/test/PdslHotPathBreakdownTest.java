@@ -73,13 +73,8 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
 	public void hotPathBreakdown() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping hotPathBreakdown - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -131,13 +126,8 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
 	public void aggregationThresholdSweep() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping aggregationThresholdSweep - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;

@@ -77,13 +77,8 @@ public class KernelCacheReuseAcrossScenesTest extends AudioSceneTestBase {
 	@Test(timeout = 1_500_000)
 	@TestDepth(1)
 	public void reuseAcrossScenes() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping reuseAcrossScenes - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;

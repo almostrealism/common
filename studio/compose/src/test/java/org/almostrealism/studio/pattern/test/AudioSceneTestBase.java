@@ -36,6 +36,7 @@ import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
+import org.junit.Assume;
 
 import org.almostrealism.heredity.ProjectedGenome;
 
@@ -80,6 +81,41 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
+	 * Returns the curated sample library, skipping or failing the test when the library (or its
+	 * pattern factory) is not present on this host — the choice depends on whether a GPU driver
+	 * is available.
+	 * <p>
+	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
+	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
+	 * hiding the difference between hosts. The GPU runners (the Metal {@code test-media-mac} job) mount
+	 * the library and are expected to run the real workload; the CPU-only Linux runners never have. So:
+	 * <ul>
+	 *   <li>library present → return it and run the real workload;</li>
+	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
+	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
+	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
+	 *       expected to mount the library; a miss is a real misconfiguration that must not report a
+	 *       false pass).</li>
+	 * </ul>
+	 *
+	 * @return the curated sample library directory (its {@link #PATTERN_FACTORY} is guaranteed to exist)
+	 */
+	protected File requireCuratedLibrary() {
+		File library = getSamplesDir();
+		if (library != null && new File(PATTERN_FACTORY).exists()) {
+			return library;
+		}
+
+		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
+				+ PATTERN_FACTORY + " not available on this host.";
+		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
+				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
+		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
+				+ " library; failing rather than reporting a false pass for a workload it did not run.");
+		return library;
+	}
+
+	/**
 	 * Returns whether a Metal data context is available. Render tests scale their
 	 * durations and skip Metal-specific measurements off-Metal: OpenCL is not a
 	 * primary backend and runs the mixdown several times slower, so CL-only
@@ -91,6 +127,19 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	protected boolean isMetalAvailable() {
 		return Hardware.getLocalHardware()
 				.getDataContext(false, true, ComputeRequirement.MTL) != null;
+	}
+
+	/**
+	 * Returns whether a GPU compute driver — Metal or OpenCL — is available on this host, used by
+	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
+	 * (CPU-only host) or a genuine failure (a GPU host that should have mounted the library).
+	 *
+	 * @return whether a Metal or OpenCL data context is available
+	 */
+	protected boolean isGpuAvailable() {
+		Hardware hardware = Hardware.getLocalHardware();
+		return hardware.getDataContext(false, true, ComputeRequirement.MTL) != null
+				|| hardware.getDataContext(false, true, ComputeRequirement.CL) != null;
 	}
 
 	/** Curated pattern factory; the real arrangement that decides which samples play where. */

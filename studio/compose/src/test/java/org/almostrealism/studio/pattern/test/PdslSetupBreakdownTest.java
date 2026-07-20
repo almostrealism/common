@@ -79,13 +79,8 @@ public class PdslSetupBreakdownTest extends AudioSceneTestBase {
 	@Test(timeout = 900_000)
 	@TestDepth(1)
 	public void setupBreakdown() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping setupBreakdown - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
