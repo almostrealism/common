@@ -50,6 +50,23 @@ Metal completions on an executor that cannot be exhausted by callbacks contendin
 The precise fix needs the concurrency owner — the shape is "lock held across a blocking GPU-completion
 wait, re-entered by the completion callback."
 
+## Fix applied and verified (2026-07-20)
+
+Interim fix: `ProcessDetailsFactory.enableDestinationReuse` default changed `true → false`
+(the `AR_HARDWARE_DESTINATION_REUSE` flag already existed). With reuse off, no destination is
+leased, so `AcceleratedProcessDetails.hasDestinationLeases()` is always false and
+`AcceleratedOperation` (~line 665) never registers the `whenComplete(releaseDestinationLeases)`
+callback — the deadlocking party is removed. Javadoc on `releaseDestinationLeases()`,
+`notifyListeners()`, and the flag field documents the hazard.
+
+Verified on this M1: `KernelCacheReuseAcrossScenesTest` — which **deadlocked for 13+ min** (had to
+be killed) before the change — now **completes cleanly in 162 s** (1 test, 0 failures, 0 errors)
+after a clean rebuild. The test has no assertions, so completing without timeout/exception is
+exactly the "no deadlock" signal.
+
+Not a permanent fix: it disables a performance optimization (buffer reuse). Re-enabling requires
+removing `releaseDestinationLeases()` from the monitor-holding path first.
+
 ---
 
 
