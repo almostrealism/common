@@ -116,6 +116,12 @@ public class CompletionListenerSafetyIntegrationTest extends TestSuiteBase {
                 null, null, null, id -> null, null,
                 wsId -> notifier.getWorkstream(wsId) != null ? notifier : null,
                 clock::get);
+        // The integration tests in this class exercise the
+        // maxWakeUpsPerWindow ceiling in isolation; the per-listener
+        // debounce (a different ceiling, dedicated tests in
+        // CompletionListenerFanoutDormancyDebounceTest) is disabled
+        // here so the window ceiling can trip on its own.
+        fanout.setDebounceSeconds(0);
         endpoint.setServer(server);
         endpoint.setCompletionListenerFanout(fanout);
         // Open the kill switch so the fanout's first check

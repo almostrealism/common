@@ -69,6 +69,15 @@ public class CompletionListenerFanoutTest extends TestSuiteBase {
      * clock that starts at 0. Each test gets a clean in-memory
      * map and a clean state-of-fan-out; the flood / coalesce state
      * is per-instance and is reset across tests.
+     *
+     * <p>The per-listener debounce ({@link
+     * CompletionListenerFanout#DEFAULT_DEBOUNCE_SECONDS}, 300 s) is
+     * disabled by default in this class so the existing
+     * flood-window / coalesce-window tests can exercise those
+     * ceilings in isolation. The dedicated debounce tests in
+     * {@link CompletionListenerFanoutDormancyDebounceTest} opt back
+     * in to the production default and exercise the real debounce
+     * behaviour.</p>
      */
     @Before
     public void setUp() throws IOException {
@@ -97,6 +106,7 @@ public class CompletionListenerFanoutTest extends TestSuiteBase {
                 // message is posted.
                 null,
                 clockMillis::get);
+        fanout.setDebounceSeconds(0);
     }
 
     /**

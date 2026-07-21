@@ -251,6 +251,31 @@ public class Workstream {
      */
     private boolean useTmux;
 
+    /**
+     * Listener-side dormancy flag for the completion-listener wake-up
+     * cascade. When {@code true}, the {@link
+     * io.flowtree.jobs.CompletionListenerFanout} drops every wake-up
+     * it would otherwise submit to this workstream. The flag is the
+     * listener's own declaration that it has reached a stable HOLD
+     * state and does not want to be woken until something materially
+     * new happens. Default {@code false}: opt in explicitly via
+     * {@link #setDormantForCompletionListeners(boolean)} so an
+     * orchestrator with no dispatchable work can stop burning model
+     * sessions on no-op reconciles. This flag is the
+     * per-listener complement to the global
+     * {@link io.flowtree.api.FlowTreeApiEndpoint#setAcceptAutomatedJobs(boolean)
+     * acceptAutomatedJobs} kill switch — the kill switch halts every
+     * wake-up globally; this flag halts wake-ups to one specific
+     * listener. Clearing the flag does not retroactively fire a
+     * wake-up for events dropped while dormant; the next completion
+     * after the flag is cleared is the trigger. Manual job
+     * submissions are unaffected and remain the supported path for a
+     * human or a different workstream to resume a dormant
+     * orchestrator. Persisted as
+     * {@code dormantForCompletionListeners: true} in YAML.
+     */
+    private boolean dormantForCompletionListeners;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -749,6 +774,44 @@ public class Workstream {
     }
 
     /**
+     * Returns {@code true} when this workstream is in the
+     * listener-dormant state: the completion-listener fan-out drops
+     * every wake-up it would otherwise submit to this workstream. The
+     * flag is the listener's own declaration that it has no new work
+     * and should not be woken by child-completion events until
+     * something materially new happens. See
+     * {@link #dormantForCompletionListeners} for the full semantics
+     * and the relationship to the global
+     * {@code acceptAutomatedJobs} kill switch.
+     *
+     * @return {@code true} when wake-ups to this workstream are
+     *         dropped at the fan-out, {@code false} when the workstream
+     *         is active (the default)
+     */
+    public boolean isDormantForCompletionListeners() {
+        return dormantForCompletionListeners;
+    }
+
+    /**
+     * Sets the listener-dormancy flag. When {@code true}, the
+     * completion-listener fan-out drops every wake-up it would
+     * otherwise submit to this workstream; when {@code false}, the
+     * workstream is active and wake-ups resume. The flag takes
+     * effect immediately (the fan-out reads it on every completion
+     * event) and persists to YAML. Use from an orchestrator agent
+     * when its planning document determines there is no new
+     * dispatchable work; clear via
+     * {@code workstream_update_config dormantForCompletionListeners:
+     * false} or a manual job submission to resume the listener.
+     *
+     * @param dormantForCompletionListeners {@code true} to drop
+     *        wake-ups at the fan-out; {@code false} to resume wake-ups
+     */
+    public void setDormantForCompletionListeners(boolean dormantForCompletionListeners) {
+        this.dormantForCompletionListeners = dormantForCompletionListeners;
+    }
+
+    /**
      * Returns the default agent runner identifier for this workstream, or
      * {@code null} when no workstream-level default is set.
      */
@@ -912,6 +975,9 @@ public class Workstream {
         }
         if (useTmux) {
             json.append(",\"useTmux\":true");
+        }
+        if (dormantForCompletionListeners) {
+            json.append(",\"dormantForCompletionListeners\":true");
         }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {

@@ -180,7 +180,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * harness cannot crash the controller.
      */
     private CompletionListenerFanout completionListenerFanout;
-
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
     private String memoryServerUrl;
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
@@ -1162,14 +1161,22 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             targetNotifier.onJobStarted(workstreamId, event);
         } else {
             targetNotifier.onJobCompleted(workstreamId, event);
-            // Fan the terminal completion out to every completion
-            // listener of the source workstream. This is the single
-            // entry point the listener-graph uses to spawn wake-up
-            // jobs; it never throws, so a misbehaving listener cannot
-            // poison the source job's completion recording. The
-            // fanout is a no-op when the workstream has no listeners,
-            // so the inert default (the v0 behavior) is preserved
-            // automatically.
+            // Wake-up completion: clear the listener's debounce so
+            // a fast-completing wake-up does not artificially
+            // extend the debounce window (over-debouncing would
+            // defeat the "genuinely new event still wakes the
+            // orchestrator" correctness property). The fan-out
+            // inspects the description and only acts on wake-up
+            // completions.
+            if (completionListenerFanout != null) {
+                completionListenerFanout.notifyListenerWakeUpCompleted(
+                        workstreamId, event.getDescription());
+            }
+            // Fan the terminal completion out to every listener of
+            // the source workstream; never throws, so a
+            // misbehaving listener cannot poison the source job's
+            // completion recording. No-op when the workstream has
+            // no listeners, so the inert default is preserved.
             if (completionListenerFanout != null) {
                 try {
                     completionListenerFanout.fanout(workstreamId, event);
@@ -1179,7 +1186,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 }
             }
         }
-
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"ok\":true}");
     }
@@ -1207,374 +1213,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
     }
 
-    /**
-     * Applies {@code value} to {@code setter} and converts any
-     * {@link IllegalArgumentException} thrown by the setter into a 400
-     * response built by {@code errorBuilder} so request handlers can
-     * short-circuit with a single {@code return}.  Returns {@code null}
-     * (no error) when the value is empty or successfully applied.
-     *
-     * @param value        the candidate value, or {@code null}/empty for a no-op
-     * @param setter       the setter to invoke on the candidate value
-     * @param errorBuilder factory that wraps a message into a 400 response
-     * @return an error response, or {@code null} on success
-     */
-    static Response applyValidated(String value, Consumer<String> setter,
-                                   Function<String, Response> errorBuilder) {
-        if (value == null || value.isEmpty()) return null;
-        try {
-            setter.accept(value);
-            return null;
-        } catch (IllegalArgumentException e) {
-            return errorBuilder.apply(e.getMessage());
-        }
-    }
-
-    /**
-     * Convenience overload of {@link #applyValidated(String, Consumer, Function)}
-     * that uses this endpoint's own 400-response factory.
-     *
-     * @param value  the candidate value
-     * @param setter the setter to invoke on the candidate value
-     * @return an error response, or {@code null} on success
-     */
-    private Response applyValidated(String value, Consumer<String> setter) {
-        return applyValidated(value, setter, this::errorResponse);
-    }
-
-    /**
-     * Creates an error response with the specified message.
-     */
-    private Response errorResponse(String message) {
-        String json = "{\"ok\":false,\"error\":\"" + JsonFieldExtractor.escapeJson(message) + "\"}";
-        return newFixedLengthResponse(Response.Status.BAD_REQUEST,
-                "application/json", json);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#hasField(String, String)}.
-     */
-    static boolean extractJsonHasField(String json, String field) {
-        return JsonFieldExtractor.hasField(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractString(String, String)}.
-     */
-    public static String extractJsonField(String json, String field) {
-        return JsonFieldExtractor.extractString(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractBoolean(String, String)}.
-     */
-    static boolean extractJsonBooleanField(String json, String field) {
-        return JsonFieldExtractor.extractBoolean(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractInt(String, String)}.
-     */
-    static int extractJsonIntField(String json, String field) {
-        return JsonFieldExtractor.extractInt(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractLong(String, String)}.
-     */
-    static long extractJsonLongField(String json, String field) {
-        return JsonFieldExtractor.extractLong(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractDouble(String, String)}.
-     */
-    static double extractJsonDoubleField(String json, String field) {
-        return JsonFieldExtractor.extractDouble(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringArray(String, String)}.
-     */
-    static List<String> extractJsonArrayField(String json, String field) {
-        return JsonFieldExtractor.extractStringArray(json, field);
-    }
-
-    /**
-     * Delegates to {@link io.flowtree.JsonFieldExtractor#extractStringObject(String, String)}.
-     */
-    static Map<String, String> extractJsonObjectFields(String json, String field) {
-        return JsonFieldExtractor.extractStringObject(json, field);
-    }
-
-    /**
-     * Computes the effective agent environment for a submission: the workstream's static
-     * {@code agentEnv} with any per-submission {@code agentEnv} from the request body merged on top
-     * (submission wins on key collisions). This is what lets a caller inject dynamic, per-job
-     * environment — e.g. a short-lived bearer token minted per job — that cannot live in static
-     * workstream config. Either input may be {@code null}/absent.
-     *
-     * @param workstreamEnv the workstream's configured agentEnv, or {@code null}
-     * @param body          the raw submission JSON body (may contain an {@code agentEnv} object)
-     * @return a new merged map (never {@code null})
-     */
-    static Map<String, String> mergeAgentEnv(Map<String, String> workstreamEnv, String body) {
-        Map<String, String> effective = new HashMap<>();
-        if (workstreamEnv != null) {
-            effective.putAll(workstreamEnv);
-        }
-        Map<String, String> submissionAgentEnv = extractJsonObjectFields(body, "agentEnv");
-        if (submissionAgentEnv != null) {
-            effective.putAll(submissionAgentEnv);
-        }
-        return effective;
-    }
-
-    /**
-     * Builds the {@code 500} response returned when an operation mutated
-     * workstream config in memory but the YAML write failed. Centralised so
-     * endpoints can report a non-durable write identically — never as success —
-     * honouring the rule that an operation should not confirm completion
-     * before the workstreams file is written.
-     *
-     * @param operation a short label for the attempted operation (e.g. {@code "Archive"})
-     * @return an {@code ok:false} 500 response describing the failed persist
-     */
-    static Response persistFailureResponse(String operation) {
-        return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                "application/json",
-                "{\"ok\":false,\"error\":" + escapeJsonValue(operation
-                    + " applied in memory but the workstreams config could not be written to"
-                    + " disk; the change is not durable and would be lost on restart. Retry.")
-                + "}");
-    }
-
-    /**
-     * Escapes a string as a JSON string value (with surrounding quotes).
-     * Shared by every handler in this package so the JSON shape produced by
-     * one endpoint is identical to the next.
-     *
-     * @param s the string to escape
-     * @return the JSON-escaped quoted string
-     */
-    static String escapeJsonValue(String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 16);
-        sb.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"': sb.append("\\\""); break;
-                case '\\': sb.append("\\\\"); break;
-                case '\n': sb.append("\\n"); break;
-                case '\r': sb.append("\\r"); break;
-                case '\t': sb.append("\\t"); break;
-                default:
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-            }
-        }
-        sb.append('"');
-        return sb.toString();
-    }
-
-    /**
-     * Serialises a {@link JobCompletionEvent} to a JSON object string.
-     *
-     * @param event the event to serialise
-     * @return JSON object string
-     */
-    private String jobEventToJson(JobCompletionEvent event) {
-        return jobEventToJson(event, null);
-    }
-
-    /**
-     * Serialises a {@link JobCompletionEvent} to a JSON object string,
-     * optionally including the owning workstream identifier.
-     *
-     * @param event         the event to serialise
-     * @param workstreamId  the workstream that owns this job, or {@code null}
-     * @return JSON object string
-     */
-    private String jobEventToJson(JobCompletionEvent event, String workstreamId) {
-        StringBuilder j = new StringBuilder();
-        j.append("{");
-        j.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(event.getJobId())).append("\"");
-        j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
-        j.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(event.getDescription())).append("\"");
-        j.append(",\"timestamp\":\"").append(event.getTimestamp().toString()).append("\"");
-        if (workstreamId != null) {
-            j.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
-        }
-        if (event.getTargetBranch() != null) {
-            j.append(",\"targetBranch\":\"").append(JsonFieldExtractor.escapeJson(event.getTargetBranch())).append("\"");
-        }
-        if (event.getCommitHash() != null) {
-            j.append(",\"commitHash\":\"").append(JsonFieldExtractor.escapeJson(event.getCommitHash())).append("\"");
-        }
-        if (event.getPullRequestUrl() != null) {
-            j.append(",\"pullRequestUrl\":\"").append(JsonFieldExtractor.escapeJson(event.getPullRequestUrl())).append("\"");
-        }
-        if (event.getErrorMessage() != null) {
-            j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
-        }
-        double totalCost = event.getTotalCostUsd();
-        boolean costIncomplete = event.isCostIncomplete();
-        // Always emit costIncomplete as a stable boolean, matching
-        // JobCompletionEvent.toJson() and the documented wire shape so consumers
-        // never have to treat its absence as false.
-        j.append(",\"costIncomplete\":").append(costIncomplete);
-        // Emit the cost block when there is a positive total OR when the cost is
-        // incomplete: an inactivity-killed session can leave totalCost at 0 even
-        // though real (uncosted) work happened, and the total/breakdowns should
-        // still be surfaced as a lower bound.
-        if (totalCost > 0 || costIncomplete) {
-            j.append(String.format(",\"totalCostUsd\":%.2f", totalCost));
-            Map<String, Double> costByRunner = event.getCostByRunner();
-            if (costByRunner != null && !costByRunner.isEmpty()) {
-                j.append(",\"costByRunner\":{");
-                boolean first = true;
-                for (Map.Entry<String, Double> e : costByRunner.entrySet()) {
-                    if (!first) j.append(",");
-                    first = false;
-                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
-                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
-                }
-                j.append("}");
-            }
-            Map<String, Double> costByModel = event.getCostByModel();
-            if (costByModel != null && !costByModel.isEmpty()) {
-                j.append(",\"costByModel\":{");
-                boolean first = true;
-                for (Map.Entry<String, Double> e : costByModel.entrySet()) {
-                    if (!first) j.append(",");
-                    first = false;
-                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
-                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
-                }
-                j.append("}");
-            }
-        }
-        j.append("}");
-        return j.toString();
-    }
-
-    /**
-     * Handles {@code GET /api/workstreams/{id}/jobs?limit=N}.
-     * Returns the most recent jobs for the workstream, newest first.
-     *
-     * @param workstreamId the workstream identifier
-     * @param limit        maximum number of jobs to return
-     * @return JSON array of job events
-     */
-    private Response handleListJobs(String workstreamId, int limit) {
-        SlackNotifier n = notifiers.notifierFor(workstreamId);
-        List<JobCompletionEvent> page = n != null
-                ? n.getRecentJobs(workstreamId, limit) : new ArrayList<>();
-
-        StringBuilder json = new StringBuilder("[");
-        boolean first = true;
-        for (JobCompletionEvent event : page) {
-            if (!first) json.append(",");
-            first = false;
-            json.append(jobEventToJson(event));
-        }
-        json.append("]");
-
-        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
-    }
-
-    /**
-     * Handles {@code GET /api/jobs/{jobId}}.
-     * Returns the most recent event for the specified job.
-     *
-     * @param jobId the job identifier
-     * @return JSON object for the job event, or 404 if not found
-     */
-    private Response handleGetJob(String jobId) {
-        JobCompletionEvent event = notifiers.findJob(jobId);
-        if (event == null) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND,
-                    "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
-        }
-        String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", jobEventToJson(event, workstreamId));
-    }
-
-    /**
-     * Handles {@code GET /api/workstreams}. Returns a JSON array of all
-     * registered workstreams with their configuration and capabilities.
-     *
-     * <p>By default, workstreams flagged as archived are omitted. Pass
-     * {@code ?includeArchived=true} to include them; archived entries
-     * carry an {@code "archived": true} field in the response.</p>
-     *
-     * @param includeArchived when {@code false} archived workstreams are skipped
-     * @return an HTTP 200 response containing a JSON array of workstream objects
-     */
-    private Response handleListWorkstreams(boolean includeArchived) {
-        Map<String, Workstream> workstreams = notifiers.allWorkstreams();
-        StringBuilder json = new StringBuilder("[");
-        boolean first = true;
-        for (Workstream ws : workstreams.values()) {
-            if (!includeArchived && ws.isArchived()) continue;
-            if (!first) json.append(",");
-            first = false;
-            json.append(ws.toSummaryJson());
-        }
-        json.append("]");
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", json.toString());
-    }
-
-    /**
-     * Builds the archive/unarchive/delete handler bound to this endpoint's
-     * notifiers and listener. See {@link WorkstreamLifecycleHandler}.
-     */
-    private WorkstreamLifecycleHandler lifecycleHandler() {
-        return new WorkstreamLifecycleHandler(notifiers, listener, this::readBody,
-                this::errorResponse, this::log);
-    }
-
-    /** Builds the {@code /api/workspaces/{id}/config} handler bound to this endpoint. */
-    private WorkspaceConfigHandler workspaceConfigHandler() {
-        return new WorkspaceConfigHandler(workspaceLookup, workspaceRenameHook,
-                listener, this::readBody, this::errorResponse, this::log);
-    }
-
-    /**
-     * Builds the workstream-message endpoint handler bound to this endpoint.
-     * See {@link MessageEndpointHandler}.
-     *
-     * @return a fresh handler reflecting the current memory-server URL and
-     *         notifier registry
-     */
-    private MessageEndpointHandler messageEndpointHandler() {
-        return new MessageEndpointHandler(notifiers, memoryServerUrl,
-                this::readBody, this::errorResponse, this::log, this::warn);
-    }
-
-    /**
-     * Builds the workstream registration/update endpoint handler bound to this endpoint.
-     * See {@link WorkstreamRegistrationHandler}.
-     *
-     * @return a fresh handler reflecting the current notifier registry,
-     *         org-to-workspace map, and listener
-     */
-    private WorkstreamRegistrationHandler workstreamRegistrationHandler() {
-        return new WorkstreamRegistrationHandler(notifiers, orgToWorkspaceId,
-                listener, this::readBody, this::errorResponse, this::log);
-    }
-
-    /**
-     * Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}.
-     *
-     * @param session the HTTP session supplying query parameters
-     * @return an HTTP response containing weekly stats JSON
-     */
+    // TODO(review): deleted helper methods still referenced below (build-breaking); see review-followup memory.
     private Response handleStatsQuery(IHTTPSession session) {
         StatsQueryHandler handler = statsQueryHandler != null
             ? statsQueryHandler : new StatsQueryHandler(null);

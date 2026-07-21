@@ -277,12 +277,57 @@ public class CompletionListenerFanout implements ConsoleFeatures {
     public static final int DEFAULT_COALESCE_WINDOW_SECONDS = 30;
 
     /**
+     * Length of the sliding window for the <em>per-listener</em>
+     * debounce / single-in-flight-wake invariant. After a wake-up
+     * is submitted to a given listener, no further wake-up is
+     * submitted to that same listener until this many seconds have
+     * elapsed — regardless of how many distinct source workstreams
+     * fire completions, and regardless of the per-(source, listener)
+     * coalesce state. Default: 300 s = 5 minutes.
+     *
+     * <p>This is the missing ceiling that the production failure
+     * mode exposed: a fleet of N child workstreams all listing the
+     * same orchestrator listener would, under the per-(source,
+     * listener) coalesce + the {@code maxWakeUpsPerWindow} flood
+     * ceiling alone, still wake the orchestrator up to 6 times in
+     * 10 minutes (one per coalesce window across sources) and run
+     * multiple sessions in parallel, each writing the same durable
+     * log/branch state and producing push conflicts. The debounce
+     * collapses that to at most one in-flight wake-up per listener
+     * per 5 minutes, which matches a healthy orchestrator's
+     * round-trip time and bounds the burst.</p>
+     *
+     * <p>The debounce is naturally cleared when the wake-up job
+     * completes (the status event handler calls
+     * {@link #notifyListenerWakeUpCompleted(String)}), so a
+     * fast-completing wake-up does not artificially extend the
+     * debounce. The window is intentionally shorter than
+     * {@link #DEFAULT_MAX_WAKE_UP_WINDOW_SECONDS}: the debounce is
+     * the dominant recurrence guard, the window ceiling is the
+     * defense-in-depth backstop. Both reset on controller restart
+     * (in-memory state).</p>
+     */
+    public static final int DEFAULT_DEBOUNCE_SECONDS = 300;
+
+    /**
+     * Description prefix the fan-out stamps on every wake-up
+     * factory (see {@link #buildWakeUpFactory}). The
+     * status-event handler uses this to recognise a wake-up
+     * completion: a terminal event on the listener workstream
+     * whose description starts with this prefix is a wake-up
+     * finishing, and the fan-out clears the per-listener
+     * debounce in response. Public so external listeners (e.g.
+     * tests, monitoring tools) can match the same prefix
+     * without depending on internal factory-format details.
+     */
+    public static final String WAKE_UP_DESCRIPTION_PREFIX = "wake-up:";
+
+    /**
      * The fanout's in-memory state, exposed for tests so a fresh
      * instance per test avoids cross-test pollution.
      */
     private final ConcurrentHashMap<String, CoalesceState> coalesceState =
             new ConcurrentHashMap<>();
-
     /**
      * Per-listener wake-up timestamps, used to enforce
      * {@link CodingAgentJob#DEFAULT_MAX_WAKE_UPS_PER_WINDOW} in a
@@ -291,6 +336,41 @@ public class CompletionListenerFanout implements ConsoleFeatures {
      */
     private final ConcurrentHashMap<String, Deque<Long>> wakeUpWindowByListener =
             new ConcurrentHashMap<>();
+
+    /**
+     * Per-listener timestamp of the most recent wake-up that was
+     * <em>submitted</em> (not just the most recent completion event).
+     * Used to enforce the single-in-flight-wake invariant and to
+     * debounce rapid successive child completions on different
+     * sources that all list the same listener (the per-pair coalesce
+     * in {@link #coalesceState} only catches bursts from a single
+     * source; this catches bursts across sources). Cleared by
+     * {@link #notifyListenerWakeUpCompleted(String)} when the
+     * wake-up job's status event arrives, so a wake-up that
+     * completes in seconds does not artificially extend the
+     * debounce. The combination of the debounce + the
+     * {@code wakeUpWindowByListener} flood ceiling is what stops
+     * the production failure mode where an orchestrator is woken
+     * repeatedly to perform a no-op reconcile (see the branch's
+     * defect ticket for the motivating symptom).
+     */
+    private final ConcurrentHashMap<String, Long> wakeUpDispatchedAt =
+            new ConcurrentHashMap<>();
+
+    /**
+     * Effective per-listener debounce window in seconds. Defaults to
+     * {@link #DEFAULT_DEBOUNCE_SECONDS}; mutable via
+     * {@link #setDebounceSeconds(int)} so tests can isolate the
+     * window-ceiling behaviour by setting it to zero (the existing
+     * window-ceiling tests in
+     * {@code CompletionListenerFanoutTest} use that override).
+     * Production code constructed via {@link #bind} leaves this at
+     * the production default — no caller in the controller
+     * overrides it. Stored as seconds to keep the API aligned with
+     * the public {@code DEFAULT_*} constants; converted to millis at
+     * the call site.
+     */
+    private int debounceSeconds = DEFAULT_DEBOUNCE_SECONDS;
 
     /**
      * Per-chain wake-up count, used to enforce
@@ -539,11 +619,18 @@ public class CompletionListenerFanout implements ConsoleFeatures {
 
     /**
      * Dispatches one wake-up to the named listener, enforcing the
-     * kill switch, the coalesce window, the per-listener window
-     * ceiling, the per-source-chain ceiling, and the chain-depth
-     * ceiling in that order. Each ceiling logs a distinct
-     * {@code ceiling_hit} (or {@code wakeup_kill_switch_active} for
-     * the kill switch) line and returns without firing.
+     * kill switch, the listener-dormancy gate, the coalesce window,
+     * the per-listener window ceiling, the per-source-chain
+     * ceiling, the chain-depth ceiling, and the per-listener
+     * debounce / single-in-flight-wake invariant in that order.
+     * Each gate logs a distinct reason line
+     * ({@code wakeup_kill_switch_active}, {@code wakeup_listener_dormant},
+     * {@code wakeup_listener_recently_woken}, {@code ceiling_hit})
+     * and returns without firing.
+     *
+     * <p>TODO(review): step 8 (debounce) runs after step 7 (window ceiling) already records
+     * {@code now} into the window deque, so a debounce-suppressed event still consumes a
+     * per-listener window-ceiling slot even though no wake-up fired; see review-followup memory.</p>
      */
     private void dispatchToListener(String sourceWorkstreamId,
                                     String listenerId,
@@ -567,7 +654,25 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             return;
         }
 
-        // 3. Coalesce window. Within the window, the first completion
+        // 3. Listener-dormancy gate. The listener has declared
+        //    "no further wake-ups until something materially new
+        //    happens"; drop the wake-up before any further
+        //    listener-specific work (coalesce append, ceiling
+        //    bookkeeping). The flag is the listener's own
+        //    opt-in / opt-out — it does not block manual job
+        //    submissions, only the auto-generated wake-up path.
+        //    Composes with the global acceptAutomatedJobs kill
+        //    switch above: the kill switch halts every wake-up
+        //    globally; this gate halts wake-ups to one specific
+        //    listener. The two are checked independently so an
+        //    operator who trips the kill switch always wins.
+        if (listener.isDormantForCompletionListeners()) {
+            warn("wakeup_listener_dormant source=" + sourceWorkstreamId
+                    + " listener=" + listenerId + " chain=" + chainId);
+            return;
+        }
+
+        // 4. Coalesce window. Within the window, the first completion
         //    fires a wake-up carrying the primary job ID; subsequent
         //    completions append to a consolidated list and skip.
         //    The append is synchronized on the CoalesceState instance
@@ -587,7 +692,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             return;
         }
 
-        // 4. Chain-depth ceiling (defense-in-depth).
+        // 5. Chain-depth ceiling (defense-in-depth).
         if (chainDepth >= DEFAULT_MAX_CHAIN_DEPTH) {
             warn("ceiling_hit source=" + sourceWorkstreamId
                     + " listener=" + listenerId
@@ -597,7 +702,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             return;
         }
 
-        // 5. Per-source-chain breadth ceiling (defence-in-depth).
+        // 6. Per-source-chain breadth ceiling (defence-in-depth).
         int chainCurrent = chainCount.getOrDefault(chainId, 0);
         if (chainCurrent >= DEFAULT_MAX_WAKE_UPS_PER_SOURCE_CHAIN) {
             warn("ceiling_hit source=" + sourceWorkstreamId
@@ -608,7 +713,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             return;
         }
 
-        // 6. Per-listener window ceiling (PRIMARY flood protection).
+        // 7. Per-listener window ceiling (PRIMARY flood protection).
         long windowSecs = DEFAULT_MAX_WAKE_UP_WINDOW_SECONDS;
         long windowMillis = windowSecs * 1000L;
         Deque<Long> window = wakeUpWindowByListener.computeIfAbsent(
@@ -629,13 +734,43 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             window.addLast(now);
         }
 
-        // 7. Mark the coalesce state so subsequent completions on the
+        // 8. Per-listener debounce / single-in-flight-wake
+        //    invariant. After a wake-up is submitted to this
+        //    listener, no further wake-up is submitted to that
+        //    listener until DEFAULT_DEBOUNCE_SECONDS have elapsed.
+        //    This is the missing ceiling that the production
+        //    failure mode exposed: a fleet of N children all
+        //    listing the same orchestrator listener each fire a
+        //    distinct chain ID, defeat the per-(source, listener)
+        //    coalesce (which only catches bursts from one source),
+        //    and race to wake the listener multiple times — the
+        //    wake-ups then run concurrently on the same branch,
+        //    racing the durable log/context file and producing
+        //    push conflicts. The debounce collapses the burst to
+        //    at most one in-flight wake-up per listener per
+        //    DEFAULT_DEBOUNCE_SECONDS, which is the dominant
+        //    recurrence guard; the window ceiling above is the
+        //    defense-in-depth backstop. The debounce is cleared
+        //    when the wake-up job's status event arrives at
+        //    notifyListenerWakeUpCompleted, so a fast-completing
+        //    wake-up does not artificially extend the window.
+        long debounceMs = (long) debounceSeconds * 1000L;
+        Long lastDispatchedAt = wakeUpDispatchedAt.get(listenerId);
+        if (lastDispatchedAt != null && (now - lastDispatchedAt) < debounceMs) {
+            warn("wakeup_listener_recently_woken source=" + sourceWorkstreamId
+                    + " listener=" + listenerId + " chain=" + chainId
+                    + " sinceMs=" + (now - lastDispatchedAt));
+            return;
+        }
+
+        // 9. Mark the coalesce state so subsequent completions on the
         //    same source/listener pair within the window are dropped.
         CoalesceState state = new CoalesceState(now, event.getJobId());
         coalesceState.put(coalesceKey, state);
         chainCount.put(chainId, chainCurrent + 1);
+        wakeUpDispatchedAt.put(listenerId, now);
 
-        // 8. Build and dispatch the wake-up factory.
+        // 10. Build and dispatch the wake-up factory.
         CodingAgentJob.Factory factory = buildWakeUpFactory(
                 sourceWorkstreamId, listener, event, chainId, chainDepth);
         try {
@@ -1003,6 +1138,102 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         coalesceState.clear();
         wakeUpWindowByListener.clear();
         chainCount.clear();
+        wakeUpDispatchedAt.clear();
+    }
+
+    /**
+     * Called by the controller's status-event handler when a job
+     * on a listener workstream reaches a terminal status. If the
+     * event's description starts with the wake-up prefix
+     * {@link #WAKE_UP_DESCRIPTION_PREFIX}, the per-listener
+     * debounce is cleared so the next completion event after the
+     * wake-up completes is allowed to fire a fresh wake-up. The
+     * method is a no-op for non-wake-up completions, so callers
+     * can call it unconditionally for every terminal event on
+     * every workstream.
+     *
+     * <p>Without the clear, a wake-up that completed in 30
+     * seconds would still block new wake-ups for the remainder
+     * of the {@link #DEFAULT_DEBOUNCE_SECONDS} window — which
+     * would over-debounce on a fast-completing wake-up and
+     * defeat the design's "a genuine new event still wakes the
+     * orchestrator" property.</p>
+     *
+     * @param workstreamId the workstream ID whose debounce
+     *                     should be cleared; {@code null} or
+     *                     empty is a no-op
+     * @param description  the terminal event's description; the
+     *                     clear is performed only when this
+     *                     starts with the wake-up prefix
+     */
+    public void notifyListenerWakeUpCompleted(String workstreamId, String description) {
+        if (workstreamId == null || workstreamId.isEmpty()) {
+            return;
+        }
+        if (description == null || !description.startsWith(WAKE_UP_DESCRIPTION_PREFIX)) {
+            return;
+        }
+        wakeUpDispatchedAt.remove(workstreamId);
+    }
+
+    /**
+     * Backward-compatible single-argument overload that does not
+     * test the event description. Kept for callers that have
+     * already determined the event is a wake-up completion
+     * (e.g. tests) and want to force the clear regardless of
+     * description. Production code should prefer the
+     * two-argument overload.
+     *
+     * @param listenerId the workstream ID whose debounce
+     *                   should be cleared; {@code null} or
+     *                   empty is a no-op
+     */
+    public void notifyListenerWakeUpCompleted(String listenerId) {
+        if (listenerId == null || listenerId.isEmpty()) {
+            return;
+        }
+        wakeUpDispatchedAt.remove(listenerId);
+    }
+
+    /**
+     * Visible-for-testing handle to the per-listener debounce
+     * timestamp (wall-clock millis of the most recent wake-up
+     * submitted to that listener, or {@code null} when no wake-up
+     * has been submitted yet). Production callers should not need
+     * this; tests assert the debounce's record / clear behaviour
+     * here.
+     */
+    public Long peekWakeUpDispatchedAt(String listenerId) {
+        return wakeUpDispatchedAt.get(listenerId);
+    }
+
+    /**
+     * Returns the effective per-listener debounce window in
+     * seconds. Defaults to {@link #DEFAULT_DEBOUNCE_SECONDS};
+     * production code constructed via {@link #bind} never
+     * overrides this.
+     *
+     * @return the debounce window in seconds, &ge; 0; a value of 0
+     *         disables the debounce entirely (tests that exercise
+     *         the window ceiling in isolation use this)
+     */
+    public int getDebounceSeconds() {
+        return debounceSeconds;
+    }
+
+    /**
+     * Overrides the per-listener debounce window. Tests use this
+     * to isolate the window-ceiling behaviour by setting it to 0;
+     * production code never calls it. The change takes effect on
+     * the next {@link #fanout(String, JobCompletionEvent)} call —
+     * already-recorded {@code wakeUpDispatchedAt} timestamps are
+     * not retroactively re-evaluated.
+     *
+     * @param debounceSeconds the new debounce window in seconds;
+     *                        values &lt; 0 are clamped to 0
+     */
+    public void setDebounceSeconds(int debounceSeconds) {
+        this.debounceSeconds = Math.max(0, debounceSeconds);
     }
 
     /**

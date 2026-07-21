@@ -155,6 +155,7 @@ final class WorkstreamRegistrationHandler {
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
         boolean defaultUseTmux = JsonFieldExtractor.extractBoolean(body, "defaultUseTmux");
+        boolean dormantForCompletionListeners = JsonFieldExtractor.extractBoolean(body, "dormantForCompletionListeners");
 
         // Resolve the target Slack workspace: explicit slackWorkspaceId wins,
         // then a workspace derived from the repoUrl's GitHub org, then (in
@@ -266,6 +267,10 @@ final class WorkstreamRegistrationHandler {
         // use_tmux flag still wins on a per-job basis, so individual jobs
         // can opt in or out of tmux even when the workstream default is on.
         workstream.setUseTmux(defaultUseTmux);
+        // Listener-side dormancy flag for the completion-listener
+        // cascade. Default false on register; mutable on update so
+        // the orchestrator can flip its own state mid-run.
+        workstream.setDormantForCompletionListeners(dormantForCompletionListeners);
 
         boolean persisted;
         if (listener != null) {
@@ -415,6 +420,15 @@ final class WorkstreamRegistrationHandler {
         if (JsonFieldExtractor.hasField(body, "defaultUseTmux")) {
             workstream.setUseTmux(
                     JsonFieldExtractor.extractBoolean(body, "defaultUseTmux"));
+        }
+        // Listener-side dormancy flag for the completion-listener
+        // cascade. Same presence-signal pattern as useTmux above:
+        // omitting the field leaves the existing value untouched; a
+        // boolean in the body explicitly sets it. See
+        // Workstream#dormantForCompletionListeners for the semantics.
+        if (JsonFieldExtractor.hasField(body, "dormantForCompletionListeners")) {
+            workstream.setDormantForCompletionListeners(
+                    JsonFieldExtractor.extractBoolean(body, "dormantForCompletionListeners"));
         }
 
         if (listener != null && !listener.registerAndPersistWorkstream(workstream)) {
