@@ -34,7 +34,6 @@ import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.studio.optimize.RealtimeContinuousRenderer;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
-import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Assume;
@@ -77,7 +76,7 @@ import java.util.stream.IntStream;
  * mixdown the cold six-channel render can exceed the per-test timeout on slower hardware. The
  * single-channel renders pass on either mixdown path.</p>
  */
-public class BatchedRealSceneRenderTest extends TestSuiteBase {
+public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 
 	/** Curated sample library root. */
 	private static final String LIBRARY = "/Users/Shared/Music/Samples";
@@ -117,34 +116,6 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 		new File("results/timelines").mkdirs();
 	}
 
-	/** Builds a random genome from a probe scene built off the real assets. */
-	private Genome<PackedCollection> realGenome() {
-		AudioScene<?> probe = AudioSceneOptimizer.createScene();
-		try {
-			probe.setTotalMeasures(MEASURES);
-			return probe.getGenome().random();
-		} finally {
-			probe.destroy();
-		}
-	}
-
-	/** Returns the peak absolute sample over channel 0 of a rendered WAV. */
-	private double peakAmplitude(String wavPath) throws Exception {
-		WaveData data = WaveData.load(new File(wavPath));
-		try {
-			PackedCollection channel = data.getChannelData(0);
-			double peak = 0.0;
-			int n = channel.getShape().getTotalSize();
-			for (int i = 0; i < n; i++) {
-				double v = Math.abs(channel.valueAt(i));
-				if (v > peak) peak = v;
-			}
-			return peak;
-		} finally {
-			data.destroy();
-		}
-	}
-
 	/**
 	 * Step 1: renders a single melodic channel (Lead Synth) through the full
 	 * effects/mixdown pipeline from real samples with batched dispatch enabled, and
@@ -158,10 +129,15 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 		boolean previous = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
 		BatchedPatternLayerRenderer.resetCounters();
+		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		try {
-			Genome<PackedCollection> genome = realGenome();
+			scene.setTotalMeasures(MEASURES);
+			long seed = findGenomeSeedForChannels(scene, List.of(LEAD_CHANNEL));
+			Assert.assertTrue("no genome seed populates channel " + LEAD_CHANNEL, seed >= 0);
+			Genome<PackedCollection> genome = fixedGenome(scene, seed);
+
 			AudioSceneBenchmark.BenchmarkResult result = AudioSceneBenchmark.runSingleChannel(
-					MEASURES, LEAD_CHANNEL, 7, BUFFER, genome,
+					scene, MEASURES, LEAD_CHANNEL, 7, BUFFER, genome,
 					"results/profiles", "results/timelines", true, 0, false);
 
 			double peak = peakAmplitude(result.getWavPath());
@@ -181,6 +157,7 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 			// Cold ratio (includes one-time kernel compilation) is reported, not gated;
 			// the steady-state real-time question is answered by the warm measurement.
 		} finally {
+			scene.destroy();
 			PatternLayerManager.enableBatched = previous;
 		}
 	}
@@ -199,11 +176,13 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 	 * @param tag      short label used in log lines and the output filename
 	 */
 	private void warmRenderChannels(List<Integer> channels, String tag) throws Exception {
-		Genome<PackedCollection> genome = realGenome();
 		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		AudioScenePopulation pop = null;
 		try {
 			scene.setTotalMeasures(MEASURES);
+			long seed = findGenomeSeedForChannels(scene, List.of(LEAD_CHANNEL));
+			Assert.assertTrue("no genome seed populates channel " + LEAD_CHANNEL, seed >= 0);
+			Genome<PackedCollection> genome = fixedGenome(scene, seed);
 
 			double audioSeconds = scene.getContext().getTimeForDuration().applyAsDouble(MEASURES);
 			int frames = scene.getContext().getFrameForPosition().applyAsInt(MEASURES);
@@ -313,11 +292,16 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 		boolean previous = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
 		BatchedPatternLayerRenderer.resetCounters();
+		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		try {
-			Genome<PackedCollection> genome = realGenome();
+			scene.setTotalMeasures(MEASURES);
 			List<Integer> channels = allChannels();
+			long seed = findGenomeSeedForChannels(scene, List.of(LEAD_CHANNEL));
+			Assert.assertTrue("no genome seed populates channel " + LEAD_CHANNEL, seed >= 0);
+			Genome<PackedCollection> genome = fixedGenome(scene, seed);
+
 			AudioSceneBenchmark.BenchmarkResult result = AudioSceneBenchmark.runMultiChannel(
-					MEASURES, channels, 7, BUFFER, genome,
+					scene, MEASURES, channels, 7, BUFFER, genome,
 					"results/profiles", "results/timelines", true, 0, false);
 
 			double peak = peakAmplitude(result.getWavPath());
@@ -335,6 +319,7 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 			Assert.assertTrue("rendered output is silent (peak=" + peak + ")", peak > 1e-3);
 			Assert.assertTrue("batched dispatch never fired for any melodic channel", batched > 0);
 		} finally {
+			scene.destroy();
 			PatternLayerManager.enableBatched = previous;
 		}
 	}
@@ -373,10 +358,15 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 		boolean previous = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
 		BatchedPatternLayerRenderer.resetCounters();
+		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		try {
-			Genome<PackedCollection> genome = realGenome();
+			scene.setTotalMeasures(MEASURES);
+			long seed = findGenomeSeedForChannels(scene, List.of(LEAD_CHANNEL));
+			Assert.assertTrue("no genome seed populates channel " + LEAD_CHANNEL, seed >= 0);
+			Genome<PackedCollection> genome = fixedGenome(scene, seed);
+
 			AudioSceneBenchmark.BenchmarkResult result = AudioSceneBenchmark.runSingleChannel(
-					MEASURES, LEAD_CHANNEL, 7, BUFFER, genome,
+					scene, MEASURES, LEAD_CHANNEL, 7, BUFFER, genome,
 					"results/profiles", "results/timelines", false, 0, false);
 
 			double peak = peakAmplitude(result.getWavPath());
@@ -387,6 +377,7 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 			Assert.assertTrue("rendered output is silent (peak=" + peak + ")", peak > 1e-3);
 			Assert.assertNotNull("no profile XML captured", result.getProfileXmlPath());
 		} finally {
+			scene.destroy();
 			PatternLayerManager.enableBatched = previous;
 		}
 	}

@@ -462,6 +462,42 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
+	 * Finds a deterministic genome seed whose projection populates every one of the given channels
+	 * with at least one pattern element, leaving that genome assigned to the scene. Because
+	 * {@link AudioScene#assignGenome} refreshes the pattern parameters, a channel's element count
+	 * depends on the genome, so a single- or multi-channel render of the returned scene is guaranteed
+	 * non-silent for those channels — removing the flakiness of an unseeded random genome that can
+	 * legitimately leave a selected channel empty.
+	 *
+	 * <p>The same scene instance must be both searched here and rendered: the scene's arrangement,
+	 * drawn randomly at construction, is part of what determines a channel's content, so a seed found
+	 * against one scene does not transfer to a freshly constructed one.</p>
+	 *
+	 * @param scene    the scene to search; left with a populating genome assigned on success
+	 * @param channels the channels that must each carry at least one pattern element
+	 * @return the seed populating all channels, or {@code -1} if none was found within
+	 *         {@link #MAX_GENOME_ATTEMPTS} attempts
+	 */
+	protected long findGenomeSeedForChannels(AudioScene<?> scene, List<Integer> channels) {
+		for (int attempt = 0; attempt < MAX_GENOME_ATTEMPTS; attempt++) {
+			long seed = 42 + attempt;
+			applyGenome(scene, seed);
+
+			boolean allPopulated = true;
+			for (int channel : channels) {
+				if (countElements(scene, channel) == 0) {
+					allPopulated = false;
+					break;
+				}
+			}
+
+			if (allPopulated) return seed;
+		}
+
+		return -1;
+	}
+
+	/**
 	 * Generates a spectrogram image from a WAV file and saves it as a PNG.
 	 *
 	 * <p>Uses hardware-accelerated spectrogram generation via {@link WaveData#spectrogram(int)}.</p>
