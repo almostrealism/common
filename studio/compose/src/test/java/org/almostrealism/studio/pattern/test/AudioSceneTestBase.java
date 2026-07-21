@@ -130,16 +130,23 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
-	 * Returns whether a GPU compute driver — Metal or OpenCL — is available on this host, used by
+	 * Returns whether a real GPU accelerator — Metal or OpenCL — is present on this host, used by
 	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
-	 * (CPU-only host) or a genuine failure (a GPU host that should have mounted the library).
+	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure (a GPU host — the
+	 * Metal {@code test-media-mac} or the OpenCL {@code test-media-cl} runner — that is expected to mount
+	 * the library).
 	 *
-	 * @return whether a Metal or OpenCL data context is available
+	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
+	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
+	 * {@code AR_HARDWARE_DRIVER} and so reports false on a CPU-only host and true on a Metal or OpenCL
+	 * host. This is not {@code getDataContext(..., GPU) != null} or {@code getComputeContext(GPU)}:
+	 * when only one data context exists, both return the sole (native) context regardless of the
+	 * requirement, falsely reporting a GPU on a CPU-only host.</p>
+	 *
+	 * @return whether a real GPU accelerator (Metal or OpenCL) is present on this host
 	 */
 	protected boolean isGpuAvailable() {
-		Hardware hardware = Hardware.getLocalHardware();
-		return hardware.getDataContext(false, true, ComputeRequirement.MTL) != null
-				|| hardware.getDataContext(false, true, ComputeRequirement.CL) != null;
+		return Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU);
 	}
 
 	/** Curated pattern factory; the real arrangement that decides which samples play where. */
