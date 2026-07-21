@@ -33,7 +33,9 @@ import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.studio.optimize.RealtimeContinuousRenderer;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
@@ -399,6 +401,7 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 2400000)
 	@TestDepth(3)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void renderAllChannelsContinuousToFile() throws Exception {
 		requireRealAssets();
 
