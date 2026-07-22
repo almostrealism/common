@@ -762,6 +762,38 @@ public class Heap {
 		}
 
 		/**
+		 * Destroys the created memory tracked by this stage without destroying the
+		 * stage itself, its backing block, or its compiled operations.
+		 *
+		 * <p>Created memory ({@link Heap#addCreatedMemory(MemoryData)}) consists of
+		 * per-invocation buffers — kernel argument destinations sized during argument
+		 * preparation — that are dead once the invocations that produced them complete.
+		 * A long-lived stage that hosts many rounds of evaluation (for example, one
+		 * heap wrapped around an optimizer's whole genome loop) accumulates these
+		 * buffers without bound, because they are only destroyed when the stage is.
+		 * Calling this at a quiescent boundary (between genomes, between batches)
+		 * releases them while leaving compiled operations and arena allocations —
+		 * which remain in use across rounds — untouched.</p>
+		 *
+		 * <p>Waits for all pending kernel semaphores before destroying, ensuring no
+		 * in-flight kernel is still writing to the released buffers.</p>
+		 */
+		public void flushCreatedMemory() {
+			for (Semaphore sem : pendingKernels) {
+				try {
+					sem.waitFor();
+				} catch (Exception e) {
+					heapConsole.warn("Pending kernel wait failed during created memory flush", e);
+				}
+			}
+			pendingKernels.clear();
+
+			if (dependencies != null) {
+				dependencies.flushCreatedMemory();
+			}
+		}
+
+		/**
 		 * Destroys this stage, freeing all resources.
 		 *
 		 * <p>Performs the following cleanup in order:</p>
@@ -891,6 +923,19 @@ public class Heap {
 			dependentOperations = new ArrayList<>();
 			compiledDependencies = new ArrayList<>();
 			createdMemory = new ArrayList<>();
+		}
+
+		/**
+		 * Destroys and clears only the {@link #createdMemory} list, leaving dependent
+		 * and compiled operations tracked for the stage's eventual {@link #destroy()}.
+		 *
+		 * @see HeapStage#flushCreatedMemory()
+		 */
+		void flushCreatedMemory() {
+			if (createdMemory != null) {
+				createdMemory.forEach(MemoryData::destroy);
+				createdMemory.clear();
+			}
 		}
 
 		/**
@@ -1115,6 +1160,28 @@ public class Heap {
 		Heap heap = getDefault();
 		if (heap != null) {
 			heap.getStage().addPendingKernel(sem);
+		}
+	}
+
+	/**
+	 * Destroys the created memory tracked by the current thread's active heap stage,
+	 * after waiting for that stage's pending kernels; a no-op when no default heap
+	 * is active.
+	 *
+	 * <p>Use this at a quiescent boundary of a long-lived heap scope — such as
+	 * between genome evaluations in an optimizer whose entire run shares one
+	 * {@link #wrap(Callable)} — to release the per-invocation kernel argument
+	 * destinations that {@link #addCreatedMemory(MemoryData)} accumulates. Without
+	 * a boundary flush, those buffers are held until the heap itself is destroyed,
+	 * which can exhaust the memory provider's capacity over many rounds
+	 * ({@code HardwareException} "Memory Max Reached").</p>
+	 *
+	 * @see HeapStage#flushCreatedMemory()
+	 */
+	public static void flushCreatedMemory() {
+		Heap heap = getDefault();
+		if (heap != null) {
+			heap.getStage().flushCreatedMemory();
 		}
 	}
 }
