@@ -48,11 +48,30 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 	/** Genome seed: the dense curated genome the breakdown harness renders (~1126 elements). */
 	private static final long GENOME_SEED = 58;
 
-	/** Frames per buffer. 8192 keeps the dispatch count (and tick count) low for file generation. */
-	private static final int BUFFER_SIZE = 8192;
+	/**
+	 * Frames per buffer — the production default, so listening evaluations of this
+	 * render exercise the same buffer-dependent behaviour (automation ramp rate, drift
+	 * step size, ring geometry) as the real-time app. Offline generation does not need
+	 * real-time headroom, so the smaller buffer only lengthens the render.
+	 */
+	private static final int BUFFER_SIZE = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
 
-	/** Seconds of audio to generate. */
-	private static final double TARGET_SECONDS = 120.0;
+	/**
+	 * Seconds of audio to generate on Metal. Four minutes, so section-scale behaviour —
+	 * clock resets at arrangement breaks, automation attack curves re-running, the bus
+	 * wash tightening and recovering — is visible in the evaluation render, not just
+	 * the opening material.
+	 */
+	private static final double TARGET_SECONDS = 240.0;
+
+	/**
+	 * Seconds of audio to generate when no Metal context is available. OpenCL is not a
+	 * primary backend and renders the mixdown several times slower than realtime, so
+	 * the four-minute evaluation render would exceed the test timeout there; a short
+	 * render keeps the CL job a genuine end-to-end smoke check (setup, generation,
+	 * non-silence, spectrogram) without the Metal-length evaluation duty.
+	 */
+	private static final double OFF_METAL_TARGET_SECONDS = 30.0;
 
 	/**
 	 * Generates audio to {@code results/generated-audio.wav} and logs the generation time. Asserts
@@ -63,13 +82,8 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 	@Test(timeout = 900_000)
 	@TestDepth(1)
 	public void generateAudioFile() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping generateAudioFile - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -86,10 +100,14 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 
 		File outFile = new File("results/generated-audio.wav");
 		outFile.getParentFile().mkdirs();
-		WaveOutput out = new WaveOutput(() -> outFile, 24, true);
 
-		int ticks = (int) Math.ceil(TARGET_SECONDS * SAMPLE_RATE / BUFFER_SIZE);
+		double targetSeconds = isMetalAvailable() ? TARGET_SECONDS : OFF_METAL_TARGET_SECONDS;
+		int ticks = (int) Math.ceil(targetSeconds * SAMPLE_RATE / BUFFER_SIZE);
 		double audioSeconds = ticks * (double) BUFFER_SIZE / SAMPLE_RATE;
+
+		// Size the capture buffer to the render (the default timeline caps below the
+		// four-minute evaluation length).
+		WaveOutput out = new WaveOutput(() -> outFile, 24, ticks * BUFFER_SIZE, true);
 
 		TemporalCellular runner = scene.runnerRealTime(
 				new MultiChannelAudioOutput(out), null, BUFFER_SIZE);
@@ -121,11 +139,35 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 			log("renderedPeakAmplitude=" + fmt(peak)
 					+ " file=" + outFile.getAbsolutePath());
 
+			// Image the render alongside the WAV so the result can be inspected without
+			// listening: runaway feedback, dropouts, or a collapsed second half read
+			// directly off the spectrogram.
+			generateSpectrogram(outFile.getPath(),
+					new File(outFile.getParentFile(), "generated-audio.spectrogram.png").getPath());
+
 			Assert.assertTrue("Generated audio is silent (peak=" + peak + ")", peak > 1e-3);
 		} finally {
 			out.reset();
 			runner.reset();
 		}
+	}
+
+	/**
+	 * Images the most recent {@code results/generated-audio.wav} as a spectrogram PNG
+	 * without re-rendering — the no-render half of the evaluation loop, for inspecting
+	 * a render that already exists (e.g. after a listening report) before deciding
+	 * what to change. Skips when no render is present.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(1)
+	public void spectrogramExistingRender() {
+		File wav = new File("results/generated-audio.wav");
+		if (!wav.exists()) {
+			log("Skipping spectrogramExistingRender - no results/generated-audio.wav present");
+			return;
+		}
+		generateSpectrogram(wav.getPath(),
+				new File(wav.getParentFile(), "generated-audio.spectrogram.png").getPath());
 	}
 
 	/**

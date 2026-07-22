@@ -921,7 +921,7 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * aggregation gather-collapse probe. Batched pattern windows sum genuinely
 	 * overlapping per-note rows — more than one note can contribute to any output
 	 * frame — so the {@code uniqueNonZeroOffset} analysis triggered by
-	 * {@link AggregatedProducerComputation#setReplaceLoop(boolean) replaceLoop}
+	 * {@link AggregatedProducerComputation#withReplaceLoop(boolean) replaceLoop}
 	 * can never identify a unique contributor here. On these deep fused chains
 	 * that always-failing analysis dominated first-compile wall time (14-29&nbsp;s
 	 * per kernel shape), so it is disabled before compilation.
@@ -933,7 +933,7 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	private CollectionProducer sumNoteAxis(CollectionProducer permuted, int width) {
 		CollectionProducer summed = permuted.traverse(1).sum();
 		if (summed instanceof AggregatedProducerComputation aggregation) {
-			aggregation.setReplaceLoop(false);
+			summed = aggregation.withReplaceLoop(false);
 		}
 		return summed.reshape(shape(width));
 	}

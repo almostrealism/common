@@ -17,7 +17,6 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 
@@ -252,11 +251,9 @@ public class Tensor<T> {
 			return packMem(shape, targetShape);
 		}
 
-		PackedCollection c = new PackedCollection(shape);
-
-		AtomicInteger index = new AtomicInteger();
-		shape.stream().forEach(pos -> CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(c.range(new TraversalPolicy(1), index.getAndIncrement())), CollectionFeatures.getInstance().c(((Number) get(pos)).doubleValue())).get().run());
-		return c;
+		double[] values = shape.stream()
+				.mapToDouble(pos -> ((Number) get(pos)).doubleValue()).toArray();
+		return PackedCollection.of(values).reshape(shape);
 	}
 
 	/**

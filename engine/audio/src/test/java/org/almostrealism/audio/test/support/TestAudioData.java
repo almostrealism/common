@@ -17,8 +17,6 @@
 package org.almostrealism.audio.test.support;
 
 import org.almostrealism.audio.data.WaveData;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
 
@@ -71,7 +69,7 @@ public class TestAudioData {
 		double angularFrequency = 2 * Math.PI * frequency / sampleRate;
 
 		for (int i = 0; i < samples; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(amplitude * Math.sin(angularFrequency * i))).get().run();
+			data.setMem(i, amplitude * Math.sin(angularFrequency * i));
 		}
 
 		return data;
@@ -122,7 +120,7 @@ public class TestAudioData {
 		PackedCollection data = new PackedCollection(samples);
 
 		for (int i = 0; i < samples; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(amplitude * (2 * random.nextDouble() - 1))).get().run();
+			data.setMem(i, amplitude * (2 * random.nextDouble() - 1));
 		}
 
 		return data;
@@ -173,7 +171,7 @@ public class TestAudioData {
 	public static PackedCollection ramp(int length) {
 		PackedCollection data = new PackedCollection(length);
 		for (int i = 0; i < length; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((double) i / (length - 1))).get().run();
+			data.setMem(i, (double) i / (length - 1));
 		}
 		return data;
 	}
@@ -190,7 +188,7 @@ public class TestAudioData {
 		PackedCollection data = new PackedCollection(length);
 		double step = (end - start) / (length - 1);
 		for (int i = 0; i < length; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(start + step * i)).get().run();
+			data.setMem(i, start + step * i);
 		}
 		return data;
 	}
@@ -226,7 +224,7 @@ public class TestAudioData {
 	public static PackedCollection dc(int length, double value) {
 		PackedCollection data = new PackedCollection(length);
 		for (int i = 0; i < length; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(value)).get().run();
+			data.setMem(i, value);
 		}
 		return data;
 	}
@@ -247,7 +245,7 @@ public class TestAudioData {
 
 		for (int i = 0; i < samples; i++) {
 			double phase = (i % period) / period;
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(phase < 0.5 ? amplitude : -amplitude)).get().run();
+			data.setMem(i, phase < 0.5 ? amplitude : -amplitude);
 		}
 
 		return data;
@@ -269,7 +267,7 @@ public class TestAudioData {
 
 		for (int i = 0; i < samples; i++) {
 			double phase = (i % period) / period;
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(amplitude * (2 * phase - 1))).get().run();
+			data.setMem(i, amplitude * (2 * phase - 1));
 		}
 
 		return data;
@@ -294,7 +292,7 @@ public class TestAudioData {
 			double t = (double) i / sampleRate;
 			double instantFreq = startFreq + freqSlope * t;
 			phase += 2 * Math.PI * instantFreq / sampleRate;
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(DEFAULT_AMPLITUDE * Math.sin(phase))).get().run();
+			data.setMem(i, DEFAULT_AMPLITUDE * Math.sin(phase));
 		}
 
 		return data;
@@ -321,7 +319,7 @@ public class TestAudioData {
 				value += amplitude * Math.sin(2 * Math.PI * freq * i / sampleRate);
 			}
 			// Normalize
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(data.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(value * DEFAULT_AMPLITUDE / harmonicCount)).get().run();
+			data.setMem(i, value * DEFAULT_AMPLITUDE / harmonicCount);
 		}
 
 		return data;

@@ -382,6 +382,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				channelIndices, bufferSize, scene.getSampleRate(),
 				pdslFilterOrder, pdslWetLevel, pdslDelaySamples);
+		MixdownManagerPdslAdapter adapter = wetVoicing
+				? new MixdownManagerPdslAdapter(mixdown, scene.getEfxManager(), config)
+				: new MixdownManagerPdslAdapter(mixdown, config);
 
 		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
 		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
@@ -399,11 +402,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
-		Map<String, Object> args = buildMixdownArgs(wetVoicing, mixdown, config);
+		Map<String, Object> args = adapter.buildArgsMap();
 		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
 
-		Supplier<Runnable> automationRefresh = MixdownManagerPdslAdapter.automationRefresh(
-				mixdown, wetVoicing ? scene.getEfxManager() : null, config, args);
+		Supplier<Runnable> automationRefresh = adapter.automationRefresh(args);
 
 		// Throwaway pass to capture the stable output handle the streaming loop reads
 		PackedCollection masterOutput = compiled.forward(pdslInput);
@@ -494,22 +496,6 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};
-	}
-
-	/**
-	 * Builds the argument map for the mixdown model, selecting the wet or single-input
-	 * argument set.
-	 *
-	 * @param wetVoicing whether a separate WET voicing was rendered (selects the layer/args)
-	 * @param mixdown    the mixdown manager whose genome drives the args
-	 * @param config     structural configuration
-	 * @return a populated argument map
-	 */
-	private Map<String, Object> buildMixdownArgs(boolean wetVoicing, MixdownManager mixdown,
-												 MixdownManagerPdslAdapter.Config config) {
-		return wetVoicing
-				? MixdownManagerPdslAdapter.buildArgsMap(mixdown, scene.getEfxManager(), config)
-				: MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
 	}
 
 	/**

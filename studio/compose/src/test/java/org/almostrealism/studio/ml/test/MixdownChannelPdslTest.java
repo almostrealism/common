@@ -441,7 +441,6 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 		// Delay state: buffer size must exactly match SIGNAL_SIZE (the reshape
 		// in callDelay requires buffer.getShape().getSize() == shape.getSize()).
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
-		buffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 		args.put("buffer", buffer);

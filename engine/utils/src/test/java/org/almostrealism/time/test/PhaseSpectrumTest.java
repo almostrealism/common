@@ -57,7 +57,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(wrappedPhase.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(wrapped)).get().run();
 		}
 
-		PackedCollection unwrapped = unwrapPhase(wrappedPhase);
+		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
 		// Verify that differences between consecutive samples are consistent
 		for (int i = 1; i < size; i++) {
@@ -80,7 +80,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(wrappedPhase.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(-Math.PI / 2 + i * 0.1)).get().run();
 		}
 
-		PackedCollection unwrapped = unwrapPhase(wrappedPhase);
+		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
 		// Should be identical (no unwrapping needed)
 		for (int i = 0; i < size; i++) {
@@ -107,7 +107,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(wrappedPhase.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(wrapped)).get().run();
 		}
 
-		PackedCollection unwrapped = unwrapPhase(wrappedPhase);
+		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
 		// Verify monotonically decreasing
 		for (int i = 1; i < size; i++) {
@@ -125,7 +125,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		PackedCollection wrappedPhase = new PackedCollection(shape(1));
 		wrappedPhase.setMem(0, 1.5);
 
-		PackedCollection unwrapped = unwrapPhase(wrappedPhase);
+		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 		assertEquals("Single value should be unchanged", 1.5, unwrapped.toDouble(0), TOLERANCE);
 	}
 
@@ -144,7 +144,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		wrappedPhase.setMem(3, -0.5);
 		wrappedPhase.setMem(4, 0.5);
 
-		PackedCollection unwrapped = unwrapPhase(wrappedPhase);
+		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
 		// After unwrapping, the sequence should be monotonically increasing
 		for (int i = 1; i < size; i++) {

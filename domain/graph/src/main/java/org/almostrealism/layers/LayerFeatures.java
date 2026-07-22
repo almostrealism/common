@@ -338,6 +338,32 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Creates a layer that produces each output element by gathering the input element
+	 * named by the corresponding index of {@code indices}.
+	 *
+	 * <p>{@code indices} is an operand of the gather, so a permutation or selection expressed
+	 * as arithmetic over {@link #integers(int, int)} is evaluated within the gather's own
+	 * kernel. Precomputing the same indices into a collection would instead hold an index
+	 * table in memory and move it from the host.</p>
+	 *
+	 * @param name         the name of the resulting layer
+	 * @param inputShape   the shape of the layer's input
+	 * @param outputShape  the shape of the layer's output
+	 * @param indices      producer of one input index per output element
+	 * @param requirements optional compute requirements
+	 * @return a {@link CellularLayer} gathering input elements by index
+	 */
+	default CellularLayer gather(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
+								 Producer<PackedCollection> indices, ComputeRequirement... requirements) {
+		int inputSize = inputShape.getTotalSize();
+		int outputSize = outputShape.getTotalSize();
+
+		return layer(name, inputShape, outputShape,
+				input -> c(shape(outputSize), c(input).reshape(shape(inputSize)), indices)
+						.reshape(outputShape), requirements);
+	}
+
+	/**
 	 * Creates a cellular layer with learnable weights and a no-op setup operation.
 	 *
 	 * @param name         a human-readable label for the layer

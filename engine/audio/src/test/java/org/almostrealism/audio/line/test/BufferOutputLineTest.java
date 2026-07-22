@@ -17,8 +17,6 @@
 package org.almostrealism.audio.line.test;
 
 import org.almostrealism.audio.AudioTestFeatures;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.line.BufferOutputLine;
 import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.OutputLine;
@@ -68,7 +66,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 
 		PackedCollection samples = new PackedCollection(10);
 		for (int i = 0; i < 10; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(samples.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i * 0.1)).get().run();
+			samples.setMem(i, i * 0.1);
 		}
 
 		buffer.write(samples);
@@ -90,7 +88,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 
 		PackedCollection samples = new PackedCollection(15);
 		for (int i = 0; i < 15; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(samples.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i + 1.0)).get().run();
+			samples.setMem(i, i + 1.0);
 		}
 
 		buffer.write(samples);
@@ -116,7 +114,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 
 		PackedCollection samples = new PackedCollection(15);
 		for (int i = 0; i < 15; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(samples.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i + 1.0)).get().run();
+			samples.setMem(i, i + 1.0);
 		}
 
 		buffer.write(samples);
@@ -137,7 +135,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 
 		PackedCollection samples = new PackedCollection(50);
 		for (int i = 0; i < 50; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(samples.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i * 0.01)).get().run();
+			samples.setMem(i, i * 0.01);
 		}
 
 		buffer.write(samples);

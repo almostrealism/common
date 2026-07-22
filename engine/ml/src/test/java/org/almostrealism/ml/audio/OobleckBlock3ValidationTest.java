@@ -129,12 +129,10 @@ public class OobleckBlock3ValidationTest extends OobleckValidationBase {
 		Random rand = new Random(42);
 		double inputMean = -22.94;
 		double inputStd = 300.48;
-		for (int c = 0; c < inChannels; c++) {
-			for (int s = 0; s < inputLength; s++) {
-				double value = inputMean + inputStd * rand.nextGaussian();
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), c * inputLength + s)), CollectionFeatures.getInstance().c(value)).get().run();
-			}
-		}
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		TraversalPolicy filled = new TraversalPolicy(inChannels * inputLength);
+		ops.a(ops.cp(input.range(filled, 0)),
+				ops.randn(filled, inputMean, inputStd, rand)).get().run();
 
 		log("\nRunning forward pass...");
 		long startForward = System.currentTimeMillis();

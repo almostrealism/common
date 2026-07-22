@@ -334,6 +334,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_request_copilot_review",
 			"github_read_file",
 			"github_pr_check_status",
+			"github_list_workflow_runs",
+			"github_workflow_run_status",
 			"tracker_list_projects",
 			"tracker_create_project",
 			"tracker_update_project",
@@ -615,6 +617,20 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			prCheckParams.contains("workstream_id"));
 		assertTrue("github_pr_check_status must declare branch in signature",
 			prCheckParams.contains("branch"));
+
+		List<String> listRunsParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "github_list_workflow_runs");
+		assertTrue("github_list_workflow_runs must declare workflow in signature",
+			listRunsParams.contains("workflow"));
+		assertTrue("github_list_workflow_runs must declare status in signature",
+			listRunsParams.contains("status"));
+		assertTrue("github_list_workflow_runs must declare limit in signature",
+			listRunsParams.contains("limit"));
+
+		List<String> runStatusParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "github_workflow_run_status");
+		assertTrue("github_workflow_run_status must declare run_id in signature",
+			runStatusParams.contains("run_id"));
 
 		List<String> trackerCreateParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_create_task");

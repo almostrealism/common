@@ -18,8 +18,12 @@ package org.almostrealism.audio.filter;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.audio.computations.ADSREnvelopeComputation;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.hardware.OperationList;
+
+import java.util.function.Supplier;
 
 /**
  * Data interface for ADSR envelope generator state.
@@ -92,16 +96,16 @@ public interface ADSREnvelopeData extends CodeFeatures {
 	default Producer<PackedCollection> getGateOpen() { return p(gateOpen().range(shape(1))); }
 	default Producer<PackedCollection> getReleaseLevel() { return p(releaseLevel().range(shape(1))); }
 
-	default void setAttackTime(double seconds) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(attackTime()), CollectionFeatures.getInstance().c(seconds)).get().run(); }
-	default void setDecayTime(double seconds) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(decayTime()), CollectionFeatures.getInstance().c(seconds)).get().run(); }
-	default void setSustainLevel(double level) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sustainLevel()), CollectionFeatures.getInstance().c(level)).get().run(); }
-	default void setReleaseTime(double seconds) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(releaseTime()), CollectionFeatures.getInstance().c(seconds)).get().run(); }
-	default void setSampleRate(double rate) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sampleRate()), CollectionFeatures.getInstance().c(rate)).get().run(); }
-	default void setPhase(int p) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(phase()), CollectionFeatures.getInstance().c(p)).get().run(); }
-	default void setPosition(double pos) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position()), CollectionFeatures.getInstance().c(pos)).get().run(); }
-	default void setCurrentLevel(double level) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(currentLevel()), CollectionFeatures.getInstance().c(level)).get().run(); }
-	default void setGateOpen(boolean open) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(gateOpen()), CollectionFeatures.getInstance().c(open ? 1.0 : 0.0)).get().run(); }
-	default void setReleaseLevel(double level) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(releaseLevel()), CollectionFeatures.getInstance().c(level)).get().run(); }
+	default void setAttackTime(double seconds) { attackTime().setMem(0, seconds); }
+	default void setDecayTime(double seconds) { decayTime().setMem(0, seconds); }
+	default void setSustainLevel(double level) { sustainLevel().setMem(0, level); }
+	default void setReleaseTime(double seconds) { releaseTime().setMem(0, seconds); }
+	default void setSampleRate(double rate) { sampleRate().setMem(0, rate); }
+	default void setPhase(int p) { phase().setMem(0, p); }
+	default void setPosition(double pos) { position().setMem(0, pos); }
+	default void setCurrentLevel(double level) { currentLevel().setMem(0, level); }
+	default void setGateOpen(boolean open) { gateOpen().setMem(0, open ? 1.0 : 0.0); }
+	default void setReleaseLevel(double level) { releaseLevel().setMem(0, level); }
 
 	/**
 	 * Sets all ADSR parameters at once.
@@ -153,5 +157,72 @@ public interface ADSREnvelopeData extends CodeFeatures {
 	 */
 	default boolean isActive() {
 		return phase().toDouble(0) != PHASE_IDLE;
+	}
+
+	/**
+	 * Returns the contiguous {@code (3)} runtime-state block {@code [phase, position, currentLevel]}
+	 * (slots 5 through 7).
+	 *
+	 * <p>This is the destination that {@link #tickUpdate(int)} advances on the device in a single
+	 * assignment, replacing the per-sample host state machine that previously read these slots back to
+	 * the host and wrote them with scalar setters.</p>
+	 *
+	 * @return the runtime-state block, occupying slots 5 through 7
+	 */
+	PackedCollection state();
+
+	/**
+	 * Returns a {@code (3)} scratch buffer used by {@link #tickUpdate(int)} to hold a snapshot of the
+	 * {@linkplain #state() runtime-state block} while the next state is computed.
+	 *
+	 * <p>The update reads {@code phase}, {@code position} and {@code currentLevel} to compute all three
+	 * new values, so each output slot depends on the others' pre-update values. Snapshotting into a
+	 * disjoint buffer before writing back avoids the read-after-write hazard that an in-place assignment
+	 * over the three overlapping slots would otherwise incur.</p>
+	 *
+	 * @return the scratch buffer backing the tick update
+	 */
+	PackedCollection stateScratch();
+
+	/**
+	 * Advances the envelope by one sample as a device operation, replacing the host state machine that
+	 * {@code ADSREnvelope.tick()} previously ran per sample.
+	 *
+	 * <p>The returned operation snapshots the {@linkplain #state() runtime state} into
+	 * {@link #stateScratch()}, then writes the {@link #stateUpdate(int) advanced state} back into the
+	 * runtime-state block. Both assignments compile once and run each tick; no host value crosses to the
+	 * device per sample, and no kernel is compiled per value.</p>
+	 *
+	 * @param sampleRate sample rate in Hz, an invariant used to derive the per-sample time step
+	 * @return the tick operation
+	 */
+	default Supplier<Runnable> tickUpdate(int sampleRate) {
+		OperationList tick = new OperationList("ADSREnvelope Tick");
+		tick.add(a(cp(stateScratch()), cp(state())));
+		tick.add(a(cp(state()), stateUpdate(sampleRate)));
+		return tick;
+	}
+
+	/**
+	 * Computes the advanced {@code (3)} runtime state {@code [phase, position, currentLevel]} from the
+	 * {@linkplain #stateScratch() snapshot} of the current state and the envelope parameters, entirely
+	 * in the graph.
+	 *
+	 * <p>The result matches the host ADSR recurrence: within a phase the position advances by
+	 * {@code 1 / (time * sampleRate)} and the level follows the piecewise-linear segment; when the
+	 * position reaches one the phase transitions (attack&rarr;decay, decay&rarr;sustain,
+	 * release&rarr;idle) and the position resets. A zero phase time transitions immediately, which the
+	 * position clamp expresses without a host branch. The per-phase results are selected by the current
+	 * phase, and the idle default leaves the state unchanged (matching the host early return).</p>
+	 *
+	 * @param sampleRate sample rate in Hz
+	 * @return a {@code (3)} producer of {@code [phase, position, currentLevel]}
+	 */
+	default CollectionProducer stateUpdate(int sampleRate) {
+		return new ADSREnvelopeComputation(sampleRate,
+				cp(stateScratch().range(shape(1), 0)),
+				cp(stateScratch().range(shape(1), 1)),
+				cp(stateScratch().range(shape(1), 2)),
+				getAttackTime(), getDecayTime(), getSustainLevel(), getReleaseTime(), getReleaseLevel());
 	}
 }
