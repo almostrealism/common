@@ -31,6 +31,13 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.SourceDataLine;
 
 /**
  * Utility class for system-level operations and environment configuration.
@@ -87,6 +94,70 @@ public class SystemUtils {
 	 */
 	public static boolean isMacOS() {
 		return System.getProperty("os.name", "").contains("Mac OS X");
+	}
+
+	/** Milliseconds a probe write may block before the audio output device is treated as unusable. */
+	private static final long AUDIO_PROBE_TIMEOUT_MS = 2000;
+
+	/** Cached result of {@link #isAudioOutputAvailable()}; {@code null} until first probed. */
+	private static Boolean audioOutputAvailable;
+
+	/**
+	 * Returns whether this host has an audio output device that actually drains samples, probed once
+	 * and cached for the life of the JVM.
+	 *
+	 * <p>A headless or virtualized host — a CI runner, for example — can hand out a
+	 * {@link SourceDataLine} that opens successfully yet never consumes what is written to it, so
+	 * {@link SourceDataLine#write} blocks indefinitely. Obtaining or opening a line therefore does not
+	 * prove the device is usable; only writing to it does. This opens a line and writes one short
+	 * buffer of silence on a worker thread bounded by {@value #AUDIO_PROBE_TIMEOUT_MS} ms: if the write
+	 * drains within the bound the device is usable; if it blocks (or the line cannot be opened) it is
+	 * not, and the line is closed to unblock the worker. Silence is written, so a working device makes
+	 * no audible sound. The result is cached so the probe runs at most once.</p>
+	 *
+	 * @return whether a usable, draining audio output device is present
+	 */
+	public static synchronized boolean isAudioOutputAvailable() {
+		if (audioOutputAvailable == null) {
+			audioOutputAvailable = probeAudioOutput();
+		}
+
+		return audioOutputAvailable;
+	}
+
+	/**
+	 * Probes whether an audio output line drains a short silent write within
+	 * {@value #AUDIO_PROBE_TIMEOUT_MS} ms. See {@link #isAudioOutputAvailable()}.
+	 *
+	 * @return whether the probe write drained within the bound
+	 */
+	private static boolean probeAudioOutput() {
+		AudioFormat format = new AudioFormat(44100f, 16, 2, true, false);
+
+		SourceDataLine line;
+		try {
+			line = AudioSystem.getSourceDataLine(format);
+			line.open(format);
+			line.start();
+		} catch (Exception e) {
+			return false;
+		}
+
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+		try {
+			byte[] silence = new byte[format.getFrameSize() * 1024];
+			Future<?> write = executor.submit(() -> {
+				line.write(silence, 0, silence.length);
+				line.drain();
+			});
+			write.get(AUDIO_PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+			return true;
+		} catch (Exception e) {
+			return false;
+		} finally {
+			line.close();
+			executor.shutdownNow();
+		}
 	}
 
 	/**

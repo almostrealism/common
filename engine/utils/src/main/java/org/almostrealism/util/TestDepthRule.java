@@ -145,8 +145,8 @@ public class TestDepthRule implements MethodRule {
 			if (properties.knownIssue() && TestUtils.getSkipKnownIssues()) {
 				return skipStatement("Test covers a known issue and known-issue tests are disabled");
 			}
-			if (properties.audioDeviceRequired() && !SystemUtils.isMacOS()) {
-				return skipStatement("Test requires an audio output device; only macOS hosts are assumed to have one");
+			if (properties.audioDeviceRequired() && !SystemUtils.isAudioOutputAvailable()) {
+				return skipStatement("Test requires an audio output device that drains samples; none is available on this host");
 			}
 			for (String profile : properties.excludeProfiles()) {
 				if (Objects.equals(profile, TestUtils.getTestProfile())) {
