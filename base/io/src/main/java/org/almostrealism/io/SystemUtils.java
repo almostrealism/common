@@ -96,8 +96,14 @@ public class SystemUtils {
 		return System.getProperty("os.name", "").contains("Mac OS X");
 	}
 
-	/** Milliseconds a probe write may block before the audio output device is treated as unusable. */
+	/** Milliseconds the sustained probe write may block before the audio output device is treated as unusable. */
 	private static final long AUDIO_PROBE_TIMEOUT_MS = 2000;
+
+	/** Small line buffer (frames) so the probe write cannot be fully buffered without real draining. */
+	private static final int PROBE_LINE_BUFFER_FRAMES = 2048;
+
+	/** Frames of silence the probe writes (0.5s at 44.1kHz) — far more than the line buffer holds. */
+	private static final int PROBE_WRITE_FRAMES = 22050;
 
 	/** Cached result of {@link #isAudioOutputAvailable()}; {@code null} until first probed. */
 	private static Boolean audioOutputAvailable;
@@ -107,13 +113,16 @@ public class SystemUtils {
 	 * and cached for the life of the JVM.
 	 *
 	 * <p>A headless or virtualized host — a CI runner, for example — can hand out a
-	 * {@link SourceDataLine} that opens successfully yet never consumes what is written to it, so
-	 * {@link SourceDataLine#write} blocks indefinitely. Obtaining or opening a line therefore does not
-	 * prove the device is usable; only writing to it does. This opens a line and writes one short
-	 * buffer of silence on a worker thread bounded by {@value #AUDIO_PROBE_TIMEOUT_MS} ms: if the write
-	 * drains within the bound the device is usable; if it blocks (or the line cannot be opened) it is
-	 * not, and the line is closed to unblock the worker. Silence is written, so a working device makes
-	 * no audible sound. The result is cached so the probe runs at most once.</p>
+	 * {@link SourceDataLine} that opens, accepts an initial burst, and even reports it drained, yet
+	 * never advances its hardware read position: nothing is really played, so sustained real-time
+	 * playback stalls (this is what leaves {@code renderedFrames} pinned and blocks
+	 * {@link SourceDataLine#write} in the real-time playback tests). A short burst therefore cannot tell
+	 * a real device from that one. This opens a line with a deliberately small buffer and, on a worker
+	 * thread bounded by {@value #AUDIO_PROBE_TIMEOUT_MS} ms, writes {@value #PROBE_WRITE_FRAMES} frames of
+	 * silence — far more than the buffer holds — then drains. That write can only complete if the device
+	 * actually drains (advances its read position) to make room; on a non-draining device it blocks once
+	 * the buffer fills and the bounded wait elapses to a negative result. Silence is written, so a working
+	 * device makes no audible sound. The result is cached so the probe runs at most once.</p>
 	 *
 	 * @return whether a usable, draining audio output device is present
 	 */
@@ -126,18 +135,19 @@ public class SystemUtils {
 	}
 
 	/**
-	 * Probes whether an audio output line drains a short silent write within
-	 * {@value #AUDIO_PROBE_TIMEOUT_MS} ms. See {@link #isAudioOutputAvailable()}.
+	 * Probes whether an audio output line actually drains a sustained silent write (one exceeding the
+	 * line buffer) within {@value #AUDIO_PROBE_TIMEOUT_MS} ms. See {@link #isAudioOutputAvailable()}.
 	 *
-	 * @return whether the probe write drained within the bound
+	 * @return whether the sustained probe write drained within the bound
 	 */
 	private static boolean probeAudioOutput() {
 		AudioFormat format = new AudioFormat(44100f, 16, 2, true, false);
+		int frameSize = format.getFrameSize();
 
 		SourceDataLine line;
 		try {
 			line = AudioSystem.getSourceDataLine(format);
-			line.open(format);
+			line.open(format, frameSize * PROBE_LINE_BUFFER_FRAMES);
 			line.start();
 		} catch (Exception e) {
 			return false;
@@ -145,7 +155,7 @@ public class SystemUtils {
 
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 		try {
-			byte[] silence = new byte[format.getFrameSize() * 1024];
+			byte[] silence = new byte[frameSize * PROBE_WRITE_FRAMES];
 			Future<?> write = executor.submit(() -> {
 				line.write(silence, 0, silence.length);
 				line.drain();
@@ -155,6 +165,7 @@ public class SystemUtils {
 		} catch (Exception e) {
 			return false;
 		} finally {
+			line.stop();
 			line.close();
 			executor.shutdownNow();
 		}

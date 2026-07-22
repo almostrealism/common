@@ -24,7 +24,6 @@ import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -108,15 +107,9 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	/**
 	 * Tests the position tracking accuracy during buffered playback.
 	 * This verifies that getReadPosition() correctly reports hardware progress.
-	 *
-	 * <p>Excluded from the CI pipeline profile: it asserts the rendered-frame count strictly
-	 * increases between two 500ms samples, which requires a device that sustains real-time draining.
-	 * A self-hosted CI runner accepts an initial buffer (so {@code audioDeviceRequired} does not skip
-	 * it) but does not reliably sustain playback, so the count plateaus and the assertion fails. It
-	 * runs on-demand where audio is real.</p>
 	 */
 	@Test(timeout = 60000)
-	@TestProperties(audioDeviceRequired = true, excludeProfiles = TestUtils.PIPELINE)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedPositionTracking() throws Exception {
 		File testFile = getTestWavFile();
 
@@ -255,14 +248,9 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * 2. Using larger buffer size (BufferDefaults.defaultBufferSize = 65536)
 	 * 3. Enabling verbose logging to monitor sleep cycles
 	 * 4. Running for extended duration to observe timing patterns
-	 *
-	 * <p>Excluded from the CI pipeline profile: the {@code renderedFrames > 100000} after 30s
-	 * assertion requires sustained real-time hardware draining that a self-hosted CI runner cannot
-	 * guarantee (it accepts an initial buffer but does not keep draining under load). It runs
-	 * on-demand where audio is real.</p>
 	 */
 	@Test(timeout = 60000)
-	@TestProperties(audioDeviceRequired = true, excludeProfiles = TestUtils.PIPELINE)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
 		File testFile = getTestWavFile();
 
