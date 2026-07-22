@@ -661,6 +661,16 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
 					Heap.addPendingKernel(completion);
 				}
+
+				if (process.hasDestinationLeases()) {
+					// Release at the end of the full chain, passively — an actively waiting
+					// callback (onComplete) forces a per-invocation commit on Metal.
+					if (completion == null) {
+						process.releaseDestinationLeases();
+					} else {
+						completion.whenComplete(process::releaseDestinationLeases);
+					}
+				}
 			} finally {
 				if (!activeRequirements.isEmpty()) {
 					Hardware.getLocalHardware().getComputer().popRequirements();
@@ -707,7 +717,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/**
 	 * Destroys this operation and releases associated resources.
 	 *
-	 * <p>Calls the parent destroy method and cleans up the argument map.</p>
+	 * <p>Calls the parent destroy method and cleans up the argument map and the
+	 * details factory's destination reuse slots.</p>
 	 */
 	@Override
 	public void destroy() {
@@ -715,6 +726,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		if (argumentMap != null) {
 			argumentMap.destroy();
+		}
+
+		if (detailsFactory != null) {
+			detailsFactory.destroy();
 		}
 	}
 

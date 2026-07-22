@@ -2819,20 +2819,23 @@ def memory_recall(
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory search failed: {e}"}
 
-    # Merge results from the "messages" namespace if requested
-    if include_messages and namespace != "messages":
+    # Messages are a non-semantic namespace: retrieved by branch/recency, not
+    # embedded in the FAISS index (see MemoryStore NON_SEMANTIC_NAMESPACES).
+    # When both repo and branch are known, merge the most recent messages in
+    # by recency. They are appended after the semantic results and capped, so
+    # they never displace a primary (semantically ranked) hit. Messages are
+    # most completely retrieved via workstream_context.
+    if (include_messages and namespace != "messages"
+            and effective_repo and effective_branch):
         try:
-            msg_memories = client.search(
-                query=query,
+            msg_memories = client.search_by_branch(
+                repo_url=effective_repo,
+                branch=effective_branch,
                 namespace="messages",
                 limit=limit,
-                repo_url=effective_repo or None,
-                branch=effective_branch or None,
             )
             if msg_memories:
-                memories = memories + msg_memories
-                memories.sort(key=lambda m: m.get("score", 999))
-                memories = memories[:limit]
+                memories = (memories + msg_memories)[:limit]
         except ConnectionError:
             pass  # Non-critical: proceed without messages
 
@@ -4756,6 +4759,114 @@ def github_pr_check_status(
         "check_runs": check_runs,
         "next_steps": next_steps,
     }
+
+
+@mcp.tool()
+def github_list_workflow_runs(
+    workflow: str = "",
+    branch: str = "",
+    event: str = "",
+    status: str = "",
+    actor: str = "",
+    limit: int = 20,
+    workstream_id: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Search GitHub Actions workflow runs for a repository.
+
+    Unlike ``github_pr_check_status`` (which is scoped to one PR's HEAD
+    commit), this lists arbitrary workflow runs so a failure that only
+    reproduces in CI can be found and inspected — e.g. every ``failure``
+    run of ``analysis.yaml`` on ``master``, or the most recent
+    ``workflow_dispatch`` runs of a given workflow. Pair it with
+    ``github_workflow_run_status`` to drill into a specific run's jobs.
+
+    Args:
+        workflow: Workflow file name (e.g. ``analysis.yaml``) or numeric
+            workflow id to restrict to a single workflow. Empty (default)
+            lists runs across all workflows.
+        branch: Filter by head branch. Empty (default) means any branch.
+        event: Filter by triggering event (``push``, ``pull_request``,
+            ``workflow_dispatch``, ``schedule``, ...). Empty means any.
+        status: Filter by run status or conclusion (``queued``,
+            ``in_progress``, ``completed``, ``success``, ``failure``,
+            ``cancelled``, ``timed_out``, ...). Empty means any.
+        actor: Filter by the GitHub login that triggered the run. Empty
+            means any.
+        limit: Maximum number of runs to return (1-100). Defaults to 20.
+        workstream_id: Workstream to resolve the repo from. Defaults to
+            the token context.
+        org: GitHub org (owner) to address directly. Must be passed
+            together with ``repo``; bypasses workstream resolution and is
+            checked against the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True, total_count, returned, and a workflow_runs
+        list; or ok=False with error details.
+    """
+    _require_scope("github")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    _audit("github_list_workflow_runs", workflow=workflow, branch=branch,
+           event=event, status=status, workstream_id=workstream_id)
+
+    return github_api.list_workflow_runs(
+        owner, repo, workflow=workflow, branch=branch, event=event,
+        status=status, actor=actor, limit=limit,
+    )
+
+
+@mcp.tool()
+def github_workflow_run_status(
+    run_id: int,
+    workstream_id: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Get the status, jobs, and failed steps of a single workflow run.
+
+    Given a run id (from ``github_list_workflow_runs`` or a run URL),
+    fetches the run's outcome and the per-job breakdown, including which
+    steps failed and their log URLs — the detail needed to diagnose a CI
+    failure without a PR context.
+
+    Args:
+        run_id: The numeric workflow run id.
+        workstream_id: Workstream to resolve the repo from. Defaults to
+            the token context.
+        org: GitHub org (owner) to address directly. Must be passed
+            together with ``repo``; bypasses workstream resolution and is
+            checked against the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True, a shaped run, a jobs list (each with its
+        failed_steps and html_url), and a summary (total/failed job counts
+        and the run's status/conclusion); or ok=False with error details.
+    """
+    _require_scope("github")
+    if org and repo:
+        _require_org_in_scope(org)
+    if not run_id:
+        return {"ok": False, "error": "run_id is required"}
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    _audit("github_workflow_run_status", run_id=run_id,
+           workstream_id=workstream_id)
+
+    return github_api.get_workflow_run_status(owner, repo, run_id)
 
 
 # Tracker HTTP helpers are in tracker_client.py (imported above).

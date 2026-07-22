@@ -213,11 +213,11 @@ public class MidiCCSource implements ModulationSource, CodeFeatures {
 		// Apply smoothing
 		if (smoothing > 0) {
 			smoothedValue = smoothedValue * smoothing + ranged * (1.0 - smoothing);
-			output.setMem(0, smoothedValue);
+			output.fill(smoothedValue);
 			return smoothedValue;
 		}
 
-		output.setMem(0, ranged);
+		output.fill(ranged);
 		return ranged;
 	}
 

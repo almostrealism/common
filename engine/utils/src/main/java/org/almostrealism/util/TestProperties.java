@@ -86,4 +86,24 @@ public @interface TestProperties {
 	 * @return true if this test needs an audio output device
 	 */
 	boolean audioDeviceRequired() default false;
+
+	/**
+	 * Names the test profiles ({@link TestUtils#getTestProfile()}) in which this test is skipped.
+	 * When the active profile matches any entry, {@link TestDepthRule} skips the test via
+	 * {@code Assume.assumeTrue()}.
+	 *
+	 * <p>This is the profile-aware exclusion mechanism. Unlike {@link TestDepth} and
+	 * {@link #longRunning()}, which both run everything under the {@link TestUtils#PIPELINE}
+	 * profile (pipeline forces {@code testDepth} to {@link Integer#MAX_VALUE} and does not skip
+	 * long tests), listing a profile here keeps the test out of that profile while leaving it
+	 * runnable under every other profile. Use {@link TestUtils#PIPELINE} — a compile-time
+	 * constant — to exclude a test from the CI pipeline while keeping it runnable locally:</p>
+	 * <pre>{@code
+	 * @Test @TestProperties(excludeProfiles = TestUtils.PIPELINE)
+	 * public void heavyBenchmark() { ... }  // skipped when AR_TEST_PROFILE=pipeline
+	 * }</pre>
+	 *
+	 * @return the profile names in which this test is skipped
+	 */
+	String[] excludeProfiles() default {};
 }

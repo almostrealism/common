@@ -834,11 +834,11 @@ jobs:
       # Cross-OS gating (don't run mac when linux fails) is handled by test-mac's
       # needs/if, not by fail-fast.
       fail-fast: false
-      # Cap concurrent groups so all seven completing doesn't overrun runner
+      # Cap concurrent groups so all eight completing doesn't overrun runner
       # capacity; the remaining groups queue and run as slots free up.
       max-parallel: 4
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6]
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -886,7 +886,7 @@ jobs:
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7 \
+           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
@@ -909,7 +909,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7 \
+           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
@@ -974,7 +974,10 @@ jobs:
           retention-days: 1
 
   test-media:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, test, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CPU lane, second stage: runs after `test` so the two heavy Linux self-hosted suites
+    # do not contend for CPU/RAM on the same fleet. Tolerates `test` being skipped (its
+    # narrower layer gate can skip when only studio/extern changed).
     # Layer gate: studio tests run when any layer is modified.
     if: >-
       needs.build.result == 'success' &&
@@ -982,6 +985,7 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||
        needs.changes.outputs.engine_changed == 'true' ||
@@ -993,14 +997,16 @@ jobs:
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
-      # Split the (growing) media test set across two groups: each group runs half of
-      # every module's tests (AR_TEST_GROUPS=2 on the steps below). Self-hosted runners
-      # run one job at a time, so each group lands on its own runner with half the tests,
-      # halving peak memory per runner while parallelising the suite.
+      # Split the (growing) media test set across eight groups: each group runs an eighth
+      # of every module's tests (AR_TEST_GROUPS=8 on the steps below). Self-hosted runners
+      # run one job at a time, so each group lands on its own runner with an eighth of the
+      # tests, cutting peak memory per runner and shrinking the retry unit — a flaky
+      # failure re-runs only that group, not the whole suite. max-parallel bounds how many
+      # groups run at once on the fleet, so eight groups queue in ceil(8/max-parallel) waves.
       fail-fast: false
       max-parallel: 2
       matrix:
-        group: [0, 1]
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1028,7 +1034,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2 \
+           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
@@ -1041,7 +1047,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2 \
+           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
@@ -1054,7 +1060,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2 \
+           -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
 
       - name: Upload Surefire Reports
@@ -1100,25 +1106,32 @@ jobs:
   # ─── macOS Test Jobs ────────────────────────────────────────────────
 
   test-mac:
-    needs: [changes, build, test]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, first stage. The GPU lane (test-mac -> test-media-mac -> test-cl ->
+    # test-media-cl) runs in parallel with the CPU lane (test -> test-media): the two use
+    # different runner fleets (macOS vs linux), so there is no reason to serialise across
+    # them. Within the GPU lane the stages are serialised so only one GPU-heavy suite runs
+    # on the macOS fleet at a time. This stage gates on the validation checks directly
+    # (it no longer inherits them by depending on `test`).
     # Layer gate: engine tests only run when engine-or-below layers are modified.
-    # Must tolerate test being skipped (no layer changes).
     if: >-
       needs.build.result == 'success' &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
     strategy:
-      # Let every group finish even when a peer fails (see the test job above).
-      # test-mac already only runs when the linux test job succeeded/was skipped,
-      # so this only affects cancellation among the mac groups themselves.
+      # Let every group finish even when a peer fails (see the test job above); this only
+      # affects cancellation among the mac groups themselves.
       fail-fast: false
       max-parallel: 3
       matrix:
-        group: [0, 1, 2]
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1162,7 +1175,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=8
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -1172,7 +1185,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=8
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -1182,16 +1195,34 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
+      # Metal (mac) surefire reports so auto-resolve can parse Metal-specific test failures
+      # a Linux run would not surface. Named distinctly from the CL jobs, which are not resolved.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-mac-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
   test-cl:
-    needs: [changes, build, test, test-mac]
-    # Duplicate of test-mac exercising the OpenCL backend: AR_HARDWARE_DRIVER
-    # is native,cl (rather than *) so Metal is excluded and GPU-eligible work
-    # routes through CL. Runs after test-mac (success or skipped tolerated;
-    # the layer gate below matches test-mac's, so both skip together).
+    needs: [changes, build, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, third stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
+    # (rather than *) so Metal is excluded and GPU-eligible work routes through CL. Runs after
+    # the earlier GPU stages so the lane stays serialised — only one GPU-heavy suite on the
+    # macOS fleet at a time. Gates on ALL earlier GPU stages (test-mac, test-media-mac) with
+    # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
+    # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
     if: >-
       needs.build.result == 'success' &&
-      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
       (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
@@ -1207,15 +1238,14 @@ jobs:
       cancel-in-progress: true
     strategy:
       fail-fast: false
-      # Cap concurrency at 3 so the 7 groups do not monopolize the self-hosted
+      # Cap concurrency at 3 so the eight groups do not monopolize the self-hosted
       # runners when several pipelines run at once; remaining groups queue behind.
       max-parallel: 3
       matrix:
-        # More groups than test-mac (7 vs 3): the CL backend reaches its memory
-        # ceiling under the larger per-group test loads (AR_HARDWARE_MEMORY_SCALE
-        # is already at 7, the highest scale used anywhere), so the same tests are
-        # spread across more JVMs instead.
-        group: [0, 1, 2, 3, 4, 5, 6]
+        # The CL backend reaches its memory ceiling under large per-group test loads
+        # (AR_HARDWARE_MEMORY_SCALE is already at 7, the highest scale used anywhere),
+        # so spreading the tests across eight JVMs keeps each group's load small.
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1251,7 +1281,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=8
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
@@ -1261,7 +1291,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7
+           -DAR_TEST_GROUPS=8
 
       - name: Run Render Tests
         if: matrix.group == 0
@@ -1272,21 +1302,21 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
   test-media-mac:
-    needs: [changes, build, test-media, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, test-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, second stage: runs after test-mac. test-media-mac and test-mac both run heavy
+    # Metal work on the same self-hosted macOS fleet; serialising the GPU lane keeps only one
+    # GPU-bound suite on the fleet at a time, so their benchmark tick tails do not balloon
+    # under GPU contention (the mechanism behind the PDSL benchmark timeouts). test-mac has a
+    # narrower layer gate (no studio/extern), so it can be skipped when this job runs; the
+    # gate below tolerates a skipped test-mac. Gates on the validation checks directly.
     # Layer gate: studio tests run when any layer is modified.
-    # Depends on test-media rather than test-mac because test-media shares this job's
-    # exact layer gate, so the two always skip or run together. That makes the skipped-
-    # status matrix-propagation caveat moot: whenever this job should run, test-media
-    # also ran (its success/failure propagate normally), and whenever test-media is
-    # skipped this job's identical gate skips it too — regardless of test-media now
-    # being a matrix.
     if: >-
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
-      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||
        needs.changes.outputs.engine_changed == 'true' ||
@@ -1295,13 +1325,15 @@ jobs:
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
     strategy:
-      # Split the growing media test set across two groups (see test-media): each group
-      # runs half of every module's tests via AR_TEST_GROUPS=2, on its own runner. This
-      # job uses the Metal provider (driver *), so no direct-memory ceiling is needed.
+      # Run the media set in four groups, up to two at a time (max-parallel 2): each group runs
+      # a quarter of every module's tests via AR_TEST_GROUPS=4, on its own runner. Gating the
+      # whole job behind test-mac keeps other GPU-heavy Metal stages off the fleet while this
+      # runs; allowing two groups to run concurrently trades some GPU contention for wall-clock
+      # time. This job uses the Metal provider (driver *), so no direct-memory ceiling is needed.
       fail-fast: false
       max-parallel: 2
       matrix:
-        group: [0, 1]
+        group: [0, 1, 2, 3]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1338,7 +1370,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_TEST_GROUPS=4
 
       - name: Run Music Tests
         run: |
@@ -1347,7 +1379,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_TEST_GROUPS=4
 
       - name: Run Compose Tests
         run: |
@@ -1357,23 +1389,38 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=2
+           -DAR_TEST_GROUPS=4
+
+      # Metal (mac) media surefire reports so auto-resolve can parse Metal-specific test
+      # failures a Linux run would not surface. Named distinctly from the CL jobs, which
+      # are not resolved.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-media-mac-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
   test-media-cl:
-    needs: [changes, build, test-media, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    # Duplicate of test-media-mac exercising the OpenCL backend: every step runs
-    # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal
-    # preferred), so GPU-eligible work routes through CL.
-    # Runs after test-media-mac (success or skipped tolerated; the layer gate
-    # below matches, so both skip together).
+    needs: [changes, build, test-mac, test-media-mac, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, fourth (final) stage: the OpenCL duplicate of test-media-mac. Every step runs
+    # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal preferred), so
+    # GPU-eligible work routes through CL. Runs after the earlier GPU stages so the lane stays
+    # serialised. Gates on ALL earlier GPU stages (test-mac, test-media-mac, test-cl) with
+    # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
+    # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
     if: >-
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
-      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
       (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
+      (needs.test-cl.result == 'success' || needs.test-cl.result == 'skipped') &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||
        needs.changes.outputs.engine_changed == 'true' ||
@@ -1384,16 +1431,16 @@ jobs:
     # native,cl media tests with the native provider on JNI malloc blocks
     # (AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled, matching the other CL jobs) so the
     # 8g direct-memory cap is spent on CL's own reservations rather than shared with
-    # the native provider. Split into 3 groups since CL reserves more than the
-    # 2-group budget. See test-media.
+    # the native provider. Split into eight groups (see test-media); the small per-group
+    # load keeps CL within the 8g cap.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
     strategy:
       fail-fast: false
-      # Cap at 2 even with 3 groups so the job does not monopolize the runners.
+      # Cap at 2 even with eight groups so the job does not monopolize the runners.
       max-parallel: 2
       matrix:
-        group: [0, 1, 2]
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1423,7 +1470,7 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=8
 
       - name: Run Music Tests
         run: |
@@ -1433,7 +1480,7 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=8
 
       - name: Run Compose Tests
         run: |
@@ -1444,10 +1491,16 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=8
 
   analysis:
-    needs: [build, test, test-flowtree, test-media]
+    # Coverage jobs (build, test, test-flowtree, test-media) plus the mac test jobs
+    # (test-mac, test-media-mac) that the all-checks gate also waits on. auto-resolve depends
+    # on analysis, so waiting for the mac jobs here means auto-resolve does not proceed until
+    # the same set of jobs that decide all-checks has reported — the input to analysis is not
+    # narrower than the input to all-checks. The mac jobs upload no coverage; they are here for
+    # ordering only, and `if: !cancelled()` keeps analysis running when any of them fail or skip.
+    needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -1580,7 +1633,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [changes, build, test, test-flowtree, test-media, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
+    needs: [changes, build, test, test-flowtree, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     runs-on: ubuntu-latest
     concurrency:
@@ -1666,8 +1719,10 @@ jobs:
 
       # ── Test failure path ───────────────────────────────────────
       # When the build succeeded, download and parse Surefire reports.
-      # Only linux test results are considered — test-mac failures are
-      # not treated as requiring auto-resolution.
+      # Linux (test, test-media) and Metal mac (test-mac, test-media-mac) results are
+      # considered — a Metal-specific failure a Linux run would not surface is still
+      # auto-resolved. The CL jobs (test-cl, test-media-cl) upload no surefire and remain the
+      # only test results NOT treated as requiring auto-resolution.
 
       - name: Clean stale surefire reports
         if: steps.build-check.outputs.build_failed != 'true'
@@ -1696,22 +1751,23 @@ jobs:
           path: all-crash-reports
           merge-multiple: true
 
-      - name: Filter to linux-only surefire reports
+      - name: Filter to resolvable surefire reports
         if: steps.build-check.outputs.build_failed != 'true'
         run: |
-          # Only keep artifacts from known linux test jobs:
-          #   surefire-utils-group-*, surefire-ml-group-*, surefire-media
-          # Remove any unexpected directories (e.g., if a mac job ever
-          # starts uploading surefire artifacts).
+          # Keep artifacts from the linux test jobs and the Metal mac jobs:
+          #   surefire-utils-group-*, surefire-ml-group-*, surefire-media,
+          #   surefire-mac-group-*, surefire-media-mac-group-*
+          # Remove anything else. The CL jobs (test-cl, test-media-cl) upload no surefire,
+          # so CL results are never parsed here — CL remains the only ignored case.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media)
-                echo "::notice::Keeping linux surefire artifact: $base"
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media|surefire-mac-group-*|surefire-media-mac-group-*)
+                echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
-                echo "::warning::Removing non-linux surefire artifact: $base"
+                echo "::warning::Removing surefire artifact not eligible for auto-resolution: $base"
                 rm -rf "$dir"
                 ;;
             esac
@@ -1752,7 +1808,9 @@ jobs:
 
           TEST_RESULT="${{ needs.test.result }}"
           MEDIA_RESULT="${{ needs.test-media.result }}"
-          echo "::notice::test job result: ${TEST_RESULT}, test-media job result: ${MEDIA_RESULT}"
+          MAC_RESULT="${{ needs.test-mac.result }}"
+          MEDIA_MAC_RESULT="${{ needs.test-media-mac.result }}"
+          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT}"
 
           # Check for genuine failures (job ran but failed without surefire XML)
           if [ "$TEST_RESULT" = "failure" ]; then
@@ -1762,6 +1820,14 @@ jobs:
           if [ "$MEDIA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test-media job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$MAC_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-mac job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$MEDIA_MAC_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-media-mac job failed without producing parseable surefire failures — treating as build failure"
           fi
 
           # If a real failure occurred, route to the build-failure path
