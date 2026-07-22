@@ -33,6 +33,8 @@ import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -98,14 +100,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void realSceneAbReview() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping realSceneAbReview - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		// Mirror MixdownManagerPdslVerificationTest's flag configuration so buildArgsMap can
 		// read the main-filter-up genes. Leave AR_PATTERN_BATCHED unset: the per-note pattern
@@ -253,13 +251,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logSceneChannelConfig() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping logSceneChannelConfig - need the curated library and pattern factory");
-			return;
-		}
 
 		AudioScene<?> scene = loadRealScene(library, patternFactory);
 		log("channelCount=" + scene.getChannelCount());
@@ -279,13 +274,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logAutomationProducerValues() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping logAutomationProducerValues - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableEfx = true;
 		MixdownManager.enablePdslMixdown = true;
@@ -384,13 +376,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logMainFilterUpGene() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping logMainFilterUpGene - need the curated library and pattern factory");
-			return;
-		}
 
 		AudioScene<?> scene = loadRealScene(library, patternFactory);
 		applyGenome(scene, 46);
@@ -432,13 +421,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslMudBisection() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping pdslMudBisection - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -503,13 +489,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_200_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslArmIsolation() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping pdslArmIsolation - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -585,13 +568,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 600_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void logConsolidatedRegionLevels() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping logConsolidatedRegionLevels - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -719,13 +699,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 900_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslEfxArmProbe() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping pdslEfxArmProbe - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -783,13 +760,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 900_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslMainVsEfxQuick() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping pdslMainVsEfxQuick - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -844,13 +818,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_200_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslHpIsolation() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping pdslHpIsolation - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -920,13 +891,10 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_200_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslHpForcedSweep() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping pdslHpForcedSweep - need the curated library and pattern factory");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;

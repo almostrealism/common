@@ -1315,6 +1315,24 @@ public final class Hardware implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns whether at least one initialized {@link DataContext} satisfies all of the given
+	 * {@link ComputeRequirement}s.
+	 *
+	 * <p>Unlike {@link #getDataContext(boolean, boolean, ComputeRequirement...)}, this never falls back
+	 * to the sole context when only one exists — it filters the contexts built from
+	 * {@code AR_HARDWARE_DRIVER} strictly by the requirements. So
+	 * {@code isAvailable(ComputeRequirement.GPU)} returns false on a CPU-only host (a single
+	 * {@link NativeDataContext}) and true only on a host that built a {@link MetalDataContext} or
+	 * {@link CLDataContext}, making it a reliable presence check for a real accelerator.</p>
+	 *
+	 * @param requirements the requirements every candidate context must satisfy
+	 * @return whether any initialized context satisfies all the requirements
+	 */
+	public boolean isAvailable(ComputeRequirement... requirements) {
+		return !filterContexts(contexts, requirements).isEmpty();
+	}
+
+	/**
 	 * Returns the default {@link ComputeContext}.
 	 *
 	 * <p>Equivalent to calling {@link #getComputeContext(ComputeRequirement...)} with no requirements.</p>

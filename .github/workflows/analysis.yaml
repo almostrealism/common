@@ -1325,14 +1325,13 @@ jobs:
        needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
     strategy:
-      # Run the media set in four groups, one at a time (max-parallel 1): each group runs a
-      # quarter of every module's tests via AR_TEST_GROUPS=4, on its own runner. Serialising
-      # the groups, and gating the whole job behind test-mac, keeps only one GPU-heavy Metal
-      # suite on the fleet at a time so the benchmark tick tails do not balloon under
-      # contention. This job uses the Metal provider (driver *), so no direct-memory ceiling
-      # is needed.
+      # Run the media set in four groups, up to two at a time (max-parallel 2): each group runs
+      # a quarter of every module's tests via AR_TEST_GROUPS=4, on its own runner. Gating the
+      # whole job behind test-mac keeps other GPU-heavy Metal stages off the fleet while this
+      # runs; allowing two groups to run concurrently trades some GPU contention for wall-clock
+      # time. This job uses the Metal provider (driver *), so no direct-memory ceiling is needed.
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         group: [0, 1, 2, 3]
     steps:

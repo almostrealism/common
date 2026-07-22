@@ -26,6 +26,8 @@ import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -78,14 +80,10 @@ public class PdslSetupBreakdownTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 900_000)
 	@TestDepth(1)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void setupBreakdown() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping setupBreakdown - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
