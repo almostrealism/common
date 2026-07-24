@@ -17,8 +17,6 @@
 package org.almostrealism.optimize.test;
 
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.model.CompiledModel;
@@ -84,21 +82,23 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		// Compile with backprop enabled
 		CompiledModel compiled = model.compile();
 
-		// Generate synthetic training data - simple linear target
+		// Constant target matrix A[j, k] = (j + k) % 3 == 0 ? 0.5 : -0.3; target = A * input
+		int am = outputSize * inputSize;
+		PackedCollection targetMatrix = c(1.0)
+				.subtract(min(floor(integers(0, am).divide(inputSize))
+						.add(integers(0, am).mod(inputSize)).mod(3), c(1.0)))
+				.multiply(0.8).add(-0.3)
+				.reshape(shape(outputSize, inputSize))
+				.evaluate();
+
 		List<ValueTarget<PackedCollection>> trainingSamples = new ArrayList<>();
 		for (int i = 0; i < 20; i++) {
 			PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
 			input.fill(pos -> random.nextGaussian());
 
-			// Target is a simple transformation of input
 			PackedCollection target = new PackedCollection(shape(batchSize, outputSize));
-			for (int j = 0; j < outputSize; j++) {
-				double val = 0;
-				for (int k = 0; k < inputSize; k++) {
-					val += input.toDouble(k) * ((k + j) % 3 == 0 ? 0.5 : -0.3);
-				}
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(target.range(new TraversalPolicy(1), j)), CollectionFeatures.getInstance().c(val)).get().run();
-			}
+			matmul(cp(targetMatrix), cp(input).reshape(shape(inputSize)))
+					.into(target.traverseEach()).evaluate();
 			trainingSamples.add(ValueTarget.of(input, target));
 		}
 

@@ -196,26 +196,23 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 
 			// Low tone at 50 Hz (below HP cutoff — should be attenuated)
 			// Read each toArray() before the next forward() call to avoid buffer reuse aliasing.
-			PackedCollection lowInput = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (offset + i) / SAMPLE_RATE;
-				return Math.sin(2.0 * Math.PI * 50.0 * t);
-			});
+			PackedCollection lowInput = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 50.0 / SAMPLE_RATE))
+					.into(lowInput.traverseEach()).evaluate();
 			double[] lo = lowInput.toArray(0, SIGNAL_SIZE);
 			double[] loOut = compiled.forward(lowInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
 			// Mid tone at 1 kHz (in passband — should pass through near unity)
-			PackedCollection midInput = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (offset + i) / SAMPLE_RATE;
-				return Math.sin(2.0 * Math.PI * 1000.0 * t);
-			});
+			PackedCollection midInput = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 1000.0 / SAMPLE_RATE))
+					.into(midInput.traverseEach()).evaluate();
 			double[] mi = midInput.toArray(0, SIGNAL_SIZE);
 			double[] miOut = compiled.forward(midInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
 			// High tone at 14 kHz (above LP cutoff — should be attenuated)
-			PackedCollection highInput = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (offset + i) / SAMPLE_RATE;
-				return Math.sin(2.0 * Math.PI * 14000.0 * t);
-			});
+			PackedCollection highInput = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 14000.0 / SAMPLE_RATE))
+					.into(highInput.traverseEach()).evaluate();
 			double[] hi = highInput.toArray(0, SIGNAL_SIZE);
 			double[] hiOut = compiled.forward(highInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
@@ -295,10 +292,9 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
-			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (offset + i) / SAMPLE_RATE;
-				return Math.sin(2.0 * Math.PI * 440.0 * t);
-			});
+			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
+					.into(input.traverseEach()).evaluate();
 
 			double[] mainOut = mainCompiled.forward(input.reshape(mainCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 			double[] chanOut = channelCompiled.forward(input.reshape(channelCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
@@ -361,12 +357,11 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
-			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (offset + i) / SAMPLE_RATE;
-				return 0.33 * Math.sin(2.0 * Math.PI * 440.0 * t)
-						+ 0.33 * Math.sin(2.0 * Math.PI * 2000.0 * t)
-						+ 0.33 * Math.sin(2.0 * Math.PI * 12000.0 * t);
-			});
+			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
+					.add(sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
+					.add(sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
+					.into(input.traverseEach()).evaluate();
 
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
 			double[] mainOut = mainCompiled.forward(input.reshape(mainCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);

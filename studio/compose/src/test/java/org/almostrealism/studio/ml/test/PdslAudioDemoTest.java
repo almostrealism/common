@@ -112,12 +112,11 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
-			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
-				return 0.33 * Math.sin(2.0 * Math.PI * 440.0 * t)
-						+ 0.33 * Math.sin(2.0 * Math.PI * 2000.0 * t)
-						+ 0.33 * Math.sin(2.0 * Math.PI * 12000.0 * t);
-			});
+			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE)).multiply(0.33)
+					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 2000.0 / SAMPLE_RATE)).multiply(0.33))
+					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
+					.into(input.traverseEach()).evaluate();
 			PackedCollection output = lpCompiled.forward(input.reshape(lpCompiled.getInputShape()));
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);
@@ -163,10 +162,11 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
-			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
-				return t < 0.5 ? Math.sin(2.0 * Math.PI * 440.0 * t) : 0.0;
-			});
+			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
+			// 440 Hz tone for the first half second (t < 0.5), silence after
+			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
+					.multiply(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).lessThan(c(0.5 * SAMPLE_RATE)))
+					.into(input.traverseEach()).evaluate();
 			PackedCollection output = delayCompiled.forward(input.reshape(delayCompiled.getInputShape()));
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
@@ -227,10 +227,9 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
-			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
-				return Math.sin(2.0 * Math.PI * 440.0 * t);
-			});
+			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
+					.into(input.traverseEach()).evaluate();
 			PackedCollection output = mixCompiled.forward(input.reshape(mixCompiled.getInputShape()));
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);
