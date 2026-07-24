@@ -41,9 +41,8 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 		// Create a simple sine wave signal
 		PackedCollection signal = new PackedCollection(shape(signalLength));
 		double frequency = 4.0; // 4 cycles over the signal
-		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * frequency * i / signalLength));
-		}
+		sin(integers(0, signalLength).multiply(2.0 * Math.PI * frequency / signalLength))
+				.into(signal.traverseEach()).evaluate();
 
 		// Compute STFT
 		int expectedFrames = TemporalFeatures.computeNumFrames(signalLength, fftSize, hopSize);
@@ -66,9 +65,8 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 		int signalLength = 128;
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * 2.0 * i / signalLength));
-		}
+		sin(integers(0, signalLength).multiply(2.0 * Math.PI * 2.0 / signalLength))
+				.into(signal.traverseEach()).evaluate();
 
 		for (WindowComputation.Type windowType : WindowComputation.Type.values()) {
 			CollectionProducer stftProducer = stft(fftSize, hopSize, windowType, cp(signal));
@@ -109,9 +107,8 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 
 		// Create a non-zero signal
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, 1.0 + Math.sin(2.0 * Math.PI * i / 32.0));
-		}
+		sin(integers(0, signalLength).multiply(2.0 * Math.PI / 32.0)).add(1.0)
+				.into(signal.traverseEach()).evaluate();
 
 		CollectionProducer stftProducer = stft(fftSize, hopSize, cp(signal));
 		PackedCollection spectrogram = stftProducer.evaluate();
@@ -169,9 +166,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 		int signalLength = 128;
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.random());
-		}
+		rand(shape(signalLength)).into(signal.traverseEach()).evaluate();
 
 		// Default uses Hann window - just verify it produces valid output
 		CollectionProducer stftProducer = stft(fftSize, hopSize, cp(signal));
@@ -193,9 +188,8 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 		int signalLength = 512;
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * i / 64.0));
-		}
+		sin(integers(0, signalLength).multiply(2.0 * Math.PI / 64.0))
+				.into(signal.traverseEach()).evaluate();
 
 		int expectedFrames = TemporalFeatures.computeNumFrames(signalLength, fftSize, hopSize);
 		CollectionProducer stftProducer = stft(fftSize, hopSize, cp(signal));

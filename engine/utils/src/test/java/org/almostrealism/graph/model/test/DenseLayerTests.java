@@ -47,13 +47,10 @@ public class DenseLayerTests extends TestSuiteBase implements ModelTestFeatures 
 		input = input.reshape(shape);
 
 		PackedCollection result = new PackedCollection(shape);
-
-		for (int n = 0; n < shape.length(0); n++) {
-			result.range(shape(3), n * 3).setMem(
-					coeff[0] * input.valueAt(n, 0),
-					coeff[1] * input.valueAt(n, 1),
-					coeff[2] * input.valueAt(n, 2));
-		}
+		int n = result.getMemLength();
+		c(coeff).valueAt(integers(0, n).mod(3))
+				.multiply(cp(input).reshape(shape(n)))
+				.into(result.traverseEach()).evaluate();
 
 		return result;
 	}

@@ -41,7 +41,9 @@ public class MemoryAllocationTest extends TestSuiteBase {
 		while (allocated < limit) {
 			PackedCollection b = new PackedCollection(len);
 			allocated += size;
-			for (int i = 0; i < 10; i++) b.setMem(Math.random() * len, Math.random());
+			// Touch the freshly allocated buffer so it is committed before destroy.
+			// The value is never read back or asserted; a constant fill suffices.
+			b.fill(1.0);
 
 			b.destroy();
 			if (allocated % (32L * gb) == 0) {

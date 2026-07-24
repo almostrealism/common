@@ -43,9 +43,8 @@ public class DynamicCollectionProducerTest extends TestSuiteBase {
 		DynamicCollectionProducer producer =
 				new DynamicCollectionProducer(shape, args -> {
 					PackedCollection result = new PackedCollection(shape);
-					for (int i = 0; i < result.getMemLength(); i++) {
-						result.setMem(i, i + 1.0);
-					}
+					int n = result.getMemLength();
+					integers(1, n + 1).into(result.traverseEach()).evaluate();
 					return result;
 				});
 
@@ -163,9 +162,7 @@ public class DynamicCollectionProducerTest extends TestSuiteBase {
 							PackedCollection input = inputs[0];
 							PackedCollection result = new PackedCollection(shape);
 							// Double each value from the input
-							for (int i = 0; i < input.getMemLength(); i++) {
-								result.setMem(i, input.toDouble(i) * 2.0);
-							}
+							a(cp(result), cp(input).multiply(2.0)).get().run();
 							return result;
 						},
 						false, true, inputProducer);

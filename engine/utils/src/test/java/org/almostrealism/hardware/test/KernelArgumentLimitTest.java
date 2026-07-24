@@ -61,7 +61,7 @@ public class KernelArgumentLimitTest extends TestSuiteBase {
 	 */
 	private PackedCollection single(double value) {
 		PackedCollection c = new PackedCollection(1);
-		c.setMem(new double[] { value });
+		c.fill(value);
 		return c;
 	}
 

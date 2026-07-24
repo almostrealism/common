@@ -63,10 +63,11 @@ public class SyntheticActivationTrainingTest extends TestSuiteBase implements Mo
 	private final UnaryOperator<PackedCollection> nonLinearFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					double v = coeff[i % coeff.length] * in.valueAt(i);
-					out.setMem(i, Math.max(0, v));  // ReLU-like
-				}
+				int n = in.getMemLength();
+				// ReLU-like: max(0, coeff[i % len] * in[i]) as a single kernel
+				max(c(coeff).valueAt(integers(0, n).mod(coeff.length))
+						.multiply(cp(in).reshape(shape(n))), c(0.0))
+						.into(out.traverseEach()).evaluate();
 				return out;
 			};
 

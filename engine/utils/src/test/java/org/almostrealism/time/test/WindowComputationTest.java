@@ -430,9 +430,8 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Create a sine wave signal
 		PackedCollection signal = new PackedCollection(size);
-		for (int i = 0; i < size; i++) {
-			signal.setMem(i, Math.sin(2.0 * Math.PI * frequency * i / size));
-		}
+		sin(integers(0, size).multiply(2.0 * Math.PI * frequency / size))
+				.into(signal.traverseEach()).evaluate();
 
 		// Apply Hann window
 		PackedCollection windowed = applyWindow(cp(signal), WindowComputation.Type.HANN).get().evaluate();

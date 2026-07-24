@@ -73,10 +73,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	private final UnaryOperator<PackedCollection> linearFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					int coeffIdx = i % coeff.length;
-					out.setMem(i, coeff[coeffIdx] * in.valueAt(i));
-				}
+				int n = in.getMemLength();
+				c(coeff).valueAt(integers(0, n).mod(coeff.length))
+						.multiply(cp(in).reshape(shape(n)))
+						.into(out.traverseEach()).evaluate();
 				return out;
 			};
 
@@ -85,12 +85,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	 */
 	private final UnaryOperator<PackedCollection> weightedSumFunc =
 			in -> {
-				double sum = 0.0;
-				for (int i = 0; i < in.getMemLength(); i++) {
-					int coeffIdx = i % coeff.length;
-					sum += coeff[coeffIdx] * in.valueAt(i);
-				}
-				return PackedCollection.of(sum);
+				int n = in.getMemLength();
+				return c(coeff).valueAt(integers(0, n).mod(coeff.length))
+						.multiply(cp(in).reshape(shape(n)))
+						.sum().evaluate();
 			};
 
 	/**
@@ -293,12 +291,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 			input = input.reshape(inShape);
 
 			PackedCollection result = new PackedCollection(inShape);
-			for (int n = 0; n < inShape.length(0); n++) {
-				result.range(shape(size), n * size).setMem(
-						batchCoeff[0] * input.valueAt(n, 0),
-						batchCoeff[1] * input.valueAt(n, 1),
-						batchCoeff[2] * input.valueAt(n, 2));
-			}
+			int rn = result.getMemLength();
+			c(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.length))
+					.multiply(cp(input).reshape(shape(rn)))
+					.into(result.traverseEach()).evaluate();
 			return result;
 		};
 

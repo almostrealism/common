@@ -885,7 +885,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 					data[f * bins + b] = centers[cluster][b] + rng.nextGaussian() * 0.3;
 				}
 			}
-			tensors[i].setMem(0, data, 0, data.length);
+			a(cp(tensors[i]), c(data).reshape(tensors[i].getShape())).get().run();
 		}
 
 		log("Created " + count + " clustered tensors (" + clusters +

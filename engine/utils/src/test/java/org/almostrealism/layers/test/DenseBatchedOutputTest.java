@@ -282,12 +282,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 
 		// Create a (4, 3) matrix where we know exactly what each element is
 		// data[i][j] = i * 10 + j
+		// original[i, j] = i * 10 + j, from the flattened index k = i * 3 + j
 		PackedCollection original = new PackedCollection(shape(4, 3));
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < 3; j++) {
-				original.setMem(i * 3 + j, i * 10 + j);
-			}
-		}
+		int on = 4 * 3;
+		floor(integers(0, on).divide(3)).multiply(10.0).add(integers(0, on).mod(3))
+				.into(original.traverseEach()).evaluate();
 
 		log("Original (4, 3):");
 		log("  Row 0: [0, 1, 2]");

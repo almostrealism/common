@@ -39,7 +39,8 @@ public interface FirFilterTestFeatures extends TestFeatures {
 
 	/**
 	 * Creates a {@link PackedCollection} signal populated by the given generator function.
-	 * Uses bulk {@code setMem(double[])} to avoid per-element mutation in a loop.
+	 * The generated values are staged in a host array and assigned through a producer
+	 * so no computed value is uploaded via {@code setMem}/{@code fill}.
 	 *
 	 * @param size number of samples
 	 * @param generator function from sample index to sample value
@@ -51,7 +52,7 @@ public interface FirFilterTestFeatures extends TestFeatures {
 			data[i] = generator.applyAsDouble(i);
 		}
 		PackedCollection signal = new PackedCollection(size);
-		signal.setMem(data);
+		a(cp(signal), c(data)).get().run();
 		return signal;
 	}
 
