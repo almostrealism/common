@@ -62,11 +62,10 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	private final UnaryOperator<PackedCollection> linearFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());
-				double[] data = new double[in.getMemLength()];
-				for (int i = 0; i < data.length; i++) {
-					data[i] = coeff[i % coeff.length] * in.valueAt(i);
-				}
-				a(cp(out), c(data).reshape(out.getShape())).get().run();
+				int n = in.getMemLength();
+				c(coeff).valueAt(integers(0, n).mod(coeff.length))
+						.multiply(cp(in).reshape(shape(n)))
+						.into(out.traverseEach()).evaluate();
 				return out;
 			};
 
@@ -195,11 +194,8 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> {
 					PackedCollection out = new PackedCollection(shape(outputSize));
-					double[] outData = new double[outputSize];
-					for (int j = 0; j < outputSize; j++) {
-						outData[j] = extCoeff[j] * input.valueAt(j % inputSize);
-					}
-					a(cp(out), c(outData)).get().run();
+					c(extCoeff).multiply(cp(input).valueAt(integers(0, outputSize).mod(inputSize)))
+							.into(out.traverseEach()).evaluate();
 					return ValueTarget.of(input, out);
 				})
 				.collect(Collectors.toList()));

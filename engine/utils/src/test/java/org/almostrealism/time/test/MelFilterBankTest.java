@@ -17,8 +17,6 @@
 package org.almostrealism.time.test;
 
 import org.almostrealism.collect.CollectionProducer;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestFeatures;
@@ -163,9 +161,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		// Create spectrum with a single peak
 		PackedCollection powerSpectrum = new PackedCollection(shape(numFreqBins));
 		int peakBin = 50;  // Around 1560 Hz at 16kHz sample rate
-		for (int i = 0; i < numFreqBins; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(powerSpectrum.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i == peakBin) ? 100.0 : 0.0)).get().run();
-		}
+		powerSpectrum.range(shape(1), peakBin).fill(100.0);
 
 		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
 		PackedCollection melEnergies = melBank.evaluate();
@@ -194,9 +190,8 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 
 		// Create synthetic mel energies
 		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(melEnergies.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(1.0 + 0.5 * Math.cos(2.0 * Math.PI * i / numMelBands))).get().run();
-		}
+		cos(integers(0, numMelBands).multiply(2.0 * Math.PI / numMelBands)).multiply(0.5).add(1.0)
+				.into(melEnergies.traverseEach()).evaluate();
 
 		PackedCollection mfccs = mfcc(numMfccCoeffs, melEnergies);
 

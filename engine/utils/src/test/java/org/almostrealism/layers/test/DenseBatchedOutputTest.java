@@ -17,7 +17,6 @@
 package org.almostrealism.layers.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
@@ -283,12 +282,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 
 		// Create a (4, 3) matrix where we know exactly what each element is
 		// data[i][j] = i * 10 + j
+		// original[i, j] = i * 10 + j, from the flattened index k = i * 3 + j
 		PackedCollection original = new PackedCollection(shape(4, 3));
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < 3; j++) {
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(original.range(new TraversalPolicy(1), i * 3 + j)), CollectionFeatures.getInstance().c(i * 10 + j)).get().run();
-			}
-		}
+		int on = 4 * 3;
+		floor(integers(0, on).divide(3)).multiply(10.0).add(integers(0, on).mod(3))
+				.into(original.traverseEach()).evaluate();
 
 		log("Original (4, 3):");
 		log("  Row 0: [0, 1, 2]");

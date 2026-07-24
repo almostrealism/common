@@ -17,8 +17,6 @@
 package org.almostrealism.time.test;
 
 import org.almostrealism.collect.CollectionProducer;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestFeatures;
@@ -143,9 +141,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		int kernelLength = 5;
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i + 1.0)).get().run();
-		}
+		integers(1, signalLength + 1).into(signal.traverseEach()).evaluate();
 
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
 		// All zeros by default
@@ -263,15 +259,14 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 
 		// Generate random-ish signal
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * i / 128.0))).get().run();
-		}
+		sin(integers(0, signalLength).multiply(2.0 * Math.PI / 128.0))
+				.into(signal.traverseEach()).evaluate();
 
 		// Generate impulse response kernel
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
-		for (int i = 0; i < kernelLength; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(kernel.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.exp(-i / 10.0) * Math.cos(Math.PI * i / 8.0))).get().run();
-		}
+		exp(integers(0, kernelLength).multiply(-1.0 / 10.0))
+				.multiply(cos(integers(0, kernelLength).multiply(Math.PI / 8.0)))
+				.into(kernel.traverseEach()).evaluate();
 
 		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
 		PackedCollection result = fftConv.evaluate();

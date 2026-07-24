@@ -69,11 +69,10 @@ public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTe
 	private final UnaryOperator<PackedCollection> linearFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());
-				double[] data = new double[in.getMemLength()];
-				for (int i = 0; i < data.length; i++) {
-					data[i] = coeff[i % coeff.length] * in.valueAt(i);
-				}
-				a(cp(out), c(data).reshape(out.getShape())).get().run();
+				int n = in.getMemLength();
+				c(coeff).valueAt(integers(0, n).mod(coeff.length))
+						.multiply(cp(in).reshape(shape(n)))
+						.into(out.traverseEach()).evaluate();
 				return out;
 			};
 

@@ -41,10 +41,9 @@ public class MemoryAllocationTest extends TestSuiteBase {
 		while (allocated < limit) {
 			PackedCollection b = new PackedCollection(len);
 			allocated += size;
-			// Touch the freshly allocated buffer so it is committed before destroy. A
-			// literal write is sufficient here (the value is never read back or asserted)
-			// and avoids compiling a fresh kernel on every allocation in this tight loop.
-			b.setMem(0, 1.0);
+			// Touch the freshly allocated buffer so it is committed before destroy.
+			// The value is never read back or asserted; a constant fill suffices.
+			b.fill(1.0);
 
 			b.destroy();
 			if (allocated % (32L * gb) == 0) {

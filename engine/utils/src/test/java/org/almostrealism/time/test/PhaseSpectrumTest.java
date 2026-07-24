@@ -17,8 +17,6 @@
 package org.almostrealism.time.test;
 
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
@@ -48,14 +46,12 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 
 		// Simulate wrapped phase: linearly increasing but wrapping at +/- PI
 		double phaseIncrement = Math.PI / 3;
-		for (int i = 0; i < size; i++) {
-			double unwrappedPhase = i * phaseIncrement;
-			// Wrap to [-PI, PI]
-			double wrapped = unwrappedPhase;
-			while (wrapped > Math.PI) wrapped -= 2 * Math.PI;
-			while (wrapped < -Math.PI) wrapped += 2 * Math.PI;
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(wrappedPhase.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(wrapped)).get().run();
-		}
+		double twoPi = 2.0 * Math.PI;
+		// Wrap the linear phase ramp to its principal range on-device:
+		// wrapped = x - 2*PI*floor(x/(2*PI) + 0.5)
+		integers(0, size).multiply(phaseIncrement).subtract(
+				floor(integers(0, size).multiply(phaseIncrement / twoPi).add(0.5)).multiply(twoPi))
+				.into(wrappedPhase.traverseEach()).evaluate();
 
 		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
@@ -76,9 +72,8 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		PackedCollection wrappedPhase = new PackedCollection(shape(size));
 
 		// Phase values within [-PI, PI] with small differences (no wrapping needed)
-		for (int i = 0; i < size; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(wrappedPhase.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(-Math.PI / 2 + i * 0.1)).get().run();
-		}
+		integers(0, size).multiply(0.1).add(-Math.PI / 2)
+				.into(wrappedPhase.traverseEach()).evaluate();
 
 		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
@@ -99,13 +94,12 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 
 		// Decreasing phase that wraps from -PI to +PI
 		double phaseIncrement = -Math.PI / 3;
-		for (int i = 0; i < size; i++) {
-			double unwrappedPhase = i * phaseIncrement;
-			double wrapped = unwrappedPhase;
-			while (wrapped > Math.PI) wrapped -= 2 * Math.PI;
-			while (wrapped < -Math.PI) wrapped += 2 * Math.PI;
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(wrappedPhase.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(wrapped)).get().run();
-		}
+		double twoPi = 2.0 * Math.PI;
+		// Wrap the linear phase ramp to its principal range on-device:
+		// wrapped = x - 2*PI*floor(x/(2*PI) + 0.5)
+		integers(0, size).multiply(phaseIncrement).subtract(
+				floor(integers(0, size).multiply(phaseIncrement / twoPi).add(0.5)).multiply(twoPi))
+				.into(wrappedPhase.traverseEach()).evaluate();
 
 		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
@@ -193,9 +187,8 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		int numMfccCoeffs = 13;
 
 		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(melEnergies.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(1.0 + 0.1 * i)).get().run();
-		}
+		integers(0, numMelBands).multiply(0.1).add(1.0)
+				.into(melEnergies.traverseEach()).evaluate();
 
 		PackedCollection mfccs = mfcc(numMfccCoeffs, melEnergies);
 		assertEquals("MFCC output should have correct size", numMfccCoeffs, mfccs.getShape().getTotalSize());
@@ -237,9 +230,8 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 
 		// Create mel energies with spectral variation
 		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(melEnergies.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(1.0 + 0.5 * Math.cos(2.0 * Math.PI * i / numMelBands))).get().run();
-		}
+		cos(integers(0, numMelBands).multiply(2.0 * Math.PI / numMelBands)).multiply(0.5).add(1.0)
+				.into(melEnergies.traverseEach()).evaluate();
 
 		PackedCollection mfccs = mfcc(numMfccCoeffs, melEnergies);
 
@@ -279,9 +271,8 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		int numMfccCoeffs = 10;  // Same as mel bands
 
 		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(melEnergies.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(1.0 + i * 0.1)).get().run();
-		}
+		integers(0, numMelBands).multiply(0.1).add(1.0)
+				.into(melEnergies.traverseEach()).evaluate();
 
 		PackedCollection mfccs = mfcc(numMfccCoeffs, melEnergies);
 		assertEquals("MFCC output should have correct size", numMfccCoeffs, mfccs.getShape().getTotalSize());

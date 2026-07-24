@@ -125,13 +125,11 @@ public class MatrixMathTests extends TestSuiteBase {
 		c.traverse(1).print();
 		log("--");
 
-		PackedCollection reference = new PackedCollection(shape(n, p));
-		multiplyMatrices(n, m, p, a, b, reference);
-		reference.traverse().print();
+		double[] reference = multiplyMatrices(n, m, p, a, b);
 
 		for (int i = 0; i < n; i++) {
 			for (int j = 0; j < p; j++) {
-				assertEquals(reference.valueAt(i, j), c.valueAt(i, j));
+				assertEquals(reference[i * p + j], c.valueAt(i, j));
 			}
 		}
 	}
@@ -165,12 +163,11 @@ public class MatrixMathTests extends TestSuiteBase {
 
 		print(n, p, c);
 
-		PackedCollection reference = new PackedCollection(shape(n, p));
-		multiplyMatrices(n, m, p, a, b, reference);
+		double[] reference = multiplyMatrices(n, m, p, a, b);
 
 		for (int i = 0; i < n; i++) {
 			for (int j = 0; j < p; j++) {
-				assertEquals(reference.valueAt(i, j), c.valueAt(i, j));
+				assertEquals(reference[i * p + j], c.valueAt(i, j));
 			}
 		}
 	}
@@ -178,10 +175,9 @@ public class MatrixMathTests extends TestSuiteBase {
 	/**
 	 * Multiplies two matrices using standard algorithm.
 	 */
-	private void multiplyMatrices(int n, int m, int p,
-								  PackedCollection matrix1,
-								  PackedCollection matrix2,
-								  PackedCollection destination) {
+	private double[] multiplyMatrices(int n, int m, int p,
+									  PackedCollection matrix1,
+									  PackedCollection matrix2) {
 		int rows1 = n;
 		int cols1 = m;
 		int cols2 = p;
@@ -196,7 +192,7 @@ public class MatrixMathTests extends TestSuiteBase {
 			}
 		}
 
-		a(cp(destination), c(result).reshape(destination.getShape())).get().run();
+		return result;
 	}
 
 	/**

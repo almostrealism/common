@@ -17,8 +17,6 @@
 package org.almostrealism.graph.model.test;
 
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.model.Model;
@@ -65,10 +63,11 @@ public class SyntheticActivationTrainingTest extends TestSuiteBase implements Mo
 	private final UnaryOperator<PackedCollection> nonLinearFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					double v = coeff[i % coeff.length] * in.valueAt(i);
-					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(out.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.max(0, v))).get().run();  // ReLU-like
-				}
+				int n = in.getMemLength();
+				// ReLU-like: max(0, coeff[i % len] * in[i]) as a single kernel
+				max(c(coeff).valueAt(integers(0, n).mod(coeff.length))
+						.multiply(cp(in).reshape(shape(n))), c(0.0))
+						.into(out.traverseEach()).evaluate();
 				return out;
 			};
 
