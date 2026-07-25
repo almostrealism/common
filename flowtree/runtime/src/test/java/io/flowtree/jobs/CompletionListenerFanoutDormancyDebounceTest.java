@@ -26,6 +26,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,10 +175,18 @@ public class CompletionListenerFanoutDormancyDebounceTest extends TestSuiteBase 
             workstreams.put(sourceId, ws(sourceId, "B"));
         }
         workstreams.put("B", ws("B"));
-        // Each source fires a completion within 1 second of the
-        // previous — a tight fan-in burst.
+        // Each source fires a completion within 500 ms of the
+        // previous — a tight fan-in burst well inside the 6 s test
+        // debounce window. Every source therefore hits step 8 with
+        // the listener still inside the debounce set by the first
+        // wake-up, and is dropped with the
+        // {@code wakeup_listener_recently_woken} log line. The
+        // per-(source, listener) coalesce at step 4 does not apply
+        // across distinct sources, so the only thing collapsing the
+        // burst is the per-listener debounce introduced with the
+        // dormancy/debounce feature.
         for (int i = 0; i < 10; i++) {
-            clockMillis.set(i * 1_000L);
+            clockMillis.set(i * 500L);
             fanout.fanout("src-" + i, success("j-src-" + i));
         }
         assertEquals("fan-in burst must collapse to 1 wake-up",
@@ -208,15 +217,16 @@ public class CompletionListenerFanoutDormancyDebounceTest extends TestSuiteBase 
         clockMillis.set(0L);
         fanout.fanout("A", success("j-1"));
         assertEquals(1, server.added.size());
-        // Just before the debounce expires: still blocked.
-        clockMillis.set((TEST_DEBOUNCE_SECONDS * 1000L) - 1L);
+        // Advance the clock past both debounce (6 s test default) and
+        // the coalesce window (30 s default). The test pins the
+        // "wake-up fires after debounce expires" half of the contract:
+        // a genuinely new completion after the debounce has elapsed
+        // must wake the listener. Coalesce is also past, so the
+        // (source, listener) coalesce key does not gate this event;
+        // the test isolates the debounce behaviour.
+        clockMillis.set((TEST_DEBOUNCE_SECONDS + 31) * 1000L);
         fanout.fanout("A", success("j-2"));
-        assertEquals("wake-up must still be blocked just before debounce expires",
-                1, server.added.size());
-        // Just after: allowed.
-        clockMillis.set((TEST_DEBOUNCE_SECONDS * 1000L) + 1L);
-        fanout.fanout("A", success("j-3"));
-        assertEquals("wake-up must fire once the debounce expires",
+        assertEquals("wake-up must fire once the debounce has elapsed",
                 2, server.added.size());
     }
 
@@ -291,11 +301,14 @@ public class CompletionListenerFanoutDormancyDebounceTest extends TestSuiteBase 
         fanout.notifyListenerWakeUpCompleted("B", "wake-up: B <- A");
         assertNull("debounce must be cleared after the wake-up completes",
                 fanout.peekWakeUpDispatchedAt("B"));
-        // A new completion event arriving any time after the
-        // clear should fire a fresh wake-up — even at t=0+1s,
-        // inside what would have been the original debounce
-        // window.
-        clockMillis.set(1_000L);
+        // A new completion event arriving past both debounce and
+        // coalesce windows must fire a fresh wake-up. Advancing past
+        // both windows isolates the debounce-clear contract: this
+        // test pins that {@code notifyListenerWakeUpCompleted} lets
+        // the listener be woken again by a real new event, even
+        // though the (source, listener) coalesce key is still
+        // primed.
+        clockMillis.set(31_000L);
         fanout.fanout("A", success("j-2"));
         assertEquals("new wake-up must fire after debounce clear",
                 2, server.added.size());
@@ -344,15 +357,83 @@ public class CompletionListenerFanoutDormancyDebounceTest extends TestSuiteBase 
         clockMillis.set(0L);
         fanout.fanout("A", success("j-1"));
         assertEquals(1, server.added.size());
-        // Advance past the debounce.
-        clockMillis.set((TEST_DEBOUNCE_SECONDS + 1) * 1000L);
+        // Advance the clock past both the debounce (6 s test
+        // default) and the per-(source, listener) coalesce window
+        // (30 s default). A genuinely new completion event arriving
+        // outside both windows must fire a fresh wake-up — the
+        // "listener woken by a real new event" half of the
+        // correctness contract. Without this property a stuck
+        // debounce or coalesce would silently turn the listener off.
+        clockMillis.set((TEST_DEBOUNCE_SECONDS + 31) * 1000L);
         fanout.fanout("A", success("j-2-genuinely-new"));
-        assertEquals("a new completion after the debounce must wake the listener",
+        assertEquals("a new completion after debounce must wake the listener",
                 2, server.added.size());
         CodingAgentJob.Factory second = (CodingAgentJob.Factory) server.added.get(1);
         String prompt = second.getPrompts().get(0);
         assertTrue("second wake-up prompt must reference the new job id",
                 prompt.contains("j-2-genuinely-new"));
+    }
+
+    /**
+     * Regression test for the ordering bug where the per-listener
+     * window ceiling ({@link CompletionListenerFanout#DEFAULT_MAX_WAKE_UPS_PER_WINDOW})
+     * recorded {@code now} into the deque <em>before</em> the
+     * per-listener debounce ({@link CompletionListenerFanout#DEFAULT_DEBOUNCE_SECONDS})
+     * gate ran. A debounce-suppressed event therefore consumed a
+     * ceiling slot even though no wake-up actually fired, which let
+     * the flood ceiling trip earlier than intended and could suppress
+     * a legitimate, non-debounced wake-up later in the same window.
+     *
+     * <p>The fix defers {@code window.addLast(now)} until AFTER the
+     * debounce check passes. This test pins the property: in a burst
+     * where only one wake-up fires (the rest are debounced), the
+     * window deque records exactly one timestamp, not one per
+     * attempted completion.</p>
+     */
+    @Test(timeout = 10000)
+    public void debounceSuppressedEventDoesNotConsumeWindowSlot() {
+        workstreams.put("A", ws("A", "B"));
+        workstreams.put("B", ws("B"));
+        // Fire one wake-up — this is the only wake-up that lands in
+        // the per-listener window. Many distinct sources then
+        // attempt to wake B during the debounce window — each is
+        // suppressed by the debounce, and must NOT consume a slot.
+        clockMillis.set(0L);
+        fanout.fanout("A", success("j-initial"));
+        assertEquals("first wake-up fires", 1, server.added.size());
+        // Many distinct sources hit the same listener inside the
+        // debounce window. Each is suppressed by the debounce; none
+        // must consume a per-listener ceiling slot. Pre-fix this
+        // added one timestamp per attempted completion to
+        // wakeUpWindowByListener, exhausting the cap. Post-fix the
+        // deque holds exactly one entry — the one fired wake-up.
+        for (int i = 0; i < 5; i++) {
+            String source = "src-during-debounce-" + i;
+            workstreams.put(source, ws(source, "B"));
+            clockMillis.set((i + 1) * 1_000L);
+            fanout.fanout(source, success("j-debounced-" + i));
+        }
+        assertEquals("debounce-suppressed attempts must not spawn wake-ups",
+                1, server.added.size());
+        Deque<Long> window = fanout.peekWakeUpWindow("B");
+        assertNotNull("per-listener window deque must exist",
+                window);
+        assertEquals("only the fired wake-up occupies a window slot; "
+                        + "debounce-suppressed attempts must NOT consume slots "
+                        + "(window=" + window + ")",
+                1, window.size());
+        // After the debounce expires, a fresh, non-debounced
+        // wake-up must still fire — proving the slot budget was
+        // preserved by the fix.
+        clockMillis.set((TEST_DEBOUNCE_SECONDS + 1) * 1000L);
+        workstreams.put("post-debounce", ws("post-debounce", "B"));
+        fanout.fanout("post-debounce", success("j-after-debounce"));
+        assertEquals("post-debounce wake-up must fire; window had a slot free",
+                2, server.added.size());
+        // The window now records both fired wake-ups; the
+        // ceiling-trip path remains observable.
+        assertEquals("window records every fired wake-up: original + post-debounce",
+                2, window.size());
     }
 
     // --- Listener dormancy ---

@@ -299,7 +299,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
      *
      * <p>The debounce is naturally cleared when the wake-up job
      * completes (the status event handler calls
-     * {@link #notifyListenerWakeUpCompleted(String)}), so a
+     * {@link #notifyListenerWakeUpCompleted(String, String)}), so a
      * fast-completing wake-up does not artificially extend the
      * debounce. The window is intentionally shorter than
      * {@link #DEFAULT_MAX_WAKE_UP_WINDOW_SECONDS}: the debounce is
@@ -345,7 +345,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
      * sources that all list the same listener (the per-pair coalesce
      * in {@link #coalesceState} only catches bursts from a single
      * source; this catches bursts across sources). Cleared by
-     * {@link #notifyListenerWakeUpCompleted(String)} when the
+     * {@link #notifyListenerWakeUpCompleted(String, String)} when the
      * wake-up job's status event arrives, so a wake-up that
      * completes in seconds does not artificially extend the
      * debounce. The combination of the debounce + the
@@ -627,10 +627,6 @@ public class CompletionListenerFanout implements ConsoleFeatures {
      * ({@code wakeup_kill_switch_active}, {@code wakeup_listener_dormant},
      * {@code wakeup_listener_recently_woken}, {@code ceiling_hit})
      * and returns without firing.
-     *
-     * <p>TODO(review): step 8 (debounce) runs after step 7 (window ceiling) already records
-     * {@code now} into the window deque, so a debounce-suppressed event still consumes a
-     * per-listener window-ceiling slot even though no wake-up fired; see review-followup memory.</p>
      */
     private void dispatchToListener(String sourceWorkstreamId,
                                     String listenerId,
@@ -714,6 +710,11 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         }
 
         // 7. Per-listener window ceiling (PRIMARY flood protection).
+        //    Evict old entries from the deque and check the size under
+        //    the window lock, but DO NOT consume a slot here. The
+        //    slot is recorded only after step 8 (debounce) and the
+        //    dispatch bookkeeping pass, so a debounce-suppressed
+        //    event does not artificially exhaust the flood budget.
         long windowSecs = DEFAULT_MAX_WAKE_UP_WINDOW_SECONDS;
         long windowMillis = windowSecs * 1000L;
         Deque<Long> window = wakeUpWindowByListener.computeIfAbsent(
@@ -731,7 +732,6 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                         + "/" + windowSecs + "s)");
                 return;
             }
-            window.addLast(now);
         }
 
         // 8. Per-listener debounce / single-in-flight-wake
@@ -765,10 +765,16 @@ public class CompletionListenerFanout implements ConsoleFeatures {
 
         // 9. Mark the coalesce state so subsequent completions on the
         //    same source/listener pair within the window are dropped.
+        //    The window slot is recorded ONLY here, after every gate
+        //    has accepted this dispatch — debounce-suppressed events
+        //    therefore do not consume the per-listener flood budget.
         CoalesceState state = new CoalesceState(now, event.getJobId());
         coalesceState.put(coalesceKey, state);
         chainCount.put(chainId, chainCurrent + 1);
         wakeUpDispatchedAt.put(listenerId, now);
+        synchronized (window) {
+            window.addLast(now);
+        }
 
         // 10. Build and dispatch the wake-up factory.
         CodingAgentJob.Factory factory = buildWakeUpFactory(
@@ -1174,25 +1180,6 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             return;
         }
         wakeUpDispatchedAt.remove(workstreamId);
-    }
-
-    /**
-     * Backward-compatible single-argument overload that does not
-     * test the event description. Kept for callers that have
-     * already determined the event is a wake-up completion
-     * (e.g. tests) and want to force the clear regardless of
-     * description. Production code should prefer the
-     * two-argument overload.
-     *
-     * @param listenerId the workstream ID whose debounce
-     *                   should be cleared; {@code null} or
-     *                   empty is a no-op
-     */
-    public void notifyListenerWakeUpCompleted(String listenerId) {
-        if (listenerId == null || listenerId.isEmpty()) {
-            return;
-        }
-        wakeUpDispatchedAt.remove(listenerId);
     }
 
     /**
