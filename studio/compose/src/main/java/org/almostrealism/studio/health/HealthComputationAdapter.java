@@ -116,7 +116,9 @@ public abstract class HealthComputationAdapter implements AudioHealthComputation
 		measures.put(new ChannelInfo(ChannelInfo.Voicing.WET, ChannelInfo.StereoChannel.RIGHT), new AudioMeter());
 		configureMeasures(measures);
 
-		stems = IntStream.range(0, channels).mapToObj(i ->
+		// Stems [0, channels) carry the per-channel dry bus; stem [channels] the efx
+		// bus and stem [channels + 1] the reverb tail (silent where a path lacks them).
+		stems = IntStream.range(0, channels + 2).mapToObj(i ->
 				new WaveOutput(() ->
 						Optional.ofNullable(stemFileSupplier).map(s -> {
 							File f = new File(stemFileSupplier.apply(i));

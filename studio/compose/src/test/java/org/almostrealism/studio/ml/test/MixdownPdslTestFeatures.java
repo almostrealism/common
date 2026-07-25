@@ -116,6 +116,8 @@ interface MixdownPdslTestFeatures extends CellFeatures {
 		neutralEfx.put("delay_layers", channels);
 		neutralEfx.put("bus_send", busSend);
 		neutralEfx.put("bus_delay_samples", busDelays);
+		// Aliased _prev keeps the bus delay trajectory flat (whole-sample reads).
+		neutralEfx.put("bus_delay_samples_prev", busDelays);
 		neutralEfx.put("bus_transmission", busTransmission);
 		neutralEfx.put("bus_wet_out", busWetOut);
 		neutralEfx.put("bus_buffers", new PackedCollection(channels * signalSize));
@@ -133,6 +135,12 @@ interface MixdownPdslTestFeatures extends CellFeatures {
 		neutralEfx.put("main_arm_gain", 1.0);
 		neutralEfx.put("efx_arm_gain", 1.0);
 		neutralEfx.put("reverb_arm_gain", 1.0);
+		neutralEfx.put("stem_channels", new PackedCollection(
+				new TraversalPolicy(channels, signalSize)));
+		neutralEfx.put("stem_efx", new PackedCollection(
+				new TraversalPolicy(1, signalSize)));
+		neutralEfx.put("stem_reverb", new PackedCollection(
+				new TraversalPolicy(1, signalSize)));
 		neutralEfx.put("reverb_network_gain", 0.1);
 		neutralEfx.put("reverb_tap_mean", 1.0 / channels);
 		return neutralEfx;

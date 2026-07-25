@@ -147,6 +147,37 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	}
 
 	/**
+	 * Builds a signal-capture block: the incoming signal is copied into the given slot
+	 * collection at this stage's position in the ops order, then passed through
+	 * unchanged. This is the observability primitive behind per-channel and bus stem
+	 * outputs — a consumer (e.g. the realtime runner) streams the slot's rows into
+	 * {@code WaveOutput} writers after each forward pass, without altering the DSP
+	 * graph the capture sits inside.
+	 *
+	 * @param slot       destination collection producer, shape
+	 *                   {@code [channels, signalSize]}
+	 * @param channels   number of channels at the capture point
+	 * @param signalSize samples per channel per pass
+	 * @return a Block with shape {@code [channels, signalSize] → [channels, signalSize]}
+	 */
+	default Block captureBlock(CollectionProducer slot, int channels, int signalSize) {
+		TraversalPolicy shape = shape(channels, signalSize);
+		Cell<PackedCollection> forward = Cell.of(
+				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+						Supplier<Runnable>>) (in, next) -> {
+					OperationList ops = new OperationList("capture");
+					ops.add(into("capture-" + channels + "x" + signalSize,
+							c(in).reshape(shape), slot, false));
+					ops.add(next.push(in));
+					return ops;
+				});
+		Cell<PackedCollection> backward = Cell.of(
+				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+						Supplier<Runnable>>) (in, next) -> new OperationList("capture-backward"));
+		return new DefaultBlock(shape, shape, forward, backward);
+	}
+
+	/**
 	 * Builds a cross-channel routing block using a (possibly rectangular) transmission matrix.
 	 *
 	 * <p>The matrix has shape {@code [inputChannels, outputChannels]}. The contraction is
@@ -266,6 +297,53 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 									   CollectionProducer buffer,
 									   CollectionProducer heads,
 									   int channels, int signalSize) {
+		return feedbackNetworkBlock(delaySamples, null, feedbackMatrix,
+				passthroughMatrix, buffer, heads, channels, signalSize);
+	}
+
+	/**
+	 * Builds a block-parallel feedback delay network whose per-channel delay follows a
+	 * per-sample linear trajectory from {@code prevDelaySamples} to {@code delaySamples}
+	 * across each frame, read with fractional-position linear interpolation.
+	 *
+	 * <p>This renders the pitch-bend character of a delay line whose length is being
+	 * modulated — the legacy {@code AdjustableDelayCell.scale} cursor-rate behaviour.
+	 * The instantaneous resample ratio of the delayed tap is {@code 1 - dD/dt}: a
+	 * tightening delay reads faster than real time (pitch up), a lengthening delay
+	 * slower (pitch down), and a static delay ({@code prev == current}) reads at unity
+	 * with no bend and integer-exact positions. Because the trajectory re-anchors on
+	 * the refreshed delay value every buffer, it is bounded and memoryless like the
+	 * per-buffer ratio it interpolates — the drift can never accumulate — while the
+	 * read stays continuous across buffer boundaries (the previous value is the last
+	 * buffer's target, so there is no positional splice at the seam).</p>
+	 *
+	 * <p>With a {@code null} {@code prevDelaySamples} the read is the integer,
+	 * whole-sample form and this method is identical to
+	 * {@link #feedbackNetworkBlock(CollectionProducer, CollectionProducer,
+	 * CollectionProducer, CollectionProducer, CollectionProducer, int, int)}.</p>
+	 *
+	 * @param delaySamples      per-channel delay in samples at the END of this frame,
+	 *                          shape {@code [channels]}
+	 * @param prevDelaySamples  per-channel delay at the end of the PREVIOUS frame,
+	 *                          shape {@code [channels]}, or {@code null} for the
+	 *                          static whole-sample read
+	 * @param feedbackMatrix    transmission grid routing output back to input,
+	 *                          shape {@code [channels, channels]}
+	 * @param passthroughMatrix output routing to the next layer, shape
+	 *                          {@code [channels, channels]}, or {@code null} for identity
+	 * @param buffer            flat ring buffer, total {@code channels * bufSize}
+	 * @param heads             per-channel write head positions, shape {@code [channels]}
+	 * @param channels          number of channels
+	 * @param signalSize        samples per frame
+	 * @return a feedback delay network {@link Block}
+	 */
+	default Block feedbackNetworkBlock(CollectionProducer delaySamples,
+									   CollectionProducer prevDelaySamples,
+									   CollectionProducer feedbackMatrix,
+									   CollectionProducer passthroughMatrix,
+									   CollectionProducer buffer,
+									   CollectionProducer heads,
+									   int channels, int signalSize) {
 		int totalBuf = shape(buffer).getTotalSize();
 		int bufSize = totalBuf / channels;
 		if (totalBuf != channels * bufSize) {
@@ -287,6 +365,8 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 		}
 		TraversalPolicy multiShape = shape(channels, signalSize);
 		CollectionProducer delays1D = delaySamples.reshape(shape(channels));
+		CollectionProducer prev1D = prevDelaySamples == null ? null
+				: prevDelaySamples.reshape(shape(channels));
 		CollectionProducer heads1D = heads.reshape(shape(channels));
 		CollectionProducer flatBuffer = buffer.reshape(shape(channels * bufSize));
 		Cell<PackedCollection> forward = Cell.of(
@@ -296,10 +376,10 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					// the ring genuinely holds samples of age D for signalSize <= D <=
 					// bufSize; the read clamps each channel's delay into that band.
 					CollectionProducer output = routedRingRead(
-							flatBuffer, heads1D, delays1D, false, passthroughMatrix,
+							flatBuffer, heads1D, delays1D, prev1D, false, passthroughMatrix,
 							channels, signalSize, bufSize, signalSize, bufSize);
 					CollectionProducer fbAll = routedRingRead(
-							flatBuffer, heads1D, delays1D, false, feedbackMatrix,
+							flatBuffer, heads1D, delays1D, prev1D, false, feedbackMatrix,
 							channels, signalSize, bufSize, signalSize, bufSize);
 					CollectionProducer framesAll = c(in).add(fbAll)
 							.reshape(shape(channels * signalSize));
@@ -408,7 +488,7 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					// supports only D = 0 — callers wanting a real delay must allocate
 					// ceil((D + signalSize) / signalSize) frames.
 					CollectionProducer output = routedRingRead(
-							flatBuffer, heads1D, delaySamples, scalarDelay, null,
+							flatBuffer, heads1D, delaySamples, null, scalarDelay, null,
 							channels, signalSize, bufSize, 0, bufSize - signalSize);
 					CollectionProducer framesAll = c(in)
 							.reshape(shape(channels * signalSize));
@@ -461,10 +541,28 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 * All index arithmetic stays inside float32's exact-integer range: the largest
 	 * position is {@code channels * bufSize}, far below {@code 2^24}.</p>
 	 *
+	 * <p><b>Fractional trajectory form.</b> With a non-null {@code prevDelays}, the
+	 * delay at sample {@code i} ramps linearly from the previous frame's value
+	 * (exclusive) to the current value (inclusive at {@code i = S-1}) — the same
+	 * segment convention as {@code ramp_scale} — so consecutive frames whose slots
+	 * refresh once per buffer trace one continuous piecewise-linear delay path with no
+	 * positional splice at buffer seams. The read position is then fractional and is
+	 * resolved by linear interpolation between the two neighbouring ring samples
+	 * (floor gather + successor gather + lerp, the batched resampler's construct).
+	 * The instantaneous resample ratio of the tap is {@code 1 - dD/dt}: a tightening
+	 * delay reads faster than real time (pitch up), a lengthening one slower (pitch
+	 * down), and a flat segment ({@code prev == current}) has zero fraction and
+	 * matches the whole-sample form exactly. Fractional positions sacrifice the
+	 * exact-integer guarantee: at ring magnitudes near {@code 2^21} the float32
+	 * position carries sub-sample rounding on the order of a tenth of a sample,
+	 * inaudible at the multi-second delays this form modulates.</p>
+	 *
 	 * @param flatBuffer  flat ring buffer, total {@code channels * bufSize}
 	 * @param heads       per-channel write head positions, shape {@code [channels]}
 	 * @param delays      delay in samples, shape {@code [channels]} (or {@code [1]} when
 	 *                    {@code scalarDelay} is set)
+	 * @param prevDelays  previous frame's per-channel delay, shape {@code [channels]},
+	 *                    or {@code null} for the whole-sample read
 	 * @param scalarDelay whether every channel shares the single delay at index 0
 	 * @param matrix      routing matrix, shape {@code [channels, channels]}, or {@code null}
 	 * @param channels    number of channels
@@ -477,6 +575,7 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	private CollectionProducer routedRingRead(CollectionProducer flatBuffer,
 											  CollectionProducer heads,
 											  CollectionProducer delays,
+											  CollectionProducer prevDelays,
 											  boolean scalarDelay,
 											  CollectionProducer matrix,
 											  int channels, int signalSize, int bufSize,
@@ -484,22 +583,53 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 		CollectionProducer delay = scalarDelay
 				? delays.reshape(shape(1)).repeat(0, channels).reshape(shape(channels))
 				: delays.reshape(shape(channels));
-		CollectionProducer delayB = min(
-				max(delay.repeat(1, signalSize), c((double) minDelay)),
-				c((double) maxDelay));
 
 		CollectionProducer row = integers(0, channels).repeat(1, signalSize);
 		CollectionProducer col = integers(0, signalSize).repeat(0, channels);
-		CollectionProducer wrapped = mod(
-				heads.reshape(shape(channels)).repeat(1, signalSize)
-						.add(col)
-						.subtract(delayB)
-						.add(c((double) bufSize)),
-				c((double) bufSize));
-		CollectionProducer positions = row.multiply(c((double) bufSize)).add(wrapped);
+		CollectionProducer headsB = heads.reshape(shape(channels)).repeat(1, signalSize);
+		CollectionProducer rowOffset = row.multiply(c((double) bufSize));
 
-		CollectionProducer read = (CollectionProducer)
-				c(shape(channels, signalSize), flatBuffer, positions);
+		if (prevDelays == null) {
+			CollectionProducer delayB = min(
+					max(delay.repeat(1, signalSize), c((double) minDelay)),
+					c((double) maxDelay));
+			CollectionProducer wrapped = mod(
+					headsB.add(col).subtract(delayB).add(c((double) bufSize)),
+					c((double) bufSize));
+			CollectionProducer positions = rowOffset.add(wrapped);
+
+			CollectionProducer read = (CollectionProducer)
+					c(shape(channels, signalSize), flatBuffer, positions);
+			return matrix == null ? read : matmul(matrix, read);
+		}
+
+		CollectionProducer up = col.add(c(1.0)).multiply(c(1.0 / signalSize));
+		CollectionProducer down = col.multiply(c(-1.0))
+				.add(c((double) (signalSize - 1)))
+				.multiply(c(1.0 / signalSize));
+		CollectionProducer delayRamp = prevDelays.reshape(shape(channels))
+				.repeat(1, signalSize).multiply(down)
+				.add(delay.repeat(1, signalSize).multiply(up));
+		CollectionProducer delayB = min(
+				max(delayRamp, c((double) minDelay)), c((double) maxDelay));
+
+		CollectionProducer wrapped = mod(
+				headsB.add(col).subtract(delayB).add(c((double) bufSize)),
+				c((double) bufSize));
+		// Successor gather wraps separately so a fractional read straddling the ring
+		// seam interpolates between the last and first ring samples.
+		CollectionProducer base = floor(wrapped);
+		CollectionProducer frac = wrapped.subtract(base);
+		CollectionProducer positions0 = rowOffset.add(base);
+		CollectionProducer positions1 = rowOffset.add(
+				mod(base.add(c(1.0)), c((double) bufSize)));
+
+		CollectionProducer read0 = (CollectionProducer)
+				c(shape(channels, signalSize), flatBuffer, positions0);
+		CollectionProducer read1 = (CollectionProducer)
+				c(shape(channels, signalSize), flatBuffer, positions1);
+		CollectionProducer read = read0.add(frac.multiply(read1.subtract(read0)))
+				.reshape(shape(channels, signalSize));
 		return matrix == null ? read : matmul(matrix, read);
 	}
 

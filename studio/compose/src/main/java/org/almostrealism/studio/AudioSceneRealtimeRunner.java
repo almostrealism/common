@@ -415,6 +415,32 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		OperationList outputLoopBody = new OperationList("PDSL Output Stream Body");
 		outputLoopBody.add(masterLeft.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
 		outputLoopBody.add(masterRight.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
+
+		if (output.isStemsActive()) {
+			PackedCollection stemChannels = (PackedCollection) args.get("stem_channels");
+			if (stemChannels != null) {
+				for (int ch = 0; ch < channelCount; ch++) {
+					addStemStream(outputLoopBody, output, stemChannels, ch,
+							bufferSize, channels.get(ch), bufferFrameIndex);
+				}
+			}
+
+			// The bus stems occupy the two pattern-channel slots after the scene's
+			// channels, so they are only addressable when every channel is rendered.
+			if (channelCount == scene.getChannelCount()) {
+				PackedCollection stemEfx = (PackedCollection) args.get("stem_efx");
+				if (stemEfx != null) {
+					addStemStream(outputLoopBody, output, stemEfx, 0,
+							bufferSize, channelCount, bufferFrameIndex);
+				}
+				PackedCollection stemReverb = (PackedCollection) args.get("stem_reverb");
+				if (stemReverb != null) {
+					addStemStream(outputLoopBody, output, stemReverb, 0,
+							bufferSize, channelCount + 1, bufferFrameIndex);
+				}
+			}
+		}
+
 		outputLoopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
 		return new TemporalCellular() {
@@ -496,6 +522,30 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};
+	}
+
+	/**
+	 * Adds the per-frame streaming of one captured stem row to both stereo writers
+	 * of the given stem, mirroring the master's dual-mono streaming: each iteration
+	 * of the output loop pushes the row's sample at the loop's frame cursor.
+	 *
+	 * @param body             the per-frame output loop body
+	 * @param output           the multi-channel output supplying stem receptors
+	 * @param slot             the capture slot holding the stem's rows
+	 * @param row              row index within the slot
+	 * @param bufferSize       samples per row
+	 * @param stemIndex        pattern-channel index of the destination stem
+	 * @param bufferFrameIndex the output loop's frame cursor
+	 */
+	private void addStemStream(OperationList body, MultiChannelAudioOutput output,
+							   PackedCollection slot, int row, int bufferSize,
+							   int stemIndex, PackedCollection bufferFrameIndex) {
+		PackedCollection data = slot.range(
+				new TraversalPolicy(bufferSize), row * bufferSize);
+		body.add(output.getStem(stemIndex, ChannelInfo.StereoChannel.LEFT)
+				.push(c(shape(1), p(data), p(bufferFrameIndex))));
+		body.add(output.getStem(stemIndex, ChannelInfo.StereoChannel.RIGHT)
+				.push(c(shape(1), p(data), p(bufferFrameIndex))));
 	}
 
 	/**
