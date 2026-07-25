@@ -37,13 +37,18 @@ public class MemoryAllocationTest extends TestSuiteBase {
 		int size = 256 * 1024 * 1024;
 		int len = size / Hardware.getLocalHardware().getPrecision().bytes();
 
+		PackedCollection touch = new PackedCollection(1);
+		touch.setMem(0, 1.0);
+
 		long allocated = 0;
 		while (allocated < limit) {
 			PackedCollection b = new PackedCollection(len);
 			allocated += size;
-			// Touch the freshly allocated buffer so it is committed before destroy.
-			// The value is never read back or asserted; a constant fill suffices.
-			b.fill(1.0);
+			// Touch the buffer at spread-out positions so the allocator must
+			// commit the reservation rather than satisfy it lazily.
+			for (int i = 0; i < 10; i++) {
+				b.setFrom((int) (Math.random() * len), touch, 0, 1);
+			}
 
 			b.destroy();
 			if (allocated % (32L * gb) == 0) {
@@ -52,6 +57,7 @@ public class MemoryAllocationTest extends TestSuiteBase {
 			}
 		}
 
+		touch.destroy();
 		Thread.sleep(120 * 1000L);
 	}
 }

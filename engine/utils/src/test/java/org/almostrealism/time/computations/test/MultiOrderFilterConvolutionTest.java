@@ -51,15 +51,15 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 32.0))
 				.into(signal.traverseEach()).evaluate();
 
-		double[] coeffs = referenceLowPassCoefficients(5000, 44100, filterOrder);
-		PackedCollection coefficients = new PackedCollection(filterOrder + 1);
-		a(cp(coefficients), c(coeffs)).get().run();
+		PackedCollection coefficients = lowPassCoefficients(c(5000.0), 44100, filterOrder)
+				.get().evaluate().reshape(shape(filterOrder + 1));
 
 		MultiOrderFilter filter = MultiOrderFilter.create(
 				traverseEach(cp(signal)), p(coefficients));
 		PackedCollection result = filter.get().evaluate();
 
-		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
+		double[] expected = referenceConvolve(
+				signal.toArray(0, signalSize), coefficients.toArray(0, filterOrder + 1));
 		assertConvolutionEquals(expected, result, signalSize);
 	}
 

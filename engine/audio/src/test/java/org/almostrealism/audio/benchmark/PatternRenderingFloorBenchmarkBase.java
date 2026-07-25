@@ -123,9 +123,9 @@ public abstract class PatternRenderingFloorBenchmarkBase extends TestSuiteBase
 	}
 
 	/**
-	 * Builds a random {@code [size]} signal in the range {@code [-1, 1]}, using a
-	 * fixed seed so all benchmark runs see the same content (deterministic timing,
-	 * no run-to-run content variation).
+	 * Builds a random {@code [size]} signal in the range {@code [-1, 1]}, generated
+	 * on-device. Content varies run to run; benchmark timing is insensitive to the
+	 * particular sample values.
 	 */
 	protected PackedCollection buildRandomSource(int size) {
 		PackedCollection signal = new PackedCollection(size);

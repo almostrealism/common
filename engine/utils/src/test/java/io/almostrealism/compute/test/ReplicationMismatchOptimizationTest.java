@@ -108,9 +108,8 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 32.0))
 				.into(signal.traverseEach()).evaluate();
 
-		double[] coeffs = referenceLowPassCoefficients(5000, 44100, filterOrder);
-		PackedCollection coefficients = new PackedCollection(filterOrder + 1);
-		a(cp(coefficients), c(coeffs)).get().run();
+		PackedCollection coefficients = lowPassCoefficients(c(5000.0), 44100, filterOrder)
+				.get().evaluate().reshape(shape(filterOrder + 1));
 
 		// Use pre-computed coefficients (plain buffer reference, not an expression tree)
 		MultiOrderFilter filter = MultiOrderFilter.create(
