@@ -355,6 +355,18 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * that is adopted from the end of the kernel/copy-back/copy-out chain. If this is
 	 * never called (an invocation that failed before dispatch), the leased slots stay
 	 * checked out and later invocations simply allocate fresh buffers.</p>
+	 *
+	 * <p><b>Lock-ordering hazard (known deadlock).</b> This method acquires the instance monitor,
+	 * and it is invoked from the device-completion callback — on the Metal backend, the
+	 * command-completion pool. Concurrently, {@link #notifyListeners()} holds that same monitor
+	 * while a listener may synchronously block awaiting device completion. When the completion
+	 * being awaited is the very one whose callback runs this method, the completion-pool thread
+	 * blocks on the monitor while the holder waits for that completion — a hard deadlock that
+	 * appears only under concurrent multi-channel dispatch (invisible in small single-op tests).
+	 * The lease/reuse mechanism that makes this release necessary is therefore disabled by
+	 * default; see {@code ProcessDetailsFactory.enableDestinationReuse}
+	 * ({@code AR_HARDWARE_DESTINATION_REUSE}). Re-enabling reuse requires first removing this
+	 * method from the monitor-holding path.</p>
 	 */
 	public void releaseDestinationLeases() {
 		List<Runnable> leases;
@@ -406,6 +418,12 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *
 	 * <p>Executes each listener and counts down the {@link #readyLatch readiness latch} (if set)
 	 * after each execution. This method is synchronized to prevent concurrent notification.</p>
+	 *
+	 * <p>Because it is {@code synchronized}, the instance monitor is held for the entire duration
+	 * of every listener — including a listener that synchronously awaits device completion. Any
+	 * work that runs on the device-completion path and needs this same monitor (notably
+	 * {@link #releaseDestinationLeases()}) can therefore deadlock against it; see that method for
+	 * the full hazard.</p>
 	 */
 	private synchronized void notifyListeners() {
 		listeners.forEach(r -> {

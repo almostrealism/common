@@ -246,9 +246,18 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * thread identity the former {@code ThreadLocal} provider relied on (which stopped
 	 * implying exclusive use once argument evaluation became asynchronous). Controlled by
 	 * {@code AR_HARDWARE_DESTINATION_REUSE}.
+	 *
+	 * <p><b>Defaults to disabled</b> because the completion-gated release path can deadlock a
+	 * multi-channel real-scene render on the Metal backend: the release callback runs on the
+	 * device-completion pool and needs the {@link AcceleratedProcessDetails} monitor, which
+	 * another thread already holds while synchronously awaiting that same device completion, so
+	 * the completion can never be delivered. See
+	 * {@link AcceleratedProcessDetails#releaseDestinationLeases()} for the full lock-ordering
+	 * hazard. Re-enable (set {@code AR_HARDWARE_DESTINATION_REUSE=enabled}) only once the leasing
+	 * no longer participates in that lock.</p>
 	 */
 	public static boolean enableDestinationReuse =
-			SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_REUSE").orElse(true);
+			SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_REUSE").orElse(false);
 
 	/**
 	 * If true (strict mode, the default), the result an invocation hands back from a plain

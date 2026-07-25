@@ -123,6 +123,41 @@ pattern factory is valid non-empty JSON. Reproducibility additionally depends on
 persisted `results/pdsl-cutover/scene-settings.json` (`AR_RINGS_SETTINGS`) — deleting
 it draws a fresh random arrangement. `results/` is git-ignored (local-only).
 
+## 7b. Continuous all-channel render times out — HIGH PRIORITY, near-term fix
+
+`BatchedRealSceneRenderTest.renderAllChannelsContinuousToFile` renders ~5 minutes of
+all-channel audio through `RealtimeContinuousRenderer.main()` (manual-listening artifact
+`results/rt-live.wav`). It **times out (40 min)** on the library-mounted Metal runner (the
+M4 Max), so it is excluded from the CI pipeline for now
+(`@TestProperties(excludeProfiles = TestUtils.PIPELINE)`) to let the gate pass. The sustained
+continuous-render path is a real production concern and needs a near-term fix before it can
+gate CI again.
+
+This is **not** the destination-lease Metal deadlock (see §8, shared-executor invariant): that
+deadlock also broke the *finite* all-channel render (`allChannelsFullPipeline`), which now
+**passes** after destination reuse was disabled by default
+(`ProcessDetailsFactory.enableDestinationReuse=false`, `AR_HARDWARE_DESTINATION_REUSE`). So the
+shared render machinery is deadlock-free; the remaining timeout is specific to the sustained
+render. Confirmed indirectly (finite all-channel passes); not yet root-caused by thread dump.
+
+Leading suspects, to verify before fixing:
+- **`AR_PATTERN_CACHE_PERSIST` is not set for the test JVM (see §3).** Sustained rendering
+  without it leaks ~150 MB/buffer and the per-tick ratio explodes within a couple hundred
+  buffers. `PatternLayerManager.cachePersist` is a `static final` read at class load, so the
+  test's runtime `System.setProperty` cannot set it — it must be in the surefire `argLine`,
+  and no `argLine` in `studio/compose/pom.xml` sets it. A CI continuous render therefore very
+  likely runs on the leaking path and slows to a crawl. This is the most probable cause.
+- **Realtime pacing.** `RealtimeContinuousRenderer` paces to realtime by default
+  (`AR_RT_PACE_RATE=1.0`), so 5 minutes of audio is ≥5 minutes wall even when healthy; a
+  per-buffer explosion on top of that reaches the 40-minute timeout.
+- **Shared-executor invariant (§8), for the interim fix.** Re-enabling destination reuse
+  requires taking `AcceleratedProcessDetails.releaseDestinationLeases()` off the monitor-holding
+  path, so the Metal completion pool never blocks on the runner. Until then reuse stays off.
+
+Near-term options: wire `-DAR_PATTERN_CACHE_PERSIST=true` (and confirm pacing) into the media-job
+surefire config and re-measure with an `ar-jmx` native-memory timeline / mid-render thread dump;
+or keep this render out of CI and exercise it through a dedicated paced/native harness.
+
 ---
 
 ## 8. Resolved record (compressed — do not re-break, do not re-litigate)

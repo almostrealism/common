@@ -36,7 +36,9 @@ import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
@@ -69,6 +71,32 @@ public class DestinationReuseTest extends TestSuiteBase implements TestFeatures 
 
 	/** Iterations for the repeated-evaluation loops. */
 	private static final int ITERATIONS = 40;
+
+	/** Destination-reuse flag captured before each test so the production default is restored after. */
+	private boolean savedDestinationReuse;
+
+	/**
+	 * Enables destination reuse for the duration of each test. Reuse is disabled by default in
+	 * production because it can deadlock the Metal completion path under concurrent multi-channel
+	 * dispatch (see
+	 * {@link org.almostrealism.hardware.mem.AcceleratedProcessDetails#releaseDestinationLeases()}),
+	 * but this class exists to exercise the reuse mechanism, so it turns the flag on regardless of the
+	 * default and {@link #restoreDestinationReuse() restores} it afterward.
+	 */
+	@Before
+	public void enableDestinationReuse() {
+		savedDestinationReuse = ProcessDetailsFactory.enableDestinationReuse;
+		ProcessDetailsFactory.enableDestinationReuse = true;
+	}
+
+	/**
+	 * Restores the destination-reuse flag to the value it held before the test (the production
+	 * default), so enabling it here is not leaked to other test classes.
+	 */
+	@After
+	public void restoreDestinationReuse() {
+		ProcessDetailsFactory.enableDestinationReuse = savedDestinationReuse;
+	}
 
 	/**
 	 * Builds an evaluable whose argument preparation must create a sized destination:

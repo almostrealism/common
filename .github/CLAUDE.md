@@ -195,11 +195,11 @@ spreading the tests across eight JVMs keeps each group's load small. Eight group
 also shrink the retry unit: re-running failed jobs re-runs only the failed group,
 not the whole suite.
 
-`test-media-mac` is the exception: it uses **4 groups at `max-parallel: 1`**
-(one group at a time) rather than eight. As the second GPU-lane stage it already
-runs alone on the fleet, and the studio benchmark tick tails are the contention-
-sensitive ones, so it trades retry granularity for the smallest possible GPU
-footprint per moment.
+`test-media-mac` is the exception: it uses **4 groups at `max-parallel: 2`**
+(up to two groups at a time) rather than eight. As the second GPU-lane stage it
+already runs alone on the fleet (no other GPU-heavy stage runs concurrently), so
+running two of its four groups at once trades some GPU contention on the
+studio benchmark tick tails for shorter wall-clock time.
 
 The `test-mac` and `test-media-mac` (Metal) jobs upload surefire reports
 (`surefire-mac-group-*`, `surefire-media-mac-group-*`) so a Metal-specific test

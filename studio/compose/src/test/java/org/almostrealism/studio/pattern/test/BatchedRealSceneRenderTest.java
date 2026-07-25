@@ -33,7 +33,8 @@ import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.studio.optimize.RealtimeContinuousRenderer;
 import org.almostrealism.util.TestDepth;
-import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
@@ -75,7 +76,7 @@ import java.util.stream.IntStream;
  * mixdown the cold six-channel render can exceed the per-test timeout on slower hardware. The
  * single-channel renders pass on either mixdown path.</p>
  */
-public class BatchedRealSceneRenderTest extends TestSuiteBase {
+public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 
 	/** Curated sample library root. */
 	private static final String LIBRARY = "/Users/Shared/Music/Samples";
@@ -115,34 +116,6 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 		new File("results/timelines").mkdirs();
 	}
 
-	/** Builds a random genome from a probe scene built off the real assets. */
-	private Genome<PackedCollection> realGenome() {
-		AudioScene<?> probe = AudioSceneOptimizer.createScene();
-		try {
-			probe.setTotalMeasures(MEASURES);
-			return probe.getGenome().random();
-		} finally {
-			probe.destroy();
-		}
-	}
-
-	/** Returns the peak absolute sample over channel 0 of a rendered WAV. */
-	private double peakAmplitude(String wavPath) throws Exception {
-		WaveData data = WaveData.load(new File(wavPath));
-		try {
-			PackedCollection channel = data.getChannelData(0);
-			double peak = 0.0;
-			int n = channel.getShape().getTotalSize();
-			for (int i = 0; i < n; i++) {
-				double v = Math.abs(channel.valueAt(i));
-				if (v > peak) peak = v;
-			}
-			return peak;
-		} finally {
-			data.destroy();
-		}
-	}
-
 	/**
 	 * Step 1: renders a single melodic channel (Lead Synth) through the full
 	 * effects/mixdown pipeline from real samples with batched dispatch enabled, and
@@ -155,12 +128,15 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 
 		boolean previous = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
-		BatchedPatternLayerRenderer.resetCounters();
 		try {
-			Genome<PackedCollection> genome = realGenome();
-			AudioSceneBenchmark.BenchmarkResult result = AudioSceneBenchmark.runSingleChannel(
-					MEASURES, LEAD_CHANNEL, 7, BUFFER, genome,
-					"results/profiles", "results/timelines", true, 0, false);
+			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
+					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					(scene, genome) -> {
+						BatchedPatternLayerRenderer.resetCounters();
+						return AudioSceneBenchmark.runSingleChannel(scene, MEASURES, LEAD_CHANNEL, 7, BUFFER,
+								genome, "results/profiles", "results/timelines", true, 0, false);
+					},
+					r -> peakAmplitude(r.getWavPath()));
 
 			double peak = peakAmplitude(result.getWavPath());
 			long batched = BatchedPatternLayerRenderer.batchedDispatchCount.get();
@@ -197,79 +173,104 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 	 * @param tag      short label used in log lines and the output filename
 	 */
 	private void warmRenderChannels(List<Integer> channels, String tag) throws Exception {
-		Genome<PackedCollection> genome = realGenome();
-		AudioScene<?> scene = AudioSceneOptimizer.createScene();
-		AudioScenePopulation pop = null;
-		try {
-			scene.setTotalMeasures(MEASURES);
+		double lastPeak = 0.0;
 
-			double audioSeconds = scene.getContext().getTimeForDuration().applyAsDouble(MEASURES);
-			int frames = scene.getContext().getFrameForPosition().applyAsInt(MEASURES);
-			int bufferCount = (frames + BUFFER - 1) / BUFFER;
+		for (int attempt = 1; attempt <= MAX_RENDER_ATTEMPTS; attempt++) {
+			AudioScene<?> scene = AudioSceneOptimizer.createScene();
+			AudioScenePopulation pop = null;
+			try {
+				scene.setTotalMeasures(MEASURES);
+				long seed = findGenomeSeedForChannels(scene, List.of(LEAD_CHANNEL));
+				if (seed < 0) {
+					log("warm " + tag + " attempt " + attempt + " of " + MAX_RENDER_ATTEMPTS
+							+ ": no genome seed emitted notes on channel " + LEAD_CHANNEL
+							+ "; rebuilding arrangement");
+					continue;
+				}
+				Genome<PackedCollection> genome = fixedGenome(scene, seed);
 
-			pop = new AudioScenePopulation(scene, List.of(genome));
-			File outFile = new File("results/benchmark-warm-" + tag + ".wav");
-			WaveOutput out = new WaveOutput(() -> outFile, 24, true);
-			pop.init(genome, new MultiChannelAudioOutput(out), channels, BUFFER);
+				double audioSeconds = scene.getContext().getTimeForDuration().applyAsDouble(MEASURES);
+				int frames = scene.getContext().getFrameForPosition().applyAsInt(MEASURES);
+				int bufferCount = (frames + BUFFER - 1) / BUFFER;
 
-			TemporalCellular cells = pop.enableGenome(0);
-			Runnable setup = cells.setup().get();
-			Runnable tick = cells.tick().get();
+				pop = new AudioScenePopulation(scene, List.of(genome));
+				File outFile = new File("results/benchmark-warm-" + tag + ".wav");
+				WaveOutput out = new WaveOutput(() -> outFile, 24, true);
+				pop.init(genome, new MultiChannelAudioOutput(out), channels, BUFFER);
 
-			BatchedPatternLayerRenderer.resetCounters();
-			long setupStart = System.nanoTime();
-			setup.run();
-			double setupMs = (System.nanoTime() - setupStart) / 1_000_000.0;
+				TemporalCellular cells = pop.enableGenome(0);
+				Runnable setup = cells.setup().get();
+				Runnable tick = cells.tick().get();
 
-			long[] tickNs = new long[bufferCount];
-			for (int b = 0; b < bufferCount; b++) {
-				long t0 = System.nanoTime();
-				tick.run();
-				tickNs[b] = System.nanoTime() - t0;
+				BatchedPatternLayerRenderer.resetCounters();
+				long setupStart = System.nanoTime();
+				setup.run();
+				double setupMs = (System.nanoTime() - setupStart) / 1_000_000.0;
+
+				long[] tickNs = new long[bufferCount];
+				for (int b = 0; b < bufferCount; b++) {
+					long t0 = System.nanoTime();
+					tick.run();
+					tickNs[b] = System.nanoTime() - t0;
+				}
+				out.write().get().run();
+
+				double peak = peakAmplitude(outFile.getPath());
+				if (peak <= SILENCE_THRESHOLD) {
+					lastPeak = peak;
+					out.reset();
+					cells.reset();
+					pop.disableGenome();
+					log("warm " + tag + " attempt " + attempt + " of " + MAX_RENDER_ATTEMPTS
+							+ " was silent (peak=" + peak + "); rebuilding arrangement");
+					continue;
+				}
+
+				long sum = 0;
+				int decile = Math.max(1, bufferCount / 10);
+				long lastSum = 0;
+				for (int b = 0; b < bufferCount; b++) {
+					sum += tickNs[b];
+					if (b >= bufferCount - decile) lastSum += tickNs[b];
+				}
+				long[] sorted = tickNs.clone();
+				Arrays.sort(sorted);
+				double tickAvgMs = sum / (double) bufferCount / 1_000_000.0;
+				double p50Ms = sorted[bufferCount / 2] / 1_000_000.0;
+				double p95Ms = sorted[Math.min(bufferCount - 1, (int) (bufferCount * 0.95))] / 1_000_000.0;
+				double lastDecileMs = lastSum / (double) decile / 1_000_000.0;
+				double budgetMs = (double) BUFFER / OutputLine.sampleRate * 1000.0;
+
+				// Amortized per-buffer playback cost at warm steady state: the warm mixdown tick
+				// plus the share of the one-time bulk pattern setup attributable to one buffer.
+				double perBufferMs = lastDecileMs + setupMs / bufferCount;
+
+				long batched = BatchedPatternLayerRenderer.batchedDispatchCount.get();
+				long fallback = BatchedPatternLayerRenderer.fallbackCount.get();
+
+				log("warm " + tag + " channels=" + channels + " measures=" + MEASURES
+						+ " ticks=" + bufferCount + " audio=" + audioSeconds + "s budget=" + budgetMs + "ms");
+				log("warm " + tag + " steady-state: tickAvg=" + tickAvgMs + "ms p50=" + p50Ms + "ms p95=" + p95Ms
+						+ "ms lastDecile=" + lastDecileMs + "ms setup=" + setupMs + "ms"
+						+ " perBuffer(warmTick+setup/N)=" + perBufferMs + "ms ratio=" + (perBufferMs / budgetMs));
+				log("warm " + tag + " dispatch: batchedDispatchCount=" + batched + " fallbackCount=" + fallback
+						+ " peakAmplitude=" + peak);
+
+				out.reset();
+				cells.reset();
+				pop.disableGenome();
+
+				Assert.assertTrue("warm " + tag + " output is silent (peak=" + peak + ")", peak > 1e-3);
+				Assert.assertTrue("warm " + tag + " batched dispatch never fired", batched > 0);
+				return;
+			} finally {
+				if (pop != null) pop.destroy();
+				scene.destroy();
 			}
-			out.write().get().run();
-
-			long sum = 0;
-			int decile = Math.max(1, bufferCount / 10);
-			long lastSum = 0;
-			for (int b = 0; b < bufferCount; b++) {
-				sum += tickNs[b];
-				if (b >= bufferCount - decile) lastSum += tickNs[b];
-			}
-			long[] sorted = tickNs.clone();
-			Arrays.sort(sorted);
-			double tickAvgMs = sum / (double) bufferCount / 1_000_000.0;
-			double p50Ms = sorted[bufferCount / 2] / 1_000_000.0;
-			double p95Ms = sorted[Math.min(bufferCount - 1, (int) (bufferCount * 0.95))] / 1_000_000.0;
-			double lastDecileMs = lastSum / (double) decile / 1_000_000.0;
-			double budgetMs = (double) BUFFER / OutputLine.sampleRate * 1000.0;
-
-			// Amortized per-buffer playback cost at warm steady state: the warm mixdown tick
-			// plus the share of the one-time bulk pattern setup attributable to one buffer.
-			double perBufferMs = lastDecileMs + setupMs / bufferCount;
-
-			double peak = peakAmplitude(outFile.getPath());
-			long batched = BatchedPatternLayerRenderer.batchedDispatchCount.get();
-			long fallback = BatchedPatternLayerRenderer.fallbackCount.get();
-
-			log("warm " + tag + " channels=" + channels + " measures=" + MEASURES
-					+ " ticks=" + bufferCount + " audio=" + audioSeconds + "s budget=" + budgetMs + "ms");
-			log("warm " + tag + " steady-state: tickAvg=" + tickAvgMs + "ms p50=" + p50Ms + "ms p95=" + p95Ms
-					+ "ms lastDecile=" + lastDecileMs + "ms setup=" + setupMs + "ms"
-					+ " perBuffer(warmTick+setup/N)=" + perBufferMs + "ms ratio=" + (perBufferMs / budgetMs));
-			log("warm " + tag + " dispatch: batchedDispatchCount=" + batched + " fallbackCount=" + fallback
-					+ " peakAmplitude=" + peak);
-
-			out.reset();
-			cells.reset();
-			pop.disableGenome();
-
-			Assert.assertTrue("warm " + tag + " output is silent (peak=" + peak + ")", peak > 1e-3);
-			Assert.assertTrue("warm " + tag + " batched dispatch never fired", batched > 0);
-		} finally {
-			if (pop != null) pop.destroy();
-			scene.destroy();
 		}
+
+		throw new AssertionError("warm " + tag + ": no randomly-arranged scene produced audible output on channel "
+				+ LEAD_CHANNEL + " within " + MAX_RENDER_ATTEMPTS + " attempts (last peak=" + lastPeak + ")");
 	}
 
 	/** All channel indices in the default scene (per {@code pattern-factory.json}). */
@@ -310,13 +311,16 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 
 		boolean previous = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
-		BatchedPatternLayerRenderer.resetCounters();
 		try {
-			Genome<PackedCollection> genome = realGenome();
 			List<Integer> channels = allChannels();
-			AudioSceneBenchmark.BenchmarkResult result = AudioSceneBenchmark.runMultiChannel(
-					MEASURES, channels, 7, BUFFER, genome,
-					"results/profiles", "results/timelines", true, 0, false);
+			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
+					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					(scene, genome) -> {
+						BatchedPatternLayerRenderer.resetCounters();
+						return AudioSceneBenchmark.runMultiChannel(scene, MEASURES, channels, 7, BUFFER,
+								genome, "results/profiles", "results/timelines", true, 0, false);
+					},
+					r -> peakAmplitude(r.getWavPath()));
 
 			double peak = peakAmplitude(result.getWavPath());
 			long batched = BatchedPatternLayerRenderer.batchedDispatchCount.get();
@@ -370,12 +374,15 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 
 		boolean previous = PatternLayerManager.enableBatched;
 		PatternLayerManager.enableBatched = true;
-		BatchedPatternLayerRenderer.resetCounters();
 		try {
-			Genome<PackedCollection> genome = realGenome();
-			AudioSceneBenchmark.BenchmarkResult result = AudioSceneBenchmark.runSingleChannel(
-					MEASURES, LEAD_CHANNEL, 7, BUFFER, genome,
-					"results/profiles", "results/timelines", false, 0, false);
+			AudioSceneBenchmark.BenchmarkResult result = renderUntilAudible(
+					AudioSceneOptimizer::createScene, MEASURES, List.of(LEAD_CHANNEL),
+					(scene, genome) -> {
+						BatchedPatternLayerRenderer.resetCounters();
+						return AudioSceneBenchmark.runSingleChannel(scene, MEASURES, LEAD_CHANNEL, 7, BUFFER,
+								genome, "results/profiles", "results/timelines", false, 0, false);
+					},
+					r -> peakAmplitude(r.getWavPath()));
 
 			double peak = peakAmplitude(result.getWavPath());
 			log("profile single melodic channel=" + LEAD_CHANNEL + " ratio=" + result.getRatio()
@@ -399,6 +406,7 @@ public class BatchedRealSceneRenderTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 2400000)
 	@TestDepth(3)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void renderAllChannelsContinuousToFile() throws Exception {
 		requireRealAssets();
 

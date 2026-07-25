@@ -244,9 +244,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/**
 	 * Returns all currently allocated memory blocks, sorted by size in descending order.
 	 *
+	 * <p>Each {@link NativeRef} carries the block's size and, when
+	 * {@link RAM#allocationTraceFrames} is set, its allocation stack trace — enough
+	 * for a caller to attribute live device memory to allocation sites when
+	 * diagnosing accumulation (see {@code HardwareException} "Memory Max Reached").</p>
+	 *
 	 * @return List of native references for all allocated blocks
 	 */
-	protected List<NativeRef<T>> getAllocated() {
+	public List<NativeRef<T>> getAllocated() {
 		return allocated.values().stream()
 				.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
 				.toList();

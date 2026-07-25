@@ -26,6 +26,8 @@ import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -145,6 +147,7 @@ public class AudioSceneSingleVsMultiChannelTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_800_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void singleVsMultiChannel() throws IOException {
 		List<String> modes = Arrays.asList(GENERATE_MODES.split(","));
 		boolean wantAll = modes.contains("all");

@@ -40,13 +40,22 @@ Already configured in `.mcp.json`:
 
 ## Prerequisites
 
-**For test JVMs**: Start the test with `jmx_monitoring: true` via `ar-test-runner`. This injects:
-- `-XX:StartFlightRecording=...` for JFR allocation profiling
-- `-XX:NativeMemoryTracking=summary` for native memory reports
+**For test JVMs**: Start the test with `jmx_monitoring: true` via `ar-test-runner`. This
+injects no JVM startup flags — `-XX:StartFlightRecording` corrupts the surefire fork
+channel and `-XX:NativeMemoryTracking` aborts this project's forked JVM when the JNI
+hardware library loads. Thread dumps, class histograms, GC stats, and heap dumps all
+attach via `jcmd` at runtime; start JFR with `start_jfr_recording` when needed.
 
-The test runner automatically discovers the forked Surefire `ForkedBooter` PID and writes it to `metadata.json`.
+The test runner discovers the forked Surefire JVM (the `ForkedBooter` main class or a
+`surefirebooter-*.jar`) and writes its PID to `metadata.json`. Discovery polls `jps` for
+as long as the run is active — the fork only appears after maven's resolve and compile
+phases, which can take minutes on large modules — and accepts a candidate only when it
+is a process descendant of the run's maven process, so concurrent maven invocations
+never cross-match (see `fork_discovery.py` in `ar-test-runner`).
 
-If the forked JVM fails to start with JFR/NMT arguments (incompatible JDK, path issues, etc.), the test runner detects the fork failure within 15 seconds, logs a diagnostic message to `output.txt`, and automatically retries without JFR/NMT. The metadata is updated with `jmx_monitoring_degraded: true`. In degraded mode, `jstat`-based tools still work but JFR (`get_allocation_report`) and NMT (`get_native_memory`) are unavailable.
+If the forked JVM fails to start (incompatible JDK, path issues, etc.), the test runner
+detects the fork failure within 15 seconds, logs a diagnostic message to `output.txt`,
+and automatically retries. The metadata is updated with `jmx_monitoring_degraded: true`.
 
 **For standalone JVMs**: Use `attach_to_pid` to connect to any running JVM by PID. This creates a synthetic run entry so all diagnostic tools work without `ar-test-runner`. JFR and NMT are only available if the target JVM was started with those flags manually.
 
