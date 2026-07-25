@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": ".claude/statusline-command.sh"
+  },
   "enabledMcpjsonServers": [
     "ar-docs",
     "ar-test-runner",
@@ -6,7 +10,8 @@
     "ar-profile-analyzer",
     "ar-consultant",
     "ar-jmx",
-    "ar-manager"
+    "ar-manager",
+    "onyx"
   ],
   "permissions": {
     "allow": [
@@ -34,6 +39,21 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-test-deception.sh",
+            "description": "Detect test-weakening transitions (TestDepth escalation, tolerance widening, dimension shrinkage) by comparing old vs new text — the in-session mirror of tools/ci/agent-protection/detect-test-hiding.sh"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-enforcement-files.sh",
+            "description": "Announce, on-record, any edit to integrity-enforcement infrastructure (agent-protection detectors, .claude hooks, CI workflows) so a quiet weakening cannot pass unnoticed"
+          }
+        ]
+      },
       {
         "matcher": "AskUserQuestion",
         "hooks": [
