@@ -40,33 +40,31 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Heap-free twin of {@link ArrangementGenerationMemoryTest}: the same optimizer-shaped
- * genome loop — every genome's full multi-channel arrangement rendered through
- * {@link StableDurationHealthComputation#computeHealth()} on a reused runner — with no
- * {@link org.almostrealism.hardware.mem.Heap} active at any point.
+ * Regression gate for the optimizer's production genome loop: every genome's full
+ * multi-channel arrangement rendered through
+ * {@link StableDurationHealthComputation#computeHealth()} on a reused runner, with no
+ * {@link org.almostrealism.hardware.mem.Heap} active at any point — the same shape the
+ * desktop's "Run N Cycle(s)" arrangement generation uses.
  *
- * <p>This is the evidence test for whether the optimizer paths need a Heap at all.
- * Without one, per-invocation device buffers are unreferenced garbage reclaimed by
- * ordinary GC (plus the {@code gcBeforeGenome} full-GC hint at each genome boundary),
- * and the heap's own costs disappear: the root arena
- * ({@code AudioSceneOptimizer.DEFAULT_HEAP_SIZE} = 384M values = 1.5GB device memory
- * at FP32) and a stage-sized allocation for every per-note {@code Heap.stage} scope.
- * If this test passes where the heap-wrapped gate passes — same memory scale, same
- * genome count, non-silent output — the heap provides no necessary service to this
- * use-case.</p>
+ * <p>Without a Heap, per-invocation device buffers are unreferenced garbage reclaimed
+ * by ordinary GC (plus the {@code gcBeforeGenome} full-GC hint at each genome
+ * boundary), so the loop stays bounded only when nothing retained across genomes
+ * accumulates — in particular, the pattern cache epoch must advance on each genome
+ * swap ({@code AudioScene.assignGenome}) so the previous genome's gathered note audio
+ * is released.</p>
  *
  * <p>Logs each provider's live native bytes after every genome so the cross-genome
  * trajectory (bounded vs. accumulating) is visible alongside the pass/fail result.</p>
  */
 public class ArrangementGenerationNoHeapTest extends AudioSceneTestBase {
 
-	/** Tempo for the rendered arrangement (matches {@link ArrangementGenerationMemoryTest}). */
+	/** Tempo for the rendered arrangement. */
 	private static final double BPM = 120.0;
 
 	/** Total measures in the arrangement. */
 	private static final int MEASURES = 64;
 
-	/** Number of distinct genomes rendered in sequence (matches the heap-wrapped gate). */
+	/** Number of distinct genomes rendered in sequence. */
 	private static final int GENOME_COUNT = 8;
 
 	/** Base seed; genome {@code i} is deterministically seeded {@code GENOME_SEED_BASE + i}. */

@@ -24,7 +24,6 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
@@ -212,18 +211,6 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 		currentGenome = newGenome;
 	}
 
-	/**
-	 * Deactivates the current genome, resets the runner, and releases the
-	 * per-invocation device memory tracked by the active {@link Heap} stage.
-	 *
-	 * <p>The optimizer evaluates every genome inside one long-lived heap scope,
-	 * so kernel argument destinations registered during each genome's render
-	 * ({@link Heap#addCreatedMemory}) are otherwise pinned until the whole run
-	 * ends — accumulating until the memory provider throws
-	 * {@code HardwareException} "Memory Max Reached" after a few genomes. The
-	 * flush at this boundary releases them while the runner is quiescent; it is
-	 * a no-op when no heap is active (setup and validation paths).</p>
-	 */
 	@Override
 	public void disableGenome() {
 		this.currentGenome = null;
@@ -231,8 +218,6 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 		if (temporal != null) {
 			temporal.reset();
 		}
-
-		Heap.flushCreatedMemory();
 	}
 
 	/**
