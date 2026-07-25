@@ -44,6 +44,7 @@ from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
 # from. See preflight.py for the full rationale.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import preflight  # noqa: E402
+import fork_discovery  # noqa: E402
 
 # Configuration - derive project root from script location (tools/mcp/test-runner/server.py -> project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
@@ -721,98 +722,30 @@ class TestRunner:
 
         return False
 
-    def _get_ppid(self, pid: int) -> Optional[int]:
-        """Get parent PID. Uses /proc on Linux, ps on macOS."""
-        # Try /proc first (Linux)
-        try:
-            stat_path = Path(f"/proc/{pid}/stat")
-            text = stat_path.read_text()
-            close_paren = text.rfind(")")
-            if close_paren == -1:
-                return None
-            fields = text[close_paren + 2:].split()
-            if len(fields) >= 2:
-                return int(fields[1])
-        except (OSError, PermissionError, ValueError):
-            pass
-
-        # Fallback: ps (macOS / general Unix)
-        try:
-            result = subprocess.run(
-                ["ps", "-o", "ppid=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return int(result.stdout.strip())
-        except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
-            pass
-
-        return None
-
-    def _is_descendant_of(self, pid: int, ancestor_pid: int) -> bool:
-        """Check if pid is a descendant of ancestor_pid by walking the parent chain."""
-        current = pid
-        for _ in range(10):  # Max depth to prevent infinite loops
-            ppid = self._get_ppid(current)
-            if ppid is None or ppid <= 1:
-                return False
-            if ppid == ancestor_pid:
-                return True
-            current = ppid
-        return False
-
-    def _discover_forked_pid(self, maven_pid: int, run_id: str) -> Optional[int]:
-        """Poll jps for a ForkedBooter process whose parent is the maven process.
-
-        Polls every 1 second for up to 30 seconds. When found, writes the
-        forked PID to the run metadata.
-
-        Returns:
-            The forked PID, or None if discovery timed out.
-        """
-        for _ in range(30):
-            try:
-                result = subprocess.run(
-                    ["jps", "-l"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.strip().split("\n"):
-                        if "ForkedBooter" in line or "surefirebooter" in line:
-                            parts = line.split(None, 1)
-                            if parts:
-                                try:
-                                    candidate_pid = int(parts[0])
-                                    # Verify this is a descendant of our maven process
-                                    if self._is_descendant_of(candidate_pid, maven_pid):
-                                        # Write to metadata
-                                        metadata = self._load_metadata(run_id)
-                                        if metadata:
-                                            metadata["forked_pid"] = candidate_pid
-                                            self._save_metadata_dict(run_id, metadata)
-                                        return candidate_pid
-                                except ValueError:
-                                    pass
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
-
-            time.sleep(1)
-
-        return None
-
     def _discover_forked_pid_background(self, maven_pid: int, run_id: str) -> None:
         """Run forked PID discovery in a daemon thread.
 
-        On timeout, sets forked_pid_discovery_failed in metadata.
+        Polls for as long as the run is active and the maven process is
+        alive (see fork_discovery.discover_forked_pid). Writes forked_pid
+        to the run metadata when found; sets forked_pid_discovery_failed
+        when the run ends without the fork having been discovered.
         """
-        pid = self._discover_forked_pid(maven_pid, run_id)
-        if pid is None:
+        def run_active() -> bool:
             metadata = self._load_metadata(run_id)
-            if metadata:
-                metadata["forked_pid_discovery_failed"] = True
-                self._save_metadata_dict(run_id, metadata)
+            return (metadata is not None
+                    and metadata.get("status") in ("pending", "running")
+                    and fork_discovery.pid_alive(maven_pid))
+
+        pid = fork_discovery.discover_forked_pid(maven_pid, run_active)
+
+        metadata = self._load_metadata(run_id)
+        if not metadata:
+            return
+        if pid is not None:
+            metadata["forked_pid"] = pid
+        else:
+            metadata["forked_pid_discovery_failed"] = True
+        self._save_metadata_dict(run_id, metadata)
 
     def _copy_surefire_reports(self, run_id: str, module: str):
         """Copy surefire reports to run directory, only those modified after run started."""

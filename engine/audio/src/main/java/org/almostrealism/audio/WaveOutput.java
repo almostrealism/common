@@ -95,6 +95,15 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	/** Default number of frames in the shared timeline (230 seconds at the default sample rate). */
 	public static int defaultTimelineFrames = OutputLine.sampleRate * 230;
 
+	/**
+	 * Number of frames read from channel memory and written to disk per batch
+	 * during {@link #write()}. Each batch requires one transient {@code double[]}
+	 * per channel, so this bounds the JVM heap used by a write to
+	 * {@code 2 * 8 * writeBatchFrames} bytes regardless of the total frame count,
+	 * while keeping the number of device reads per file small.
+	 */
+	private static final int writeBatchFrames = 1 << 20;
+
 	/** Context-specific shared timeline PackedCollection providing time values per frame. */
 	public static ContextSpecific<PackedCollection> timeline;
 
@@ -367,7 +376,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 * @return supplier of a Runnable that writes WAV data to the configured file
 	 */
 	public Supplier<Runnable> write() {
-		// TODO  Write frames in larger batches than 1
 		return () -> {
 			Evaluable<PackedCollection> left = getChannelData(0).get();
 			Evaluable<PackedCollection> right = getChannelData(1) == null ? null : getChannelData(1).get();
@@ -399,13 +407,13 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 					return;
 				}
 
-				double[] framesLeft = l.toArray(0, frames);
-				double[] framesRight = r == null ? framesLeft : r.toArray(0, frames);
+				for (int offset = 0; offset < frames; offset += writeBatchFrames) {
+					int count = Math.min(writeBatchFrames, frames - offset);
+					double[] framesLeft = l.toArray(offset, count);
+					double[] framesRight = r == null ? framesLeft : r.toArray(offset, count);
 
-				for (int i = 0; i < frames; i++) {
 					try {
-						wav.writeFrames(new double[][]
-								{{framesLeft[i]}, {framesRight[i]}}, 1);
+						wav.writeFrames(new double[][] { framesLeft, framesRight }, count);
 					} catch (IOException e) {
 						warn(e.getMessage());
 					}
