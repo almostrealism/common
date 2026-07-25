@@ -147,37 +147,6 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	}
 
 	/**
-	 * Builds a signal-capture block: the incoming signal is copied into the given slot
-	 * collection at this stage's position in the ops order, then passed through
-	 * unchanged. This is the observability primitive behind per-channel and bus stem
-	 * outputs — a consumer (e.g. the realtime runner) streams the slot's rows into
-	 * {@code WaveOutput} writers after each forward pass, without altering the DSP
-	 * graph the capture sits inside.
-	 *
-	 * @param slot       destination collection producer, shape
-	 *                   {@code [channels, signalSize]}
-	 * @param channels   number of channels at the capture point
-	 * @param signalSize samples per channel per pass
-	 * @return a Block with shape {@code [channels, signalSize] → [channels, signalSize]}
-	 */
-	default Block captureBlock(CollectionProducer slot, int channels, int signalSize) {
-		TraversalPolicy shape = shape(channels, signalSize);
-		Cell<PackedCollection> forward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> {
-					OperationList ops = new OperationList("capture");
-					ops.add(into("capture-" + channels + "x" + signalSize,
-							c(in).reshape(shape), slot, false));
-					ops.add(next.push(in));
-					return ops;
-				});
-		Cell<PackedCollection> backward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> new OperationList("capture-backward"));
-		return new DefaultBlock(shape, shape, forward, backward);
-	}
-
-	/**
 	 * Builds a cross-channel routing block using a (possibly rectangular) transmission matrix.
 	 *
 	 * <p>The matrix has shape {@code [inputChannels, outputChannels]}. The contraction is

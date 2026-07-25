@@ -325,12 +325,12 @@
         ]
       },
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|MultiEdit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-static-method.py\"",
-            "description": "Remind the agent when it introduces a static method in Java source: behavior belongs on the type whose state it reads, and the agent's trained-in first instinct is reliably procedural — reconsider placement before proceeding"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-method-placement.py\"",
+            "description": "Remind the agent on EVERY new Java method it introduces: place it at the most general location where it makes sense (the generality ladder), with a sharper second tier when the method is static — the agent's trained-in first instinct is reliably procedural and short-termist"
           }
         ]
       }

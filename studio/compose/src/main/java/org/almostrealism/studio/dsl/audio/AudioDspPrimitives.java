@@ -100,7 +100,6 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		interpreter.registerPrimitive("route", self::dispatchRoute);
 		interpreter.registerPrimitive("delay_network", self::dispatchDelayNetwork);
 		interpreter.registerPrimitive("feedback", self::dispatchFeedback);
-		interpreter.registerPrimitive("capture", self::dispatchCapture);
 		interpreter.setMultiChannelDispatcher(self::perChannelBlock);
 	}
 
@@ -481,26 +480,5 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 				: null;
 		return feedbackNetworkBlock(delays, delaysPrev, transmission, passthrough,
 				buffer, heads, channels, signalSize);
-	}
-
-	/**
-	 * {@code capture(slot)} — copies the signal at this position into the named slot
-	 * collection and passes it through unchanged. The slot's own shape declares the
-	 * capture point's channel count and frame size; a consumer outside the compiled
-	 * model (the realtime runner's stem streaming) reads the slot after each forward
-	 * pass. The stage is observability only: it never alters the audio path it sits
-	 * inside.
-	 */
-	private Block dispatchCapture(List<Object> args, PdslPrimitiveContext ctx) {
-		if (args.size() != 1) {
-			throw new PdslParseException(
-					"capture() expects 1 argument (the destination slot), got "
-							+ args.size());
-		}
-		CollectionProducer slot = ctx.toProducer(args.get(0), null, "capture() slot");
-		TraversalPolicy slotShape = shape(slot);
-		int signalSize = slotShape.length(slotShape.getDimensions() - 1);
-		int channels = slotShape.getTotalSize() / signalSize;
-		return captureBlock(slot, channels, signalSize);
 	}
 }

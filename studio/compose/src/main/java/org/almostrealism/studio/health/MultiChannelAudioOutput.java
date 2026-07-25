@@ -33,6 +33,12 @@ import java.util.function.Predicate;
  * a channel is first accessed.
  */
 public class MultiChannelAudioOutput {
+	/**
+	 * Number of bus stems in the standard stem layout, appended after the
+	 * per-channel stems: the efx bus and the reverb bus.
+	 */
+	public static final int BUS_STEM_COUNT = 2;
+
 	/** Receptors keyed by stereo channel for the master mix output. */
 	private final Map<ChannelInfo.StereoChannel, Receptor<PackedCollection>> master;
 
@@ -91,8 +97,10 @@ public class MultiChannelAudioOutput {
 		this(masterOut == null ? null :
 						(audioChannel) -> masterOut.getWriter(audioChannel.getIndex()),
 				stemsOut == null ? null :
-						(channelInfo) -> stemsOut.get(channelInfo.getPatternChannel())
-											.getWriter(channelInfo.getAudioChannel().getIndex()),
+						(channelInfo) -> channelInfo.getPatternChannel() < stemsOut.size()
+								? stemsOut.get(channelInfo.getPatternChannel())
+										.getWriter(channelInfo.getAudioChannel().getIndex())
+								: null,
 				measuresFactory);
 	}
 
@@ -218,6 +226,40 @@ public class MultiChannelAudioOutput {
 
 	/** Returns {@code true} if stem output is active. */
 	public boolean isStemsActive() { return stems != null; }
+
+	/**
+	 * Returns the total stem count of the standard stem layout for the given number
+	 * of pattern channels: one stem per pattern channel, followed by the efx bus at
+	 * {@link #efxStemIndex(int)} and the reverb bus at {@link #reverbStemIndex(int)}.
+	 * Callers constructing an output that should record the bus stems pass this
+	 * value as their stem count; nothing infers or inflates it on their behalf.
+	 *
+	 * @param channels the number of pattern channels
+	 * @return the stem count including the bus stems
+	 */
+	public static int stemCount(int channels) {
+		return channels + BUS_STEM_COUNT;
+	}
+
+	/**
+	 * Returns the stem index of the efx bus in the standard stem layout.
+	 *
+	 * @param channels the number of pattern channels
+	 * @return the efx bus stem index
+	 */
+	public static int efxStemIndex(int channels) {
+		return channels;
+	}
+
+	/**
+	 * Returns the stem index of the reverb bus in the standard stem layout.
+	 *
+	 * @param channels the number of pattern channels
+	 * @return the reverb bus stem index
+	 */
+	public static int reverbStemIndex(int channels) {
+		return channels + 1;
+	}
 
 	/**
 	 * Retrieves a single value from the map whose key matches the predicate.

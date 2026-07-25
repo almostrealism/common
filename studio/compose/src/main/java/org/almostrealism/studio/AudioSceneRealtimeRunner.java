@@ -425,18 +425,20 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				}
 			}
 
-			// The bus stems occupy the two pattern-channel slots after the scene's
+			// The bus stems occupy the standard-layout slots after the scene's
 			// channels, so they are only addressable when every channel is rendered.
 			if (channelCount == scene.getChannelCount()) {
 				PackedCollection stemEfx = (PackedCollection) args.get("stem_efx");
 				if (stemEfx != null) {
-					addStemStream(outputLoopBody, output, stemEfx, 0,
-							bufferSize, channelCount, bufferFrameIndex);
+					addStemStream(outputLoopBody, output, stemEfx, 0, bufferSize,
+							MultiChannelAudioOutput.efxStemIndex(channelCount),
+							bufferFrameIndex);
 				}
 				PackedCollection stemReverb = (PackedCollection) args.get("stem_reverb");
 				if (stemReverb != null) {
-					addStemStream(outputLoopBody, output, stemReverb, 0,
-							bufferSize, channelCount + 1, bufferFrameIndex);
+					addStemStream(outputLoopBody, output, stemReverb, 0, bufferSize,
+							MultiChannelAudioOutput.reverbStemIndex(channelCount),
+							bufferFrameIndex);
 				}
 			}
 		}
@@ -527,7 +529,9 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	/**
 	 * Adds the per-frame streaming of one captured stem row to both stereo writers
 	 * of the given stem, mirroring the master's dual-mono streaming: each iteration
-	 * of the output loop pushes the row's sample at the loop's frame cursor.
+	 * of the output loop pushes the row's sample at the loop's frame cursor. When the
+	 * output was constructed without a stem at the given index, the stream is skipped
+	 * — the stems an output records are decided at its construction, not here.
 	 *
 	 * @param body             the per-frame output loop body
 	 * @param output           the multi-channel output supplying stem receptors
@@ -540,12 +544,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	private void addStemStream(OperationList body, MultiChannelAudioOutput output,
 							   PackedCollection slot, int row, int bufferSize,
 							   int stemIndex, PackedCollection bufferFrameIndex) {
+		Receptor<PackedCollection> left =
+				output.getStem(stemIndex, ChannelInfo.StereoChannel.LEFT);
+		Receptor<PackedCollection> right =
+				output.getStem(stemIndex, ChannelInfo.StereoChannel.RIGHT);
+		if (left == null || right == null) return;
+
 		PackedCollection data = slot.range(
 				new TraversalPolicy(bufferSize), row * bufferSize);
-		body.add(output.getStem(stemIndex, ChannelInfo.StereoChannel.LEFT)
-				.push(c(shape(1), p(data), p(bufferFrameIndex))));
-		body.add(output.getStem(stemIndex, ChannelInfo.StereoChannel.RIGHT)
-				.push(c(shape(1), p(data), p(bufferFrameIndex))));
+		body.add(left.push(c(shape(1), p(data), p(bufferFrameIndex))));
+		body.add(right.push(c(shape(1), p(data), p(bufferFrameIndex))));
 	}
 
 	/**
