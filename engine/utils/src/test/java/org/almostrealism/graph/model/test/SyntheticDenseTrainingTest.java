@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
@@ -70,26 +69,17 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	/**
 	 * Simple linear function: output[i] = coeff[i] * input[i]
 	 */
-	private final UnaryOperator<PackedCollection> linearFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				int n = in.getMemLength();
-				c(coeff).valueAt(integers(0, n).mod(coeff.length))
-						.multiply(cp(in).reshape(shape(n)))
-						.into(out.traverseEach()).evaluate();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> linearFunc = compiledTarget(n ->
+			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+					.multiply(cv(shape(n), 0)));
 
 	/**
 	 * Weighted sum function: output = sum(coeff[i] * input[i])
 	 */
-	private final UnaryOperator<PackedCollection> weightedSumFunc =
-			in -> {
-				int n = in.getMemLength();
-				return c(coeff).valueAt(integers(0, n).mod(coeff.length))
-						.multiply(cp(in).reshape(shape(n)))
-						.sum().evaluate();
-			};
+	private final UnaryOperator<PackedCollection> weightedSumFunc = compiledTarget(n ->
+			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+					.multiply(cv(shape(n), 0))
+					.sum());
 
 	/**
 	 * Test 1.1: Simple Dense Regression
@@ -286,17 +276,9 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		log("Batched model built: [" + batchSize + ", " + size + "] -> [" + batchSize + ", " + size + "]");
 
 		// Function to compute expected output for batched input
-		UnaryOperator<PackedCollection> batchFunc = input -> {
-			TraversalPolicy inShape = padDimensions(input.getShape(), 2);
-			input = input.reshape(inShape);
-
-			PackedCollection result = new PackedCollection(inShape);
-			int rn = result.getMemLength();
-			c(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.length))
-					.multiply(cp(input).reshape(shape(rn)))
-					.into(result.traverseEach()).evaluate();
-			return result;
-		};
+		UnaryOperator<PackedCollection> batchFunc = compiledTarget(rn ->
+				c(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.length))
+						.multiply(cv(shape(rn), 0)));
 
 		// Generate batched dataset
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)

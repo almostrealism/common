@@ -1508,6 +1508,7 @@ jobs:
       pull-requests: write
       checks: write
       security-events: write
+      actions: read
 
     steps:
       - name: Checkout Code
@@ -1526,11 +1527,19 @@ jobs:
       - name: Build for Analysis
         run: mvn install -DskipTests -Dcheckstyle.skip=true
 
+      # github-token/repository/run-id route the download through the REST API,
+      # which can fetch artifacts uploaded during a previous attempt of this run.
+      # The default (internal) API path fails with "GetSignedArtifactURL ... (404)
+      # workflow run not found" for cross-attempt artifacts, which breaks analysis
+      # whenever it re-runs as a dependent of a re-run test job.
       - name: Download All Coverage Data
         uses: actions/download-artifact@v4
         with:
           pattern: coverage-*
           path: all-coverage
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Merge Coverage Data
         run: |
@@ -1572,12 +1581,18 @@ jobs:
             echo "No coverage files found"
           fi
 
+      # The name must NOT match the coverage-* download pattern above: when this
+      # job re-runs (as a dependent of a re-run test job), the previous attempt's
+      # merged report would otherwise be swept into its own input set. overwrite
+      # lets the re-run replace the earlier attempt's report instead of failing
+      # on the immutable-artifact conflict.
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: merged-coverage-report
           path: .qodana/code-coverage/
           retention-days: 30
+          overwrite: true
 
       # Qodana DISABLED: the Qodana product has been cancelled and the scan was
       # failing the whole analysis job. Re-enable by uncommenting both steps

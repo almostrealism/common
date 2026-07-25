@@ -66,15 +66,9 @@ public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTe
 	/**
 	 * Linear function that applies coefficient-based transformation.
 	 */
-	private final UnaryOperator<PackedCollection> linearFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				int n = in.getMemLength();
-				c(coeff).valueAt(integers(0, n).mod(coeff.length))
-						.multiply(cp(in).reshape(shape(n)))
-						.into(out.traverseEach()).evaluate();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> linearFunc = compiledTarget(n ->
+			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+					.multiply(cv(shape(n), 0)));
 
 	/**
 	 * Test dense layer shape compatibility.

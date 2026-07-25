@@ -57,28 +57,16 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 	 * Identity-like function for testing residual connections.
 	 * output[i] = input[i] + small_perturbation
 	 */
-	private final UnaryOperator<PackedCollection> identityLikeFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				int n = in.getMemLength();
-				cp(in).reshape(shape(n))
-						.add(c(coeff).valueAt(integers(0, n).mod(coeff.length)).multiply(0.1))
-						.into(out.traverseEach()).evaluate();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> identityLikeFunc = compiledTarget(n ->
+			cv(shape(n), 0)
+					.add(c(coeff).valueAt(integers(0, n).mod(coeff.length)).multiply(0.1)));
 
 	/**
 	 * Simple scaling function for testing compositions.
 	 */
-	private final UnaryOperator<PackedCollection> scaleFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				int n = in.getMemLength();
-				c(coeff).valueAt(integers(0, n).mod(coeff.length))
-						.multiply(cp(in).reshape(shape(n)))
-						.into(out.traverseEach()).evaluate();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> scaleFunc = compiledTarget(n ->
+			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+					.multiply(cv(shape(n), 0)));
 
 	/**
 	 * Test 5.1: Residual Block

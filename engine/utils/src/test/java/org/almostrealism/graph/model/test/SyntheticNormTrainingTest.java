@@ -59,15 +59,9 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	/**
 	 * Simple element-wise linear function: output[i] = coeff[i] * input[i]
 	 */
-	private final UnaryOperator<PackedCollection> linearFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				int n = in.getMemLength();
-				c(coeff).valueAt(integers(0, n).mod(coeff.length))
-						.multiply(cp(in).reshape(shape(n)))
-						.into(out.traverseEach()).evaluate();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> linearFunc = compiledTarget(n ->
+			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+					.multiply(cv(shape(n), 0)));
 
 	/**
 	 * Test 3.1: Dense with Layer Normalization
