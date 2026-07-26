@@ -33,7 +33,7 @@
 #   RUN_ATTEMPT   - that run's attempt number (1-based)
 #
 # Optional environment:
-#   MAX_ATTEMPTS  - retry only while RUN_ATTEMPT < MAX_ATTEMPTS (default 5)
+#   MAX_ATTEMPTS  - retry only while RUN_ATTEMPT < MAX_ATTEMPTS (default 3)
 #
 # Output (appended to $GITHUB_OUTPUT, or stdout when unset):
 #   retried=true   - a re-run was requested; do NOT submit an agent job
@@ -45,7 +45,7 @@ set -euo pipefail
 : "${REPO:?REPO is required}"
 : "${RUN_ID:?RUN_ID is required}"
 : "${RUN_ATTEMPT:?RUN_ATTEMPT is required}"
-MAX_ATTEMPTS="${MAX_ATTEMPTS:-5}"
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 
 emit() {
     echo "retried=$1" >> "${GITHUB_OUTPUT:-/dev/stdout}"

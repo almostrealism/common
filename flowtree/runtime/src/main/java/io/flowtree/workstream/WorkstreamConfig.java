@@ -498,7 +498,9 @@ public class WorkstreamConfig {
          */
         @JsonInclude(JsonInclude.Include.NON_DEFAULT)
         private boolean useTmux;
-
+        /** See {@link Workstream#dormantForCompletionListeners}. */
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+        private boolean dormantForCompletionListeners;
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
         /** Sets the persistent workstream identifier. */
@@ -715,6 +717,13 @@ public class WorkstreamConfig {
          */
         public void setUseTmux(boolean useTmux) { this.useTmux = useTmux; }
 
+        /** See {@link Workstream#isDormantForCompletionListeners()}. */
+        public boolean isDormantForCompletionListeners() { return dormantForCompletionListeners; }
+        /** See {@link Workstream#setDormantForCompletionListeners(boolean)}. */
+        public void setDormantForCompletionListeners(boolean dormantForCompletionListeners) {
+            this.dormantForCompletionListeners = dormantForCompletionListeners;
+        }
+
         /**
          * Converts this entry to a {@link Workstream} instance.
          *
@@ -762,13 +771,12 @@ public class WorkstreamConfig {
             ws.setCompletionListeners(completionListeners);
             ws.setDispatchCapable(dispatchCapable);
             ws.setUseTmux(useTmux);
+            ws.setDormantForCompletionListeners(dormantForCompletionListeners);
             return ws;
         }
     }
 
     /**
-     * Returns the global default workspace path for repo checkouts.
-     *
      * <p>When a workstream specifies {@code repoUrl} but no
      * {@code workingDirectory}, the repo is cloned into this path.
      * If not set, defaults to {@code /workspace/project} (if it exists)
@@ -1337,6 +1345,7 @@ public class WorkstreamConfig {
         entry.setCompletionListeners(ws.getCompletionListeners());
         entry.setDispatchCapable(ws.isDispatchCapable());
         entry.setUseTmux(ws.isUseTmux());
+        entry.setDormantForCompletionListeners(ws.isDormantForCompletionListeners());
     }
 
     /**

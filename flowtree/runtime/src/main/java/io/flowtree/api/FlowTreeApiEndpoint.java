@@ -180,7 +180,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * harness cannot crash the controller.
      */
     private CompletionListenerFanout completionListenerFanout;
-
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
     private String memoryServerUrl;
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
@@ -1162,14 +1161,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             targetNotifier.onJobStarted(workstreamId, event);
         } else {
             targetNotifier.onJobCompleted(workstreamId, event);
-            // Fan the terminal completion out to every completion
-            // listener of the source workstream. This is the single
-            // entry point the listener-graph uses to spawn wake-up
-            // jobs; it never throws, so a misbehaving listener cannot
-            // poison the source job's completion recording. The
-            // fanout is a no-op when the workstream has no listeners,
-            // so the inert default (the v0 behavior) is preserved
-            // automatically.
+            // Wake-up completion: clear the listener's debounce so a
+            // fast-completing wake-up does not artificially extend the
+            // window (over-debouncing would defeat the "genuinely new
+            // event still wakes the orchestrator" property). The fan-out
+            // inspects the description and only acts on wake-up completions.
+            if (completionListenerFanout != null) {
+                completionListenerFanout.notifyListenerWakeUpCompleted(
+                        workstreamId, event.getDescription());
+            }
+            // Fan the terminal completion out to every listener of the
+            // source workstream; never throws, so a misbehaving listener
+            // cannot poison the source job's completion recording. No-op
+            // when the workstream has no listeners (the inert default).
             if (completionListenerFanout != null) {
                 try {
                     completionListenerFanout.fanout(workstreamId, event);
@@ -1179,7 +1183,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 }
             }
         }
-
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"ok\":true}");
     }
@@ -1592,5 +1595,4 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
         return githubProxyHandler.handle(session, method, this::readBody, this::errorResponse);
     }
-
 }
