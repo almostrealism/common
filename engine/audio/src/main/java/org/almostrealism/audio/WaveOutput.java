@@ -145,6 +145,9 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	/** Channel audio data buffers, one per channel. */
 	private List<CollectionProducer> data;
 
+	/** The backing WaveData, retained when constructed from one; {@code null} otherwise. */
+	private WaveData waveData;
+
 	/** Per-channel writer receptors that accept push data from the processing pipeline. */
 	private List<Writer> channels;
 
@@ -259,6 +262,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 						CollectionFeatures.getInstance().p(data.getChannelData(0)),
 						CollectionFeatures.getInstance().p(data.getChannelData(1))) :
 				List.of(CollectionFeatures.getInstance().p(data.getChannelData(0))));
+		this.waveData = data;
 	}
 
 	/**
@@ -348,6 +352,39 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 */
 	public CollectionProducer getChannelData(int channel) {
 		return channel < data.size() ? data.get(channel) : null;
+	}
+
+	/**
+	 * Creates an operation that appends {@code count} frames to the specified channel
+	 * in one bulk write: the frames are copied into the channel buffer at the current
+	 * write cursor with a single device-to-device transfer, and the cursor advances
+	 * by {@code count}. This is the whole-buffer alternative to pushing frames one at
+	 * a time through {@link #getWriter(int)} — a consumer that already holds a
+	 * rendered buffer (such as a per-tick stem capture) appends it in one copy. The
+	 * copy is host-orchestrated rather than compiled, so no kernel is ever built
+	 * against the (potentially very large) channel buffer.
+	 *
+	 * @param channel channel index to append to
+	 * @param frames  the frames to append
+	 * @param count   number of frames per append
+	 * @return supplier of the append operation
+	 * @throws UnsupportedOperationException if this output was not constructed
+	 *                                       from a {@link WaveData}
+	 */
+	public Supplier<Runnable> append(int channel, PackedCollection frames, int count) {
+		if (waveData == null) {
+			throw new UnsupportedOperationException(
+					"append requires a WaveOutput constructed from WaveData");
+		}
+
+		PackedCollection destination = waveData.getChannelData(channel);
+		PackedCollection cursor = getCursor(channel);
+		return () -> () -> {
+			int position = (int) cursor.toDouble(0);
+			destination.setFrom(position, frames, 0, count);
+			double advanced = position + count;
+			cursor.fill(advanced);
+		};
 	}
 
 	/**

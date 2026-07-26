@@ -20,12 +20,14 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Aggregates audio receptors for the master mix, individual stems, and per-measure
@@ -56,6 +58,9 @@ public class MultiChannelAudioOutput {
 
 	/** Factory for measure receptors, or {@code null} if measure monitoring is disabled. */
 	private final Function<ChannelInfo, Receptor<PackedCollection>> measuresFactory;
+
+	/** The stem wave outputs, retained when constructed from a list; {@code null} otherwise. */
+	private List<WaveOutput> stemOutputs;
 
 	/** Creates a multi-channel output with no active outputs. */
 	public MultiChannelAudioOutput() {
@@ -102,6 +107,7 @@ public class MultiChannelAudioOutput {
 										.getWriter(channelInfo.getAudioChannel().getIndex())
 								: null,
 				measuresFactory);
+		this.stemOutputs = stemsOut;
 	}
 
 	/**
@@ -226,6 +232,47 @@ public class MultiChannelAudioOutput {
 
 	/** Returns {@code true} if stem output is active. */
 	public boolean isStemsActive() { return stems != null; }
+
+	/**
+	 * Returns the {@link WaveOutput} recording the given stem, for consumers that
+	 * write whole buffers per pass ({@link WaveOutput#append}) rather than pushing
+	 * frames through the stem receptors. Available only when this output was
+	 * constructed from a stem output list; {@code null} otherwise, or when the
+	 * index is outside the constructed list.
+	 *
+	 * @param patternChannel the stem's pattern-channel index
+	 * @return the stem's wave output, or {@code null}
+	 */
+	public WaveOutput getStemOutput(int patternChannel) {
+		if (stemOutputs == null || patternChannel < 0
+				|| patternChannel >= stemOutputs.size()) {
+			return null;
+		}
+		return stemOutputs.get(patternChannel);
+	}
+
+	/**
+	 * Creates an operation appending a whole buffer of frames to the given stem on
+	 * both of its stereo writers (dual-mono, matching the master's output shape).
+	 * When this output was not constructed with a stem at that index, the returned
+	 * operation is empty — the stems an output records are decided at its
+	 * construction, never by the party writing to them.
+	 *
+	 * @param patternChannel the stem's pattern-channel index
+	 * @param frames         producer of the frames to append
+	 * @param count          number of frames per append
+	 * @return supplier of the append operation (empty when the stem is absent)
+	 */
+	public Supplier<Runnable> appendStem(int patternChannel,
+										 PackedCollection frames, int count) {
+		OperationList append = new OperationList("Stem Append");
+		WaveOutput stem = getStemOutput(patternChannel);
+		if (stem != null) {
+			append.add(stem.append(0, frames, count));
+			append.add(stem.append(1, frames, count));
+		}
+		return append;
+	}
 
 	/**
 	 * Returns the total stem count of the standard stem layout for the given number

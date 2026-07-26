@@ -21,6 +21,7 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -46,6 +47,46 @@ public class WaveOutputWriteTest extends TestSuiteBase implements CellFeatures {
 
 	/** Tolerance for sample comparison, covering FP32 storage and 24-bit quantization. */
 	private static final double TOLERANCE = 1e-5;
+
+	/**
+	 * Bulk appends must land frames at the write cursor exactly as per-frame pushes
+	 * do: consecutive appends occupy consecutive regions of the channel buffer and
+	 * the cursor advances by the appended count each time.
+	 */
+	@Test(timeout = 300000)
+	public void appendPlacesFramesAtCursor() {
+		int count = 1024;
+		int total = 2 * count;
+		WaveData wave = new WaveData(2, 4 * count, OutputLine.sampleRate);
+		WaveOutput out = new WaveOutput(() -> null, 24, wave);
+
+		try {
+			PackedCollection first = new PackedCollection(count);
+			integers(0, count).divide(c((double) total))
+					.into(first.traverseEach()).evaluate();
+			PackedCollection second = new PackedCollection(count);
+			integers(count, total).divide(c((double) total))
+					.into(second.traverseEach()).evaluate();
+
+			out.append(0, first, count).get().run();
+			out.append(1, first, count).get().run();
+			out.append(0, second, count).get().run();
+			out.append(1, second, count).get().run();
+
+			Assert.assertEquals("cursor must advance by the appended frame count",
+					total - 1, out.getFrameCount());
+
+			double[] channel = wave.getChannelData(0).toArray(0, total);
+			for (int i = 0; i < total; i++) {
+				Assert.assertEquals("appended frame " + i + " must land at the"
+								+ " cursor position of its append",
+						i / (double) total, channel[i], 1e-5);
+			}
+		} finally {
+			out.destroy();
+			wave.destroy();
+		}
+	}
 
 	/**
 	 * Writes a stereo ramp signal spanning multiple write batches, then reads the
