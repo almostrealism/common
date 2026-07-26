@@ -86,7 +86,7 @@ final class PdslBuiltins {
 			case "scale": return callScale(args);
 			case "repeat": return callRepeat(args);
 			case "sum_channels": return callSumChannels(args);
-			case "capture": return callCapture(args);
+			case "capture": return callCapture(producerArg(args, 0, 1, "capture"));
 			case "rope_rotation": return callRopeRotation(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
@@ -95,6 +95,30 @@ final class PdslBuiltins {
 			case "range": return callRange(args);
 			default: return null;
 		}
+	}
+
+	/**
+	 * Normalizes the built-in argument at the given index to a
+	 * {@link CollectionProducer}, enforcing the built-in's arity. Builtin
+	 * implementations should accept producers rather than {@code List<Object>};
+	 * this is the dispatch-side normalization that makes that possible.
+	 *
+	 * @param args     the raw evaluated arguments
+	 * @param index    the argument index to normalize
+	 * @param expected the number of arguments the built-in requires
+	 * @param name     the built-in name, for error messages
+	 * @return the normalized producer
+	 * @throws PdslParseException if the arity does not match
+	 */
+	private static CollectionProducer producerArg(List<Object> args, int index,
+												  int expected, String name) {
+		if (args.size() != expected) {
+			throw new PdslParseException(name + "() expects " + expected
+					+ " argument" + (expected == 1 ? "" : "s")
+					+ ", got " + args.size());
+		}
+		return PdslInterpreter.normalizeToProducer(args.get(index), null,
+				name + "() argument " + index);
 	}
 
 	/**
@@ -251,18 +275,10 @@ final class PdslBuiltins {
 	 * the slot after each forward pass, and the capture never alters the graph it
 	 * sits inside.
 	 *
-	 * @param args one argument: the destination slot, whose total size must match
-	 *             the input shape
+	 * @param slot the destination slot, whose total size must match the input shape
 	 * @return a factory that creates the capture block for any input shape
 	 */
-	private static Function<TraversalPolicy, Block> callCapture(List<Object> args) {
-		if (args.size() != 1) {
-			throw new PdslParseException(
-					"capture() expects 1 argument (the destination slot), got "
-							+ args.size());
-		}
-		CollectionProducer slot = PdslInterpreter.normalizeToProducer(args.get(0),
-				null, "capture() slot");
+	private static Function<TraversalPolicy, Block> callCapture(CollectionProducer slot) {
 		TraversalPolicy slotShape = FEATURES.shape(slot);
 		return (inputShape -> {
 			if (slotShape.getTotalSize() != inputShape.getTotalSize()) {

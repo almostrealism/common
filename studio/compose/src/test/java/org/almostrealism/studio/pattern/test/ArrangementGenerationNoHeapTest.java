@@ -28,7 +28,6 @@ import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
-import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.util.TestDepth;
@@ -116,8 +115,9 @@ public class ArrangementGenerationNoHeapTest extends AudioSceneTestBase {
 		new File("results").mkdirs();
 		AtomicInteger index = new AtomicInteger();
 
+		// Total audio channels: the pattern channels plus the efx and reverb buses
 		StableDurationHealthComputation health = new StableDurationHealthComputation(
-				MultiChannelAudioOutput.stemCount(channels), true);
+				channels + 2, true);
 		health.setMaxDuration(MAX_DURATION_SECONDS);
 		health.setOutputFile(() ->
 				"results/noheap-arrangement-" + index.incrementAndGet() + ".wav");

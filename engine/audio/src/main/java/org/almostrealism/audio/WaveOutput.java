@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Lifecycle;
@@ -145,9 +146,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	/** Channel audio data buffers, one per channel. */
 	private List<CollectionProducer> data;
 
-	/** The backing WaveData, retained when constructed from one; {@code null} otherwise. */
-	private WaveData waveData;
-
 	/** Per-channel writer receptors that accept push data from the processing pipeline. */
 	private List<Writer> channels;
 
@@ -262,7 +260,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 						CollectionFeatures.getInstance().p(data.getChannelData(0)),
 						CollectionFeatures.getInstance().p(data.getChannelData(1))) :
 				List.of(CollectionFeatures.getInstance().p(data.getChannelData(0))));
-		this.waveData = data;
 	}
 
 	/**
@@ -352,39 +349,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 */
 	public CollectionProducer getChannelData(int channel) {
 		return channel < data.size() ? data.get(channel) : null;
-	}
-
-	/**
-	 * Creates an operation that appends {@code count} frames to the specified channel
-	 * in one bulk write: the frames are copied into the channel buffer at the current
-	 * write cursor with a single device-to-device transfer, and the cursor advances
-	 * by {@code count}. This is the whole-buffer alternative to pushing frames one at
-	 * a time through {@link #getWriter(int)} — a consumer that already holds a
-	 * rendered buffer (such as a per-tick stem capture) appends it in one copy. The
-	 * copy is host-orchestrated rather than compiled, so no kernel is ever built
-	 * against the (potentially very large) channel buffer.
-	 *
-	 * @param channel channel index to append to
-	 * @param frames  the frames to append
-	 * @param count   number of frames per append
-	 * @return supplier of the append operation
-	 * @throws UnsupportedOperationException if this output was not constructed
-	 *                                       from a {@link WaveData}
-	 */
-	public Supplier<Runnable> append(int channel, PackedCollection frames, int count) {
-		if (waveData == null) {
-			throw new UnsupportedOperationException(
-					"append requires a WaveOutput constructed from WaveData");
-		}
-
-		PackedCollection destination = waveData.getChannelData(channel);
-		PackedCollection cursor = getCursor(channel);
-		return () -> () -> {
-			int position = (int) cursor.toDouble(0);
-			destination.setFrom(position, frames, 0, count);
-			double advanced = position + count;
-			cursor.fill(advanced);
-		};
 	}
 
 	/**
@@ -535,6 +499,9 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		/** Single-element collection holding the current write cursor (frame index). */
 		private PackedCollection cursor;
 
+		/** Single-element collection holding the source frame index during a bulk push. */
+		private PackedCollection bulkIndex;
+
 		/**
 		 * Creates a Writer for the specified channel index.
 		 *
@@ -543,6 +510,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		public Writer(int channel) {
 			this.channel = channel;
 			this.cursor = new PackedCollection(1);
+			this.bulkIndex = new PackedCollection(1);
 		}
 
 		/** Returns the write cursor collection holding the current frame index. */
@@ -557,6 +525,18 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 			return (int) cursor.toDouble(0) - 1;
 		}
 
+		/**
+		 * {@inheritDoc}
+		 *
+		 * <p>A single frame (or a size-2 stereo pair, which contributes its first
+		 * value) is inserted at the write cursor. A larger pushed shape is treated
+		 * as a whole buffer of consecutive frames, consumed by a compiled loop over
+		 * the same insert-and-advance step — a loop, rather than a wide kernel,
+		 * because backends that lower kernel count by unrolling would otherwise
+		 * generate one statement per frame against the full channel buffer. The
+		 * cursor advances by the number of frames consumed, wrapping when the
+		 * output is circular.</p>
+		 */
 		@Override
 		public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 			String description = "WaveOutput Push";
@@ -567,18 +547,48 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 				protein = c(protein, 0);
 			}
 
-			Producer slot = c(shape(1), getChannelData(channel), p(cursor));
+			int frames = shape(protein).getTotalSize();
 
-			push.add(a("WaveOutput Insert", slot, protein));
-
-			if (circular) {
-				int bufferSize = shape(getChannelData(channel)).getTotalSize();
-				push.add(a("WaveOutput Cursor Increment (circular)",
-						cp(cursor), mod(cp(cursor).add(1), c(bufferSize))));
+			if (frames == 1) {
+				push.add(insert(protein));
+				push.add(advanceCursor());
 			} else {
-				push.add(a("WaveOutput Cursor Increment", cp(cursor), cp(cursor).add(1)));
+				push.add(a("WaveOutput Bulk Rewind", cp(bulkIndex), c(0.0)));
+				OperationList step = new OperationList("WaveOutput Bulk Insert");
+				step.add(insert(c(shape(1), protein, p(bulkIndex))));
+				step.add(a("WaveOutput Bulk Advance",
+						cp(bulkIndex), cp(bulkIndex).add(1)));
+				step.add(advanceCursor());
+				push.add(loop((Computation<Void>) step, frames));
 			}
 			return push;
+		}
+
+		/**
+		 * Creates the assignment placing one frame at the current write cursor.
+		 *
+		 * @param frame producer of the single frame to insert
+		 * @return the insert operation
+		 */
+		private Supplier<Runnable> insert(Producer<PackedCollection> frame) {
+			return a("WaveOutput Insert",
+					c(shape(1), getChannelData(channel), p(cursor)), frame);
+		}
+
+		/**
+		 * Creates the assignment advancing the write cursor by one frame, wrapping
+		 * at the channel buffer size when this output is circular.
+		 *
+		 * @return the cursor advance operation
+		 */
+		private Supplier<Runnable> advanceCursor() {
+			if (circular) {
+				int bufferSize = shape(getChannelData(channel)).getTotalSize();
+				return a("WaveOutput Cursor Increment (circular)",
+						cp(cursor), mod(cp(cursor).add(1), c(bufferSize)));
+			} else {
+				return a("WaveOutput Cursor Increment", cp(cursor), cp(cursor).add(1));
+			}
 		}
 
 		@Override
@@ -592,6 +602,10 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 			if (cursor != null) {
 				cursor.destroy();
 				cursor = null;
+			}
+			if (bulkIndex != null) {
+				bulkIndex.destroy();
+				bulkIndex = null;
 			}
 		}
 	}

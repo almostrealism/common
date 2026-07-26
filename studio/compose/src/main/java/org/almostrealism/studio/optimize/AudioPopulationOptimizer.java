@@ -18,7 +18,6 @@ package org.almostrealism.studio.optimize;
 
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.studio.health.AudioHealthScore;
-import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.Genome;
@@ -272,17 +271,13 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 
 	/**
 	 * Creates a default {@link HealthComputation} backed by a {@link StableDurationHealthComputation}
-	 * configured to evaluate the given number of audio channels. The optimizer's renders
-	 * record the full standard stem layout — one stem per pattern channel plus the efx
-	 * and reverb buses — so the computation is constructed with
-	 * {@link MultiChannelAudioOutput#stemCount(int)} stems for the given channels.
+	 * configured to evaluate the given number of audio channels.
 	 *
 	 * @param <O>      the temporal type to evaluate
-	 * @param channels the number of pattern channels to assess
+	 * @param channels the number of audio channels to assess
 	 * @return a health computation suitable for use with this optimizer
 	 */
 	public static <O extends Temporal> HealthComputation<O, AudioHealthScore> healthComputation(int channels) {
-		return (HealthComputation<O, AudioHealthScore>) new StableDurationHealthComputation(
-				MultiChannelAudioOutput.stemCount(channels), true);
+		return (HealthComputation<O, AudioHealthScore>) new StableDurationHealthComputation(channels, true);
 	}
 }
