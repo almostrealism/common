@@ -115,8 +115,9 @@ public class ArrangementGenerationNoHeapTest extends AudioSceneTestBase {
 		new File("results").mkdirs();
 		AtomicInteger index = new AtomicInteger();
 
-		StableDurationHealthComputation health =
-				new StableDurationHealthComputation(channels, true);
+		// Total audio channels: the pattern channels plus the single fx stem
+		StableDurationHealthComputation health = new StableDurationHealthComputation(
+				channels + 1, true);
 		health.setMaxDuration(MAX_DURATION_SECONDS);
 		health.setOutputFile(() ->
 				"results/noheap-arrangement-" + index.incrementAndGet() + ".wav");

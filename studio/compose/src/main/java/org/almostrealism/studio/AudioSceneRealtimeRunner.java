@@ -233,8 +233,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
 		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
 
+		// Pattern position follows the arrangement timeline (wrapped at breaks),
+		// matching the PDSL path's render-ahead position source.
 		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
-				() -> currentFrame[0], bufferFrameProducer);
+				() -> (int) scene.getTimeManager().positionForFrame(currentFrame[0]),
+				bufferFrameProducer);
 
 		// Per-frame operation (must be compilable)
 		Supplier<Runnable> frameOp = cells.tick();
@@ -370,8 +373,10 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		// Frame index within the current buffer, driven by the output-streaming loop
 		PackedCollection bufferFrameIndex = new PackedCollection(1);
 
+		// Pattern position follows the arrangement timeline, not the raw render
+		// cursor: the reset schedule wraps it to zero at each break, ahead of playback.
 		Supplier<Runnable> patternSetup = scene.prepareRenderBuffers(channels, bufferSize,
-				() -> (int) renderFrame[0]);
+				() -> (int) scene.getTimeManager().positionForFrame(renderFrame[0]));
 
 		boolean wetVoicing = MixdownManager.enableEfx;
 		int inputChannels = wetVoicing ? channelCount * 2 : channelCount;
@@ -415,7 +420,45 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		OperationList outputLoopBody = new OperationList("PDSL Output Stream Body");
 		outputLoopBody.add(masterLeft.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
 		outputLoopBody.add(masterRight.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
+
 		outputLoopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
+
+		// Whole buffers per tick, not per-frame pushes in the output loop, which
+		// multiplied the loop's operation count enough to break the realtime budget
+		OperationList stemAppends = new OperationList("PDSL Stem Appends");
+		if (output.isStemsActive()) {
+			PackedCollection stemChannels = (PackedCollection) args.get("stem_channels");
+			if (stemChannels != null) {
+				for (int ch = 0; ch < channelCount; ch++) {
+					addStemPushes(stemAppends, output, channels.get(ch),
+							p(stemChannels.range(new TraversalPolicy(bufferSize),
+									ch * bufferSize)));
+				}
+			}
+
+			if (channelCount == scene.getChannelCount()) {
+				PackedCollection stemEfx = (PackedCollection) args.get("stem_efx");
+				PackedCollection stemReverb = (PackedCollection) args.get("stem_reverb");
+
+				if (stemEfx != null && stemReverb != null) {
+					// Summed once per tick, so the writers push plain memory
+					PackedCollection fx = new PackedCollection(bufferSize);
+					stemAppends.add(a("PDSL FX Stem Sum",
+							cp(fx).each(),
+							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
+									.add(cp(stemReverb.range(
+											new TraversalPolicy(bufferSize), 0)))
+									.each()));
+					addStemPushes(stemAppends, output, channelCount, p(fx));
+				} else if (stemEfx != null) {
+					addStemPushes(stemAppends, output, channelCount,
+							p(stemEfx.range(new TraversalPolicy(bufferSize), 0)));
+				} else if (stemReverb != null) {
+					addStemPushes(stemAppends, output, channelCount,
+							p(stemReverb.range(new TraversalPolicy(bufferSize), 0)));
+				}
+			}
+		}
 
 		return new TemporalCellular() {
 			/**
@@ -476,6 +519,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 					renderStream.release();
 				});
 
+				if (!stemAppends.isEmpty()) tick.add(stemAppends);
 				tick.add(loop(outputLoopBody, bufferSize));
 				tick.add(loop(scene.getTimeManager().tick(), bufferSize));
 				tick.add(() -> () -> currentFrame[0] += bufferSize);
@@ -496,6 +540,25 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};
+	}
+
+	/**
+	 * Pushes a captured buffer of frames to the stem {@link Receptor}s for the given
+	 * audio channel, once per stereo channel. The single fx stem — the audio channel
+	 * after the pattern channels, receiving the efx and reverb buses summed — is the
+	 * stem layout consumers of these renders expect, matching the CellList mixdown.
+	 *
+	 * @param ops          the operation list receiving the push operations
+	 * @param output       the destination routing
+	 * @param audioChannel the audio channel whose stem receives the frames
+	 * @param frames       producer of the captured frames to push
+	 */
+	private void addStemPushes(OperationList ops, MultiChannelAudioOutput output,
+							   int audioChannel, Producer<PackedCollection> frames) {
+		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
+			Receptor<PackedCollection> stem = output.getStem(audioChannel, stereo);
+			if (stem != null) ops.add(stem.push(frames));
+		}
 	}
 
 	/**

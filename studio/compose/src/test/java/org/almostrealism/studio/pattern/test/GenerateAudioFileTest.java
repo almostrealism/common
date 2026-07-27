@@ -29,6 +29,9 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Renders {@link #TARGET_SECONDS} of audio through the current real-time {@link AudioScene} PDSL
@@ -109,8 +112,17 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 		// four-minute evaluation length).
 		WaveOutput out = new WaveOutput(() -> outFile, 24, ticks * BUFFER_SIZE, true);
 
+		// One stem per audio channel: the pattern channels, then the single fx
+		// stem (efx and reverb summed), auditable in isolation beside the master
+		List<WaveOutput> stems = IntStream.range(0, scene.getChannelCount() + 1)
+				.mapToObj(i -> new WaveOutput(() ->
+								new File(outFile.getParentFile(),
+										"generated-audio." + i + ".wav"),
+						24, ticks * BUFFER_SIZE, true))
+				.collect(Collectors.toList());
+
 		TemporalCellular runner = scene.runnerRealTime(
-				new MultiChannelAudioOutput(out), null, BUFFER_SIZE);
+				new MultiChannelAudioOutput(out, stems), null, BUFFER_SIZE);
 		Runnable setup = runner.setup().get();
 		Runnable tick = runner.tick().get();
 
@@ -126,6 +138,7 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 			double genSec = (System.nanoTime() - genStart) / 1e9;
 
 			out.write().get().run();
+			stems.forEach(s -> s.write().get().run());
 
 			double peak = peakAmplitude(outFile.getPath());
 			double totalSec = setupSec + genSec;
@@ -148,6 +161,7 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 			Assert.assertTrue("Generated audio is silent (peak=" + peak + ")", peak > 1e-3);
 		} finally {
 			out.reset();
+			stems.forEach(WaveOutput::reset);
 			runner.reset();
 		}
 	}
