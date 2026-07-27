@@ -431,21 +431,31 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			if (stemChannels != null) {
 				for (int ch = 0; ch < channelCount; ch++) {
 					addStemPushes(stemAppends, output, channels.get(ch),
-							stemChannels.range(new TraversalPolicy(bufferSize),
-									ch * bufferSize));
+							p(stemChannels.range(new TraversalPolicy(bufferSize),
+									ch * bufferSize)));
 				}
 			}
 
 			if (channelCount == scene.getChannelCount()) {
 				PackedCollection stemEfx = (PackedCollection) args.get("stem_efx");
-				if (stemEfx != null) {
-					addStemPushes(stemAppends, output, channelCount,
-							stemEfx.range(new TraversalPolicy(bufferSize), 0));
-				}
 				PackedCollection stemReverb = (PackedCollection) args.get("stem_reverb");
-				if (stemReverb != null) {
-					addStemPushes(stemAppends, output, channelCount + 1,
-							stemReverb.range(new TraversalPolicy(bufferSize), 0));
+
+				if (stemEfx != null && stemReverb != null) {
+					// Summed once per tick, so the writers push plain memory
+					PackedCollection fx = new PackedCollection(bufferSize);
+					stemAppends.add(a("PDSL FX Stem Sum",
+							cp(fx).each(),
+							cp(stemEfx.range(new TraversalPolicy(bufferSize), 0))
+									.add(cp(stemReverb.range(
+											new TraversalPolicy(bufferSize), 0)))
+									.each()));
+					addStemPushes(stemAppends, output, channelCount, p(fx));
+				} else if (stemEfx != null) {
+					addStemPushes(stemAppends, output, channelCount,
+							p(stemEfx.range(new TraversalPolicy(bufferSize), 0)));
+				} else if (stemReverb != null) {
+					addStemPushes(stemAppends, output, channelCount,
+							p(stemReverb.range(new TraversalPolicy(bufferSize), 0)));
 				}
 			}
 		}
@@ -534,20 +544,20 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 
 	/**
 	 * Pushes a captured buffer of frames to the stem {@link Receptor}s for the given
-	 * audio channel, once per stereo channel. The efx and reverb buses are addressed
-	 * as the audio channels following the pattern channels, matching the CellList
-	 * mixdown's stem layout, and a channel the output does not route is skipped.
+	 * audio channel, once per stereo channel. The single fx stem — the audio channel
+	 * after the pattern channels, receiving the efx and reverb buses summed — is the
+	 * stem layout consumers of these renders expect, matching the CellList mixdown.
 	 *
 	 * @param ops          the operation list receiving the push operations
 	 * @param output       the destination routing
 	 * @param audioChannel the audio channel whose stem receives the frames
-	 * @param frames       the captured frames to push
+	 * @param frames       producer of the captured frames to push
 	 */
 	private void addStemPushes(OperationList ops, MultiChannelAudioOutput output,
-							   int audioChannel, PackedCollection frames) {
+							   int audioChannel, Producer<PackedCollection> frames) {
 		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
 			Receptor<PackedCollection> stem = output.getStem(audioChannel, stereo);
-			if (stem != null) ops.add(stem.push(p(frames)));
+			if (stem != null) ops.add(stem.push(frames));
 		}
 	}
 

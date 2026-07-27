@@ -112,9 +112,9 @@ public class GenerateAudioFileTest extends AudioSceneTestBase {
 		// four-minute evaluation length).
 		WaveOutput out = new WaveOutput(() -> outFile, 24, ticks * BUFFER_SIZE, true);
 
-		// One stem per audio channel: the pattern channels, then the efx and
-		// reverb buses, so each can be audited in isolation alongside the master
-		List<WaveOutput> stems = IntStream.range(0, scene.getChannelCount() + 2)
+		// One stem per audio channel: the pattern channels, then the single fx
+		// stem (efx and reverb summed), auditable in isolation beside the master
+		List<WaveOutput> stems = IntStream.range(0, scene.getChannelCount() + 1)
 				.mapToObj(i -> new WaveOutput(() ->
 								new File(outFile.getParentFile(),
 										"generated-audio." + i + ".wav"),
