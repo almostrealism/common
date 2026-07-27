@@ -100,10 +100,32 @@ public class MTLCommandBuffer extends MTLObject {
 	/**
 	 * Blocks the calling thread until all GPU commands have completed.
 	 *
-	 * <p>Must be called after {@link #commit()}. Synchronizes CPU with GPU execution.</p>
+	 * <p>Must be called after {@link #commit()}. Synchronizes CPU with GPU execution.
+	 * Returns identically whether the buffer executed or was killed by a GPU error or
+	 * watchdog; use {@link #isError()} afterwards to distinguish, since a killed
+	 * buffer's dispatches never ran and their destinations were never written.</p>
 	 */
 	public void waitUntilCompleted() {
 		MTL.waitUntilCompleted(getNativePointer());
+	}
+
+	/**
+	 * Returns true when this buffer finished with the error status, meaning some or all
+	 * of its dispatches never executed (for example after a GPU fault or watchdog kill).
+	 *
+	 * @return true when the buffer's status is error
+	 */
+	public boolean isError() {
+		return MTL.commandBufferStatus(getNativePointer()) == 5;
+	}
+
+	/**
+	 * Returns the localized error description when {@link #isError()} is true.
+	 *
+	 * @return the error description, or {@code null} when there is no error
+	 */
+	public String getError() {
+		return MTL.commandBufferError(getNativePointer());
 	}
 
 	/**

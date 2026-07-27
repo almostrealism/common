@@ -19,6 +19,8 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 
 import java.util.ArrayList;
@@ -57,7 +59,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * ({@link MTL#commandBuffer(long)}) and released ({@link MTLCommandBuffer#release()}) once it has
  * completed.</p>
  */
-public class MetalCommandRunner {
+public class MetalCommandRunner implements ConsoleFeatures {
 	/** Maximum number of kernel arguments a single command may bind. */
 	public static final int MAX_ARGS = 512;
 
@@ -139,6 +141,13 @@ public class MetalCommandRunner {
 	 * Written from completion-callback threads.
 	 */
 	private final AtomicLong lateBridgeSignals = new AtomicLong();
+
+	/**
+	 * Committed buffers that finished with the Metal error status, meaning their
+	 * dispatches never executed and their destinations were never written.
+	 * Written on the executor thread; read from diagnostic threads.
+	 */
+	private final AtomicLong errorCompletions = new AtomicLong();
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -463,19 +472,61 @@ public class MetalCommandRunner {
 
 		// Not found means it already completed and was drained by an earlier wait.
 		for (int i = 0; i <= index; i++) {
-			CommittedBuffer c = committed.remove(0);
-			c.buffer.waitUntilCompleted();
-			c.onComplete.forEach(Runnable::run);
-			c.buffer.release();
+			drainOldestCommitted(requester);
 		}
 	}
 
-	/** Waits for the given executor task to finish, rethrowing any execution failure. */
+	/**
+	 * Waits for the oldest committed buffer, verifies it actually executed, runs its
+	 * callbacks, and releases it. Must run on the executor thread.
+	 *
+	 * <p>{@link MTLCommandBuffer#waitUntilCompleted()} returns identically for a buffer
+	 * that executed and for one killed by a GPU fault or watchdog — in the killed case
+	 * every dispatch in the buffer silently never ran, its destinations were never
+	 * written, and its timeline-event signals never fired, which permanently stalls any
+	 * later dispatch that encoded a wait on those values. Detecting the error status
+	 * here is what turns that silent-wrong-data state into a visible failure.</p>
+	 *
+	 * @param requester metadata of the operation whose wait forced this drain, or null
+	 */
+	private void drainOldestCommitted(OperationMetadata requester) {
+		CommittedBuffer c = committed.remove(0);
+		c.buffer.waitUntilCompleted();
+
+		if (c.buffer.isError()) {
+			errorCompletions.incrementAndGet();
+			warn("commandBufferError=\"" + c.buffer.getError() + "\" requester=" +
+					(requester == null ? "unknown" : requester.getDisplayName()) +
+					" commitCount=" + commitCount +
+					" errorCompletions=" + errorCompletions.get());
+		}
+
+		c.onComplete.forEach(Runnable::run);
+		c.buffer.release();
+	}
+
+	/**
+	 * Returns the number of committed buffers that finished with the Metal error status.
+	 *
+	 * @return the error-completion count
+	 */
+	public long getErrorCompletionCount() { return errorCompletions.get(); }
+
+	/**
+	 * Waits for the given executor task to finish, rethrowing any execution failure.
+	 *
+	 * <p>An interrupt (for example a test-framework timeout) abandons the wait while the
+	 * task may still be queued or running; the caller then proceeds as though the GPU
+	 * work finished, so the abandonment is logged rather than silently swallowed.</p>
+	 */
 	private static void await(Future<?> f) {
 		try {
 			f.get();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
+			Hardware.console.features(MetalCommandRunner.class)
+					.warn("interrupted while awaiting a command runner task; " +
+							"the associated GPU work may not have completed");
 		} catch (ExecutionException e) {
 			throw new RuntimeException(e);
 		}
@@ -492,10 +543,7 @@ public class MetalCommandRunner {
 			await(executor.submit(() -> runInPool(() -> {
 				if (commitOpenOnExecutor()) destroyCommits++;
 				while (!committed.isEmpty()) {
-					CommittedBuffer c = committed.remove(0);
-					c.buffer.waitUntilCompleted();
-					c.onComplete.forEach(Runnable::run);
-					c.buffer.release();
+					drainOldestCommitted(null);
 				}
 				event.release();
 			})));
@@ -503,6 +551,10 @@ public class MetalCommandRunner {
 		}
 		executor = null;
 	}
+
+	/** Returns the console for logging. */
+	@Override
+	public Console console() { return Hardware.console; }
 
 	/** A committed command buffer and the released-memory callbacks to run once it completes. */
 	private static final class CommittedBuffer {

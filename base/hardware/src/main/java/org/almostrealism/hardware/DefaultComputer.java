@@ -392,7 +392,8 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
 		this.requirements = ThreadLocal.withInitial(ArrayDeque::new);
-		this.instructionsCache = new FrequencyCache<>(500, 0.4);
+		this.instructionsCache = new FrequencyCache<>(
+				SystemUtils.getInt("AR_INSTRUCTION_CACHE_SIZE").orElse(500), 0.4);
 		this.instructionsCache.setEvictionListener(
 				(key, mgr) -> mgr.destroy());
 	}
