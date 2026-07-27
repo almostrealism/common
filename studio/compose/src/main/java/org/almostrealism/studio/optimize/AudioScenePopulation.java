@@ -27,6 +27,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
+import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.io.Console;
 import org.almostrealism.optimize.HealthCallable;
 import org.almostrealism.optimize.Population;
@@ -197,6 +198,16 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * batch to throw the already-active {@link IllegalStateException},
 	 * flooding the log with latch errors that hid the one real failure.</p>
 	 *
+	 * <p>After a successful assignment the pattern cache epoch is advanced
+	 * ({@link PatternLayerManager#invalidateCaches()}) so the previous genome's
+	 * gathered note audio is released. This population swaps genomes repeatedly
+	 * on a reused runner, so without the epoch advance each genome's cache
+	 * entries stay pinned and device memory accumulates across the loop until
+	 * the memory provider's cap is reached. The invalidation lives here — at the
+	 * driver — rather than inside {@code AudioScene.assignGenome}, because the
+	 * epoch is global to the JVM and most scene assignments must not flush the
+	 * caches of every other scene in the process.</p>
+	 *
 	 * @param newGenome the genome to activate
 	 * @throws IllegalStateException if a genome is already active
 	 */
@@ -208,6 +219,11 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 		}
 
 		scene.assignGenome((ProjectedGenome) newGenome);
+
+		// TODO  Only required because PatternLayerManager caches are JVM-global;
+		// TODO  a per-scene cache would make this step unnecessary here.
+		PatternLayerManager.invalidateCaches();
+
 		currentGenome = newGenome;
 	}
 

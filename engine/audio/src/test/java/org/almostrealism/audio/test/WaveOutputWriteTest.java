@@ -21,6 +21,8 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -46,6 +48,130 @@ public class WaveOutputWriteTest extends TestSuiteBase implements CellFeatures {
 
 	/** Tolerance for sample comparison, covering FP32 storage and 24-bit quantization. */
 	private static final double TOLERANCE = 1e-5;
+
+	/**
+	 * A whole buffer pushed through a stem {@link org.almostrealism.graph.Receptor}
+	 * must land at the write cursor exactly as per-frame pushes do: consecutive
+	 * pushes occupy consecutive regions of the channel buffer and the cursor
+	 * advances by the pushed frame count each time.
+	 */
+	@Test(timeout = 300000)
+	public void bulkPushPlacesFramesAtCursor() {
+		int count = 1024;
+		int total = 2 * count;
+		WaveData wave = new WaveData(2, 4 * count, OutputLine.sampleRate);
+		WaveOutput out = new WaveOutput(() -> null, 24, wave);
+
+		try {
+			PackedCollection first = new PackedCollection(count);
+			integers(0, count).divide(c((double) total))
+					.into(first.traverseEach()).evaluate();
+			PackedCollection second = new PackedCollection(count);
+			integers(count, total).divide(c((double) total))
+					.into(second.traverseEach()).evaluate();
+
+			out.getWriter(0).push(p(first)).get().run();
+			out.getWriter(1).push(p(first)).get().run();
+			out.getWriter(0).push(p(second)).get().run();
+			out.getWriter(1).push(p(second)).get().run();
+
+			Assert.assertEquals("cursor must advance by the pushed frame count",
+					total - 1, out.getFrameCount());
+
+			double[] channel = wave.getChannelData(0).toArray(0, total);
+			for (int i = 0; i < total; i++) {
+				Assert.assertEquals("pushed frame " + i + " must land at the"
+								+ " cursor position of its push",
+						i / (double) total, channel[i], 1e-5);
+			}
+		} finally {
+			out.destroy();
+			wave.destroy();
+		}
+	}
+
+	/**
+	 * The bulk push must compile promptly against a channel buffer the size of a
+	 * full multi-minute render timeline, including the {@link OperationList#optimize()}
+	 * cascade the health and render paths apply to their tick. Earlier bulk-write
+	 * formulations passed small-buffer and unoptimized tests but hung the optimize
+	 * cascade for over ten minutes against a ten-million-frame destination, so this
+	 * receipt certifies the compile-time behaviour at the realistic scale, then
+	 * verifies the frames land correctly.
+	 */
+	@Test(timeout = 300000)
+	public void bulkPushCompilesAgainstRenderTimeline() {
+		int count = 1024;
+		int timelineFrames = 10_584_000;
+		WaveData wave = new WaveData(1, timelineFrames, OutputLine.sampleRate);
+		WaveOutput out = new WaveOutput(() -> null, 24, wave);
+
+		try {
+			PackedCollection frames = new PackedCollection(count);
+			integers(0, count).divide(c((double) count))
+					.into(frames.traverseEach()).evaluate();
+
+			OperationList op = (OperationList) out.getWriter(0).push(p(frames));
+			Runnable push = op.optimize().get();
+			push.run();
+			push.run();
+
+			Assert.assertEquals(2 * count - 1, out.getFrameCount());
+
+			double[] channel = wave.getChannelData(0).toArray(0, 2 * count);
+			for (int i = 0; i < 2 * count; i++) {
+				Assert.assertEquals("frame " + i,
+						(i % count) / (double) count, channel[i], 1e-5);
+			}
+		} finally {
+			out.destroy();
+			wave.destroy();
+		}
+	}
+
+	/**
+	 * The bulk push against a circular output must also compile promptly at the
+	 * render-timeline ring size — the health path records stems into circular
+	 * buffers over ten million frames long, pushing tens of thousands of frames
+	 * per tick, and an unrolled single-thread formulation of that write produced
+	 * a fifty-megabyte generated source that native compilation could not finish.
+	 * Wraparound is verified by pushing across the end of a small logical region
+	 * using the cursor the pushes maintain.
+	 */
+	@Test(timeout = 300000)
+	public void bulkPushCircularCompilesAtRingScale() {
+		int count = 22050;
+		int timelineFrames = 10_143_000;
+		WaveData wave = new WaveData(1, timelineFrames, OutputLine.sampleRate);
+		WaveOutput out = new WaveOutput(() -> null, 24, wave);
+		out.setCircular(true);
+
+		try {
+			PackedCollection frames = new PackedCollection(count);
+			integers(0, count).divide(c((double) count))
+					.into(frames.traverseEach()).evaluate();
+
+			out.getCursor(0).fill((double) (timelineFrames - 100));
+
+			OperationList op = (OperationList) out.getWriter(0).push(p(frames));
+			op.optimize().get().run();
+
+			Assert.assertEquals("cursor must wrap at the ring size",
+					count - 100, (int) out.getCursor(0).toDouble(0));
+
+			double[] tail = wave.getChannelData(0)
+					.toArray(timelineFrames - 100, 100);
+			double[] head = wave.getChannelData(0).toArray(0, count - 100);
+			for (int i = 0; i < count; i++) {
+				double actual = i < 100 ? tail[i] : head[i - 100];
+				Assert.assertEquals("circular frame " + i,
+						i / (double) count, actual, 1e-5);
+			}
+		} finally {
+			out.destroy();
+			wave.destroy();
+		}
+	}
 
 	/**
 	 * Writes a stereo ramp signal spanning multiple write batches, then reads the

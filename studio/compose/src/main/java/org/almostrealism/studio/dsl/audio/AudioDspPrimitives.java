@@ -448,12 +448,20 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 	 * {@code [1, 1]}: {@code transmission = [[g]]} (the feedback gain) and {@code passthrough}
 	 * the output level. {@code mself(input_level, T, P)} is {@code scale(input_level)} followed
 	 * by {@code feedback(T, ..., P)}.</p>
+	 *
+	 * <p>An optional sixth argument, {@code delay_samples_prev}, supplies the previous
+	 * frame's per-line delay values. When present, each line's delay follows a
+	 * per-sample linear trajectory from the previous to the current value across the
+	 * frame, read with fractional-position interpolation — rendering the pitch bend of
+	 * a modulated delay line (the legacy {@code AdjustableDelayCell.scale} character).
+	 * Without it the read is the static whole-sample form.</p>
 	 */
 	private Block dispatchFeedback(List<Object> args, PdslPrimitiveContext ctx) {
-		if (args.size() != 5) {
+		if (args.size() != 5 && args.size() != 6) {
 			throw new PdslParseException(
 					"feedback() expects 5 arguments (delay_samples, transmission_matrix, "
-							+ "passthrough_matrix, buffer, heads), got " + args.size());
+							+ "passthrough_matrix, buffer, heads) plus an optional "
+							+ "delay_samples_prev, got " + args.size());
 		}
 		int signalSize = ctx.signalSize();
 		CollectionProducer delays = ctx.toProducer(args.get(0), null,
@@ -466,7 +474,11 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		CollectionProducer buffer = ctx.toProducer(args.get(3), null, "feedback() buffer");
 		CollectionProducer heads = ctx.toProducer(args.get(4), shape(channels),
 				"feedback() heads");
-		return feedbackNetworkBlock(delays, transmission, passthrough,
+		CollectionProducer delaysPrev = args.size() > 5
+				? ctx.toProducer(args.get(5), shape(channels),
+						"feedback() delay_samples_prev")
+				: null;
+		return feedbackNetworkBlock(delays, delaysPrev, transmission, passthrough,
 				buffer, heads, channels, signalSize);
 	}
 }

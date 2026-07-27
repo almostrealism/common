@@ -571,11 +571,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 			// audio, and the faithful unscaled recirculation then blew the loop up into
 			// a permanent full-scale buzz.) The rate change's pitch bend — content
 			// written at rate s1 and read at s2 emerges resampled by s2/s1 — is the
-			// resampling-read arc; here the delay moves in whole-sample per-buffer
-			// steps.
+			// rendered by the network's fractional read, which ramps each line's
+			// delay across the frame from the _prev copy to the values assigned below.
 			PackedCollection busDelays = (PackedCollection) args.get("bus_delay_samples");
 			if (busDelays != null) {
 				int layers = busDelays.getShape().getTotalSize();
+				PackedCollection busDelaysPrev =
+						(PackedCollection) args.get("bus_delay_samples_prev");
+				if (busDelaysPrev != null) {
+					refresh.add(a(layers, cp(busDelaysPrev), cp(busDelays)));
+				}
 				for (int j = 0; j < layers; j++) {
 					refresh.add(a(1, cp(busDelays.range(shape(1), j)),
 							busLineDelay(j)));
@@ -820,6 +825,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// clock). Initialised by the refresh run at the end of this method.
 		PackedCollection busDelays = new PackedCollection(layers);
 		args.put("bus_delay_samples", busDelays);
+		// The _prev slot lets the network ramp each line's delay across the frame.
+		args.put("bus_delay_samples_prev", new PackedCollection(layers));
 		args.put("bus_send", busSendMatrix(layers));
 		args.put("bus_transmission", busTransmissionMatrix(layers));
 		args.put("bus_wet_out", busWetOutMatrix(layers));
@@ -890,6 +897,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("main_arm_gain", mainArmGain);
 		args.put("efx_arm_gain", efxArmGain);
 		args.put("reverb_arm_gain", reverbArmGain);
+
+		// Stem capture slots: the layer's capture() stages copy the per-channel dry
+		// bus, the efx bus, and the reverb tail here; the runner streams them out.
+		args.put("stem_channels",
+				new PackedCollection(shape(config.channels, config.signalSize)));
+		args.put("stem_efx", new PackedCollection(shape(1, config.signalSize)));
+		args.put("stem_reverb", new PackedCollection(shape(1, config.signalSize)));
 
 		// Initialise the efx-layer automation slots (see the matching call in the base map).
 		automationRefresh(args, efx).get().run();
