@@ -605,12 +605,22 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * runs outside the compiled loop in Java, so it naturally uses the refreshed
 	 * parameter state.</p>
 	 *
+	 * <p><b>Cache invalidation:</b> This method advances the pattern cache epoch
+	 * ({@link PatternLayerManager#invalidateCaches()}). The note-audio and gathered
+	 * note-destination caches are valid only within one genome's arrangement; without
+	 * the epoch advance, each genome evaluated on a reused runner leaves its gathered
+	 * {@link RenderedNoteAudio} entries pinned (the gather cache keys on
+	 * {@link PatternElement} identity, and each genome regenerates its elements), so
+	 * device memory accumulates across an optimizer's genome loop until the memory
+	 * provider's cap is reached.</p>
+	 *
 	 * @param genome the new genome whose parameters will be assigned
 	 */
 	public void assignGenome(ProjectedGenome genome) {
 		this.genome.assignTo(genome.getParameters());
 		this.progression.refreshParameters();
 		this.patterns.refreshParameters();
+		PatternLayerManager.invalidateCaches();
 	}
 
 	/**

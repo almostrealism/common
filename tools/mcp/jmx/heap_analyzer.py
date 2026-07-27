@@ -30,14 +30,18 @@ class HeapAnalyzerError(Exception):
 def _build_classpath() -> str:
     """Build the Java classpath from the ar-tools module jar and its dependencies.
 
-    Locates the ar-tools jar in the target directory and resolves the NetBeans
-    Profiler and Jackson dependencies from the local Maven repository.
+    Locates the ar-tools jar in the target directory and resolves the runtime
+    dependencies HeapAnalyzer needs from the local Maven repository: the
+    NetBeans Profiler heap walker, Jackson for the JSON output, and the
+    ar-io/ar-meta module jars for the Console output path. Every dependency
+    is required — a missing jar raises immediately with the artifact named,
+    instead of deferring to an opaque NoClassDefFoundError from the JVM.
 
     Returns:
         Classpath string with all required jars separated by ':'.
 
     Raises:
-        HeapAnalyzerError: If required jars are not found.
+        HeapAnalyzerError: If any required jar is not found.
     """
     # Find the ar-tools jar
     tools_jars = list(_TOOLS_TARGET.glob("ar-tools-*.jar"))
@@ -56,6 +60,8 @@ def _build_classpath() -> str:
         "com/fasterxml/jackson/core/jackson-databind/*/jackson-databind-*.jar",
         "com/fasterxml/jackson/core/jackson-core/*/jackson-core-*.jar",
         "com/fasterxml/jackson/core/jackson-annotations/*/jackson-annotations-*.jar",
+        "org/almostrealism/ar-io/*/ar-io-*.jar",
+        "org/almostrealism/ar-meta/*/ar-meta-*.jar",
     ]
 
     classpath_entries = [str(tools_jar)]
@@ -63,8 +69,13 @@ def _build_classpath() -> str:
         matches = sorted(glob.glob(str(m2 / pattern)))
         # Filter out sources/javadoc jars
         matches = [m for m in matches if not any(s in m for s in ["-sources", "-javadoc"])]
-        if matches:
-            classpath_entries.append(matches[-1])  # Use latest version
+        if not matches:
+            artifact = pattern.split("/")[-1].split("-*.jar")[0].rstrip("-*")
+            raise HeapAnalyzerError(
+                f"Required dependency not found in {m2}: {pattern}. "
+                f"Install {artifact} with: mvn install -pl tools -am -DskipTests"
+            )
+        classpath_entries.append(matches[-1])  # Use latest version
 
     return ":".join(classpath_entries)
 
@@ -142,14 +153,39 @@ def analyze_heap_dump(hprof_path: str,
     if not stdout:
         raise HeapAnalyzerError("Heap analyzer produced no output")
 
-    try:
-        parsed = json.loads(stdout)
-    except json.JSONDecodeError as e:
-        raise HeapAnalyzerError(
-            f"Failed to parse analyzer output as JSON: {e}"
-        )
+    parsed = _parse_analyzer_output(stdout)
 
     if "error" in parsed:
         raise HeapAnalyzerError(parsed["error"])
 
     return parsed
+
+
+def _parse_analyzer_output(stdout: str) -> dict:
+    """Parse the analyzer's JSON, tolerating Console line decoration.
+
+    HeapAnalyzer emits its JSON through the framework Console, which
+    prefixes the first output line with a timestamp (e.g. "[18:57.03] {").
+    The payload is everything from the first '{' onward.
+
+    Args:
+        stdout: Raw subprocess stdout.
+
+    Returns:
+        The parsed JSON object.
+
+    Raises:
+        HeapAnalyzerError: If no JSON object is present or it fails to parse.
+    """
+    start = stdout.find("{")
+    if start == -1:
+        raise HeapAnalyzerError(
+            f"No JSON object in analyzer output: {stdout[:200]}"
+        )
+
+    try:
+        return json.loads(stdout[start:])
+    except json.JSONDecodeError as e:
+        raise HeapAnalyzerError(
+            f"Failed to parse analyzer output as JSON: {e}"
+        )
