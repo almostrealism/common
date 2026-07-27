@@ -1,8 +1,14 @@
 # Stale Evaluable Investigation — Silent Zero Output from Long-Lived Evaluables
 
-**Status:** root cause localized to a specific object with a paired in-situ proof; the
-exact stale internal field is not yet identified. **No fix is landed.** This document
-exists so the investigation can resume from its evidence rather than from its symptom.
+**Status: RESOLVED — root cause identified and fixed.** The mechanism was the hole
+described in §8 (added at resolution): `AcceleratedComputationOperation.resetInstructions`,
+fired when a shared `ScopeInstructionsManager` is destroyed by cache eviction, cleared
+the instructions but retained the operation's argument bindings, so the next execution
+ran a freshly compiled kernel through bindings derived from the destroyed compilation.
+The fix invalidates the bindings with the instructions and rebinds lazily on next use;
+a guard throws if execution would ever proceed with bindings from a different manager
+than they were created against. Verified against the original reproduction (§8).
+Sections 1–7 are retained as the investigation record.
 
 **Symptom that started it:** `AudioSceneBufferConsolidationTest.genomeIndependence`
 failing reliably on `test-media-mac` ("Different genomes should produce different
@@ -168,3 +174,87 @@ part of the recipe.
 - The phase-10 `sineSignal` test cleanup that made CI green by reducing kernel
   load was deliberately **removed** (owner decision): it concealed the trigger.
   Its patch is preserved outside the tree; do not land it as a "fix" for this.
+
+## 8. Resolution
+
+### The mechanism (completing §4)
+
+`AcceleratedComputationOperation.getInstructionSetManager` registers a destroy
+listener on its shared `ScopeInstructionsManager` that calls
+`resetInstructions()` when the manager is destroyed (which the `FrequencyCache`
+does on eviction). Before the fix, `resetInstructions` cleared `instructions`,
+`executionKey`, and the compiler — **but not the argument bindings**: the
+argument list, the `ProcessArgumentMap` substitution evaluator, the
+per-operation aggregate copy plan (`argumentMap`), and the
+`ProcessDetailsFactory` that caches the evaluator and destination slots.
+
+On the operation's next use, `load()` saw non-null arguments and skipped the
+entire rebinding path (`setupArguments`, `putSubstitutions`,
+`rebindAggregateForReuse`), then executed a **freshly compiled** kernel — a new
+manager, compiled through a rebuilt compiler, whose argument/aggregate
+synthesis can differ — through the old bindings. When the layouts happened to
+match, this was benign, which is why small JVMs never failed; when they
+diverged (heavy JVMs, where aggregation state differs at recompile time), the
+kernel's reads and writes went through the wrong slots and the destination was
+never written: the silent zeros of §1. The failure was permanent because
+nothing ever repaired the bindings.
+
+This explains every observation in §3, including why no single test was the
+trigger (any sufficient eviction pressure works), why capacity-60 eviction
+alone did not reproduce (layout-stable recompiles are benign), and why the
+Metal status instrumentation found no errored buffers (the kernels executed
+fine — against the wrong bindings).
+
+### The fix (three parts, all in base/hardware)
+
+1. `AcceleratedComputationOperation.resetInstructions` now invalidates the
+   bindings along with the instructions: `super.resetArguments()` plus the new
+   `AcceleratedOperation.resetBindings()`, which nulls the evaluator and
+   destroys/nulls the details factory and the aggregate `argumentMap`.
+   (`AcceleratedOperation.destroy()` also nulls those fields after destroying
+   them, so a reset firing on an already-destroyed operation cannot
+   double-destroy.)
+2. `AcceleratedOperation.createDetailsFactory` rebinds lazily: `apply()` builds
+   process details *before* `setupOperator()/load()` runs, so the factory
+   triggers `load()` itself when it finds no bindings — `load()` then performs
+   the full reuse rebinding against whichever manager now serves the signature.
+3. Guard (defense in depth): `AcceleratedComputationOperation` records the
+   manager its bindings were created against (`boundInstructions`, set at
+   `postCompile` and in the reuse branch of `load()`); if an execution would
+   ever proceed with bindings from a *different* manager, `load()` throws
+   `HardwareException("Stale argument bindings ...")` instead of silently
+   using the wrong memory.
+
+`DefaultComputer.evictInstructions(signature)` was added so the eviction
+lifecycle can be exercised deterministically;
+`engine/utils` `InstructionEvictionRebindTest` covers a held evaluable
+surviving eviction (with post-eviction input changes) and rebinding against a
+replacement manager compiled by a same-signature peer.
+
+### Verification
+
+Iterations against the original union reproduction (§5.1), which was restored
+to its full original kernel load (the per-pass Delay kernels included):
+
+| Run | State | Result |
+|---|---|---|
+| `eb08ee22` | reset of bindings via `setEvaluator(null)` | genomeIndependence assertion gone, but 12 errors — `setEvaluator(null)` throws once a details factory exists (the factory caches the evaluator; it is part of the stale state) |
+| `e11aec6b` | `resetBindings()` including the details factory | errors 13 → 8; the remaining 7 were `ProcessDetailsFactory` rejecting construction with null arguments — details are built before `load()` in `apply()`, so rebinding must be triggered from factory creation |
+| `332ac173` | lazy rebind in `createDetailsFactory` | **153/156 pass, 0 failures**; genomeIndependence passes with RMS diff 0.0754 (~750x threshold); "Best seed" varies across the run (44/53/56/59/47/52) — the frozen-layout regime is gone at the root; the single error is the pre-existing local-only Moonbeam 10s timeout |
+
+`engine/utils` regression + core-path sanity (run `aa2431d1`): 43/43 pass,
+including `InstructionEvictionRebindTest`, `ProcessDetailsFactoryRecoveryTest`,
+`AssignmentIsolationDiagTest`, and `MemoryAllocationTest`.
+
+### Still open (follow-ups, not blockers)
+
+- The `rebindAggregateForReuse` comment assumes "aggregation is
+  signature-stable"; a prior investigation on another branch reported
+  `MetalOperator` binding a shared aggregate rather than the per-operation
+  rebind under aggregation+reuse. Worth an audit now that rebinding runs far
+  more often.
+- The Moonbeam 10s-timeout tests hang on GPU waits in loaded local JVMs
+  (never reported by CI); unexplained, tracked separately from this defect.
+- The eviction destroy-listener runs on whatever thread triggers cache
+  overflow while another thread may be mid-`apply` on the same operation;
+  this pre-existing exposure now also covers the binding fields.

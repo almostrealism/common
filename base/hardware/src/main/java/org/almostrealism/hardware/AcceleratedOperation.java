@@ -417,6 +417,31 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
+	 * Discards every piece of state derived from a compiled scope other than the
+	 * argument list itself: the substitution evaluator, the per-operation aggregate
+	 * copy plan, and the process details factory that caches both.
+	 *
+	 * <p>Used when the compiled instructions this operation was bound to are
+	 * destroyed. A replacement compilation may lay out its arguments or aggregate
+	 * differently, and executing through bindings from the destroyed compilation
+	 * silently reads and writes the wrong memory, so all of them must be rebuilt
+	 * by the next {@link #load()}.</p>
+	 */
+	public void resetBindings() {
+		this.evaluator = null;
+
+		if (detailsFactory != null) {
+			detailsFactory.destroy();
+			detailsFactory = null;
+		}
+
+		if (argumentMap != null) {
+			argumentMap.destroy();
+			argumentMap = null;
+		}
+	}
+
+	/**
 	 * Creates a {@link MemoryReplacementManager} for managing memory aggregation and replacement
 	 * during kernel execution. The manager handles input/output buffer allocation and consolidation.
 	 *
@@ -437,6 +462,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 */
 	protected synchronized void createDetailsFactory() {
 		if (detailsFactory != null) return;
+
+		if (getArguments() == null) {
+			// The bindings were invalidated after the compiled instructions this
+			// operation was bound to were destroyed; rebind before the factory
+			// captures argument metadata
+			load();
+		}
 
 		detailsFactory = new ProcessDetailsFactory<>(
 				isFixedCount(), getCount(),
@@ -726,10 +758,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		if (argumentMap != null) {
 			argumentMap.destroy();
+			argumentMap = null;
 		}
 
 		if (detailsFactory != null) {
 			detailsFactory.destroy();
+			detailsFactory = null;
 		}
 	}
 
