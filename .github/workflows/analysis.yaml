@@ -93,9 +93,13 @@ jobs:
             exit 0
           fi
 
-          # Look for non-doc code files (java, xml, yaml, yml, sh, py, groovy, properties)
+          # Look for non-doc code files (java, xml, yaml, yml, sh, py, groovy,
+          # properties, Dockerfiles). Dockerfiles have no extension but are
+          # build code — a Dockerfile-only change must set code_changed so the
+          # gated jobs (e.g. python-tests, which ANDs code_changed) still run.
           CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
+            '*/Dockerfile' 'Dockerfile' \
             | grep -v '^docs/' | grep -v '\.md$' || true)
           if [ -z "$CODE_FILES" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -122,9 +126,14 @@ jobs:
           # suites under tools/mcp/manager and tools/tests, which exercise
           # the Python code under tools/. Gate the job on .py changes
           # (anywhere) and on the pinned dependency file to avoid running
-          # the suite when only Java/CI/docs changed.
+          # the suite when only Java/CI/docs changed. MCP Dockerfiles are
+          # included too: test_dockerfile_packaging.py verifies the built
+          # image packages every module server.py imports, so a Dockerfile-only
+          # edit (e.g. narrowing a COPY glob) must re-run these tests — a prior
+          # packaging drift broke ar-manager startup with "No module named
+          # 'config'" and slipped through because no .py file changed with it.
           PY_FILES=$(git diff --name-only "$BASE" HEAD -- \
-            '*.py' 'tools/mcp/requirements.txt' || true)
+            '*.py' 'tools/mcp/requirements.txt' 'tools/mcp/*/Dockerfile' || true)
           if [ -n "$PY_FILES" ]; then
             echo "python_changed=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Python sources changed — running python-tests"
