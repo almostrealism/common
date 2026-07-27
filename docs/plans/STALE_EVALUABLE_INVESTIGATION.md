@@ -205,25 +205,28 @@ alone did not reproduce (layout-stable recompiles are benign), and why the
 Metal status instrumentation found no errored buffers (the kernels executed
 fine — against the wrong bindings).
 
-### The fix (three parts, all in base/hardware)
+### The fix (two parts, both in base/hardware)
 
-1. `AcceleratedComputationOperation.resetInstructions` now invalidates the
-   bindings along with the instructions: `super.resetArguments()` plus the new
-   `AcceleratedOperation.resetBindings()`, which nulls the evaluator and
-   destroys/nulls the details factory and the aggregate `argumentMap`.
-   (`AcceleratedOperation.destroy()` also nulls those fields after destroying
-   them, so a reset firing on an already-destroyed operation cannot
-   double-destroy.)
+1. `AcceleratedOperation.resetArguments()` now does what its name says at this
+   class's level: in addition to clearing the argument list, it discards every
+   piece of state derived from it — the substitution evaluator, the process
+   details factory that caches it, and the per-operation aggregate copy plan.
+   `AcceleratedComputationOperation.resetInstructions` simply calls
+   `resetArguments()` before destroying the compiler, so a manager's
+   destruction leaves the holder with no compiled-scope-derived state at all.
+   (`destroy()` delegates its argument-state teardown to the same method.)
 2. `AcceleratedOperation.createDetailsFactory` rebinds lazily: `apply()` builds
    process details *before* `setupOperator()/load()` runs, so the factory
    triggers `load()` itself when it finds no bindings — `load()` then performs
    the full reuse rebinding against whichever manager now serves the signature.
-3. Guard (defense in depth): `AcceleratedComputationOperation` records the
-   manager its bindings were created against (`boundInstructions`, set at
-   `postCompile` and in the reuse branch of `load()`); if an execution would
-   ever proceed with bindings from a *different* manager, `load()` throws
-   `HardwareException("Stale argument bindings ...")` instead of silently
-   using the wrong memory.
+
+An explicit stale-binding guard (tracking the manager the bindings were
+created against and throwing on mismatch) was implemented during
+verification and then removed in review: `instructions` changes identity only
+through `resetInstructions`, which now clears the bindings in the same step,
+so the guarded condition is structurally unreachable outside the deprecated
+`compile(manager, key)` setter (which already warns). The lifecycle contract
+is protected by the regression test instead.
 
 `DefaultComputer.evictInstructions(signature)` was added so the eviction
 lifecycle can be exercised deterministically;
@@ -241,6 +244,7 @@ to its full original kernel load (the per-pass Delay kernels included):
 | `eb08ee22` | reset of bindings via `setEvaluator(null)` | genomeIndependence assertion gone, but 12 errors — `setEvaluator(null)` throws once a details factory exists (the factory caches the evaluator; it is part of the stale state) |
 | `e11aec6b` | `resetBindings()` including the details factory | errors 13 → 8; the remaining 7 were `ProcessDetailsFactory` rejecting construction with null arguments — details are built before `load()` in `apply()`, so rebinding must be triggered from factory creation |
 | `332ac173` | lazy rebind in `createDetailsFactory` | **153/156 pass, 0 failures**; genomeIndependence passes with RMS diff 0.0754 (~750x threshold); "Best seed" varies across the run (44/53/56/59/47/52) — the frozen-layout regime is gone at the root; the single error is the pre-existing local-only Moonbeam 10s timeout |
+| `215de53c` | final shape after review cleanup (guard removed; reset folded into `resetArguments`) | identical outcome: 153/156, 0 failures, genomeIndependence RMS diff 0.0490, seeds vary, only the Moonbeam timeout remains |
 
 `engine/utils` regression + core-path sanity (run `aa2431d1`): 43/43 pass,
 including `InstructionEvictionRebindTest`, `ProcessDetailsFactoryRecoveryTest`,

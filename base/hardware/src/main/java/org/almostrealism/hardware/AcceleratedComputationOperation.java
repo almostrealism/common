@@ -202,16 +202,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	/** Manages compiled instruction sets and caching for this computation. */
 	private ComputableInstructionSetManager<?> instructions;
 
-	/**
-	 * The manager that this operation's argument bindings were created against.
-	 * Argument lists, substitution evaluators, and aggregate copy plans are all
-	 * derived from one manager's compiled {@link Scope}; executing through a
-	 * different manager with those bindings silently reads and writes the wrong
-	 * memory, so {@link #load()} refuses to proceed when this does not match
-	 * the current manager.
-	 */
-	private ComputableInstructionSetManager<?> boundInstructions;
-
 	/** Unique key identifying this operation's compiled form for caching purposes. */
 	private ExecutionKey executionKey;
 
@@ -464,12 +454,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * Resets argument mappings to allow recompilation.
 	 *
 	 * <p>Clears argument state in both the operation and the compiler, allowing
-	 * fresh argument preparation for a new compilation pass.</p>
+	 * fresh argument preparation for a new compilation pass. The compiler is
+	 * left alone when it does not exist, rather than being created just to be
+	 * reset.</p>
 	 */
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
-		getCompiler().resetArguments();
+		if (compiler != null) compiler.resetArguments();
 	}
 
 	/**
@@ -502,21 +494,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				setEvaluator(map);
 
 				rebindAggregateForReuse(manager, map);
-				boundInstructions = instructions;
 			} else {
 				warn("Unable to reuse instructions for " + getFunctionName() +
 						" because " + getComputation() + " is not a Process");
 				compile();
 			}
-		} else if (boundInstructions == null) {
-			// Bindings were created by this operation's own compile, before any
-			// manager existed; the first manager wraps that same compiled scope
-			boundInstructions = instructions;
-		} else if (boundInstructions != instructions) {
-			throw new HardwareException("Stale argument bindings for " + getFunctionName() +
-					" (" + getMetadata().getDisplayName() + "): bindings were created against " +
-					boundInstructions + " but the operation is now served by " + instructions +
-					"; executing would silently use the wrong memory");
 		}
 
 		return operator;
@@ -638,25 +620,22 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	/**
 	 * Resets the instruction set manager and execution key.
 	 *
-	 * <p>Clears cached instructions and destroys the compiler, allowing
-	 * the operation to be recompiled. Called when the shared instruction
-	 * set is destroyed.</p>
+	 * <p>Clears cached instructions, resets all argument state, and destroys
+	 * the compiler, allowing the operation to be recompiled. Called when the
+	 * shared instruction set is destroyed.</p>
 	 *
-	 * <p>The argument bindings are invalidated along with the instructions.
-	 * They were derived from the destroyed manager's compiled {@link Scope}
-	 * (argument list, substitution evaluator, and aggregate copy plan), and a
-	 * replacement manager may compile a scope with a different argument or
-	 * aggregate layout — retaining them would let {@link #load()} skip
-	 * rebinding and execute the new kernel through the old bindings, which
-	 * silently reads and writes the wrong memory.</p>
+	 * <p>Resetting the arguments here is essential: they were derived from the
+	 * destroyed manager's compiled {@link Scope}, and a replacement manager may
+	 * compile a scope with a different argument or aggregate layout — retaining
+	 * them would let {@link #load()} skip rebinding and execute the new kernel
+	 * through the old bindings, which silently reads and writes the wrong
+	 * memory.</p>
 	 */
 	protected void resetInstructions() {
 		instructions = null;
 		executionKey = null;
-		boundInstructions = null;
 
-		super.resetArguments();
-		resetBindings();
+		resetArguments();
 
 		if (compiler != null) {
 			compiler.destroy();
@@ -675,7 +654,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	public synchronized void postCompile() {
 		setupArguments(getCompiler().getScope());
-		if (instructions != null) boundInstructions = instructions;
 		getCompiler().postCompile();
 	}
 

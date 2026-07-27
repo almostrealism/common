@@ -417,17 +417,21 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
-	 * Discards every piece of state derived from a compiled scope other than the
-	 * argument list itself: the substitution evaluator, the per-operation aggregate
-	 * copy plan, and the process details factory that caches both.
+	 * Clears the argument list along with every piece of state derived from it:
+	 * the substitution evaluator, the per-operation aggregate copy plan, and the
+	 * process details factory that caches both.
 	 *
-	 * <p>Used when the compiled instructions this operation was bound to are
-	 * destroyed. A replacement compilation may lay out its arguments or aggregate
-	 * differently, and executing through bindings from the destroyed compilation
-	 * silently reads and writes the wrong memory, so all of them must be rebuilt
-	 * by the next {@link #load()}.</p>
+	 * <p>All of that state is derived from a single compiled scope. When the
+	 * compiled instructions this operation was bound to are destroyed, a
+	 * replacement compilation may lay out its arguments or aggregate differently,
+	 * and executing through the old state silently reads and writes the wrong
+	 * memory — so the whole set is discarded together and rebuilt by the next
+	 * {@link #load()}.</p>
 	 */
-	public void resetBindings() {
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+
 		this.evaluator = null;
 
 		if (detailsFactory != null) {
@@ -755,16 +759,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public void destroy() {
 		super.destroy();
-
-		if (argumentMap != null) {
-			argumentMap.destroy();
-			argumentMap = null;
-		}
-
-		if (detailsFactory != null) {
-			detailsFactory.destroy();
-			detailsFactory = null;
-		}
+		resetArguments();
 	}
 
 	/** Returns the console for logging operations. */
