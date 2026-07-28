@@ -290,29 +290,18 @@ genome exercised low accumulated tail energy, different splice arithmetic, and a
   design; in-kernel per-sample parameter interpolation (§6-C3) can smooth the staircase
   but not restore per-sample modulation semantics.
 
-### 5a. NOT an accepted limit: continuous delay-time modulation (owner directive, 2026-07-11)
+### 5a. Continuous delay-time modulation — RESTORED 2026-07-25
 
-An earlier revision listed `AdjustableDelayCell.scale`'s continuous cursor-rate
-modulation — the pitch bend / tape-speed detune on every regeneration, the shimmer of
-the legacy tails — among the accepted limits. **The owner has explicitly reclassified
-it**: the smooth pitch modulation is a defining feature of the application's efx chain
-("I would probably rather abandon real-time generation before abandoning it"). The C2
-per-buffer ratio (`gene / s(t)`, per the corrected §6-C2) restores the delay-time
-*trajectory* in whole-sample steps but not the pitch-bend *character* — the resample
-ratio `s(read)/s(write)` on regenerating content — and is therefore an interim state,
-not an acceptance.
+The smooth pitch modulation is a defining feature of the application's efx chain.
+It is not blocked by the §2 recurrence invariant: a rate-modulated read is a
+fractional gather with interpolation, not an intra-frame recurrence.
 
-It is also not actually blocked by the §2 invariant. The blocked construct is the
-intra-frame *recurrence*; a rate-modulated **read** is not one. With the rate held
-per-buffer (as C2 already computes it), the read position at frame sample `i` is
-`r0 + i·s` — a fractional-stride **gather + linear interpolation** over the ring, the
-same parallel construct the batched pattern resampler already ships
-(`BatchedPatternRenderer.buildResampleProducer`: `integers(0,N)·ratio → floor → gather
-→ lerp`). A resampling variant of the ring read in
-`MultiChannelDspFeatures.ringValueAt` (fractional delay, per-buffer-linear rate) would
-render a genuine per-sample pitch bend block-parallel, recirculation included (drifting
-reads still land in prior frames for `D ≥ signalSize`). This is the next arc after C5 —
-likely a separate branch; see [NEXT_STEP.md](NEXT_STEP.md).
+The PDSL feedback network now receives both the current and previous per-line delay
+slots. Across each frame it forms a linear delay trajectory, gathers the two
+neighbouring ring samples, and interpolates at the fractional position. Tightening a
+delay therefore reads faster than real time (pitch up), lengthening it reads slower
+(pitch down), and a static delay remains integer-exact. The trajectory re-anchors at
+each buffer boundary, so drift cannot accumulate.
 
 ---
 
