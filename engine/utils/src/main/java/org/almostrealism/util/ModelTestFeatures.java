@@ -95,9 +95,14 @@ public interface ModelTestFeatures extends TestFeatures {
 	 * shape; reduced results (for example a sum) keep the producer's own shape.
 	 *
 	 * <p>Dataset generation applies a target function hundreds of times per
-	 * training attempt. Building a fresh computation graph for every sample
-	 * makes dataset generation the dominant cost of a training test, so target
-	 * functions should always be defined through this method.</p>
+	 * training attempt. The computations these target functions build (in
+	 * particular anything containing a positional gather) do not currently
+	 * generate instruction-cache signatures, so a producer constructed fresh
+	 * for each sample is recompiled on every call rather than reusing the
+	 * previously compiled kernel. This wrapper amortizes that cost by holding
+	 * one compiled {@link Evaluable} per input length; it compensates for the
+	 * missing signatures and should be retired once those computations
+	 * generate them.</p>
 	 *
 	 * @param producer builds the target computation for a given input length
 	 * @return an operator that applies the compiled target computation

@@ -54,14 +54,14 @@ public class SyntheticActivationTrainingTest extends TestSuiteBase implements Mo
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.3, -0.2, 0.5, 0.1 };
+	private final PackedCollection coeff = pack(0.3, -0.2, 0.5, 0.1);
 
 	/**
 	 * Non-linear target function for testing activations.
 	 * Uses ReLU-like outputs to test non-linearity.
 	 */
 	private final UnaryOperator<PackedCollection> nonLinearFunc = compiledTarget(n ->
-			max(c(coeff).valueAt(integers(0, n).mod(coeff.length))
+			max(cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
 					.multiply(cv(shape(n), 0)), c(0.0)));
 
 	/**

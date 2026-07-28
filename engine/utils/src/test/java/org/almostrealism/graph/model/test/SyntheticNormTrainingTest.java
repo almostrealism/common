@@ -54,13 +54,13 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.24, -0.1, 0.36 };
+	private final PackedCollection coeff = pack(0.24, -0.1, 0.36);
 
 	/**
 	 * Simple element-wise linear function: output[i] = coeff[i] * input[i]
 	 */
 	private final UnaryOperator<PackedCollection> linearFunc = compiledTarget(n ->
-			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
 					.multiply(cv(shape(n), 0)));
 
 	/**
@@ -180,7 +180,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		log("Model built with GroupNorm (" + groups + " groups): " + inputSize + " -> " + hiddenSize + " -> " + outputSize);
 
 		// Extended coefficients for larger output
-		final double[] extCoeff = { 0.24, -0.1, 0.36, 0.2, -0.3, 0.15 };
+		final PackedCollection extCoeff = pack(0.24, -0.1, 0.36, 0.2, -0.3, 0.15);
 
 		// Generate dataset
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
@@ -188,7 +188,7 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
 				.map(input -> {
 					PackedCollection out = new PackedCollection(shape(outputSize));
-					c(extCoeff).multiply(cp(input).valueAt(integers(0, outputSize).mod(inputSize)))
+					cp(extCoeff).multiply(cp(input).valueAt(integers(0, outputSize).mod(inputSize)))
 							.into(out.traverseEach()).evaluate();
 					return ValueTarget.of(input, out);
 				})

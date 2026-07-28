@@ -51,7 +51,7 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.3, -0.2, 0.5, 0.1 };
+	private final PackedCollection coeff = pack(0.3, -0.2, 0.5, 0.1);
 
 	/**
 	 * Identity-like function for testing residual connections.
@@ -59,13 +59,13 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 	 */
 	private final UnaryOperator<PackedCollection> identityLikeFunc = compiledTarget(n ->
 			cv(shape(n), 0)
-					.add(c(coeff).valueAt(integers(0, n).mod(coeff.length)).multiply(0.1)));
+					.add(cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength())).multiply(0.1)));
 
 	/**
 	 * Simple scaling function for testing compositions.
 	 */
 	private final UnaryOperator<PackedCollection> scaleFunc = compiledTarget(n ->
-			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
 					.multiply(cv(shape(n), 0)));
 
 	/**

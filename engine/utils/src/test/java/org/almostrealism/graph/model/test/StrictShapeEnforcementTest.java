@@ -61,13 +61,13 @@ public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTe
 	/**
 	 * Coefficients for linear function.
 	 */
-	private final double[] coeff = { 0.24, -0.1, 0.36 };
+	private final PackedCollection coeff = pack(0.24, -0.1, 0.36);
 
 	/**
 	 * Linear function that applies coefficient-based transformation.
 	 */
 	private final UnaryOperator<PackedCollection> linearFunc = compiledTarget(n ->
-			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
 					.multiply(cv(shape(n), 0)));
 
 	/**

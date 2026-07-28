@@ -64,20 +64,20 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.3, -0.2, 0.5, 0.1, -0.4 };
+	private final PackedCollection coeff = pack(0.3, -0.2, 0.5, 0.1, -0.4);
 
 	/**
 	 * Simple linear function: output[i] = coeff[i] * input[i]
 	 */
 	private final UnaryOperator<PackedCollection> linearFunc = compiledTarget(n ->
-			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
 					.multiply(cv(shape(n), 0)));
 
 	/**
 	 * Weighted sum function: output = sum(coeff[i] * input[i])
 	 */
 	private final UnaryOperator<PackedCollection> weightedSumFunc = compiledTarget(n ->
-			c(coeff).valueAt(integers(0, n).mod(coeff.length))
+			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
 					.multiply(cv(shape(n), 0))
 					.sum());
 
@@ -264,7 +264,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		int steps = 260;
 
 		// Fixed coefficients for the target function
-		final double[] batchCoeff = {0.24, -0.1, 0.36};
+		final PackedCollection batchCoeff = pack(0.24, -0.1, 0.36);
 
 		// Build batched model (following DenseLayerTests pattern)
 		SequentialBlock block = new SequentialBlock(shape(batchSize, size));
@@ -277,7 +277,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 
 		// Function to compute expected output for batched input
 		UnaryOperator<PackedCollection> batchFunc = compiledTarget(rn ->
-				c(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.length))
+				cp(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.getMemLength()))
 						.multiply(cv(shape(rn), 0)));
 
 		// Generate batched dataset
