@@ -83,17 +83,22 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Converts a float array to a PackedCollection with the given dimensions.
+	 * Reads binary reference values (see {@link #loadReference(String, String)})
+	 * directly into a {@link PackedCollection} of the given dimensions. This is
+	 * genuine file ingest — the values enter the process from disk here — so the
+	 * single bulk transfer below is the acknowledged host-to-device ingest debt
+	 * for this test, pending a dedicated ingest API.
 	 *
-	 * @param data Source float array
+	 * @param testCase Name of the test case directory
+	 * @param filename Name of the file within the test case directory
 	 * @param dims Dimensions for the collection
-	 * @return PackedCollection with the data
+	 * @return PackedCollection with the reference data
+	 * @throws IOException If the file cannot be read
 	 */
-	private PackedCollection arrayToCollection(float[] data, int... dims) {
+	private PackedCollection loadReference(String testCase, String filename, int... dims) throws IOException {
+		float[] data = loadReference(testCase, filename);
 		PackedCollection c = new PackedCollection(dims);
-		for (int i = 0; i < data.length; i++) {
-			c.setMem(i, data[i]);
-		}
+		c.setMem(0, data, 0, data.length);
 		return c;
 	}
 
@@ -176,9 +181,9 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		int padding = 0;
 		int outputPadding = 0;
 
-		PackedCollection inputC = arrayToCollection(input, batchSize, inChannels, seqLength);
-		PackedCollection weightsC = arrayToCollection(weights, inChannels, outChannels, kernel);
-		PackedCollection biasC = arrayToCollection(bias, outChannels);
+		PackedCollection inputC = loadReference("minimal", "input.bin", batchSize, inChannels, seqLength);
+		PackedCollection weightsC = loadReference("minimal", "weights.bin", inChannels, outChannels, kernel);
+		PackedCollection biasC = loadReference("minimal", "bias.bin", outChannels);
 
 		Model model = new Model(shape(batchSize, inChannels, seqLength));
 		model.add(convTranspose1d(batchSize, inChannels, outChannels, seqLength,
@@ -210,7 +215,6 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 
 		float[] input = loadReference("with_padding", "input.bin");
 		float[] weights = loadReference("with_padding", "weights.bin");
-		float[] bias = loadReference("with_padding", "bias.bin");
 		float[] expected = loadReference("with_padding", "expected_output.bin");
 
 		log("Input: " + Arrays.toString(input));
@@ -226,9 +230,9 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		int padding = 1;
 		int outputPadding = 0;
 
-		PackedCollection inputC = arrayToCollection(input, batchSize, inChannels, seqLength);
-		PackedCollection weightsC = arrayToCollection(weights, inChannels, outChannels, kernel);
-		PackedCollection biasC = arrayToCollection(bias, outChannels);
+		PackedCollection inputC = loadReference("with_padding", "input.bin", batchSize, inChannels, seqLength);
+		PackedCollection weightsC = loadReference("with_padding", "weights.bin", inChannels, outChannels, kernel);
+		PackedCollection biasC = loadReference("with_padding", "bias.bin", outChannels);
 
 		Model model = new Model(shape(batchSize, inChannels, seqLength));
 		model.add(convTranspose1d(batchSize, inChannels, outChannels, seqLength,
@@ -260,7 +264,6 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 
 		float[] input = loadReference("multichannel_small", "input.bin");
 		float[] weights = loadReference("multichannel_small", "weights.bin");
-		float[] bias = loadReference("multichannel_small", "bias.bin");
 		float[] expected = loadReference("multichannel_small", "expected_output.bin");
 
 		log("Input (first 10): " + Arrays.toString(Arrays.copyOf(input, Math.min(10, input.length))));
@@ -275,9 +278,9 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		int padding = 0;
 		int outputPadding = 0;
 
-		PackedCollection inputC = arrayToCollection(input, batchSize, inChannels, seqLength);
-		PackedCollection weightsC = arrayToCollection(weights, inChannels, outChannels, kernel);
-		PackedCollection biasC = arrayToCollection(bias, outChannels);
+		PackedCollection inputC = loadReference("multichannel_small", "input.bin", batchSize, inChannels, seqLength);
+		PackedCollection weightsC = loadReference("multichannel_small", "weights.bin", inChannels, outChannels, kernel);
+		PackedCollection biasC = loadReference("multichannel_small", "bias.bin", outChannels);
 
 		Model model = new Model(shape(batchSize, inChannels, seqLength));
 		model.add(convTranspose1d(batchSize, inChannels, outChannels, seqLength,
@@ -309,8 +312,6 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		log("=== ConvTranspose1d Oobleck-Like Test ===");
 
 		float[] input = loadReference("oobleck_like", "input.bin");
-		float[] weights = loadReference("oobleck_like", "weights.bin");
-		float[] bias = loadReference("oobleck_like", "bias.bin");
 		float[] expected = loadReference("oobleck_like", "expected_output.bin");
 
 		log("Input: " + Arrays.toString(input));
@@ -325,9 +326,9 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		int padding = 1;
 		int outputPadding = 3;
 
-		PackedCollection inputC = arrayToCollection(input, batchSize, inChannels, seqLength);
-		PackedCollection weightsC = arrayToCollection(weights, inChannels, outChannels, kernel);
-		PackedCollection biasC = arrayToCollection(bias, outChannels);
+		PackedCollection inputC = loadReference("oobleck_like", "input.bin", batchSize, inChannels, seqLength);
+		PackedCollection weightsC = loadReference("oobleck_like", "weights.bin", inChannels, outChannels, kernel);
+		PackedCollection biasC = loadReference("oobleck_like", "bias.bin", outChannels);
 
 		Model model = new Model(shape(batchSize, inChannels, seqLength));
 		model.add(convTranspose1d(batchSize, inChannels, outChannels, seqLength,
@@ -361,7 +362,6 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 
 		float[] input = loadReference("stride16_tiny", "input.bin");
 		float[] weights = loadReference("stride16_tiny", "weights.bin");
-		float[] bias = loadReference("stride16_tiny", "bias.bin");
 		float[] expected = loadReference("stride16_tiny", "expected_output.bin");
 
 		log("Input: " + Arrays.toString(input));
@@ -377,9 +377,9 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		int padding = 7;
 		int outputPadding = 15;
 
-		PackedCollection inputC = arrayToCollection(input, batchSize, inChannels, seqLength);
-		PackedCollection weightsC = arrayToCollection(weights, inChannels, outChannels, kernel);
-		PackedCollection biasC = arrayToCollection(bias, outChannels);
+		PackedCollection inputC = loadReference("stride16_tiny", "input.bin", batchSize, inChannels, seqLength);
+		PackedCollection weightsC = loadReference("stride16_tiny", "weights.bin", inChannels, outChannels, kernel);
+		PackedCollection biasC = loadReference("stride16_tiny", "bias.bin", outChannels);
 
 		Model model = new Model(shape(batchSize, inChannels, seqLength));
 		model.add(convTranspose1d(batchSize, inChannels, outChannels, seqLength,

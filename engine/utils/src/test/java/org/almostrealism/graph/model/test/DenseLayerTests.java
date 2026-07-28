@@ -39,10 +39,13 @@ public class DenseLayerTests extends TestSuiteBase implements ModelTestFeatures 
 	/** Coefficients for the 3x3 function. */
 	private final PackedCollection coeff = pack(0.24, -0.1, 0.36);
 
-	/** Compiled 3x3 convolution-like target function. */
-	private final UnaryOperator<PackedCollection> func3x3 = compiledTarget(n ->
-			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
-					.multiply(cv(shape(n), 0)));
+	/** 3x3 convolution-like target function. */
+	private final UnaryOperator<PackedCollection> func3x3 = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Applies a 3x3 convolution-like function to the input.

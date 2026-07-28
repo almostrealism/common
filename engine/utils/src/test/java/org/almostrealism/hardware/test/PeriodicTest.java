@@ -23,6 +23,7 @@ import org.almostrealism.hardware.computations.Periodic;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 /**
@@ -43,7 +44,6 @@ public class PeriodicTest extends TestSuiteBase {
 		int totalTicks = 15;
 
 		PackedCollection target = new PackedCollection(1);
-		target.setMem(0, 0.0);
 
 		Computation atom = a(1, p(target), cp(target).add(c(1.0)));
 		Periodic periodic = new Periodic(atom, period);
@@ -66,7 +66,6 @@ public class PeriodicTest extends TestSuiteBase {
 		int totalTicks = 15;
 
 		PackedCollection target = new PackedCollection(1);
-		target.setMem(0, 0.0);
 
 		Computation atom = a(1, p(target), cp(target).add(c(1.0)));
 		Supplier<Runnable> loopedPeriodic = lp(new Periodic(atom, period), totalTicks);
@@ -78,21 +77,20 @@ public class PeriodicTest extends TestSuiteBase {
 
 	/**
 	 * Verifies that the Java fallback path (non-Computation atom via
-	 * process optimization) correctly implements periodic counting.
+	 * process optimization) correctly implements periodic counting. The body
+	 * is a plain Java side effect, so the periodic wrapper genuinely exercises
+	 * the fallback rather than a disguised compiled operation, and the
+	 * execution count is asserted exactly (12 ticks with period 4 is 3 runs).
 	 */
 	@Test(timeout = 30000)
 	public void testPeriodicJavaFallback() {
 		int period = 4;
 		int totalTicks = 12;
 
-		PackedCollection target = new PackedCollection(1);
-		target.setMem(0, 0.0);
-
-		PackedCollection counter = new PackedCollection(1);
-		counter.setMem(0, 0.0);
+		AtomicInteger executions = new AtomicInteger();
 
 		OperationList body = new OperationList("Periodic Fallback Body");
-		body.add(() -> () -> a(cp(target), cp(target).add(c(1.0))).get().run());
+		body.add(() -> executions::incrementAndGet);
 
 		Supplier<Runnable> periodic = periodic(body, period);
 		Runnable compiled = periodic.get();
@@ -101,7 +99,7 @@ public class PeriodicTest extends TestSuiteBase {
 			compiled.run();
 		}
 
-		assertEquals(3.0, target.toDouble(0), 0.001);
+		assertEquals(3.0, executions.get(), 0.001);
 	}
 
 	/**
@@ -113,7 +111,6 @@ public class PeriodicTest extends TestSuiteBase {
 		int period = 3;
 
 		PackedCollection target = new PackedCollection(1);
-		target.setMem(0, 0.0);
 
 		Computation atom = a(1, p(target), cp(target).add(c(1.0)));
 		Periodic periodic = new Periodic(atom, period);
@@ -142,7 +139,6 @@ public class PeriodicTest extends TestSuiteBase {
 		int period = 5;
 
 		PackedCollection target = new PackedCollection(1);
-		target.setMem(0, 0.0);
 
 		Computation atom = a(1, p(target), cp(target).add(c(1.0)));
 		Periodic periodic = new Periodic(atom, period);

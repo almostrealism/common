@@ -38,7 +38,7 @@ public class MemoryAllocationTest extends TestSuiteBase {
 		int len = size / Hardware.getLocalHardware().getPrecision().bytes();
 
 		PackedCollection touch = new PackedCollection(1);
-		touch.setMem(0, 1.0);
+		touch.fill(1.0);
 
 		long allocated = 0;
 		while (allocated < limit) {

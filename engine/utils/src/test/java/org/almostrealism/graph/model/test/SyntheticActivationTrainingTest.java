@@ -60,9 +60,12 @@ public class SyntheticActivationTrainingTest extends TestSuiteBase implements Mo
 	 * Non-linear target function for testing activations.
 	 * Uses ReLU-like outputs to test non-linearity.
 	 */
-	private final UnaryOperator<PackedCollection> nonLinearFunc = compiledTarget(n ->
-			max(cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
-					.multiply(cv(shape(n), 0)), c(0.0)));
+	private final UnaryOperator<PackedCollection> nonLinearFunc = in -> {
+		int n = in.getMemLength();
+		return max(cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+						.multiply(cp(in).reshape(shape(n))), c(0.0))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Test 4.1: Dense with SiLU Activation

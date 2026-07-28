@@ -18,8 +18,6 @@ package org.almostrealism.util;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
 import org.almostrealism.hardware.Hardware;
@@ -33,11 +31,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
 
 import org.almostrealism.optimize.TrainingResult;
 
@@ -85,38 +79,6 @@ public interface ModelTestFeatures extends TestFeatures {
 	 * Default dataset size for generated training data.
 	 */
 	int datasetSize = 500;
-
-	/**
-	 * Wraps a synthetic target function so its computation is compiled once per
-	 * input length and the compiled {@link Evaluable} is reused for every
-	 * subsequent sample. The supplied function receives the flattened input
-	 * length and must reference the input through {@code cv(shape(length), 0)}.
-	 * Results with the same length as the input are reshaped to the input's
-	 * shape; reduced results (for example a sum) keep the producer's own shape.
-	 *
-	 * <p>Dataset generation applies a target function hundreds of times per
-	 * training attempt. The computations these target functions build (in
-	 * particular anything containing a positional gather) do not currently
-	 * generate instruction-cache signatures, so a producer constructed fresh
-	 * for each sample is recompiled on every call rather than reusing the
-	 * previously compiled kernel. This wrapper amortizes that cost by holding
-	 * one compiled {@link Evaluable} per input length; it compensates for the
-	 * missing signatures and should be retired once those computations
-	 * generate them.</p>
-	 *
-	 * @param producer builds the target computation for a given input length
-	 * @return an operator that applies the compiled target computation
-	 */
-	default UnaryOperator<PackedCollection> compiledTarget(IntFunction<CollectionProducer> producer) {
-		Map<Integer, Evaluable<PackedCollection>> compiled = new ConcurrentHashMap<>();
-
-		return in -> {
-			int n = in.getMemLength();
-			Evaluable<PackedCollection> ev = compiled.computeIfAbsent(n, k -> producer.apply(k).get());
-			PackedCollection out = ev.evaluate(in.reshape(shape(n)));
-			return out.getMemLength() == n ? out.reshape(in.getShape()) : out;
-		};
-	}
 
 	/**
 	 * Generates a random dataset with the specified input and output shapes.

@@ -278,16 +278,14 @@ public class SphereTest extends TestSuiteBase {
 		int batchSize = 129;
 		PackedCollection rays = new PackedCollection(shape(batchSize, 6).traverse(1));
 
-		// Create rays - all should hit the sphere at origin. Each ray's first two
-		// components vary by (i - batchSize/2) * 0.01; the remaining components are
-		// the constant origin-pointing direction (3, 0, 0, -1). Each channel is a
-		// distinct producer (concat rejects a repeated producer instance).
+		// Rays vary by (i - batchSize/2) * 0.01 in the first two components, with the
+		// constant origin-pointing direction (3, 0, 0, -1) in the remaining channels
 		TraversalPolicy col = shape(batchSize, 1);
 		a(cp(rays), concat(1,
 				integers(0, batchSize).subtract(batchSize / 2).multiply(0.01).reshape(col),
 				integers(0, batchSize).subtract(batchSize / 2).multiply(0.01).reshape(col),
-				filledGrid(batchSize, 3.0, col), filledGrid(batchSize, 0.0, col),
-				filledGrid(batchSize, 0.0, col), filledGrid(batchSize, -1.0, col))).get().run();
+				constant(col, 3.0), constant(col, 0.0),
+				constant(col, 0.0), constant(col, -1.0))).get().run();
 
 		PackedCollection distances = new PackedCollection(shape(batchSize, 1).traverse(1));
 		f.getDistance().get().into(distances.each()).evaluate(rays);
@@ -571,14 +569,5 @@ public class SphereTest extends TestSuiteBase {
 
 		log(String.valueOf(hits + " hits"));
 		// Assert.assertEquals(4900, hits);
-	}
-
-	/**
-	 * Builds a fresh constant-valued producer of the given shape. A new producer instance
-	 * is returned on each call so the result may be concatenated alongside others without
-	 * tripping concat's repeated-producer check.
-	 */
-	private CollectionProducer filledGrid(int total, double value, TraversalPolicy shape) {
-		return integers(0, total).multiply(0.0).add(value).reshape(shape);
 	}
 }

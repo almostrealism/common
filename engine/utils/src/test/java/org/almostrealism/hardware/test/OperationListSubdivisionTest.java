@@ -78,8 +78,11 @@ public class OperationListSubdivisionTest extends TestSuiteBase implements Model
 		Runnable run = ((ParallelProcess<?, Runnable>) forward.flatten().optimize()).get();
 		log("recordThenReadWithIsolation runnable=" + run.getClass().getSimpleName());
 
+		// Passes (2, 3), (4, 6), (8, 12): element i is (2 + i % 2) * 2^(i / 2)
 		PackedCollection inputs = new PackedCollection(shape(3, 2));
-		inputs.setMem(0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0);
+		integers(0, 6).mod(2).add(2.0)
+				.multiply(pow(c(2.0), floor(integers(0, 6).divide(2.0))))
+				.into(inputs.traverseEach()).evaluate();
 		double[] expected = { 0.35, 0.6, 1.1 };
 
 		for (int i = 0; i < expected.length; i++) {

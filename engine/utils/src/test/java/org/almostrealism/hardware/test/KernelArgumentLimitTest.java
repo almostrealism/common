@@ -57,15 +57,6 @@ public class KernelArgumentLimitTest extends TestSuiteBase {
 	private static final int ARG_COUNT = 48;
 
 	/**
-	 * Creates a single-element {@link PackedCollection} holding the given scalar value.
-	 */
-	private PackedCollection single(double value) {
-		PackedCollection c = new PackedCollection(1);
-		c.fill(value);
-		return c;
-	}
-
-	/**
 	 * Sums {@value #ARG_COUNT} distinct single-element collections in one computation.
 	 * Each input is a separate buffer, so the compiled kernel needs more arguments than
 	 * Metal permits unless they are aggregated. The assertion also verifies the summed
@@ -73,14 +64,17 @@ public class KernelArgumentLimitTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void manySmallInputsExceedKernelArgumentLimit() {
+		PackedCollection values = new PackedCollection(ARG_COUNT);
+		integers(1, ARG_COUNT + 1).into(values.traverseEach()).evaluate();
+
 		PackedCollection[] inputs = new PackedCollection[ARG_COUNT];
 
 		CollectionProducer sum = null;
 		double expected = 0.0;
 		for (int i = 0; i < ARG_COUNT; i++) {
-			double value = i + 1.0;
-			expected += value;
-			inputs[i] = single(value);
+			expected += i + 1.0;
+			inputs[i] = new PackedCollection(1);
+			inputs[i].setFrom(0, values, i, 1);
 			sum = sum == null ? cp(inputs[i]) : sum.add(cp(inputs[i]));
 		}
 

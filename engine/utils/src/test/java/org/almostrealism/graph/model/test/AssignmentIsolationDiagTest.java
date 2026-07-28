@@ -678,11 +678,14 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 	/**
 	 * Stages the shared varying-input table — passes (2, 3), (4, 6), and (8, 12) —
 	 * as a (3, 2) collection whose rows are copied into per-pass input buffers
-	 * with {@code setFrom}.
+	 * with {@code setFrom}. Element {@code i} is computed on the device as
+	 * {@code (2 + i % 2) * 2^(i / 2)}.
 	 */
 	private PackedCollection stagedInputs() {
 		PackedCollection staged = new PackedCollection(shape(3, 2));
-		staged.setMem(0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0);
+		integers(0, 6).mod(2).add(2.0)
+				.multiply(pow(c(2.0), floor(integers(0, 6).divide(2.0))))
+				.into(staged.traverseEach()).evaluate();
 		return staged;
 	}
 

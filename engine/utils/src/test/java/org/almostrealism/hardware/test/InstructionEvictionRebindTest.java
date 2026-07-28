@@ -64,9 +64,9 @@ public class InstructionEvictionRebindTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void heldEvaluableSurvivesEviction() {
 		PackedCollection a = new PackedCollection(4);
-		a.setMem(0, 1.0, 2.0, 3.0, 4.0);
+		integers(1, 5).into(a.traverseEach()).evaluate();
 		PackedCollection b = new PackedCollection(4);
-		b.setMem(0, 10.0, 20.0, 30.0, 40.0);
+		integers(1, 5).multiply(10.0).into(b.traverseEach()).evaluate();
 
 		Evaluable<PackedCollection> held = cp(a).add(cp(b)).get();
 
@@ -80,7 +80,7 @@ public class InstructionEvictionRebindTest extends TestSuiteBase {
 
 		Hardware.getLocalHardware().getComputer().evictInstructions(signature);
 
-		b.setMem(0, 100.0, 200.0, 300.0, 400.0);
+		integers(1, 5).multiply(100.0).into(b.traverseEach()).evaluate();
 		PackedCollection second = held.evaluate();
 		for (int i = 0; i < 4; i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), second.toDouble(i));
@@ -97,13 +97,13 @@ public class InstructionEvictionRebindTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void rebindsAfterReplacementManager() {
 		PackedCollection a = new PackedCollection(4);
-		a.setMem(0, 1.0, 2.0, 3.0, 4.0);
+		integers(1, 5).into(a.traverseEach()).evaluate();
 		PackedCollection b = new PackedCollection(4);
-		b.setMem(0, 10.0, 20.0, 30.0, 40.0);
+		integers(1, 5).multiply(10.0).into(b.traverseEach()).evaluate();
 		PackedCollection c = new PackedCollection(4);
-		c.setMem(0, 5.0, 6.0, 7.0, 8.0);
+		integers(5, 9).into(c.traverseEach()).evaluate();
 		PackedCollection d = new PackedCollection(4);
-		d.setMem(0, 50.0, 60.0, 70.0, 80.0);
+		integers(5, 9).multiply(10.0).into(d.traverseEach()).evaluate();
 
 		Evaluable<PackedCollection> held = cp(a).add(cp(b)).get();
 		Evaluable<PackedCollection> peer = cp(c).add(cp(d)).get();
@@ -124,7 +124,7 @@ public class InstructionEvictionRebindTest extends TestSuiteBase {
 			assertEquals(c.toDouble(i) + d.toDouble(i), peerResult.toDouble(i));
 		}
 
-		a.setMem(0, 9.0, 8.0, 7.0, 6.0);
+		integers(1, 5).multiply(-1.0).add(10.0).into(a.traverseEach()).evaluate();
 		PackedCollection second = held.evaluate();
 		for (int i = 0; i < 4; i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), second.toDouble(i));

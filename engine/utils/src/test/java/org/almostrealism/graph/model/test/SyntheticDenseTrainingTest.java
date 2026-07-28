@@ -69,17 +69,22 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	/**
 	 * Simple linear function: output[i] = coeff[i] * input[i]
 	 */
-	private final UnaryOperator<PackedCollection> linearFunc = compiledTarget(n ->
-			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
-					.multiply(cv(shape(n), 0)));
+	private final UnaryOperator<PackedCollection> linearFunc = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Weighted sum function: output = sum(coeff[i] * input[i])
 	 */
-	private final UnaryOperator<PackedCollection> weightedSumFunc = compiledTarget(n ->
-			cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
-					.multiply(cv(shape(n), 0))
-					.sum());
+	private final UnaryOperator<PackedCollection> weightedSumFunc = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.sum().evaluate();
+	};
 
 	/**
 	 * Test 1.1: Simple Dense Regression
@@ -276,9 +281,12 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		log("Batched model built: [" + batchSize + ", " + size + "] -> [" + batchSize + ", " + size + "]");
 
 		// Function to compute expected output for batched input
-		UnaryOperator<PackedCollection> batchFunc = compiledTarget(rn ->
-				cp(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.getMemLength()))
-						.multiply(cv(shape(rn), 0)));
+		UnaryOperator<PackedCollection> batchFunc = in -> {
+			int rn = in.getMemLength();
+			return cp(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.getMemLength()))
+					.multiply(cp(in).reshape(shape(rn)))
+					.evaluate().reshape(in.getShape());
+		};
 
 		// Generate batched dataset
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
