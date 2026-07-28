@@ -10,8 +10,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY common/ /app/common/
 ENV PYTHONPATH=/app/common
 
-# Copy application code
-COPY manager/server.py manager/oauth.py manager/github_api.py manager/phase_config.py ./
+# Copy application code. Use a glob so that every module server.py imports is
+# packaged automatically — server.py was refactored to import sibling modules
+# (config.py, auth.py, controller_client.py, tracker_client.py, workspace_map.py,
+# …) and an explicit file list silently omitted them, breaking startup with
+# "ModuleNotFoundError: No module named 'config'". The glob copies all runtime
+# modules; the test_*.py suites are not needed at runtime and are removed.
+# test_dockerfile_packaging.py verifies this stays in sync with the imports.
+COPY manager/*.py ./
+RUN rm -f /app/test_*.py
 
 # Token file mount point
 RUN mkdir -p /config
