@@ -504,7 +504,11 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * @throws IllegalStateException    if all arguments are already available
 	 */
 	public void result(int index, Object result, Semaphore completion) {
-		if (originalArguments[index] != null) {
+		if (result == null) {
+			throw new IllegalArgumentException("Null result for argument index " + index +
+					"; a null argument can never satisfy readiness, so accepting it would " +
+					"leave this process waiting forever");
+		} else if (originalArguments[index] != null) {
 			throw new IllegalArgumentException("Duplicate result for argument index " + index);
 		} else if (isReady()) {
 			throw new IllegalStateException("Received result when details are already available");

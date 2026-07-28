@@ -517,6 +517,12 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * {@link #argumentMap} (so {@link AcceleratedOperation#apply} performs the copy-in/out), and
 	 * binds the shared scope's aggregate argument to the per-operation buffer.</p>
 	 *
+	 * <p>When the replay folds nothing (an empty per-operation aggregate) while the shared scope
+	 * reads an aggregate argument, binding that argument would deliver a null buffer, and every
+	 * evaluation of this operation would then wait forever for an argument that never arrives.
+	 * Reuse cannot be established in that case, so this operation compiles independently
+	 * instead — correctness over the reuse optimization.</p>
+	 *
 	 * @param manager The shared instruction set manager whose scope is being reused
 	 * @param map     The per-operation argument map for this reused operation
 	 */
@@ -540,6 +546,15 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		MemoryDataArgumentMap perOperation =
 				MemoryDataArgumentMap.create(getComputeContext(), length -> createAggregatedInput(length, length));
 		getCompiler().prepareScope(perOperation);
+
+		if (perOperation.getAggregateLength() <= 0) {
+			warn("Unable to rebind aggregate for reuse of " + getFunctionName() +
+					"; compiling independently");
+			resetArguments();
+			compile();
+			return;
+		}
+
 		this.argumentMap = perOperation;
 
 		// Bind the shared scope's aggregate argument to this operation's buffer so the reused
