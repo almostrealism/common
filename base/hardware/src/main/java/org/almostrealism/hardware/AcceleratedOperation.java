@@ -467,13 +467,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected synchronized void createDetailsFactory() {
 		if (detailsFactory != null) return;
 
-		if (getArguments() == null) {
-			// The bindings were invalidated after the compiled instructions this
-			// operation was bound to were destroyed; rebind before the factory
-			// captures argument metadata
-			load();
-		}
-
 		detailsFactory = new ProcessDetailsFactory<>(
 				isFixedCount(), getCount(),
 				getArgumentVariables(), getOutputArgumentIndex(),
@@ -615,8 +608,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
-		if (getArguments() == null && getInstructionSetManager() == null) {
-			throw new UnsupportedOperationException("Operation was not compiled");
+		if (getArguments() == null) {
+			if (getInstructionSetManager() == null) {
+				throw new UnsupportedOperationException("Operation was not compiled");
+			}
+
+			// Bindings are established by load() and discarded when the compiled
+			// instructions they were derived from are destroyed; re-establish them
+			// before anything downstream consumes argument metadata
+			load();
 		}
 
 		// Load the inputs, ordering argument evaluation after the prior completion

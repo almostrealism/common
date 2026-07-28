@@ -215,10 +215,14 @@ fine — against the wrong bindings).
    `resetArguments()` before destroying the compiler, so a manager's
    destruction leaves the holder with no compiled-scope-derived state at all.
    (`destroy()` delegates its argument-state teardown to the same method.)
-2. `AcceleratedOperation.createDetailsFactory` rebinds lazily: `apply()` builds
-   process details *before* `setupOperator()/load()` runs, so the factory
-   triggers `load()` itself when it finds no bindings — `load()` then performs
-   the full reuse rebinding against whichever manager now serves the signature.
+2. `AcceleratedOperation.apply` re-establishes bindings at its existing
+   execution-readiness check (the entry point that already threw "Operation
+   was not compiled"): when the arguments are absent it calls `load()` — the
+   same call `get()` makes at acquisition time — before anything downstream
+   consumes argument metadata. This is required because `apply()` constructs
+   process details before `setupOperator()` runs its own `load()`. The details
+   factory itself performs no lifecycle repair; reached without bindings, it
+   fails on the `ProcessDetailsFactory` constructor's existing precondition.
 
 An explicit stale-binding guard (tracking the manager the bindings were
 created against and throwing on mismatch) was implemented during
@@ -244,7 +248,8 @@ to its full original kernel load (the per-pass Delay kernels included):
 | `eb08ee22` | reset of bindings via `setEvaluator(null)` | genomeIndependence assertion gone, but 12 errors — `setEvaluator(null)` throws once a details factory exists (the factory caches the evaluator; it is part of the stale state) |
 | `e11aec6b` | `resetBindings()` including the details factory | errors 13 → 8; the remaining 7 were `ProcessDetailsFactory` rejecting construction with null arguments — details are built before `load()` in `apply()`, so rebinding must be triggered from factory creation |
 | `332ac173` | lazy rebind in `createDetailsFactory` | **153/156 pass, 0 failures**; genomeIndependence passes with RMS diff 0.0754 (~750x threshold); "Best seed" varies across the run (44/53/56/59/47/52) — the frozen-layout regime is gone at the root; the single error is the pre-existing local-only Moonbeam 10s timeout |
-| `215de53c` | final shape after review cleanup (guard removed; reset folded into `resetArguments`) | identical outcome: 153/156, 0 failures, genomeIndependence RMS diff 0.0490, seeds vary, only the Moonbeam timeout remains |
+| `215de53c` | after review cleanup (guard removed; reset folded into `resetArguments`) | identical outcome: 153/156, 0 failures, genomeIndependence RMS diff 0.0490, seeds vary, only the Moonbeam timeout remains |
+| `1c37f854` | final shape (rebind moved from `createDetailsFactory` to `apply`'s readiness check) | identical outcome: 153/156, 0 failures, genomeIndependence RMS diff 0.0670, only the two pre-existing Moonbeam timeouts |
 
 `engine/utils` regression + core-path sanity (run `aa2431d1`): 43/43 pass,
 including `InstructionEvictionRebindTest`, `ProcessDetailsFactoryRecoveryTest`,
