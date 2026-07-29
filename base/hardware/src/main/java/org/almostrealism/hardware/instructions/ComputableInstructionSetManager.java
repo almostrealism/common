@@ -16,6 +16,9 @@
 
 package org.almostrealism.hardware.instructions;
 
+import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
+
 /**
  * Extended {@link InstructionSetManager} that tracks output argument location for each operation.
  *
@@ -142,6 +145,23 @@ public interface ComputableInstructionSetManager<K extends ExecutionKey> extends
 	 * @return the recorded position sequence, or null
 	 */
 	String getAggregatePositions();
+
+	/**
+	 * Returns the {@link CompiledKernelStructureContext} of this manager's compiled
+	 * instructions, creating it on first request.
+	 *
+	 * <p>The context owns the kernel structure resources the compiled code references
+	 * (series cache, traversal operations), so it is created and destroyed by this
+	 * manager — the owner of the instructions — and lives exactly as long as they do.
+	 * The computation supplied on the first request determines the context's structure;
+	 * later requests return the same context, which is sound because instructions are
+	 * only ever shared between computations with equal signatures, whose structural
+	 * inputs are identical.</p>
+	 *
+	 * @param computation the computation the instructions are compiled from
+	 * @return the structure context of the compiled instructions
+	 */
+	CompiledKernelStructureContext getKernelStructureContext(Computation<?> computation);
 
 	/**
 	 * Registers a callback to run when this manager's compiled instructions are destroyed.

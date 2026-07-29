@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.instructions;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
@@ -27,6 +28,7 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
+import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -195,6 +197,13 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 */
 	private String aggregatePositions;
 
+	/**
+	 * The structure context of this manager's compiled instructions, owning the kernel
+	 * structure resources the compiled code references. Created on first request and
+	 * destroyed with the instructions.
+	 */
+	private CompiledKernelStructureContext kernelStructureContext;
+
 	/** Map of execution keys to their output argument indices. */
 	private Map<K, Integer> outputArgIndices;
 
@@ -263,6 +272,16 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	/** {@inheritDoc} */
 	@Override
 	public String getAggregatePositions() { return aggregatePositions; }
+
+	/** {@inheritDoc} */
+	@Override
+	public synchronized CompiledKernelStructureContext getKernelStructureContext(Computation<?> computation) {
+		if (kernelStructureContext == null) {
+			kernelStructureContext = new CompiledKernelStructureContext(computation);
+		}
+
+		return kernelStructureContext;
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -398,6 +417,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		if (operators != null) {
 			operators.destroy();
 			operators = null;
+		}
+
+		if (kernelStructureContext != null) {
+			kernelStructureContext.destroy();
+			kernelStructureContext = null;
 		}
 
 		destroyListeners.forEach(Runnable::run);

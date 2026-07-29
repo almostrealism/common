@@ -168,10 +168,7 @@ public class KernelTraversalOperation<T extends MemoryData> extends ProducerComp
 	 * Compiles and returns an evaluable for this lookup table operation.
 	 *
 	 * <p>Compiles the expression assignments to hardware code and returns
-	 * an evaluable that computes the lookup table values. The evaluable's
-	 * instruction set manager is established before compilation, since it
-	 * owns everything compilation produces (see
-	 * {@code ComputationScopeCompiler}'s product owner).</p>
+	 * an evaluable that computes the lookup table values.</p>
 	 *
 	 * @return Compiled evaluable that generates the lookup table
 	 */
@@ -180,7 +177,6 @@ public class KernelTraversalOperation<T extends MemoryData> extends ProducerComp
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
 		AcceleratedComputationEvaluable<T> ev = new AcceleratedComputationEvaluable<>(ctx, this);
 		ev.setDestinationFactory(destination.getDestinationFactory());
-		ev.getInstructionSetManager();
 		ev.compile();
 		return ev;
 	}

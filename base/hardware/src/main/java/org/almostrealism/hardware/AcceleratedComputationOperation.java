@@ -47,6 +47,7 @@ import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
 import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
+import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
 import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
@@ -260,32 +261,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	public ComputationScopeCompiler<T> getCompiler() {
 		if (compiler == null) {
-			compiler = new ComputationScopeCompiler<>(getComputation(), this::ownCompiledProduct);
+			compiler = new ComputationScopeCompiler<>(getComputation());
 		}
 
 		return compiler;
-	}
-
-	/**
-	 * Takes ownership of a compiler-materialized product on behalf of the instruction set
-	 * manager, which owns everything the compiled instructions reference.
-	 *
-	 * <p>Products (the kernel series cache, the traversal operation generator) are owned by
-	 * the manager from the moment they are created, so they live exactly as long as the
-	 * compiled instructions — including when those instructions are shared and outlive both
-	 * the compiler and this operation. The compiler never destroys its products.</p>
-	 *
-	 * @param product The compiler-materialized {@link Destroyable} to own
-	 * @throws IllegalStateException if compilation produced the product before any
-	 *         instruction set manager existed to own it
-	 */
-	private void ownCompiledProduct(Destroyable product) {
-		if (instructions == null) {
-			throw new IllegalStateException("Compilation produced " + product +
-					" before an instruction set manager existed to own it");
-		}
-
-		getInstructionSetManager().addDestroyListener(product::destroy);
 	}
 
 	/**
@@ -459,11 +438,19 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * <p>Delegates to the {@link ComputationScopeCompiler} to prepare the scope's
 	 * input variables.</p>
 	 *
+	 * <p>The kernel structure context belongs to the instruction set manager — the
+	 * owner of the compiled instructions and of the kernel structure resources their
+	 * generated code references. Its resources are materialized here, at the start
+	 * of compilation, through the argument provider of this compilation pass.</p>
+	 *
 	 * @param manager The scope input manager
 	 */
 	@Override
 	protected void prepareScope(ArgumentProvider manager) {
-		getCompiler().prepareScope(manager);
+		CompiledKernelStructureContext context =
+				getInstructionSetManager().getKernelStructureContext(getComputation());
+		context.prepareResources(manager);
+		getCompiler().prepareScope(manager, context);
 	}
 
 	/**
@@ -592,7 +579,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		MemoryDataArgumentMap perOperation = MemoryDataArgumentMap.create(getComputeContext(),
 				isArgumentAggregationSupported() ? length -> createAggregatedInput(length, length) : null);
-		getCompiler().replayArguments(perOperation);
+		getCompiler().prepareScope(perOperation,
+				manager.getKernelStructureContext(getComputation()));
 
 		String replayedPositions = perOperation.describeAggregatePositions();
 		if (!replayedPositions.equals(compiledPositions)) {
@@ -644,9 +632,17 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * <p>This method is synchronized to prevent concurrent compilation of the same operation.</p>
 	 *
+	 * <p>The instruction set manager is resolved before any compilation work, since it
+	 * owns the kernel structure context that compilation prepares resources on. When the
+	 * manager itself compiles as a side effect of being created, the check below then
+	 * finds the scope already present and this call returns it without repeating any
+	 * work.</p>
+	 *
 	 * @return The compiled scope
 	 */
 	public synchronized Scope<T> compile() {
+		getInstructionSetManager();
+
 		if (getCompiler().getScope() == null) {
 			if (argumentMap != null) {
 				// The Scope creation was either previously unsuccessful,
@@ -771,7 +767,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
 
-		if (!getCompiler().isValidKernelSize(process.getKernelSize())) {
+		if (!getInstructionSetManager().getKernelStructureContext(getComputation())
+				.isValidKernelSize(process.getKernelSize())) {
 			throw new UnsupportedOperationException();
 		}
 
