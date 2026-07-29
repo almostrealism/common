@@ -336,8 +336,15 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 */
 	public List<Argument<?>> getScopeArguments() { return arguments; }
 
-	/** {@inheritDoc} */
-	@Override
+	/**
+	 * Adds a listener to be notified when this manager is destroyed.
+	 *
+	 * <p>Used by operations bound to shared instructions to reset themselves when
+	 * the instructions are released, so they recompile rather than execute through
+	 * bindings derived from a destroyed scope.</p>
+	 *
+	 * @param listener the destroy listener
+	 */
 	public void addDestroyListener(Runnable listener) {
 		destroyListeners.add(listener);
 	}

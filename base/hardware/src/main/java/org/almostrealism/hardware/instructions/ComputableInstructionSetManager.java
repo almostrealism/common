@@ -162,17 +162,4 @@ public interface ComputableInstructionSetManager<K extends ExecutionKey> extends
 	 * @return the structure context of the compiled instructions
 	 */
 	CompiledKernelStructureContext getKernelStructureContext(Computation<?> computation);
-
-	/**
-	 * Registers a callback to run when this manager's compiled instructions are destroyed.
-	 *
-	 * <p>Resources whose lifetime must match the compiled instructions — such as
-	 * compiler-materialized constant buffers that the kernel reads on every execution —
-	 * are released through a listener registered here, so they survive exactly as long
-	 * as the instructions that reference them, even when those instructions outlive the
-	 * operation that compiled them.</p>
-	 *
-	 * @param listener the callback to run on destruction
-	 */
-	void addDestroyListener(Runnable listener);
 }

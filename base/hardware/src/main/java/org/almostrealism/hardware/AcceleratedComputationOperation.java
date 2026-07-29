@@ -378,10 +378,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			if (ScopeSettings.enableInstructionSetReuse && signature != null) {
 				DefaultComputer computer = Hardware.getLocalHardware().getComputer();
 
-				instructions = computer.getScopeInstructionsManager(
+				ScopeInstructionsManager<?> shared = computer.getScopeInstructionsManager(
 						signature, getComputation(), getComputeContext(), this::getScope);
+				shared.addDestroyListener(new WeakRunnable<>(this, AcceleratedComputationOperation::resetInstructions));
+				instructions = shared;
 				sharedInstructions = true;
-				instructions.addDestroyListener(new WeakRunnable<>(this, AcceleratedComputationOperation::resetInstructions));
 			} else {
 				instructions = new ComputationInstructionsManager(
 						getComputeContext(), this::getScope);
