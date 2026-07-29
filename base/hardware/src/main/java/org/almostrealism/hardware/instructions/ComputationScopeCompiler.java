@@ -46,9 +46,9 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
 import org.almostrealism.io.SystemUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalLong;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -69,10 +69,11 @@ import java.util.stream.Collectors;
  * <h2>Compilation Lifecycle</h2>
  *
  * <pre>{@code
- * // Create compiler
+ * // Create compiler; the owner takes each compiler-materialized
+ * // product (kernel caches) at the moment it is created
  * Computation<Matrix> computation = add(a, b);
  * ComputationScopeCompiler<Matrix> compiler =
- *     new ComputationScopeCompiler<>(computation);
+ *     new ComputationScopeCompiler<>(computation, productOwner);
  *
  * // Prepare scope inputs
  * ArgumentProvider inputManager = ...;
@@ -208,12 +209,33 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	private Scope<T> scope;
 
 	/**
+	 * Receives every {@link Destroyable} this compiler materializes as part of its compiled
+	 * output (the kernel series cache and the traversal operation generator). Products belong
+	 * to their owner from the moment they are created — this compiler never destroys them —
+	 * so compiled code remains usable after the compiler itself is destroyed.
+	 */
+	private final Consumer<Destroyable> productOwner;
+
+	/**
 	 * Constructs a new compiler for the specified computation.
 	 *
-	 * @param computation  the computation to compile into a scope
+	 * <p>A compiler produces artifacts that outlive it: the compiled {@link Scope} and the
+	 * compiler-materialized caches its generated code references. The {@code productOwner}
+	 * takes ownership of each such {@link Destroyable} at the moment it is created, and is
+	 * responsible for destroying it when the compiled instructions are released. Destroying
+	 * this compiler never destroys its products.</p>
+	 *
+	 * @param computation   the computation to compile into a scope
+	 * @param productOwner  takes ownership of each compiler-materialized {@link Destroyable}
 	 */
-	public ComputationScopeCompiler(Computation<T> computation) {
+	public ComputationScopeCompiler(Computation<T> computation, Consumer<Destroyable> productOwner) {
+		if (productOwner == null) {
+			throw new IllegalArgumentException(
+					"A compiler's products outlive it, so an owner for them is required");
+		}
+
 		this.computation = computation;
+		this.productOwner = productOwner;
 	}
 
 	/**
@@ -356,38 +378,24 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 				data -> manager.argumentForInput().apply((Supplier) new KernelConstantProviderSupplier(data)));
 		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
 				data -> manager.argumentForInput().apply((Supplier) data));
+
+		productOwner.accept(kernelSeriesCache);
+		productOwner.accept(traversalGenerator);
 	}
 
 	/**
-	 * Releases ownership of the compiler-materialized kernel caches (the series cache
-	 * and the traversal operation generator), returning them without destroying them.
+	 * Prepares only the computation's own arguments with the given provider, without
+	 * creating the kernel caches that {@link #prepareScope(ArgumentProvider, KernelStructureContext)}
+	 * materializes for an actual compilation.
 	 *
-	 * <p>The caches back constant data referenced by the compiled kernel — the series cache
-	 * buffer is a standalone kernel argument (see {@link KernelConstantProviderSupplier}) and
-	 * the traversal operations produce lookup tables the kernel reads. When the compiled
-	 * instructions are shared through signature-based reuse, the instructions can outlive this
-	 * compiler (and the operation that owns it), so whoever owns the compiled instructions must
-	 * also own these caches; the operation transfers them after compilation. Once released,
-	 * {@link #destroy()} no longer touches them. Safe to call only after compilation completes:
-	 * the caches are consulted exclusively during expression simplification, and
-	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)} creates fresh instances
-	 * for any subsequent compilation.</p>
+	 * <p>Used to replay the argument fold of an already-compiled computation — for example to
+	 * verify an operation's aggregate positions against a compiled kernel it intends to reuse.
+	 * A replay is not a compilation, so it must not manufacture compiled products.</p>
 	 *
-	 * @return The released caches, or an empty list if none were created
+	 * @param manager the argument provider to register the computation's inputs with
 	 */
-	public List<Destroyable> releaseKernelCaches() {
-		List<Destroyable> released = new ArrayList<>();
-		if (kernelSeriesCache != null) {
-			released.add(kernelSeriesCache);
-			kernelSeriesCache = null;
-		}
-
-		if (traversalGenerator != null) {
-			released.add(traversalGenerator);
-			traversalGenerator = null;
-		}
-
-		return released;
+	public void replayArguments(ArgumentProvider manager) {
+		getComputation().prepareScope(manager, this);
 	}
 
 	/**
@@ -503,22 +511,18 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	}
 
 	/**
-	 * Releases resources held by this compiler including the compiled scope,
-	 * kernel series cache, and traversal generator.
+	 * Releases this compiler's own transient state.
+	 *
+	 * <p>The compiler's products — the compiled scope and the compiler-materialized caches
+	 * its generated code references — are not destroyed here: they belong to the
+	 * {@code productOwner} supplied at construction, and remain usable by compiled
+	 * instructions that outlive this compiler.</p>
 	 */
 	@Override
 	public void destroy() {
 		scope = null;
-
-		if (kernelSeriesCache != null) {
-			kernelSeriesCache.destroy();
-			kernelSeriesCache = null;
-		}
-
-		if (traversalGenerator != null) {
-			traversalGenerator.destroy();
-			traversalGenerator = null;
-		}
+		kernelSeriesCache = null;
+		traversalGenerator = null;
 	}
 
 	/**

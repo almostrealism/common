@@ -207,10 +207,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	private ExecutionKey executionKey;
 
 	/**
-	 * True when {@link #instructions} is a shared, signature-cached manager that can outlive
-	 * this operation. Determines whether compiler-materialized kernel caches are transferred
-	 * to the manager after compilation (see {@link #postCompile()}); a per-operation manager
-	 * keeps them with the compiler, whose lifetime already matches the instructions.
+	 * True when {@link #instructions} belongs to someone else — a shared, signature-cached
+	 * manager owned by the {@link DefaultComputer}, or a manager supplied externally through
+	 * the deprecated compile path. A privately created manager is this operation's own asset
+	 * and is destroyed with it (see {@link #destroy()}); a manager owned elsewhere is not.
 	 */
 	private boolean sharedInstructions;
 
@@ -260,10 +260,32 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	public ComputationScopeCompiler<T> getCompiler() {
 		if (compiler == null) {
-			compiler = new ComputationScopeCompiler<>(getComputation());
+			compiler = new ComputationScopeCompiler<>(getComputation(), this::ownCompiledProduct);
 		}
 
 		return compiler;
+	}
+
+	/**
+	 * Takes ownership of a compiler-materialized product on behalf of the instruction set
+	 * manager, which owns everything the compiled instructions reference.
+	 *
+	 * <p>Products (the kernel series cache, the traversal operation generator) are owned by
+	 * the manager from the moment they are created, so they live exactly as long as the
+	 * compiled instructions — including when those instructions are shared and outlive both
+	 * the compiler and this operation. The compiler never destroys its products.</p>
+	 *
+	 * @param product The compiler-materialized {@link Destroyable} to own
+	 * @throws IllegalStateException if compilation produced the product before any
+	 *         instruction set manager existed to own it
+	 */
+	private void ownCompiledProduct(Destroyable product) {
+		if (instructions == null) {
+			throw new IllegalStateException("Compilation produced " + product +
+					" before an instruction set manager existed to own it");
+		}
+
+		getInstructionSetManager().addDestroyListener(product::destroy);
 	}
 
 	/**
@@ -539,8 +561,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * nothing while the compiled kernel reads an aggregate — is an instruction cache collision and
 	 * throws {@link HardwareException}. A collision must never be absorbed by recompiling quietly
 	 * or otherwise routing around the cache, because that hides the fact that the cache matched
-	 * two distinct kernels to one signature. When aggregation is disabled entirely, neither the
-	 * shared scope nor this operation can fold anything, and there is nothing to verify.</p>
+	 * two distinct kernels to one signature. Verification is unconditional: when aggregation is
+	 * disabled, or when neither party folds anything, the replay simply confirms that both
+	 * position sequences are empty.</p>
 	 *
 	 * @param manager The shared instruction set manager whose scope is being reused
 	 * @param map     The per-operation argument map for this reused operation
@@ -561,10 +584,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			}
 		}
 
-		if (sharedAggregate == null && !MemoryDataArgumentMap.enableArgumentAggregation) {
-			return;
-		}
-
 		String compiledPositions = manager.getAggregatePositions();
 		if (compiledPositions == null) {
 			throw new HardwareException("No aggregate positions were recorded when the shared scope for " +
@@ -573,7 +592,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		MemoryDataArgumentMap perOperation = MemoryDataArgumentMap.create(getComputeContext(),
 				isArgumentAggregationSupported() ? length -> createAggregatedInput(length, length) : null);
-		getCompiler().prepareScope(perOperation);
+		getCompiler().replayArguments(perOperation);
 
 		String replayedPositions = perOperation.describeAggregatePositions();
 		if (!replayedPositions.equals(compiledPositions)) {
@@ -664,6 +683,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		warn("Use of deprecated compile method");
 		this.instructions = instructions;
 		this.executionKey = executionKey;
+		this.sharedInstructions = true;
 	}
 
 	/**
@@ -700,13 +720,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * {@link ComputationScopeCompiler#postCompile()} for additional compiler-specific
 	 * post-processing.</p>
 	 *
-	 * <p>Records the aggregate layout this kernel was compiled against on the instruction
-	 * set manager, so every operation reusing these instructions can be verified against
-	 * it. When the instructions are shared through signature-based caching, they can
-	 * outlive this operation, so the compiler-materialized kernel caches the compiled
-	 * code references (series cache buffer, traversal operations) are transferred to the
-	 * manager's lifetime here; a per-operation manager leaves them with the compiler,
-	 * whose lifetime already matches the instructions.</p>
+	 * <p>Records the aggregate positions this kernel was compiled against on the
+	 * instruction set manager, so every operation reusing these instructions can be
+	 * verified against them.</p>
 	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
 	 */
@@ -716,12 +732,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		if (instructions != null && argumentMap != null) {
 			getInstructionSetManager().setAggregatePositions(argumentMap.describeAggregatePositions());
-		}
-
-		if (sharedInstructions) {
-			for (Destroyable cache : getCompiler().releaseKernelCaches()) {
-				getInstructionSetManager().addDestroyListener(cache::destroy);
-			}
 		}
 	}
 
@@ -836,7 +846,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *   <li>Destroys superclass resources ({@link AcceleratedOperation#destroy()})</li>
 	 *   <li>Clears input references</li>
 	 *   <li>Destroys the wrapped computation if it's {@link Destroyable}</li>
-	 *   <li>Destroys the {@link ComputationScopeCompiler}</li>
+	 *   <li>Destroys the privately created instruction set manager, when there is one —
+	 *       along with the compiled products it owns; a shared manager belongs to the
+	 *       {@link DefaultComputer} and is left alone</li>
+	 *   <li>Destroys the {@link ComputationScopeCompiler} (its products are owned by
+	 *       the instruction set manager and are not affected)</li>
 	 * </ol>
 	 *
 	 * <p>After calling this method, the operation should not be used again.</p>
@@ -849,6 +863,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		if (getComputation() instanceof Destroyable) {
 			((Destroyable) getComputation()).destroy();
+		}
+
+		if (!sharedInstructions && instructions != null) {
+			instructions.destroy();
+			instructions = null;
 		}
 
 		if (compiler != null) {

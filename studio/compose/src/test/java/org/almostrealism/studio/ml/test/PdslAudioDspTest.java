@@ -413,8 +413,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		CompiledModel compiled = model.compile();
 
 		// First call: all-ones input, history starts at zero
-		PackedCollection signal1 = new PackedCollection(SIGNAL_SIZE);
-		signal1.fill(1.0);
+		PackedCollection signal1 = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 		PackedCollection output1 = compiled.forward(signal1.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("First output should not be null", output1);
 		// output1[0] must be 0 (no prior history), rest must be 1.0
@@ -422,8 +421,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				0.0, output1.toDouble(0), 1e-6);
 
 		// Second call: all-twos input; output[0] must reflect last sample from first call
-		PackedCollection signal2 = new PackedCollection(SIGNAL_SIZE);
-		signal2.fill(2.0);
+		PackedCollection signal2 = new PackedCollection(SIGNAL_SIZE).fill(2.0);
 		PackedCollection output2 = compiled.forward(signal2.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Second output should not be null", output2);
 		// history[0] was set to 1.0 by the first call, so output2[0] = x[-1] = 1.0
@@ -467,8 +465,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		CompiledModel compiled = model.compile();
 
 		// First call: all-ones; first 2 outputs are 0 (empty buffer), rest are 1.0
-		PackedCollection signal1 = new PackedCollection(SIGNAL_SIZE);
-		signal1.fill(1.0);
+		PackedCollection signal1 = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 		PackedCollection output1 = compiled.forward(signal1.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("First output should not be null", output1);
 		Assert.assertEquals("First call output[0] should be 0 (empty buffer)",
@@ -477,8 +474,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				0.0, output1.toDouble(1), 1e-6);
 
 		// Second call: all-twos; first 2 outputs must come from first-call buffer (value 1.0)
-		PackedCollection signal2 = new PackedCollection(SIGNAL_SIZE);
-		signal2.fill(2.0);
+		PackedCollection signal2 = new PackedCollection(SIGNAL_SIZE).fill(2.0);
 		PackedCollection output2 = compiled.forward(signal2.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Second output should not be null", output2);
 		Assert.assertEquals("Second call output[0] should be 1.0 (from first-call buffer)",
@@ -533,8 +529,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
-		signal.fill(1.0);
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 		PackedCollection out = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("efx_channel output must not be null", out);
 
@@ -733,8 +728,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
-		signal.fill(1.0);
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 
 		// "Clock" tick 1 — counter = 0.1, expected scale = 0.05
 		PackedCollection output1 = compiled.forward(signal.reshape(compiled.getInputShape()));

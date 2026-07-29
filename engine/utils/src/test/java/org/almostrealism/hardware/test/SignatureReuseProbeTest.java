@@ -46,8 +46,7 @@ public class SignatureReuseProbeTest extends TestSuiteBase {
 	public void perCallTargetChainReuse() {
 		int n = 4;
 
-		PackedCollection in = new PackedCollection(shape(n));
-		in.setMem(0, 1.0, 2.0, 3.0, 4.0);
+		PackedCollection in = pack(1.0, 2.0, 3.0, 4.0);
 
 		CollectionProducer stage1 = integers(0, n);
 		CollectionProducer stage2 = integers(0, n).mod(coeff.length);
@@ -81,8 +80,7 @@ public class SignatureReuseProbeTest extends TestSuiteBase {
 		long start = System.nanoTime();
 
 		for (int i = 0; i < iterations; i++) {
-			PackedCollection input = new PackedCollection(shape(n));
-			input.setMem(0, 1.0, 2.0, 3.0, 4.0);
+			PackedCollection input = pack(1.0, 2.0, 3.0, 4.0);
 
 			PackedCollection out = new PackedCollection(shape(n));
 			c(coeff).valueAt(integers(0, n).mod(coeff.length))
@@ -114,8 +112,7 @@ public class SignatureReuseProbeTest extends TestSuiteBase {
 		PackedCollection table = new PackedCollection(shape(coeff.length));
 		table.setMem(0, 0.3, -0.2, 0.5, 0.1);
 
-		PackedCollection in = new PackedCollection(shape(n));
-		in.setMem(0, 1.0, 2.0, 3.0, 4.0);
+		PackedCollection in = pack(1.0, 2.0, 3.0, 4.0);
 
 		CollectionProducer chain = cp(table).valueAt(integers(0, n).mod(coeff.length))
 				.multiply(cp(in).reshape(shape(n)));
@@ -134,8 +131,7 @@ public class SignatureReuseProbeTest extends TestSuiteBase {
 		long start = System.nanoTime();
 
 		for (int i = 0; i < iterations; i++) {
-			PackedCollection input = new PackedCollection(shape(n));
-			input.setMem(0, 1.0, 2.0, 3.0, 4.0);
+			PackedCollection input = pack(1.0, 2.0, 3.0, 4.0);
 
 			PackedCollection out = new PackedCollection(shape(n));
 			cp(table).valueAt(integers(0, n).mod(coeff.length))

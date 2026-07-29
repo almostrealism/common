@@ -82,8 +82,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		double[] signalArray = signal.toArray();
 
 		// Delta function kernel
-		PackedCollection kernel = new PackedCollection(shape(1));
-		kernel.setMem(0, 1.0);
+		PackedCollection kernel = pack(1.0);
 
 		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
 		PackedCollection result = fftConv.evaluate();
