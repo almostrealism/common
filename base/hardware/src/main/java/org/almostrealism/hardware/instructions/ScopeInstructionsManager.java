@@ -317,11 +317,8 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 */
 	public List<Argument<?>> getScopeArguments() { return arguments; }
 
-	/**
-	 * Adds a listener to be notified when this manager is destroyed.
-	 *
-	 * @param listener the destroy listener
-	 */
+	/** {@inheritDoc} */
+	@Override
 	public void addDestroyListener(Runnable listener) {
 		destroyListeners.add(listener);
 	}

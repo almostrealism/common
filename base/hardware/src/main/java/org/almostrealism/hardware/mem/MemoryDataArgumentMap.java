@@ -202,7 +202,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 			// If aggregation is enabled and this root is small enough, fold it into the
 			// shared aggregate buffer instead of giving it its own kernel argument.
-			if (aggregateGenerator != null && isAggregationTarget(md.getRootDelegate())) {
+			// Kernel-owned constant memory is never folded (see KernelConstantProviderSupplier).
+			if (aggregateGenerator != null && !(key instanceof KernelConstantProviderSupplier)
+					&& isAggregationTarget(md.getRootDelegate())) {
 				var = aggregate(createDelegate(md), md.getRootDelegate());
 			}
 
@@ -443,7 +445,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * property -- so the same computation always makes the same decision. It deliberately does
 	 * <em>not</em> consider where the data currently lives (heap vs. device), because that is
 	 * mutable runtime state that would make the decision (and the resulting kernel) vary for no
-	 * semantic reason and break instruction-set reuse.</p>
+	 * semantic reason and break instruction-set reuse. Size eligibility is necessary but not
+	 * sufficient: memory requested through {@link KernelConstantProviderSupplier} is owned by
+	 * the compiled kernel itself and is never folded, whatever its size.</p>
 	 *
 	 * @param md Memory data to test
 	 * @return True if the memory data can be folded into an aggregate argument

@@ -40,6 +40,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
+import org.almostrealism.io.Describable;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
 import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
@@ -206,6 +207,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	private ExecutionKey executionKey;
 
 	/**
+	 * True when {@link #instructions} is a shared, signature-cached manager that can outlive
+	 * this operation. Determines whether compiler-materialized kernel caches are transferred
+	 * to the manager after compilation (see {@link #postCompile()}); a per-operation manager
+	 * keeps them with the compiler, whose lifetime already matches the instructions.
+	 */
+	private boolean sharedInstructions;
+
+	/**
 	 * Creates an accelerated operation for the specified computation.
 	 *
 	 * <p>Wraps the {@link Computation} for hardware execution, initializing the function
@@ -370,8 +379,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 				instructions = computer.getScopeInstructionsManager(
 						signature, getComputation(), getComputeContext(), this::getScope);
-				((ScopeInstructionsManager) instructions)
-						.addDestroyListener(new WeakRunnable<>(this, AcceleratedComputationOperation::resetInstructions));
+				sharedInstructions = true;
+				instructions.addDestroyListener(new WeakRunnable<>(this, AcceleratedComputationOperation::resetInstructions));
 			} else {
 				instructions = new ComputationInstructionsManager(
 						getComputeContext(), this::getScope);
@@ -567,7 +576,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			throw new HardwareException("Instruction cache collision reusing " + getFunctionName() +
 					": the compiled kernel was built against aggregate layout " + compiledLayout +
 					" but this computation produces " + replayedLayout +
-					"; the signature matched two distinct kernels");
+					"; the signature matched two distinct kernels (compiled from " +
+					Describable.describe(manager.getProcess()) + "; reused by " +
+					Describable.describe(getComputation()) + ")");
 		}
 
 		if (sharedAggregate == null) {
@@ -668,6 +679,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	protected void resetInstructions() {
 		instructions = null;
 		executionKey = null;
+		sharedInstructions = false;
 
 		resetArguments();
 
@@ -684,6 +696,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * {@link ComputationScopeCompiler#postCompile()} for additional compiler-specific
 	 * post-processing.</p>
 	 *
+	 * <p>Records the aggregate layout this kernel was compiled against on the instruction
+	 * set manager, so every operation reusing these instructions can be verified against
+	 * it. When the instructions are shared through signature-based caching, they can
+	 * outlive this operation, so the compiler-materialized kernel caches the compiled
+	 * code references (series cache buffer, traversal operations) are transferred to the
+	 * manager's lifetime here; a per-operation manager leaves them with the compiler,
+	 * whose lifetime already matches the instructions.</p>
+	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
 	 */
 	public synchronized void postCompile() {
@@ -691,9 +711,13 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		getCompiler().postCompile();
 
 		if (instructions != null && argumentMap != null) {
-			// Record the aggregate layout this kernel was compiled against, so every
-			// operation reusing these instructions can be verified against it.
 			getInstructionSetManager().setAggregateLayout(argumentMap.describeAggregate());
+		}
+
+		if (sharedInstructions) {
+			for (Destroyable cache : getCompiler().releaseKernelCaches()) {
+				getInstructionSetManager().addDestroyListener(cache::destroy);
+			}
 		}
 	}
 

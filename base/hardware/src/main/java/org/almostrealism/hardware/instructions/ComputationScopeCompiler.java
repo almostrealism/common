@@ -32,7 +32,6 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
@@ -41,11 +40,13 @@ import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.hardware.kernel.KernelTraversalOperation;
 import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
+import org.almostrealism.hardware.mem.KernelConstantProviderSupplier;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.function.Supplier;
@@ -352,9 +353,41 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		getComputation().prepareScope(manager, context);
 
 		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
-				data -> manager.argumentForInput().apply(() -> new Provider<>(data)));
+				data -> manager.argumentForInput().apply((Supplier) new KernelConstantProviderSupplier(data)));
 		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
 				data -> manager.argumentForInput().apply((Supplier) data));
+	}
+
+	/**
+	 * Releases ownership of the compiler-materialized kernel caches (the series cache
+	 * and the traversal operation generator), returning them without destroying them.
+	 *
+	 * <p>The caches back constant data referenced by the compiled kernel — the series cache
+	 * buffer is a standalone kernel argument (see {@link KernelConstantProviderSupplier}) and
+	 * the traversal operations produce lookup tables the kernel reads. When the compiled
+	 * instructions are shared through signature-based reuse, the instructions can outlive this
+	 * compiler (and the operation that owns it), so whoever owns the compiled instructions must
+	 * also own these caches; the operation transfers them after compilation. Once released,
+	 * {@link #destroy()} no longer touches them. Safe to call only after compilation completes:
+	 * the caches are consulted exclusively during expression simplification, and
+	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)} creates fresh instances
+	 * for any subsequent compilation.</p>
+	 *
+	 * @return The released caches, or an empty list if none were created
+	 */
+	public List<Destroyable> releaseKernelCaches() {
+		List<Destroyable> released = new ArrayList<>();
+		if (kernelSeriesCache != null) {
+			released.add(kernelSeriesCache);
+			kernelSeriesCache = null;
+		}
+
+		if (traversalGenerator != null) {
+			released.add(traversalGenerator);
+			traversalGenerator = null;
+		}
+
+		return released;
 	}
 
 	/**

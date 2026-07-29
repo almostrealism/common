@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
@@ -30,6 +31,7 @@ import org.junit.Test;
 
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /**
  * Regression coverage for instruction cache collision enforcement.
@@ -85,6 +87,31 @@ public class InstructionCacheCollisionEnforcementTest extends TestSuiteBase {
 
 		map.putSubstitutions(process);
 		map.verifySubstitutions("collisionEnforcementProbe");
+	}
+
+	/**
+	 * The same constant chain evaluated twice in one JVM must reuse the compiled kernel and
+	 * produce identical, correct results.
+	 *
+	 * <p>The chain's kernel references a compiler-materialized series cache buffer
+	 * (a {@code KernelSeriesCache} table of {@code count * 32 = 992} elements). That buffer
+	 * must be a standalone kernel argument — never an aggregation target — or the second
+	 * evaluation's reuse binding faces an aggregate layout it cannot reproduce, which is
+	 * exactly the collision this test originally exposed via
+	 * {@code TemporalFeatures.lowPassCoefficients}.</p>
+	 */
+	@Test(timeout = 60000)
+	public void compilerMaterializedCacheSurvivesReuse() {
+		double[] table = IntStream.range(0, 31).mapToDouble(i -> i).toArray();
+
+		PackedCollection first = c(table).subtract(c(15.0)).multiply(c(Math.PI)).get().evaluate();
+		PackedCollection second = c(table).subtract(c(15.0)).multiply(c(Math.PI)).get().evaluate();
+
+		for (int i = 0; i < table.length; i++) {
+			double expected = (table[i] - 15.0) * Math.PI;
+			assertEquals(expected, first.toDouble(i));
+			assertEquals(expected, second.toDouble(i));
+		}
 	}
 
 	/**
