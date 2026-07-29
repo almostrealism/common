@@ -73,8 +73,8 @@ frame):
 | `biquad` | `biquad(b0, b1, b2, a1, a2, history)` | Biquad IIR; `history` = `[x1, x2, y1, y2]` (shape `[4]`). Coefficients are `producer([1])`. |
 | `delay` | `delay(delaySamples, buffer, head)` | Integer-sample ring delay; `buffer` = ring (≥ `signal_size`), `head` = write position `[1]`. `delaySamples` accepts `producer([1])`. |
 | `lfo` | `lfo(freqHz, sampleRate, phase)` | Sinusoidal LFO; `phase` = accumulator `[1]`, `freqHz` is `producer([1])`. |
-| `delay_network` | `delay_network(delaySamples, feedbackMatrix, buffer, heads)` | Multi-tap feedback delay network (FDN); per-frame matrix `[channels, channels]`, multi-frame ring. |
-| `feedback` | `feedback(delaySamples, transmissionMatrix, passthroughMatrix, buffer, heads[, previousDelaySamples])` | Block-parallel feedback delay network — the PDSL analogue of `CellList.mself`. Delayed output is routed back into the ring via `transmissionMatrix` and emitted via `passthroughMatrix`. With `previousDelaySamples`, each channel's delay follows a per-sample linear trajectory from the previous frame's value to `delaySamples`, using fractional-position interpolation to preserve the pitch bend of delay-time modulation. |
+| `delay_network` | `delay_network(delay_samples, feedback_matrix, buffer, heads)` | Multi-tap feedback delay network (FDN); per-frame matrix `[channels, channels]`, multi-frame ring. |
+| `feedback` | `feedback(delay_samples, transmission_matrix, passthrough_matrix, buffer, heads[, delay_samples_prev])` | Block-parallel feedback delay network — the PDSL analogue of `CellList.mself`. Delayed output is routed back into the ring via `transmission_matrix` and emitted via `passthrough_matrix`. With `delay_samples_prev`, each channel's delay follows a per-sample linear trajectory from the previous frame's value to `delay_samples`, using fractional-position interpolation to preserve the pitch bend of delay-time modulation. |
 
 ### Core/domain-agnostic primitives (interpreter core)
 
