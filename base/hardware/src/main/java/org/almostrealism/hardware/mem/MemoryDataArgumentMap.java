@@ -29,6 +29,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.io.SystemUtils;
@@ -66,11 +67,11 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * limit), which is required for fused kernels with many small inputs to evaluate at all. The
 	 * copy plan copies aggregated inputs IN before the kernel and copies written slices back OUT
 	 * afterward (skipping the slice that aliases an explicit {@code output}; see
-	 * {@link #getPostprocessOperations(MemoryData)}), and instruction reuse is aggregation-safe (each
-	 * reused operation gets its own aggregate buffer and the signature encodes the aggregate layout
-	 * -- see {@code AcceleratedComputationOperation.rebindAggregateForReuse} and
-	 * {@code CollectionProviderProducer.signature}). Set the env var to a disabled value to turn
-	 * the collapse off (e.g. for debugging a kernel without aggregation).</p>
+	 * {@link #getPostprocessOperations(MemoryData)}). Under instruction reuse each reused operation
+	 * gets its own aggregate buffer, and its aggregate layout is verified against the layout the
+	 * shared kernel was compiled with — a mismatch is an instruction cache collision and throws
+	 * (see {@code AcceleratedComputationOperation.rebindAggregateForReuse}). Set the env var to a
+	 * disabled value to turn the collapse off (e.g. for debugging a kernel without aggregation).</p>
 	 */
 	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(true);
 
@@ -509,11 +510,26 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		public int getPosition() { return position; }
 	}
 
-	/** {@link Producer} that provides the lazily created aggregate buffer to the kernel. */
+	/**
+	 * {@link Producer} that provides the lazily created aggregate buffer to the kernel.
+	 *
+	 * <p>Requesting the buffer from a map that aggregated nothing is a contract violation:
+	 * a kernel argument bound to a null buffer can never be satisfied, so the request
+	 * throws instead of delivering null. Reaching this failure means an operation was bound
+	 * to an aggregate it does not actually have — the symptom of an instruction cache
+	 * collision that upstream verification failed to catch.</p>
+	 */
 	private class AggregateProducer implements Producer<MemoryData> {
 		@Override
 		public Evaluable<MemoryData> get() {
-			return new Provider<>(getAggregateData());
+			MemoryData data = getAggregateData();
+			if (data == null) {
+				throw new HardwareException(
+						"Aggregate buffer requested from an argument map that aggregated nothing (" +
+						describeAggregate() + ")");
+			}
+
+			return new Provider<>(data);
 		}
 	}
 }
