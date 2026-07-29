@@ -547,6 +547,7 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				currentFrame[0] = 0;
 				renderFrame[0] = 0;
 				compiled.reset();
+				adapter.resetState(args);
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};

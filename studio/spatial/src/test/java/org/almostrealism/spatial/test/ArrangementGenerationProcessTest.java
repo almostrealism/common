@@ -153,4 +153,90 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 			process.destroy();
 		}
 	}
+
+	/**
+	 * Runs three optimization cycles and verifies renders do not degrade across
+	 * cycles: mixdown state that persists from one genome's render into the next
+	 * (delay rings, filter memories) accumulates until every render clips in its
+	 * first buffer and is terminated immediately by the health computation, which
+	 * shows up as every score in the final cycle reporting only a moment of audio.
+	 *
+	 * @throws Exception if the scene cannot be loaded or the run fails
+	 */
+	@Test(timeout = 1_500_000)
+	@TestDepth(2)
+	public void rendersSurviveAcrossCycles() throws Exception {
+		File library = new File(SAMPLES);
+		File patternFactory = new File(PATTERN_FACTORY);
+		if (!library.exists() || !patternFactory.exists()) {
+			log("Skipping rendersSurviveAcrossCycles - no curated library");
+			return;
+		}
+
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableReverb = true;
+		MixdownManager.enablePdslMixdown = true;
+		PatternSystemManager.enableWarnings = false;
+		AudioSceneRealtimeRunner.renderAheadSlots = 24;
+
+		PopulationOptimizer.popSize = 2;
+		PopulationOptimizer.maxChildren = 2;
+
+		new File("results").mkdirs();
+		File networksFile = new File("results/process-networks.xml");
+		networksFile.delete();
+		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
+
+		File settings = new File(SCENE_SETTINGS);
+		AudioScene<?> scene = AudioScene.load(
+				settings.exists() ? settings.getAbsolutePath() : null,
+				patternFactory.getAbsolutePath(),
+				library.getAbsolutePath(), 120.0, 44100);
+		scene.setTotalMeasures(64);
+
+		ArrangementGenerationProcess process =
+				new ArrangementGenerationProcess(networksFile.getPath());
+
+		List<Long> cycleStarts = new ArrayList<>();
+		List<AudioHealthScore> delivered = new ArrayList<>();
+
+		process.setCycleListener(() ->
+				cycleStarts.add((long) delivered.size()));
+		process.setScoreListener((network, score) -> {
+			delivered.add(score);
+			log("cycleDelivery=" + delivered.size()
+					+ " frames=" + score.getFrames()
+					+ " score=" + score.getScore());
+		});
+		process.setErrorListener(e -> warn("processError", e));
+
+		try {
+			process.prepare(scene, 3);
+			((StableDurationHealthComputation) process.getOptimizer()
+					.getHealthComputation()).setMaxDuration(MAX_DURATION_SECONDS);
+			process.run();
+
+			Assert.assertTrue("Expected deliveries from three cycles",
+					cycleStarts.size() >= 3 && !delivered.isEmpty());
+
+			long laterCycleStart = cycleStarts.get(1);
+			List<AudioHealthScore> later =
+					delivered.subList((int) laterCycleStart, delivered.size());
+			long best = later.stream()
+					.mapToLong(AudioHealthScore::getFrames).max().orElse(0);
+
+			log("laterCycleDeliveries=" + later.size()
+					+ " laterCycleMaxFrames=" + best);
+			Assert.assertFalse("No renders were delivered after the first cycle",
+					later.isEmpty());
+			Assert.assertTrue("Every render after the first cycle died almost"
+							+ " immediately (max " + best + " frames) - mixdown"
+							+ " state is accumulating across renders",
+					best > 44100);
+		} finally {
+			process.destroy();
+		}
+	}
 }

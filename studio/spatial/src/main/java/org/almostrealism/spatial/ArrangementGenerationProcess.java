@@ -17,7 +17,9 @@
 package org.almostrealism.spatial;
 
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.io.Console;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.io.ConsoleFeatures;
@@ -318,4 +320,7 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			localScene = null;
 		}
 	}
+
+	@Override
+	public Console console() { return CellFeatures.console; }
 }
