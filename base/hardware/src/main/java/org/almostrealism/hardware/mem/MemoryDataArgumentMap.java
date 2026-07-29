@@ -309,6 +309,31 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
+	 * Returns the sequence of replacement positions within the aggregate — the component of the
+	 * aggregate layout that is baked into a compiled kernel.
+	 *
+	 * <p>Folded arguments do not occupy their own kernel parameters (reducing parameter count is
+	 * the purpose of aggregation), so the generated source addresses each one at its fixed
+	 * position within the single aggregate parameter. Those positions are therefore part of the
+	 * compiled kernel's identity. Per-argument element counts are not: they travel with each
+	 * dispatch (see the offset and size values marshaled per execution), which is what allows a
+	 * deliberately size-generic kernel — such as a single-statement assignment dispatched over
+	 * its count — to serve computations of different sizes. Two computations may reuse one
+	 * compiled kernel only when their position sequences are identical; a final replacement of a
+	 * different length shifts no baked position and is compatible, while any difference in an
+	 * earlier length shifts the positions after it and is not.</p>
+	 *
+	 * @return The baked replacement positions, in fold order
+	 */
+	public String describeAggregatePositions() {
+		StringBuilder b = new StringBuilder("[");
+		for (Replacement r : replacements) {
+			b.append(r.getPosition()).append(',');
+		}
+		return b.append(']').toString();
+	}
+
+	/**
 	 * Returns the copy operations that move each aggregated root into the aggregate buffer before
 	 * kernel execution, in replacement order.
 	 *

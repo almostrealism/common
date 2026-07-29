@@ -118,29 +118,30 @@ public interface ComputableInstructionSetManager<K extends ExecutionKey> extends
 	int getOutputOffset(K key);
 
 	/**
-	 * Records the aggregate argument layout the compiled kernel was built against.
+	 * Records the aggregate replacement positions the compiled kernel was built against.
 	 *
-	 * <p>The layout is a deterministic byproduct of a computation's inputs, making it part of
-	 * the compiled kernel's identity. It is recorded by the operation that compiles the scope,
-	 * immediately after compilation, and serves as the reference every operation reusing these
-	 * instructions is verified against.</p>
+	 * <p>Folded arguments are addressed by the generated source at fixed positions within the
+	 * single aggregate parameter, so those positions are part of the compiled kernel's
+	 * identity — while per-argument element counts travel with each dispatch and are not (see
+	 * {@code MemoryDataArgumentMap#describeAggregatePositions()}). The positions are recorded
+	 * by the operation that compiles the scope, immediately after compilation, and serve as
+	 * the reference every operation reusing these instructions is verified against.</p>
 	 *
-	 * @param layout the layout description from the compiling operation's argument map
-	 *               (see {@code MemoryDataArgumentMap#describeAggregate()})
+	 * @param positions the baked position sequence from the compiling operation's argument map
 	 */
-	void setAggregateLayout(String layout);
+	void setAggregatePositions(String positions);
 
 	/**
-	 * Returns the aggregate argument layout the compiled kernel was built against, or null
-	 * if no compilation has recorded one yet.
+	 * Returns the aggregate replacement positions the compiled kernel was built against, or
+	 * null if no compilation has recorded them yet.
 	 *
-	 * <p>An operation reusing these instructions must reproduce this layout exactly; a
+	 * <p>An operation reusing these instructions must reproduce these positions exactly; a
 	 * difference means two distinct kernels were matched to one signature — an instruction
 	 * cache collision — and the reuse must fail with an exception rather than proceed.</p>
 	 *
-	 * @return the recorded layout description, or null
+	 * @return the recorded position sequence, or null
 	 */
-	String getAggregateLayout();
+	String getAggregatePositions();
 
 	/**
 	 * Registers a callback to run when this manager's compiled instructions are destroyed.

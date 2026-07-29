@@ -186,14 +186,14 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	private ProcessArgumentMap argumentMap;
 
 	/**
-	 * The aggregate argument layout the compiled kernel was built against, as recorded by the
-	 * operation that compiled the scope (see
-	 * {@code MemoryDataArgumentMap#describeAggregate()}). The layout is a deterministic byproduct
-	 * of a computation's inputs, so any operation reusing this manager's instructions must
-	 * reproduce it exactly; a difference means the signature matched two distinct kernels
+	 * The aggregate replacement positions the compiled kernel was built against, as recorded
+	 * by the operation that compiled the scope (see
+	 * {@code MemoryDataArgumentMap#describeAggregatePositions()}). The generated source bakes
+	 * these positions in, so any operation reusing this manager's instructions must reproduce
+	 * them exactly; a difference means the signature matched two distinct kernels
 	 * (an instruction cache collision) and is grounds for failing the reuse with an exception.
 	 */
-	private String aggregateLayout;
+	private String aggregatePositions;
 
 	/** Map of execution keys to their output argument indices. */
 	private Map<K, Integer> outputArgIndices;
@@ -258,11 +258,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 
 	/** {@inheritDoc} */
 	@Override
-	public void setAggregateLayout(String layout) { this.aggregateLayout = layout; }
+	public void setAggregatePositions(String positions) { this.aggregatePositions = positions; }
 
 	/** {@inheritDoc} */
 	@Override
-	public String getAggregateLayout() { return aggregateLayout; }
+	public String getAggregatePositions() { return aggregatePositions; }
 
 	/**
 	 * {@inheritDoc}

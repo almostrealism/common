@@ -527,21 +527,25 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * {@link #argumentMap} (so {@link AcceleratedOperation#apply} performs the copy-in/out), and
 	 * binds the shared scope's aggregate argument to the per-operation buffer.</p>
 	 *
-	 * <p>The aggregate layout is a deterministic byproduct of a computation's inputs, so it is part
-	 * of the compiled kernel's identity: two computations with different aggregate layouts are two
-	 * different kernels, whatever their signatures claim. The layout obtained by replaying the fold
-	 * over this operation's inputs is therefore compared against the layout recorded when the shared
-	 * scope was compiled, and any difference — including a replay that folds nothing while the
-	 * compiled kernel reads an aggregate — is an instruction cache collision and throws
-	 * {@link HardwareException}. A collision must never be absorbed by recompiling quietly or
-	 * otherwise routing around the cache, because that hides the fact that the cache matched two
-	 * distinct kernels to one signature. When aggregation is disabled entirely, neither the shared
-	 * scope nor this operation can fold anything, and there is no layout to verify.</p>
+	 * <p>The generated source addresses each folded argument at a fixed position within the single
+	 * aggregate parameter, so the sequence of replacement positions is part of the compiled
+	 * kernel's identity: two computations whose folds produce different position sequences are two
+	 * different kernels, whatever their signatures claim. Per-argument element counts are not part
+	 * of that identity — they are marshaled with every dispatch, which is what lets a deliberately
+	 * size-generic kernel (such as a single-statement assignment dispatched over its count) serve
+	 * computations of different sizes through one signature. The positions obtained by replaying
+	 * the fold over this operation's inputs are therefore compared against the positions recorded
+	 * when the shared scope was compiled, and any difference — including a replay that folds
+	 * nothing while the compiled kernel reads an aggregate — is an instruction cache collision and
+	 * throws {@link HardwareException}. A collision must never be absorbed by recompiling quietly
+	 * or otherwise routing around the cache, because that hides the fact that the cache matched
+	 * two distinct kernels to one signature. When aggregation is disabled entirely, neither the
+	 * shared scope nor this operation can fold anything, and there is nothing to verify.</p>
 	 *
 	 * @param manager The shared instruction set manager whose scope is being reused
 	 * @param map     The per-operation argument map for this reused operation
-	 * @throws HardwareException if the replayed aggregate layout differs from the layout the
-	 *         shared scope was compiled against, or if the reference layout was never recorded
+	 * @throws HardwareException if the replayed aggregate positions differ from the positions the
+	 *         shared scope was compiled against, or if the reference positions were never recorded
 	 */
 	private void rebindAggregateForReuse(ScopeInstructionsManager<?> manager, ProcessArgumentMap map) {
 		ArrayVariable<?> sharedAggregate = null;
@@ -561,9 +565,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			return;
 		}
 
-		String compiledLayout = manager.getAggregateLayout();
-		if (compiledLayout == null) {
-			throw new HardwareException("No aggregate layout was recorded when the shared scope for " +
+		String compiledPositions = manager.getAggregatePositions();
+		if (compiledPositions == null) {
+			throw new HardwareException("No aggregate positions were recorded when the shared scope for " +
 					getFunctionName() + " was compiled; reuse cannot be verified against it");
 		}
 
@@ -571,11 +575,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				isArgumentAggregationSupported() ? length -> createAggregatedInput(length, length) : null);
 		getCompiler().prepareScope(perOperation);
 
-		String replayedLayout = perOperation.describeAggregate();
-		if (!replayedLayout.equals(compiledLayout)) {
+		String replayedPositions = perOperation.describeAggregatePositions();
+		if (!replayedPositions.equals(compiledPositions)) {
 			throw new HardwareException("Instruction cache collision reusing " + getFunctionName() +
-					": the compiled kernel was built against aggregate layout " + compiledLayout +
-					" but this computation produces " + replayedLayout +
+					": the compiled kernel was built against aggregate positions " + compiledPositions +
+					" but this computation produces " + perOperation.describeAggregate() +
 					"; the signature matched two distinct kernels (compiled from " +
 					Describable.describe(manager.getProcess()) + "; reused by " +
 					Describable.describe(getComputation()) + ")");
@@ -711,7 +715,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		getCompiler().postCompile();
 
 		if (instructions != null && argumentMap != null) {
-			getInstructionSetManager().setAggregateLayout(argumentMap.describeAggregate());
+			getInstructionSetManager().setAggregatePositions(argumentMap.describeAggregatePositions());
 		}
 
 		if (sharedInstructions) {
