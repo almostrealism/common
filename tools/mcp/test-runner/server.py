@@ -49,6 +49,56 @@ import fork_discovery  # noqa: E402
 # Configuration - derive project root from script location (tools/mcp/test-runner/server.py -> project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 RUNS_DIR = Path(__file__).parent / "runs"
+# The CI workflow definition, which is the single source of truth for the
+# test-matrix group count (AR_TEST_GROUPS). The value is read from this file
+# on demand rather than duplicated in tool descriptions, where it would rot.
+CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "analysis.yaml"
+
+
+def resolve_ci_test_groups(module: str) -> int:
+    """Read the AR_TEST_GROUPS value the CI pipeline currently uses for a module.
+
+    Different CI jobs partition their modules into different group counts
+    (e.g. the media jobs use a different count than the main test jobs), so
+    the value is resolved per module: each AR_TEST_GROUPS declaration in the
+    workflow is associated with the ``-pl`` module of the mvn command it
+    belongs to, and comment lines are ignored. Raises ValueError when the
+    workflow cannot be read, never runs the module with test groups, or
+    declares conflicting counts for it -- in which case the caller must
+    supply test_groups explicitly.
+    """
+    try:
+        lines = CI_WORKFLOW.read_text().splitlines()
+    except OSError as e:
+        raise ValueError(
+            f"Cannot read {CI_WORKFLOW} to determine the CI group count; "
+            f"pass test_groups explicitly ({e})")
+
+    values = set()
+    for i, line in enumerate(lines):
+        if line.strip().startswith("#"):
+            continue
+
+        m = re.search(r"AR_TEST_GROUPS=(\d+)", line)
+        if not m:
+            continue
+
+        # The -pl flag of the mvn command this declaration belongs to appears
+        # on the same or an earlier continuation line of the command.
+        for back in range(i, max(-1, i - 15), -1):
+            pl = re.search(r"-pl\s+([\w/\-]+)", lines[back])
+            if pl:
+                if pl.group(1) == module:
+                    values.add(int(m.group(1)))
+                break
+
+    if len(values) != 1:
+        detail = f"never runs module {module} with AR_TEST_GROUPS" if not values else \
+            f"declares conflicting AR_TEST_GROUPS values {sorted(values)} for module {module}"
+        raise ValueError(
+            f"{CI_WORKFLOW} {detail}; pass test_groups explicitly")
+
+    return values.pop()
 # External watcher process script — spawned in a detached session so it
 # survives the python parent's death and can update metadata even when the
 # in-process daemon thread cannot run (e.g., claude exits cleanly while a run
@@ -327,7 +377,8 @@ class TestRunner:
         # that DO run share one JVM (surefire reuseForks=true, forkCount=1), static
         # state (interning tables, kernel/expression caches) accumulates across them
         # exactly as it does on CI -- which a single -Dtest=Class run can never
-        # reproduce. Set test_group (and optionally test_groups) to run a group this way.
+        # reproduce. Set test_group to run a group this way; test_groups defaults
+        # to the AR_TEST_GROUPS value the CI workflow currently declares.
         if config.test_group is not None:
             cmd.append(f"-DAR_TEST_GROUP={config.test_group}")
             if config.test_groups is not None:
@@ -1554,12 +1605,12 @@ async def list_tools():
                     "test_group": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Reproduce a CI test-matrix group: run the WHOLE module in one JVM with AR_TEST_GROUP set, so only classes hashing to this group run but they share JVM state exactly as on CI. Use this to reproduce failures that only appear when a test runs after others in the same JVM (static cache/intern-table pollution) -- a single test_classes run cannot reproduce these. Mutually exclusive with test_classes/test_methods (those are ignored when test_group is set). The CI `test` job uses groups 0..6 with test_groups=7."
+                        "description": "Reproduce a CI test-matrix group: run the WHOLE module in one JVM with AR_TEST_GROUP set, so only classes hashing to this group run but they share JVM state exactly as on CI. Use this to reproduce failures that only appear when a test runs after others in the same JVM (static cache/intern-table pollution) -- a single test_classes run cannot reproduce these. Mutually exclusive with test_classes/test_methods (those are ignored when test_group is set). When test_groups is omitted, the group count is read from the CI workflow (AR_TEST_GROUPS in .github/workflows/analysis.yaml), so the partition always matches what CI actually runs. To fully mirror a CI job, also copy that job's hardware flags (AR_HARDWARE_DRIVER etc.) from the workflow into jvm_args."
                     },
                     "test_groups": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "Total number of groups for test_group partitioning (AR_TEST_GROUPS). Must match CI to reproduce a specific group; the CI `test` job uses 7. Only used when test_group is set."
+                        "description": "Total number of groups for test_group partitioning (AR_TEST_GROUPS). Defaults to the value the CI workflow currently uses, read from .github/workflows/analysis.yaml at request time. Pass explicitly only to explore a partitioning different from CI's. Only used when test_group is set."
                     }
                 }
             }
@@ -1718,6 +1769,8 @@ async def call_tool(name: str, arguments: dict):
                 test_group=arguments.get("test_group"),
                 test_groups=arguments.get("test_groups")
             )
+            if config.test_group is not None and config.test_groups is None:
+                config.test_groups = resolve_ci_test_groups(config.module)
             run_id, command = runner.start_run(config)
             response = {
                 "run_id": run_id,
