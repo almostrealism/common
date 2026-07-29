@@ -105,9 +105,9 @@ workstreams:
     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
     maxTurns: 50
     maxBudgetUsd: 10.0
-    # completionListeners:              # Workstream IDs notified when this workstream completes.
+    # completionListeners:              # Workstream IDs to notify with automated wake-up jobs when this workstream completes.
     #   - "orchestrator-workstream-id"
-    # dormantForCompletionListeners: false  # Drop automated listener wake-ups to this workstream.
+    # dormantForCompletionListeners: false  # When true, drop automated completion-listener wake-ups to this workstream (defaults to false).
     # githubOrg: "my-org"             # Routes GitHub API calls through the org's token
     # dependentRepos:                  # Additional repos to clone alongside primary repo
     #   - "https://github.com/your-org/shared-lib.git"
