@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionConstantComputation;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.util.TestSuiteBase;
@@ -230,6 +231,46 @@ public class CollectionZerosComputationTest extends TestSuiteBase implements Col
 		Assert.assertEquals(6, result.getMemLength());
 		for (int i = 0; i < result.getMemLength(); i++) {
 			Assert.assertEquals(0.0, result.toDouble(i), 1e-9);
+		}
+	}
+
+	/**
+	 * Scaling an integer sequence by zero must collapse to a
+	 * {@link CollectionZerosComputation} rather than a degenerate arithmetic
+	 * sequence, so the result is recognized as zero by downstream algebraic
+	 * optimizations — matching the general multiplication path.
+	 */
+	@Test(timeout = 30000)
+	public void integerSequenceTimesZeroIsZeros() {
+		CollectionProducer product = integers(0, 12).multiply(0.0);
+
+		Assert.assertTrue("integers(0, n).multiply(0.0) should collapse to a zeros computation, got "
+						+ product.getClass().getSimpleName(),
+				product instanceof CollectionZerosComputation);
+		Assert.assertEquals(12, shape(product).getTotalSize());
+	}
+
+	/**
+	 * Adding a scalar to a zeros computation must produce a constant computation
+	 * (every element takes the scalar value), not a general addition over a zero
+	 * operand. Together with {@link #integerSequenceTimesZeroIsZeros()}, this
+	 * guarantees that a chain like {@code integers(0, n).multiply(0.0).add(v)}
+	 * is exactly a constant of shape {@code (n)} — there is never a reason to
+	 * build such a chain in place of a direct constant.
+	 */
+	@Test(timeout = 30000)
+	public void zerosPlusScalarIsConstant() {
+		CollectionProducer sum = integers(0, 12).multiply(0.0).add(3.0);
+
+		Assert.assertTrue("zeros.add(v) should produce a constant computation, got "
+						+ sum.getClass().getSimpleName(),
+				sum instanceof CollectionConstantComputation);
+		Assert.assertEquals(12, shape(sum).getTotalSize());
+
+		PackedCollection result = sum.get().evaluate();
+		Assert.assertEquals(12, result.getMemLength());
+		for (int i = 0; i < result.getMemLength(); i++) {
+			Assert.assertEquals(3.0, result.toDouble(i), 1e-9);
 		}
 	}
 

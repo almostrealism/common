@@ -102,7 +102,7 @@ public abstract class WaveDataProviderAdapter implements WaveDataProvider, CodeF
 		if (playbackRate == 1.0) return original.getChannelData(channel);
 
 		PackedCollection rate = PackedCollection.factory().apply(1);
-		a(cp(rate), c(playbackRate)).get().run();
+		rate.setMem(0, playbackRate);
 
 		PackedCollection audio = original.getChannelData(channel);
 		int len = (int) (audio.getMemLength() / playbackRate);

@@ -347,11 +347,42 @@ the runner's environment instead; `xcodebuild` honors it over `xcode-select`.
 - If using Homebrew: `brew info --cask temurin@17`
 - The `actions/setup-java` workflow step will also configure the path
 
+## Test Data (Sample Library)
+
+Some benchmark tests (`AudioSceneSingleVsMultiChannelTest`,
+`PdslHotPathBreakdownTest`, and other sample-dependent suites) read real audio
+from `/Users/Shared/Music/Samples`. A runner **without** that directory silently
+falls back to synthetic samples and reports misleading timings, so every macOS
+runner must have the library present before it picks up jobs.
+
+`sync-music-samples.sh` seeds a runner from a machine that already has the
+library. Run it from the source machine as a user whose SSH key authenticates as
+the remote user:
+
+```bash
+cd tools/ci/macos
+
+# Preview first (transfers nothing, changes no permissions)
+./sync-music-samples.sh --dry-run --host michaels-mac-mini-2 --user michael
+
+# Then perform the real sync
+./sync-music-samples.sh --host michaels-mac-mini-2 --user michael
+```
+
+It uses `rsync` over SSH (incremental, resumable, idempotent — safe to re-run to
+pick up library updates), excludes macOS `.DS_Store` cruft, and then makes the
+remote tree **group-readable** (`chgrp -R staff` + `chmod -R g+rX`) so the
+runner's user account can read it during jobs. No `sudo` is needed:
+`/Users/Shared` is world-writable (`1777`) on macOS, and every macOS user shares
+the `staff` group. See `./sync-music-samples.sh --help` for all options
+(`--group`, `--src`, `--dest`, `--key`, `--no-delete`).
+
 ## Files
 
 ```
 tools/ci/macos/
-├── .env.example    # Template for environment configuration
-├── runner.sh       # Setup + run with auto-recovery
-└── README.md       # This file
+├── .env.example            # Template for environment configuration
+├── runner.sh               # Setup + run with auto-recovery
+├── sync-music-samples.sh   # Seed /Users/Shared/Music onto a runner (group-readable)
+└── README.md               # This file
 ```

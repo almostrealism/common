@@ -23,32 +23,23 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.ScopeTimingListener;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.kernel.KernelSeriesCache;
-import org.almostrealism.hardware.kernel.KernelTraversalOperation;
-import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.Describable;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
-import java.util.OptionalLong;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -68,14 +59,14 @@ import java.util.stream.Collectors;
  * <h2>Compilation Lifecycle</h2>
  *
  * <pre>{@code
- * // Create compiler
  * Computation<Matrix> computation = add(a, b);
  * ComputationScopeCompiler<Matrix> compiler =
  *     new ComputationScopeCompiler<>(computation);
  *
- * // Prepare scope inputs
+ * // Prepare scope inputs with the structure context that belongs to
+ * // the instruction set manager owning the compiled result
  * ArgumentProvider inputManager = ...;
- * compiler.prepareScope(inputManager);
+ * compiler.prepareScope(inputManager, structureContext);
  *
  * // Compile to Scope
  * Scope<Matrix> scope = compiler.compile();
@@ -94,25 +85,14 @@ import java.util.stream.Collectors;
  *
  * <h2>Kernel Structure Support</h2>
  *
- * <p>{@link ComputationScopeCompiler} implements {@link KernelStructureContext} to provide
- * kernel series and traversal data for GPU optimization:</p>
- *
- * <ul>
- *   <li><strong>{@link org.almostrealism.hardware.kernel.KernelSeriesCache}:</strong> Caches precomputed series data</li>
- *   <li><strong>{@link org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator}:</strong> Generates traversal patterns</li>
- * </ul>
- *
- * <pre>{@code
- * // Kernel structure is enabled by default
- * compiler.isKernelStructureSupported();  // true
- *
- * // Access kernel providers
- * KernelSeriesProvider seriesProvider = compiler.getSeriesProvider();
- * KernelTraversalProvider traversalProvider = compiler.getTraversalProvider();
- * }</pre>
- *
- * <p><strong>Note:</strong> Kernel structure is disabled for {@link KernelTraversalOperation} to prevent
- * recursive traversal generation.</p>
+ * <p>The compiler does not own kernel structure state: it compiles with the
+ * {@link KernelStructureContext} supplied to
+ * {@link #prepareScope(ArgumentProvider, KernelStructureContext)}, which belongs to the
+ * instruction set manager and owns the kernel series cache and traversal operations the
+ * compiled code references (see
+ * {@link org.almostrealism.hardware.kernel.CompiledKernelStructureContext}). This keeps
+ * the lifecycle of those resources aligned with the compiled instructions rather than
+ * with the compiler, which is transient.</p>
  *
  * <h2>Signature Generation</h2>
  *
@@ -183,7 +163,7 @@ import java.util.stream.Collectors;
  * @see KernelStructureContext
  * @see ScopeInstructionsManager
  */
-public class ComputationScopeCompiler<T> implements KernelStructureContext,
+public class ComputationScopeCompiler<T> implements
 		ScopeLifecycle, Destroyable, OperationInfo, Signature, ConsoleFeatures {
 	/** Enables verbose logging during compilation when set to {@code true}. */
 	public static boolean verboseCompile = SystemUtils.isEnabled("AR_HARDWARE_VERBOSE_COMPILE").orElse(false);
@@ -194,17 +174,16 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	/** The computation being compiled into a scope. */
 	private Computation<T> computation;
 
-	/** Cache for kernel series data used in GPU optimization. */
-	private KernelSeriesCache kernelSeriesCache;
-
-	/** Generator for kernel traversal operations. */
-	private KernelTraversalOperationGenerator traversalGenerator;
-
-	/** Cached maximum kernel count for this computation. */
-	private OptionalLong kernelMaximum;
-
 	/** The compiled scope, or {@code null} if not yet compiled. */
 	private Scope<T> scope;
+
+	/**
+	 * The kernel structure context this compiler compiles with, supplied through
+	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)}. It belongs to the
+	 * instruction set manager and owns the kernel structure resources the compiled code
+	 * references; this compiler only consults it.
+	 */
+	private KernelStructureContext structureContext;
 
 	/**
 	 * Constructs a new compiler for the specified computation.
@@ -213,24 +192,6 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	 */
 	public ComputationScopeCompiler(Computation<T> computation) {
 		this.computation = computation;
-	}
-
-	/**
-	 * Checks if kernel structure optimization is supported for this computation.
-	 * Returns {@code false} for {@link KernelTraversalOperation} to prevent recursive
-	 * traversal generation, {@code true} for all other computations.
-	 *
-	 * @return {@code true} if kernel structure optimization is supported
-	 */
-	public boolean isKernelStructureSupported() {
-		if (computation instanceof KernelTraversalOperation) {
-			// Kernel traversal caching should not be recursively
-			// applied to the operation that generates traversal
-			// series data for another operation
-			return false;
-		}
-
-		return true;
 	}
 
 	/**
@@ -267,94 +228,23 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	}
 
 	/**
-	 * Returns the iteration count for this computation's compiled kernel, or
-	 * {@link OptionalLong#empty()} if it is variable. Cached after the first
-	 * call.
+	 * Prepares scope inputs with the given kernel structure context.
 	 *
-	 * <p>A present zero is forbidden by the
-	 * {@link io.almostrealism.kernel.KernelStructureContext#getKernelMaximum()}
-	 * contract. If the backing {@link Countable} advertises a fixed count of
-	 * zero, that {@code Countable} is broken — there is no such thing as a
-	 * fixed-count zero-iteration kernel. Rather than silently propagate the
-	 * lie (and crash at scope compilation), we fail loudly here with the
-	 * identity of the offending computation, so the caller learns which
-	 * {@code Countable} to fix.</p>
-	 *
-	 * @return the fixed kernel iteration count ({@code > 0}) if known, else
-	 *         empty
-	 * @throws IllegalStateException if the backing computation reports
-	 *         {@code isFixedCount() == true} with {@code getCountLong() == 0}
-	 */
-	@Override
-	public OptionalLong getKernelMaximum() {
-		if (kernelMaximum == null) {
-			if (Countable.isFixedCount(getComputation())) {
-				long count = Countable.countLong(getComputation());
-				if (count <= 0) {
-					throw new IllegalStateException(
-							"Fixed-count computation " + getComputation()
-							+ " reports getCountLong() = " + count
-							+ ". A kernel with " + count + " iterations "
-							+ "cannot exist. Either the Countable should "
-							+ "report isFixedCount() == false (count is "
-							+ "variable), or it has been constructed with an "
-							+ "invalid size. Fix the Countable; do not relax "
-							+ "this check.");
-				}
-				kernelMaximum = OptionalLong.of(count);
-			} else {
-				kernelMaximum = OptionalLong.empty();
-			}
-		}
-
-		return kernelMaximum;
-	}
-
-	/**
-	 * Returns the kernel series provider for GPU optimization.
-	 *
-	 * @return the {@link KernelSeriesProvider} if kernel structure is supported, otherwise {@code null}
-	 */
-	@Override
-	public KernelSeriesProvider getSeriesProvider() {
-		return isKernelStructureSupported() ? kernelSeriesCache : null;
-	}
-
-	/**
-	 * Returns the kernel traversal provider for GPU optimization.
-	 *
-	 * @return the {@link KernelTraversalProvider} if kernel structure is supported, otherwise {@code null}
-	 */
-	@Override
-	public KernelTraversalProvider getTraversalProvider() {
-		return isKernelStructureSupported() ? traversalGenerator : null;
-	}
-
-	/**
-	 * Prepares the scope inputs using this compiler as the kernel structure context.
+	 * <p>The context belongs to the instruction set manager and owns whatever kernel
+	 * structure resources it exposes; this compiler retains it only to compile with.
+	 * Preparing is safe to repeat — for example to replay an already-compiled
+	 * computation's argument fold against a fresh {@link ArgumentProvider} when
+	 * verifying reuse — because the context materializes its resources at most once,
+	 * whatever how many times the scope is prepared.</p>
 	 *
 	 * @param manager the scope input manager
-	 */
-	public void prepareScope(ArgumentProvider manager) {
-		prepareScope(manager, this);
-	}
-
-	/**
-	 * Prepares scope inputs and initializes kernel caches.
-	 * Creates the kernel series cache and traversal generator for GPU optimization.
-	 *
-	 * @param manager the scope input manager
-	 * @param context the kernel structure context
+	 * @param context the kernel structure context of the compiled instructions
 	 */
 	@Override
 	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.super.prepareScope(manager, context);
 		getComputation().prepareScope(manager, context);
-
-		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
-				data -> manager.argumentForInput().apply(() -> new Provider<>(data)));
-		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
-				data -> manager.argumentForInput().apply((Supplier) data));
+		this.structureContext = context;
 	}
 
 	/**
@@ -365,7 +255,6 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	public void resetArguments() {
 		ScopeLifecycle.super.resetArguments();
 		getComputation().resetArguments();
-		this.kernelMaximum = null;
 	}
 
 	/**
@@ -396,20 +285,26 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 
 			long start = System.nanoTime();
 
-			scope = c.getScope(this);
+			if (structureContext == null) {
+				throw new HardwareException(
+						"No KernelStructureContext was supplied via prepareScope before compiling " +
+						Named.nameOf(getComputation()));
+			}
+
+			scope = c.getScope(structureContext);
 			if (timing != null) {
 				timing.recordDuration(getMetadata(), scope.getMetadata(),
 						"getScope", System.nanoTime() - start);
 			}
 
 			start = System.nanoTime();
-			scope.convertArgumentsToRequiredScopes(this);
+			scope.convertArgumentsToRequiredScopes(structureContext);
 			if (timing != null) {
 				timing.recordDuration(getMetadata(), scope.getMetadata(),
 						"convertRequired", System.nanoTime() - start);
 			}
 
-			scope = scope.simplify(this);
+			scope = scope.simplify(structureContext);
 
 			if (verboseCompile) log("Done compiling " + Named.nameOf(getComputation()));
 			return scope;
@@ -470,22 +365,17 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	}
 
 	/**
-	 * Releases resources held by this compiler including the compiled scope,
-	 * kernel series cache, and traversal generator.
+	 * Releases this compiler's own transient state.
+	 *
+	 * <p>Nothing the compiled code depends on is destroyed here: the kernel structure
+	 * resources belong to the instruction set manager's
+	 * {@link org.almostrealism.hardware.kernel.CompiledKernelStructureContext}, so
+	 * compiled instructions remain usable after the compiler itself is destroyed.</p>
 	 */
 	@Override
 	public void destroy() {
 		scope = null;
-
-		if (kernelSeriesCache != null) {
-			kernelSeriesCache.destroy();
-			kernelSeriesCache = null;
-		}
-
-		if (traversalGenerator != null) {
-			traversalGenerator.destroy();
-			traversalGenerator = null;
-		}
+		structureContext = null;
 	}
 
 	/**

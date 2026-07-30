@@ -754,10 +754,11 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @return masked logits collection, shape [vocabSize]
 	 */
 	private PackedCollection applyMask(PackedCollection logits, int[] validIds) {
+		double[] source = logits.toArray(0, config.vocabSize);
 		double[] values = new double[config.vocabSize];
 		Arrays.fill(values, -1e9);
 		for (int id : validIds) {
-			values[id] = logits.toDouble(id);
+			values[id] = source[id];
 		}
 		PackedCollection masked = new PackedCollection(config.vocabSize);
 		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(masked.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(values)).get().run();
@@ -785,10 +786,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	private int sampleWithTopK(PackedCollection maskedLogits, double temperature,
 							   double topP, int topK) {
 		if (topK > 0 && topK < config.vocabSize) {
-			double[] values = new double[config.vocabSize];
-			for (int i = 0; i < config.vocabSize; i++) {
-				values[i] = maskedLogits.toDouble(i);
-			}
+			double[] values = maskedLogits.toArray(0, config.vocabSize);
 			double[] sorted = values.clone();
 			Arrays.sort(sorted);
 			double threshold = sorted[config.vocabSize - topK];

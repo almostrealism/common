@@ -104,12 +104,12 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 
 		int[] generatedTokens = new int[5];
 
+		Runnable advancePosition = a(cp(position), add(cp(position), c(1.0))).get();
+		a(cp(position), c(0.0)).get().run();
+
 		for (int step = 0; step < 5; step++) {
 			int inputToken = inputSequence[step];
 			log("--- Step " + step + ": Input token " + inputToken + " ---");
-
-			// Set position
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 
 			// Create input from embedding
 			PackedCollection input = new PackedCollection(compiledModel.getInputShape());
@@ -164,6 +164,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 				log("Generated token " + top5[0] + " but expected " + expectedOutputs[step]);
 			}
 
+			advancePosition.run();
 			log("");
 		}
 

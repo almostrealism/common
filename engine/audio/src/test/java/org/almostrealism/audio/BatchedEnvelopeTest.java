@@ -48,14 +48,14 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 	/** Returns a single-element {@link PackedCollection} holding the given value. */
 	private PackedCollection single(double value) {
 		PackedCollection c = new PackedCollection(1);
-		a(cp(c), c(value)).get().run();
+		c.setMem(new double[] { value });
 		return c;
 	}
 
 	/** Returns a {@link PackedCollection} populated with the given array of values. */
 	private PackedCollection col(double[] values) {
 		PackedCollection c = new PackedCollection(values.length);
-		a(cp(c), c(values)).get().run();
+		c.setMem(values);
 		return c;
 	}
 
@@ -90,7 +90,7 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		double[] reference = new double[N * TARGET_LENGTH];
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
-			ones.fill(1.0);
+			ones.setMem(onesData);
 			PackedCollection ref = AudioProcessingUtils.getVolumeEnv().evaluate(
 					ones.traverse(1),
 					single(durationV[n]), single(attackV[n]), single(decayV[n]),
@@ -145,7 +145,7 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		double[] reference = new double[N * TARGET_LENGTH];
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
-			ones.fill(1.0);
+			ones.setMem(onesData);
 			PackedCollection ref = AudioProcessingUtils.getLayerEnv().evaluate(
 					ones.traverse(1),
 					single(md[n]), single(f0[n]), single(f1[n]), single(f2[n]),

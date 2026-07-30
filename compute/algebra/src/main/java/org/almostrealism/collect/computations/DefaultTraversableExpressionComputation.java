@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.ConditionalIndexExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
@@ -220,9 +219,9 @@ public class DefaultTraversableExpressionComputation
 	 * This is useful for creating constant computations that don't depend on any inputs.
 	 *
 	 * @param value The fixed collection value to return
-	 * @return A {@link DefaultTraversableExpressionComputation} that always produces the fixed value
+	 * @return A {@link FixedCollectionComputation} that always produces the fixed value
 	 */
-	public static DefaultTraversableExpressionComputation fixed(PackedCollection value) {
+	public static FixedCollectionComputation fixed(PackedCollection value) {
 		return fixed(value, null);
 	}
 
@@ -233,17 +232,11 @@ public class DefaultTraversableExpressionComputation
 	 *
 	 * @param value The fixed collection value to return
 	 * @param postprocessor Optional function for post-processing the output, or null for no post-processing
-	 * @return A {@link DefaultTraversableExpressionComputation} that always produces the fixed value
+	 * @return A {@link FixedCollectionComputation} that always produces the fixed value
 	 */
-	public static DefaultTraversableExpressionComputation fixed(
+	public static FixedCollectionComputation fixed(
 			PackedCollection value, BiFunction<MemoryData, Integer, PackedCollection> postprocessor) {
-		return (DefaultTraversableExpressionComputation) new DefaultTraversableExpressionComputation("constant", value.getShape(),
-						args -> new ConditionalIndexExpression(value.getShape(), value))
-						.setDescription(children -> value.describe())
-						.setPostprocessor(postprocessor).setShortCircuit(args -> {
-							PackedCollection v = new PackedCollection(value.getShape());
-							v.setFrom(0, value, 0, value.getMemLength());
-							return postprocessor == null ? v : postprocessor.apply(v, 0);
-						});
+		return (FixedCollectionComputation)
+				new FixedCollectionComputation(value).setPostprocessor(postprocessor);
 	}
 }

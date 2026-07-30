@@ -20,7 +20,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Test-only {@link NativeBuffer} subclass that avoids the {@link NIO} native library
+ * Test-only {@link NativeBuffer} subclass that avoids the runtime-compiled native pointer-lookup
  * dependency by overriding {@link #getContentPointer()} with a fixed address.
  *
  * <p>This class accesses the {@code protected} {@link NativeBuffer} constructor,

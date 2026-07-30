@@ -95,7 +95,7 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 					batchData[n * SOURCE_LENGTH + i] = data[i];
 				}
 				sourceByLayerNote[l][n] = new PackedCollection(SOURCE_LENGTH);
-				a(cp(sourceByLayerNote[l][n]), c(data)).get().run();
+				sourceByLayerNote[l][n].setMem(data);
 				// Ratios in [1.0, 1.45] — max source index < SOURCE_LENGTH.
 				ratioValues[l][n] = 1.0 + 0.1 * l + 0.05 * n;
 				ratioData[n] = ratioValues[l][n];
@@ -106,11 +106,11 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 						0.04 + 0.01 * l, 0.09 + 0.01 * l, 0.13 + 0.01 * l);
 			}
 			w.sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
-			a(cp(w.sources[l]), c(w.sources[l].getShape(), batchData)).get().run();
+			w.sources[l].setMem(batchData);
 			w.ratios[l] = new PackedCollection(N);
-			a(cp(w.ratios[l]), c(ratioData)).get().run();
+			w.ratios[l].setMem(ratioData);
 			w.layerEnvelopes[l] = new PackedCollection(shape(N, TARGET_LENGTH));
-			a(cp(w.layerEnvelopes[l]), c(w.layerEnvelopes[l].getShape(), layerEnvData[l])).get().run();
+			w.layerEnvelopes[l].setMem(layerEnvData[l]);
 		}
 
 		double[] filterCutoffData = new double[N * TARGET_LENGTH];
@@ -124,9 +124,9 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
 		}
 		w.filterCutoffs = new PackedCollection(shape(N, TARGET_LENGTH));
-		a(cp(w.filterCutoffs), c(w.filterCutoffs.getShape(), filterCutoffData)).get().run();
+		w.filterCutoffs.setMem(filterCutoffData);
 		w.volumeEnvelopes = new PackedCollection(shape(N, TARGET_LENGTH));
-		a(cp(w.volumeEnvelopes), c(w.volumeEnvelopes.getShape(), volumeEnvData)).get().run();
+		w.volumeEnvelopes.setMem(volumeEnvData);
 
 		// Per-note reference: Σ_layer resample × perLayerEnv → lowPass → × volume.
 		for (int n = 0; n < N; n++) {
@@ -141,7 +141,7 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 			}
 
 			PackedCollection mergedN = new PackedCollection(TARGET_LENGTH);
-			a(cp(mergedN), c(merged)).get().run();
+			mergedN.setMem(merged);
 			PackedCollection cutoffN = row(filterCutoffData, n);
 			PackedCollection volN = row(volumeEnvData, n);
 
@@ -163,7 +163,7 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 		double[] data = new double[TARGET_LENGTH];
 		System.arraycopy(flat, n * TARGET_LENGTH, data, 0, TARGET_LENGTH);
 		PackedCollection c = new PackedCollection(TARGET_LENGTH);
-		a(cp(c), c(data)).get().run();
+		c.setMem(data);
 		return c;
 	}
 
@@ -228,7 +228,7 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 		int windowWidth = 1536;
 		double[] destOffsetValues = { 0, 256, 512, 700 };
 		PackedCollection destOffsets = new PackedCollection(N);
-		a(cp(destOffsets), c(destOffsetValues)).get().run();
+		destOffsets.setMem(destOffsetValues);
 
 		double[] expected = new double[windowWidth];
 		for (int n = 0; n < N; n++) {

@@ -67,7 +67,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 	/** Creates a flat {@link PackedCollection} pre-loaded with the given values. */
 	private PackedCollection col(double[] values) {
 		PackedCollection c = new PackedCollection(values.length);
-		a(cp(c), c(values)).get().run();
+		c.setMem(values);
 		return c;
 	}
 
@@ -130,7 +130,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 				v3[n] = 0.0;
 			}
 			sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
-			a(cp(sources[l]), c(sources[l].getShape(), batchData)).get().run();
+			sources[l].setMem(batchData);
 			ratios[l] = col(ratioData);
 			layerCurves[l] = renderer.buildLayerEnvelopeCurve(
 					col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3))

@@ -17,22 +17,33 @@
 package org.almostrealism.audio.line.test;
 
 import org.almostrealism.audio.line.SourceDataOutputLine;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.SourceDataLine;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Manual tests to verify the basic SourceDataOutputLine.write(PackedCollection)
  * mechanism can produce sound before attempting BufferedOutputScheduler integration.
  */
 public class ManualPlaybackTest extends TestSuiteBase {
+
+	/**
+	 * Upper bound on how long a playback loop may run before it is treated as a stuck (non-draining)
+	 * device. A working device plays the short clips below in real time (a few seconds); this bound is
+	 * generous headroom above that, yet well under the {@code @Test} timeout so a stuck device fails
+	 * fast with a diagnostic instead of hanging.
+	 */
+	private static final long PLAYBACK_TIMEOUT_MS = 20000;
 
 	/**
 	 * Tests manual playback by repeatedly calling write() with a sine wave.
@@ -65,48 +76,26 @@ public class ManualPlaybackTest extends TestSuiteBase {
 
 		// Generate and play 440 Hz sine wave for 3 seconds
 		int sampleRate = 44100;
-		int channels = 2; // stereo
 		int bufferSizeFrames = 512; // frames per write
 		int duration = 3; // seconds
 		double frequency = 440.0; // A4
 		double amplitude = 0.3;
 
 		int totalFrames = sampleRate * duration;
-		int framesWritten = 0;
+		PackedCollection audio = monoTone(totalFrames, frequency, amplitude, sampleRate);
 
-		while (framesWritten < totalFrames) {
-			// Create a PackedCollection for interleaved stereo samples
-			// Each frame has 2 samples (left, right)
-			PackedCollection buffer = new PackedCollection(bufferSizeFrames * channels);
+		playWithinTimeout(line, "manualSineWavePlayback", () -> {
+			int framesWritten = 0;
 
-			// Generate sine wave samples
-			for (int frame = 0; frame < bufferSizeFrames; frame++) {
-				double t = (framesWritten + frame) / (double) sampleRate;
-				double sample = amplitude * Math.sin(2 * Math.PI * frequency * t);
-
-				// Interleaved stereo: left, right, left, right, ...
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), frame * 2)), CollectionFeatures.getInstance().c(sample)).get().run();     // left channel
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), frame * 2 + 1)), CollectionFeatures.getInstance().c(sample)).get().run(); // right channel
+			while (framesWritten < totalFrames) {
+				int len = Math.min(bufferSizeFrames, totalFrames - framesWritten);
+				outputLine.write(audio.range(shape(len), framesWritten));
+				framesWritten += len;
 			}
 
-			// Write to the line
-			outputLine.write(buffer);
-			framesWritten += bufferSizeFrames;
+			line.drain();
+		});
 
-			// Log progress every second
-			if (framesWritten % sampleRate < bufferSizeFrames) {
-				log("Frames written: " + framesWritten + " / " + totalFrames);
-				log("Read position: " + outputLine.getReadPosition());
-			}
-		}
-
-		// Wait for audio to finish playing
-		line.drain();
-
-		log("Total frames written: " + framesWritten);
-		log("Final read position: " + outputLine.getReadPosition());
-
-		// Clean up
 		outputLine.destroy();
 
 		log("Manual sine wave playback test completed");
@@ -129,26 +118,73 @@ public class ManualPlaybackTest extends TestSuiteBase {
 
 		// Play for 1 second
 		int sampleRate = 44100;
-		int channels = 2;
 		int bufferSize = 512;
-		int writes = sampleRate / bufferSize; // ~86 writes for 1 second
+		int totalFrames = sampleRate;
+		PackedCollection audio = monoTone(totalFrames, 440.0, 0.3, sampleRate);
 
-		for (int w = 0; w < writes; w++) {
-			PackedCollection buffer = new PackedCollection(bufferSize * channels);
+		playWithinTimeout(line, "manualToneBurst", () -> {
+			int framesWritten = 0;
 
-			for (int i = 0; i < bufferSize; i++) {
-				double t = (w * bufferSize + i) / (double) sampleRate;
-				double sample = 0.3 * Math.sin(2 * Math.PI * 440.0 * t);
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), i * 2)), CollectionFeatures.getInstance().c(sample)).get().run();
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(buffer.range(new TraversalPolicy(1), i * 2 + 1)), CollectionFeatures.getInstance().c(sample)).get().run();
+			while (framesWritten < totalFrames) {
+				int len = Math.min(bufferSize, totalFrames - framesWritten);
+				outputLine.write(audio.range(shape(len), framesWritten));
+				framesWritten += len;
 			}
 
-			outputLine.write(buffer);
-		}
+			line.drain();
+		});
 
-		line.drain();
 		outputLine.destroy();
 
 		log("Tone burst completed");
+	}
+
+	/**
+	 * Generates a mono sine of {@code frames} frames on the device, so the samples fed to the output
+	 * line are produced by the graph rather than written one at a time from the host. A one-dimensional
+	 * (mono) collection is duplicated across the line's output channels by
+	 * {@link org.almostrealism.audio.line.LineUtilities#toFrame}, so no interleaving is needed here.
+	 *
+	 * @param frames     the number of frames to generate
+	 * @param frequency  the tone frequency in Hz
+	 * @param amplitude  the peak amplitude (0-1)
+	 * @param sampleRate the sample rate in Hz
+	 * @return a {@code (frames)} collection of samples
+	 */
+	private PackedCollection monoTone(int frames, double frequency, double amplitude, int sampleRate) {
+		double phaseIncrement = 2 * Math.PI * frequency / sampleRate;
+		PackedCollection buffer = new PackedCollection(frames);
+		a(cp(buffer.traverseEach()),
+				sin(integers(0, frames).multiply(phaseIncrement)).multiply(amplitude)).get().run();
+		return buffer;
+	}
+
+	/**
+	 * Runs a playback loop on a worker thread and fails fast if it does not finish within
+	 * {@link #PLAYBACK_TIMEOUT_MS}.
+	 * <p>
+	 * {@link SourceDataLine#write} blocks until the device consumes the samples, so on a runner whose
+	 * audio device is not draining it would otherwise hang until the {@code @Test} timeout. On timeout
+	 * the line is closed to unblock the in-progress write, and the test fails with a diagnostic that
+	 * identifies the stuck device rather than reporting a bare 60-second timeout.
+	 *
+	 * @param line     the line whose write is being bounded; closed on timeout to unblock the worker
+	 * @param label    the test label used in the failure message
+	 * @param playback the playback loop to run
+	 * @throws Exception if the playback loop itself throws
+	 */
+	private void playWithinTimeout(SourceDataLine line, String label, Runnable playback) throws Exception {
+		ExecutorService executor = Executors.newSingleThreadExecutor();
+
+		try {
+			executor.submit(playback).get(PLAYBACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+		} catch (TimeoutException e) {
+			line.close();
+			Assert.fail(label + " did not complete within " + PLAYBACK_TIMEOUT_MS
+					+ " ms: the audio output device is not draining samples (SourceDataLine.write blocked). "
+					+ "This indicates the runner has no usable audio output, not a code defect.");
+		} finally {
+			executor.shutdownNow();
+		}
 	}
 }

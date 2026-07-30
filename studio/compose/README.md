@@ -81,16 +81,17 @@ AudioScene.runnerRealTime(output, bufferSize)
 A critical architectural concept is the separation between **setup** and **tick** phases:
 
 - **Setup Phase**: Runs once before audio processing begins
-  - Pattern rendering (`PatternSystemManager.sum()`)
+  - Pattern render-stream initialization
   - Buffer initialization
   - Effects chain compilation
 
-- **Tick Phase**: Runs repeatedly for each audio frame
-  - Cell push operations
-  - Effects processing
-  - Output writing
+- **Tick Phase**: Runs repeatedly for each audio buffer
+  - Render-ahead pattern generation at the arrangement position derived from `GlobalTimeManager.positionForFrame()`
+  - PDSL effects and mixdown processing
+  - Whole-buffer master and stem output pushes
+  - Timeline advancement and reset handling
 
-**Current Limitation**: The entire pattern arrangement is rendered during setup, before any audio output begins. This prevents true real-time streaming.
+The PDSL real-time path renders patterns ahead one buffer at a time rather than materializing the entire arrangement during setup. Pattern position follows the arrangement reset schedule, and `capture(slot)` stages expose dry-channel, effects, and reverb buffers for stem delivery without changing the signal path.
 
 ## MixdownManager: Effects and Routing
 
@@ -129,6 +130,7 @@ Manages global playback position with support for:
 - Reset points (breaks in the timeline)
 - Measure-to-frame conversion
 - Time tracking via `TimeCell`
+- Pure absolute-frame-to-arrangement-position mapping via `positionForFrame()`, used by render-ahead producers to follow the same reset schedule as playback
 
 ### AutomationManager
 Provides parameter automation with:

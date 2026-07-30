@@ -38,6 +38,9 @@ import java.util.regex.Pattern;
  *       computation source trees ({@code engine/ml/}, {@code studio/})</li>
  *   <li>{@code PRODUCER_TODOUBLE_IN_COMPUTATION} — {@code .toDouble()} calls inside
  *       computation source trees</li>
+ *   <li>{@code HIDDEN_OPERATION_LAMBDA} — a compiled operation ({@code .get().run()})
+ *       wrapped in a lambda so it masquerades as a plain Java atom, hiding it from
+ *       {@code Process} optimization (checked in all sources, including tests)</li>
  * </ul>
  *
  * <p>Files listed in {@link #EVALUATE_ALLOWED_FILES} and {@link #TODOUBLE_ALLOWED_FILES}
@@ -154,7 +157,8 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 					"addNoise",                 // Schedule-table scalar lookup at step boundary
 					"step",                     // DDPM step-boundary scalar lookups
 					"stepDDIM",                 // DDIM step-boundary scalar lookups
-					"getAlphaCumprod"           // Single-scalar schedule accessor
+					"getAlphaCumprod",          // Single-scalar schedule accessor
+					"getAlpha"                  // Single-scalar schedule accessor
 			),
 			"SkyTntMidi.java", Set.of(
 					"applyMask",                // Token-selection orchestration (post-model)
@@ -188,6 +192,17 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	);
 
 	/**
+	 * Detects a compiled operation hidden inside a lambda: a lambda that yields
+	 * another lambda whose body runs a compiled operation ({@code .get().run()}).
+	 * Wrapping an operation this way makes a {@code Supplier<Runnable>} that looks
+	 * like a plain Java atom, so the operation inside is invisible to
+	 * {@code Process} optimization while still executing a kernel.
+	 */
+	private static final Pattern HIDDEN_OPERATION_LAMBDA = Pattern.compile(
+			"->\\s*\\(\\s*\\)\\s*->.*\\.get\\s*\\(\\s*\\)\\s*\\.run\\s*\\("
+	);
+
+	/**
 	 * Creates a detector that will scan Java source files under the given directory.
 	 *
 	 * @param rootDir  the root directory to scan
@@ -204,18 +219,54 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public ProducerPatternDetector scanFile(Path file) {
-		// Test sources are exempt: .evaluate() / .toDouble() at the test-method
-		// boundary (top of the call stack) is legitimate per the project policy.
-		if (isTestSource(file)) return this;
-
 		try {
 			List<String> lines = Files.readAllLines(file);
-			checkProducerPatternViolations(file, lines);
+
+			checkHiddenOperationLambdas(file, lines);
+
+			// Test sources are exempt from the boundary rules: .evaluate() and
+			// .toDouble() at the test-method boundary (top of the call stack)
+			// are legitimate per the project policy.
+			if (!isTestSource(file)) {
+				checkProducerPatternViolations(file, lines);
+			}
 		} catch (IOException e) {
 			warn("Could not read file " + file, e);
 		}
 
 		return this;
+	}
+
+	/**
+	 * Flags compiled operations hidden inside lambdas in every source file,
+	 * including tests. There is no boundary at which this pattern is legitimate:
+	 * an operation belongs in the surrounding {@code OperationList} (or other
+	 * {@code Supplier<Runnable>} consumer) directly, where {@code Process}
+	 * optimization can see it.
+	 *
+	 * @param file     the file being checked
+	 * @param lines    the file content split into lines
+	 */
+	private void checkHiddenOperationLambdas(Path file, List<String> lines) {
+		boolean inJavadoc = false;
+
+		for (int i = 0; i < lines.size(); i++) {
+			String trimmedLine = lines.get(i).trim();
+
+			if (trimmedLine.startsWith("/**")) inJavadoc = true;
+			if (trimmedLine.contains("*/")) { inJavadoc = false; continue; }
+			if (inJavadoc || trimmedLine.startsWith("*") || trimmedLine.startsWith("//")) {
+				continue;
+			}
+
+			if (HIDDEN_OPERATION_LAMBDA.matcher(lines.get(i)).find()) {
+				violations.add(new Violation(file, i + 1, lines.get(i),
+						"HIDDEN_OPERATION_LAMBDA",
+						"A compiled operation (.get().run()) wrapped in a lambda hides it from " +
+								"Process optimization. Add the operation itself to the OperationList " +
+								"(or other Supplier<Runnable> consumer) so optimization can see it."));
+			}
+		}
 	}
 
 	/**

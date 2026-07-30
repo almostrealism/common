@@ -17,8 +17,6 @@
 package org.almostrealism.space;
 
 import io.almostrealism.code.Constant;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.code.Operator;
 import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -186,11 +184,11 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 				return args -> {
 					PackedCollection result = new PackedCollection(1);
 					if (type == Plane.XY)
-						CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(getInput().get().evaluate(args).getZ())).get().run();
+						result.setMem(0, getInput().get().evaluate(args).getZ());
 					else if (type == Plane.XZ)
-						CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(getInput().get().evaluate(args).getY())).get().run();
+						result.setMem(0, getInput().get().evaluate(args).getY());
 					else if (type == Plane.YZ)
-						CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(getInput().get().evaluate(args).getX())).get().run();
+						result.setMem(0, getInput().get().evaluate(args).getX());
 					return result;
 				};
 			}

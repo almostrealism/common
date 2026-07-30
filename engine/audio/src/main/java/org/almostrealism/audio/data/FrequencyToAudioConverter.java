@@ -6,8 +6,6 @@
 package org.almostrealism.audio.data;
 
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.computations.FourierTransform;
@@ -202,7 +200,9 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	private double[] applyIfft(double[] complexSpectrum, int fftSize) {
 		// Create input collection
 		PackedCollection input = new PackedCollection(fftSize * 2);
-		a(cp(input), c(complexSpectrum)).get().run();
+		for (int i = 0; i < complexSpectrum.length; i++) {
+			input.setMem(i, complexSpectrum[i]);
+		}
 
 		// Apply IFFT
 		FourierTransform ifft = new FourierTransform(1, fftSize, true, c(input));
@@ -238,7 +238,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 			if (outIdx >= 0 && outIdx < outputLength) {
 				double existing = output.toDouble(outIdx);
 				double windowed = frame[i] * window[i];
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(output.range(new TraversalPolicy(1), outIdx)), CollectionFeatures.getInstance().c(existing + windowed)).get().run();
+				output.setMem(outIdx, existing + windowed);
 			}
 		}
 	}
@@ -258,7 +258,9 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		// Normalize if needed
 		if (maxAbs > 1e-6) {
 			double scale = 0.9 / maxAbs; // Leave some headroom
-			a(cp(audio), cp(audio).multiply(scale)).get().run();
+			for (int i = 0; i < length; i++) {
+				audio.setMem(i, audio.toDouble(i) * scale);
+			}
 		}
 	}
 }

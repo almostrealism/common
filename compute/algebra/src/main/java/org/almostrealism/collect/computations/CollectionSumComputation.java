@@ -132,8 +132,7 @@ public class CollectionSumComputation extends AggregatedProducerComputation {
 		super("sum", shape.replace(new TraversalPolicy(1)), shape.getSize(),
 				(args, index) -> new DoubleConstant(0.0),
 				(out, arg) -> out.add(arg),
-				input);
-		setReplaceLoop(true);
+				true, input);
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.lifecycle.Lifecycle;
@@ -94,6 +95,15 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 
 	/** Default number of frames in the shared timeline (230 seconds at the default sample rate). */
 	public static int defaultTimelineFrames = OutputLine.sampleRate * 230;
+
+	/**
+	 * Number of frames read from channel memory and written to disk per batch
+	 * during {@link #write()}. Each batch requires one transient {@code double[]}
+	 * per channel, so this bounds the JVM heap used by a write to
+	 * {@code 2 * 8 * writeBatchFrames} bytes regardless of the total frame count,
+	 * while keeping the number of device reads per file small.
+	 */
+	private static final int writeBatchFrames = 1 << 20;
 
 	/** Context-specific shared timeline PackedCollection providing time values per frame. */
 	public static ContextSpecific<PackedCollection> timeline;
@@ -367,7 +377,6 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 * @return supplier of a Runnable that writes WAV data to the configured file
 	 */
 	public Supplier<Runnable> write() {
-		// TODO  Write frames in larger batches than 1
 		return () -> {
 			Evaluable<PackedCollection> left = getChannelData(0).get();
 			Evaluable<PackedCollection> right = getChannelData(1) == null ? null : getChannelData(1).get();
@@ -399,13 +408,13 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 					return;
 				}
 
-				double[] framesLeft = l.toArray(0, frames);
-				double[] framesRight = r == null ? framesLeft : r.toArray(0, frames);
+				for (int offset = 0; offset < frames; offset += writeBatchFrames) {
+					int count = Math.min(writeBatchFrames, frames - offset);
+					double[] framesLeft = l.toArray(offset, count);
+					double[] framesRight = r == null ? framesLeft : r.toArray(offset, count);
 
-				for (int i = 0; i < frames; i++) {
 					try {
-						wav.writeFrames(new double[][]
-								{{framesLeft[i]}, {framesRight[i]}}, 1);
+						wav.writeFrames(new double[][] { framesLeft, framesRight }, count);
 					} catch (IOException e) {
 						warn(e.getMessage());
 					}
@@ -490,6 +499,9 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		/** Single-element collection holding the current write cursor (frame index). */
 		private PackedCollection cursor;
 
+		/** Single-element collection holding the source frame index during a bulk push. */
+		private PackedCollection bulkIndex;
+
 		/**
 		 * Creates a Writer for the specified channel index.
 		 *
@@ -498,6 +510,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		public Writer(int channel) {
 			this.channel = channel;
 			this.cursor = new PackedCollection(1);
+			this.bulkIndex = new PackedCollection(1);
 		}
 
 		/** Returns the write cursor collection holding the current frame index. */
@@ -512,6 +525,18 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 			return (int) cursor.toDouble(0) - 1;
 		}
 
+		/**
+		 * {@inheritDoc}
+		 *
+		 * <p>A single frame (or a size-2 stereo pair, which contributes its first
+		 * value) is inserted at the write cursor. A larger pushed shape is treated
+		 * as a whole buffer of consecutive frames, consumed by a compiled loop over
+		 * the same insert-and-advance step — a loop, rather than a wide kernel,
+		 * because backends that lower kernel count by unrolling would otherwise
+		 * generate one statement per frame against the full channel buffer. The
+		 * cursor advances by the number of frames consumed, wrapping when the
+		 * output is circular.</p>
+		 */
 		@Override
 		public Supplier<Runnable> push(Producer<PackedCollection> protein) {
 			String description = "WaveOutput Push";
@@ -522,18 +547,48 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 				protein = c(protein, 0);
 			}
 
-			Producer slot = c(shape(1), getChannelData(channel), p(cursor));
+			int frames = shape(protein).getTotalSize();
 
-			push.add(a("WaveOutput Insert", slot, protein));
-
-			if (circular) {
-				int bufferSize = shape(getChannelData(channel)).getTotalSize();
-				push.add(a("WaveOutput Cursor Increment (circular)",
-						cp(cursor), mod(cp(cursor).add(1), c(bufferSize))));
+			if (frames == 1) {
+				push.add(insert(protein));
+				push.add(advanceCursor());
 			} else {
-				push.add(a("WaveOutput Cursor Increment", cp(cursor), cp(cursor).add(1)));
+				push.add(a("WaveOutput Bulk Rewind", cp(bulkIndex), c(0.0)));
+				OperationList step = new OperationList("WaveOutput Bulk Insert");
+				step.add(insert(c(shape(1), protein, p(bulkIndex))));
+				step.add(a("WaveOutput Bulk Advance",
+						cp(bulkIndex), cp(bulkIndex).add(1)));
+				step.add(advanceCursor());
+				push.add(loop((Computation<Void>) step, frames));
 			}
 			return push;
+		}
+
+		/**
+		 * Creates the assignment placing one frame at the current write cursor.
+		 *
+		 * @param frame producer of the single frame to insert
+		 * @return the insert operation
+		 */
+		private Supplier<Runnable> insert(Producer<PackedCollection> frame) {
+			return a("WaveOutput Insert",
+					c(shape(1), getChannelData(channel), p(cursor)), frame);
+		}
+
+		/**
+		 * Creates the assignment advancing the write cursor by one frame, wrapping
+		 * at the channel buffer size when this output is circular.
+		 *
+		 * @return the cursor advance operation
+		 */
+		private Supplier<Runnable> advanceCursor() {
+			if (circular) {
+				int bufferSize = shape(getChannelData(channel)).getTotalSize();
+				return a("WaveOutput Cursor Increment (circular)",
+						cp(cursor), mod(cp(cursor).add(1), c(bufferSize)));
+			} else {
+				return a("WaveOutput Cursor Increment", cp(cursor), cp(cursor).add(1));
+			}
 		}
 
 		@Override
@@ -547,6 +602,10 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 			if (cursor != null) {
 				cursor.destroy();
 				cursor = null;
+			}
+			if (bulkIndex != null) {
+				bulkIndex.destroy();
+				bulkIndex = null;
 			}
 		}
 	}

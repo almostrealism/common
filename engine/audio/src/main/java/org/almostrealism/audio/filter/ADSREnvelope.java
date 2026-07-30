@@ -22,7 +22,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalFactor;
 
 import java.util.function.Supplier;
@@ -174,99 +173,18 @@ public class ADSREnvelope implements TemporalFactor<PackedCollection>, Lifecycle
 
 	/**
 	 * Advances the envelope state by one sample.
-	 * Updates the phase, position, and current level based on ADSR parameters.
+	 * <p>
+	 * The phase, position and current level are advanced entirely on the device by
+	 * {@link ADSREnvelopeData#tickUpdate(int)}, which compiles once and runs each tick. The branching
+	 * ADSR state machine is expressed as conditional producers rather than a host lambda, so no value
+	 * is read back to the host or written with scalar setters per sample.
+	 * </p>
+	 *
+	 * @return the tick operation
 	 */
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList("ADSREnvelope Tick");
-
-		// Compute phase increment per sample for each phase
-		// The envelope computation is done in Java here rather than GPU
-		// because the branching logic is complex. For a hardware-optimized
-		// version, see ADSREnvelopeComputation.
-		tick.add(() -> () -> {
-			double phase = data.phase().toDouble(0);
-			double position = data.position().toDouble(0);
-			double currentLevel = data.currentLevel().toDouble(0);
-
-			if (phase == ADSREnvelopeData.PHASE_IDLE) {
-				// No processing in idle state
-				return;
-			}
-
-			double attackTime = data.attackTime().toDouble(0);
-			double decayTime = data.decayTime().toDouble(0);
-			double sustainLevel = data.sustainLevel().toDouble(0);
-			double releaseTime = data.releaseTime().toDouble(0);
-			double releaseLevel = data.releaseLevel().toDouble(0);
-
-			// Calculate position increment (1 / (time * sampleRate))
-			double dt = 1.0 / sampleRate;
-
-			if (phase == ADSREnvelopeData.PHASE_ATTACK) {
-				if (attackTime > 0) {
-					position += dt / attackTime;
-					currentLevel = Math.min(1.0, position);
-				} else {
-					position = 1.0;
-					currentLevel = 1.0;
-				}
-
-				if (position >= 1.0) {
-					// Transition to decay
-					data.setPhase(ADSREnvelopeData.PHASE_DECAY);
-					data.setPosition(0);
-				} else {
-					data.setPosition(position);
-				}
-				data.setCurrentLevel(currentLevel);
-
-			} else if (phase == ADSREnvelopeData.PHASE_DECAY) {
-				if (decayTime > 0) {
-					position += dt / decayTime;
-					currentLevel = 1.0 - (1.0 - sustainLevel) * Math.min(1.0, position);
-				} else {
-					position = 1.0;
-					currentLevel = sustainLevel;
-				}
-
-				if (position >= 1.0) {
-					// Transition to sustain
-					data.setPhase(ADSREnvelopeData.PHASE_SUSTAIN);
-					data.setPosition(0);
-					data.setCurrentLevel(sustainLevel);
-				} else {
-					data.setPosition(position);
-					data.setCurrentLevel(currentLevel);
-				}
-
-			} else if (phase == ADSREnvelopeData.PHASE_SUSTAIN) {
-				// Stay at sustain level while gate is open
-				// noteOff() will transition to release phase
-				data.setCurrentLevel(sustainLevel);
-
-			} else if (phase == ADSREnvelopeData.PHASE_RELEASE) {
-				if (releaseTime > 0) {
-					position += dt / releaseTime;
-					currentLevel = releaseLevel * (1.0 - Math.min(1.0, position));
-				} else {
-					position = 1.0;
-					currentLevel = 0;
-				}
-
-				if (position >= 1.0) {
-					// Transition to idle
-					data.setPhase(ADSREnvelopeData.PHASE_IDLE);
-					data.setPosition(0);
-					data.setCurrentLevel(0);
-				} else {
-					data.setPosition(position);
-					data.setCurrentLevel(currentLevel);
-				}
-			}
-		});
-
-		return tick;
+		return data.tickUpdate(sampleRate);
 	}
 
 	@Override

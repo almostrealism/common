@@ -17,8 +17,8 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Named;
 import org.almostrealism.collect.CollectionProducer;
@@ -211,9 +211,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	private PackedCollection initializeLoraA(int inputSize, int rank) {
 		PackedCollection a = new PackedCollection(shape(inputSize, rank));
 		double std = 1.0 / Math.sqrt(inputSize);
-		for (int i = 0; i < inputSize * rank; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(a.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(random.nextGaussian() * std)).get().run();
-		}
+		randn(shape(inputSize, rank), random).multiply(c(std)).into(a).evaluate();
 		return a;
 	}
 
@@ -224,7 +222,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	 */
 	private PackedCollection initializeLoraB(int rank, int outputSize) {
 		PackedCollection b = new PackedCollection(shape(rank, outputSize));
-		b.fill(pos -> 0.0);
+		b.fill(0.0);
 		return b;
 	}
 
@@ -356,21 +354,11 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 
 		PackedCollection merged = new PackedCollection(shape(outputSize, inputSize));
 
-		for (int i = 0; i < outputSize; i++) {
-			for (int j = 0; j < inputSize; j++) {
-				double baseVal = baseWeights.toDouble(i * inputSize + j);
-
-				double loraVal = 0.0;
-				for (int r = 0; r < rank; r++) {
-					double aVal = loraA.toDouble(j * rank + r);
-					double bVal = loraB.toDouble(r * outputSize + i);
-					loraVal += aVal * bVal;
-				}
-
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(merged.range(new TraversalPolicy(1), i * inputSize + j)), CollectionFeatures.getInstance().c(baseVal + scale * loraVal)).get().run();
-			}
-		}
-
+		// Optimizing ahead of compilation isolates the matrix product into its
+		// own kernel; embedding it would unroll the inner-product sums into
+		// every element of the generated expression
+		Process.optimized(a(cp(merged), cp(baseWeights).add(
+				matmul(cp(loraB).transpose(), cp(loraA).transpose()).multiply(c(scale))))).get().run();
 		return merged;
 	}
 

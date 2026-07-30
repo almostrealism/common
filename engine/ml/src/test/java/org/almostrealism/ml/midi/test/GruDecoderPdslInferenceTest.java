@@ -259,10 +259,8 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 	private static PackedCollection random(Random rng, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection c = new PackedCollection(shape);
-		int total = shape.getTotalSize();
-		for (int i = 0; i < total; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(c.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((rng.nextDouble() - 0.5) * 0.1)).get().run();
-		}
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		ops.a(ops.cp(c), ops.rand(shape, rng).add(-0.5).multiply(0.1)).get().run();
 		return c;
 	}
 }

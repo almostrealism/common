@@ -532,8 +532,11 @@ class BuildValidator:
             {
                 "file": rel,
                 "message": (
-                    "Invalid binary (.bin) file present in the repository. Remove it, "
-                    "or generate it outside the repository working tree."
+                    "Invalid binary (.bin) file present in the repository. Remove it. "
+                    "Generated data belongs in a gitignored transient directory inside "
+                    "the repository (like target/ or results/), under an extension "
+                    "appropriate to its format -- never .bin. Do not relocate data "
+                    "outside the repository, which makes local runs diverge from CI."
                 ),
             }
             for rel in invalid

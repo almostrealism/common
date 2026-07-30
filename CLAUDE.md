@@ -373,6 +373,19 @@ If the agent believes a new module is needed, it must document the requirement i
 
 Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.
 
+## This Repository Is Public — Never Reference Private Products
+
+`common` is an open source platform; its audience is the open source community.
+Private downstream products built on it (ringsdesktop, Rings, and any other
+closed-source tool) MUST NOT be referenced in anything committed here: commit
+message drafts (`commit.txt`), code comments, javadoc, test names, or docs.
+Describe behavior in platform terms — "a client application", "interactive
+clients", "consumers of arrangement renders" — never by naming the private
+product or its UI. When work here is motivated by a private product's needs,
+the motivation stays out of the public record; only the platform-level contract
+belongs in it. This is the standard separation for any company that maintains
+an open source platform alongside a closed-source product.
+
 ## Do Not Modify pom.xml Files
 
 Never add dependencies. Write code assuming the dependency exists, run `mvn compile`, and inform the user if it fails. The transitive dependency graph is complex and you will get it wrong.
@@ -511,6 +524,9 @@ Consult the linked references before writing related code.
 - **Method placement**: Every method belongs on the class it operates on. A method that traverses an `Expression` tree is a method of `Expression`. A method that collects declarations from a `Scope` tree is a method of `Scope`. Never define general-purpose utility methods as private helpers on a subclass — this prevents reuse and violates basic OOP. If a method doesn't use any instance state of its class, make it `static` at minimum.
 - **No utility/helper/exporter/converter classes.** If you need to add behavior that operates on an existing type, add it as a method on that type. A `PatternElement` that can produce MIDI events has a `toMidiEvents()` method — it does NOT have a `PatternMidiExporter` that operates on it from the outside. Before creating a new class, ask: "Does this behavior belong on an existing type?" If yes, add it there. New classes are for genuinely new concepts, not for wrapping operations on existing concepts. Organize code around the concepts it represents, not around the operations being performed.
 - **Module placement matters.** Code belongs in the module that matches its conceptual domain. MIDI data types and I/O are music concepts and belong in the music module, not the ML module. A model that combines ML and music belongs in a module that has both as dependencies (e.g., compose). Think about what a class *is*, not just what it *uses*.
+- **Placement is a generality decision, made BEFORE writing.** For every new method or capability, walk UP the generality ladder and stop at the highest rung where it still makes sense: (1) an equivalent may already exist — search first; (2) behavior that reads another type's state belongs on that type; (3) domain-agnostic behavior belongs in the general layer (core builtins, base features mixins), never in the domain-specific module where today's task happened to surface — a PDSL primitive that is not audio-specific belongs in the core builtin library, not the audio-side registration, even when the general home costs more edits; (4) place it where the NEXT consumer will look for it, not where today's diff is smallest. Your trained-in instinct optimizes for closing the current task; the project pays for narrow placement for years. Treat the first location that occurs to you as suspect, and be prepared to defend the placement in review — an argument about convenience or diff size is not a defense.
+- **Honor the interface, not the implementation you happen to have.** When a class's contract is expressed through an interface (it routes to, returns, or accepts `Receptor`, `Producer`, `Cell`, ...), every member of that class must remain correct for EVERY implementation of that interface. Never add a member that returns the concrete class a constructor merely adapts, never `instanceof`/cast to a particular implementation, and never write a code path that silently does nothing (or throws) unless one specific implementation is present. If the interface cannot express an operation you need, that is a design question to raise about the interface — not a license to reach around it. Enforced by `block-interface-bypass.py`.
+- **Never silently correct a caller inside shared infrastructure.** When a constructor or method receives a count, size, or configuration that seems wrong for the feature you are adding, the fix belongs at the call site — the caller declares what it wants, using an explicit, named contract when several parties must agree (a constant or accessor on the type that owns the concept). A hidden adjustment inside generic code changes behavior for every other caller and conceals the actual contract.
 - No speculation when debugging. Follow evidence. Never say "the problem might be X" without proof.
 - **Do not decorate log messages with prefixes.** Every `log(...)` and `warn(...)` line already receives a timestamp, class name, method name, and (where relevant) task id from the logging framework before it reaches the file. You are not the stylist of the log files. Forbidden prefix shapes — all enforced by checkstyle (`BracketLabelInLog`, `ParenLabelInLog`, `AngleLabelInLog`, `CapsLabelInLog`, `SymbolPrefixInLog`) — include:
   - `log("[Tag] ...")`, `log("(Tag) ...")`, `log("<Tag> ...")`

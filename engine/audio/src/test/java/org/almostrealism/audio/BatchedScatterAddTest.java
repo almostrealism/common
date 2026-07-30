@@ -41,7 +41,7 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 	/** Creates a {@link PackedCollection} pre-populated with the given values. */
 	private PackedCollection collection(double... values) {
 		PackedCollection c = new PackedCollection(values.length);
-		a(cp(c), c(values)).get().run();
+		c.setMem(values);
 		return c;
 	}
 
@@ -63,11 +63,11 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 		int windowWidth = 8;
 
 		PackedCollection rows = new PackedCollection(shape(noteCount, rowLength));
-		rows.setMem(
+		rows.setMem(new double[] {
 				1, 2, 3, 4,
 				10, 20, 30, 40,
 				100, 200, 300, 400
-		);
+		});
 		PackedCollection destOffsets = collection(0, 2, 5);
 
 		PackedCollection out = renderer(noteCount, rowLength)
@@ -94,10 +94,10 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 		int windowWidth = 4;
 
 		PackedCollection rows = new PackedCollection(shape(noteCount, rowLength));
-		rows.setMem(
+		rows.setMem(new double[] {
 				1, 2, 3, 4,
 				5, 6, 7, 8
-		);
+		});
 		PackedCollection destOffsets = collection(0, 0);
 
 		PackedCollection out = renderer(noteCount, rowLength)
