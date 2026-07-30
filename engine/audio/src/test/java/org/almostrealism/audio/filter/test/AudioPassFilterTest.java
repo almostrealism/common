@@ -48,13 +48,11 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 		Evaluable<PackedCollection> ev = filter.getResultant(p(current)).get();
 		Runnable tick = filter.tick().get();
 
-		double[] outputData = new double[input.getMemLength()];
 		for (int i = 0; i < input.getMemLength(); i++) {
-			current.setFrom(0, input, i, 1);
-			outputData[i] = ev.evaluate().toDouble(0);
+			current.setMem(input.toDouble(i));
+			output.setMem(i, ev.evaluate().toDouble(0));
 			tick.run();
 		}
-		a(cp(output), c(outputData)).get().run();
 
 		return output;
 	}

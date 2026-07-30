@@ -16,7 +16,6 @@
 
 package org.almostrealism.optimize;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -108,7 +107,10 @@ public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	/**
 	 * Computes the gradient of NLL loss.
 	 * <p>
-	 * The gradient is -1 at the target class position and 0 elsewhere.
+	 * The gradient is -1 at the target class position and 0 elsewhere. For the one-hot
+	 * encoded targets this loss requires, that is exactly the negation of the target
+	 * itself, so the gradient is the computation {@code -target} and is produced on the
+	 * device rather than assembled on the host.
 	 * </p>
 	 *
 	 * @param output producer for the model's log-probability outputs
@@ -118,32 +120,6 @@ public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	@Override
 	public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
 												  Producer<PackedCollection> target) {
-		return () -> {
-			Evaluable<PackedCollection> out = output.get();
-			Evaluable<PackedCollection> valid = target.get();
-
-			return args -> {
-				PackedCollection o = out.evaluate(args).traverse(1);
-				PackedCollection v = valid.evaluate(args).traverse(1);
-
-				int bs = o.getShape().length(0);
-				double[] grad = new double[o.getShape().getTotalSize()];
-
-				for (int n = 0; n < o.getShape().length(0); n++) {
-					double[] od = o.get(n).toArray();
-					int idx = v.get(n).argmax();
-
-					for (int i = 0; i < od.length; i++) {
-						if (i == idx) {
-							grad[n * bs + i] = -1.0;
-						} else {
-							grad[n * bs +i] = 0.0;
-						}
-					}
-				}
-
-				return PackedCollection.of(grad).reshape(o.getShape());
-			};
-		};
+		return minus(target);
 	}
 }

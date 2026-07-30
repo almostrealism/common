@@ -73,6 +73,8 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_pr_conversation` | github | Get the issue-style conversation comments on a PR |
 | `github_pr_reply` | github | Reply to a PR review thread |
 | `github_pr_check_status` | github | Get CI/check status for a PR head commit |
+| `github_list_workflow_runs` | github | Search GitHub Actions workflow runs (by workflow/branch/event/status) |
+| `github_workflow_run_status` | github | Get a workflow run's jobs and failed steps by run id |
 | `github_list_open_prs` | github | List open PRs for a repo |
 | `github_create_pr` | github | Create a pull request |
 | `github_request_copilot_review` | github | Request a Copilot automated review on a PR |

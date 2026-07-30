@@ -106,6 +106,29 @@ public class GlobalTimeManager implements Setup, Temporal, ConsoleFeatures {
 	/** Returns the ordered list of registered reset measure numbers. */
 	public List<Integer> getResets() { return resets; }
 
+	/**
+	 * Returns the arrangement position for an absolute frame, applying the reset
+	 * schedule as a pure function: the position counts up from zero and returns
+	 * to zero at each registered reset frame, exactly as the live {@link TimeCell}
+	 * clock does tick by tick. Consumers that run ahead of (or independently of)
+	 * playback — such as a render-ahead pattern producer — use this to derive the
+	 * position the clock will hold at a future frame, which a live read of the
+	 * clock cannot provide.
+	 *
+	 * @param frame the absolute frame index (total frames since the start)
+	 * @return the arrangement position in frames, wrapped at each reset
+	 */
+	public long positionForFrame(long frame) {
+		long position = frame;
+		for (int i = 0; i < resets.size(); i++) {
+			long resetFrame = frameForMeasure.applyAsInt(resets.get(i));
+			if (resetFrame > 0 && frame >= resetFrame) {
+				position = frame - resetFrame;
+			}
+		}
+		return position;
+	}
+
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("GlobalTimeManager Setup");

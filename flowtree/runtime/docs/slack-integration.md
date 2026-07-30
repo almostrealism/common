@@ -110,6 +110,8 @@ Registers a new workstream dynamically. When a `channelName` is provided and a S
 | `baseBranch` | `string` | No | Base branch for new branches (default: `"master"`) |
 | `repoUrl` | `string` | No | Repository clone URL |
 | `planningDocument` | `string` | No | Path to the plan document (relative to repo root) |
+| `completionListeners` | `string[]` | No | Workstream IDs to notify with automated wake-up jobs when this workstream completes |
+| `dormantForCompletionListeners` | `boolean` | No | Drop completion-listener wake-ups to this workstream while preserving manual submissions; defaults to `false` |
 | `channelName` | `string` | No | Desired Slack channel name (a private channel is created if provided) |
 
 **Response (200):**
@@ -142,6 +144,8 @@ Updates fields on an existing workstream. All fields are optional; only provided
 | `baseBranch` | `string` | Change the base branch |
 | `repoUrl` | `string` | Change the repository URL |
 | `planningDocument` | `string` | Change the plan document path |
+| `completionListeners` | `string[]` | Replace the workstream IDs notified on completion |
+| `dormantForCompletionListeners` | `boolean` | Pause or resume automated completion-listener wake-ups to this workstream; omitted values leave the current state unchanged |
 
 ### JobStatsStore
 
@@ -169,6 +173,8 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
 
 Workstreams can be defined statically in the YAML config or registered dynamically via `POST /api/workstreams`. A workstream without a `channelId` (registered before its Slack channel is created or in simulation mode) is still functional for job dispatch.
+
+When a job reaches a terminal state, each workstream ID in `completionListeners` receives an automated wake-up job. The controller coalesces repeated notifications from the same source/listener pair, enforces a per-listener single-in-flight debounce, and caps wake-up depth, breadth, and frequency. A listener can set `dormantForCompletionListeners: true` when it has reached a stable state; this drops only automated listener wake-ups, not manual jobs. The debounce clears when the submitted wake-up completes, so a later completion can trigger a new reconciliation.
 
 Agents connect inbound to the controller's FlowTree server. The controller distributes jobs round-robin to whichever agents are currently connected.
 

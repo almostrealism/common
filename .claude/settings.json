@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": ".claude/statusline-command.sh"
+  },
   "enabledMcpjsonServers": [
     "ar-docs",
     "ar-test-runner",
@@ -6,7 +10,8 @@
     "ar-profile-analyzer",
     "ar-consultant",
     "ar-jmx",
-    "ar-manager"
+    "ar-manager",
+    "onyx"
   ],
   "permissions": {
     "allow": [
@@ -34,6 +39,21 @@
       }
     ],
     "PreToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-test-deception.sh",
+            "description": "Detect test-weakening transitions (TestDepth escalation, tolerance widening, dimension shrinkage) by comparing old vs new text — the in-session mirror of tools/ci/agent-protection/detect-test-hiding.sh"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-enforcement-files.sh",
+            "description": "Announce, on-record, any edit to integrity-enforcement infrastructure (agent-protection detectors, .claude hooks, CI workflows) so a quiet weakening cannot pass unnoticed"
+          }
+        ]
+      },
       {
         "matcher": "AskUserQuestion",
         "hooks": [
@@ -295,11 +315,27 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "mcp__ar-test-runner__start_test_run|mcp__ar-build-validator__start_validation",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\""
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\"",
+            "description": "Verdict on ~/.m2 artifact staleness before the test runner or build validator invokes Maven out-of-band — these MCP tools bypass the Bash hook, which is exactly how stale artifacts from a previous branch produced false local test results"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-method-placement.py\"",
+            "description": "Remind the agent on EVERY new Java method it introduces: place it at the most general location where it makes sense (the generality ladder), with a sharper second tier when the method is static — the agent's trained-in first instinct is reliably procedural and short-termist"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-interface-bypass.py\"",
+            "description": "Detect interface-contract bypass in Java edits: BLOCK new members that re-expose a concrete class the constructor adapts behind an interface (the getStemOutput pattern), warn on abstraction-level forks (getStemOutput beside getStem) and new instanceof checks against repo classes — an API that traffics in an interface must stay correct for every implementation"
           }
         ]
       }

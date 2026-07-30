@@ -247,8 +247,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testEfxWetChainExecution() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PackedCollection signal = createSignal(SIGNAL_SIZE,
-				i -> Math.sin(2.0 * Math.PI * i / 32.0));
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
+		sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI / 32.0))
+				.into(signal.traverseEach()).evaluate();
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
@@ -292,8 +293,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
 		// High-frequency sine (aliased near Nyquist) — should be attenuated by LP filter
-		PackedCollection signal = createSignal(SIGNAL_SIZE,
-				i -> Math.sin(2.0 * Math.PI * i / 4.0));
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
+		sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI / 4.0))
+				.into(signal.traverseEach()).evaluate();
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -411,7 +413,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		CompiledModel compiled = model.compile();
 
 		// First call: all-ones input, history starts at zero
-		PackedCollection signal1 = createSignal(SIGNAL_SIZE, i -> 1.0);
+		PackedCollection signal1 = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 		PackedCollection output1 = compiled.forward(signal1.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("First output should not be null", output1);
 		// output1[0] must be 0 (no prior history), rest must be 1.0
@@ -419,7 +421,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				0.0, output1.toDouble(0), 1e-6);
 
 		// Second call: all-twos input; output[0] must reflect last sample from first call
-		PackedCollection signal2 = createSignal(SIGNAL_SIZE, i -> 2.0);
+		PackedCollection signal2 = new PackedCollection(SIGNAL_SIZE).fill(2.0);
 		PackedCollection output2 = compiled.forward(signal2.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Second output should not be null", output2);
 		// history[0] was set to 1.0 by the first call, so output2[0] = x[-1] = 1.0
@@ -439,8 +441,10 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	@TestDepth(2)
 	public void testDelayLineStatePersistence() {
 		int delaySamples = 2;
-		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
-		buffer.setMem(new double[SIGNAL_SIZE]);
+		// Two frames of ring so the sub-frame delay sits inside the write-first band
+		// [0, ring - signal_size]; a one-frame ring supports only a zero delay (the
+		// kernel clamps to it), which would turn this delay line into a pass-through.
+		PackedCollection buffer = new PackedCollection(2 * SIGNAL_SIZE);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 
@@ -461,7 +465,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		CompiledModel compiled = model.compile();
 
 		// First call: all-ones; first 2 outputs are 0 (empty buffer), rest are 1.0
-		PackedCollection signal1 = createSignal(SIGNAL_SIZE, i -> 1.0);
+		PackedCollection signal1 = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 		PackedCollection output1 = compiled.forward(signal1.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("First output should not be null", output1);
 		Assert.assertEquals("First call output[0] should be 0 (empty buffer)",
@@ -470,7 +474,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				0.0, output1.toDouble(1), 1e-6);
 
 		// Second call: all-twos; first 2 outputs must come from first-call buffer (value 1.0)
-		PackedCollection signal2 = createSignal(SIGNAL_SIZE, i -> 2.0);
+		PackedCollection signal2 = new PackedCollection(SIGNAL_SIZE).fill(2.0);
 		PackedCollection output2 = compiled.forward(signal2.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Second output should not be null", output2);
 		Assert.assertEquals("Second call output[0] should be 1.0 (from first-call buffer)",
@@ -503,7 +507,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection delaySlot = new PackedCollection(1);
 		delaySlot.setMem(new double[]{delaySamples});
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
-		buffer.setMem(new double[SIGNAL_SIZE]);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 
@@ -526,7 +529,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 1.0);
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 		PackedCollection out = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("efx_channel output must not be null", out);
 
@@ -572,7 +575,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		Block block = loader.buildLayer(program, "lfo_layer", inputShape, args);
 
 		// Use any signal (lfo output ignores input)
-		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 0.0);
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
 
 		Model model = new Model(inputShape);
 		model.add(block);
@@ -633,8 +636,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal = createSignal(SIGNAL_SIZE,
-				i -> Math.sin(2.0 * Math.PI * i / 32.0));
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
+		sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI / 32.0))
+				.into(signal.traverseEach()).evaluate();
 		PackedCollection output = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Output must not be null", output);
 
@@ -670,8 +674,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal = createSignal(SIGNAL_SIZE,
-				i -> Math.sin(2.0 * Math.PI * i / 32.0));
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
+		sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI / 32.0))
+				.into(signal.traverseEach()).evaluate();
 
 		PackedCollection output1 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
@@ -723,7 +728,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 1.0);
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE).fill(1.0);
 
 		// "Clock" tick 1 — counter = 0.1, expected scale = 0.05
 		PackedCollection output1 = compiled.forward(signal.reshape(compiled.getInputShape()));
@@ -879,9 +884,10 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal = createSignal(SIGNAL_SIZE,
-				i -> Math.sin(2.0 * Math.PI * 1000.0 * i / SAMPLE_RATE)
-						+ Math.sin(2.0 * Math.PI * 12000.0 * i / SAMPLE_RATE));
+		PackedCollection signal = new PackedCollection(SIGNAL_SIZE);
+		sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI * 1000.0 / SAMPLE_RATE))
+				.add(sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)))
+				.into(signal.traverseEach()).evaluate();
 
 		double[] lpOut = compiled.forward(signal.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 		double lpEnergy = 0.0;
@@ -920,7 +926,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Wrong size: only 9 elements, but declared as producer([4, 4]) (16 elements).
 		PackedCollection wrongShape = new PackedCollection(9);
-		wrongShape.setMem(new double[9]);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);

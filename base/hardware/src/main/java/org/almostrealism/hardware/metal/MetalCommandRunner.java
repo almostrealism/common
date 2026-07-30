@@ -19,6 +19,8 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DistributionMetric;
 
 import java.util.ArrayList;
@@ -57,7 +59,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * ({@link MTL#commandBuffer(long)}) and released ({@link MTLCommandBuffer#release()}) once it has
  * completed.</p>
  */
-public class MetalCommandRunner {
+public class MetalCommandRunner implements ConsoleFeatures {
 	/** Maximum number of kernel arguments a single command may bind. */
 	public static final int MAX_ARGS = 512;
 
@@ -132,6 +134,20 @@ public class MetalCommandRunner {
 	private volatile long destroyCommits;
 	/** Commits forced so a bridged dispatch starts a fresh buffer. Executor-thread written. */
 	private volatile long bridgeCommits;
+
+	/**
+	 * Foreign-completion signals that arrived after their bridge event was already
+	 * released (the bridged buffer finished by an error or teardown path first).
+	 * Written from completion-callback threads.
+	 */
+	private final AtomicLong lateBridgeSignals = new AtomicLong();
+
+	/**
+	 * Committed buffers that finished with the Metal error status, meaning their
+	 * dispatches never executed and their destinations were never written.
+	 * Written on the executor thread; read from diagnostic threads.
+	 */
+	private final AtomicLong errorCompletions = new AtomicLong();
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -181,6 +197,16 @@ public class MetalCommandRunner {
 	 * bridge has, moved onto the GPU. With bridges disabled, the foreign dependency is waited
 	 * before the dispatch is encoded.</p>
 	 *
+	 * <p><b>Bridge event lifecycle:</b> the per-bridge event is released with its buffer's
+	 * completion callbacks. On the success path the buffer's encoded wait guarantees the host
+	 * signal already ran before the buffer could complete. A buffer that finishes by another
+	 * path — a GPU error or watchdog kill, or a teardown completion — releases the event while
+	 * the foreign completion callback is still pending, so the callback signals through
+	 * {@link MTLEvent#signal(long)}, which skips a released event instead of touching freed
+	 * native state; such skipped signals are counted by {@link #getLateBridgeSignalCount()}.
+	 * A skipped signal has no observer to lose: the event's only encoded wait was in the
+	 * buffer whose completion released it.</p>
+	 *
 	 * @param requester  metadata of the operation the dispatch belongs to, or {@code null}; carried by
 	 *                   the returned semaphore so a later commit-forcing wait can be attributed to it
 	 * @param command   encodes the kernel into the supplied command buffer
@@ -227,14 +253,17 @@ public class MetalCommandRunner {
 			}
 
 			if (foreign != null) {
-				// Each bridge uses its own event because a host signal releases every encoded
-				// wait at or below the signaled value; sharing an event across bridges would let
-				// an out-of-order foreign completion release another bridge's wait. The event is
-				// released with the buffer, which cannot complete before the wait is satisfied.
+				// Each bridge uses its own event; sharing one would let an out-of-order
+				// foreign completion release another bridge's wait (see the bridging
+				// lifecycle in this method's javadoc).
 				MTLEvent bridge = queue.getDevice().newSharedEvent();
 				openBuffer.encodeWaitForEvent(bridge, 1);
 				openOnComplete.add(bridge::release);
-				foreign.onComplete(() -> bridge.setSignaledValue(1));
+				foreign.onComplete(() -> {
+					if (!bridge.signal(1)) {
+						lateBridgeSignals.incrementAndGet();
+					}
+				});
 			}
 
 			command.encode(openBuffer);
@@ -278,6 +307,36 @@ public class MetalCommandRunner {
 	 */
 	public void complete(MTLCommandBuffer commandBuffer, OperationMetadata requester) {
 		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer, requester))));
+	}
+
+	/**
+	 * Registers a callback to run once the given dispatch's command buffer has completed,
+	 * without committing the buffer or waiting for it. The callback joins the buffer's
+	 * released-memory callbacks — the same list a dispatch's own {@code onComplete}
+	 * argument joins (see {@link #submit}) — so it runs when the buffer completes on its
+	 * own schedule ({@link #MAX_OPEN} cadence or a genuine host wait). A buffer that has
+	 * already completed and been drained runs the callback immediately. Invoked by
+	 * {@link MetalSemaphore#whenComplete(Runnable)}.
+	 *
+	 * @param commandBuffer the dispatch's command buffer
+	 * @param callback      the callback to run after that buffer completes
+	 */
+	public void whenComplete(MTLCommandBuffer commandBuffer, Runnable callback) {
+		await(executor.submit(() -> runInPool(() -> {
+			if (commandBuffer == openBuffer) {
+				openOnComplete.add(callback);
+				return;
+			}
+
+			for (CommittedBuffer c : committed) {
+				if (c.buffer == commandBuffer) {
+					c.onComplete.add(callback);
+					return;
+				}
+			}
+
+			callback.run();
+		})));
 	}
 
 	/**
@@ -360,6 +419,17 @@ public class MetalCommandRunner {
 	public long getBridgeCommitCount() { return bridgeCommits; }
 
 	/**
+	 * Returns the number of foreign-completion signals that arrived after their bridge
+	 * event had already been released — the bridged buffer finished by an error or
+	 * teardown path before the foreign work completed. Each is skipped safely by
+	 * {@link MTLEvent#signal(long)}; a persistently non-zero count indicates bridged
+	 * dispatches whose gated work never ran.
+	 *
+	 * @return the number of skipped late bridge signals
+	 */
+	public long getLateBridgeSignalCount() { return lateBridgeSignals.get(); }
+
+	/**
 	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
 	 * completion. Must run on the executor thread.
 	 *
@@ -402,19 +472,61 @@ public class MetalCommandRunner {
 
 		// Not found means it already completed and was drained by an earlier wait.
 		for (int i = 0; i <= index; i++) {
-			CommittedBuffer c = committed.remove(0);
-			c.buffer.waitUntilCompleted();
-			c.onComplete.forEach(Runnable::run);
-			c.buffer.release();
+			drainOldestCommitted(requester);
 		}
 	}
 
-	/** Waits for the given executor task to finish, rethrowing any execution failure. */
+	/**
+	 * Waits for the oldest committed buffer, verifies it actually executed, runs its
+	 * callbacks, and releases it. Must run on the executor thread.
+	 *
+	 * <p>{@link MTLCommandBuffer#waitUntilCompleted()} returns identically for a buffer
+	 * that executed and for one killed by a GPU fault or watchdog — in the killed case
+	 * every dispatch in the buffer silently never ran, its destinations were never
+	 * written, and its timeline-event signals never fired, which permanently stalls any
+	 * later dispatch that encoded a wait on those values. Detecting the error status
+	 * here is what turns that silent-wrong-data state into a visible failure.</p>
+	 *
+	 * @param requester metadata of the operation whose wait forced this drain, or null
+	 */
+	private void drainOldestCommitted(OperationMetadata requester) {
+		CommittedBuffer c = committed.remove(0);
+		c.buffer.waitUntilCompleted();
+
+		if (c.buffer.isError()) {
+			errorCompletions.incrementAndGet();
+			warn("commandBufferError=\"" + c.buffer.getError() + "\" requester=" +
+					(requester == null ? "unknown" : requester.getDisplayName()) +
+					" commitCount=" + commitCount +
+					" errorCompletions=" + errorCompletions.get());
+		}
+
+		c.onComplete.forEach(Runnable::run);
+		c.buffer.release();
+	}
+
+	/**
+	 * Returns the number of committed buffers that finished with the Metal error status.
+	 *
+	 * @return the error-completion count
+	 */
+	public long getErrorCompletionCount() { return errorCompletions.get(); }
+
+	/**
+	 * Waits for the given executor task to finish, rethrowing any execution failure.
+	 *
+	 * <p>An interrupt (for example a test-framework timeout) abandons the wait while the
+	 * task may still be queued or running; the caller then proceeds as though the GPU
+	 * work finished, so the abandonment is logged rather than silently swallowed.</p>
+	 */
 	private static void await(Future<?> f) {
 		try {
 			f.get();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
+			Hardware.console.features(MetalCommandRunner.class)
+					.warn("interrupted while awaiting a command runner task; " +
+							"the associated GPU work may not have completed");
 		} catch (ExecutionException e) {
 			throw new RuntimeException(e);
 		}
@@ -431,10 +543,7 @@ public class MetalCommandRunner {
 			await(executor.submit(() -> runInPool(() -> {
 				if (commitOpenOnExecutor()) destroyCommits++;
 				while (!committed.isEmpty()) {
-					CommittedBuffer c = committed.remove(0);
-					c.buffer.waitUntilCompleted();
-					c.onComplete.forEach(Runnable::run);
-					c.buffer.release();
+					drainOldestCommitted(null);
 				}
 				event.release();
 			})));
@@ -442,6 +551,10 @@ public class MetalCommandRunner {
 		}
 		executor = null;
 	}
+
+	/** Returns the console for logging. */
+	@Override
+	public Console console() { return Hardware.console; }
 
 	/** A committed command buffer and the released-memory callbacks to run once it completes. */
 	private static final class CommittedBuffer {

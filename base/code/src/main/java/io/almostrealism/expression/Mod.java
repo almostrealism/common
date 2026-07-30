@@ -83,12 +83,18 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/**
 	 * Constructs a modulo expression.
 	 *
+	 * <p>A floating-point modulo is always {@link Double} typed, regardless of the
+	 * dividend type, because {@code fmod} produces a floating-point result. Typing
+	 * it after the dividend would let an integer-typed expression render as a
+	 * floating-point value, so consumers (integer modulo, casts, array subscripts)
+	 * would generate invalid code around it.</p>
+	 *
 	 * @param a  the dividend
 	 * @param b  the divisor
 	 * @param fp {@code true} for floating-point modulo, {@code false} for integer modulo
 	 */
 	protected Mod(Expression<T> a, Expression<T> b, boolean fp) {
-		super(a.getType(), a, b);
+		super((Class<T>) (fp ? Double.class : a.getType()), a, b);
 		this.fp = fp;
 
 		if (fp && !a.isFP() && !b.isFP()) {
@@ -350,12 +356,32 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/**
 	 * Creates a modulo expression, applying the full suite of simplification passes.
 	 *
+	 * <p>When one operand is a floating-point expression whose value a {@code long}
+	 * reports without loss and the other operand is integer typed, the operand is
+	 * replaced with the equivalent integer constant and an integer modulo is
+	 * produced instead, so the generated code uses integer arithmetic rather than
+	 * the floating-point modulo function. The integer dividend keeps the
+	 * framework's integer modulo semantics.</p>
+	 *
 	 * @param input the dividend expression
 	 * @param mod   the divisor expression
 	 * @param fp    {@code true} for floating-point modulo, {@code false} for integer modulo
 	 * @return the simplified expression or a new {@link Mod}
 	 */
 	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {
+		if (fp) {
+			boolean demoteMod = !input.isFP() && mod.isFP() && mod.longValue().isPresent();
+			boolean demoteInput = !mod.isFP() && input.isFP() && input.longValue().isPresent();
+
+			if (demoteMod || demoteInput) {
+				long l = (demoteMod ? mod : (Expression) input).longValue().getAsLong();
+				Expression<? extends Number> converted =
+						l == (int) l ? new IntegerConstant((int) l) : new LongConstant(l);
+				return demoteMod ? create(input, converted, false)
+						: create(converted, mod, false);
+			}
+		}
+
 		if (fp || (input.longValue().isEmpty() && mod.longValue().isEmpty())) {
 			// There are no possible optimizations
 			return new Mod(input, mod, fp);

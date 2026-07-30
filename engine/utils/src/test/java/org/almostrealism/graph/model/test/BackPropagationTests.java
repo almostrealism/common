@@ -17,7 +17,6 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
@@ -33,7 +32,6 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
 
 /**
  * Tests for backpropagation and gradient computation in neural network models.
@@ -58,20 +56,16 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		PackedCollection weights = dense.getWeights().get(0);
 
-		for (int i = 0; i < size; i++) {
-			for (int j = 0; j < nodes; j++) {
-//				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(weights.range(new TraversalPolicy(1), weights.getShape().index(i, j))), CollectionFeatures.getInstance().c(1 + (i + j) * 0.1)).get().run();
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(weights.range(new TraversalPolicy(1), weights.getShape().index(i, j))), CollectionFeatures.getInstance().c((i + j) * 0.01)).get().run();
-			}
-		}
+		// weights[i, j] = (i + j) * 0.01, from the flattened index k = i * nodes + j
+		int wn = size * nodes;
+		floor(integers(0, wn).divide(nodes)).add(integers(0, wn).mod(nodes)).multiply(0.01)
+				.into(weights.traverseEach()).evaluate();
 
 		PackedCollection biases = dense.getWeights().get(1);
-		for (int i = 0; i < nodes; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(biases.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(0.1 + i * 0.01)).get().run();
-		}
+		integers(0, nodes).multiply(0.01).add(0.1).into(biases.traverseEach()).evaluate();
 
 		PackedCollection input = new PackedCollection(size);
-		IntStream.range(0, size).forEach(i -> CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((double) i)).get().run());
+		integers(0, size).into(input.traverseEach()).evaluate();
 
 		CompiledModel runner = model.compile();
 

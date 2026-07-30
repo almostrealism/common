@@ -392,7 +392,8 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
 		this.requirements = ThreadLocal.withInitial(ArrayDeque::new);
-		this.instructionsCache = new FrequencyCache<>(500, 0.4);
+		this.instructionsCache = new FrequencyCache<>(
+				SystemUtils.getInt("AR_INSTRUCTION_CACHE_SIZE").orElse(500), 0.4);
 		this.instructionsCache.setEvictionListener(
 				(key, mgr) -> mgr.destroy());
 	}
@@ -553,6 +554,21 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 					return mgr;
 				});
+	}
+
+	/**
+	 * Removes and destroys the cached instruction manager for the given signature,
+	 * exactly as capacity pressure would: the manager's compiled instructions are
+	 * destroyed and every operation holding it is notified through its destroy
+	 * listeners. The next operation with this signature compiles a fresh manager.
+	 *
+	 * <p>This exists so tests can exercise the eviction lifecycle deterministically
+	 * instead of flooding the cache past capacity.</p>
+	 *
+	 * @param signature the computation signature whose manager should be evicted
+	 */
+	public void evictInstructions(String signature) {
+		instructionsCache.evict(signature);
 	}
 
 	/**

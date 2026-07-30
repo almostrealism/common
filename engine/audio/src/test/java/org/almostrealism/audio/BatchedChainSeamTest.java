@@ -61,17 +61,20 @@ public class BatchedChainSeamTest extends TestSuiteBase implements TemporalFeatu
 	 * Creates a single-element {@link PackedCollection} holding the given scalar value.
 	 */
 	private PackedCollection single(double value) {
-		PackedCollection col = new PackedCollection(1);
-		a(cp(col), c(value)).get().run();
-		return col;
+		PackedCollection c = new PackedCollection(1);
+		c.setMem(new double[] { value });
+		return c;
 	}
 
 	/** A sine source so the FIR operates on real spectral content. */
 	private PackedCollection sineSource(double cyclesPerSample) {
-		PackedCollection col = new PackedCollection(SOURCE_LENGTH);
-		double w = 2.0 * Math.PI * cyclesPerSample;
-		a(cp(col), sin(integers(0, SOURCE_LENGTH).multiply(w))).get().run();
-		return col;
+		double[] data = new double[SOURCE_LENGTH];
+		for (int i = 0; i < SOURCE_LENGTH; i++) {
+			data[i] = Math.sin(2.0 * Math.PI * cyclesPerSample * i);
+		}
+		PackedCollection c = new PackedCollection(SOURCE_LENGTH);
+		c.setMem(data);
+		return c;
 	}
 
 	/**

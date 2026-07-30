@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -44,9 +43,8 @@ public class DynamicCollectionProducerTest extends TestSuiteBase {
 		DynamicCollectionProducer producer =
 				new DynamicCollectionProducer(shape, args -> {
 					PackedCollection result = new PackedCollection(shape);
-					for (int i = 0; i < result.getMemLength(); i++) {
-						CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(result.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i + 1.0)).get().run();
-					}
+					int n = result.getMemLength();
+					integers(1, n + 1).into(result.traverseEach()).evaluate();
 					return result;
 				});
 

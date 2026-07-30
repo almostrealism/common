@@ -22,7 +22,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.compute.ComputeRequirement;
-import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.HardwareDataContext;
@@ -197,6 +197,8 @@ public class NativeDataContext extends HardwareDataContext {
 	private MemoryProvider<? extends Memory> ram;
 	/** True if a custom memory provider was set via {@link #setMemoryProvider}. */
 	private boolean providedRam = false;
+	/** If true, the default native provider allocates NIO direct buffers; if false, JNI malloc blocks. */
+	private final boolean direct;
 
 	/** Numeric precision for generated kernel code and memory allocation sizes. */
 	private Precision precision;
@@ -211,7 +213,7 @@ public class NativeDataContext extends HardwareDataContext {
 	 * @param maxReservation Maximum number of elements that may be allocated
 	 */
 	public NativeDataContext(String name, Precision precision, long maxReservation) {
-		this(name, precision, maxReservation, false);
+		this(name, precision, maxReservation, false, true);
 	}
 
 	/**
@@ -223,20 +225,31 @@ public class NativeDataContext extends HardwareDataContext {
 	 * @param clMemory If true, the OpenCL header is included in generated C source files
 	 */
 	public NativeDataContext(String name, Precision precision, long maxReservation, boolean clMemory) {
+		this(name, precision, maxReservation, clMemory, true);
+	}
+
+	/**
+	 * Creates a native data context with explicit OpenCL-memory and allocation-mode settings.
+	 *
+	 * @param name Display name for this context
+	 * @param precision Numeric precision for generated kernels
+	 * @param maxReservation Maximum number of elements that may be allocated
+	 * @param clMemory If true, the OpenCL header is included in generated C source files
+	 * @param direct If true, the default native provider allocates NIO direct buffers rather than JNI malloc
+	 */
+	public NativeDataContext(String name, Precision precision, long maxReservation,
+							 boolean clMemory, boolean direct) {
 		super(name, maxReservation);
 		this.precision = precision;
 		this.isExternal = external;
 		this.isClMemory = clMemory;
+		this.direct = direct;
 	}
 
 	@Override
 	public void init() {
 		if (context != null) return;
 		compiler = NativeCompiler.factory(getPrecision(), isClMemory).construct();
-
-		if (ram == null) {
-			ram = new NativeMemoryProvider(compiler, getMaxReservation() * getPrecision().bytes());
-		}
 
 		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);
 		log("Hardware[" + getName() + "]: Using the CPU for kernels");
@@ -279,10 +292,26 @@ public class NativeDataContext extends HardwareDataContext {
 
 	@Override
 	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
-		return List.of(ram);
+		return List.of(getMemoryProvider());
 	}
 
-	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
+	/**
+	 * Returns this context's memory provider, creating the default native provider on first use.
+	 *
+	 * <p>The default is created lazily rather than in {@link #init()} so that a provider supplied by
+	 * {@link #setMemoryProvider} (for example the shared-memory bridge, when NIO memory is enabled) is
+	 * used without this context first building — and immediately discarding — a provider of its own.</p>
+	 *
+	 * @return the memory provider for this context
+	 */
+	public MemoryProvider<? extends Memory> getMemoryProvider() {
+		if (ram == null) {
+			ram = new NativeMemoryProvider(getPrecision(),
+					getMaxReservation() * getPrecision().bytes(), false, compiler, direct);
+		}
+
+		return ram;
+	}
 
 	@Override
 	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
@@ -336,6 +365,6 @@ public class NativeDataContext extends HardwareDataContext {
 	@Override
 	public void destroy() {
 		// TODO  Destroy all compute contexts
-		if (!providedRam) ram.destroy();
+		if (!providedRam && ram != null) ram.destroy();
 	}
 }

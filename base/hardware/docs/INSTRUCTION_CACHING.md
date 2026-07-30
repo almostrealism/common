@@ -83,6 +83,8 @@ io.almostrealism.uml.Signature (interface)
     |
     +-- ProducerComputationBase.signature()    -- MD5 of name + input signatures
     +-- ComputationScopeCompiler.signature()   -- Appends &distinct=N;
+    (individual computation types extend the base signature with the state that
+     determines their generated code -- see "Class-specific extensions" below)
 
 io.almostrealism.util.FrequencyCache<K, V>
     |
@@ -177,7 +179,7 @@ A computation signature encodes the **structural identity** of an operation -- e
 
 Two operations with the same signature produce **identical kernel code**.
 
-> **Implementation caveat — leaf (provider) signatures include buffer layout, and may be null.**
+> **Implementation caveat — leaf (provider) signatures include buffer layout.**
 > The recursive signature above bottoms out at *provider* leaves that reference a
 > `PackedCollection` by reference (`cp(x)` expands to `c(p(x))`, producing a
 > `CollectionProviderProducer`). That leaf's `signature()`
@@ -190,17 +192,20 @@ Two operations with the same signature produce **identical kernel code**.
 >   when those buffers have the same offset and length. References into buffers at different
 >   offsets (for example, the freshly allocated buffers of two independent `Model`/scene
 >   instances) get **different** signatures and do **not** reuse the compiled kernel.
-> - For a buffer that is an argument-aggregation target
->   (`MemoryDataArgumentMap.isAggregationTarget`) it returns **`null`**, which propagates up and
->   nulls the entire enclosing computation's signature, disabling caching for it. The code marks
->   this a known limitation: *"It should actually be possible to compute a valid signature for
->   this anyway, but because argument aggregation for Computations depends on the other
->   Computation arguments, it requires more information than is available here."*
+> - For a buffer whose root delegate is an argument-aggregation target
+>   (`MemoryDataArgumentMap.isAggregationTarget`) it appends
+>   `&aggRoot=<root memLength>`, so the signature remains valid but reuse is scoped
+>   to computations whose aggregate layouts are compatible. (Earlier revisions
+>   returned `null` here, disabling caching for any computation reading an
+>   aggregated buffer; that limitation no longer exists.)
 >
 > As a result, the "compile once, substitute the memory pointers" reuse described below is
-> realized for operations whose referenced buffers are non-aggregated and share the same
-> offset/length, but it does **not** currently deduplicate compilation across independent
-> `Model`/scene instances whose data buffers are separately allocated.
+> realized for operations whose referenced buffers share the same offset/length (and, when
+> aggregated, the same aggregate root length), but it does **not** currently deduplicate
+> compilation across independent `Model`/scene instances whose data buffers are separately
+> allocated. Computations built over `Input.value(shape, argIndex)` placeholders instead of
+> provider leaves avoid the buffer-layout dependence entirely, because the referenced
+> collections are supplied as runtime arguments.
 
 ### Signature Generation
 
@@ -240,6 +245,28 @@ return signature;
 ```
 
 Appends `&distinct=N;` to distinguish operations with different numbers of unique children (e.g., `add(A, A)` vs `add(A, B)`).
+
+**Class-specific extensions.** Computation types whose generated code depends on state the
+two stages above cannot see extend the Stage 1 result with that state:
+
+- `CollectionProducerComputationBase` appends the output shape detail, so every collection
+  computation's signature reflects its result layout.
+- `ArithmeticSequenceComputation` appends its `initial` and `rate` constants.
+- `AggregatedProducerComputation` appends the iteration count, the loop-replacement setting,
+  and a structural rendering of its initial and combining functions (each applied to opaque
+  placeholder references), so aggregations that share a name and shape but combine values
+  differently never collide. This also covers the raw aggregations its `delta()` constructs,
+  so gradient graphs containing reductions participate in instruction reuse.
+- `WeightedSumComputation` appends its position and group traversal policies, including
+  per-axis rates (which the standard policy descriptions omit).
+- `LoopedWeightedSumComputation` appends its inner count, operand shapes, and a structural
+  rendering of its two index functions.
+
+Because the metadata signature is recorded during superclass construction, before subclass
+state is assigned, each of these classes calls `init()` again at the end of its own
+constructor. Signature-bearing state is fixed at construction; where a different setting is
+needed, a new computation is constructed (for example
+`AggregatedProducerComputation.withReplaceLoop`) rather than mutating an existing one.
 
 ### Signature Format
 
@@ -572,14 +599,21 @@ If any input in a computation tree does not implement `Signature` or returns nul
 **Symptom:** Every evaluation triggers a fresh compilation.
 **Diagnosis:** Check whether `signature()` returns null for the computation.
 
-**Common concrete cause — provider leaves referencing aggregation-target buffers.** A frequent
-source of unexpected null signatures is a `CollectionProviderProducer` (the leaf produced by
-`cp(x)`/`p(x)`) whose referenced `PackedCollection` is an argument-aggregation target: its
-`signature()` returns `null` (see the *Signatures* caveat), which nulls every enclosing
-computation. Because data buffers are aggregated by default
-(`AR_HARDWARE_ARGUMENT_AGGREGATION`), this disables caching broadly for computations that read
-small off-heap buffers. To diagnose, log `Signature.of(producer)`; a `null` here points at a
-provider leaf (aggregation target) rather than a missing `Signature` implementation.
+**Common concrete causes.** Provider leaves no longer null the signature (aggregation-target
+buffers now contribute an `&aggRoot=N` suffix instead — see the *Signatures* caveat). The
+remaining sources of null signatures are computations that opt out because their generated code
+depends on state a standard signature cannot see:
+
+- `DefaultTraversableExpressionComputation` constructed without `generateSignature` (the
+  common constructors default it to false), since its expression function is an arbitrary
+  lambda. Factory methods that produce a fixed, name-identified expression pass true.
+- An aggregation whose initial or combining function cannot be rendered against placeholder
+  references (for example, one that inspects its runtime arguments) — see
+  `AggregatedProducerComputation.expressionSignature()`.
+- An `Assignment` whose destination or value lacks a signature.
+
+To diagnose, log `Signature.of(producer)` for each stage of the graph; the first stage that
+reports `null` identifies the opted-out node, and everything enclosing it inherits the null.
 
 ### Buffer Offset Defeats Cross-Instance Reuse
 

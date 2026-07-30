@@ -1,8 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -10,6 +9,7 @@ import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
+import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Test;
 
@@ -45,15 +45,12 @@ public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, C
 		log(String.format("  heads=%d, kvHeads=%d, headSize=%d", heads, kvHeads, headSize));
 		log(String.format("  dim=%d, kvDim=%d, headsPerKvGroup=%d", dim, kvDim, headsPerKvGroup));
 
-		// Create test input: (1, kvDim) = (1, 128)
-		// Fill with pattern: kvHead 0 gets values 0-63, kvHead 1 gets values 64-127
+		// Fill input[kv * headSize + h] with kv * 1000 + h, so each kvHead is identifiable:
+		// 0-63 for kv0, 1000-1063 for kv1
 		PackedCollection input = new PackedCollection(shape(1, kvDim));
-		for (int kv = 0; kv < kvHeads; kv++) {
-			for (int h = 0; h < headSize; h++) {
-				int idx = kv * headSize + h;
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(kv * 1000 + h)).get().run();  // 0-63 for kv0, 1000-1063 for kv1
-			}
-		}
+		CollectionProducer index = integers(0, kvDim);
+		a(cp(input.reshape(shape(kvDim))),
+				floor(index.divide(headSize)).multiply(1000).add(index.mod(headSize))).get().run();
 
 		log("\nInput (1, 128):");
 		log("  First 10 values: " + formatFirst(input, 10));
@@ -100,12 +97,8 @@ public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, C
 			}
 		}
 
-		log("\n=== Summary ===");
-		if (allCorrect) {
-			log("GQA expansion is correct");
-		} else {
-			log("GQA expansion has errors");
-		}
+		Assert.assertTrue("Each query head must reproduce the values of the kvHead it maps to",
+				allCorrect);
 	}
 
 	/**

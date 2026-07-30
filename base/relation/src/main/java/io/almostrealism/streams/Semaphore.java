@@ -70,6 +70,22 @@ public interface Semaphore {
 	}
 
 	/**
+	 * Registers a callback to run once the guarded operation has completed, without
+	 * driving the operation toward completion. The default delegates to
+	 * {@link #onComplete(Runnable)}, whose callback thread actively waits; an
+	 * implementation whose {@link #waitFor()} has side effects beyond blocking — such
+	 * as forcing a command-buffer commit that breaks dispatch batching — overrides
+	 * this to attach the callback passively instead. The callback may consequently
+	 * run arbitrarily late, only when completion is reached for other reasons; use
+	 * {@link #onComplete(Runnable)} when the callback must run promptly.
+	 *
+	 * @param r the callback to invoke once the guarded operation has completed
+	 */
+	default void whenComplete(Runnable r) {
+		onComplete(r);
+	}
+
+	/**
 	 * Returns a {@link Semaphore} that completes once every one of the given semaphores has
 	 * completed &mdash; the merge primitive for an operation that depends on several prior
 	 * completions (multiple asynchronously evaluated arguments, a group of copies, a join

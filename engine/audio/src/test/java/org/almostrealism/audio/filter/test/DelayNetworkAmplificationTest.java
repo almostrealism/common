@@ -17,8 +17,6 @@
 package org.almostrealism.audio.filter.test;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.audio.line.OutputLine;
@@ -103,7 +101,7 @@ public class DelayNetworkAmplificationTest extends TestSuiteBase implements Cell
 	 */
 	private double measureDcSteadyState(DelayNetwork network, double dcLevel, int samples) {
 		PackedCollection input = new PackedCollection(1);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(dcLevel)).get().run();
+		input.setMem(0, dcLevel);
 
 		Evaluable<PackedCollection> ev = network.getResultant(p(input)).get();
 		Runnable tick = network.tick().get();

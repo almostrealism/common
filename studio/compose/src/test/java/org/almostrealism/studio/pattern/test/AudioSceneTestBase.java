@@ -16,12 +16,16 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.compute.ComputeRequirement;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneLoader;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.music.arrange.AudioSceneContext;
+import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.pattern.PatternElement;
@@ -30,17 +34,18 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
-
-import org.almostrealism.heredity.ProjectedGenome;
+import org.junit.Assume;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Supplier;
 
 /**
  * Shared test infrastructure for AudioScene tests.
@@ -77,6 +82,75 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 		return dir.exists() ? dir : null;
 	}
 
+	/**
+	 * Returns the curated sample library, skipping or failing the test when the library (or its
+	 * pattern factory) is not present on this host — the choice depends on whether a GPU driver
+	 * is available.
+	 * <p>
+	 * The real-sample media benchmarks once skipped silently — logging a message and returning — when
+	 * the library was absent, which a runner that never mounts {@link #SAMPLES_PATH} reports as a pass,
+	 * hiding the difference between hosts. The GPU runners (the Metal {@code test-media-mac} job) mount
+	 * the library and are expected to run the real workload; the CPU-only Linux runners never have. So:
+	 * <ul>
+	 *   <li>library present → return it and run the real workload;</li>
+	 *   <li>library absent and <em>no</em> GPU driver available → {@code Assume}-skip (a CPU-only host
+	 *       that is not expected to mount the library, e.g. the native Linux jobs);</li>
+	 *   <li>library absent but a GPU driver <em>is</em> available → {@link Assert#fail} (a GPU host is
+	 *       expected to mount the library; a miss is a real misconfiguration that must not report a
+	 *       false pass).</li>
+	 * </ul>
+	 *
+	 * @return the curated sample library directory (its {@link #PATTERN_FACTORY} is guaranteed to exist)
+	 */
+	protected File requireCuratedLibrary() {
+		File library = getSamplesDir();
+		if (library != null && new File(PATTERN_FACTORY).exists()) {
+			return library;
+		}
+
+		String detail = "Curated sample library " + SAMPLES_PATH + " / pattern factory "
+				+ PATTERN_FACTORY + " not available on this host.";
+		Assume.assumeTrue(detail + " No GPU driver is available, so this is a CPU-only host that is not"
+				+ " expected to mount the library; skipping rather than failing.", isGpuAvailable());
+		Assert.fail(detail + " A GPU driver IS available, so this host is expected to mount the curated"
+				+ " library; failing rather than reporting a false pass for a workload it did not run.");
+		return library;
+	}
+
+	/**
+	 * Returns whether a Metal data context is available. Render tests scale their
+	 * durations and skip Metal-specific measurements off-Metal: OpenCL is not a
+	 * primary backend and runs the mixdown several times slower, so CL-only
+	 * environments (the {@code test-media-cl} job) get shorter smoke renders
+	 * rather than the full Metal-length evaluation renders.
+	 *
+	 * @return whether a Metal data context is available
+	 */
+	protected boolean isMetalAvailable() {
+		return Hardware.getLocalHardware()
+				.getDataContext(false, true, ComputeRequirement.MTL) != null;
+	}
+
+	/**
+	 * Returns whether a real GPU accelerator — Metal or OpenCL — is present on this host, used by
+	 * {@link #requireCuratedLibrary()} to decide whether a missing sample library is an expected skip
+	 * (a CPU-only host, such as the {@code native} Linux runners) or a genuine failure (a GPU host — the
+	 * Metal {@code test-media-mac} or the OpenCL {@code test-media-cl} runner — that is expected to mount
+	 * the library).
+	 *
+	 * <p>Delegates to {@link Hardware#isAvailable(ComputeRequirement...)} with
+	 * {@link ComputeRequirement#GPU}, which strictly filters the data contexts built from
+	 * {@code AR_HARDWARE_DRIVER} and so reports false on a CPU-only host and true on a Metal or OpenCL
+	 * host. This is not {@code getDataContext(..., GPU) != null} or {@code getComputeContext(GPU)}:
+	 * when only one data context exists, both return the sole (native) context regardless of the
+	 * requirement, falsely reporting a GPU on a CPU-only host.</p>
+	 *
+	 * @return whether a real GPU accelerator (Metal or OpenCL) is present on this host
+	 */
+	protected boolean isGpuAvailable() {
+		return Hardware.getLocalHardware().isAvailable(ComputeRequirement.GPU);
+	}
+
 	/** Curated pattern factory; the real arrangement that decides which samples play where. */
 	protected static final String PATTERN_FACTORY =
 			SystemUtils.getProperty("AR_RINGS_PATTERNS", "/Users/Shared/Music/pattern-factory.json");
@@ -97,6 +171,9 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 	/** Maximum number of genome seeds to try before giving up. */
 	protected static final int MAX_GENOME_ATTEMPTS = 20;
+
+	/** Maximum number of freshly-arranged scenes to render before giving up on a non-silent result. */
+	protected static final int MAX_RENDER_ATTEMPTS = 8;
 
 	/** Duration in seconds for rendered audio in tests. */
 	protected static final double RENDER_SECONDS = 4.0;
@@ -360,6 +437,43 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
+	 * Counts the notes a channel's patterns emit for the currently assigned genome — the same
+	 * element-to-note expansion the renderer dispatches — so a non-zero count means the channel
+	 * will actually produce audio rather than merely carry pattern elements.
+	 *
+	 * <p>A {@link PatternElement} is not itself a note: it expands to zero or more notes via
+	 * {@link org.almostrealism.music.pattern.ScaleTraversalStrategy}, driven by the element's repeat
+	 * count and scale positions (which the genome sets). {@code BatchedPatternLayerRenderer.render}
+	 * dispatches exactly those expanded notes ({@code PatternElement.getNoteDestinations}); when the
+	 * expansion is empty it dispatches nothing (neither batched nor per-note fallback) and the render
+	 * is silent. {@link PatternLayerManager#toMidiEvents(AudioSceneContext)} mirrors that same
+	 * traversal, so its count predicts a non-silent render where {@link #countElements(AudioScene, int)}
+	 * — which counts unexpanded elements — does not.</p>
+	 *
+	 * <p>The expansion is evaluated under the <em>per-channel</em> context ({@link AudioScene#getContext(ChannelInfo)}),
+	 * because a note's scale keys — and so whether the element expands to any note at all — depend on
+	 * the channel's scale, which the renderer resolves per channel. This is still only a pre-filter, not
+	 * a guarantee: it does not resolve note audio, so a positive count can still render silent (hence
+	 * {@link #renderUntilAudible}); using the channel context nonetheless makes it a far better predictor
+	 * than the whole-scene context.</p>
+	 *
+	 * @param scene   the AudioScene whose currently assigned genome determines note emission
+	 * @param channel the channel index to restrict the count to
+	 * @return the number of notes emitted on {@code channel} for the current genome
+	 */
+	protected int countNotes(AudioScene<?> scene, int channel) {
+		ChannelInfo channelInfo =
+				new ChannelInfo(channel, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT);
+		AudioSceneContext context = scene.getContext(channelInfo);
+		int total = 0;
+		for (PatternLayerManager plm : scene.getPatternManager().getPatterns()) {
+			if (plm.getChannel() != channel) continue;
+			total += plm.toMidiEvents(context).size();
+		}
+		return total;
+	}
+
+	/**
 	 * Searches for a working genome seed without rendering audio.
 	 * Returns the seed that produces the most pattern elements.
 	 *
@@ -387,6 +501,143 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 		}
 
 		return bestSeed;
+	}
+
+	/**
+	 * Finds a deterministic genome seed whose projection makes every one of the given channels emit
+	 * at least one note, leaving that genome assigned to the scene. Because {@link AudioScene#assignGenome}
+	 * refreshes the pattern parameters, a channel's note emission depends on the genome, so this raises
+	 * the chance a render of the returned scene is non-silent for those channels.
+	 *
+	 * <p>This counts {@link #countNotes(AudioScene, int) note emission}, not
+	 * {@link #countElements(AudioScene, int) element presence}: a pattern element expands to zero or
+	 * more notes through the scale-traversal strategy, and an arrangement can leave a channel carrying
+	 * elements that expand to no notes. Note that this count is only a cheap pre-filter, not a
+	 * guarantee — it expands notes under the whole-scene context, whereas the renderer dispatches under
+	 * a per-channel context plus voicing, so a positive count here can still render silent. The actual
+	 * non-silence guarantee is provided by {@link #renderUntilAudible}, which rebuilds the random
+	 * arrangement and re-renders until the output is audible.</p>
+	 *
+	 * <p>The same scene instance must be both searched here and rendered: the scene's arrangement,
+	 * drawn randomly at construction, is part of what determines a channel's content, so a seed found
+	 * against one scene does not transfer to a freshly constructed one.</p>
+	 *
+	 * @param scene    the scene to search; left with a note-emitting genome assigned on success
+	 * @param channels the channels that must each emit at least one note
+	 * @return the seed making all channels emit notes, or {@code -1} if none was found within
+	 *         {@link #MAX_GENOME_ATTEMPTS} attempts
+	 */
+	protected long findGenomeSeedForChannels(AudioScene<?> scene, List<Integer> channels) {
+		for (int attempt = 0; attempt < MAX_GENOME_ATTEMPTS; attempt++) {
+			long seed = 42 + attempt;
+			applyGenome(scene, seed);
+
+			boolean allPopulated = true;
+			for (int channel : channels) {
+				if (countNotes(scene, channel) == 0) {
+					allPopulated = false;
+					break;
+				}
+			}
+
+			if (allPopulated) return seed;
+		}
+
+		return -1;
+	}
+
+	/**
+	 * Renders a scene that has been prepared with a note-emitting genome, returning a result whose
+	 * audio can be peak-checked.
+	 *
+	 * @param <T> the render result type
+	 */
+	@FunctionalInterface
+	protected interface SceneRenderer<T> {
+		/**
+		 * Renders {@code scene} with {@code genome} assigned.
+		 *
+		 * @param scene  the prepared scene, with the requested channels pre-filtered for note emission
+		 * @param genome the deterministic genome to render
+		 * @return the render result
+		 * @throws Exception if the render fails
+		 */
+		T render(AudioScene<?> scene, Genome<PackedCollection> genome) throws Exception;
+	}
+
+	/**
+	 * Extracts the peak amplitude of a render result, used to decide whether a render was audible.
+	 *
+	 * @param <T> the render result type
+	 */
+	@FunctionalInterface
+	protected interface PeakExtractor<T> {
+		/**
+		 * Returns the peak absolute amplitude of the given render result.
+		 *
+		 * @param result the render result
+		 * @return the peak absolute amplitude in {@code [0, 1]}
+		 * @throws Exception if the result's audio cannot be read
+		 */
+		double peak(T result) throws Exception;
+	}
+
+	/**
+	 * Renders freshly-arranged scenes until one produces audible output, returning that render's result.
+	 *
+	 * <p>The real production arrangement is drawn randomly at construction ({@code ParameterFunction.random()}
+	 * per pattern), so a given arrangement can legitimately expand to no audible notes on the requested
+	 * channels: note emission depends on the per-channel scale and voicing resolved only at render time,
+	 * which no pre-render count fully predicts (see {@link #findGenomeSeedForChannels}). Rather than gamble
+	 * on a single arrangement, this rebuilds the arrangement (a fresh {@code sceneFactory} scene) and
+	 * re-renders up to {@link #MAX_RENDER_ATTEMPTS} times, returning the first render whose peak exceeds
+	 * {@link #SILENCE_THRESHOLD}. Cold kernel compilation is amortized across attempts by the cross-instance
+	 * instruction cache, so a retry is cheaper than the first render. Each attempt's scene is destroyed
+	 * before the next; the returned result references a written WAV file that outlives it.</p>
+	 *
+	 * @param sceneFactory     builds a fresh, randomly-arranged scene each attempt
+	 * @param totalMeasures    arrangement length to render
+	 * @param requiredChannels channels that must carry notes (a cheap pre-filter before rendering)
+	 * @param renderer         renders a prepared scene, returning the result
+	 * @param peakOf           extracts the peak amplitude of a render result
+	 * @param <T>              the render result type
+	 * @return the first render result whose peak exceeds {@link #SILENCE_THRESHOLD}
+	 * @throws Exception if a render or peak extraction fails, or if no arrangement was audible
+	 */
+	protected <T> T renderUntilAudible(Supplier<AudioScene<?>> sceneFactory, int totalMeasures,
+									   List<Integer> requiredChannels, SceneRenderer<T> renderer,
+									   PeakExtractor<T> peakOf) throws Exception {
+		double lastPeak = 0.0;
+
+		for (int attempt = 1; attempt <= MAX_RENDER_ATTEMPTS; attempt++) {
+			AudioScene<?> scene = sceneFactory.get();
+			try {
+				scene.setTotalMeasures(totalMeasures);
+
+				long seed = findGenomeSeedForChannels(scene, requiredChannels);
+				if (seed < 0) {
+					log("render attempt " + attempt + " of " + MAX_RENDER_ATTEMPTS
+							+ ": no genome seed emitted notes on channels " + requiredChannels
+							+ "; rebuilding arrangement");
+					continue;
+				}
+
+				T result = renderer.render(scene, fixedGenome(scene, seed));
+				double peak = peakOf.peak(result);
+				if (peak > SILENCE_THRESHOLD) {
+					return result;
+				}
+
+				lastPeak = peak;
+				log("render attempt " + attempt + " of " + MAX_RENDER_ATTEMPTS + " was silent (peak="
+						+ peak + "); rebuilding arrangement");
+			} finally {
+				scene.destroy();
+			}
+		}
+
+		throw new AssertionError("no randomly-arranged scene produced audible output on channels "
+				+ requiredChannels + " within " + MAX_RENDER_ATTEMPTS + " attempts (last peak=" + lastPeak + ")");
 	}
 
 	/**

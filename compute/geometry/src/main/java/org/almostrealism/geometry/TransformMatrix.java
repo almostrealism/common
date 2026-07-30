@@ -152,7 +152,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 
 		if (matrix.length < 4 || matrix[0].length < 4) id = false;
 
-		a(cp(this), c(newMatrix)).get().run();
+		this.setMem(newMatrix);
 
 		this.inverted = false;
 		this.isIdentity = id;

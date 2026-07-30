@@ -21,11 +21,11 @@ import io.almostrealism.code.Memory;
 /**
  * Strategy interface for creating a {@link NativeBuffer} from a foreign {@link io.almostrealism.code.Memory} type.
  *
- * <p>Implementations are registered with {@link NativeBufferMemoryProvider} to enable zero-copy or
+ * <p>Implementations are registered with {@link NativeMemoryProvider} to enable zero-copy or
  * adapted allocation from cross-provider memory sources.</p>
  *
  * @param <T> Foreign memory type to adapt from
- * @see NativeBufferMemoryProvider#registerAdapter(Class, NativeBufferAllocator)
+ * @see NativeMemoryProvider#registerAdapter(Class, NativeBufferAllocator)
  */
 public interface NativeBufferAllocator<T extends Memory> {
 	/**

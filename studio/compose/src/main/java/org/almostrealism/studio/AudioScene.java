@@ -178,8 +178,18 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/** Default number of audio source channels per scene. */
 	public static final int DEFAULT_SOURCE_COUNT = 6;
 
-	/** Default PCM buffer size in frames for real-time rendering. */
-	public static final int DEFAULT_REALTIME_BUFFER_SIZE = 4096;
+	/**
+	 * Default PCM buffer size in frames for real-time rendering. 1024 frames (~23 ms at
+	 * 44.1 kHz) is the production target: it puts every efx feedback gene delay inside
+	 * the block-parallel ring band at any usable tempo, quadruples the automation update
+	 * rate relative to the previous 4096 default, and keeps latency compatible with live
+	 * controller-driven automation. The per-tick budget at this size is not yet reliably
+	 * met on all hardware — the tick cost is dominated by a frame-count-independent
+	 * floor (host-completion commits and per-note fallback dispatches) that the pending
+	 * performance work removes; until then, real-time playback headroom depends on the
+	 * machine, while offline generation is unaffected.
+	 */
+	public static final int DEFAULT_REALTIME_BUFFER_SIZE = 1024;
 
 	/** Default number of delay echo layers per scene. */
 	public static final int DEFAULT_DELAY_LAYERS = 3;
@@ -594,6 +604,19 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * <p>The pattern preparation phase ({@link PatternAudioBuffer#prepareBatch()})
 	 * runs outside the compiled loop in Java, so it naturally uses the refreshed
 	 * parameter state.</p>
+	 *
+	 * <p><b>Cache invalidation is the caller's responsibility.</b> This method does
+	 * not advance the pattern cache epoch, because that epoch
+	 * ({@link PatternLayerManager#invalidateCaches()}) is global to the JVM: clearing
+	 * it here would flush the caches of every scene in the process on every
+	 * assignment, which callers working with independent scenes (previews, editors)
+	 * do not want. The note-audio and gathered note-destination caches are valid
+	 * only within one genome's arrangement (the gather cache keys on
+	 * {@link PatternElement} identity, and each genome regenerates its elements), so
+	 * a driver that swaps genomes repeatedly on a reused runner must invalidate
+	 * after assignment — otherwise the previous genome's gathered
+	 * {@link RenderedNoteAudio} entries stay pinned and device memory accumulates
+	 * until the memory provider's cap is reached.</p>
 	 *
 	 * @param genome the new genome whose parameters will be assigned
 	 */

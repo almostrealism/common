@@ -21,9 +21,14 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
  * A computation that generates arithmetic sequences (linear sequences) with configurable
@@ -85,7 +90,7 @@ import java.util.List;
  * <pre>{@code
  * ArithmeticSequenceComputation<PackedCollection> original =
  *     new ArithmeticSequenceComputation<>(shape(4), 1.0);
- * ArithmeticSequenceComputation<PackedCollection> scaled = original.multiply(5.0);
+ * CollectionProducer scaled = original.multiply(5.0);
  * // Original: [1.0, 2.0, 3.0, 4.0]
  * // Scaled:   [5.0, 10.0, 15.0, 20.0]
  * }</pre>
@@ -110,6 +115,18 @@ import java.util.List;
  * @author Michael Murray
  */
 public class ArithmeticSequenceComputation extends TraversableExpressionComputation {
+	/**
+	 * Controls how {@link #get()} produces the sequence.
+	 *
+	 * <p>When {@code true}, a native kernel is compiled for the sequence, exactly like any other
+	 * {@link TraversableExpressionComputation}. When {@code false} (the default), the sequence is
+	 * generated on the host with a Java stream. Index sequences are pervasive, and each distinct
+	 * {@code (shape, initial, rate)} would otherwise reserve a slot in the finite native operator
+	 * pool; the host path avoids that while still supporting {@link Evaluable#into(Object)} so it
+	 * composes with destination-based evaluation.</p>
+	 */
+	public static boolean enableKernel = false;
+
 	/**
 	 * Whether the sequence length is fixed at construction time (true) or
 	 * can be determined dynamically at runtime (false).
@@ -200,11 +217,21 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	 *             = factor x original[i]
 	 * </pre>
 	 *
+	 * <p>Scaling by zero (or scaling a sequence whose values are all zero) collapses to a
+	 * {@link CollectionZerosComputation} rather than a degenerate sequence, so the result
+	 * is recognized as zero ({@code Algebraic.isZero}) by downstream algebraic
+	 * optimizations — matching the behavior of the general multiplication path.</p>
+	 *
 	 * @param factor The scaling factor to apply
-	 * @return A new {@link ArithmeticSequenceComputation} with scaled values
+	 * @return A producer for the scaled sequence, or a {@link CollectionZerosComputation}
+	 *         when every scaled value is zero
 	 */
 	@Override
-	public ArithmeticSequenceComputation multiply(double factor) {
+	public CollectionProducer multiply(double factor) {
+		if (initial * factor == 0.0 && rate * factor == 0.0) {
+			return new CollectionZerosComputation(getShape());
+		}
+
 		return new ArithmeticSequenceComputation(getShape(), fixedCount, initial * factor, rate * factor);
 	}
 
@@ -252,6 +279,50 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return new ArithmeticSequenceExpression(getShape(), initial, rate);
+	}
+
+	/**
+	 * Returns an {@link Evaluable} for the sequence. When {@link #enableKernel} is set the compiled
+	 * kernel path of the superclass is used; otherwise the sequence is produced on the host, which
+	 * avoids reserving a native operator slot per distinct sequence.
+	 *
+	 * <p>The host evaluable supports {@link Evaluable#into(Object)}: it writes the generated values
+	 * into an existing destination with a {@link MemoryData} copy rather than compiling a kernel, so
+	 * {@code sequence.into(dest).evaluate()} works without native compilation.</p>
+	 *
+	 * @return an {@link Evaluable} producing the arithmetic sequence
+	 */
+	@Override
+	public Evaluable<PackedCollection> get() {
+		if (enableKernel) {
+			return super.get();
+		}
+
+		return new Evaluable<>() {
+			@Override
+			public PackedCollection evaluate(Object... args) {
+				return pack(values());
+			}
+
+			@Override
+			public Evaluable<PackedCollection> into(Object destination) {
+				return args -> {
+					PackedCollection sequence = pack(values());
+					((MemoryData) destination).setFrom(0, sequence, 0, sequence.getMemLength());
+					return (PackedCollection) destination;
+				};
+			}
+		};
+	}
+
+	/**
+	 * Computes the sequence values on the host as {@code value[i] = initial + i * rate}.
+	 *
+	 * @return the host array of sequence values
+	 */
+	private double[] values() {
+		return IntStream.range(0, getShape().getTotalSize())
+				.mapToDouble(i -> initial + i * rate).toArray();
 	}
 
 	/**

@@ -37,8 +37,8 @@ import java.util.function.Consumer;
  * location, and deallocation listeners so they remain accessible after the referent
  * is garbage collected.</p>
  *
- * <p>Uses {@link TestNativeBuffer} to avoid the {@link org.almostrealism.nio.NIO}
- * native library dependency.</p>
+ * <p>Uses {@link TestNativeBuffer} to avoid the runtime-compiled native pointer-lookup
+ * dependency.</p>
  */
 public class NativeBufferRefTest extends TestSuiteBase {
 

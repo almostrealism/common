@@ -450,7 +450,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 			}
 		}
 		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
-		a(cp(out), c(out.getShape(), data)).get().run();
+		out.setMem(data);
 		return out;
 	}
 
@@ -471,7 +471,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 					attackFrac, decayFrac, releaseFrac);
 		}
 		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
-		a(cp(out), c(out.getShape(), data)).get().run();
+		out.setMem(data);
 		return out;
 	}
 
@@ -484,7 +484,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 		double[] data = new double[size];
 		fillAdsrShape(data, 0, size, 200.0, 8000.0, 1500.0, 400.0, 0.05, 0.10, 0.15);
 		PackedCollection out = new PackedCollection(size);
-		a(cp(out), c(data)).get().run();
+		out.setMem(data);
 		return out;
 	}
 
@@ -510,7 +510,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 					attackFrac, decayFrac, releaseFrac);
 		}
 		PackedCollection out = new PackedCollection(shape(batchSize, paddedNoteSize));
-		a(cp(out), c(out.getShape(), data)).get().run();
+		out.setMem(data);
 		return out;
 	}
 
@@ -679,7 +679,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 			System.arraycopy(sourcePool[md.sourceIdx[n]], md.sourceOffset[n],
 					audioData, n * paddedNoteSize + padHalf, NOTE_SIZE);
 		}
-		a(cp(audioBuf), c(audioBuf.getShape(), audioData)).get().run();
+		audioBuf.setMem(audioData);
 
 		PackedCollection.of(md.pitchRatio);
 		PackedCollection.of(md.volAttack);

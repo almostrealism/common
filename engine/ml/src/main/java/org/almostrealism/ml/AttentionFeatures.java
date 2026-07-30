@@ -183,6 +183,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 *
 	 * <p>This is the format expected by PyTorch's Qwen/Llama RoPE implementation.</p>
 	 *
+	 * <p>The permutation is {@code output[h, f, 0] = input[h * headSize + f]} and
+	 * {@code output[h, f, 1] = input[h * headSize + freqDim + f]}, expressed as arithmetic
+	 * over the output index so that the gather indices are computed by the graph.</p>
+	 *
 	 * @param flatDim Input dimension (heads * headSize)
 	 * @param heads Number of attention heads
 	 * @param headSize Size of each head (must be even)
@@ -190,40 +194,17 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 */
 	default CellularLayer reshapeToSplitHalfRope(int flatDim, int heads, int headSize) {
 		int freqDim = headSize / 2;
-		// Input shape is (1, flatDim) - with batch dimension from dense projection
 		TraversalPolicy inputShape = shape(1, flatDim);
-		// Output shape is (heads, freqDim, 2) - stripped batch for ropeRotation
 		TraversalPolicy outputShape = shape(heads, freqDim, 2);
 
-		// Build index mapping from output to input using pure arithmetic
-		// output[h, f, 0] = input[h * headSize + f]  (first half)
-		// output[h, f, 1] = input[h * headSize + freqDim + f]  (second half)
-		int outputSize = heads * freqDim * 2;
-		int[] indexMap = new int[outputSize];
-		for (int h = 0; h < heads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				// First half: index [h, f, 0]
-				int outIdx0 = h * freqDim * 2 + f * 2 + 0;
-				indexMap[outIdx0] = h * headSize + f;
-				// Second half: index [h, f, 1]
-				int outIdx1 = h * freqDim * 2 + f * 2 + 1;
-				indexMap[outIdx1] = h * headSize + freqDim + f;
-			}
-		}
+		CollectionProducer index = integers(0, heads * freqDim * 2);
+		CollectionProducer head = floor(index.divide(freqDim * 2));
+		CollectionProducer withinHead = index.mod(freqDim * 2);
+		CollectionProducer freq = floor(withinHead.divide(2.0));
+		CollectionProducer half = withinHead.mod(2.0);
 
-		double[] indexValues = new double[outputSize];
-		for (int i = 0; i < outputSize; i++) {
-			indexValues[i] = indexMap[i];
-		}
-
-		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
-		a(cp(indexCollection), c(shape(outputSize), indexValues)).get().run();
-
-		return layer("reshapeToSplitHalfRope", inputShape, outputShape, input -> {
-			// Use index-based gathering: output[i] = input[indexMap[i]]
-			return c(shape(outputSize), c(input).reshape(shape(flatDim)), p(indexCollection))
-					.reshape(outputShape);
-		});
+		return gather("reshapeToSplitHalfRope", inputShape, outputShape,
+				head.multiply(headSize).add(half.multiply(freqDim)).add(freq));
 	}
 
 	/**
@@ -232,6 +213,10 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * <p>Transforms from (heads, freqDim, 2) back to (flatDim) where elements are
 	 * interleaved per head as [firstHalf, secondHalf].</p>
 	 *
+	 * <p>The permutation is {@code output[h, f] = input[h, f, 0]} for the first half and
+	 * {@code output[h, freqDim + f] = input[h, f, 1]} for the second, expressed as arithmetic
+	 * over the output index so that the gather indices are computed by the graph.</p>
+	 *
 	 * @param heads Number of attention heads
 	 * @param headSize Size of each head (must be even)
 	 * @return CellularLayer that transforms from split-half format to flat
@@ -239,41 +224,16 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	default CellularLayer reshapeFromSplitHalfRope(int heads, int headSize) {
 		int freqDim = headSize / 2;
 		TraversalPolicy inputShape = shape(heads, freqDim, 2);
-		// Output (heads, headSize) for use with attentionKeys
 		TraversalPolicy outputShape = shape(heads, headSize);
 
-		// Build index mapping from output to input using pure arithmetic
-		// output[h, 0..freqDim-1] = input[h, 0..freqDim-1, 0] (first half)
-		// output[h, freqDim..headSize-1] = input[h, 0..freqDim-1, 1] (second half)
-		int inputSize = heads * freqDim * 2;
-		int outputSize = heads * headSize;
-		int[] indexMap = new int[outputSize];
-		for (int h = 0; h < heads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				// First half: output[h, f] = input[h, f, 0]
-				int outIdx0 = h * headSize + f;
-				int inIdx0 = h * freqDim * 2 + f * 2 + 0;
-				indexMap[outIdx0] = inIdx0;
-				// Second half: output[h, freqDim + f] = input[h, f, 1]
-				int outIdx1 = h * headSize + freqDim + f;
-				int inIdx1 = h * freqDim * 2 + f * 2 + 1;
-				indexMap[outIdx1] = inIdx1;
-			}
-		}
+		CollectionProducer index = integers(0, heads * headSize);
+		CollectionProducer head = floor(index.divide(headSize));
+		CollectionProducer withinHead = index.mod(headSize);
+		CollectionProducer half = floor(withinHead.divide(freqDim));
+		CollectionProducer freq = withinHead.mod(freqDim);
 
-		double[] indexValues = new double[outputSize];
-		for (int i = 0; i < outputSize; i++) {
-			indexValues[i] = indexMap[i];
-		}
-
-		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
-		a(cp(indexCollection), c(shape(outputSize), indexValues)).get().run();
-
-		return layer("reshapeFromSplitHalfRope", inputShape, outputShape, input -> {
-			// Use index-based gathering: output[i] = input[indexMap[i]]
-			return c(shape(outputSize), c(input).reshape(shape(inputSize)), p(indexCollection))
-					.reshape(outputShape);
-		});
+		return gather("reshapeFromSplitHalfRope", inputShape, outputShape,
+				head.multiply(freqDim * 2).add(freq.multiply(2.0)).add(half));
 	}
 
 	/**
@@ -421,35 +381,13 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		TraversalPolicy inputShape = shape(1, kvDim);
 		TraversalPolicy outputShape = shape(1, dim);
 
-		// Build index mapping from output to input using pure arithmetic
-		// For output index i in [0, dim):
-		//   outputHead = i / headSize
-		//   inHeadOffset = i % headSize
-		//   kvHead = outputHead / headsPerKvGroup
-		//   inputIdx = kvHead * headSize + inHeadOffset
-		int[] indexMap = new int[dim];
-		for (int i = 0; i < dim; i++) {
-			int outputHead = i / headSize;
-			int inHeadOffset = i % headSize;
-			int kvHead = outputHead / headsPerKvGroup;
-			indexMap[i] = kvHead * headSize + inHeadOffset;
-		}
+		CollectionProducer index = integers(0, dim);
+		CollectionProducer outputHead = floor(index.divide(headSize));
+		CollectionProducer inHeadOffset = index.mod(headSize);
+		CollectionProducer kvHead = floor(outputHead.divide(headsPerKvGroup));
 
-		// Create index producer from the precomputed map
-		double[] indexValues = new double[dim];
-		for (int i = 0; i < dim; i++) {
-			indexValues[i] = indexMap[i];
-		}
-
-		PackedCollection indexCollection = new PackedCollection(shape(dim));
-		a(cp(indexCollection), c(shape(dim), indexValues)).get().run();
-
-		return layer("gqa_expand", inputShape, outputShape, input -> {
-			// Use index-based gathering: output[i] = input[indexMap[i]]
-			// The c(collection, index) method does exactly this
-			return c(shape(dim), c(input).reshape(shape(kvDim)), p(indexCollection))
-					.reshape(outputShape);
-		}, requirements);
+		return gather("gqa_expand", inputShape, outputShape,
+				kvHead.multiply(headSize).add(inHeadOffset), requirements);
 	}
 
 	/**

@@ -33,7 +33,7 @@ import java.util.function.Consumer;
  * {@link ByteBuffer} and shared location (for unmapping shared memory), and any
  * deallocation listeners registered before the referent was collected.</p>
  *
- * @see NativeBufferMemoryProvider
+ * @see NativeMemoryProvider
  * @see NativeBuffer
  */
 public class NativeBufferRef extends NativeRef<NativeBuffer> {

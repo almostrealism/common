@@ -584,6 +584,39 @@ public class AudioSceneBenchmark {
 												  Genome<PackedCollection> genome,
 												  String profileDir, String timelineDir,
 												  boolean disableProfile, int repeat, boolean warmup) {
+		AudioScene<?> scene = AudioSceneOptimizer.createScene();
+		try {
+			return runMultiChannel(scene, totalMeasures, channels, featureLevel, bufferSize, genome,
+					profileDir, timelineDir, disableProfile, repeat, warmup);
+		} finally {
+			scene.destroy();
+		}
+	}
+
+	/**
+	 * Multi-channel render of a caller-provided {@link AudioScene}; the caller owns the scene
+	 * lifecycle (this method does not destroy it). See
+	 * {@link #runMultiChannel(int, List, int, int, Genome, String, String, boolean, int, boolean)}
+	 * for the variant that builds and destroys its own scene.
+	 *
+	 * @param scene           the scene to render; the caller retains ownership and destroys it
+	 * @param totalMeasures   number of measures to render
+	 * @param channels        pattern channel indices to include in the render
+	 * @param featureLevel    feature level applied (recorded in the result row)
+	 * @param bufferSize      audio frames advanced per tick of the realtime runner
+	 * @param genome          genome to apply to the scene
+	 * @param profileDir      directory where the profile XML will be written
+	 * @param timelineDir     directory where the per-tick timeline CSV will be written
+	 * @param disableProfile  when {@code true}, skips {@link OperationProfileNode} capture
+	 * @param repeat          repetition index for this duration
+	 * @param warmup          {@code true} when this is the first repetition
+	 * @return the benchmark result
+	 */
+	public static BenchmarkResult runMultiChannel(AudioScene<?> scene, int totalMeasures,
+												  List<Integer> channels, int featureLevel, int bufferSize,
+												  Genome<PackedCollection> genome,
+												  String profileDir, String timelineDir,
+												  boolean disableProfile, int repeat, boolean warmup) {
 		long sectionStart = System.currentTimeMillis();
 
 		String channelsLabel = channels.stream().map(String::valueOf).collect(Collectors.joining(","));
@@ -593,7 +626,6 @@ public class AudioSceneBenchmark {
 		String profileXmlPath = disableProfile ? null : profileDir + "/benchmark-" + tag + ".xml";
 		String timelineCsvPath = timelineDir + "/benchmark-" + tag + ".csv";
 
-		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		AudioScenePopulation pop = null;
 		OperationProfileNode profile = disableProfile ? null : new OperationProfileNode("benchmark-" + tag);
 		try {
@@ -645,7 +677,6 @@ public class AudioSceneBenchmark {
 			}
 		} finally {
 			if (pop != null) pop.destroy();
-			scene.destroy();
 		}
 	}
 
@@ -778,6 +809,40 @@ public class AudioSceneBenchmark {
 													int bufferSize, Genome<PackedCollection> genome,
 													String profileDir, String timelineDir,
 													boolean disableProfile, int repeat, boolean warmup) {
+		AudioScene<?> scene = AudioSceneOptimizer.createScene();
+		try {
+			return runSingleChannel(scene, totalMeasures, channel, featureLevel, bufferSize, genome,
+					profileDir, timelineDir, disableProfile, repeat, warmup);
+		} finally {
+			scene.destroy();
+		}
+	}
+
+	/**
+	 * Single-channel render of a caller-provided {@link AudioScene}, so a caller can build the scene,
+	 * ensure the selected channel carries content, and render that exact scene. The caller owns the
+	 * scene lifecycle — this method does not destroy it — unlike
+	 * {@link #runSingleChannel(int, int, int, int, Genome, String, String, boolean, int, boolean)},
+	 * which builds and destroys its own scene.
+	 *
+	 * @param scene           the scene to render; the caller retains ownership and destroys it
+	 * @param totalMeasures   number of measures to render
+	 * @param channel         pattern channel index to render
+	 * @param featureLevel    feature level applied (recorded in the result row)
+	 * @param bufferSize      audio frames advanced per tick of the realtime runner
+	 * @param genome          genome to apply to the scene
+	 * @param profileDir      directory where the profile XML will be written
+	 * @param timelineDir     directory where the per-tick timeline CSV will be written
+	 * @param disableProfile  when {@code true}, skips {@link OperationProfileNode} capture
+	 * @param repeat          repetition index for this duration
+	 * @param warmup          {@code true} when this is the first repetition
+	 * @return the benchmark result
+	 */
+	public static BenchmarkResult runSingleChannel(AudioScene<?> scene, int totalMeasures, int channel,
+													int featureLevel, int bufferSize,
+													Genome<PackedCollection> genome,
+													String profileDir, String timelineDir,
+													boolean disableProfile, int repeat, boolean warmup) {
 		long sectionStart = System.currentTimeMillis();
 
 		String tag = "single-c" + channel + "-" + totalMeasures + "m-b" + bufferSize + "-r" + repeat;
@@ -785,7 +850,6 @@ public class AudioSceneBenchmark {
 		String profileXmlPath = disableProfile ? null : profileDir + "/benchmark-" + tag + ".xml";
 		String timelineCsvPath = timelineDir + "/benchmark-" + tag + ".csv";
 
-		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		AudioScenePopulation pop = null;
 		OperationProfileNode profile = disableProfile ? null : new OperationProfileNode("benchmark-" + tag);
 		try {
@@ -838,7 +902,6 @@ public class AudioSceneBenchmark {
 			}
 		} finally {
 			if (pop != null) pop.destroy();
-			scene.destroy();
 		}
 	}
 

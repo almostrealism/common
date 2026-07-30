@@ -17,26 +17,31 @@
 package org.almostrealism.nio;
 
 import io.almostrealism.code.Memory;
+import org.almostrealism.hardware.mem.DirectMemory;
 
 /**
- * Strategy interface for copying data from a foreign {@link io.almostrealism.code.Memory} type into a {@link NativeBuffer}.
+ * Strategy interface for copying data from a foreign {@link io.almostrealism.code.Memory} type into a
+ * host-accessible {@link DirectMemory}.
  *
- * <p>Implementations are registered with {@link NativeBufferMemoryProvider} to handle cross-type
- * memory writes without requiring the caller to know the source memory's concrete type.</p>
+ * <p>Implementations are registered with {@link NativeMemoryProvider} to handle cross-type
+ * memory writes without requiring the caller to know the source memory's concrete type. The
+ * destination is addressed through its {@link DirectMemory#asByteBuffer() direct buffer}, so a
+ * single implementation serves both the calloc ({@link NativeMemory}) and NIO
+ * ({@link NativeBuffer}) backings.</p>
  *
  * @param <T> Foreign memory type to read from
- * @see NativeBufferMemoryProvider#registerAdapter(Class, NativeBufferWriter)
+ * @see NativeMemoryProvider#registerAdapter(Class, NativeBufferWriter)
  */
 public interface NativeBufferWriter<T extends Memory> {
 	/**
 	 * Copies {@code length} elements from {@code source} starting at {@code srcOffset}
 	 * into {@code mem} starting at {@code offset}.
 	 *
-	 * @param mem       Destination native buffer
+	 * @param mem       Destination host-accessible memory
 	 * @param offset    Destination element offset
 	 * @param source    Source memory
 	 * @param srcOffset Source element offset
 	 * @param length    Number of elements to copy
 	 */
-	void setMem(NativeBuffer mem, int offset, T source, int srcOffset, int length);
+	void setMem(DirectMemory mem, int offset, T source, int srcOffset, int length);
 }

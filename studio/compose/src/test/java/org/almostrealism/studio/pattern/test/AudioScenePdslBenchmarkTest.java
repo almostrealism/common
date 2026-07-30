@@ -27,6 +27,8 @@ import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -109,6 +111,7 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslRealtimeBenchmark() throws IOException {
 		AudioScene<?> scene = loadBenchmarkScene("pdslRealtimeBenchmark");
 		if (scene == null) return;
@@ -153,6 +156,7 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslTickProfile() throws IOException {
 		AudioScene<?> scene = loadBenchmarkScene("pdslTickProfile");
 		if (scene == null) return;
@@ -216,6 +220,7 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void pdslTickStageTiming() throws IOException {
 		AudioScene<?> scene = loadBenchmarkScene("pdslTickStageTiming");
 		if (scene == null) return;
@@ -297,22 +302,18 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * Loads the curated benchmark scene with the production flag configuration, or
-	 * returns {@code null} (after logging) when the curated library or pattern factory
-	 * is unavailable and the calling test should skip.
+	 * Loads the curated benchmark scene with the production flag configuration, failing the test
+	 * (see {@link #requireCuratedLibrary()}) when the curated library or pattern factory is not
+	 * available on this host.
 	 *
-	 * @param caller test name for the skip log line
-	 * @return the loaded scene, or {@code null} to skip
+	 * @param caller test name for the log line
+	 * @return the loaded scene
 	 * @throws IOException if the scene cannot be loaded
 	 */
 	private AudioScene<?> loadBenchmarkScene(String caller) throws IOException {
-		File library = getSamplesDir();
+		log(caller + " - loading curated benchmark scene");
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping " + caller + " - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return null;
-		}
 
 		// Production flag configuration, mirroring the review render so the benchmark
 		// measures the same compiled mixdown the cutover validated.

@@ -24,20 +24,26 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.DefaultBlock;
 
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toDouble;
 import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInt;
 
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
  * (dense, rmsnorm, softmax, the activations, slice, lerp, reshape, identity,
- * scale, repeat, sum_channels, rope_rotation, attention, transformer,
+ * scale, repeat, sum_channels, capture, rope_rotation, attention, transformer,
  * feed_forward, shape, range). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List)}; domain
  * libraries (e.g. audio DSP) register additional primitives through
@@ -80,6 +86,7 @@ final class PdslBuiltins {
 			case "scale": return callScale(args);
 			case "repeat": return callRepeat(args);
 			case "sum_channels": return callSumChannels(args);
+			case "capture": return callCapture(producerArg(args, 0, 1, "capture"));
 			case "rope_rotation": return callRopeRotation(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
@@ -88,6 +95,30 @@ final class PdslBuiltins {
 			case "range": return callRange(args);
 			default: return null;
 		}
+	}
+
+	/**
+	 * Normalizes the built-in argument at the given index to a
+	 * {@link CollectionProducer}, enforcing the built-in's arity. Builtin
+	 * implementations should accept producers rather than {@code List<Object>};
+	 * this is the dispatch-side normalization that makes that possible.
+	 *
+	 * @param args     the raw evaluated arguments
+	 * @param index    the argument index to normalize
+	 * @param expected the number of arguments the built-in requires
+	 * @param name     the built-in name, for error messages
+	 * @return the normalized producer
+	 * @throws PdslParseException if the arity does not match
+	 */
+	private static CollectionProducer producerArg(List<Object> args, int index,
+												  int expected, String name) {
+		if (args.size() != expected) {
+			throw new PdslParseException(name + "() expects " + expected
+					+ " argument" + (expected == 1 ? "" : "s")
+					+ ", got " + args.size());
+		}
+		return PdslInterpreter.normalizeToProducer(args.get(index), null,
+				name + "() argument " + index);
 	}
 
 	/**
@@ -233,6 +264,42 @@ final class PdslBuiltins {
 				}
 				return sum;
 			});
+		});
+	}
+
+	/**
+	 * Builds a signal-capture block factory: the incoming signal is copied into the
+	 * given slot collection at this stage's position in the ops order, then passed
+	 * through unchanged. This is the language's observability primitive — a consumer
+	 * outside the compiled model (e.g. a streaming runner exporting bus stems) reads
+	 * the slot after each forward pass, and the capture never alters the graph it
+	 * sits inside.
+	 *
+	 * @param slot the destination slot, whose total size must match the input shape
+	 * @return a factory that creates the capture block for any input shape
+	 */
+	private static Function<TraversalPolicy, Block> callCapture(CollectionProducer slot) {
+		TraversalPolicy slotShape = FEATURES.shape(slot);
+		return (inputShape -> {
+			if (slotShape.getTotalSize() != inputShape.getTotalSize()) {
+				throw new PdslParseException("capture() slot size "
+						+ slotShape.getTotalSize()
+						+ " does not match the input shape " + inputShape);
+			}
+			Cell<PackedCollection> forward = Cell.of(
+					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+							Supplier<Runnable>>) (in, next) -> {
+						OperationList ops = new OperationList("capture");
+						ops.add(FEATURES.into("capture-" + slotShape.getTotalSize(),
+								FEATURES.c(in).reshape(slotShape), slot, false));
+						ops.add(next.push(in));
+						return ops;
+					});
+			Cell<PackedCollection> backward = Cell.of(
+					(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+							Supplier<Runnable>>) (in, next) ->
+							new OperationList("capture-backward"));
+			return new DefaultBlock(inputShape, inputShape, forward, backward);
 		});
 	}
 

@@ -72,6 +72,33 @@ public class FixedFilterChromosome implements Chromosome<PackedCollection>, Cell
 	}
 
 	/**
+	 * Produces the high-pass cutoff frequency (Hz) for the filter gene at the given
+	 * position — gene slot 0 scaled to {@code [0, maxFrequency]}. This is the same
+	 * producer {@link FixedFilterGene#valueAt} feeds its high-pass
+	 * {@link AudioPassFilter}; it is exposed so a coefficient-based rendition of the
+	 * filter chain can read the frequency itself (the composed {@code Factor} the gene
+	 * returns applies the whole stateful filter and cannot be sampled for its cutoffs).
+	 *
+	 * @param pos the gene position
+	 * @return the high-pass cutoff frequency producer (Hz)
+	 */
+	public Producer<PackedCollection> highPassFrequency(int pos) {
+		return multiply(c(maxFrequency), source.valueAt(pos, 0).getResultant(c(1.0)));
+	}
+
+	/**
+	 * Produces the low-pass cutoff frequency (Hz) for the filter gene at the given
+	 * position — gene slot 1 scaled to {@code [0, maxFrequency]}. See
+	 * {@link #highPassFrequency(int)}.
+	 *
+	 * @param pos the gene position
+	 * @return the low-pass cutoff frequency producer (Hz)
+	 */
+	public Producer<PackedCollection> lowPassFrequency(int pos) {
+		return multiply(c(maxFrequency), source.valueAt(pos, 1).getResultant(c(1.0)));
+	}
+
+	/**
 	 * Gene implementation that maps the high-pass and low-pass frequency values from the
 	 * source chromosome into a composed {@link AudioPassFilter} processing chain.
 	 */
@@ -93,11 +120,9 @@ public class FixedFilterChromosome implements Chromosome<PackedCollection>, Cell
 
 		@Override
 		public Factor<PackedCollection> valueAt(int pos) {
-			Producer<PackedCollection> lowFrequency = multiply(c(maxFrequency), source.valueAt(index, 0).getResultant(c(1.0)));
-			Producer<PackedCollection> highFrequency = multiply(c(maxFrequency), source.valueAt(index, 1).getResultant(c(1.0)));
 			Producer<PackedCollection> resonance = scalar(defaultResonance);
-			return new AudioPassFilter(sampleRate, lowFrequency, resonance, true)
-					.andThen(new AudioPassFilter(sampleRate, highFrequency, resonance, false));
+			return new AudioPassFilter(sampleRate, highPassFrequency(index), resonance, true)
+					.andThen(new AudioPassFilter(sampleRate, lowPassFrequency(index), resonance, false));
 		}
 	}
 
