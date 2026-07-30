@@ -110,6 +110,17 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 					+ "Anything larger or computed per element must be produced by the computation "
 					+ "graph (integers(), producer arithmetic, randn/rand, or a producer assignment).";
 
+	/** Rule code for {@code fill} invoked on a {@code range(...)} view. */
+	public static final String RANGE_FILL_RULE = "FILL_ON_RANGE_VIEW";
+
+	/** Guidance attached to {@link #RANGE_FILL_RULE} violations. */
+	private static final String RANGE_FILL_GUIDANCE =
+			"fill on a range view is setMem(index, value) with different syntax: a scatter write "
+					+ "of a host value at a computed position. Address the position inside the "
+					+ "computation instead -- use an index-addressed selection as the destination "
+					+ "of an Assignment, with the index supplied as data through a provider "
+					+ "collection, or produce the whole buffer with a single kernel.";
+
 	/**
 	 * File name fragments of the framework's sanctioned write surface: the classes that
 	 * implement the array-accepting overloads, the low-level host&harr;device primitive, and the
@@ -203,6 +214,15 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Locates the start of each {@code .fill(} call. */
 	private static final Pattern FILL_CALL = Pattern.compile("\\.fill\\s*\\(");
+
+	/**
+	 * Locates each {@code fill} call invoked directly on a {@code range(...)} view. A
+	 * single-element range view makes {@code fill} into {@code setMem(index, value)} with
+	 * different syntax — a scatter write of a host value at a computed position — so the
+	 * combination is never permitted, whatever the arguments.
+	 */
+	private static final Pattern RANGE_FILL_CALL = Pattern.compile(
+			"\\.range\\s*\\((?:[^()]|\\([^()]*\\))*\\)\\s*\\.fill\\s*\\(");
 
 	/** Locates the start of each unqualified {@code pack(} call. */
 	private static final Pattern PACK_CALL = Pattern.compile("(?<![\\w.$])pack\\s*\\(");
@@ -333,6 +353,8 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 					args -> isSanctioned(args, masked), RULE, GUIDANCE);
 			scanCalls(file, content, masked, OF_CALL,
 					this::isSanctionedIngest, OF_RULE, OF_GUIDANCE);
+			scanCalls(file, content, masked, RANGE_FILL_CALL,
+					args -> false, RANGE_FILL_RULE, RANGE_FILL_GUIDANCE);
 			scanCalls(file, content, masked, FILL_CALL,
 					args -> isWithinScalarAllowance(args, masked), INGEST_RULE, INGEST_GUIDANCE);
 			scanCalls(file, content, masked, PACK_CALL,
