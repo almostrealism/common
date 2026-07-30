@@ -633,16 +633,23 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * <p>This method is synchronized to prevent concurrent compilation of the same operation.</p>
 	 *
-	 * <p>The instruction set manager is resolved before any compilation work, since it
-	 * owns the kernel structure context that compilation prepares resources on. When the
-	 * manager itself compiles as a side effect of being created, the check below then
-	 * finds the scope already present and this call returns it without repeating any
-	 * work.</p>
+	 * <p>The instruction set manager must already exist when this is called: it owns the
+	 * compiled instructions and the kernel structure resources their generated code
+	 * references, so compiling without one would produce results with no owner. The
+	 * normal execution path establishes it ({@link #load()} obtains the operator through
+	 * the manager); a caller compiling eagerly must obtain
+	 * {@link #getInstructionSetManager()} first.</p>
 	 *
 	 * @return The compiled scope
+	 * @throws HardwareException if no instruction set manager has been established
 	 */
 	public synchronized Scope<T> compile() {
-		getInstructionSetManager();
+		if (instructions == null) {
+			throw new HardwareException("compile() invoked for " + getFunctionName() +
+					" before an instruction set manager was established; the manager owns" +
+					" the compiled instructions and their kernel structure resources, so" +
+					" it must exist before compilation begins");
+		}
 
 		if (getCompiler().getScope() == null) {
 			if (argumentMap != null) {
