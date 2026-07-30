@@ -16,12 +16,12 @@
 1. **[NEXT_STEP.md](NEXT_STEP.md)** — the single current next step (close the audible
    gap) and the short queue behind it. **Start here.**
 2. **[PDSL_DIFFERENCES.md](PDSL_DIFFERENCES.md)** — the 2026-07-09 divergence
-   assessment: verified mechanism differences between the CellList and PDSL paths at
-   buffer size 4096, the three open ring-arithmetic defects, why the divergence grows
-   with duration and EFX share, and the ranked options for closing the gap.
-3. **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** — live platform constraints (open ring
-   defects, hybrid routing / Metal 31-buffer limit, cache-persist, curated-library
-   dependence) and the compressed resolved-issues record.
+   assessment: the verified mechanism differences between the CellList and PDSL paths at
+   buffer size 4096, the ring-arithmetic defects found there and subsequently fixed, why the
+   divergence grew with duration and EFX share, and the remaining ranked character options.
+3. **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** — live platform constraints (hybrid routing / Metal
+   31-buffer limit, cache-persist, curated-library dependence) and the compressed
+   resolved-issues record.
 4. **[PERFORMANCE_HANDOFF.md](PERFORMANCE_HANDOFF.md)** — the brief for the separate
    performance effort: the buffer-size sweep, the frame-independent cost floor, the
    argument-preparation NPE, and the acceptance bar for making 1024 reliably real-time.
