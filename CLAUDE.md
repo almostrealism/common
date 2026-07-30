@@ -373,6 +373,19 @@ If the agent believes a new module is needed, it must document the requirement i
 
 Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.
 
+## This Repository Is Public — Never Reference Private Products
+
+`common` is an open source platform; its audience is the open source community.
+Private downstream products built on it (ringsdesktop, Rings, and any other
+closed-source tool) MUST NOT be referenced in anything committed here: commit
+message drafts (`commit.txt`), code comments, javadoc, test names, or docs.
+Describe behavior in platform terms — "a client application", "interactive
+clients", "consumers of arrangement renders" — never by naming the private
+product or its UI. When work here is motivated by a private product's needs,
+the motivation stays out of the public record; only the platform-level contract
+belongs in it. This is the standard separation for any company that maintains
+an open source platform alongside a closed-source product.
+
 ## Do Not Modify pom.xml Files
 
 Never add dependencies. Write code assuming the dependency exists, run `mvn compile`, and inform the user if it fails. The transitive dependency graph is complex and you will get it wrong.

@@ -28,6 +28,7 @@ import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
+import org.almostrealism.studio.health.AudioHealthScore;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.util.TestDepth;
@@ -35,6 +36,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -43,8 +45,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Regression gate for the optimizer's production genome loop: every genome's full
  * multi-channel arrangement rendered through
  * {@link StableDurationHealthComputation#computeHealth()} on a reused runner, with no
- * {@link org.almostrealism.hardware.mem.Heap} active at any point — the same shape the
- * desktop's "Run N Cycle(s)" arrangement generation uses.
+ * {@link org.almostrealism.hardware.mem.Heap} active at any point — the same shape
+ * interactive arrangement generation uses.
  *
  * <p>Without a Heap, per-invocation device buffers are unreferenced garbage reclaimed
  * by ordinary GC (plus the {@code gcBeforeGenome} full-GC hint at each genome
@@ -121,16 +123,21 @@ public class ArrangementGenerationNoHeapTest extends AudioSceneTestBase {
 		health.setMaxDuration(MAX_DURATION_SECONDS);
 		health.setOutputFile(() ->
 				"results/noheap-arrangement-" + index.incrementAndGet() + ".wav");
+		health.setStemFile(i ->
+				"results/noheap-arrangement-" + index.get() + "." + i + ".wav");
 
 		AudioScenePopulation pop = new AudioScenePopulation(scene, genomes);
 		pop.init(pop.getGenomes().get(0), health.getOutput(), null, health.getBatchSize());
+
+		AudioHealthScore firstScore = null;
 
 		try {
 			for (int i = 0; i < genomes.size(); i++) {
 				TemporalCellular organ = pop.enableGenome(i);
 				try {
 					health.setTarget(organ);
-					health.computeHealth();
+					AudioHealthScore score = health.computeHealth();
+					if (i == 0) firstScore = score;
 				} finally {
 					health.reset();
 					pop.disableGenome();
@@ -148,6 +155,33 @@ public class ArrangementGenerationNoHeapTest extends AudioSceneTestBase {
 		double peak = peakAmplitude(first.getPath());
 		log("firstArrangementPeakAmplitude=" + peak + " file=" + first.getAbsolutePath());
 		Assert.assertTrue("First generated arrangement is silent (peak=" + peak + ")", peak > 1e-3);
+
+		verifyStems(firstScore, channels + 1);
+	}
+
+	/**
+	 * Asserts the stem contract that consumers of arrangement renders depend on:
+	 * the health score carries one stem path per audio channel, and every stem
+	 * file exists on disk with audio in it. Per-channel stem exports are built
+	 * from exactly this list, so an arrangement whose score lacks stems is
+	 * broken for stem consumers even when the master render is fine.
+	 *
+	 * @param score        the health score of the rendered arrangement
+	 * @param audioChannels the expected stem count (pattern channels plus the fx stem)
+	 * @throws IOException if a stem file cannot be read
+	 */
+	private void verifyStems(AudioHealthScore score, int audioChannels) throws IOException {
+		Assert.assertNotNull("No health score captured for the first arrangement", score);
+		Assert.assertNotNull("Health score carries no stem list", score.getStems());
+		Assert.assertEquals("Health score must carry one stem per audio channel",
+				audioChannels, score.getStems().size());
+
+		for (String path : score.getStems()) {
+			File stem = new File(path);
+			Assert.assertTrue("Missing stem file " + path, stem.exists());
+			double stemPeak = peakAmplitude(path);
+			log("stem=" + path + " peakAmplitude=" + stemPeak);
+		}
 	}
 
 	/**
