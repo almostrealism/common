@@ -322,13 +322,14 @@ public class AutoregressiveModel<T> {
 	 */
 	public static int sampleToken(PackedCollection logits, int vocabSize,
 								  double temperature, double topP, Random random) {
+		double[] values = logits.toArray(0, vocabSize);
+
 		if (temperature <= 0.0 || random == null) {
 			int maxIdx = 0;
-			double maxVal = logits.toDouble(0);
+			double maxVal = values[0];
 			for (int i = 1; i < vocabSize; i++) {
-				double val = logits.toDouble(i);
-				if (val > maxVal) {
-					maxVal = val;
+				if (values[i] > maxVal) {
+					maxVal = values[i];
 					maxIdx = i;
 				}
 			}
@@ -338,7 +339,7 @@ public class AutoregressiveModel<T> {
 		double[] probs = new double[vocabSize];
 		double maxLogit = Double.NEGATIVE_INFINITY;
 		for (int i = 0; i < vocabSize; i++) {
-			probs[i] = logits.toDouble(i) / temperature;
+			probs[i] = values[i] / temperature;
 			if (probs[i] > maxLogit) maxLogit = probs[i];
 		}
 
