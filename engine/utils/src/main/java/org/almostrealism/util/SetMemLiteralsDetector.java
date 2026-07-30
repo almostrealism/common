@@ -23,8 +23,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -220,6 +222,20 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private final Map<String, Integer> baseline;
 
 	/**
+	 * The tolerated occurrence count of each baseline entry before any were consumed by
+	 * the scan, so {@link #exemptionSummary()} can report how many grandfathered
+	 * occurrences are still present in source versus how many ledger rows are stale.
+	 */
+	private final Map<String, Integer> baselineInitial;
+
+	/**
+	 * The {@link #KNOWN_EXCLUSIONS} entries actually encountered during the scan, keyed
+	 * by {@code pathFragment\0sourceLine}; entries never encountered are candidates for
+	 * removal from the exclusion list.
+	 */
+	private final Set<String> exclusionsMatched = new HashSet<>();
+
+	/**
 	 * Creates a detector that will scan Java source files under the given directory,
 	 * tolerating the violations grandfathered in {@link #BASELINE_RESOURCE}.
 	 *
@@ -240,6 +256,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	public SetMemLiteralsDetector(Path rootDir, boolean useBaseline) {
 		super(rootDir);
 		this.baseline = useBaseline ? loadBaseline() : new HashMap<>();
+		this.baselineInitial = new HashMap<>(baseline);
 	}
 
 	/**
@@ -362,6 +379,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			Files.writeString(Path.of(args[2]), out.toString());
 		} else {
 			detector.log(detector.generateReport());
+			detector.log(detector.exemptionSummary());
 			if (detector.hasViolations()) System.exit(1);
 		}
 	}
@@ -477,9 +495,52 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private boolean isKnownExclusion(Path file, String line) {
 		String path = file.toString().replace('\\', '/');
 		for (String[] entry : KNOWN_EXCLUSIONS) {
-			if (path.contains(entry[0]) && line.equals(entry[1])) return true;
+			if (path.contains(entry[0]) && line.equals(entry[1])) {
+				exclusionsMatched.add(entry[0] + '\0' + entry[1]);
+				return true;
+			}
 		}
 		return false;
+	}
+
+	/**
+	 * Summarizes the exemptions that remain after a scan: how many grandfathered
+	 * occurrences are still present in source, how many baseline ledger rows no longer
+	 * match any code (fully migrated, awaiting removal from the inventory), and how many
+	 * of the acknowledged {@link #KNOWN_EXCLUSIONS} were actually encountered.
+	 *
+	 * <p>These numbers are the burn-down metric for the migration effort: the goal is to
+	 * drive the live counts to zero, at which point the baseline resource and the
+	 * exclusion list can both be deleted. Only meaningful after {@code scan()} on a run
+	 * constructed with the baseline enabled.</p>
+	 *
+	 * @return a multi-line summary of remaining exemptions
+	 */
+	public String exemptionSummary() {
+		int initialOccurrences = 0;
+		int remainingBudget = 0;
+		int liveEntries = 0;
+		int staleEntries = 0;
+
+		for (Map.Entry<String, Integer> entry : baseline.entrySet()) {
+			int initial = baselineInitial.getOrDefault(entry.getKey(), 0);
+			initialOccurrences += initial;
+			remainingBudget += entry.getValue();
+			if (entry.getValue() < initial) {
+				liveEntries++;
+			} else {
+				staleEntries++;
+			}
+		}
+
+		int liveOccurrences = initialOccurrences - remainingBudget;
+
+		return "Exemptions remaining: " + liveOccurrences + " grandfathered occurrences across " +
+				liveEntries + " baseline entries still present in source\n" +
+				"  (inventory holds " + baseline.size() + " entries tolerating " + initialOccurrences +
+				" occurrences; " + staleEntries + " entries no longer match any code and can be removed)\n" +
+				"  plus " + exclusionsMatched.size() + " of " + KNOWN_EXCLUSIONS.size() +
+				" acknowledged burn-down exclusions encountered in source";
 	}
 
 	/**
