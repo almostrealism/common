@@ -73,8 +73,8 @@ frame):
 | `biquad` | `biquad(b0, b1, b2, a1, a2, history)` | Biquad IIR; `history` = `[x1, x2, y1, y2]` (shape `[4]`). Coefficients are `producer([1])`. |
 | `delay` | `delay(delaySamples, buffer, head)` | Integer-sample ring delay; `buffer` = ring (≥ `signal_size`), `head` = write position `[1]`. `delaySamples` accepts `producer([1])`. |
 | `lfo` | `lfo(freqHz, sampleRate, phase)` | Sinusoidal LFO; `phase` = accumulator `[1]`, `freqHz` is `producer([1])`. |
-| `delay_network` | `delay_network(delaySamples, feedbackMatrix, buffer, heads)` | Multi-tap feedback delay network (FDN); per-frame matrix `[channels, channels]`, multi-frame ring. |
-| `feedback` | `feedback(delaySamples, transmissionMatrix, passthroughMatrix, buffer, heads)` | Block-parallel feedback delay network — the PDSL analogue of `CellList.mself`. Delayed output is routed back into the ring via `transmissionMatrix` and emitted via `passthroughMatrix`. |
+| `delay_network` | `delay_network(delay_samples, feedback_matrix, buffer, heads)` | Multi-tap feedback delay network (FDN); per-frame matrix `[channels, channels]`, multi-frame ring. |
+| `feedback` | `feedback(delay_samples, transmission_matrix, passthrough_matrix, buffer, heads[, delay_samples_prev])` | Block-parallel feedback delay network — the PDSL analogue of `CellList.mself`. Delayed output is routed back into the ring via `transmission_matrix` and emitted via `passthrough_matrix`. With `delay_samples_prev`, each channel's delay follows a per-sample linear trajectory from the previous frame's value to `delay_samples`, using fractional-position interpolation to preserve the pitch bend of delay-time modulation. |
 
 ### Core/domain-agnostic primitives (interpreter core)
 
@@ -87,9 +87,10 @@ audio-domain assumption:
 | `scale` | `scale(factor)` | Element-wise multiply; `factor` accepts `producer([1])`. |
 | `repeat` | `repeat(n)` | Axis-0 replication, `[1, S]` → `[n, S]` (`CollectionProducer.repeat(0, n)`). |
 | `sum_channels` | `sum_channels()` | Axis-0 reduction, `[C, S]` → `[1, S]`. |
+| `capture` | `capture(slot)` | Copies the stage input into a same-sized caller-owned producer slot, then passes the input through unchanged. The copy is part of the compiled operation order, allowing a runner to export intermediate signals such as channel and effects stems after each forward pass. |
 
 (`PdslBuiltins` also supplies the ML primitives — `dense`, `rmsnorm`, `softmax`, the
-activations, `slice`, `reshape`, `range`, `lerp`, `rope_rotation`, `attention`,
+activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `rope_rotation`, `attention`,
 `transformer`, `feed_forward` — usable in the same layer bodies.)
 
 There is **no `choice()` primitive.** A `Choice` cannot be code-generated inside a compiled

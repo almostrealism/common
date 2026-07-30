@@ -29,7 +29,6 @@ import org.almostrealism.util.TestSuiteBase;
 
 import java.io.File;
 import java.util.Arrays;
-import java.util.Random;
 
 /**
  * Shared benchmark infrastructure for the pattern-rendering floor benchmark suite.
@@ -124,13 +123,14 @@ public abstract class PatternRenderingFloorBenchmarkBase extends TestSuiteBase
 	}
 
 	/**
-	 * Builds a random {@code [size]} signal in the range {@code [-1, 1]}, using a
-	 * fixed seed so all benchmark runs see the same content (deterministic timing,
-	 * no run-to-run content variation).
+	 * Builds a random {@code [size]} signal in the range {@code [-1, 1]}, generated
+	 * on-device. Content varies run to run; benchmark timing is insensitive to the
+	 * particular sample values.
 	 */
 	protected PackedCollection buildRandomSource(int size) {
-		Random rng = new Random(12345L);
-		return createSignal(size, i -> rng.nextDouble() * 2.0 - 1.0);
+		PackedCollection signal = new PackedCollection(size);
+		rand(shape(size)).multiply(2.0).subtract(1.0).into(signal.traverseEach()).evaluate();
+		return signal;
 	}
 
 	/**

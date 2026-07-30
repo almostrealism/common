@@ -17,6 +17,8 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -36,10 +38,9 @@ public class ScalarBankDotProductTest extends TestSuiteBase {
 	 */
 	public PackedCollection window() {
 		PackedCollection window = new PackedCollection(shape(SIZE, 2));
-		IntStream.range(0, SIZE).forEach(i -> {
-			window.setMem(i * 2, i * 4);
-			window.setMem(i * 2 + 1, i * 10);
-		});
+		a(cp(window), concat(1,
+				integers(0, SIZE).multiply(4).reshape(shape(SIZE, 1)),
+				integers(0, SIZE).multiply(10).reshape(shape(SIZE, 1)))).get().run();
 		return window;
 	}
 

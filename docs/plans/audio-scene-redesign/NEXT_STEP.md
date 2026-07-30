@@ -28,7 +28,7 @@ Execution order (PDSL_DIFFERENCES §6):
 3. **B — re-align the reverb room. DONE 2026-07-09** (seconds-denominated ring;
    `reverb_taps` decoupled from channels, default 32; golden-ratio spread over the
    legacy 0.15–1.5 s range; radius 1/taps). Owner listening verdict pending.
-4. **C — restore missing character. ← CURRENT.** C1 **done 2026-07-09**: the
+4. **C — restore missing character. DONE 2026-07-25.** C1 **done 2026-07-09**: the
    self-feedback gene drives the grid diagonal and the wet arm's feedforward delay is
    the gene-driven bus delay (4–20 s `delay` chromosome — restoring the legacy efx
    bus's slow-building arrival); wiring pinned by
@@ -59,10 +59,11 @@ Execution order (PDSL_DIFFERENCES §6):
    and the bus-line network (clock-automated `wetInSimple` send into the first line
    only, 3 shared lines with per-line cursor-rate modulation, unscaled transposed
    genome transmission, `wetOut` output taps, reverb send re-tapped to the apply
-   output). Evaluation renders are 4 minutes at the production buffer size and
-   produce a spectrogram PNG alongside the WAV (`GenerateAudioFileTest`), so render
-   pathologies — runaway feedback, dropouts, a lost second half — are inspectable
-   without a listening pass.
+   output). **Smooth delay-rate pitch modulation landed 2026-07-25**: the feedback
+   network now accepts the previous per-line delay values and performs a fractional,
+   linearly interpolated ring read across each frame, preserving the pitch bend while
+   remaining block-parallel. PDSL stem capture and arrangement-timeline render-ahead
+   also landed in the same parity arc.
 5. **D — accept and document** what a block-parallel buffer cannot reproduce
    (PDSL_DIFFERENCES §5). **Continuous delay-time modulation is NOT in this set** —
    see the queue below (owner directive 2026-07-11, PDSL_DIFFERENCES §5a).
@@ -87,16 +88,11 @@ performance items land.
 
 ## Queue after the audible gap
 
-1. **Smooth delay-rate pitch modulation (`AdjustableDelayCell.scale`) — owner
-   directive 2026-07-11, highest priority after the current arc.** The continuous
-   pitch bend on regenerations is a defining feature of the application's efx chain;
-   the owner would "rather abandon real-time generation before abandoning it," so it
-   must never sit in the accepted-limits category. It is tractable block-parallel: a
-   rate-modulated read is a fractional-stride gather + lerp (the batched resampler's
-   construct), not the blocked intra-frame recurrence — a resampling variant of
-   `MultiChannelDspFeatures.ringValueAt` renders a genuine per-sample bend with the
-   rate held per buffer. Full sketch: PDSL_DIFFERENCES §5a. Likely a separate branch
-   (this one is already large).
+1. **Smooth delay-rate pitch modulation (`AdjustableDelayCell.scale`) — DONE 2026-07-25.**
+   `feedback()` now accepts the previous delay slot and uses a per-sample linear
+   delay trajectory with fractional ring interpolation. The implementation preserves
+   the defining pitch bend of regenerating content without introducing an intra-frame
+   recurrence.
 2. **True stereo** — per-channel pan in the PDSL mixdown; the sink renders both stereo
    sides in one forward. Feature work, not parity.
 3. **Adapter absorption** — `MixdownManagerPdslAdapter` is `@Deprecated` transitional

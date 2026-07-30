@@ -22,6 +22,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
@@ -89,7 +90,7 @@ import java.util.stream.IntStream;
  * <pre>{@code
  * ArithmeticSequenceComputation<PackedCollection> original =
  *     new ArithmeticSequenceComputation<>(shape(4), 1.0);
- * ArithmeticSequenceComputation<PackedCollection> scaled = original.multiply(5.0);
+ * CollectionProducer scaled = original.multiply(5.0);
  * // Original: [1.0, 2.0, 3.0, 4.0]
  * // Scaled:   [5.0, 10.0, 15.0, 20.0]
  * }</pre>
@@ -216,11 +217,21 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	 *             = factor x original[i]
 	 * </pre>
 	 *
+	 * <p>Scaling by zero (or scaling a sequence whose values are all zero) collapses to a
+	 * {@link CollectionZerosComputation} rather than a degenerate sequence, so the result
+	 * is recognized as zero ({@code Algebraic.isZero}) by downstream algebraic
+	 * optimizations — matching the behavior of the general multiplication path.</p>
+	 *
 	 * @param factor The scaling factor to apply
-	 * @return A new {@link ArithmeticSequenceComputation} with scaled values
+	 * @return A producer for the scaled sequence, or a {@link CollectionZerosComputation}
+	 *         when every scaled value is zero
 	 */
 	@Override
-	public ArithmeticSequenceComputation multiply(double factor) {
+	public CollectionProducer multiply(double factor) {
+		if (initial * factor == 0.0 && rate * factor == 0.0) {
+			return new CollectionZerosComputation(getShape());
+		}
+
 		return new ArithmeticSequenceComputation(getShape(), fixedCount, initial * factor, rate * factor);
 	}
 

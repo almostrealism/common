@@ -17,6 +17,9 @@
 package org.almostrealism.primitives.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
@@ -275,12 +278,14 @@ public class SphereTest extends TestSuiteBase {
 		int batchSize = 129;
 		PackedCollection rays = new PackedCollection(shape(batchSize, 6).traverse(1));
 
-		// Create rays - all should hit the sphere at origin
-		for (int i = 0; i < batchSize; i++) {
-			// Ray from z=3, pointing toward origin at z=-1
-			double offset = (i - batchSize / 2) * 0.01;  // Small offset to vary the rays
-			rays.setMem(i * 6, offset, offset, 3.0, 0.0, 0.0, -1.0);
-		}
+		// Rays vary by (i - batchSize/2) * 0.01 in the first two components, with the
+		// constant origin-pointing direction (3, 0, 0, -1) in the remaining channels
+		TraversalPolicy col = shape(batchSize, 1);
+		a(cp(rays), concat(1,
+				integers(0, batchSize).subtract(batchSize / 2).multiply(0.01).reshape(col),
+				integers(0, batchSize).subtract(batchSize / 2).multiply(0.01).reshape(col),
+				constant(col, 3.0), constant(col, 0.0),
+				constant(col, 0.0), constant(col, -1.0))).get().run();
 
 		PackedCollection distances = new PackedCollection(shape(batchSize, 1).traverse(1));
 		f.getDistance().get().into(distances.each()).evaluate(rays);

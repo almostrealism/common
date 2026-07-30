@@ -522,9 +522,31 @@ public class MTL {
 	/**
 	 * Waits until the command buffer completes execution (synchronous).
 	 *
+	 * <p>Returns identically whether the buffer executed successfully or finished with a
+	 * GPU error or watchdog kill; callers must read {@link #commandBufferStatus(long)} to
+	 * distinguish the two, since a killed buffer's dispatches silently never ran.</p>
+	 *
 	 * @param commandBuffer Native command buffer pointer
 	 */
 	public static native void waitUntilCompleted(long commandBuffer);
+
+	/**
+	 * Returns the command buffer's {@code MTLCommandBufferStatus} ordinal: 0 not enqueued,
+	 * 1 enqueued, 2 committed, 3 scheduled, 4 completed, 5 error.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @return the status ordinal
+	 */
+	public static native int commandBufferStatus(long commandBuffer);
+
+	/**
+	 * Returns the localized error description for a command buffer that finished with the
+	 * error status, or {@code null} when the buffer carries no error.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @return the error description, or {@code null}
+	 */
+	public static native String commandBufferError(long commandBuffer);
 
 	/**
 	 * Releases a Metal buffer and frees its resources.

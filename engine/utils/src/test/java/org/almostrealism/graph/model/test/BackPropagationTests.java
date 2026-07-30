@@ -32,7 +32,6 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
 
 /**
  * Tests for backpropagation and gradient computation in neural network models.
@@ -57,20 +56,16 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		PackedCollection weights = dense.getWeights().get(0);
 
-		for (int i = 0; i < size; i++) {
-			for (int j = 0; j < nodes; j++) {
-//				weights.setMem(weights.getShape().index(i, j), 1 + (i + j) * 0.1);
-				weights.setMem(weights.getShape().index(i, j), (i + j) * 0.01);
-			}
-		}
+		// weights[i, j] = (i + j) * 0.01, from the flattened index k = i * nodes + j
+		int wn = size * nodes;
+		floor(integers(0, wn).divide(nodes)).add(integers(0, wn).mod(nodes)).multiply(0.01)
+				.into(weights.traverseEach()).evaluate();
 
 		PackedCollection biases = dense.getWeights().get(1);
-		for (int i = 0; i < nodes; i++) {
-			biases.setMem(i, 0.1 + i * 0.01);
-		}
+		integers(0, nodes).multiply(0.01).add(0.1).into(biases.traverseEach()).evaluate();
 
 		PackedCollection input = new PackedCollection(size);
-		IntStream.range(0, size).forEach(i -> input.setMem(i, (double) i));
+		integers(0, size).into(input.traverseEach()).evaluate();
 
 		CompiledModel runner = model.compile();
 

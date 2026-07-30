@@ -4571,6 +4571,10 @@ def github_pr_check_status(
     least one workflow run targets the PR's HEAD commit SHA — if False,
     the run results shown are for an older commit.
 
+    Run-level status can lag per-job state while a pipeline is executing;
+    for the authoritative per-job breakdown of any run listed here, use
+    ``github_workflow_run_status`` with the run id.
+
     Args:
         pr_number: Pull request number. If omitted, the open PR for the
             workstream/branch is looked up automatically.
@@ -4782,6 +4786,14 @@ def github_list_workflow_runs(
     ``workflow_dispatch`` runs of a given workflow. Pair it with
     ``github_workflow_run_status`` to drill into a specific run's jobs.
 
+    This is a discovery tool, not a status tool: the run-level ``status``
+    and ``updated_at`` in the listing can lag the run's actual per-job
+    state — a run listed as ``queued`` may already have jobs executing or
+    failed. Never judge a run's outcome or freshness from this listing;
+    follow up with ``github_workflow_run_status`` on the run id. When the
+    user names a specific run or job, query that run id directly instead
+    of selecting a run from this listing.
+
     Args:
         workflow: Workflow file name (e.g. ``analysis.yaml``) or numeric
             workflow id to restrict to a single workflow. Empty (default)
@@ -4836,7 +4848,17 @@ def github_workflow_run_status(
     Given a run id (from ``github_list_workflow_runs`` or a run URL),
     fetches the run's outcome and the per-job breakdown, including which
     steps failed and their log URLs — the detail needed to diagnose a CI
-    failure without a PR context.
+    failure without a PR context. This per-job view is authoritative;
+    prefer it over the run-level status shown by listing tools, which
+    can lag.
+
+    The failed-step names identify the job and step, not the individual
+    failing tests: step logs and per-test output are not returned here
+    (job log endpoints require broader permissions than this token has).
+    To identify the failing tests, reproduce the job locally with its
+    exact configuration — for a test-matrix job, mirror the AR_TEST_GROUP,
+    AR_TEST_GROUPS, and hardware flags from the workflow definition —
+    or consult the uploaded surefire artifacts via the run's html_url.
 
     Args:
         run_id: The numeric workflow run id.

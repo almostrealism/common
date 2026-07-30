@@ -37,17 +37,27 @@ public class MemoryAllocationTest extends TestSuiteBase {
 		int size = 256 * 1024 * 1024;
 		int len = size / Hardware.getLocalHardware().getPrecision().bytes();
 
-		long allocated = 0;
-		while (allocated < limit) {
-			PackedCollection b = new PackedCollection(len);
-			allocated += size;
-			for (int i = 0; i < 10; i++) b.setMem(Math.random() * len, Math.random());
+		PackedCollection touch = new PackedCollection(1).fill(1.0);
 
-			b.destroy();
-			if (allocated % (32L * gb) == 0) {
-				log("Allocated " + allocated / gb + "GB");
-				Thread.sleep(10 * 1000L);
+		try {
+			long allocated = 0;
+			while (allocated < limit) {
+				PackedCollection b = new PackedCollection(len);
+				allocated += size;
+				// Touch the buffer at spread-out positions so the allocator must
+				// commit the reservation rather than satisfy it lazily.
+				for (int i = 0; i < 10; i++) {
+					b.setFrom((int) (Math.random() * len), touch, 0, 1);
+				}
+
+				b.destroy();
+				if (allocated % (32L * gb) == 0) {
+					log("Allocated " + allocated / gb + "GB");
+					Thread.sleep(10 * 1000L);
+				}
 			}
+		} finally {
+			touch.destroy();
 		}
 
 		Thread.sleep(120 * 1000L);
