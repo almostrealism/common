@@ -1,10 +1,45 @@
-# setMem Policy Enforcement — Closing the Host-Array Laundering Gap
+# setMem Policy Enforcement — Eliminating Host→Device Transfers
 
-> Deferred work, recorded 2026-07-12 during PR #345 review. The branch itself has
-> been cleaned (see "Already done" below); this document is the plan for making the
-> policy mechanically enforceable so the pattern cannot recur.
+## The end state — what "done" means
 
-## The problem
+**The goal is to remove `setMem` as a host→device path entirely.** When this effort
+finishes, the *only* sanctioned way to move data from the JVM host onto the device is a
+**tiny constant** written through `PackedCollection::fill` (a scalar or a handful of
+literal values). Every other value that ends up in device memory must be **computed on
+the device** by a Producer/kernel. There is no long-term "allowed `setMem`" — the
+baseline (`setmem-violation-baseline.tsv`) is a *temporary* burn-down ledger of sites
+not yet migrated, not a set of blessed exceptions. It only ever shrinks.
+
+Concretely, a site is "done correctly" only when it is one of:
+
+- **A single on-device kernel that computes the whole buffer.** An index-derived buffer
+  becomes one Producer over an index ramp, e.g. `signal[i] = sin(2πf·i/N)` →
+  `sin(integers(0, N).multiply(2*Math.PI*f/N)).into(signal.each()).evaluate()`; random
+  data → `rand(shape(N)).into(...)`; `exp(-i/10)·cos(πi/8)` →
+  `exp(integers(0,N).multiply(-0.1)).multiply(cos(integers(0,N).multiply(Math.PI/8)))`.
+- **A tiny constant via `fill`.** A scalar reset / single-slot write /
+  buffer-touch is `dest.fill(value)` (or `fill` into a sub-range).
+- **A device→device copy** (`setFrom`, `cp(src).into(dest)`) — no host values involved.
+- **A reference to an existing device producer** — e.g. FIR coefficients come from
+  `lowPassCoefficients(c(cutoff), sampleRate, order)`, never `c(hostComputedArray)`.
+
+### Two failure modes that are NOT "done" (both regress the goal)
+
+1. **Reverting to `setMem`.** Restoring a host→device `setMem` because the baseline
+   grandfathers it moves *away* from the end state. The count of `setMem` references a
+   migration reintroduces must be **zero**.
+2. **Per-element constant kernels.** Rewriting `for (i) x.setMem(i, v)` as
+   `for (i) a(cp(x.range(1,i)), c(v)).get().run()` compiles one kernel *per element* and
+   exhausts the operator pool (`OperatorPoolExhausted` / `UnsupportedOperation`). This is
+   the phase-0 disaster (see [SETMEM_ENFORCEMENT_POSTMORTEM.md](SETMEM_ENFORCEMENT_POSTMORTEM.md)),
+   and it is what phase 10 reproduced. The whole buffer must be **one** kernel.
+
+`c(value)` bakes a host double into the kernel body as a literal, keyed by value — so a
+loop of distinct `c(v)` is a loop of distinct kernels. A single `c(smallLiteral)` used as
+an invariant operand is fine; `c(hostComputedArray)` to materialize a buffer is not — that
+is laundering, and it must become a real on-device computation.
+
+## The problem (original detector gap)
 
 `PackedCollectionDetector` flags element-wise host manipulation of a
 `PackedCollection` — `setMem` inside a `for` loop, `setMem`+`toDouble` on one line,

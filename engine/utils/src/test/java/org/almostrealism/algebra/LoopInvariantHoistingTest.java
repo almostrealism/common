@@ -708,12 +708,8 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 			PackedCollection weights = new PackedCollection(weightShape);
 
 			// Set known values for deterministic verification
-			for (int i = 0; i < inputShape.getTotalSize(); i++) {
-				input.setMem(i, (i + 1) * 0.1);
-			}
-			for (int i = 0; i < weightShape.getTotalSize(); i++) {
-				weights.setMem(i, (i + 1) * 0.01);
-			}
+			integers(1, inputShape.getTotalSize() + 1).multiply(0.1).into(input.traverseEach()).evaluate();
+			integers(1, weightShape.getTotalSize() + 1).multiply(0.01).into(weights.traverseEach()).evaluate();
 
 			LoopedWeightedSumComputation.InputIndexer inputIndexer = (outputIndex, outerIndex, innerIndex) ->
 					outerIndex.multiply(outputSize + innerCount - 1).add(outputIndex).add(innerIndex);

@@ -51,32 +51,28 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.3, -0.2, 0.5, 0.1 };
+	private final PackedCollection coeff = pack(0.3, -0.2, 0.5, 0.1);
 
 	/**
 	 * Identity-like function for testing residual connections.
 	 * output[i] = input[i] + small_perturbation
 	 */
-	private final UnaryOperator<PackedCollection> identityLikeFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					out.setMem(i, in.valueAt(i) + 0.1 * coeff[i % coeff.length]);
-				}
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> identityLikeFunc = in -> {
+		int n = in.getMemLength();
+		return cp(in).reshape(shape(n))
+				.add(cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength())).multiply(0.1))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Simple scaling function for testing compositions.
 	 */
-	private final UnaryOperator<PackedCollection> scaleFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					out.setMem(i, coeff[i % coeff.length] * in.valueAt(i));
-				}
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> scaleFunc = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Test 5.1: Residual Block

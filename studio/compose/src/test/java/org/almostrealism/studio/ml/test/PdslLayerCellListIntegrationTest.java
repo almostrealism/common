@@ -106,8 +106,8 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal1 = createSignal(BUFFER_SIZE, i -> 1.0);
-		PackedCollection signal2 = createSignal(BUFFER_SIZE, i -> 2.0);
+		PackedCollection signal1 = new PackedCollection(BUFFER_SIZE).fill(1.0);
+		PackedCollection signal2 = new PackedCollection(BUFFER_SIZE).fill(2.0);
 		PackedCollection[] lastOutput = {null};
 
 		// First tick: wrap forward() as Temporal, run it
@@ -167,7 +167,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection input = createSignal(BUFFER_SIZE, i -> 1.0);
+		PackedCollection input = new PackedCollection(BUFFER_SIZE).fill(1.0);
 		PackedCollection[] output = {null};
 
 		// Minimal Temporal adapter wrapping CompiledModel.forward()

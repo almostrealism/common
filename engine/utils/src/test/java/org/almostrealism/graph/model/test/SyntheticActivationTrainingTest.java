@@ -54,21 +54,18 @@ public class SyntheticActivationTrainingTest extends TestSuiteBase implements Mo
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.3, -0.2, 0.5, 0.1 };
+	private final PackedCollection coeff = pack(0.3, -0.2, 0.5, 0.1);
 
 	/**
 	 * Non-linear target function for testing activations.
 	 * Uses ReLU-like outputs to test non-linearity.
 	 */
-	private final UnaryOperator<PackedCollection> nonLinearFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					double v = coeff[i % coeff.length] * in.valueAt(i);
-					out.setMem(i, Math.max(0, v));  // ReLU-like
-				}
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> nonLinearFunc = in -> {
+		int n = in.getMemLength();
+		return max(cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+						.multiply(cp(in).reshape(shape(n))), c(0.0))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Test 4.1: Dense with SiLU Activation

@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
@@ -28,6 +27,7 @@ import org.junit.Test;
 
 import java.io.FileNotFoundException;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -37,25 +37,21 @@ import java.util.stream.IntStream;
 public class DenseLayerTests extends TestSuiteBase implements ModelTestFeatures {
 
 	/** Coefficients for the 3x3 function. */
-	private final double[] coeff = {0.24, -0.1, 0.36};
+	private final PackedCollection coeff = pack(0.24, -0.1, 0.36);
+
+	/** 3x3 convolution-like target function. */
+	private final UnaryOperator<PackedCollection> func3x3 = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Applies a 3x3 convolution-like function to the input.
 	 */
 	public PackedCollection func3x3(PackedCollection input) {
-		TraversalPolicy shape = padDimensions(input.getShape(), 2);
-		input = input.reshape(shape);
-
-		PackedCollection result = new PackedCollection(shape);
-
-		for (int n = 0; n < shape.length(0); n++) {
-			result.range(shape(3), n * 3).setMem(
-					coeff[0] * input.valueAt(n, 0),
-					coeff[1] * input.valueAt(n, 1),
-					coeff[2] * input.valueAt(n, 2));
-		}
-
-		return result;
+		return func3x3.apply(input);
 	}
 
 	/**

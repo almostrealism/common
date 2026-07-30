@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.util.TestSuiteBase;
@@ -143,7 +144,7 @@ public class ArithmeticSequenceComputationTest extends TestSuiteBase {
 	public void multiplyScalesValues() {
 		ArithmeticSequenceComputation original =
 				new ArithmeticSequenceComputation(shape(4), 1.0);
-		ArithmeticSequenceComputation scaled = original.multiply(5.0);
+		CollectionProducer scaled = original.multiply(5.0);
 
 		PackedCollection result = scaled.get().evaluate();
 		for (int i = 0; i < 4; i++) {
@@ -162,7 +163,7 @@ public class ArithmeticSequenceComputationTest extends TestSuiteBase {
 		double factor = 4.0;
 		ArithmeticSequenceComputation original =
 				new ArithmeticSequenceComputation(shape(5), true, initial, rate);
-		ArithmeticSequenceComputation scaled = original.multiply(factor);
+		CollectionProducer scaled = original.multiply(factor);
 
 		assertEquals(initial * factor, scaled.get().evaluate().toDouble(0));
 		assertEquals((initial + rate) * factor, scaled.get().evaluate().toDouble(1));
@@ -204,7 +205,7 @@ public class ArithmeticSequenceComputationTest extends TestSuiteBase {
 		TraversalPolicy shape = shape(7);
 		ArithmeticSequenceComputation seq =
 				new ArithmeticSequenceComputation(shape, true, 1.0, 1.0);
-		ArithmeticSequenceComputation scaled = seq.multiply(2.0);
+		CollectionProducer scaled = seq.multiply(2.0);
 
 		assertEquals(shape.getTotalSize(), scaled.getShape().getTotalSize());
 	}

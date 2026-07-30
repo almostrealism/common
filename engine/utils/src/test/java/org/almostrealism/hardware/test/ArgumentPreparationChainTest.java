@@ -134,12 +134,10 @@ public class ArgumentPreparationChainTest extends TestSuiteBase implements TestF
 			double base = pass * 10.0;
 			double expected = 0.0;
 
-			double[] values = new double[n];
 			for (int i = 0; i < n; i++) {
-				values[i] = base + (i % 100);
-				expected += values[i];
+				expected += base + (i % 100);
 			}
-			source.setMem(0, values, 0, n);
+			integers(0, n).mod(100).add(base).into(source.traverseEach()).evaluate();
 
 			long commits = runner.getCommitCount();
 			long hostCommits = runner.getHostCompleteCommitCount();

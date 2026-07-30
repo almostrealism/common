@@ -18,7 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.IndexOfPositionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -33,6 +32,7 @@ import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.collect.computations.CollectionConcatenateComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.IndexOfPositionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.computations.Assignment;
@@ -566,10 +566,7 @@ public interface CollectionFeatures extends GradientFeatures {
 	default CollectionProducerComputation index(TraversalPolicy shape,
 												TraversalPolicy shapeOf,
 												Producer<PackedCollection>... pos) {
-		return new DefaultTraversableExpressionComputation("index", shape,
-						(args) ->
-								new IndexOfPositionExpression(shape, shapeOf,
-										Stream.of(args).skip(1).toArray(TraversableExpression[]::new)), pos);
+		return new IndexOfPositionComputation(shape, shapeOf, pos);
 	}
 
 	/**

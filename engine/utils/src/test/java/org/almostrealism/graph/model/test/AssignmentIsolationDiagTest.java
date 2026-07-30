@@ -138,7 +138,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		DefaultCellularLayer.enableMemoryDataCopy = false;
 
 		try {
-			double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+			PackedCollection inputs = stagedInputs();
 			double[] expected = { 0.35, 0.6, 1.1 };
 			double[] results = forwardDense(inputs);
 
@@ -165,7 +165,7 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		MemoryDataArgumentMap.enableArgumentAggregation = false;
 
 		try {
-			double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+			PackedCollection inputs = stagedInputs();
 			double[] expected = { 0.35, 0.6, 1.1 };
 			double[] results;
 
@@ -260,11 +260,11 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		Runnable run = ((ParallelProcess<?, Runnable>) list.flatten().optimize()).get();
 
-		double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+		PackedCollection inputs = stagedInputs();
 		double[] expected = { 0.35, 0.6, 1.1 };
 
-		for (int i = 0; i < inputs.length; i++) {
-			external.setMem(0, inputs[i][0], inputs[i][1]);
+		for (int i = 0; i < expected.length; i++) {
+			external.setFrom(0, inputs, i * 2, 2);
 			run.run();
 			log("optimizedListRecordThenDense pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -301,11 +301,11 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		Runnable run = ((ParallelProcess<?, Runnable>) list.flatten().optimize()).get();
 
-		double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+		PackedCollection inputs = stagedInputs();
 		double[] expected = { 0.35, 0.6, 1.1 };
 
-		for (int i = 0; i < inputs.length; i++) {
-			external.setMem(0, inputs[i][0], inputs[i][1]);
+		for (int i = 0; i < expected.length; i++) {
+			external.setFrom(0, inputs, i * 2, 2);
 			run.run();
 			log("optimizedListRecordThenMatmul pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -344,12 +344,12 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		Runnable run = ((ParallelProcess<?, Runnable>) list.flatten().optimize()).get();
 
-		double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+		PackedCollection inputs = stagedInputs();
 		double[] expected = { 0.35, 0.6, 1.1 };
 
-		for (int i = 0; i < inputs.length; i++) {
+		for (int i = 0; i < expected.length; i++) {
 			external[0] = new PackedCollection(shape(2));
-			external[0].setMem(0, inputs[i][0], inputs[i][1]);
+			external[0].setFrom(0, inputs, i * 2, 2);
 			run.run();
 			log("optimizedListDynamicRecordThenDense pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -395,12 +395,12 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		Runnable run = ((ParallelProcess<?, Runnable>) forward.flatten().optimize()).get();
 
-		double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+		PackedCollection inputs = stagedInputs();
 		double[] expected = { 0.35, 0.6, 1.1 };
 
-		for (int i = 0; i < inputs.length; i++) {
+		for (int i = 0; i < expected.length; i++) {
 			external[0] = new PackedCollection(shape(2));
-			external[0].setMem(0, inputs[i][0], inputs[i][1]);
+			external[0].setFrom(0, inputs, i * 2, 2);
 			run.run();
 			log("optimizedNestedIntoComposite pass=" + (i + 1) +
 					" result=" + modelOut.toDouble(0) + " expected=" + expected[i]);
@@ -475,15 +475,15 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		}
 
 		PackedCollection result = thirdMember ? modelOut : layerOut;
-		double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+		PackedCollection inputs = stagedInputs();
 		double[] expected = { 0.35, 0.6, 1.1 };
 
-		for (int i = 0; i < inputs.length; i++) {
+		for (int i = 0; i < expected.length; i++) {
 			if (dynamic) {
 				external[0] = new PackedCollection(shape(2));
-				external[0].setMem(0, inputs[i][0], inputs[i][1]);
+				external[0].setFrom(0, inputs, i * 2, 2);
 			} else {
-				providerExternal.setMem(0, inputs[i][0], inputs[i][1]);
+				providerExternal.setFrom(0, inputs, i * 2, 2);
 			}
 
 			run.run();
@@ -539,11 +539,11 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		Runnable run = ((ParallelProcess<?, Runnable>) list.flatten().optimize()).get();
 
-		double[][] inputs = { { 2.0, 3.0 }, { 4.0, 6.0 }, { 8.0, 12.0 } };
+		PackedCollection inputs = stagedInputs();
 		double[] expected = { 0.35, 0.6, 1.1 };
 
-		for (int i = 0; i < inputs.length; i++) {
-			external.setMem(0, inputs[i][0], inputs[i][1]);
+		for (int i = 0; i < expected.length; i++) {
+			external.setFrom(0, inputs, i * 2, 2);
 			run.run();
 			log("optimizedListRecordThenIsolatedDense pass=" + (i + 1) +
 					" result=" + out.toDouble(0) + " expected=" + expected[i]);
@@ -669,22 +669,34 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 	 * @return the forward output value of each pass, in order
 	 */
 	private double[] forwardDense(int passes) {
-		double[][] inputs = new double[passes][];
-		for (int i = 0; i < passes; i++) {
-			inputs[i] = new double[] { 2.0, 3.0 };
-		}
-
+		PackedCollection inputs = new PackedCollection(shape(passes, 2));
+		integers(0, passes * 2).mod(2).add(2.0)
+				.into(inputs.traverseEach()).evaluate();
 		return forwardDense(inputs);
 	}
 
 	/**
+	 * Stages the shared varying-input table — passes (2, 3), (4, 6), and (8, 12) —
+	 * as a (3, 2) collection whose rows are copied into per-pass input buffers
+	 * with {@code setFrom}. Element {@code i} is computed on the device as
+	 * {@code (2 + i % 2) * 2^(i / 2)}.
+	 */
+	private PackedCollection stagedInputs() {
+		PackedCollection staged = new PackedCollection(shape(3, 2));
+		integers(0, 6).mod(2).add(2.0)
+				.multiply(pow(c(2.0), floor(integers(0, 6).divide(2.0))))
+				.into(staged.traverseEach()).evaluate();
+		return staged;
+	}
+
+	/**
 	 * Builds the fixed {@code dense(2, 1)} model and runs one forward pass per
-	 * supplied input, returning the output of each pass.
+	 * staged input row, returning the output of each pass.
 	 *
-	 * @param inputs the input values for each pass (each of length 2)
+	 * @param inputs the input values for each pass, one row of length 2 per pass
 	 * @return the forward output value of each pass, in order
 	 */
-	private double[] forwardDense(double[][] inputs) {
+	private double[] forwardDense(PackedCollection inputs) {
 		PackedCollection weights = new PackedCollection(shape(1, 2));
 		weights.setMem(0, 0.5, -0.25);
 
@@ -704,9 +716,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 
 		PackedCollection input = new PackedCollection(shape(2));
 
-		double[] results = new double[inputs.length];
-		for (int i = 0; i < inputs.length; i++) {
-			input.setMem(0, inputs[i][0], inputs[i][1]);
+		int passes = inputs.getShape().length(0);
+		double[] results = new double[passes];
+		for (int i = 0; i < passes; i++) {
+			input.setFrom(0, inputs, i * 2, 2);
 			PackedCollection out = compiled.forward(input);
 			results[i] = out.toDouble(0);
 		}

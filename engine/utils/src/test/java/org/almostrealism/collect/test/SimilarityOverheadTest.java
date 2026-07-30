@@ -866,26 +866,19 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 */
 	private PackedCollection[] createClusteredTensors(
 			int count, int frames, int bins, int clusters) {
-		Random rng = new Random(42);
 		PackedCollection[] tensors = new PackedCollection[count];
 
-		double[][] centers = new double[clusters][bins];
-		for (int c = 0; c < clusters; c++) {
-			for (int b = 0; b < bins; b++) {
-				centers[c][b] = rng.nextGaussian();
-			}
-		}
+		// Cluster centers (one bins-vector per cluster), generated on-device once.
+		PackedCollection centers = randn(shape(clusters, bins), 0.0, 1.0).evaluate();
 
 		for (int i = 0; i < count; i++) {
 			int cluster = i % clusters;
 			tensors[i] = new PackedCollection(shape(frames, bins, 1));
-			double[] data = new double[frames * bins];
-			for (int f = 0; f < frames; f++) {
-				for (int b = 0; b < bins; b++) {
-					data[f * bins + b] = centers[cluster][b] + rng.nextGaussian() * 0.3;
-				}
-			}
-			tensors[i].setMem(0, data, 0, data.length);
+			// tensor[f, b] = center[cluster, b] + gaussian noise (std 0.3)
+			cp(centers.range(shape(bins), cluster * bins))
+					.valueAt(integers(0, frames * bins).mod(bins))
+					.add(randn(shape(frames * bins), 0.0, 0.3))
+					.into(tensors[i].traverseEach()).evaluate();
 		}
 
 		log("Created " + count + " clustered tensors (" + clusters +
