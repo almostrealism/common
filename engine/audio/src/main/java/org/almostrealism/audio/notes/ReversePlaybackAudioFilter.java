@@ -44,7 +44,8 @@ public class ReversePlaybackAudioFilter implements NoteAudioFilter, CodeFeatures
 
 			if (out.getShape().getTotalSize() == 1) {
 				warn("Reverse filter produced a value with shape " +
-						out.getShape().toStringDetail());
+						out.getShape().toStringDetail() + " from input with shape " +
+						audioData.getShape().toStringDetail());
 			}
 
 			return out;

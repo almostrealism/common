@@ -16,13 +16,10 @@
 
 package org.almostrealism.spatial.test;
 
-import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.optimize.PopulationOptimizer;
 import org.almostrealism.spatial.ArrangementGenerationProcess;
 import org.almostrealism.spatial.GenomicNetwork;
 import org.almostrealism.studio.AudioScene;
-import org.almostrealism.studio.AudioSceneRealtimeRunner;
-import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.AudioHealthScore;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.studio.optimize.AudioSceneOptimizer;
@@ -45,16 +42,6 @@ import java.util.List;
  */
 public class ArrangementGenerationProcessTest extends TestSuiteBase {
 
-	/** The curated sample library the scene draws from. */
-	private static final String SAMPLES = "/Users/Shared/Music/Samples";
-
-	/** The curated pattern factory the scene draws from. */
-	private static final String PATTERN_FACTORY = "/Users/Shared/Music/pattern-factory.json";
-
-	/** Persisted scene settings, shared with the compose render tests. */
-	private static final String SCENE_SETTINGS =
-			"../compose/results/pdsl-cutover/scene-settings.json";
-
 	/** Evaluation seconds per genome. */
 	private static final int MAX_DURATION_SECONDS = 8;
 
@@ -68,20 +55,12 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 	@Test(timeout = 900_000)
 	@TestDepth(2)
 	public void processAttachesScoredNetworksWithStems() throws Exception {
-		File library = new File(SAMPLES);
-		File patternFactory = new File(PATTERN_FACTORY);
-		if (!library.exists() || !patternFactory.exists()) {
+		if (!CuratedArrangementFixture.curatedSceneAvailable()) {
 			log("Skipping processAttachesScoredNetworksWithStems - no curated library");
 			return;
 		}
 
-		MixdownManager.enableMainFilterUp = true;
-		MixdownManager.enableEfx = true;
-		MixdownManager.enableEfxFilters = true;
-		MixdownManager.enableReverb = true;
-		MixdownManager.enablePdslMixdown = true;
-		PatternSystemManager.enableWarnings = false;
-		AudioSceneRealtimeRunner.renderAheadSlots = 24;
+		CuratedArrangementFixture.enableRealtimeMixdown();
 
 		PopulationOptimizer.popSize = 2;
 		PopulationOptimizer.maxChildren = 2;
@@ -91,12 +70,7 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 		networksFile.delete();
 		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
 
-		File settings = new File(SCENE_SETTINGS);
-		AudioScene<?> scene = AudioScene.load(
-				settings.exists() ? settings.getAbsolutePath() : null,
-				patternFactory.getAbsolutePath(),
-				library.getAbsolutePath(), 120.0, 44100);
-		scene.setTotalMeasures(64);
+		AudioScene<?> scene = CuratedArrangementFixture.loadCuratedScene(64);
 
 		ArrangementGenerationProcess process =
 				new ArrangementGenerationProcess(networksFile.getPath());
@@ -166,20 +140,12 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 	@Test(timeout = 1_500_000)
 	@TestDepth(2)
 	public void rendersSurviveAcrossCycles() throws Exception {
-		File library = new File(SAMPLES);
-		File patternFactory = new File(PATTERN_FACTORY);
-		if (!library.exists() || !patternFactory.exists()) {
+		if (!CuratedArrangementFixture.curatedSceneAvailable()) {
 			log("Skipping rendersSurviveAcrossCycles - no curated library");
 			return;
 		}
 
-		MixdownManager.enableMainFilterUp = true;
-		MixdownManager.enableEfx = true;
-		MixdownManager.enableEfxFilters = true;
-		MixdownManager.enableReverb = true;
-		MixdownManager.enablePdslMixdown = true;
-		PatternSystemManager.enableWarnings = false;
-		AudioSceneRealtimeRunner.renderAheadSlots = 24;
+		CuratedArrangementFixture.enableRealtimeMixdown();
 
 		PopulationOptimizer.popSize = 2;
 		PopulationOptimizer.maxChildren = 2;
@@ -189,12 +155,7 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 		networksFile.delete();
 		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
 
-		File settings = new File(SCENE_SETTINGS);
-		AudioScene<?> scene = AudioScene.load(
-				settings.exists() ? settings.getAbsolutePath() : null,
-				patternFactory.getAbsolutePath(),
-				library.getAbsolutePath(), 120.0, 44100);
-		scene.setTotalMeasures(64);
+		AudioScene<?> scene = CuratedArrangementFixture.loadCuratedScene(64);
 
 		ArrangementGenerationProcess process =
 				new ArrangementGenerationProcess(networksFile.getPath());
