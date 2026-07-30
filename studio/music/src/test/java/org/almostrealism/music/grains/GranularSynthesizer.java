@@ -190,7 +190,8 @@ public class GranularSynthesizer implements StatelessSource, CellFeatures {
 			PackedCollection a = new PackedCollection(1);
 
 			for (int i = 0; i < playbackRates.size(); i++) {
-				playbackRate.setMem(0, playbackRates.get(i).asHertz());
+				double hertz = playbackRates.get(i).asHertz();
+				playbackRate.fill(hertz);
 				if (WaveOutput.enableVerbose)
 					log("GranularSynthesizer: Rendering grains for playback rate " + playbackRates.get(i) + "...");
 
@@ -208,9 +209,9 @@ public class GranularSynthesizer implements StatelessSource, CellFeatures {
 						double phase = gp.getPhase().apply(params);
 						double wavelength = ampModWavelengthMin + Math.abs(gp.getWavelength().apply(params)) * (ampModWavelengthMax - ampModWavelengthMin);
 
-						w.setMem(wavelength);
-						p.setMem(phase);
-						a.setMem(amp);
+						w.fill(wavelength);
+						p.fill(phase);
+						a.fill(amp);
 
 						PackedCollection rendered = processor.getKernel()
 								.into(processor.newOutputBuffer())

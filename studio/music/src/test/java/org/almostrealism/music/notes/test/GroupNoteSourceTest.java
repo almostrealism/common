@@ -47,11 +47,7 @@ public class GroupNoteSourceTest extends TestSuiteBase {
 	/** Builds a tuned member over a small constant source at the given root. */
 	private NoteAudioProvider member(KeyPosition<?> root) {
 		PackedCollection source = new PackedCollection(1024);
-		double[] data = new double[1024];
-		for (int i = 0; i < data.length; i++) {
-			data[i] = Math.sin(2.0 * Math.PI * 4.0 * i / data.length);
-		}
-		source.setMem(data);
+		a(cp(source), sin(integers(0, 1024).multiply(2.0 * Math.PI * 4.0 / 1024.0))).get().run();
 		NoteAudioProvider note = NoteAudioProvider.create(() -> source, root);
 		note.setTuning(tuning);
 		return note;

@@ -67,18 +67,30 @@ Two structural facts make the gap wider than one detector rule:
   `MemoryDataAdapter.init` all call the array-accepting `setMem` overloads
   internally. So the array overloads cannot simply be deleted.
 
-## Already done (this branch)
+## Current enforcement state (phases 1–10 merged to master)
 
-- All zero-upload no-ops removed across the `studio/compose` tests.
-- Every staged-array upload the branch introduced rewritten to the sanctioned
-  surface: `fill(value)` for uniform values, `fill(pos -> ...)` for patterned
-  constants (one-hot columns, diagonals, centered-delta FIR banks, test ramps),
-  literal varargs `setMem(offset, v...)` for small vectors. This includes
-  `MixdownManagerPdslAdapter.busSendMatrix`, the one main-source instance.
-- Pre-existing staged uploads that predate the branch were inventoried, not
-  converted (e.g. matrix/ramp fixtures deeper in `MixdownManagerPdslTest`,
-  `MixdownChannelPdslTest`'s coefficient upload, `DelayNetworkBehaviorTest`'s
-  literal-vector harness). They fall to the migration below.
+Enforcement is **full-tree**: `SetMemLiteralsDetector` scans every module with three
+rules — `SETMEM_NON_LITERAL_ARGUMENT`, `FILL_PACK_BEYOND_SCALAR_ALLOWANCE`, and
+`PACKED_COLLECTION_OF_NON_LITERAL` — against two shrinking ledgers:
+
+- **The grandfathered baseline** (`setmem-violation-baseline.tsv`): the inventory of
+  violations that existed when full-tree enforcement was turned on. Entries match on
+  exact source text, so editing a grandfathered line re-triggers enforcement for it.
+  Module-level gating (`UNMIGRATED_MODULES`) is retired; the baseline is the only
+  burn-down ledger.
+- **`KNOWN_EXCLUSIONS`**: individually-acknowledged sites in enforced modules —
+  framework-internal writes below the producer API, the randomness ingest primitive,
+  genuine I/O ingest awaiting the narrowed API, and reference-data test ingest.
+
+### The metric
+
+Running `SetMemLiteralsDetector <root>` prints an exemption summary after every scan:
+live grandfathered occurrences, stale ledger rows (fully migrated, eligible for
+removal), and how many acknowledged exclusions remain in use. This is the number to
+drive to zero. Snapshot 2026-07-29 (phases 11–13 branch, after fixing the detector's
+fill/pack prefilter blind spot and regenerating the ledger): 678 live grandfathered
+occurrences across 514 entries, all 21 exclusions live — **699 total exemptions**,
+zero stale rows.
 
 ## Impact census: removing `setMem(int, double[])`
 
@@ -105,24 +117,23 @@ explicit, separately-named ingest API (or make them `protected` on
 Laundering then dies at the compile surface: no public method accepts a computed
 array.
 
-## Enforcement plan, in order
+## Remaining work (phases 11–16)
 
-1. **No-op rule** (small, immediate): flag any zero upload to a fresh collection —
-   `setMem(new double[...])`, `setMem(new double[]{0.0...})`, and `fill(0.0)` on a
-   just-constructed collection. Message: "new collections are zero-initialised."
-2. **Host-array taint rule** (closes the gap without API changes): within a method,
-   mark any primitive-array local written by a loop, `Arrays.fill`/`setAll`,
-   `System.arraycopy`, or a stream; flag it reaching any `setMem`, wherever the call
-   sits. Implementable in the existing line-scanning style of
-   `PackedCollectionDetector`.
-3. **Scope tests by direction**: keep the exemption for device→host reads that feed
-   assertions; apply rules 1–2 to host→device uploads in tests too.
-4. **API narrowing** (the durable fix, per the census above): once landed, rule 2
-   mostly retires — enforcement shrinks to rule 1 plus "only literals reach
-   `setMem`", which is a one-line pattern with nothing left to game. The ~300
-   identifier-arg test sites and the category-3/4 main sites migrate to the ingest
-   API or to `fill`/producer assignments at that time.
+1. **Remediate the auto-generated phase 11–13 migrations** (current branch). These were
+   produced before the post-mortem existed and reproduce the constant-kernel and
+   per-element-kernel failure modes — see the catalog in
+   [SETMEM_ENFORCEMENT_POSTMORTEM.md](SETMEM_ENFORCEMENT_POSTMORTEM.md).
+2. **Migrate the never-enforced modules**: `flowtree/graphpersist`, `studio/compose`,
+   `studio/experiments` — their sites live in the grandfathered baseline.
+3. **Burn down the baseline** module by module, regenerating the inventory
+   (`--generate`) as stale rows accumulate, and retiring `KNOWN_EXCLUSIONS` entries as
+   their categories gain real homes.
+4. **API narrowing** (the durable fix, per the census above): move the
+   `double[]`-accepting bulk `setMem` forms behind an explicit ingest API granted to
+   the I/O layer and framework internals only. Enforcement then shrinks to "only
+   literals reach `setMem`", with nothing left to game, and the remaining
+   ingest-category exclusions migrate to the new API.
 
 Violation messages throughout should name the sanctioned idioms — `fill(value)`,
-`fill(pos -> ...)`, producer assignment (`a(n, cp(dest), expr)`), literal varargs —
-since the goal is to redirect the author at the moment of writing.
+`fill(pos -> ...)`, a single whole-buffer producer, literal varargs — since the goal
+is to redirect the author at the moment of writing.

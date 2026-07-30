@@ -75,23 +75,11 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 	/** Automation level passed to gather and reference envelope computation. */
 	private static final double AUTOMATION_LEVEL = 0.5;
 
-	/** Creates a single-element {@link PackedCollection} containing the given value. */
-	private PackedCollection single(double value) {
-		PackedCollection c = new PackedCollection(1);
-		c.setMem(new double[] { value });
-		return c;
-	}
-
 	/** Generates a deterministic random audio sample of {@code SOURCE_LENGTH} frames using the given seed. */
 	private PackedCollection sample(long seed) {
-		Random rng = new Random(seed);
-		double[] data = new double[SOURCE_LENGTH];
-		for (int i = 0; i < SOURCE_LENGTH; i++) {
-			data[i] = rng.nextDouble() * 2.0 - 1.0;
-		}
-		PackedCollection c = new PackedCollection(SOURCE_LENGTH);
-		c.setMem(data);
-		return c;
+		PackedCollection col = new PackedCollection(SOURCE_LENGTH);
+		rand(col.getShape(), new Random(seed)).multiply(2.0).add(-1.0).into(col.traverseEach()).evaluate();
+		return col;
 	}
 
 	/**
@@ -140,9 +128,11 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 		PackedCollection[][] layerEnvParams = new PackedCollection[LAYERS][8];
 		for (int l = 0; l < LAYERS; l++) {
 			sources[l] = in.getSources()[l];
-			ratios[l] = single(in.getRatios()[l]);
+			double ratio = in.getRatios()[l];
+			ratios[l] = pack(ratio);
 			for (int p = 0; p < 8; p++) {
-				layerEnvParams[l][p] = single(in.getLayerParams()[l][p]);
+				double param = in.getLayerParams()[l][p];
+				layerEnvParams[l][p] = pack(param);
 			}
 		}
 		PackedCollection[] filterAdsr = scalarColumns(in.getFilterAdsr());
@@ -150,27 +140,22 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 
 		PackedCollection out = renderer.buildBatchedSssChainPlacedFromScalars(
 				sources, ratios, layerEnvParams, filterAdsr, volumeAdsr,
-				single(0.0), TARGET_LENGTH)
+				pack(0.0), TARGET_LENGTH)
 				.get().evaluate();
 
 		// ── Reference: production envelope filters on the same resampled sources. ──
-		PackedCollection dur = single(DURATION_SEC);
-		PackedCollection auto = single(AUTOMATION_LEVEL);
+		PackedCollection dur = pack(DURATION_SEC);
+		PackedCollection auto = pack(AUTOMATION_LEVEL);
 
-		double[] merged = new double[TARGET_LENGTH];
+		PackedCollection mergedColl = new PackedCollection(TARGET_LENGTH);
 		for (int l = 0; l < LAYERS; l++) {
 			PackedCollection resampled = renderer.buildResampleProducer(in.getSources()[l], in.getRatios()[l])
 					.get().evaluate();
 			ParameterizedLayerEnvelope.Filter lf =
 					(ParameterizedLayerEnvelope.Filter) ((PatternNoteLayer) inner.getLayers().get(l)).getFilter();
 			PackedCollection enveloped = lf.apply(cp(resampled), cp(dur), cp(auto)).get().evaluate();
-			for (int i = 0; i < TARGET_LENGTH; i++) {
-				merged[i] += enveloped.toDouble(i);
-			}
+			a(cp(mergedColl), cp(mergedColl).add(cp(enveloped))).get().run();
 		}
-
-		PackedCollection mergedColl = new PackedCollection(TARGET_LENGTH);
-		mergedColl.setMem(merged);
 
 		ParameterizedFilterEnvelope.Filter filtF = (ParameterizedFilterEnvelope.Filter) mid.getFilter();
 		PackedCollection filtered = filtF.apply(cp(mergedColl), cp(dur), cp(auto)).get().evaluate();
@@ -204,7 +189,8 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 	private PackedCollection[] scalarColumns(double[] adsr) {
 		PackedCollection[] cols = new PackedCollection[adsr.length];
 		for (int i = 0; i < adsr.length; i++) {
-			cols[i] = single(adsr[i]);
+			double value = adsr[i];
+			cols[i] = pack(value);
 		}
 		return cols;
 	}

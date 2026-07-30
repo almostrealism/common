@@ -6,6 +6,8 @@
 package org.almostrealism.spatial;
 
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -43,10 +45,28 @@ import java.util.List;
  * @see SpatialBrush
  */
 public class EditableSpatialWaveDetails extends SpatialWaveDetails
-		implements EditableSpatialTimeseries {
+		implements EditableSpatialTimeseries, CollectionFeatures {
 
 	/** Whether the frequency data has been modified since the last {@link #clear()} or {@link #clearModified()}. */
 	private boolean modified;
+
+	/** One-element input holding the flat index of the point currently being written. */
+	private PackedCollection pointIndex;
+
+	/** One-element input holding the magnitude of the point currently being written. */
+	private PackedCollection pointMagnitude;
+
+	/** The frequency data collection the compiled point writer targets. */
+	private PackedCollection targetData;
+
+	/**
+	 * Compiled device kernel performing
+	 * {@code freqData[pointIndex] = max(freqData[pointIndex], pointMagnitude)}. The index
+	 * and magnitude are runtime data read from provider collections, so one compiled
+	 * program serves every point of every stroke; per-point work is limited to the two
+	 * scalar input writes.
+	 */
+	private Runnable writePoint;
 
 	/**
 	 * Creates an editable frequency timeseries with the specified dimensions.
@@ -123,12 +143,38 @@ public class EditableSpatialWaveDetails extends SpatialWaveDetails
 			magnitude = magnitude / FrequencyTimeseries.frequencyScale + FrequencyTimeseries.frequencyThreshold;
 
 			int dataIndex = frameIndex * frequencyBins + binIndex;
-			double existing = freqData.toDouble(dataIndex);
-			freqData.setMem(dataIndex, Math.max(existing, magnitude));
+			double index = dataIndex;
+			prepareWriter(freqData);
+			pointIndex.fill(index);
+			pointMagnitude.fill(magnitude);
+			writePoint.run();
 		}
 
 		modified = true;
 		resetElements(); // Force regeneration of SpatialValues
+	}
+
+	/**
+	 * Prepares the compiled point writer for the given frequency data, once.
+	 *
+	 * <p>The writer is an {@code Assignment} whose destination is an index-addressed
+	 * selection of the frequency data — the index comes from the {@link #pointIndex}
+	 * provider collection — and whose value is the device-computed maximum of the
+	 * selected cell and {@link #pointMagnitude}. Both the comparison and the write
+	 * happen on the device; the host only supplies the two scalars.</p>
+	 *
+	 * @param freqData the frequency data collection to write into
+	 */
+	private void prepareWriter(PackedCollection freqData) {
+		if (writePoint != null && targetData == freqData) return;
+
+		pointIndex = new PackedCollection(1);
+		pointMagnitude = new PackedCollection(1);
+		targetData = freqData;
+
+		CollectionProducerComputation cell =
+				c(shape(1), p(freqData), traverseEach(p(pointIndex)));
+		writePoint = a(traverse(0, cell), max(cell, p(pointMagnitude))).get();
 	}
 
 	@Override

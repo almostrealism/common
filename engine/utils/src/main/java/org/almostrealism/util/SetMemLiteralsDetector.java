@@ -23,8 +23,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -108,6 +110,17 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 					+ "Anything larger or computed per element must be produced by the computation "
 					+ "graph (integers(), producer arithmetic, randn/rand, or a producer assignment).";
 
+	/** Rule code for {@code fill} invoked on a {@code range(...)} view. */
+	public static final String RANGE_FILL_RULE = "FILL_ON_RANGE_VIEW";
+
+	/** Guidance attached to {@link #RANGE_FILL_RULE} violations. */
+	private static final String RANGE_FILL_GUIDANCE =
+			"fill on a range view is setMem(index, value) with different syntax: a scatter write "
+					+ "of a host value at a computed position. Address the position inside the "
+					+ "computation instead -- use an index-addressed selection as the destination "
+					+ "of an Assignment, with the index supplied as data through a provider "
+					+ "collection, or produce the whole buffer with a single kernel.";
+
 	/**
 	 * File name fragments of the framework's sanctioned write surface: the classes that
 	 * implement the array-accepting overloads, the low-level host&harr;device primitive, and the
@@ -171,7 +184,22 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/space/CachedMeshIntersectionKernel.java",
 					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
-			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"}
+			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
+			new String[] {"/primitives/test/SphereTest.java",
+					"rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);"},
+			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset, f);"},
+			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset,"},
+			new String[] {"/llama2/Llama2Weights.java", "c.setMem(0, data, 0, shape.getTotalSize());"},
+			new String[] {"/ml/OnnxFeatures.java", "result.setMem(0, data);"},
+			new String[] {"SAMEResamplingParityTest.java", "pc.setMem(0, data, 0, data.length);"},
+			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
+			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
+			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},
+			new String[] {"OobleckLayerValidationTest.java", "input.setMem(i, latentInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, latentInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, testInput[i]);"},
+			new String[] {"OobleckValidationTest.java", "input.setMem(i, inputConvOutput[i]);"},
+			new String[] {"OobleckValidationTest.java", "block2Input.setMem(i, refAfterBlock1[i]);"}
 	);
 
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */
@@ -186,6 +214,15 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Locates the start of each {@code .fill(} call. */
 	private static final Pattern FILL_CALL = Pattern.compile("\\.fill\\s*\\(");
+
+	/**
+	 * Locates each {@code fill} call invoked directly on a {@code range(...)} view. A
+	 * single-element range view makes {@code fill} into {@code setMem(index, value)} with
+	 * different syntax — a scatter write of a host value at a computed position — so the
+	 * combination is never permitted, whatever the arguments.
+	 */
+	private static final Pattern RANGE_FILL_CALL = Pattern.compile(
+			"\\.range\\s*\\((?:[^()]|\\([^()]*\\))*\\)\\s*\\.fill\\s*\\(");
 
 	/** Locates the start of each unqualified {@code pack(} call. */
 	private static final Pattern PACK_CALL = Pattern.compile("(?<![\\w.$])pack\\s*\\(");
@@ -203,6 +240,20 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * baseline is disabled or absent.
 	 */
 	private final Map<String, Integer> baseline;
+
+	/**
+	 * The tolerated occurrence count of each baseline entry before any were consumed by
+	 * the scan, so {@link #exemptionSummary()} can report how many grandfathered
+	 * occurrences are still present in source versus how many ledger rows are stale.
+	 */
+	private final Map<String, Integer> baselineInitial;
+
+	/**
+	 * The {@link #KNOWN_EXCLUSIONS} entries actually encountered during the scan, keyed
+	 * by {@code pathFragment\0sourceLine}; entries never encountered are candidates for
+	 * removal from the exclusion list.
+	 */
+	private final Set<String> exclusionsMatched = new HashSet<>();
 
 	/**
 	 * Creates a detector that will scan Java source files under the given directory,
@@ -225,6 +276,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	public SetMemLiteralsDetector(Path rootDir, boolean useBaseline) {
 		super(rootDir);
 		this.baseline = useBaseline ? loadBaseline() : new HashMap<>();
+		this.baselineInitial = new HashMap<>(baseline);
 	}
 
 	/**
@@ -291,13 +343,18 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 		try {
 			String content = Files.readString(file);
-			if (!content.contains(".setMem(") && !content.contains(".of(")) return this;
+			if (!content.contains(".setMem(") && !content.contains(".of(")
+					&& !content.contains(".fill(") && !content.contains("pack(")) {
+				return this;
+			}
 
 			String masked = maskCommentsAndStrings(content);
 			scanCalls(file, content, masked, SETMEM_CALL,
 					args -> isSanctioned(args, masked), RULE, GUIDANCE);
 			scanCalls(file, content, masked, OF_CALL,
 					this::isSanctionedIngest, OF_RULE, OF_GUIDANCE);
+			scanCalls(file, content, masked, RANGE_FILL_CALL,
+					args -> false, RANGE_FILL_RULE, RANGE_FILL_GUIDANCE);
 			scanCalls(file, content, masked, FILL_CALL,
 					args -> isWithinScalarAllowance(args, masked), INGEST_RULE, INGEST_GUIDANCE);
 			scanCalls(file, content, masked, PACK_CALL,
@@ -347,6 +404,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			Files.writeString(Path.of(args[2]), out.toString());
 		} else {
 			detector.log(detector.generateReport());
+			detector.log(detector.exemptionSummary());
 			if (detector.hasViolations()) System.exit(1);
 		}
 	}
@@ -462,9 +520,52 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private boolean isKnownExclusion(Path file, String line) {
 		String path = file.toString().replace('\\', '/');
 		for (String[] entry : KNOWN_EXCLUSIONS) {
-			if (path.contains(entry[0]) && line.equals(entry[1])) return true;
+			if (path.contains(entry[0]) && line.equals(entry[1])) {
+				exclusionsMatched.add(entry[0] + '\0' + entry[1]);
+				return true;
+			}
 		}
 		return false;
+	}
+
+	/**
+	 * Summarizes the exemptions that remain after a scan: how many grandfathered
+	 * occurrences are still present in source, how many baseline ledger rows no longer
+	 * match any code (fully migrated, awaiting removal from the inventory), and how many
+	 * of the acknowledged {@link #KNOWN_EXCLUSIONS} were actually encountered.
+	 *
+	 * <p>These numbers are the burn-down metric for the migration effort: the goal is to
+	 * drive the live counts to zero, at which point the baseline resource and the
+	 * exclusion list can both be deleted. Only meaningful after {@code scan()} on a run
+	 * constructed with the baseline enabled.</p>
+	 *
+	 * @return a multi-line summary of remaining exemptions
+	 */
+	public String exemptionSummary() {
+		int initialOccurrences = 0;
+		int remainingBudget = 0;
+		int liveEntries = 0;
+		int staleEntries = 0;
+
+		for (Map.Entry<String, Integer> entry : baseline.entrySet()) {
+			int initial = baselineInitial.getOrDefault(entry.getKey(), 0);
+			initialOccurrences += initial;
+			remainingBudget += entry.getValue();
+			if (entry.getValue() < initial) {
+				liveEntries++;
+			} else {
+				staleEntries++;
+			}
+		}
+
+		int liveOccurrences = initialOccurrences - remainingBudget;
+
+		return "Exemptions remaining: " + liveOccurrences + " grandfathered occurrences across " +
+				liveEntries + " baseline entries still present in source\n" +
+				"  (inventory holds " + baseline.size() + " entries tolerating " + initialOccurrences +
+				" occurrences; " + staleEntries + " entries no longer match any code and can be removed)\n" +
+				"  plus " + exclusionsMatched.size() + " of " + KNOWN_EXCLUSIONS.size() +
+				" acknowledged burn-down exclusions encountered in source";
 	}
 
 	/**
