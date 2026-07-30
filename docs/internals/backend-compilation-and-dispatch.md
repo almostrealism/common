@@ -40,6 +40,10 @@ Scope (computation AST)
 `ComputationScopeCompiler` (`base/hardware/src/.../instructions/ComputationScopeCompiler.java`)
 prepares a `Computation` for compilation by generating and enriching its `Scope`.
 
+### Compilation requires an instruction set manager
+
+Compilation must be established through the operation's `InstructionSetManager`. The manager owns the compiled instruction set and its `CompiledKernelStructureContext`; calling `compile()` without first creating or obtaining that manager is an error. There is no supported manual-compilation path outside manager ownership.
+
 ### Compilation Lifecycle
 
 ```java
