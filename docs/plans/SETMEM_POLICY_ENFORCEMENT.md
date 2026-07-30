@@ -87,9 +87,10 @@ rules — `SETMEM_NON_LITERAL_ARGUMENT`, `FILL_PACK_BEYOND_SCALAR_ALLOWANCE`, an
 Running `SetMemLiteralsDetector <root>` prints an exemption summary after every scan:
 live grandfathered occurrences, stale ledger rows (fully migrated, eligible for
 removal), and how many acknowledged exclusions remain in use. This is the number to
-drive to zero. Snapshot 2026-07-29 (phases 11–13 branch): 384 live grandfathered
-occurrences across 319 entries, all 21 exclusions live — **405 total exemptions**, with
-174 stale ledger rows ready to be pruned at the next baseline regeneration.
+drive to zero. Snapshot 2026-07-29 (phases 11–13 branch, after fixing the detector's
+fill/pack prefilter blind spot and regenerating the ledger): 678 live grandfathered
+occurrences across 514 entries, all 21 exclusions live — **699 total exemptions**,
+zero stale rows.
 
 ## Impact census: removing `setMem(int, double[])`
 

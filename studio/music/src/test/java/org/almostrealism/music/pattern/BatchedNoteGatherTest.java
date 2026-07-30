@@ -77,9 +77,7 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 
 	/** Creates a single-element {@link PackedCollection} containing the given value. */
 	private PackedCollection single(double value) {
-		PackedCollection col = new PackedCollection(1);
-		c(value).into(col.traverseEach()).evaluate();
-		return col;
+		return new PackedCollection(1).fill(value);
 	}
 
 	/** Generates a deterministic random audio sample of {@code SOURCE_LENGTH} frames using the given seed. */

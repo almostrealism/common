@@ -323,7 +323,10 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 		try {
 			String content = Files.readString(file);
-			if (!content.contains(".setMem(") && !content.contains(".of(")) return this;
+			if (!content.contains(".setMem(") && !content.contains(".of(")
+					&& !content.contains(".fill(") && !content.contains("pack(")) {
+				return this;
+			}
 
 			String masked = maskCommentsAndStrings(content);
 			scanCalls(file, content, masked, SETMEM_CALL,

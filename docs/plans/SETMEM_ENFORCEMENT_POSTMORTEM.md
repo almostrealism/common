@@ -150,9 +150,17 @@ Then ask the F7 question for every touched test, and verify per F9.
 The burn-down state is measured by the detector itself: running
 `SetMemLiteralsDetector <root>` prints an exemption summary — live grandfathered
 occurrences (baseline entries still matching source), stale ledger rows eligible for
-removal, and how many acknowledged exclusions remain in use. Snapshot at consolidation
-time (2026-07-29, phases 11–13 branch): **384 live grandfathered occurrences across 319
-baseline entries** (of 493 entries tolerating 584 — 174 rows already stale), **plus all
-21 burn-down exclusions live — 405 total exemptions**. The target is zero, at which
-point the baseline resource and the exclusion list are deleted and `setMem` ceases to be
-a host→device path.
+removal, and how many acknowledged exclusions remain in use.
+
+One more failure mode surfaced while establishing the metric, worth its own entry:
+**F14 — a blind checker undercounts.** The detector's file prefilter skipped files
+containing neither `setMem` nor `PackedCollection.of`, so `fill`/`pack` calls in files
+that had fully migrated away from `setMem` were never scanned at all — 283 violations
+were invisible, and the first reported total (405) was an undercount. The prefilter is
+fixed and the baseline regenerated. A burn-down metric is only worth reporting if the
+instrument measures the whole tree.
+
+Snapshot after regeneration (2026-07-29, phases 11–13 branch): **678 live grandfathered
+occurrences across 514 baseline entries, plus all 21 burn-down exclusions — 699 total
+exemptions**, zero stale rows. The target is zero, at which point the baseline resource
+and the exclusion list are deleted and `setMem` ceases to be a host→device path.

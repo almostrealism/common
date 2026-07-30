@@ -7,7 +7,6 @@ package org.almostrealism.spatial;
 
 import org.almostrealism.audio.data.WaveDetails;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -126,7 +125,8 @@ public class EditableSpatialWaveDetails extends SpatialWaveDetails
 
 			int dataIndex = frameIndex * frequencyBins + binIndex;
 			double existing = freqData.toDouble(dataIndex);
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqData.range(new TraversalPolicy(1), dataIndex)), CollectionFeatures.getInstance().c(Math.max(existing, magnitude))).get().run();
+			double updated = Math.max(existing, magnitude);
+			freqData.range(new TraversalPolicy(1), dataIndex).fill(updated);
 		}
 
 		modified = true;

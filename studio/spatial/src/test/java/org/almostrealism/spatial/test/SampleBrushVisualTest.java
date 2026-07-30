@@ -18,7 +18,6 @@ package org.almostrealism.spatial.test;
 
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.spatial.EditableSpatialWaveDetails;
@@ -149,7 +148,7 @@ public class SampleBrushVisualTest extends TestSuiteBase {
 					int b = bin + db;
 					if (b < 0 || b >= FREQ_BINS) continue;
 					int idx = (frame + df) * FREQ_BINS + b;
-					CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqData.range(new TraversalPolicy(1), idx)), CollectionFeatures.getInstance().c(magnitude)).get().run();
+					freqData.range(new TraversalPolicy(1), idx).fill(magnitude);
 				}
 			}
 		}
