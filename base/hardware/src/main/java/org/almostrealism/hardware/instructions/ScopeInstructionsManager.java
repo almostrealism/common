@@ -59,7 +59,7 @@ import java.util.stream.Collectors;
  *
  * <pre>{@code
  * // Create compiler
- * ComputationScopeCompiler<Matrix> compiler = new ComputationScopeCompiler<>(computation, nameProvider);
+ * ComputationScopeCompiler<Matrix> compiler = new ComputationScopeCompiler<>(computation);
  *
  * // Create manager with scope supplier (NOT YET COMPILED!)
  * ScopeInstructionsManager<ScopeSignatureExecutionKey> manager =
@@ -152,6 +152,9 @@ import java.util.stream.Collectors;
  * // - Executes all destroy listeners
  * // - Clears cached operators
  * }</pre>
+ *
+ * TODO(review): this example omits that destroy() also destroys the manager-owned
+ * CompiledKernelStructureContext (see the destroy() method below) — update to match.
  *
  * @param <K> The {@link ExecutionKey} type used for operation lookup
  * @see InstructionSetManager

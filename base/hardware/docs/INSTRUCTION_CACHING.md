@@ -102,8 +102,13 @@ InstructionSetManager<K extends ExecutionKey> (interface)
         |
         +-- ScopeInstructionsManager<K>      -- Standard: lazy compile + cache
             |
-            +-- ComputableInstructionSetManager<K>  -- Adds output tracking
+            +-- ComputableInstructionSetManager<K>  -- Output and kernel-structure tracking
             +-- ComputationInstructionsManager       -- Multi-function fallback
+
+CompiledKernelStructureContext
+    +-- Owned by ScopeInstructionsManager
+    +-- Owns KernelSeriesCache and KernelTraversalOperationGenerator
+    +-- Destroyed with the compiled InstructionSet
 
 ProcessArgumentMap
     |
@@ -358,29 +363,41 @@ The standard implementation that handles lazy compilation and caching.
 | `arguments` | `List<Argument<?>>` | Scope arguments |
 | `outputArgIndices` | `Map<K, Integer>` | Output arg index per key |
 | `outputOffsets` | `Map<K, Integer>` | Output offset per key |
+| `aggregatePositions` | `String` | Aggregate layout baked into the compiled kernel |
+| `kernelStructureContext` | `CompiledKernelStructureContext` | Kernel-owned series/traversal resources |
 | `accessListener` | `Consumer<ScopeInstructionsManager<K>>` | Notified on access |
 | `destroyListeners` | `List<Runnable>` | Notified on destroy |
 
 Key behaviors:
 - `getOperator(K key)`: Synchronized; compiles scope via `ComputeContext.deliver()` on first call, returns cached operator on subsequent calls
 - `getScope()`: Invokes the scope supplier and caches metadata (name, inputs, arguments); populates `ProcessArgumentMap` if a Process is associated
-- `destroy()`: Destroys the `InstructionSet` (releases native code) and notifies all destroy listeners
+- `destroy()`: Destroys the `InstructionSet`, destroys the manager-owned
+  `CompiledKernelStructureContext`, and notifies all destroy listeners
 
 ### ComputableInstructionSetManager
 
 **Package:** `org.almostrealism.hardware.instructions`
 
-Extended interface that adds output argument tracking:
+Extended interface that adds output argument tracking and ownership of the kernel structure
+context used by compiled instructions:
 
 ```java
 public interface ComputableInstructionSetManager<K extends ExecutionKey>
         extends InstructionSetManager<K> {
     int getOutputArgumentIndex(K key);
     int getOutputOffset(K key);
+    void setAggregatePositions(String positions);
+    String getAggregatePositions();
+    CompiledKernelStructureContext getKernelStructureContext(Computation<?> computation);
 }
 ```
 
-Implemented by `ScopeInstructionsManager`. Used by `AcceleratedComputationEvaluable` to extract the result from the correct argument after kernel execution.
+`getKernelStructureContext` returns the manager-owned context that materializes kernel structure
+resources during compilation. The context is created once for the manager's instruction set and
+destroyed when that instruction set is destroyed. `setAggregatePositions` and
+`getAggregatePositions` record and verify the aggregate layout baked into generated code, so a
+reuse with a different layout fails as an instruction-cache collision instead of silently
+recompiling or binding the wrong buffer.
 
 ### ComputationInstructionsManager
 
@@ -481,6 +498,11 @@ At execution time, when the kernel needs argument N at tree position P:
 
 ### Compilation and Caching
 
+When a cached manager compiles a scope, the operation first establishes the manager's
+`CompiledKernelStructureContext`. Scope preparation materializes the series and traversal
+resources through that context. Replaying scope preparation during aggregate-rebinding
+verification reuses the same context and cannot create a second set of kernel-owned resources.
+
 ```
 [First operation with signature "abc123"]
     |
@@ -532,6 +554,7 @@ When the `FrequencyCache` exceeds capacity 500:
 3. Eviction listener calls `manager.destroy()`
 4. `ScopeInstructionsManager.destroy()`:
    - Destroys the `InstructionSet` (releases native code / .so / .dylib)
+   - Destroys the manager-owned `CompiledKernelStructureContext` and its series/traversal resources
    - Runs all destroy listeners
 5. Operations holding a reference to the evicted manager:
    - Still function because the access listener restores the manager to the cache on next use

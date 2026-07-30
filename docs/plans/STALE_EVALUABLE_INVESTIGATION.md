@@ -227,10 +227,9 @@ fine — against the wrong bindings).
 An explicit stale-binding guard (tracking the manager the bindings were
 created against and throwing on mismatch) was implemented during
 verification and then removed in review: `instructions` changes identity only
-through `resetInstructions`, which now clears the bindings in the same step,
-so the guarded condition is structurally unreachable outside the deprecated
-`compile(manager, key)` setter (which already warns). The lifecycle contract
-is protected by the regression test instead.
+through `resetInstructions`, which now clears the bindings in the same step.
+There is no remaining manual `compile(manager, key)` path; the lifecycle
+contract is protected by the regression test instead.
 
 `DefaultComputer.evictInstructions(signature)` was added so the eviction
 lifecycle can be exercised deterministically;
