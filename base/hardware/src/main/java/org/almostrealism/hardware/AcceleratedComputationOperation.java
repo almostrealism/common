@@ -204,14 +204,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	/** Manages compiled instruction sets and caching for this computation. */
 	private ComputableInstructionSetManager<?> instructions;
 
-	/** Unique key identifying this operation's compiled form for caching purposes. */
-	private ExecutionKey executionKey;
-
 	/**
-	 * True when {@link #instructions} belongs to someone else — a shared, signature-cached
-	 * manager owned by the {@link DefaultComputer}, or a manager supplied externally through
-	 * the deprecated compile path. A privately created manager is this operation's own asset
-	 * and is destroyed with it (see {@link #destroy()}); a manager owned elsewhere is not.
+	 * True when {@link #instructions} is a shared, signature-cached manager owned by the
+	 * {@link DefaultComputer}. A privately created manager is this operation's own asset
+	 * and is destroyed with it (see {@link #destroy()}); a shared manager is not.
 	 */
 	private boolean sharedInstructions;
 
@@ -408,9 +404,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	@Override
 	public ExecutionKey getExecutionKey() {
-		if (executionKey != null)
-			return executionKey;
-
 		String signature = getMetadata().getSignature();
 
 		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
@@ -673,25 +666,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
-	 * Deprecated compile method for manual instruction set management.
-	 *
-	 * <p>This method is deprecated and should not be used in new code. It exists
-	 * for backward compatibility only.</p>
-	 *
-	 * @param instructions The instruction set manager to use
-	 * @param executionKey The execution key to use
-	 * @deprecated Manual instruction set management is no longer recommended
-	 */
-	@Deprecated
-	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
-		warn("Use of deprecated compile method");
-		this.instructions = instructions;
-		this.executionKey = executionKey;
-		this.sharedInstructions = true;
-	}
-
-	/**
-	 * Resets the instruction set manager and execution key.
+	 * Resets the instruction set manager.
 	 *
 	 * <p>Clears cached instructions, resets all argument state, and destroys
 	 * the compiler, allowing the operation to be recompiled. Called when the
@@ -706,7 +681,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	protected void resetInstructions() {
 		instructions = null;
-		executionKey = null;
 		sharedInstructions = false;
 
 		resetArguments();
