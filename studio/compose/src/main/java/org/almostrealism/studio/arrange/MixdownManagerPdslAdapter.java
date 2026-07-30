@@ -35,6 +35,7 @@ import org.almostrealism.studio.optimize.OptimizeFactorFeatures;
 import org.almostrealism.util.FirFilterTestFeatures;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -346,6 +347,41 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 							+ " building an argument map requires a MixdownManager");
 		}
 		return efx == null ? baseArgsMap() : wetArgsMap();
+	}
+
+	/**
+	 * Argument slots that accumulate render state across forward passes: the
+	 * delay, feedback, bus, and reverb rings with their heads, the previous-buffer
+	 * automation values used for ramping, and the stem capture slots. Everything
+	 * else in the map is configuration or per-buffer automation, rewritten by
+	 * {@link #automationRefresh} rather than accumulated.
+	 */
+	private static final List<String> STATE_SLOTS = List.of(
+			"buffers", "heads", "fb_buffers", "fb_heads",
+			"main_fb_buffers", "main_fb_heads", "bus_buffers", "bus_heads",
+			"reverb_buffers", "reverb_heads",
+			"volume_prev", "efx_automation_prev", "reverb_send_prev",
+			"wet_in_prev", "bus_delay_samples_prev",
+			"stem_channels", "stem_efx", "stem_reverb");
+
+	/**
+	 * Zeroes every state slot in the given argument map, so the next render starts
+	 * from silence rather than the previous render's ring contents. The CellList
+	 * mixdown gets this from the {@code Lifecycle} reset chain clearing its delay
+	 * cells; the PDSL substrate keeps its state in these argument slots, so a
+	 * renderer reusing one compiled model across renders must call this between
+	 * them — without it, recirculating tails carry from one render into the next
+	 * until every render begins loud enough to clip.
+	 *
+	 * @param args the argument map previously built by {@link #buildArgsMap()}
+	 */
+	public void resetState(Map<String, Object> args) {
+		for (String key : STATE_SLOTS) {
+			Object slot = args.get(key);
+			if (slot != null) {
+				((PackedCollection) slot).fill(0.0);
+			}
+		}
 	}
 
 	/**

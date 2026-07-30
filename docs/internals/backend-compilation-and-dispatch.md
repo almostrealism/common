@@ -19,8 +19,11 @@ Scope (computation AST)
   ├── ComputationScopeCompiler
   │     Prepares scope: arguments, simplification, metadata
   │
+  ├── CompiledKernelStructureContext
+  │     Manager-owned series/traversal resources referenced by the kernel
+  │
   ├── ScopeInstructionsManager
-  │     Manages lifecycle, caching, lazy compilation
+  │     Owns compiled instructions and their structure context
   │
   ├── ComputeContext.deliver(scope)
   │     Backend-specific compilation
@@ -37,22 +40,30 @@ Scope (computation AST)
 `ComputationScopeCompiler` (`base/hardware/src/.../instructions/ComputationScopeCompiler.java`)
 prepares a `Computation` for compilation by generating and enriching its `Scope`.
 
+### Compilation requires an instruction set manager
+
+Compilation must be established through the operation's `InstructionSetManager`. The manager owns the compiled instruction set and its `CompiledKernelStructureContext`; calling `compile()` without first creating or obtaining that manager is an error. There is no supported manual-compilation path outside manager ownership.
+
 ### Compilation Lifecycle
 
 ```java
 // 1. Create compiler from a Computation
 ComputationScopeCompiler<T> compiler = new ComputationScopeCompiler<>(computation);
 
-// 2. Prepare scope inputs (argument wiring happens here)
-compiler.prepareScope(argumentProvider, kernelStructureContext);
+// 2. Establish the manager that owns the compiled instructions
+ComputableInstructionSetManager<?> manager = operation.getInstructionSetManager();
+KernelStructureContext structureContext = manager.getKernelStructureContext(computation);
 
-// 3. Compile — generates the Scope AST
+// 3. Prepare scope inputs (argument wiring happens here)
+compiler.prepareScope(argumentProvider, structureContext);
+
+// 4. Compile — generates the Scope AST
 Scope<T> scope = compiler.compile();
 
-// 4. Post-compile enrichment — shape validation, metadata
+// 5. Post-compile enrichment — shape validation, metadata
 compiler.postCompile();
 
-// 5. Check status
+// 6. Check status
 if (compiler.isCompiled()) {
     // Scope is ready for backend compilation
 }
@@ -66,8 +77,10 @@ if (compiler.isCompiled()) {
 3. **Simplification** — Optimizes the expression tree (constant folding, identity elimination —
    see [expression-evaluation.md](expression-evaluation.md))
 4. **Metadata enrichment** — Adds shape information, operation signature, traversal policy
-5. **Kernel structure support** — Manages `KernelSeriesCache` and
-   `KernelTraversalOperationGenerator` for complex kernel patterns
+5. **Kernel structure support** — Compiles with the manager-owned
+   `CompiledKernelStructureContext`, which materializes `KernelSeriesCache` and
+   `KernelTraversalOperationGenerator` when the computation supports those optimizations.
+   The compiler does not own or destroy these resources; the instruction set manager does.
 
 ### Operation Signatures
 
@@ -87,8 +100,12 @@ Signatures ensure that identical operations compile once and reuse the cached ke
 
 ## InstructionSetManager — Compilation Caching
 
-The `InstructionSetManager` hierarchy manages compiled kernels with lazy compilation
-and caching.
+The `InstructionSetManager` hierarchy manages compiled kernels with lazy compilation and caching.
+The manager is also the owner of resources referenced by compiled instructions. In the standard
+path, `ScopeInstructionsManager` creates one `CompiledKernelStructureContext` for a compiled
+instruction set; that context owns the kernel series cache and traversal operation generator and
+is destroyed with the instruction set. Consequently, an eager caller must obtain its manager
+before calling `AcceleratedComputationOperation.compile()`.
 
 ### Class Hierarchy
 
@@ -486,8 +503,9 @@ reduce memory usage.
 ## Related Files
 
 - `ComputationScopeCompiler.java` (`base/hardware/src/.../instructions/`) — Scope preparation
-- `ScopeInstructionsManager.java` (`base/hardware/src/.../instructions/`) — Compilation caching
-- `ComputableInstructionSetManager.java` (`base/hardware/src/.../instructions/`) — Output tracking
+- `CompiledKernelStructureContext.java` (`base/hardware/src/.../kernel/`) — Manager-owned kernel structure resources
+- `ScopeInstructionsManager.java` (`base/hardware/src/.../instructions/`) — Compilation caching and resource lifecycle
+- `ComputableInstructionSetManager.java` (`base/hardware/src/.../instructions/`) — Output and structure-context ownership
 - `InstructionSetManager.java` (`base/hardware/src/.../instructions/`) — Cache interface
 - `ExecutionKey.java` (`base/hardware/src/.../instructions/`) — Cache key marker
 - `Hardware.java` (`base/hardware/src/.../hardware/`) — Backend initialization

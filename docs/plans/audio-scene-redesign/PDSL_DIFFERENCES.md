@@ -1,20 +1,20 @@
 # PDSL vs CellList Signal Path — Divergence Assessment (2026-07-09)
 
-The authoritative inventory of the differences between the legacy CellList mixdown path
-(`AudioSceneRealtimeRunner.createCellList`, buffer size 1 — one frame per tick) and the
-production PDSL path (`AudioSceneRealtimeRunner.createPdsl` driving `mixdown_master_wet`
-in `engine/ml/src/main/resources/pdsl/audio/mixdown_manager.pdsl`, buffer size 4096).
+The following is a historical assessment of the differences between the legacy CellList mixdown path
+(`AudioSceneRealtimeRunner.createCellList`, buffer size 1 — one frame per tick) and the PDSL path
+(`AudioSceneRealtimeRunner.createPdsl` driving `mixdown_master_wet`). The assessment was captured
+at buffer size 4096; the current real-time default is 1024. The ring defects identified in §2 were
+fixed after the assessment, and §5a's smooth delay-rate modulation was restored on 2026-07-25.
+Use the current source and the status markers below for present behavior.
 
-**Why this rewrite exists.** The owner reports the two paths audibly diverge, that the
-divergence *grows with clip duration*, is *worst when most of the signal comes from EFX*,
-and reads as a **grinding** artifact. The previous version of this document recorded a
-parity verdict ("validated by ear and windowed RMS") from a 40 s A/B at buffer size 8192.
-That verdict is superseded: this assessment re-derives every EFX mechanism from current
-source at the production buffer size of 4096, and finds **three ring-arithmetic defects**
-(§2) that generate exactly the reported symptom class, on top of the known structural
-differences (§3). Windowed RMS cannot see these defects (rotations and splices preserve
-energy), and the 8192 validation exercised different — though also partly broken —
-arithmetic.
+The original owner report was that the two paths audibly diverged, that the divergence grew with
+clip duration, was worst when most of the signal came from EFX, and read as a **grinding** artifact.
+The previous version of this document recorded a parity verdict ("validated by ear and windowed
+RMS") from a 40 s A/B at buffer size 8192. That verdict is superseded: this assessment re-derived
+every EFX mechanism from source at buffer size 4096 and found **three ring-arithmetic defects**
+(§2) that generated the reported symptom class, on top of the known structural differences (§3).
+Windowed RMS cannot see those defects (rotations and splices preserve energy), and the 8192
+validation exercised different — though also partly broken — arithmetic.
 
 Every claim below carries a `file:symbol` receipt. The arithmetic claims follow
 mechanically from the cited expressions; runtime confirmation is step 0 of the option
@@ -29,9 +29,8 @@ plan (§6).
   `AudioPassFilter.MAX_INPUT` (`mixdown_master_wet` MAIN and master tail).
 - **Master tail** — clamp → master low-pass → `masterBusGain` (0.5) → **hard clip**
   `[-1, 1]`. The earlier `tanh_act()` soft saturator was replaced by the same hard clip
-  Java uses (`mixdown_manager.pdsl` master-tail comment). Note: the javadoc block in
-  `MixdownManagerPdslAdapter.buildArgsMap` still describes the tanh stage — stale, fixed
-  alongside this assessment.
+  Java uses (`mixdown_manager.pdsl` master-tail comment). The adapter's Javadoc and argument
+  mapping now describe the hard-clip stage accurately.
 - **Gain structures** — efx-bus `volume ∘ wetFilter`, reverb send `gain = 0.1`, wet
   output mean `1/N`, cutoff bounds `[AudioPassFilter.MIN_FREQUENCY, 20000]` Hz.
 - **Automation values** — computed by the same `AutomationManager` producers; only
@@ -39,7 +38,7 @@ plan (§6).
 
 ---
 
-## 2. Open defects — ring arithmetic (the likely grinding sources)
+## 2. Historical ring defects — resolved
 
 The block-parallel delay machinery reads a ring at
 `position = (head + i − delay) mod bufSize` per output sample `i`
@@ -55,18 +54,19 @@ slot holding the wrong lap**. The invariant it needs:
 > `signalSize ≤ D ≤ bufSize` — sub-frame delays would need intra-frame recurrence,
 > which block-parallel evaluation cannot express. Stages that write *first*
 > (`multiChannelDelayBlock`, the `delay` primitive) support
-> `0 ≤ D ≤ bufSize − signalSize` — a one-frame ring holds only `D = 0`. Nothing
-> enforced either band. (Now enforced by a device-side clamp in the kernels.)
+> `0 ≤ D ≤ bufSize − signalSize` — a one-frame ring holds only `D = 0`. At the time of
+> this assessment neither band was enforced; the current kernels clamp requests to the
+> appropriate band and the adapter sizes rings for the requested delays.
 
-Every violation produces, per buffer: a **splice discontinuity** (the read crosses from
-a correct lap to a wrong lap mid-frame) and a region whose **effective delay is wrong**
-(too short, non-causal, or a full ring-lap stale). At 4096/44.1 kHz that is a periodic
-artifact train at 10.77 Hz — mechanically the texture one would describe as grinding —
-and each defect sits **inside or feeding a feedback loop**, so the artifacts recirculate
-and accumulate with clip duration and EFX share. All three current rings violate the
-invariant:
+Every violation produced, per buffer: a **splice discontinuity** (the read crossed from a
+correct lap to a wrong lap mid-frame) and a region whose **effective delay was wrong**
+(too short, non-causal, or a full ring-lap stale). At 4096/44.1 kHz that produced a periodic
+artifact train at 10.77 Hz — mechanically the texture described as grinding — and each defect
+sat **inside or fed a feedback loop**, so the artifacts recirculated and accumulated with clip
+duration and EFX share. Those failure modes are retained below as historical receipts.
 
-### 2.1 Feedforward wet-arm delay: one-frame ring, 6500-sample delay — broken at 4096
+
+### 2.1 Feedforward wet-arm delay: one-frame ring, 6500-sample delay — fixed 2026-07-09
 
 - The wet arm applies `delay(delay_samples, buffers[channel], heads[channel])` to the
   whole wet voicing (dry component + filtered wet, post `wet_filter`/`volume`, before
@@ -90,7 +90,7 @@ invariant:
   ring write, so the two forms of the same primitive have **different semantics** for
   any sub-ring delay. Whichever order is chosen must be one order.
 
-### 2.2 Reverb network: 2-frame ring whose taps can never all be valid
+### 2.2 Reverb network: 2-frame ring whose taps could never all be valid — fixed 2026-07-09
 
 - `reverbTapDelays` spreads taps over `0.3 … 0.85 × (REVERB_FRAMES × signalSize)` with
   `REVERB_FRAMES = 2` (`MixdownManagerPdslAdapter`), i.e. **0.6–1.7 frames**, but the
@@ -111,7 +111,7 @@ invariant:
   sized in *frames*, so the owner's production buffer halved the reverb's time span
   relative to the validated 8192 renders.
 
-### 2.3 Efx feedback grid: gene delays can enter the unsupported band
+### 2.3 Efx feedback grid: gene delays could enter the unsupported band — fixed 2026-07-09
 
 - `efx_fb_delay` = `floor(delayTimes gene × beatSamples)`; the gene choices are
   `{0.25, 0.375, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6}` beats (`EfxManager.init`). At
@@ -147,20 +147,18 @@ fires sample-exactly one frame later, exactly once).
 ## 3. Structural differences (PDSL ≠ legacy by design) — ranked by audible weight
 
 ### 3.1 The reverb is a different (much smaller, much sparser) room
-Legacy: `reverb.sum().map(fc(i -> new DelayNetwork(sampleRate, false)))`
-(`MixdownManager.createEfx`) = **128 delay lines**, per-line length drawn uniformly from
-**0.15–1.5 s** (`DelayNetwork` constructor: `0.1×max + 0.9×random×max`, max 1.5 s),
-Householder feedback at radius **1/128**, per-sample recurrence. Since the recirculation
-is nearly nil at that radius, the legacy reverb is effectively a **dense 128-tap random
-diffusion** over 1.5 seconds — a plausible room splash, re-randomized every run.
-PDSL: **6 taps** (one per channel) at **70–143 ms** (regular spacing, §2.2), radius 1/6
-recirculation, block-parallel. Six regular flutter-range taps recirculating is a
-metallic, comb-like texture even with the §2.2 arithmetic fixed — and because the ring
-is sized in frames, the room *shrinks* when the buffer does. **Lever:** decouple tap
-count and ring length from `channels`/frames — e.g. 32+ taps spread over a
-seconds-denominated ring (`repeat(taps)` before `delay_network` already permits taps ≠
-channels), radius `1/taps`. That is a knob, not a rewrite, and block-parallel handles
-≥-frame taps sample-exactly.
+Legacy: **128 delay lines**, per-line length drawn uniformly from **0.15–1.5 s**
+(`DelayNetwork` constructor: `0.1×max + 0.9×random×max`, max 1.5 s), Householder
+feedback at radius **1/128**, per-sample recurrence. Since the recirculation is nearly
+nil at that radius, the legacy reverb is effectively a dense 128-tap random diffusion
+over 1.5 seconds — a plausible room splash, re-randomized every run.
+
+PDSL now uses **32 taps** (decoupled from scene channels) over the same **0.15–1.5 s**
+range, a seconds-denominated ring, deterministic golden-ratio spacing, and radius
+**1/32**. This fixes the former six-tap, frame-sized metallic room described by the
+original assessment; the remaining difference is deliberate tap distribution and
+block-parallel recurrence, not a buffer-size-dependent room.
+
 
 ### 3.2 Two legacy feedback loops were merged into one, and half the genes went missing
 Legacy has two distinct regeneration structures:
@@ -196,9 +194,8 @@ completed the split into the two legacy structures (§6-C5 for the full mechanis
   echo too** — the only un-bus-delayed echo in the legacy mix, i.e. the most direct
   echo character in the legacy sound. The PDSL main arm previously had no echo at all;
   it now runs the same stage on its own ring state.
-- Remaining §3.2 residue (deliberate): the legacy bus regenerates through
-  `AdjustableDelayCell`s whose *rate* modulation is a pitch bend — see §5a (owner
-  reclassified; next arc).
+- The former §3.2 residue — cursor-rate modulation — was restored on 2026-07-25 by the
+  fractional, linearly interpolated delay trajectory described in §5a.
 
 ### 3.3 Regeneration floor: one buffer — but sample-exact above it
 Correction to earlier revisions of this inventory (including the first draft of this
@@ -214,16 +211,15 @@ block-parallel (§2 invariant), and delay/matrix values are re-read once per pas
 the production gene range except above ~161 bpm; the floor scales linearly with
 buffer size.
 
-### 3.4 Automation steps once per buffer
-All time-varying values (volume, cutoffs, efx automation, reverb send) are slots
-refreshed once per buffer (`MixdownManagerPdslAdapter.automationRefresh`;
-`AudioSceneRealtimeRunner.createPdsl` tick) — a 10.77 Hz staircase at 4096 vs legacy
-per-frame continuity. Slow envelopes are fine; the staircase matters exactly where the
-owner hears trouble: a step applied to a **hot wet bus** is a level discontinuity that
-then **recirculates through the feedback loops**. Distinct from §2's splices (which
-occur with automation frozen) but the same 10.77 Hz signature, and additive with them.
+### 3.4 Automation refresh granularity
+Automation slots are refreshed once per buffer (`MixdownManagerPdslAdapter.automationRefresh`,
+`AudioSceneRealtimeRunner.createPdsl` tick). Hot-bus gains now use `ramp_scale` to interpolate
+between the previous and current slots across the frame; filter coefficients and other values
+that are not ramped remain buffer-stepped. This is a remaining semantic difference from the
+legacy per-frame path, but it is no longer accurate to describe every automation value as a
+10.77 Hz staircase.
 
-### 3.5 Filters: FIR approximations, asymmetrically sourced — REVISED 2026-07-11
+### 3.5 Filters: FIR approximations, asymmetrically sourced — historical fix record
 - Main HP / master LP: 41-tap truncated-**biquad**-IR tables (1024 log-spaced bins,
   per-buffer device-side row select — `biquadResponseTable`/`tableRow`), deliberately
   matched to `AudioPassFilter`'s 12 dB/oct shape. Sub-perceptual per the sweep A/B.
@@ -261,8 +257,10 @@ occur with automation frozen) but the same 10.77 Hz signature, and additive with
 
 ---
 
-## 4. Why divergence grows with duration and EFX share
+## 4. Historical explanation for the original divergence
 
+The following explains the original symptom before the ring, room, and modulation fixes; it is not a
+claim that the current implementation still has those ring defects.
 1. **Feedback accumulation**: §2's per-buffer splices and §3.4's staircase steps are
    injected into loops (efx grid, reverb Householder). Early in a clip the buses carry
    mostly direct signal; as the arrangement's automation opens sends and tails
@@ -305,17 +303,20 @@ each buffer boundary, so drift cannot accumulate.
 
 ---
 
-## 6. Options — ordered by (payoff ÷ effort)
+## 6. Historical options and completed remediation
 
-**Step 0 (receipts before fixes).** A ring-semantics unit test that feeds a known ramp
-through `multiChannelDelayBlock` / `feedbackNetworkBlock` at small shapes and asserts
+The options below record the remediation plan as it stood before the fixes. Step 0 and A–C
+are complete; the remaining character differences are listed in §3 and §5.
+
+**Step 0 (completed receipts before fixes).** The ring-semantics unit tests feed known ramps
+through `multiChannelDelayBlock` / `feedbackNetworkBlock` at small shapes and assert
 effective delay per output index — confirming §2.1–2.3 at runtime and becoming the
 regression guard for A1–A3. Plus a by-ear bisection on the real scene using the
 existing diagnostic arm gains (`mainArmGain` / `efxArmGain` / `reverbArmGain`,
 `hpCutoffOverrideHz`) to rank the arms' contribution to the grinding before and after
 each fix.
 
-**A. Fix the ring defects (small, surgical, no character judgment involved):**
+**A. Fix the ring defects — COMPLETED 2026-07-09:**
 1. Enforce the ring-sizing invariant at block construction: throw (or log-and-clamp)
    when `maxDelay + signalSize > bufSize`, and for read-first stages when
    `delay < signalSize`. The invariant belongs in `MultiChannelDspFeatures`, stated
@@ -330,7 +331,7 @@ each fix.
 4. Re-validate: bit-parity is not expected (the current output includes the defects),
    so the gate is the Step-0 unit test + A/B listening + windowed RMS at **4096**.
 
-**B. Re-align the reverb room (knobs, medium payoff):**
+**B. Re-align the reverb room — COMPLETED 2026-07-09:**
 1. Size the reverb ring in **seconds** (e.g. 1.5 s → `ceil(1.5·sr/signalSize)` frames ≈
    17 frames at 4096), so the room is buffer-size-independent and matches the legacy
    span.
@@ -340,7 +341,7 @@ each fix.
    character deterministically. Memory: 32 taps × 17 frames × 4096 × 8 B ≈ 18 MB —
    fine.
 
-**C. Restore the missing legacy genes/behaviors (character, medium effort):**
+**C. Restore the missing legacy genes/behaviors — COMPLETED 2026-07-25:**
 1. **DONE 2026-07-09.** The per-channel self-feedback gene (`delayLevels[ch,1]`) is on
    the `efx_fb_transmission` **diagonal** (`feedbackGridMatrix`), off-diagonal
    contraction scaling kept; and the wet arm's feedforward delay is gene-driven per
@@ -443,7 +444,7 @@ gone.
 
 ---
 
-## 7. Verification instruments
+## 7. Verification instruments used for this assessment
 
 - Step-0 ring-semantics unit test (new; the only trustworthy receipt for §2).
 - Arm-gain bisection on the real scene (`mainArmGain`/`efxArmGain`/`reverbArmGain`).

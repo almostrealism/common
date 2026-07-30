@@ -421,6 +421,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		outputLoopBody.add(masterLeft.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
 		outputLoopBody.add(masterRight.push(c(shape(1), p(masterOutput), p(bufferFrameIndex))));
 
+		// The health computation ends a render early from what these meters see
+		// (clipping, sustained silence); without them every genome runs full length
+		addMeasurePushes(outputLoopBody, output, ChannelInfo.Voicing.MAIN,
+				c(shape(1), p(masterOutput), p(bufferFrameIndex)));
+		PackedCollection wetSignal = (PackedCollection) args.get("stem_efx");
+		if (wetSignal != null) {
+			addMeasurePushes(outputLoopBody, output, ChannelInfo.Voicing.WET,
+					c(shape(1), p(wetSignal), p(bufferFrameIndex)));
+		}
+
 		outputLoopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
 
 		// Whole buffers per tick, not per-frame pushes in the output loop, which
@@ -537,9 +547,30 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				currentFrame[0] = 0;
 				renderFrame[0] = 0;
 				compiled.reset();
+				adapter.resetState(args);
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};
+	}
+
+	/**
+	 * Pushes the current frame to the measure {@link Receptor}s for the given
+	 * voicing, once per stereo channel, so the health computation's meters see
+	 * the same per-frame signal the CellList mixdown fed them. A voicing the
+	 * output does not monitor is skipped.
+	 *
+	 * @param ops     the operation list receiving the push operations
+	 * @param output  the destination routing
+	 * @param voicing the signal path voicing the frame belongs to
+	 * @param frame   producer of the current frame
+	 */
+	private void addMeasurePushes(OperationList ops, MultiChannelAudioOutput output,
+								  ChannelInfo.Voicing voicing,
+								  Producer<PackedCollection> frame) {
+		for (ChannelInfo.StereoChannel stereo : ChannelInfo.StereoChannel.values()) {
+			Receptor<PackedCollection> measure = output.getMeasure(voicing, stereo);
+			if (measure != null) ops.add(measure.push(frame));
+		}
 	}
 
 	/**

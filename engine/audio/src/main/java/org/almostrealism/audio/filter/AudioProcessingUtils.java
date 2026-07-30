@@ -65,7 +65,8 @@ public class AudioProcessingUtils {
 		}
 
 		reverse = o.c(o.cv(o.shape(-1), 0),
-					o.sizeOf(o.cv(o.shape(-1), 0)).subtract(o.integers()))
+					o.sizeOf(o.cv(o.shape(-1), 0))
+							.subtract(o.c(1.0)).subtract(o.integers()))
 				.get();
 
 		CollectionProducer mainDuration = o.cv(o.shape(1), 1);
