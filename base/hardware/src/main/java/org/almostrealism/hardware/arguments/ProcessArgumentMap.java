@@ -23,6 +23,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Multiple;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.instructions.ProcessTreePositionKey;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
@@ -348,6 +349,41 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 	}
 
 	/**
+	 * Verifies that every argument with a process tree position received a substitution,
+	 * throwing when any did not.
+	 *
+	 * <p>When a compiled scope is reused, the reusing computation's tree must supply a producer
+	 * for every positioned argument of the shared scope — the positions were derived from the
+	 * originally compiled tree, so a position with no substitution means the two trees do not
+	 * share the structure their common signature promised. That is an instruction cache
+	 * collision, and it must surface here, at binding time, rather than whenever (or if ever)
+	 * the unmatched argument happens to be evaluated: an argument that is never re-evaluated
+	 * silently retains the originally compiled operation's data.</p>
+	 *
+	 * <p>No verification occurs when {@link #enableSubstitutionFallback} is set, since fallback
+	 * explicitly permits unmatched positions to resolve to their original producers.</p>
+	 *
+	 * @param description Identifies the operation being bound, for the failure message
+	 * @throws HardwareException if any positioned argument has no substitution
+	 */
+	public void verifySubstitutions(String description) {
+		if (enableSubstitutionFallback) return;
+
+		List<String> missing = new ArrayList<>();
+		for (Map.Entry<ArrayVariable<?>, ProcessTreePositionKey> entry : positionsForArguments.entrySet()) {
+			if (!substitutions.containsKey(entry.getValue())) {
+				missing.add(entry.getKey().getName() + " at " + entry.getValue().describe());
+			}
+		}
+
+		if (!missing.isEmpty()) {
+			throw new HardwareException("Instruction cache collision reusing " + description +
+					": no substitution for " + missing +
+					"; the reusing computation does not share the compiled scope's structure");
+		}
+	}
+
+	/**
 	 * Recursively registers producers from a process tree as substitutions.
 	 *
 	 * @param key Current position in the tree
@@ -391,7 +427,11 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		}
 
 		if (producer == null) {
-			throw new IllegalArgumentException();
+			throw new HardwareException("No producer available for argument " + argument.getName() +
+					(positionsForArguments.containsKey(argument)
+							? " at " + positionsForArguments.get(argument).describe() : "") +
+					"; an argument of a reused scope that cannot be resolved for the reusing" +
+					" computation indicates an instruction cache collision");
 		}
 
 		return (Evaluable) producer.get();

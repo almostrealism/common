@@ -17,8 +17,6 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
@@ -207,9 +205,8 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		Random random = new Random(newSeed);
 		PackedCollection genomeParams = scene.getGenome().getParameters();
 		PackedCollection newParams = new PackedCollection(genomeParams.getShape());
-		for (int i = 0; i < newParams.getMemLength(); i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(newParams.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(random.nextDouble())).get().run();
-		}
+		rand(newParams.getShape(), random)
+				.into(newParams.traverseEach()).evaluate();
 		scene.assignGenome(new ProjectedGenome(newParams));
 
 		// Second render with genome B - reuse same runner (no recompilation)

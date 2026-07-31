@@ -26,6 +26,7 @@ import org.almostrealism.collect.computations.AggregatedProducerComputation;
 import org.almostrealism.collect.computations.CollectionMaxComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionSumComputation;
+import org.almostrealism.collect.computations.CumulativeProductComputation;
 import org.almostrealism.collect.computations.DynamicIndexProjectionProducerComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableRepeatedProducerComputation;
@@ -118,6 +119,21 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 										.greaterThan(args[1].getValueAt(kernel().multiply(size).add(currentIndex))),
 								index, currentIndex),
 				input);
+	}
+
+	/**
+	 * Computes the cumulative product of the elements of the input collection.
+	 * If {@code pad} is true, the result is shifted by one position with 1.0 prepended
+	 * (making element i the product of input elements 0 through i-1).
+	 *
+	 * <p>The scan compiles to a single kernel; see {@link CumulativeProductComputation}.</p>
+	 *
+	 * @param input the input collection
+	 * @param pad   if true, prepend 1.0 and compute the exclusive cumulative product
+	 * @return a producer for the cumulative product collection
+	 */
+	default CollectionProducer cumulativeProduct(Producer<PackedCollection> input, boolean pad) {
+		return new CumulativeProductComputation(shape(input).traverseEach(), pad, input);
 	}
 
 	/**

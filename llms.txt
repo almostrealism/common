@@ -91,6 +91,7 @@
 - [CellList Fluent API](docs/internals/celllist-fluent-api.md): Chaining audio processing operations
 - [CellList Realtime Streaming](docs/internals/celllist-realtime-streaming.md): Low-latency audio output
 - [CellList Tick Ordering](docs/internals/celllist-tick-ordering.md): Execution ordering in cell graphs
+- [PDSL Audio DSP](docs/internals/pdsl-audio-dsp.md): The PDSL audio substrate — primitives, multi-channel constructs, producer-valued arguments, ring-sizing invariant
 
 ### ML and Training
 - [ML Inference Pipeline](docs/internals/ml-inference-pipeline.md): From loaded weights to generated tokens

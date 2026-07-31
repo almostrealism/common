@@ -169,8 +169,7 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 		}).collect(Collectors.toList()));
 
 		PackedCollection repeat = new PackedCollection(repeatChoices.length);
-		double[] repeatFactors = Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray();
-		a(cp(repeat), c(repeatFactors)).get().run();
+		repeat.setMem(Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray());
 
 		this.simpleDuration = chromosome(IntStream.range(0, channels)
 				.mapToObj(i -> chromosome.addChoiceGene(repeat,1))
@@ -202,7 +201,10 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList();
-		setup.add(() -> () -> a(cp(duration), c(length * measureDuration.getAsDouble())).get().run());
+		setup.add(() -> () -> {
+			double value = length * measureDuration.getAsDouble();
+			duration.fill(value);
+		});
 		return setup;
 	}
 

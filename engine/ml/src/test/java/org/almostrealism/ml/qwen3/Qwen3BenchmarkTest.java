@@ -138,29 +138,31 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 
 			List<Double> tokenTimes = new ArrayList<>();
 			currentToken = 9707;  // Reset to "Hello"
-			int step = 0;
+
+			CollectionFeatures ops = CollectionFeatures.getInstance();
+			Runnable advancePosition = ops.a(ops.cp(position),
+					ops.add(ops.cp(position), ops.c(1.0))).get();
+			ops.a(ops.cp(position), ops.c(0.0)).get().run();
 
 			// Warmup phase (not timed)
 			for (int w = 0; w < warmupTokens; w++) {
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 				PackedCollection input = createInput(embeddings, currentToken, dim);
 				PackedCollection logits = compiledModel.forward(input);
 				currentToken = findArgmax(logits, vocabSize);
-				step++;
+				advancePosition.run();
 			}
 
 			// Timed generation phase
 			for (int t = 0; t < numTokens; t++) {
 				long start = System.nanoTime();
 
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c((double) step)).get().run();
 				PackedCollection input = createInput(embeddings, currentToken, dim);
 				PackedCollection logits = compiledModel.forward(input);
 				currentToken = findArgmax(logits, vocabSize);
+				advancePosition.run();
 
 				double elapsedMs = (System.nanoTime() - start) / 1_000_000.0;
 				tokenTimes.add(elapsedMs);
-				step++;
 			}
 
 			allRunTimes.add(tokenTimes);

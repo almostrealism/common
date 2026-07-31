@@ -18,7 +18,6 @@ package org.almostrealism.util;
 
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.function.IntToDoubleFunction;
 
 /**
  * Shared test utilities for FIR filter and convolution tests.
@@ -36,25 +35,6 @@ import java.util.function.IntToDoubleFunction;
  * @see io.almostrealism.compute.test.ReplicationMismatchOptimizationTest
  */
 public interface FirFilterTestFeatures extends TestFeatures {
-
-	/**
-	 * Creates a {@link PackedCollection} signal populated by the given generator function.
-	 * The generated values are staged in a host array and assigned through a producer
-	 * so no computed value is uploaded via {@code setMem}/{@code fill}.
-	 *
-	 * @param size number of samples
-	 * @param generator function from sample index to sample value
-	 * @return a packed collection containing the generated signal
-	 */
-	default PackedCollection createSignal(int size, IntToDoubleFunction generator) {
-		double[] data = new double[size];
-		for (int i = 0; i < size; i++) {
-			data[i] = generator.applyAsDouble(i);
-		}
-		PackedCollection signal = new PackedCollection(size);
-		a(cp(signal), c(data)).get().run();
-		return signal;
-	}
 
 	/**
 	 * Reference implementation of low-pass FIR coefficient computation

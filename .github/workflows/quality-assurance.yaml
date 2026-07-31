@@ -1,0 +1,155 @@
+name: "Quality Assurance"
+
+# Runs after merges to master. Submits a FlowTree coding-agent job that reviews
+# the documentation for staleness against the changes merged over the last week
+# and opens a PR with any fixes.
+#
+# Rate limit: at most one submission per UTC calendar day. Every merge triggers
+# the workflow, but a GitHub Actions cache marker keyed on the day short-circuits
+# any run after the first submission that day. workflow_dispatch with force=true
+# bypasses the cap.
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Submit a documentation QA job even if one already ran today"
+        required: false
+        default: "false"
+
+# Serialize runs so the once-per-day marker is race-free: two merges close
+# together run one after another, and the second sees the marker the first saved.
+concurrency:
+  group: quality-assurance
+  cancel-in-progress: false
+
+jobs:
+  doc-qa:
+    runs-on: [self-hosted, macos, ar-ci]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      # The window of recent history the agent reviews for documentation drift.
+      # Passed to the prompt as a git --since expression.
+      REVIEW_SINCE: "1 week ago"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute daily rate-limit key
+        id: ratelimit
+        run: |
+          TODAY=$(date -u +%Y%m%d)
+          echo "day=$TODAY" >> "$GITHUB_OUTPUT"
+          echo "::notice::Documentation QA rate-limit day (UTC): $TODAY"
+
+      - name: Check today's submission marker
+        id: marker
+        uses: actions/cache/restore@v4
+        with:
+          path: .qa-submitted-marker
+          key: qa-submitted-${{ steps.ratelimit.outputs.day }}
+
+      - name: Decide whether to submit
+        id: decide
+        run: |
+          if [ "${{ steps.marker.outputs.cache-hit }}" = "true" ] && [ "${{ github.event.inputs.force }}" != "true" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::A documentation QA job already ran today (${{ steps.ratelimit.outputs.day }}) — skipping. Re-run via workflow_dispatch with force=true to override."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            if [ "${{ github.event.inputs.force }}" = "true" ]; then
+              echo "::notice::Force mode — submitting a documentation QA job regardless of the daily cap"
+            else
+              echo "::notice::No submission yet today — submitting a documentation QA job"
+            fi
+          fi
+
+      # A fresh branch for the agent to work on. It is pushed before submission
+      # so the agent's targetBranch exists; AUTO_CREATE_PR opens the PR once the
+      # agent commits its fixes. On a day when the docs are already current the
+      # agent makes no changes and no PR is opened, leaving an empty branch at
+      # master's HEAD (harmless; a future refinement could prune these).
+      - name: Create QA branch
+        if: steps.decide.outputs.run == 'true'
+        id: qa_branch
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="qa/docs-${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build documentation QA prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: master
+          REVIEW_SINCE: ${{ env.REVIEW_SINCE }}
+        run: |
+          ./tools/ci/prompts/build-doc-qa-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Submit documentation QA agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Review documentation for staleness"
+          PROTECT_TEST_FILES: "true"
+          AUTO_CREATE_PR: "true"
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # Consume today's slot only after a successful submission (a failed submit
+      # exits non-zero and fails the job before this runs, leaving the day open
+      # for a later merge to retry). Skipped when the marker already existed.
+      - name: Record today's submission
+        if: steps.decide.outputs.run == 'true' && steps.marker.outputs.cache-hit != 'true'
+        run: date -u +%s > .qa-submitted-marker
+
+      - name: Save daily submission marker
+        if: steps.decide.outputs.run == 'true' && steps.marker.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .qa-submitted-marker
+          key: qa-submitted-${{ steps.ratelimit.outputs.day }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Quality Assurance — Documentation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Rate-limit day (UTC):** ${{ steps.ratelimit.outputs.day }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Review window:** ${{ env.REVIEW_SINCE }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
+            echo "Created branch \`${{ steps.qa_branch.outputs.branch }}\` and submitted a FlowTree" >> "$GITHUB_STEP_SUMMARY"
+            echo "coding agent job to review documentation for staleness and open a PR with any fixes." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "A documentation QA job already ran today — skipped to honor the once-per-day cap." >> "$GITHUB_STEP_SUMMARY"
+          fi

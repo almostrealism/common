@@ -105,7 +105,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		KernelSeries numerator = getChildren().get(0).kernelSeries();
 		OptionalInt denominator = getChildren().get(1).intValue();
 
-		if (denominator.isPresent()) {
+		// Scaling the series periodicity models integer division steps,
+		// which does not describe a floating-point quotient
+		if (!isFP() && denominator.isPresent()) {
 			return numerator.scale(denominator.getAsInt());
 		}
 
@@ -117,7 +119,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		OptionalLong n = getNumerator().getLimit();
 		OptionalLong d = getDenominator().longValue();
 
-		if (n.isEmpty() || d.isEmpty() ||
+		// The option steps model integer division, which does not
+		// describe a floating-point quotient
+		if (isFP() || n.isEmpty() || d.isEmpty() ||
 				d.getAsLong() > Integer.MAX_VALUE ||
 				n.getAsLong() / d.getAsLong() > ScopeSettings.indexOptionLimit ||
 				!getNumerator().equals(index)) {
@@ -244,7 +248,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public IndexSequence sequence(Index index, long len, long limit) {
-		if (getChildren().size() != 2 ||
+		// The sequence divide applies integer division, which does not
+		// describe a floating-point quotient
+		if (isFP() || getChildren().size() != 2 ||
 				getChildren().get(1).longValue().isEmpty())
 			return super.sequence(index, len, limit);
 
@@ -299,6 +305,13 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	/**
 	 * Creates a quotient expression, applying unit-denominator pruning and constant folding.
 	 *
+	 * <p>Several of the transformations here reason with integer division semantics:
+	 * a non-negative numerator smaller than the divisor produces zero, bounded
+	 * numerators collapse to a constant, and sums and products decompose across the
+	 * division. They are gated on the quotient being integer typed, not merely on
+	 * the operand values being reported by the integer value accessors, since a
+	 * floating-point constant with an integral value also reports through those.</p>
+	 *
 	 * @param values the numerator followed by denominator expression(s)
 	 * @return the simplified expression or a new {@link Quotient}
 	 * @throws IllegalArgumentException if no operands are provided
@@ -316,7 +329,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				operands.add(values[i]);
 			}
 
-			fp = values[i].isFP();
+			fp = fp || values[i].isFP();
 		}
 
 		if (operands.size() == 1) return operands.get(0);
@@ -334,14 +347,14 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		Expression<?> denominator = operands.get(1);
 
 		if (numerator.longValue().orElse(-1) == 0)
-			return new IntegerConstant(0);
+			return fp ? new DoubleConstant(0.0) : new IntegerConstant(0);
 
 		OptionalLong d = denominator.longValue();
 
 		OptionalLong lower = numerator.lowerBound();
 		OptionalLong upper = numerator.upperBound();
 
-		if (!numerator.isPossiblyNegative() && d.isPresent() &&
+		if (!fp && !numerator.isPossiblyNegative() && d.isPresent() &&
 				upper.orElse(Long.MAX_VALUE) < d.getAsLong()) {
 			return new IntegerConstant(0);
 		} else if (!fp && d.isPresent() && lower.isPresent() && upper.isPresent()) {
@@ -353,13 +366,13 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		if (numerator instanceof Sum && d.isPresent()) {
+		if (!fp && numerator instanceof Sum && d.isPresent()) {
 			Expression simple = trySumSimplify((Sum) numerator, d.getAsLong());
 			if (simple != null)
 				return simple;
 		}
 
-		if (numerator instanceof Quotient && d.isPresent()) {
+		if (!fp && numerator instanceof Quotient && d.isPresent()) {
 			if (numerator.getChildren().size() == 2) {
 				OptionalLong altDenominator = numerator.getChildren().get(1).longValue();
 				if (altDenominator.isPresent() && Math.abs(altDenominator.getAsLong() * d.getAsLong()) <= maxCombinedDenominator) {
@@ -368,7 +381,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				}
 			}
 		} else if (numerator instanceof Product) {
-			if (d.isPresent()) {
+			if (!fp && d.isPresent()) {
 				// When dividing a product that includes a constant value,
 				// by the same constant value, the result can be simplified
 				// to a product of the remaining values without the constant

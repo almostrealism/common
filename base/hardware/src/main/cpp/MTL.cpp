@@ -94,6 +94,22 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_waitUntilComple
     buf->waitUntilCompleted();
 }
 
+// MTL::CommandBufferStatus ordinal; see MTL.commandBufferStatus javadoc.
+extern "C"
+JNIEXPORT jint JNICALL Java_org_almostrealism_hardware_metal_MTL_commandBufferStatus(JNIEnv* env, jclass cls, jlong cmdBuffer) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    return (jint) buf->status();
+}
+
+// Error description for a failed buffer; see MTL.commandBufferError javadoc.
+extern "C"
+JNIEXPORT jstring JNICALL Java_org_almostrealism_hardware_metal_MTL_commandBufferError(JNIEnv* env, jclass cls, jlong cmdBuffer) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    NS::Error* error = buf->error();
+    if (error == nullptr) return NULL;
+    return env->NewStringUTF(error->localizedDescription()->utf8String());
+}
+
 // Creates an MTLSharedEvent on the device, used to order dispatches across command buffers
 // on the GPU (the analog of an OpenCL cl_event). The caller owns the returned event and must
 // release it with releaseSharedEvent.

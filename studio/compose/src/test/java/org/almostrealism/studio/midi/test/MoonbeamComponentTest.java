@@ -17,7 +17,6 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.RotationFeatures;
@@ -569,18 +568,16 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 
 	/**
 	 * Create a PackedCollection with random values scaled by 0.02 (typical weight init).
-	 * The Gaussian sequence is drawn from the supplied {@link Random} to keep the
-	 * reference weights deterministic, then ingested through {@code c(double...)}.
+	 * Uses bulk setMem to avoid per-element JNI overhead.
 	 */
 	private static PackedCollection createRandomCollection(Random rng, int... dims) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(dims));
-		double[] data = new double[collection.getShape().getTotalSize()];
-		for (int i = 0; i < data.length; i++) {
+		int total = collection.getShape().getTotalSize();
+		double[] data = new double[total];
+		for (int i = 0; i < total; i++) {
 			data[i] = rng.nextGaussian() * 0.02;
 		}
-		CollectionFeatures.getInstance().a(
-				CollectionFeatures.getInstance().cp(collection),
-				CollectionFeatures.getInstance().c(data)).get().run();
+		collection.setMem(0, data, 0, total);
 		return collection;
 	}
 }

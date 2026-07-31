@@ -55,9 +55,8 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 		// Create test input
 		PackedCollection input = new PackedCollection(shape(1, dim));
-		for (int i = 0; i < dim; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i + 1) * 1.0)).get().run();  // 1, 2, 3, 4, 5, 6, 7, 8
-		}
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		ops.a(ops.cp(input), ops.integers(0, dim).add(1.0)).get().run();  // 1, 2, 3, 4, 5, 6, 7, 8
 
 		log("Input: " + formatFirst(input, dim));
 		log("Cache before: " + formatFirst(cache, dim));
@@ -132,9 +131,8 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 		// Create test input
 		PackedCollection input = new PackedCollection(shape(1, dim));
-		for (int i = 0; i < dim; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i + 1) * 1.0)).get().run();  // 1, 2, 3, 4, 5, 6, 7, 8
-		}
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		ops.a(ops.cp(input), ops.integers(0, dim).add(1.0)).get().run();  // 1, 2, 3, 4, 5, 6, 7, 8
 
 		log("Input: " + formatFirst(input, dim));
 		log("Expected cache (input * 2): " + formatExpected(dim, 2.0));
@@ -218,9 +216,8 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 		// Create test input
 		PackedCollection input = new PackedCollection(shape(1, dim));
-		for (int i = 0; i < dim; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i + 1) * 1.0)).get().run();  // 1, 2, 3, 4, 5, 6, 7, 8
-		}
+		CollectionFeatures ops = CollectionFeatures.getInstance();
+		ops.a(ops.cp(input), ops.integers(0, dim).add(1.0)).get().run();  // 1, 2, 3, 4, 5, 6, 7, 8
 
 		log("Input: " + formatFirst(input, dim));
 		log("Expected cache1 (input * 2): " + formatExpected(dim, 2.0));

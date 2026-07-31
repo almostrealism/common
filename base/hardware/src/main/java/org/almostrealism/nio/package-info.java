@@ -15,14 +15,15 @@
  */
 
 /**
- * Native I/O and direct-buffer memory management for CPU-side hardware operations.
+ * Native, host-accessible memory management for CPU-side hardware operations.
  *
- * <p>This package provides the JNI bridge and memory management infrastructure
- * for CPU-side accelerated computing using native direct buffers. Key components:</p>
+ * <p>This package provides the memory providers, RAM types, and runtime-compiled JNI operations
+ * for CPU-side native memory. Key components:</p>
  * <ul>
- *   <li>{@link org.almostrealism.nio.NIO} - JNI bridge for shared memory and pointer operations</li>
- *   <li>{@link org.almostrealism.nio.NativeBuffer} - direct buffer RAM implementation</li>
- *   <li>{@link org.almostrealism.nio.NativeBufferMemoryProvider} - provider managing NIO buffers</li>
+ *   <li>{@link org.almostrealism.nio.NativeMemoryProvider} - provider managing native memory in either
+ *       direct-buffer or JNI-malloc mode, and owner of the runtime-compiled JNI operations below</li>
+ *   <li>{@link org.almostrealism.nio.NativeBuffer} - direct-buffer RAM implementation</li>
+ *   <li>{@link org.almostrealism.nio.NativeMemory} - JNI-malloc RAM implementation</li>
  *   <li>{@link org.almostrealism.nio.NativeBufferRef} - phantom reference for GC-triggered cleanup</li>
  * </ul>
  */

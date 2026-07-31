@@ -156,10 +156,10 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 			grain.setRate(Math.random() * 0.5);
 
 			PackedCollection w = new PackedCollection(1);
-			c(Math.random() * 2 + 0.2).into(w.traverseEach()).evaluate();
+			rand(w.getShape()).multiply(2.0).add(0.2).into(w.traverseEach()).evaluate();
 
 			PackedCollection p = new PackedCollection(1);
-			c(Math.random() - 0.5).into(p.traverseEach()).evaluate();
+			rand(p.getShape()).add(-0.5).into(p.traverseEach()).evaluate();
 
 			PackedCollection a = new PackedCollection(1);
 			a.setMem(1.0);
@@ -204,10 +204,10 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 			grain.setRate(Math.random() * 0.5);
 
 			PackedCollection w = new PackedCollection(1);
-			c(Math.random() * 2 + 0.2).into(w.traverseEach()).evaluate();
+			rand(w.getShape()).multiply(2.0).add(0.2).into(w.traverseEach()).evaluate();
 
 			PackedCollection p = new PackedCollection(1);
-			c(Math.random() - 0.5).into(p.traverseEach()).evaluate();
+			rand(p.getShape()).add(-0.5).into(p.traverseEach()).evaluate();
 
 			PackedCollection a = new PackedCollection(1);
 			a.setMem(0.2);

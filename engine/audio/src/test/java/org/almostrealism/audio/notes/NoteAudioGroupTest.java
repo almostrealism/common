@@ -55,7 +55,7 @@ public class NoteAudioGroupTest extends TestSuiteBase {
 			data[i] = rng.nextDouble() * 2.0 - 1.0;
 		}
 		PackedCollection c = new PackedCollection(SOURCE_LENGTH);
-		a(cp(c), c(data)).get().run();
+		c.setMem(data);
 		return c;
 	}
 

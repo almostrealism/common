@@ -51,36 +51,28 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.3, -0.2, 0.5, 0.1 };
+	private final PackedCollection coeff = pack(0.3, -0.2, 0.5, 0.1);
 
 	/**
 	 * Identity-like function for testing residual connections.
 	 * output[i] = input[i] + small_perturbation
 	 */
-	private final UnaryOperator<PackedCollection> identityLikeFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				double[] data = new double[in.getMemLength()];
-				for (int i = 0; i < data.length; i++) {
-					data[i] = in.valueAt(i) + 0.1 * coeff[i % coeff.length];
-				}
-				a(cp(out), c(data).reshape(out.getShape())).get().run();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> identityLikeFunc = in -> {
+		int n = in.getMemLength();
+		return cp(in).reshape(shape(n))
+				.add(cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength())).multiply(0.1))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Simple scaling function for testing compositions.
 	 */
-	private final UnaryOperator<PackedCollection> scaleFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				double[] data = new double[in.getMemLength()];
-				for (int i = 0; i < data.length; i++) {
-					data[i] = coeff[i % coeff.length] * in.valueAt(i);
-				}
-				a(cp(out), c(data).reshape(out.getShape())).get().run();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> scaleFunc = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Test 5.1: Residual Block

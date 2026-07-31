@@ -21,19 +21,21 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.hardware.mem.NativeRef;
 import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
-import org.almostrealism.nio.NativeBuffer;
-import org.almostrealism.nio.NativeBufferMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
 import org.jocl.cl_mem;
+
+import java.lang.ref.Reference;
 
 /**
  * {@link MemoryProvider} implementation for OpenCL memory management.
@@ -43,7 +45,7 @@ import org.jocl.cl_mem;
  * {@link CLMemoryRef} ({@link java.lang.ref.PhantomReference}) rather than a strong reference,
  * and the underlying {@code cl_mem} is released automatically when the owning {@link CLMemory}
  * is garbage collected — matching the lifecycle used by {@link org.almostrealism.hardware.metal.MetalMemoryProvider}
- * and {@link org.almostrealism.c.NativeMemoryProvider}.</p>
+ * and {@link org.almostrealism.nio.NativeMemoryProvider}.</p>
  *
  * <h2>Allocation Strategy</h2>
  *
@@ -84,13 +86,16 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	public static TimingMetric ioTime = Hardware.console.timing("clIO");
 
 	static {
-		NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
+		NativeMemoryProvider.registerAdapter(CLMemory.class,
 				(mem, offset, source, srcOffset, length) -> {
 					if (mem.getProvider().getNumberSize() != source.getProvider().getNumberSize()) {
 						throw new UnsupportedOperationException();
 					}
 
-					Pointer dst = Pointer.to(mem.getBuffer()).withByteOffset(0);
+					// Address the position-stable root ByteBuffer rather than the typed view,
+					// whose position is left advanced by element-wise host writes
+					Pointer dst = Pointer.to(mem.asByteBuffer())
+							.withByteOffset((long) offset * source.getProvider().getNumberSize());
 					cl_event event = new cl_event();
 					CL.clEnqueueReadBuffer(source.getProvider().queue, source.getMem(),
 							CL.CL_TRUE, (long) srcOffset * source.getProvider().getNumberSize(),
@@ -349,7 +354,9 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			} finally {
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
-		} else if (srcRam instanceof NativeBuffer) {
+		} else if (srcRam instanceof DirectMemory) {
+			// A source backed by a host-accessible ByteBuffer is written with a single bulk
+			// transfer, avoiding the double[] mediation of the array fallback
 			if (srcRam.getProvider().getNumberSize() != getNumberSize()) {
 				warn("Unable to copy memory directly due to precision difference");
 				setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
@@ -357,7 +364,8 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			}
 
 			try {
-				Pointer src = Pointer.to(((NativeBuffer) srcRam).getBuffer()).withByteOffset(0);
+				Pointer src = Pointer.to(((DirectMemory) srcRam).asByteBuffer())
+						.withByteOffset((long) srcOffset * getNumberSize());
 				cl_event event = new cl_event();
 				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
@@ -366,11 +374,10 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			} catch (CLException e) {
 				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 			} finally {
+				Reference.reachabilityFence(srcRam);
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
 		} else {
-			// TODO  There should still be some way to use clEnqueueWriteBuffer for cases
-			// TODO  where all we have is the long value returned by RAM::getContentPointer
 			setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
 		}
 	}

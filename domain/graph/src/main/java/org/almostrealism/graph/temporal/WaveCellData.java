@@ -18,7 +18,6 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.CollectionFeatures;
 
 /**
  * Data interface for wave cell audio processing state.
@@ -76,7 +75,7 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @param count the starting index within the wave data
 	 */
-	default void setWaveIndex(int count) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(waveIndex()), CollectionFeatures.getInstance().c(count)).get().run(); }
+	default void setWaveIndex(int count) { waveIndex().setMem(0, count); }
 
 	/**
 	 * Returns a producer for the wave sample count.
@@ -90,6 +89,6 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @param count the number of samples in the wave data
 	 */
-	default void setWaveCount(int count) { CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(waveCount()), CollectionFeatures.getInstance().c(count)).get().run(); }
+	default void setWaveCount(int count) { waveCount().setMem(0, count); }
 }
 

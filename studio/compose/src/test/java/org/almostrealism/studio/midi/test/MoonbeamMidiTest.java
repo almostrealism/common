@@ -17,7 +17,6 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
@@ -523,9 +522,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 			hNew[i] = (1.0 - z) * n + z * hArr[i];
 		}
 		PackedCollection result = new PackedCollection(dh);
-		CollectionFeatures.getInstance().a(
-				CollectionFeatures.getInstance().cp(result),
-				CollectionFeatures.getInstance().c(hNew)).get().run();
+		result.setMem(0, hNew, 0, dh);
 		return result;
 	}
 

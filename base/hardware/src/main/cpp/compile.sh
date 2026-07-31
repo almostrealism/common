@@ -1,8 +1,10 @@
 #!/bin/sh
 set -e
 
-# Builds libMTL.dylib (Metal compute JNI bridge) and libNIO.dylib (shared-memory
-# helpers) from the C++/Objective-C++ sources in this directory.
+# Builds libMTL.dylib (Metal compute JNI bridge) from the C++/Objective-C++ sources
+# in this directory. The shared-memory / direct-buffer helpers formerly in libNIO are
+# now compiled at runtime by NativeCompiler (see org.almostrealism.nio.NIO), so there
+# is no prebuilt libNIO artifact to build here.
 #
 # JAVA_HOME is auto-discovered (override by exporting it before running). metal-cpp
 # is provided by the amalgamated single header committed next to this file
@@ -28,13 +30,4 @@ g++ -dynamiclib MTL.o \
 -framework IOKit \
 -framework CoreVideo
 
-g++ -c -fPIC \
--std="gnu++20" \
--I"${JAVA_HOME}/include" \
--I"${JAVA_HOME}/include/darwin" \
-NIO.cpp -o NIO.o
-
-g++ -dynamiclib NIO.o \
--o ../resources/libNIO.dylib
-
-rm -f MTL.o NIO.o
+rm -f MTL.o

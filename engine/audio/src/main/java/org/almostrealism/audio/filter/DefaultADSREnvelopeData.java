@@ -28,11 +28,15 @@ public class DefaultADSREnvelopeData implements ADSREnvelopeData {
 	/** The PackedCollection holding the ADSR envelope state and parameter slots. */
 	private final PackedCollection storage;
 
+	/** Scratch buffer holding a snapshot of the runtime-state block during the device tick update. */
+	private final PackedCollection stateScratch;
+
 	/**
 	 * Creates a new ADSR envelope data storage with default parameters.
 	 */
 	public DefaultADSREnvelopeData() {
 		this.storage = new PackedCollection(SIZE);
+		this.stateScratch = new PackedCollection(3);
 		reset();
 	}
 
@@ -44,12 +48,23 @@ public class DefaultADSREnvelopeData implements ADSREnvelopeData {
 	 */
 	public DefaultADSREnvelopeData(PackedCollection delegate, int offset) {
 		this.storage = delegate.range(shape(SIZE), offset);
+		this.stateScratch = new PackedCollection(3);
 		reset();
 	}
 
 	@Override
 	public PackedCollection get(int index) {
 		return storage.range(shape(1), index);
+	}
+
+	@Override
+	public PackedCollection state() {
+		return storage.range(shape(3), 5);
+	}
+
+	@Override
+	public PackedCollection stateScratch() {
+		return stateScratch;
 	}
 
 	/**

@@ -17,8 +17,8 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.ml.AttentionFeatures;
@@ -215,9 +215,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 			PackedCollection output = new PackedCollection(
 					new TraversalPolicy(config.decodeVocabSize));
 			double uniformLogit = -Math.log(config.decodeVocabSize);
-			for (int i = 0; i < config.decodeVocabSize; i++) {
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(output.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(uniformLogit)).get().run();
-			}
+			output.fill(uniformLogit);
 
 			double loss = nll.loss(output, target);
 			Assert.assertFalse("Loss should not be NaN", Double.isNaN(loss));
@@ -256,8 +254,8 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 			PackedCollection input = new PackedCollection(new TraversalPolicy(1, dim));
 			PackedCollection target = new PackedCollection(new TraversalPolicy(1, dim));
 			for (int j = 0; j < dim; j++) {
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(input.range(new TraversalPolicy(1), j)), CollectionFeatures.getInstance().c(Math.sin(j * 0.1 + i * 0.5))).get().run();
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(target.range(new TraversalPolicy(1), j)), CollectionFeatures.getInstance().c(Math.cos(j * 0.1 + i * 0.3))).get().run();
+				input.setMem(j, Math.sin(j * 0.1 + i * 0.5));
+				target.setMem(j, Math.cos(j * 0.1 + i * 0.3));
 			}
 			trainingSamples.add(ValueTarget.of(input, target));
 		}
@@ -316,9 +314,8 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		// Create a synthetic transformer hidden state
 		PackedCollection hiddenState = new PackedCollection(
 				new TraversalPolicy(config.hiddenSize));
-		for (int i = 0; i < config.hiddenSize; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(hiddenState.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(i * 0.1))).get().run();
-		}
+		sin(integers(0, config.hiddenSize).multiply(0.1))
+				.into(hiddenState.traverseEach()).evaluate();
 
 		// The GRU decode step works correctly for inference
 		int[] decodeTokens = decoder.decode(hiddenState);
@@ -585,9 +582,9 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	private static PackedCollection smallRandomCollection(int rows, int cols) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(rows, cols));
 		double scale = 0.02 / Math.sqrt(cols);
-		for (int i = 0; i < rows * cols; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((Math.sin(i * 1.618) * 2 - 1) * scale)).get().run();
-		}
+		Ops.o().sin(Ops.o().integers(0, rows * cols).multiply(1.618))
+				.multiply(2.0).add(-1.0).multiply(scale)
+				.into(collection.traverseEach()).evaluate();
 		return collection;
 	}
 }

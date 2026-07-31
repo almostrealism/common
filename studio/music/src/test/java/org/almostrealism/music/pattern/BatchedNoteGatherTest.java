@@ -75,13 +75,6 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 	/** Automation level passed to gather and reference envelope computation. */
 	private static final double AUTOMATION_LEVEL = 0.5;
 
-	/** Creates a single-element {@link PackedCollection} containing the given value. */
-	private PackedCollection single(double value) {
-		PackedCollection col = new PackedCollection(1);
-		c(value).into(col.traverseEach()).evaluate();
-		return col;
-	}
-
 	/** Generates a deterministic random audio sample of {@code SOURCE_LENGTH} frames using the given seed. */
 	private PackedCollection sample(long seed) {
 		PackedCollection col = new PackedCollection(SOURCE_LENGTH);
@@ -135,9 +128,11 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 		PackedCollection[][] layerEnvParams = new PackedCollection[LAYERS][8];
 		for (int l = 0; l < LAYERS; l++) {
 			sources[l] = in.getSources()[l];
-			ratios[l] = single(in.getRatios()[l]);
+			double ratio = in.getRatios()[l];
+			ratios[l] = pack(ratio);
 			for (int p = 0; p < 8; p++) {
-				layerEnvParams[l][p] = single(in.getLayerParams()[l][p]);
+				double param = in.getLayerParams()[l][p];
+				layerEnvParams[l][p] = pack(param);
 			}
 		}
 		PackedCollection[] filterAdsr = scalarColumns(in.getFilterAdsr());
@@ -145,12 +140,12 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 
 		PackedCollection out = renderer.buildBatchedSssChainPlacedFromScalars(
 				sources, ratios, layerEnvParams, filterAdsr, volumeAdsr,
-				single(0.0), TARGET_LENGTH)
+				pack(0.0), TARGET_LENGTH)
 				.get().evaluate();
 
 		// ── Reference: production envelope filters on the same resampled sources. ──
-		PackedCollection dur = single(DURATION_SEC);
-		PackedCollection auto = single(AUTOMATION_LEVEL);
+		PackedCollection dur = pack(DURATION_SEC);
+		PackedCollection auto = pack(AUTOMATION_LEVEL);
 
 		PackedCollection mergedColl = new PackedCollection(TARGET_LENGTH);
 		for (int l = 0; l < LAYERS; l++) {
@@ -194,7 +189,8 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 	private PackedCollection[] scalarColumns(double[] adsr) {
 		PackedCollection[] cols = new PackedCollection[adsr.length];
 		for (int i = 0; i < adsr.length; i++) {
-			cols[i] = single(adsr[i]);
+			double value = adsr[i];
+			cols[i] = pack(value);
 		}
 		return cols;
 	}

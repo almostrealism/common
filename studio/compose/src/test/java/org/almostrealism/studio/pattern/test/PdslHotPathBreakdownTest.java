@@ -30,6 +30,8 @@ import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -38,10 +40,11 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Measures the real-time PDSL tick's hot-path wall time on a dense curated scene at both the
- * preferred (4096) and default (8192) buffer sizes, and reports the pattern-render breakdown
+ * production (1024) and reference (4096) buffer sizes, and reports the pattern-render breakdown
  * (gather / eval / marshal) and the effective GPU batch size alongside, so per-buffer cost can be
  * directed by data rather than the (untrusted) prior performance docs.
  */
@@ -59,8 +62,8 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	/** Steady-state ticks timed for the breakdown (a sustained sample: 200 ticks ~ 37 s at 8192). */
 	private static final int PROFILE_TICKS = 200;
 
-	/** Buffer sizes to measure: the preferred (4096) and the default (8192). */
-	private static final int[] BUFFER_SIZES = { 4096, 8192 };
+	/** Buffer sizes to measure: the production size (1024) and the 4096 reference. */
+	private static final int[] BUFFER_SIZES = { 1024, 4096 };
 
 	/**
 	 * Runs the breakdown on the densest curated genome at each buffer size, logging the hot-path
@@ -71,14 +74,10 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void hotPathBreakdown() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping hotPathBreakdown - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -129,14 +128,10 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	 */
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void aggregationThresholdSweep() throws IOException {
-		File library = getSamplesDir();
+		File library = requireCuratedLibrary();
 		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping aggregationThresholdSweep - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
 
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
@@ -188,8 +183,11 @@ public class PdslHotPathBreakdownTest extends AudioSceneTestBase {
 	 * @return the Metal command runner, or {@code null}
 	 */
 	private static MetalCommandRunner metalRunner() {
-		return Hardware.getLocalHardware()
-				.getComputeContexts(false, true, ComputeRequirement.MTL).stream()
+		// getComputeContexts throws when no data context matches the requirement, so
+		// probe via getDataContext (which returns null off-Metal) before listing.
+		return Optional.ofNullable(Hardware.getLocalHardware()
+						.getDataContext(false, true, ComputeRequirement.MTL))
+				.stream().flatMap(dc -> dc.getComputeContexts().stream())
 				.filter(MetalComputeContext.class::isInstance)
 				.map(MetalComputeContext.class::cast)
 				.map(MetalComputeContext::getCommandRunner)

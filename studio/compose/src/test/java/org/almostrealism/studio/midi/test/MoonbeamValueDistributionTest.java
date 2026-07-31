@@ -17,7 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.midi.GRUDecoder;
@@ -852,7 +852,8 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 */
 	private static PackedCollection createRandomCollection(Random rng, int... dims) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(dims));
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection), CollectionFeatures.getInstance().randn(collection.getShape(), rng).multiply(0.02)).get().run();
+		Ops.o().randn(collection.getShape(), rng).multiply(0.02)
+				.into(collection.traverseEach()).evaluate();
 		return collection;
 	}
 
@@ -861,7 +862,8 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 */
 	private static PackedCollection createRandomLogits(Random rng, int size, double std) {
 		PackedCollection collection = new PackedCollection(size);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(collection), CollectionFeatures.getInstance().randn(collection.getShape(), rng).multiply(std)).get().run();
+		Ops.o().randn(collection.getShape(), rng).multiply(std)
+				.into(collection.traverseEach()).evaluate();
 		return collection;
 	}
 
@@ -933,9 +935,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		}
 
 		PackedCollection result = new PackedCollection(dh);
-		CollectionFeatures.getInstance().a(
-				CollectionFeatures.getInstance().cp(result),
-				CollectionFeatures.getInstance().c(hNew)).get().run();
+		result.setMem(0, hNew, 0, dh);
 		return result;
 	}
 
@@ -959,9 +959,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 			resultArr[i] = sum;
 		}
 		PackedCollection result = new PackedCollection(outputSize);
-		CollectionFeatures.getInstance().a(
-				CollectionFeatures.getInstance().cp(result),
-				CollectionFeatures.getInstance().c(resultArr)).get().run();
+		result.setMem(0, resultArr, 0, outputSize);
 		return result;
 	}
 

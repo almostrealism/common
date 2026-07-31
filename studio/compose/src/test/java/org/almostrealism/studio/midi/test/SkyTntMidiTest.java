@@ -17,7 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.RotationFeatures;
@@ -631,10 +631,8 @@ public class SkyTntMidiTest extends TestSuiteBase {
 	static PackedCollection rand(Random rng, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection c = new PackedCollection(shape);
-		int size = shape.getTotalSize();
-		for (int i = 0; i < size; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(c.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((rng.nextDouble() - 0.5) * 0.1)).get().run();
-		}
+		Ops.o().rand(shape, rng).add(-0.5).multiply(0.1)
+				.into(c.traverseEach()).evaluate();
 		return c;
 	}
 

@@ -24,6 +24,7 @@ import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
@@ -36,8 +37,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Tests for the PDSL rendition of
@@ -101,11 +104,15 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 	/**
 	 * Per-tap delay lengths (in samples) used by {@code testMixdownManagerReverbPath}.
-	 * Irregular primes scaled so each is comfortably less than {@link #REVERB_SIGNAL_SIZE},
-	 * matching the irregular-tap pattern Java DelayNetwork produces from random
-	 * Householder reflections.
+	 * Irregular (prime-offset) values inside the read-first ring band
+	 * {@code [REVERB_SIGNAL_SIZE, 2 * REVERB_SIGNAL_SIZE]} — a block-parallel
+	 * delay network cannot represent sub-frame taps (they clamp to one frame), so the
+	 * irregular-tap pattern of the Java DelayNetwork is expressed one frame up. The
+	 * per-line rings span two frames to hold the longest tap.
 	 */
-	private static final int[] REVERB_DELAY_SAMPLES = {103, 211, 401, 619};
+	private static final int[] REVERB_DELAY_SAMPLES = {
+			REVERB_SIGNAL_SIZE + 103, REVERB_SIGNAL_SIZE + 211,
+			REVERB_SIGNAL_SIZE + 401, REVERB_SIGNAL_SIZE + 619 };
 
 	/**
 	 * Number of forward passes used by the producer-args automation tests.
@@ -598,9 +605,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// ---- Full bus: rectangular route + per-delay delay + mono sum ----
 		PackedCollection fullMatrix = rectangularTransmission(inChannels, outChannels, 0.5);
 		PackedCollection delayBuffers = new PackedCollection(outChannels * SIGNAL_SIZE);
-		delayBuffers.fill(0.0);
 		PackedCollection delayHeads = new PackedCollection(outChannels);
-		delayHeads.fill(0.0);
 
 		Map<String, Object> busArgs = new HashMap<>();
 		busArgs.put("channels", inChannels);
@@ -655,16 +660,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private PackedCollection rectangularTransmission(int inputChannels, int outputChannels, double main) {
 		double bleed = (1.0 - main) / Math.max(1, outputChannels - 1);
-		double[] data = new double[inputChannels * outputChannels];
-		for (int n = 0; n < inputChannels; n++) {
-			int rowMain = n % outputChannels;
-			for (int m = 0; m < outputChannels; m++) {
-				data[n * outputChannels + m] = (m == rowMain) ? main : bleed;
-			}
-		}
+		int total = inputChannels * outputChannels;
 		PackedCollection matrix = new PackedCollection(
 				new TraversalPolicy(inputChannels, outputChannels));
-		a(cp(matrix), c(data)).get().run();
+		equals(floor(integers(0, total).divide((double) outputChannels)).mod((double) outputChannels),
+				integers(0, total).mod((double) outputChannels), c(main), c(bleed))
+				.into(matrix.traverseEach()).evaluate();
 		return matrix;
 	}
 
@@ -675,11 +676,11 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private void zeroTransmissionColumn(PackedCollection matrix, int inputChannels,
 										 int outputChannels, int colToZero) {
-		double[] data = matrix.toArray(0, inputChannels * outputChannels);
-		for (int n = 0; n < inputChannels; n++) {
-			data[n * outputChannels + colToZero] = 0.0;
-		}
-		a(cp(matrix), c(data)).get().run();
+		int total = inputChannels * outputChannels;
+		a(cp(matrix.range(shape(total), 0)),
+				cp(matrix.range(shape(total), 0)).multiply(
+						equals(integers(0, total).mod((double) outputChannels),
+								c((double) colToZero), c(0.0), c(1.0)))).get().run();
 	}
 
 	/**
@@ -875,7 +876,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < REVERB_PASSES; pass++) {
 			PackedCollection input = new PackedCollection(inputShape);
-			input.fill(0.0);
 			if (pass == 0) input.setMem(0, 1.0);       // impulse
 
 			double[] passOut = compiled.forward(input).toArray(0, REVERB_SIGNAL_SIZE);
@@ -917,11 +917,15 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		// (3) Energy at the configured delay sample positions must dominate
 		// energy at other positions in pass 2 — the impulse propagates through
-		// each tap exactly once before any feedback contribution.
+		// each tap exactly once before any feedback contribution. The impulse
+		// entered at absolute sample 0, so tap n's echo lands at absolute
+		// sample REVERB_DELAY_SAMPLES[n] — inside pass 2's window at index
+		// (delay - REVERB_SIGNAL_SIZE).
 		for (int n = 0; n < REVERB_TAPS; n++) {
-			int t = REVERB_DELAY_SAMPLES[n];
+			int t = REVERB_DELAY_SAMPLES[n] - REVERB_SIGNAL_SIZE;
 			Assert.assertTrue(
-					"Pass 2 sample at tap " + n + " delay (" + t
+					"Pass 2 sample at tap " + n + " delay ("
+							+ REVERB_DELAY_SAMPLES[n]
 							+ ") must carry impulse echo, got " + pass2Output[t],
 					Math.abs(pass2Output[t]) > 0.5);
 		}
@@ -944,6 +948,41 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 				+ totalEnergy + ")", totalEnergy > 0.5);
 	}
 
+	/**
+	 * The adapter's reverb tap spread must sit inside the {@code delay_network}
+	 * read-first ring band at the production buffer size: every tap within
+	 * {@code [max(0.15 s, one frame), 1.5 s]}, the ring sized to hold the longest tap,
+	 * one tap per configured line, and the taps mutually distinct (uniform taps
+	 * produce a metallic comb). This pins the seconds-denominated room: the tap range
+	 * is the Java DelayNetwork's, independent of the buffer size.
+	 */
+	@Test(timeout = 60000)
+	public void testReverbTapDelaysWithinRingBand() {
+		int signalSize = 4096;
+		MixdownManagerPdslAdapter adapter = new MixdownManagerPdslAdapter(
+				new MixdownManagerPdslAdapter.Config(
+						CHANNELS, signalSize, SAMPLE_RATE, FILTER_ORDER, 0.5, 6500));
+		PackedCollection taps = adapter.reverbTapDelays();
+		int count = taps.getMemLength();
+		Assert.assertEquals("one tap per configured reverb line",
+				MixdownManagerPdslAdapter.reverbTaps, count);
+
+		double lo = Math.max(0.15 * SAMPLE_RATE, signalSize);
+		double hi = 1.5 * SAMPLE_RATE;
+		int ring = adapter.reverbRingFrames() * signalSize;
+		double[] values = taps.toArray(0, count);
+		Set<Long> distinct = new HashSet<>();
+		for (double v : values) {
+			Assert.assertTrue("tap " + v + " must be at least " + lo
+					+ " (band floor: one frame / legacy range bottom)", v >= lo);
+			Assert.assertTrue("tap " + v + " must be at most " + hi
+					+ " (legacy range top)", v <= hi);
+			Assert.assertTrue("tap " + v + " must fit the ring span " + ring, v <= ring);
+			distinct.add(Math.round(v));
+		}
+		Assert.assertEquals("taps must be mutually distinct", count, distinct.size());
+	}
+
 	// ==== Helpers ====
 
 	/**
@@ -952,7 +991,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	private PackedCollection zeroInput(int channels, int signalSize) {
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(channels, signalSize));
-		input.fill(0.0);
 		return input;
 	}
 
@@ -969,7 +1007,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		a(cp(input), c(data)).get().run();
+		input.setMem(data);
 		return input;
 	}
 
@@ -987,7 +1025,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		a(cp(input), c(data)).get().run();
+		input.setMem(data);
 		return input;
 	}
 
@@ -1008,7 +1046,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		a(cp(input), c(data)).get().run();
+		input.setMem(data);
 		return input;
 	}
 
@@ -1034,12 +1072,13 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("delay_samples", DELAY_SAMPLES);
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
 		args.put("transmission", rectangularTransmission(CHANNELS, CHANNELS, 0.55));
-		// Per-channel delay state: total size = channels * signal_size for buffers,
-		// channels for heads, matching the subscript-slicing convention in the PDSL.
-		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.fill(0.0);
+		// Per-channel delay state: two frames per channel so sub-frame delays (the
+		// static DELAY_SAMPLES and the [16, 192] variable-delay sweep) sit inside the
+		// write-first ring band [0, ring - signal_size] and are rendered exactly. A
+		// one-frame ring supports only a zero delay (the delay clamps to it), which
+		// would make delayed and undelayed configurations indistinguishable.
+		PackedCollection buffers = new PackedCollection(CHANNELS * 2 * SIGNAL_SIZE);
 		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.fill(0.0);
 		args.put("buffers", buffers);
 		args.put("heads", heads);
 		return args;
@@ -1059,7 +1098,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		double[] delaysData = new double[REVERB_TAPS];
 		for (int i = 0; i < REVERB_TAPS; i++) delaysData[i] = REVERB_DELAY_SAMPLES[i];
 		PackedCollection delaySamples = new PackedCollection(REVERB_TAPS);
-		a(cp(delaySamples), c(delaysData)).get().run();
+		delaySamples.setMem(delaysData);
 		args.put("delay_samples", delaySamples);
 
 		double diag = 0.4;
@@ -1072,14 +1111,14 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection feedback = new PackedCollection(
 				new TraversalPolicy(REVERB_TAPS, REVERB_TAPS));
-		a(cp(feedback), c(matrixData)).get().run();
+		feedback.setMem(matrixData);
 		args.put("feedback_matrix", feedback);
 
+		// Two frames per line: the read-first ring band is [signal_size, ringSize], so
+		// the ring must span the longest tap (REVERB_SIGNAL_SIZE + 619 < 2 frames).
 		PackedCollection reverbBuffers = new PackedCollection(
-				REVERB_TAPS * REVERB_SIGNAL_SIZE);
-		reverbBuffers.fill(0.0);
+				REVERB_TAPS * 2 * REVERB_SIGNAL_SIZE);
 		PackedCollection reverbHeads = new PackedCollection(REVERB_TAPS);
-		reverbHeads.fill(0.0);
 		args.put("reverb_buffers", reverbBuffers);
 		args.put("reverb_heads", reverbHeads);
 
@@ -1102,9 +1141,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
 		args.put("transmission", rectangularTransmission(CHANNELS, CHANNELS, 0.55));
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.fill(0.0);
 		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.fill(0.0);
 		args.put("buffers", buffers);
 		args.put("heads", heads);
 		// Master-bus gain stage — the PDSL `mixdown_master` ends with
@@ -1129,7 +1166,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 			System.arraycopy(coeffs, 0, data, c * perChannel, perChannel);
 		}
 		PackedCollection all = new PackedCollection(CHANNELS * perChannel);
-		a(cp(all), c(data)).get().run();
+		all.setMem(data);
 		return all;
 	}
 
@@ -1224,7 +1261,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int sampleOffset = pass * SIGNAL_SIZE;
-			a(cp(slot), c(schedule[pass])).get().run();
+			double slotValue = schedule[pass];
+			slot.fill(slotValue);
 
 			double[] producerOut = producerCompiled
 					.forward(multiChannelCarrier(channelFreqs, sampleOffset))

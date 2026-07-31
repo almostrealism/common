@@ -72,6 +72,12 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 	 * (1.0), not the default zero — proving that delay state carried across the
 	 * tick boundary.</p>
 	 *
+	 * <p>The ring spans TWO frames: the {@code delay} primitive is write-first (the
+	 * current frame is in the ring before the delayed read evaluates), so a ring
+	 * holds samples of age {@code D} only for {@code D <= ring - signal_size} — a
+	 * one-frame ring supports only {@code D = 0} and would clamp the two-sample
+	 * delay away.</p>
+	 *
 	 * <p>This validates that a stateful PDSL block running tick() can call
 	 * {@link CompiledModel#forward} on successive invocations and rely on
 	 * state persisting between them.</p>
@@ -80,8 +86,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 	@TestDepth(2)
 	public void testStatePersistsAcrossTemporalTick() {
 		int delaySamples = 2;
-		PackedCollection buffer = new PackedCollection(BUFFER_SIZE);
-		buffer.fill(0.0);
+		PackedCollection buffer = new PackedCollection(2 * BUFFER_SIZE);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
 
@@ -101,8 +106,8 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection signal1 = createSignal(BUFFER_SIZE, i -> 1.0);
-		PackedCollection signal2 = createSignal(BUFFER_SIZE, i -> 2.0);
+		PackedCollection signal1 = new PackedCollection(BUFFER_SIZE).fill(1.0);
+		PackedCollection signal2 = new PackedCollection(BUFFER_SIZE).fill(2.0);
 		PackedCollection[] lastOutput = {null};
 
 		// First tick: wrap forward() as Temporal, run it
@@ -147,7 +152,6 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 	@TestDepth(2)
 	public void testBlockToTemporalAdapterForwardFlow() {
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		filterCoeffs.fill(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -163,7 +167,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection input = createSignal(BUFFER_SIZE, i -> 1.0);
+		PackedCollection input = new PackedCollection(BUFFER_SIZE).fill(1.0);
 		PackedCollection[] output = {null};
 
 		// Minimal Temporal adapter wrapping CompiledModel.forward()

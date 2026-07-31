@@ -90,18 +90,16 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 		// buffers: channels * signal_size elements (circular delay buffer per channel)
 		// heads:   channels elements (write-head counter per channel)
 		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.fill(0.0);
 		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.fill(0.0);
 
 		// Routing matrix: near-identity with slight cross-channel bleed.
 		// Row i is output channel i. Each row sums to 1.0 for unity gain.
 		PackedCollection transmission = new PackedCollection(
 				new TraversalPolicy(CHANNELS, CHANNELS));
-		a(cp(transmission), c(
+		transmission.setMem(0,
 				0.4, 0.3, 0.3,
 				0.3, 0.4, 0.3,
-				0.3, 0.3, 0.4).reshape(transmission.getShape())).get().run();
+				0.3, 0.3, 0.4);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/delay_feedback_bank.pdsl");
@@ -124,10 +122,9 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int offset = pass * SIGNAL_SIZE;
-			PackedCollection input = createSignal(SIGNAL_SIZE, i -> {
-				double t = (double) (offset + i) / SAMPLE_RATE;
-				return Math.sin(2.0 * Math.PI * 440.0 * t);
-			});
+			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
+			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
+					.into(input.traverseEach()).evaluate();
 			PackedCollection output = compiled.forward(input.reshape(compiled.getInputShape()));
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);

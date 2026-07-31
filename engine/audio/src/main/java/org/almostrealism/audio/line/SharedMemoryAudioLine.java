@@ -17,8 +17,6 @@
 package org.almostrealism.audio.line;
 
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.ConsoleFeatures;
@@ -97,7 +95,7 @@ public class SharedMemoryAudioLine implements AudioLine, ConsoleFeatures {
 
 	@Override
 	public void setPassthroughLevel(double level) {
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(controls.range(new TraversalPolicy(1), PASSTHROUGH_LEVEL)), CollectionFeatures.getInstance().c(level)).get().run();
+		controls.setMem(PASSTHROUGH_LEVEL, level);
 	}
 
 	@Override

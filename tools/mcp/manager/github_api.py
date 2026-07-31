@@ -321,3 +321,178 @@ def _resolve_github_repo(workstream_id: str = "", branch: str = "",
 
     return "", "", branch, {"ok": False,
                             "error": f"Workstream '{effective_ws}' not found and no local git repo detected"}
+
+
+# ---------------------------------------------------------------------------
+# GitHub Actions — workflow run search and status
+# ---------------------------------------------------------------------------
+
+
+def _shape_workflow_run(run: dict) -> dict:
+    """Reduce a raw GitHub workflow-run object to the fields callers need.
+
+    Args:
+        run: A raw workflow-run object from the GitHub Actions API.
+
+    Returns:
+        A flat dict with the run's identity, trigger, and outcome fields.
+    """
+    return {
+        "run_id": run.get("id"),
+        "name": run.get("name", ""),
+        "display_title": run.get("display_title", ""),
+        "workflow_id": run.get("workflow_id"),
+        "event": run.get("event", ""),
+        "status": run.get("status", ""),
+        "conclusion": run.get("conclusion"),
+        "head_branch": run.get("head_branch", ""),
+        "head_sha": run.get("head_sha", ""),
+        "run_number": run.get("run_number"),
+        "run_attempt": run.get("run_attempt"),
+        "created_at": run.get("created_at", ""),
+        "updated_at": run.get("updated_at", ""),
+        "html_url": run.get("html_url", ""),
+    }
+
+
+def _shape_job(job: dict) -> dict:
+    """Reduce a raw GitHub Actions job object to a diagnostic summary.
+
+    Only the steps that failed are retained, since those are what a caller
+    diagnosing a CI failure needs to see.
+
+    Args:
+        job: A raw job object from the GitHub Actions API.
+
+    Returns:
+        A flat dict describing the job and its failed steps.
+    """
+    failed_steps = [
+        {
+            "name": step.get("name", ""),
+            "number": step.get("number"),
+            "conclusion": step.get("conclusion"),
+        }
+        for step in (job.get("steps") or [])
+        if step.get("conclusion") == "failure"
+    ]
+    return {
+        "job_id": job.get("id"),
+        "name": job.get("name", ""),
+        "status": job.get("status", ""),
+        "conclusion": job.get("conclusion"),
+        "started_at": job.get("started_at"),
+        "completed_at": job.get("completed_at"),
+        "html_url": job.get("html_url", ""),
+        "failed_steps": failed_steps,
+    }
+
+
+def list_workflow_runs(owner: str, repo: str, workflow: str = "",
+                       branch: str = "", event: str = "", status: str = "",
+                       actor: str = "", limit: int = 20) -> dict:
+    """List GitHub Actions workflow runs for a repository.
+
+    When ``workflow`` is given the workflow-scoped endpoint is used
+    (runs of that single workflow); otherwise runs across all workflows
+    are returned. All filters map directly onto the GitHub Actions API's
+    query parameters.
+
+    Args:
+        owner: Repository owner (org or user).
+        repo: Repository name.
+        workflow: Workflow file name (e.g. ``analysis.yaml``) or numeric
+            workflow id. Empty means all workflows.
+        branch: Filter by head branch. Empty means any branch.
+        event: Filter by triggering event (``push``, ``pull_request``,
+            ``workflow_dispatch``, ``schedule``, ...). Empty means any.
+        status: Filter by status or conclusion (``queued``,
+            ``in_progress``, ``completed``, ``success``, ``failure``,
+            ``cancelled``, ``timed_out``, ...). Empty means any.
+        actor: Filter by the login that triggered the run. Empty means any.
+        limit: Maximum number of runs to return (1-100).
+
+    Returns:
+        dict with ok=True, total_count (GitHub's count of all matches),
+        returned (number in this response), and a workflow_runs list; or
+        an ok=False error dict.
+    """
+    per_page = max(1, min(int(limit or 20), 100))
+    params = [f"per_page={per_page}"]
+    if branch:
+        params.append(f"branch={quote(branch, safe='')}")
+    if event:
+        params.append(f"event={quote(event, safe='')}")
+    if status:
+        params.append(f"status={quote(status, safe='')}")
+    if actor:
+        params.append(f"actor={quote(actor, safe='')}")
+    query = "&".join(params)
+
+    if workflow:
+        path = (f"/repos/{owner}/{repo}/actions/workflows/"
+                f"{quote(str(workflow), safe='')}/runs?{query}")
+    else:
+        path = f"/repos/{owner}/{repo}/actions/runs?{query}"
+
+    result = _github_request("GET", path)
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+    if not isinstance(result, dict):
+        return {"ok": False, "error": "Unexpected response listing workflow runs"}
+
+    runs = [_shape_workflow_run(run) for run in result.get("workflow_runs", [])]
+    return {
+        "ok": True,
+        "total_count": result.get("total_count", len(runs)),
+        "returned": len(runs),
+        "workflow_runs": runs,
+    }
+
+
+def get_workflow_run_status(owner: str, repo: str, run_id: int) -> dict:
+    """Fetch a single workflow run together with its jobs and failed steps.
+
+    Args:
+        owner: Repository owner (org or user).
+        repo: Repository name.
+        run_id: The numeric workflow run id.
+
+    Returns:
+        dict with ok=True, a shaped ``run``, a ``jobs`` list (each with its
+        failed_steps), and a ``summary`` (total/failed job counts and the
+        run's status/conclusion); or an ok=False error dict.
+    """
+    run_result = _github_request(
+        "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}")
+    if isinstance(run_result, dict) and run_result.get("ok") is False:
+        return run_result
+    if not isinstance(run_result, dict):
+        return {"ok": False, "error": "Unexpected response fetching workflow run"}
+
+    jobs_result = _github_request(
+        "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs?per_page=100")
+
+    jobs = []
+    failed_jobs = 0
+    if isinstance(jobs_result, dict) and jobs_result.get("ok") is not False:
+        for job in jobs_result.get("jobs", []):
+            shaped = _shape_job(job)
+            if shaped["conclusion"] == "failure":
+                failed_jobs += 1
+            jobs.append(shaped)
+
+    run = _shape_workflow_run(run_result)
+    run["run_started_at"] = run_result.get("run_started_at", "")
+
+    return {
+        "ok": True,
+        "run": run,
+        "jobs": jobs,
+        "summary": {
+            "total_jobs": len(jobs),
+            "failed_jobs": failed_jobs,
+            "status": run_result.get("status", ""),
+            "conclusion": run_result.get("conclusion"),
+        },
+    }

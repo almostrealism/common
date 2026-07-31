@@ -25,6 +25,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 
 /**
@@ -52,6 +53,38 @@ public class DoubleConstant extends Constant<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) { return lang.getPrecision().stringForDouble(value); }
+
+	/**
+	 * Reports the value as an {@code int} when an {@code int} represents it
+	 * without loss. This is a value accessor, not a type conversion; the
+	 * expression remains {@link Double} typed.
+	 *
+	 * @return the value as an {@code int}, or empty when conversion would lose information
+	 */
+	@Override
+	public OptionalInt intValue() {
+		if ((double) ((int) value) == value) {
+			return OptionalInt.of((int) value);
+		}
+
+		return OptionalInt.empty();
+	}
+
+	/**
+	 * Reports the value as a {@code long} when a {@code long} represents it
+	 * without loss. This is a value accessor, not a type conversion; the
+	 * expression remains {@link Double} typed.
+	 *
+	 * @return the value as a {@code long}, or empty when conversion would lose information
+	 */
+	@Override
+	public OptionalLong longValue() {
+		if ((double) ((long) value) == value) {
+			return OptionalLong.of((long) value);
+		}
+
+		return OptionalLong.empty();
+	}
 
 	@Override
 	public OptionalDouble doubleValue() {

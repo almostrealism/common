@@ -29,6 +29,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.io.SystemUtils;
@@ -66,11 +67,11 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * limit), which is required for fused kernels with many small inputs to evaluate at all. The
 	 * copy plan copies aggregated inputs IN before the kernel and copies written slices back OUT
 	 * afterward (skipping the slice that aliases an explicit {@code output}; see
-	 * {@link #getPostprocessOperations(MemoryData)}), and instruction reuse is aggregation-safe (each
-	 * reused operation gets its own aggregate buffer and the signature encodes the aggregate layout
-	 * -- see {@code AcceleratedComputationOperation.rebindAggregateForReuse} and
-	 * {@code CollectionProviderProducer.signature}). Set the env var to a disabled value to turn
-	 * the collapse off (e.g. for debugging a kernel without aggregation).</p>
+	 * {@link #getPostprocessOperations(MemoryData)}). Under instruction reuse each reused operation
+	 * gets its own aggregate buffer, and its aggregate layout is verified against the layout the
+	 * shared kernel was compiled with — a mismatch is an instruction cache collision and throws
+	 * (see {@code AcceleratedComputationOperation.rebindAggregateForReuse}). Set the env var to a
+	 * disabled value to turn the collapse off (e.g. for debugging a kernel without aggregation).</p>
 	 */
 	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(true);
 
@@ -201,7 +202,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 			// If aggregation is enabled and this root is small enough, fold it into the
 			// shared aggregate buffer instead of giving it its own kernel argument.
-			if (aggregateGenerator != null && isAggregationTarget(md.getRootDelegate())) {
+			// Kernel-owned constant memory is never folded (see KernelConstantProviderSupplier).
+			if (aggregateGenerator != null && !(key instanceof KernelConstantProviderSupplier)
+					&& isAggregationTarget(md.getRootDelegate())) {
 				var = aggregate(createDelegate(md), md.getRootDelegate());
 			}
 
@@ -301,6 +304,31 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		StringBuilder b = new StringBuilder("len=").append(aggregateLength).append(" [");
 		for (Replacement r : replacements) {
 			b.append(r.getPosition()).append(':').append(r.getRoot().getMemLength()).append(',');
+		}
+		return b.append(']').toString();
+	}
+
+	/**
+	 * Returns the sequence of replacement positions within the aggregate — the component of the
+	 * aggregate layout that is baked into a compiled kernel.
+	 *
+	 * <p>Folded arguments do not occupy their own kernel parameters (reducing parameter count is
+	 * the purpose of aggregation), so the generated source addresses each one at its fixed
+	 * position within the single aggregate parameter. Those positions are therefore part of the
+	 * compiled kernel's identity. Per-argument element counts are not: they travel with each
+	 * dispatch (see the offset and size values marshaled per execution), which is what allows a
+	 * deliberately size-generic kernel — such as a single-statement assignment dispatched over
+	 * its count — to serve computations of different sizes. Two computations may reuse one
+	 * compiled kernel only when their position sequences are identical; a final replacement of a
+	 * different length shifts no baked position and is compatible, while any difference in an
+	 * earlier length shifts the positions after it and is not.</p>
+	 *
+	 * @return The baked replacement positions, in fold order
+	 */
+	public String describeAggregatePositions() {
+		StringBuilder b = new StringBuilder("[");
+		for (Replacement r : replacements) {
+			b.append(r.getPosition()).append(',');
 		}
 		return b.append(']').toString();
 	}
@@ -442,7 +470,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * property -- so the same computation always makes the same decision. It deliberately does
 	 * <em>not</em> consider where the data currently lives (heap vs. device), because that is
 	 * mutable runtime state that would make the decision (and the resulting kernel) vary for no
-	 * semantic reason and break instruction-set reuse.</p>
+	 * semantic reason and break instruction-set reuse. Size eligibility is necessary but not
+	 * sufficient: memory requested through {@link KernelConstantProviderSupplier} is owned by
+	 * the compiled kernel itself and is never folded, whatever its size.</p>
 	 *
 	 * @param md Memory data to test
 	 * @return True if the memory data can be folded into an aggregate argument
@@ -509,11 +539,26 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		public int getPosition() { return position; }
 	}
 
-	/** {@link Producer} that provides the lazily created aggregate buffer to the kernel. */
+	/**
+	 * {@link Producer} that provides the lazily created aggregate buffer to the kernel.
+	 *
+	 * <p>Requesting the buffer from a map that aggregated nothing is a contract violation:
+	 * a kernel argument bound to a null buffer can never be satisfied, so the request
+	 * throws instead of delivering null. Reaching this failure means an operation was bound
+	 * to an aggregate it does not actually have — the symptom of an instruction cache
+	 * collision that upstream verification failed to catch.</p>
+	 */
 	private class AggregateProducer implements Producer<MemoryData> {
 		@Override
 		public Evaluable<MemoryData> get() {
-			return new Provider<>(getAggregateData());
+			MemoryData data = getAggregateData();
+			if (data == null) {
+				throw new HardwareException(
+						"Aggregate buffer requested from an argument map that aggregated nothing (" +
+						describeAggregate() + ")");
+			}
+
+			return new Provider<>(data);
 		}
 	}
 }

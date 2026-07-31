@@ -491,6 +491,21 @@ def remember(
     # Strip any wrapping the model might add
     reformulated = reformulated.strip().strip('"').strip("'")
 
+    # When no model is reachable, _generate returns the passthrough banner
+    # plus the raw prompt. Storing that as a memory pollutes recall (a census
+    # found 36 such dumps already in the corpus). Refuse early — before
+    # embedding — with a clear message. The ar-memory store guards this too,
+    # but catching it here avoids a wasted embed and a round trip.
+    if reformulated.lstrip().startswith("[Consultant model not available"):
+        return {
+            "stored": False,
+            "error": "inference backend unavailable; memory not stored. "
+                     "Retry once a model is reachable.",
+            "original": content,
+            "namespace": namespace,
+            "backend": llm.name,
+        }
+
     # Store both versions
     entry = memory.store_dual(
         original=content,

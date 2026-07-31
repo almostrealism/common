@@ -29,7 +29,7 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
-import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.InstructionSetManager;
@@ -417,6 +417,35 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
+	 * Clears the argument list along with every piece of state derived from it:
+	 * the substitution evaluator, the per-operation aggregate copy plan, and the
+	 * process details factory that caches both.
+	 *
+	 * <p>All of that state is derived from a single compiled scope. When the
+	 * compiled instructions this operation was bound to are destroyed, a
+	 * replacement compilation may lay out its arguments or aggregate differently,
+	 * and executing through the old state silently reads and writes the wrong
+	 * memory — so the whole set is discarded together and rebuilt by the next
+	 * {@link #load()}.</p>
+	 */
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+
+		this.evaluator = null;
+
+		if (detailsFactory != null) {
+			detailsFactory.destroy();
+			detailsFactory = null;
+		}
+
+		if (argumentMap != null) {
+			argumentMap.destroy();
+			argumentMap = null;
+		}
+	}
+
+	/**
 	 * Creates a {@link MemoryReplacementManager} for managing memory aggregation and replacement
 	 * during kernel execution. The manager handles input/output buffer allocation and consolidation.
 	 *
@@ -579,8 +608,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
-		if (getArguments() == null && getInstructionSetManager() == null) {
-			throw new UnsupportedOperationException("Operation was not compiled");
+		if (getArguments() == null) {
+			if (getInstructionSetManager() == null) {
+				throw new UnsupportedOperationException("Operation was not compiled");
+			}
+
+			// Bindings are established by load() and discarded when the compiled
+			// instructions they were derived from are destroyed; re-establish them
+			// before anything downstream consumes argument metadata
+			load();
 		}
 
 		// Load the inputs, ordering argument evaluation after the prior completion
@@ -661,6 +697,16 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					// The trailing copy-out runs after the kernel, so heap lifecycle must wait for it too.
 					Heap.addPendingKernel(completion);
 				}
+
+				if (process.hasDestinationLeases()) {
+					// Release at the end of the full chain, passively — an actively waiting
+					// callback (onComplete) forces a per-invocation commit on Metal.
+					if (completion == null) {
+						process.releaseDestinationLeases();
+					} else {
+						completion.whenComplete(process::releaseDestinationLeases);
+					}
+				}
 			} finally {
 				if (!activeRequirements.isEmpty()) {
 					Hardware.getLocalHardware().getComputer().popRequirements();
@@ -707,15 +753,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/**
 	 * Destroys this operation and releases associated resources.
 	 *
-	 * <p>Calls the parent destroy method and cleans up the argument map.</p>
+	 * <p>Calls the parent destroy method and cleans up the argument map and the
+	 * details factory's destination reuse slots.</p>
 	 */
 	@Override
 	public void destroy() {
 		super.destroy();
-
-		if (argumentMap != null) {
-			argumentMap.destroy();
-		}
+		resetArguments();
 	}
 
 	/** Returns the console for logging operations. */

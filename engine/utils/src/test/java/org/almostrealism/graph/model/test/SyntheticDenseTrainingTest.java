@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
@@ -65,34 +64,27 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 	/**
 	 * Fixed coefficients for target functions.
 	 */
-	private final double[] coeff = { 0.3, -0.2, 0.5, 0.1, -0.4 };
+	private final PackedCollection coeff = pack(0.3, -0.2, 0.5, 0.1, -0.4);
 
 	/**
 	 * Simple linear function: output[i] = coeff[i] * input[i]
 	 */
-	private final UnaryOperator<PackedCollection> linearFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				double[] data = new double[in.getMemLength()];
-				for (int i = 0; i < data.length; i++) {
-					data[i] = coeff[i % coeff.length] * in.valueAt(i);
-				}
-				a(cp(out), c(data).reshape(out.getShape())).get().run();
-				return out;
-			};
+	private final UnaryOperator<PackedCollection> linearFunc = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Weighted sum function: output = sum(coeff[i] * input[i])
 	 */
-	private final UnaryOperator<PackedCollection> weightedSumFunc =
-			in -> {
-				double sum = 0.0;
-				for (int i = 0; i < in.getMemLength(); i++) {
-					int coeffIdx = i % coeff.length;
-					sum += coeff[coeffIdx] * in.valueAt(i);
-				}
-				return PackedCollection.of(sum);
-			};
+	private final UnaryOperator<PackedCollection> weightedSumFunc = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.sum().evaluate();
+	};
 
 	/**
 	 * Test 1.1: Simple Dense Regression
@@ -277,7 +269,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		int steps = 260;
 
 		// Fixed coefficients for the target function
-		final double[] batchCoeff = {0.24, -0.1, 0.36};
+		final PackedCollection batchCoeff = pack(0.24, -0.1, 0.36);
 
 		// Build batched model (following DenseLayerTests pattern)
 		SequentialBlock block = new SequentialBlock(shape(batchSize, size));
@@ -289,18 +281,11 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		log("Batched model built: [" + batchSize + ", " + size + "] -> [" + batchSize + ", " + size + "]");
 
 		// Function to compute expected output for batched input
-		UnaryOperator<PackedCollection> batchFunc = input -> {
-			TraversalPolicy inShape = padDimensions(input.getShape(), 2);
-			input = input.reshape(inShape);
-
-			PackedCollection result = new PackedCollection(inShape);
-			for (int n = 0; n < inShape.length(0); n++) {
-				a(cp(result.range(shape(size), n * size)),
-						c(batchCoeff[0] * input.valueAt(n, 0),
-								batchCoeff[1] * input.valueAt(n, 1),
-								batchCoeff[2] * input.valueAt(n, 2))).get().run();
-			}
-			return result;
+		UnaryOperator<PackedCollection> batchFunc = in -> {
+			int rn = in.getMemLength();
+			return cp(batchCoeff).valueAt(integers(0, rn).mod(batchCoeff.getMemLength()))
+					.multiply(cp(in).reshape(shape(rn)))
+					.evaluate().reshape(in.getShape());
 		};
 
 		// Generate batched dataset

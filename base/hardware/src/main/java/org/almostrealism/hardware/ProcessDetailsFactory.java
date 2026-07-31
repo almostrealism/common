@@ -38,10 +38,12 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -238,6 +240,37 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public static boolean enableKernelSizeWarnings =
 			SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
+	/**
+	 * If true, sized argument destinations are reused across invocations via per-argument
+	 * {@link DestinationSlot}s, gated on each invocation's completion chain instead of the
+	 * thread identity the former {@code ThreadLocal} provider relied on (which stopped
+	 * implying exclusive use once argument evaluation became asynchronous). Controlled by
+	 * {@code AR_HARDWARE_DESTINATION_REUSE}.
+	 *
+	 * <p><b>Defaults to disabled</b> because the completion-gated release path can deadlock a
+	 * multi-channel real-scene render on the Metal backend: the release callback runs on the
+	 * device-completion pool and needs the {@link AcceleratedProcessDetails} monitor, which
+	 * another thread already holds while synchronously awaiting that same device completion, so
+	 * the completion can never be delivered. See
+	 * {@link AcceleratedProcessDetails#releaseDestinationLeases()} for the full lock-ordering
+	 * hazard. Re-enable (set {@code AR_HARDWARE_DESTINATION_REUSE=enabled}) only once the leasing
+	 * no longer participates in that lock.</p>
+	 */
+	public static boolean enableDestinationReuse =
+			SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_REUSE").orElse(false);
+
+	/**
+	 * If true (strict mode, the default), the result an invocation hands back from a plain
+	 * {@code evaluate()} is portable: the caller may hold it indefinitely, so its buffer is
+	 * never served from a reuse slot. When disabled, that buffer participates in destination
+	 * reuse like any other — improving allocation rate and memory use — and the contract
+	 * changes: a result of {@code evaluate()} is only valid until the same operation's next
+	 * invocation, unless the caller supplied the destination via {@code into(...)}.
+	 * Controlled by {@code AR_HARDWARE_PORTABLE_RESULTS}.
+	 */
+	public static boolean enablePortableResults =
+			SystemUtils.isEnabled("AR_HARDWARE_PORTABLE_RESULTS").orElse(true);
+
 	/** True if the count is fixed at construction time and cannot be inferred from arguments. */
 	private boolean fixedCount;
 	/** Declared number of parallel work items (kernel size) for fixed-count operations. */
@@ -266,6 +299,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 	/** Executor used to dispatch asynchronous kernel execution when {@link Hardware#isAsync()} is true. */
 	private Executor executor;
+
+	/**
+	 * Per-argument destination reuse slots, indexed like {@link #arguments}. Lazily
+	 * created on first use when {@link #enableDestinationReuse} is active.
+	 */
+	private DestinationSlot[] destinationSlots;
 
 	/**
 	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances.
@@ -593,13 +632,42 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 		/*
 		 * Second pass: create async evaluables for kernel arguments that need
-		 * sized destinations.
+		 * sized destinations. Destinations come from this factory's per-argument
+		 * reuse slots when one is free; a slot that is still leased to an
+		 * overlapping invocation falls back to a fresh allocation, which is
+		 * tracked by the active Heap stage exactly as before. Under portable
+		 * results (strict mode), the output argument is leased only when the
+		 * caller supplied an output bank — its factory-created buffer is then
+		 * internal staging, delivered to the caller by copy-out; without a
+		 * caller output that buffer is what evaluate() hands back, so it is
+		 * allocated fresh. With portable results disabled, the output buffer
+		 * is leased like any other and evaluate() results are transient (see
+		 * enablePortableResults).
 		 */
+		List<Runnable> leases = null;
+		boolean outputEscapes = enablePortableResults && prepared.output == null;
+
 		for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null || asyncEvaluables[i] != null) continue;
 
-			MemoryData result = (MemoryData) kernelArgEvaluables[i].createDestination(size);
-			Heap.addCreatedMemory(result);
+			MemoryData result = null;
+
+			if (enableDestinationReuse && (i != outputArgIndex || !outputEscapes)) {
+				DestinationSlot slot = destinationSlot(i);
+				Evaluable allocator = kernelArgEvaluables[i];
+				result = slot.acquire(size,
+						s -> (MemoryData) allocator.createDestination(s));
+
+				if (result != null) {
+					if (leases == null) leases = new ArrayList<>();
+					leases.add(slot::release);
+				}
+			}
+
+			if (result == null) {
+				result = (MemoryData) kernelArgEvaluables[i].createDestination(size);
+				Heap.addCreatedMemory(result);
+			}
 
 			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
 		}
@@ -611,6 +679,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		 */
 		AcceleratedProcessDetails details = new AcceleratedProcessDetails(kernelArgs, size,
 											replacements.get(), executor);
+
+		if (leases != null) {
+			leases.forEach(details::addDestinationLease);
+		}
 
 		/* Set downstream on all async evaluables, passing the specific details instance */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
@@ -750,6 +822,123 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 
 		return -1;
+	}
+
+	/**
+	 * Returns the reuse slot for the given argument index, creating the slot array
+	 * on first use.
+	 *
+	 * @param index the argument index
+	 * @return the slot for that argument
+	 */
+	private synchronized DestinationSlot destinationSlot(int index) {
+		if (destinationSlots == null) {
+			destinationSlots = new DestinationSlot[arguments.size()];
+			for (int i = 0; i < destinationSlots.length; i++) {
+				destinationSlots[i] = new DestinationSlot();
+			}
+		}
+
+		return destinationSlots[index];
+	}
+
+	/**
+	 * Destroys the destination buffers held by this factory's reuse slots. Called when
+	 * the owning operation is destroyed; a buffer still leased to an in-flight
+	 * invocation is left for garbage collection rather than destroyed underneath it.
+	 */
+	public void destroy() {
+		DestinationSlot[] slots;
+
+		synchronized (this) {
+			slots = destinationSlots;
+			destinationSlots = null;
+		}
+
+		if (slots != null) {
+			for (DestinationSlot slot : slots) {
+				slot.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A single-buffer destination reuse slot for one kernel argument position.
+	 *
+	 * <p>An invocation checks the slot's buffer out with {@link #acquire(int, IntFunction)}
+	 * and returns it by running the release callback recorded on its
+	 * {@link AcceleratedProcessDetails} once the invocation's completion chain has fired.
+	 * While the buffer is checked out, an overlapping invocation of the same operation
+	 * receives {@code null} and allocates a fresh, unpooled destination — reuse is
+	 * opportunistic and never shares a buffer between in-flight invocations.</p>
+	 *
+	 * <p>Argument sizes are stable for a given operation in steady state, so a single
+	 * cached buffer per argument position captures nearly all reuse; a size change
+	 * destroys the cached buffer and allocates at the new size, mirroring
+	 * {@link org.almostrealism.hardware.mem.MemoryBankProvider}. A buffer destroyed
+	 * externally (its memory released elsewhere) is detected via {@link MemoryData#getMem()}
+	 * and replaced.</p>
+	 *
+	 * <p>Buffers are leased only while they remain internal to the invocation. The
+	 * output argument's buffer participates when the caller supplied an output bank
+	 * (the factory buffer is then staging, delivered by copy-out); when no output was
+	 * supplied it is what {@code evaluate()} returns to the caller, so under
+	 * {@link #enablePortableResults} (the default) it is allocated fresh, and with
+	 * portable results disabled it is leased like any other — trading the
+	 * hold-it-indefinitely guarantee for allocation-rate and memory improvements.</p>
+	 */
+	public static class DestinationSlot {
+		/** The cached destination buffer, or null before first use or after destruction. */
+		private MemoryData bank;
+		/** Element size the cached buffer was allocated for. */
+		private int size;
+		/** True while the buffer is leased to an in-flight invocation. */
+		private boolean inUse;
+
+		/**
+		 * Checks the slot's buffer out for one invocation, allocating or replacing it
+		 * as needed.
+		 *
+		 * @param requestedSize the destination size for this invocation
+		 * @param allocate      allocates a new destination of a given size
+		 * @return the leased buffer, or {@code null} when the slot is already leased
+		 *         (the caller should allocate an unpooled destination)
+		 */
+		public synchronized MemoryData acquire(int requestedSize, IntFunction<MemoryData> allocate) {
+			if (inUse) return null;
+
+			if (bank == null || bank.getMem() == null || size != requestedSize) {
+				if (bank != null && bank.getMem() != null) {
+					bank.destroy();
+				}
+
+				bank = allocate.apply(requestedSize);
+				size = requestedSize;
+			}
+
+			if (bank == null) return null;
+
+			inUse = true;
+			return bank;
+		}
+
+		/** Returns the leased buffer to this slot for the next invocation. */
+		public synchronized void release() {
+			inUse = false;
+		}
+
+		/**
+		 * Destroys the cached buffer unless it is currently leased, in which case it is
+		 * abandoned to garbage collection instead of being destroyed mid-invocation.
+		 */
+		public synchronized void destroy() {
+			if (!inUse && bank != null && bank.getMem() != null) {
+				bank.destroy();
+			}
+
+			bank = null;
+			size = 0;
+		}
 	}
 
 	@Override

@@ -17,8 +17,6 @@
 package org.almostrealism.time.test;
 
 import org.almostrealism.collect.CollectionProducer;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestFeatures;
@@ -56,18 +54,11 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	 */
 	@Test(timeout = 120000)
 	public void testBasicConvolution() {
-		double[] signalArray = {1, 2, 3, 4, 5};
-		double[] kernelArray = {1, 0, -1};
+		PackedCollection signal = pack(1.0, 2.0, 3.0, 4.0, 5.0);
+		PackedCollection kernel = pack(1.0, 0.0, -1.0);
 
 		// Direct convolution for reference
-		double[] expected = directConvolve(signalArray, kernelArray);
-
-		// FFT convolution
-		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		a(cp(signal), c(signalArray)).get().run();
-
-		PackedCollection kernel = new PackedCollection(shape(kernelArray.length));
-		a(cp(kernel), c(kernelArray)).get().run();
+		double[] expected = directConvolve(signal.toArray(), kernel.toArray());
 
 		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
 		PackedCollection result = fftConv.evaluate();
@@ -87,14 +78,11 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	 */
 	@Test(timeout = 120000)
 	public void testDeltaKernel() {
-		double[] signalArray = {1, 2, 3, 4, 5, 6, 7, 8};
-		double[] kernelArray = {1};  // Delta function
+		PackedCollection signal = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+		double[] signalArray = signal.toArray();
 
-		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		a(cp(signal), c(signalArray)).get().run();
-
-		PackedCollection kernel = new PackedCollection(shape(kernelArray.length));
-		kernel.setMem(0, 1.0);
+		// Delta function kernel
+		PackedCollection kernel = pack(1.0);
 
 		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
 		PackedCollection result = fftConv.evaluate();
@@ -111,14 +99,8 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	 */
 	@Test(timeout = 120000)
 	public void testCommutativity() {
-		double[] aArray = {1, 2, 3, 4};
-		double[] bArray = {0.5, -0.5, 0.5};
-
-		PackedCollection a = new PackedCollection(shape(aArray.length));
-		a(cp(a), c(aArray)).get().run();
-
-		PackedCollection b = new PackedCollection(shape(bArray.length));
-		a(cp(b), c(bArray)).get().run();
+		PackedCollection a = pack(1.0, 2.0, 3.0, 4.0);
+		PackedCollection b = pack(0.5, -0.5, 0.5);
 
 		// a * b
 		PackedCollection result1 = fftConvolve(cp(a), cp(b)).evaluate();
@@ -143,9 +125,7 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 		int kernelLength = 5;
 
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(i + 1.0)).get().run();
-		}
+		integers(1, signalLength + 1).into(signal.traverseEach()).evaluate();
 
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
 		// All zeros by default
@@ -164,16 +144,12 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	 */
 	@Test(timeout = 120000)
 	public void testMovingAverageKernel() {
-		double[] signalArray = {1, 1, 1, 1, 1, 1, 1, 1};
-		double[] kernelArray = {0.25, 0.25, 0.25, 0.25};  // 4-point moving average
+		PackedCollection signal = pack(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
 
-		double[] expected = directConvolve(signalArray, kernelArray);
+		// 4-point moving average kernel
+		PackedCollection kernel = pack(0.25, 0.25, 0.25, 0.25);
 
-		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		a(cp(signal), c(signalArray)).get().run();
-
-		PackedCollection kernel = new PackedCollection(shape(kernelArray.length));
-		a(cp(kernel), c(kernelArray)).get().run();
+		double[] expected = directConvolve(signal.toArray(), kernel.toArray());
 
 		PackedCollection result = fftConvolve(cp(signal), cp(kernel)).evaluate();
 
@@ -232,13 +208,11 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 	 */
 	@Test(timeout = 120000)
 	public void testDelayedImpulse() {
-		double[] signalArray = {1, 2, 3, 4, 5};
+		PackedCollection signal = pack(1.0, 2.0, 3.0, 4.0, 5.0);
+		double[] signalArray = signal.toArray();
 		int delay = 3;
 
 		// Create delayed impulse: [0, 0, 0, 1]
-		PackedCollection signal = new PackedCollection(shape(signalArray.length));
-		a(cp(signal), c(signalArray)).get().run();
-
 		PackedCollection kernel = new PackedCollection(shape(delay + 1));
 		kernel.setMem(delay, 1.0);
 
@@ -263,15 +237,14 @@ public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeature
 
 		// Generate random-ish signal
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(signal.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(2.0 * Math.PI * i / 128.0))).get().run();
-		}
+		sin(integers(0, signalLength).multiply(2.0 * Math.PI / 128.0))
+				.into(signal.traverseEach()).evaluate();
 
 		// Generate impulse response kernel
 		PackedCollection kernel = new PackedCollection(shape(kernelLength));
-		for (int i = 0; i < kernelLength; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(kernel.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.exp(-i / 10.0) * Math.cos(Math.PI * i / 8.0))).get().run();
-		}
+		exp(integers(0, kernelLength).multiply(-1.0 / 10.0))
+				.multiply(cos(integers(0, kernelLength).multiply(Math.PI / 8.0)))
+				.into(kernel.traverseEach()).evaluate();
 
 		CollectionProducer fftConv = fftConvolve(cp(signal), cp(kernel));
 		PackedCollection result = fftConv.evaluate();
