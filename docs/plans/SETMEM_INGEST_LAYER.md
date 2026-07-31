@@ -99,13 +99,31 @@ read-only until it migrates. Streaming decoders (WAV) and one-shot payloads
    `enableDeferredWeights`.
 2. **ONNX tensors** — done, via the standard ByteBuffer staging sequence
    rather than a dedicated provider.
-3. **`WavFile`/`WaveData`** — migrate the decoded-frames → collection hop to
-   the standard ByteBuffer staging sequence, and formalize
-   `PackedCollection.read(byte[])` (graphpersist) as part of this surface;
-   then move the bulk `double[]`-accepting `setMem` overloads behind it
-   (or `protected` on `MemoryDataAdapter`) per the census conclusion.
-4. **Retire the corresponding `KNOWN_EXCLUSIONS`** entries as each category
-   gains its home, and regenerate the baseline.
+3. **`WavFile`/`WaveData`** — done, via the standard ByteBuffer staging
+   sequence (buffer-view `readFrames` overloads on `WavFile`).
+4. **`MemoryData.read(ByteBuffer)`** — done: the primary form of the
+   serialization ingest surface, with the `byte[]` and `InputStream` forms
+   reduced to adapters over it (graphpersist reads through it).
+5. **The `setMem` narrowing** — done: the four explicit-array overloads
+   (`(double[], int)`, `(double[], int, int)`, `(int, double[], int, int)`,
+   `(int, float[], int, int)`) are removed from `MemoryData`; the literal
+   varargs forms remain public and route through private internals that
+   resolve the delegate chain. Every former caller (one in main code, five in
+   tests) now stages through a ByteBuffer. **Known residue**: Java varargs
+   binding still accepts an array at a varargs call site — the compile
+   surface cannot reject that without removing the literal path, so that
+   residue remains detector-enforced (`SETMEM_NON_LITERAL_ARGUMENT`).
+6. **Exclusions retired** as their lines disappeared (Llama2Weights,
+   OnnxFeatures, SAMEResamplingParityTest) — 21 → 18 remaining; the baseline
+   regenerated to 612 grandfathered occurrences (630 total exemptions).
+
+**Open follow-up**: the allocate-staging-then-pick-view-by-number-size
+sequence now appears at six call sites (OnnxFeatures, WaveData,
+Llama2Weights, three test helpers). It may deserve a named home — e.g. a
+staging factory that returns the correctly-typed view alongside the
+allocation — but a general `stage(double[])` convenience would simply
+resurrect the removed bulk-upload API, so the shape needs a deliberate
+decision rather than a reflexive helper.
 
 Each step is verified by the tests that exercise the migrated path (ML weight
 loading and inference tests for 1; ONNX inference tests for 2; audio I/O and

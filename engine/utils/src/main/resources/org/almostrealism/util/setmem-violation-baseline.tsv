@@ -428,12 +428,8 @@ SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studi
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	topKLogits.setMem(0, filtered);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/optimize/AudioSceneOptimizer.java	1	combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/discovery/test/PrototypeDiscoveryPersistenceTest.java	1	features.setMem(f * FEATURE_BINS + b, magnitude);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamComponentTest.java	1	collection.setMem(0, data, 0, total);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamFineTuningTest.java	1	input.setMem(j, Math.sin(j * 0.1 + i * 0.5));
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamFineTuningTest.java	1	target.setMem(j, Math.cos(j * 0.1 + i * 0.3));
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamMidiTest.java	1	result.setMem(0, hNew, 0, dh);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java	1	result.setMem(0, hNew, 0, dh);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java	1	result.setMem(0, resultArr, 0, outputSize);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	delays.setMem(tapDelays);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	feedback.setMem(feedbackMatrixRowMajor);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	input.setMem(flatInput);

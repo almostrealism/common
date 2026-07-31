@@ -20,6 +20,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.db.DatabaseConnection;
 import io.almostrealism.db.Query;
 import org.almostrealism.collect.PackedCollection;
+
+import java.nio.ByteBuffer;
 import org.almostrealism.io.Console;
 import org.hsqldb.Server;
 
@@ -119,7 +121,7 @@ public class GraphPersist {
 				DatabaseConnection.dataColumn,
 				DatabaseConnection.uriColumn + " = '" + key + "'");
 		PackedCollection r = new PackedCollection(shape);
-		r.read((byte[]) db.executeQuery(q).get("0"));
+		r.read(ByteBuffer.wrap((byte[]) db.executeQuery(q).get("0")));
 		return r;
 	}
 

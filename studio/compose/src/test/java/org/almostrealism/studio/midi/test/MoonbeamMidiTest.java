@@ -18,6 +18,14 @@ package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUDecoder;
@@ -521,9 +529,20 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 			double n = Math.tanh(nGateIh + r * nGateHh);
 			hNew[i] = (1.0 - z) * n + z * hArr[i];
 		}
-		PackedCollection result = new PackedCollection(dh);
-		result.setMem(0, hNew, 0, dh);
-		return result;
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(dh);
+		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+		if (provider.getNumberSize() == 4) {
+			FloatBuffer view = staging.asFloatBuffer();
+			for (int i = 0; i < dh; i++) {
+				view.put(i, (float) hNew[i]);
+			}
+		} else {
+			staging.asDoubleBuffer().put(hNew);
+		}
+
+		return new PackedCollection(new TraversalPolicy(dh), 0, Bytes.of(mem, dh), 0);
 	}
 
 	/**

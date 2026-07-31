@@ -19,7 +19,14 @@ package org.almostrealism.ml.llama2;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
 
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 
 /**
@@ -147,14 +154,27 @@ public class Llama2Weights implements CodeFeatures {
 		if (shape.length(shape.getDimensions() - 1) != 2)
 			throw new IllegalArgumentException();
 
-		double[] data = new double[shape.getTotalSize()];
-		for (int i = 0; i < data.length; i += 2) {
-			data[i] = real[i / 2];
-			data[i + 1] = imag[i / 2];
+		int total = shape.getTotalSize();
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(total);
+
+		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+		if (provider.getNumberSize() == 4) {
+			FloatBuffer view = staging.asFloatBuffer();
+			for (int i = 0; i < total; i += 2) {
+				view.put(i, real[i / 2]);
+				view.put(i + 1, imag[i / 2]);
+			}
+		} else {
+			DoubleBuffer view = staging.asDoubleBuffer();
+			for (int i = 0; i < total; i += 2) {
+				view.put(i, real[i / 2]);
+				view.put(i + 1, imag[i / 2]);
+			}
 		}
 
-		PackedCollection c = new PackedCollection(shape);
-		c.setMem(0, data, 0, shape.getTotalSize());
-		return c;
+		return new PackedCollection(shape, shape.getTraversalAxis(),
+				Bytes.of(mem, total), 0);
 	}
 }

@@ -344,7 +344,7 @@ public class PackedCollection extends MemoryDataAdapter
 			throw new IllegalArgumentException("Range exceeds collection size");
 		}
 
-		setMem(index * getAtomicMemLength(), values, 0, values.length);
+		setMem(index * getAtomicMemLength(), values);
 	}
 
 	@Override
@@ -916,7 +916,7 @@ public class PackedCollection extends MemoryDataAdapter
 	@Override
 	public PackedCollection clone() {
 		PackedCollection clone = new PackedCollection(getShape(), getShape().getTraversalAxis());
-		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
+		clone.setFrom(0, this, 0, getMemLength());
 		return clone;
 	}
 
@@ -938,7 +938,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public static PackedCollection of(double... values) {
 		PackedCollection collection = factory().apply(values.length);
-		collection.setMem(0, values, 0, values.length);
+		collection.setMem(0, values);
 		return collection;
 	}
 
@@ -1026,13 +1026,7 @@ public class PackedCollection extends MemoryDataAdapter
 				try {
 					TraversalPolicy shape = TraversalPolicy.load(dis);
 					PackedCollection collection = new PackedCollection(shape);
-					double[] input = new double[shape.getTotalSize()];
-
-					for (int i = 0; i < shape.getTotalSize(); i++) {
-						input[i] = dis.readDouble();
-					}
-
-					collection.setMem(0, input, 0, input.length);
+					collection.read(dis);
 					return collection;
 				} catch (IOException e) {
 					throw new RuntimeException(e);

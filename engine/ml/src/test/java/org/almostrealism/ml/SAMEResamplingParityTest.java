@@ -24,6 +24,13 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
+import java.nio.DoubleBuffer;
+import io.almostrealism.collect.TraversalPolicy;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
@@ -280,13 +287,28 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 */
 	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
 		float[] data = loadFlat(new File(dir, name + ".bin").toPath());
-		PackedCollection pc = new PackedCollection(shape(shape));
-		if (data.length != pc.getShape().getTotalSize()) {
+		TraversalPolicy resultShape = shape(shape);
+		if (data.length != resultShape.getTotalSize()) {
 			throw new IllegalStateException(name + ": file has " + data.length
-					+ " values but shape expects " + pc.getShape().getTotalSize());
+					+ " values but shape expects " + resultShape.getTotalSize());
 		}
-		pc.setMem(0, data, 0, data.length);
-		return pc;
+
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(data.length);
+
+		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+		if (provider.getNumberSize() == 4) {
+			staging.asFloatBuffer().put(data);
+		} else {
+			DoubleBuffer view = staging.asDoubleBuffer();
+			for (int i = 0; i < data.length; i++) {
+				view.put(i, data[i]);
+			}
+		}
+
+		return new PackedCollection(resultShape, resultShape.getTraversalAxis(),
+				Bytes.of(mem, data.length), 0);
 	}
 
 	/**
