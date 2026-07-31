@@ -23,7 +23,9 @@ import org.almostrealism.studio.discovery.PrototypeDiscovery;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.studio.ml.AutoEncoderFeatureProvider;
 import org.almostrealism.ml.audio.OnnxAutoEncoder;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -86,8 +88,15 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 	 * <p>On the first run, features are computed for all samples using the
 	 * ONNX encoder model. On subsequent runs, features are loaded from the
 	 * protobuf store, making discovery significantly faster.</p>
+	 *
+	 * <p>Excluded from the {@link TestUtils#PIPELINE} profile: this test asserts on
+	 * the presence of the ONNX encoder/decoder models and a real sample library, and
+	 * fails rather than skipping when they are absent. CI runners do not carry those
+	 * assets, so it is kept out of the pipeline profile while remaining runnable
+	 * locally against a configured {@code ar.test.models} / {@code ar.test.samples}.</p>
 	 */
 	@Test(timeout = 300000)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void discoverWithOnnxFeatures() throws Exception {
 		String samplesPath = resolveSamplesPath();
 		String storePath = System.getProperty("ar.test.store", DEFAULT_STORE);

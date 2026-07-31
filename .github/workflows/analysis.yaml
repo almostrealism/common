@@ -799,8 +799,12 @@ jobs:
         run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Flowtree Tests
+        # Every module of the flowtree family, not just runtime. api and python carry no
+        # tests today; they are listed so a test added there runs from the first commit
+        # rather than silently never executing. Maven orders the reactor itself.
         run: |
-          mvn test -Dcheckstyle.skip=true -pl flowtree/runtime \
+          mvn test -Dcheckstyle.skip=true \
+           -pl flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_TEST_PROFILE=pipeline
 
@@ -942,6 +946,21 @@ jobs:
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            2>&1 | tee "${{ runner.temp }}/mvn-render-test.log"
 
+      # base/io and engine/utils-http hold one test class each and had no CI job at all.
+      # Grouped into a single Maven invocation on group 0 (as Render is) so covering them
+      # costs one reactor start rather than two per matrix group.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           2>&1 | tee "${{ runner.temp }}/mvn-io-http-test.log"
+
       - name: Upload Render Surefire Reports
         if: always() && matrix.group == 0
         uses: actions/upload-artifact@v4
@@ -988,7 +1007,12 @@ jobs:
     # do not contend for CPU/RAM on the same fleet. Tolerates `test` being skipped (its
     # narrower layer gate can skip when only studio/extern changed).
     # Layer gate: studio tests run when any layer is modified.
+    # `!cancelled()` is REQUIRED, not cosmetic: without a status check function in the `if`,
+    # GitHub applies an implicit success() to every job in `needs`, so a skipped `test` skips
+    # this job before the `needs.test.result == 'skipped'` clause below is ever evaluated. That
+    # silently dropped studio tests on exactly the studio-only PRs the clause was written for.
     if: >-
+      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -1071,6 +1095,37 @@ jobs:
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=8 \
            2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
+
+      - name: Run Spatial Tests
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-spatial-test.log"
+
+      # extern/ml-onnx and studio/experiments had no CI job at all. Both are small, and both
+      # sit under this job's layer gate (extern_changed / studio_changed), so they share one
+      # reactor start. OnnxPrototypeDiscoveryTest carries
+      # @TestProperties(excludeProfiles = PIPELINE) because it asserts on ONNX model assets
+      # and a real sample library that the runners do not carry.
+      - name: Run Extern and Experiments Tests
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-extern-experiments-test.log"
 
       - name: Upload Surefire Reports
         if: always()
@@ -1204,6 +1259,16 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
+      # See the identical step in test for why these two modules share one invocation.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
       # Metal (mac) surefire reports so auto-resolve can parse Metal-specific test failures
       # a Linux run would not surface. Named distinctly from the CL jobs, which are not resolved.
       - name: Upload Surefire Reports
@@ -1224,7 +1289,9 @@ jobs:
     # macOS fleet at a time. Gates on ALL earlier GPU stages (test-mac, test-media-mac) with
     # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
     # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
+    # `!cancelled()` is required for that tolerance to take effect — see test-media.
     if: >-
+      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -1310,6 +1377,16 @@ jobs:
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
+      # See the identical step in test for why these two modules share one invocation.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
   test-media-mac:
     needs: [changes, build, test-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # GPU lane, second stage: runs after test-mac. test-media-mac and test-mac both run heavy
@@ -1319,7 +1396,9 @@ jobs:
     # narrower layer gate (no studio/extern), so it can be skipped when this job runs; the
     # gate below tolerates a skipped test-mac. Gates on the validation checks directly.
     # Layer gate: studio tests run when any layer is modified.
+    # `!cancelled()` is required for that tolerance to take effect — see test-media.
     if: >-
+      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -1400,6 +1479,27 @@ jobs:
            -DAR_TEST_GROUP=${{ matrix.group }} \
            -DAR_TEST_GROUPS=4
 
+      - name: Run Spatial Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+      # See the identical step in test-media for why these two modules share one invocation.
+      - name: Run Extern and Experiments Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
       # Metal (mac) media surefire reports so auto-resolve can parse Metal-specific test
       # failures a Linux run would not surface. Named distinctly from the CL jobs, which
       # are not resolved.
@@ -1421,7 +1521,9 @@ jobs:
     # serialised. Gates on ALL earlier GPU stages (test-mac, test-media-mac, test-cl) with
     # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
     # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
+    # `!cancelled()` is required for that tolerance to take effect — see test-media.
     if: >-
+      !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -1494,6 +1596,29 @@ jobs:
       - name: Run Compose Tests
         run: |
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Spatial Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      # See the identical step in test-media for why these two modules share one invocation.
+      - name: Run Extern and Experiments Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1913,8 +2038,12 @@ jobs:
             fi
           fi
           if [ "$MEDIA_RESULT" = "cancelled" ] || [ "$MEDIA_RESULT" = "skipped" ]; then
-            # test-media cancelled because test failed/skipped is expected, not incomplete
-            if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "skipped" ]; then
+            # test-media cancelled because test failed or was cancelled is expected — the CPU
+            # lane fail-chains. A *skipped* test is NOT an excuse: test-media has the wider
+            # layer gate and is meant to run on studio/extern-only changes precisely when test
+            # skips. Excusing that case here disarmed this detector on exactly the runs where
+            # the lane's skip-propagation bug dropped the studio tests silently.
+            if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "cancelled" ]; then
               if [ "$VALIDATION_FAILED" = "true" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
               elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
