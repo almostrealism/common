@@ -48,6 +48,16 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public class StateDictionary extends AssetGroup implements Destroyable, ConsoleFeatures {
+	/**
+	 * When {@code true}, weight tensors are decoded eagerly into freshly
+	 * allocated collections. When {@code false}, weight tensors keep their
+	 * protobuf messages as backing store via
+	 * {@link CollectionEncoder#decode(Collections.CollectionData, boolean)},
+	 * deferring device involvement until a kernel first uses each weight.
+	 * Passed directly as that method's {@code materialize} parameter.
+	 */
+	public static boolean enableMaterializeWeights = false;
+
 	/** The in-memory map from weight key names to their decoded {@link PackedCollection} tensors. */
 	private Map<String, PackedCollection> weights;
 
@@ -118,7 +128,8 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 				// Decode each collection entry
 				for (Collections.CollectionLibraryEntry entry : libraryData.getCollectionsList()) {
 					String key = entry.getKey();
-					PackedCollection collection = CollectionEncoder.decode(entry.getCollection());
+					PackedCollection collection = CollectionEncoder.decode(
+							entry.getCollection(), enableMaterializeWeights);
 
 					if (collection != null) {
 						weights.put(key, collection);

@@ -1,13 +1,30 @@
 # setMem Policy Enforcement — Eliminating Host→Device Transfers
 
-## The end state — what "done" means
+## The end state — the target ingest contract (agreed 2026-07-30)
 
-**The goal is to remove `setMem` as a host→device path entirely.** When this effort
-finishes, the *only* sanctioned way to move data from the JVM host onto the device is a
-**tiny constant** written through `PackedCollection::fill` (a scalar or a handful of
-literal values). Every other value that ends up in device memory must be **computed on
-the device** by a Producer/kernel. There is no long-term "allowed `setMem`" — the
-baseline (`setmem-violation-baseline.tsv`) is a *temporary* burn-down ledger of sites
+**The goal is that only a handful of narrow, named paths can move data from the JVM
+host into device memory.** Every other value that ends up in device memory must be
+**computed on the device** by a Producer/kernel. The final contract:
+
+1. `pack(values...)` — literals, or up to 15 individual runtime scalar values
+   (same allowance as `fill`; `pack` and `PackedCollection.of` are the same
+   operation and share the same rule).
+2. `PackedCollection.of(values...)` — same rule as `pack`.
+3. `fill(values...)` — literals, or up to 15 individual runtime scalar values.
+   The per-element host-compute overloads (`fill(DoubleSupplier)`,
+   `fill(Function<int[], Double>)`) are removed.
+4. `setMem(index, value)` — a **new single-value** form; the value must be a
+   literal.
+5. `setMem(index, value...)` — the multi-value indexed form is **removed**.
+6. `setMem(values...)` — literal varargs only (unchanged).
+7. **The system-boundary ingest API** — a named surface for data entering the JVM
+   from outside the system: disk (protobuf weights, WAV, resource files), external
+   runtimes (ONNX tensor outputs), shared memory, and database/network
+   deserialization. This surface does not exist yet; creating it is the next
+   phase of work.
+
+There is no long-term "allowed `setMem`" beyond the above — the baseline
+(`setmem-violation-baseline.tsv`) is a *temporary* burn-down ledger of sites
 not yet migrated, not a set of blessed exceptions. It only ever shrinks.
 
 Concretely, a site is "done correctly" only when it is one of:
@@ -63,9 +80,9 @@ Two structural facts make the gap wider than one detector rule:
   there, but device-*input* construction is not distinguished — and both flagged
   sites were tests.
 - **The sanctioned surface is built on the unsanctioned one.** The correct idioms —
-  `PackedCollection.fill(value)`, `fill(pos -> ...)`, `replace`, `clone` — and
-  `MemoryDataAdapter.init` all call the array-accepting `setMem` overloads
-  internally. So the array overloads cannot simply be deleted.
+  `PackedCollection.fill(value)`, `replace`, `clone` — and `MemoryDataAdapter.init`
+  all call the array-accepting `setMem` overloads internally. So the array overloads
+  cannot simply be deleted; they move behind the ingest API (item 7 of the contract).
 
 ## Current enforcement state (phases 1–10 merged to master)
 
@@ -92,6 +109,58 @@ fill/pack prefilter blind spot and regenerating the ledger): 678 live grandfathe
 occurrences across 514 entries, all 21 exclusions live — **699 total exemptions**,
 zero stale rows.
 
+Snapshot 2026-07-30 (after the phase 14 remediation): 621 live grandfathered
+occurrences across 465 entries + 21 exclusions — **642 total exemptions**. By rule:
+426 fill/pack beyond the scalar allowance (of which ~356 are `fill(pos -> ...)`
+lambda calls), 176 non-literal `setMem`, 19 non-literal `PackedCollection.of`. By
+module: engine/utils 311, engine/audio 120, engine/ml 98, studio/compose 54,
+domain/graph 16, all others below 10.
+
+### Measured delta to the target contract
+
+Tightening from today's rules to the target contract makes currently-sanctioned
+sites illegal. Measured 2026-07-30 (textual scan, so counts are approximate):
+
+- **~159 multi-value indexed `setMem(idx, lit, lit, ...)` calls** in ~24 files
+  (contract item 5). Concentrated in engine/utils geometry/layer tests:
+  TransformMatrixTest 38, SphereTest 21, Conv1dCorrectnessTest 18, RayBatchTest 15.
+- **~36 `pack`/`of` calls with array, call, or lambda arguments** in main and test
+  code (Llama2Weights 12, delta-computation tests ~20, ArithmeticSequenceComputation 2).
+  The other ~39 currently-hoisted `pack(runtimeScalar)` sites are *legal* under the
+  agreed fill-parity rule and need no migration.
+- **Zero new violations from `fill`** — the scalar allowance already matches the
+  target; the work there is removing the two lambda overloads and migrating their
+  ~356 call sites (already counted in the baseline).
+
+Sequenced correctly (migrate first, flip the rules second), the enforcement flip
+adds zero new baseline rows; flipped early it would add ~195.
+
+### Use cases that do not fit the contract, and their resolutions
+
+- **Host-computed reference data in tests** (FIR reference coefficients, host
+  DFT/GRU reference math, torch-verified outputs): the reference exists to be
+  independent of the device, so it must never be produced by a Producer. The
+  resolution is to keep it out of device memory entirely — leave the reference a
+  host `double[]`, read the device result back with `toArray()` (readback is
+  sanctioned), and compare on the host. Reference *inputs* that must reach the
+  device ship as resource files through the ingest API.
+- **Call-varying host-parameterized data** (seed- or hash-derived tables,
+  per-sample synthetic training pairs): cannot be a producer without baking the
+  varying value as a `c()` constant — one compiled kernel per distinct value (F1
+  in the postmortem; re-proven during phase 14 when a seed-baked producer timed
+  out inside NativeCompiler). Needs either the signature-stable broadcast idiom
+  (the scalar enters as provider *data*) or reclassification as host-side
+  reference data per the previous bullet.
+- **Device-random ingest at scale**: `rand`/`randn` producers are the sanctioned
+  random path, but the random source allocates a device buffer on top of the
+  destination, roughly doubling peak ingest memory — unsuitable for real-dimension
+  weight tensors at constrained memory scale. Large synthetic weights remain bulk
+  ingest until the ingest API takes them.
+- **Framework internals below the producer API** (base/hardware writes that cannot
+  import collect, the randomness primitive's own upload, mesh-intersection
+  readback writes, the Tensor boxed-value bridge): these implement the sanctioned
+  surface and stay exempt by construction, or migrate behind the ingest API.
+
 ## Impact census: removing `setMem(int, double[])`
 
 1,222 call sites repo-wide (296 main, 926 test). Test side: ~517 already literal
@@ -110,30 +179,47 @@ staged arrays needing triage). Main side, by category:
 5. **Framework internals** implementing the sanctioned surface itself
    (`PackedCollection.fill`/`replace`/`clone`, `MemoryDataAdapter.init`).
 
-**Conclusion: narrow, don't delete.** Keep `setMem(int, double...)` varargs and the
-`MemoryData` overloads public; move the `double[]`-accepting bulk forms behind an
-explicit, separately-named ingest API (or make them `protected` on
-`MemoryDataAdapter`), granted to the I/O layer and the framework internals only.
-Laundering then dies at the compile surface: no public method accepts a computed
-array.
+**Conclusion: narrow, don't delete the bulk path — but do delete the indexed
+varargs.** Under the agreed contract `setMem(int, double...)` is removed in favor
+of a single-value `setMem(index, literal)` (~159 call sites to migrate first,
+almost all literal matrices in tests); `setMem(double...)` literal varargs stays.
+The `double[]`-accepting bulk forms move behind the explicit, separately-named
+ingest API (or become `protected` on `MemoryDataAdapter`), granted to the I/O
+layer and the framework internals only. Laundering then dies at the compile
+surface: no public method accepts a computed array.
 
-## Remaining work (phases 11–16)
+## Roadmap to the target contract (agreed 2026-07-30)
 
-1. **Remediate the auto-generated phase 11–13 migrations** (current branch). These were
-   produced before the post-mortem existed and reproduce the constant-kernel and
-   per-element-kernel failure modes — see the catalog in
-   [SETMEM_ENFORCEMENT_POSTMORTEM.md](SETMEM_ENFORCEMENT_POSTMORTEM.md).
-2. **Migrate the never-enforced modules**: `flowtree/graphpersist`, `studio/compose`,
-   `studio/experiments` — their sites live in the grandfathered baseline.
-3. **Burn down the baseline** module by module, regenerating the inventory
-   (`--generate`) as stale rows accumulate, and retiring `KNOWN_EXCLUSIONS` entries as
-   their categories gain real homes.
-4. **API narrowing** (the durable fix, per the census above): move the
-   `double[]`-accepting bulk `setMem` forms behind an explicit ingest API granted to
-   the I/O layer and framework internals only. Enforcement then shrinks to "only
-   literals reach `setMem`", with nothing left to game, and the remaining
-   ingest-category exclusions migrate to the new API.
+The phase 11–14 remediation of the auto-generated migrations is complete (the
+failure-mode catalog that governed it is in
+[SETMEM_ENFORCEMENT_POSTMORTEM.md](SETMEM_ENFORCEMENT_POSTMORTEM.md)); phase 16
+closes out the last three migrated sites. From there:
+
+1. **Land phases 14/16 through CI** — baseline at 642 total exemptions.
+2. **Build the system-boundary ingest API before tightening anything** (contract
+   item 7, and the census conclusion below): a named surface for host→device bulk
+   transfer, granted to the I/O layer and framework internals only. Migrate
+   WavFile/WaveData, OnnxFeatures, CollectionEncoder/protobuf,
+   SharedMemoryAudioLine, and graphpersist deserialization onto it; retire the
+   corresponding `KNOWN_EXCLUSIONS` entries. Every later migration needs this
+   destination to exist first.
+3. **Migrate the target-contract deltas while they are still legal** — the ~159
+   multi-value indexed `setMem` calls and ~36 non-scalar `pack`/`of` calls — then
+   flip the detector to the target semantics, add the single-value
+   `setMem(index, value)`, and physically remove `setMem(int, double...)` and the
+   two `fill` lambda overloads. In this order the flip adds zero baseline rows.
+4. **Burn down the baseline by bucket, not by module**: (a) the ~356
+   `fill(pos -> ...)` sites → whole-buffer producers and `rand`/`randn`
+   (mechanical; concentrated in engine/utils and engine/ml tests); (b)
+   reference-data tests → host-side comparison via `toArray()` readback, so the
+   upload is *eliminated*, not migrated; (c) wavetables, filterbanks, and init
+   tables in engine/audio → producers or resource files through the ingest API;
+   (d) the residue decides whether the signature-stable broadcast-scalar idiom
+   earns a named home in the framework.
+5. **Endgame**: the baseline reaches zero, the ledger machinery is deleted, and
+   the detector remains as a pure regression gate on the narrowed surface.
 
 Violation messages throughout should name the sanctioned idioms — `fill(value)`,
-`fill(pos -> ...)`, a single whole-buffer producer, literal varargs — since the goal
-is to redirect the author at the moment of writing.
+`pack(...)` within the scalar allowance, a single whole-buffer producer, literal
+varargs, the ingest API — since the goal is to redirect the author at the moment
+of writing.

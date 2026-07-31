@@ -14,6 +14,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import java.io.OutputStream;
 import java.io.PrintStream;
 
@@ -890,6 +892,65 @@ public class WavFile implements AutoCloseable {
 			for (int c = 0; c < numChannels; c++) {
 				sampleBuffer[offset] = floatOffset + (double) readSample() / floatScale;
 				offset++;
+			}
+
+			frameCounter++;
+		}
+
+		return numFramesToRead;
+	}
+
+	/**
+	 * Reads frames as normalized doubles [-1.0, 1.0] into a channel-major
+	 * {@link DoubleBuffer} — the ByteBuffer-view form of ingest, where decoded
+	 * samples land directly in a staging allocation instead of a host array.
+	 * Channel {@code c}'s frame {@code f} is written at
+	 * {@code c * channelStride + f}.
+	 *
+	 * @param sampleBuffer    the staging view receiving de-interleaved samples
+	 * @param channelStride   the number of elements between consecutive channels
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
+	public int readFrames(DoubleBuffer sampleBuffer, int channelStride, int numFramesToRead) throws IOException {
+		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
+
+		for (int f = 0; f < numFramesToRead; f++) {
+			if (frameCounter == numFrames) return f;
+
+			for (int c = 0; c < numChannels; c++) {
+				sampleBuffer.put(c * channelStride + f,
+						floatOffset + (double) readSample() / floatScale);
+			}
+
+			frameCounter++;
+		}
+
+		return numFramesToRead;
+	}
+
+	/**
+	 * Reads frames as normalized floats [-1.0, 1.0] into a channel-major
+	 * {@link FloatBuffer} — the ByteBuffer-view form of ingest for
+	 * FP32 staging allocations. Channel {@code c}'s frame {@code f} is written
+	 * at {@code c * channelStride + f}.
+	 *
+	 * @param sampleBuffer    the staging view receiving de-interleaved samples
+	 * @param channelStride   the number of elements between consecutive channels
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
+	public int readFrames(FloatBuffer sampleBuffer, int channelStride, int numFramesToRead) throws IOException {
+		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
+
+		for (int f = 0; f < numFramesToRead; f++) {
+			if (frameCounter == numFrames) return f;
+
+			for (int c = 0; c < numChannels; c++) {
+				sampleBuffer.put(c * channelStride + f,
+						(float) (floatOffset + (double) readSample() / floatScale));
 			}
 
 			frameCounter++;
