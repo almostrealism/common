@@ -17,7 +17,6 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
@@ -231,7 +230,7 @@ public class MidiDataset implements Dataset<PackedCollection> {
 			}
 		}
 
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(oneHot.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(values)).get().run();
+		oneHot.setMem(0, values);
 		return oneHot;
 	}
 

@@ -17,8 +17,6 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -404,7 +402,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			double bufferMax = 0;
 			for (int i = 0; i < BUFFER_SIZE; i++) {
 				double val = tempBuffer.valueAt(i);
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(concatenatedResult.range(new TraversalPolicy(1), startFrame + i)), CollectionFeatures.getInstance().c(val)).get().run();
+				concatenatedResult.setMem(startFrame + i, val);
 				if (Math.abs(val) > bufferMax) bufferMax = Math.abs(val);
 			}
 
@@ -950,9 +948,8 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		// Create a small test buffer filled with recognizable values
 		int bufferSize = 64;  // Small for quick test
 		PackedCollection sourceBuffer = new PackedCollection(bufferSize);
-		for (int i = 0; i < bufferSize; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sourceBuffer.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c((i + 1) * 0.01)).get().run();  // 0.01, 0.02, ..., 0.64
-		}
+		integers(0, bufferSize).add(1.0).multiply(0.01)
+				.into(sourceBuffer.traverseEach()).evaluate();  // 0.01, 0.02, ..., 0.64
 		log("Source buffer filled with values 0.01 to 0.64");
 
 		// Create WaveCell pointing to the source buffer
@@ -1306,7 +1303,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						if (overlapLength <= 0) continue;
 
 						// --- Partial evaluation ---
-						CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(note.getOffsetArg().range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(sourceOffset)).get().run();
+						note.getOffsetArg().fill(sourceOffset);
 						Producer<PackedCollection> partialProducer =
 								note.getProducer(overlapLength);
 

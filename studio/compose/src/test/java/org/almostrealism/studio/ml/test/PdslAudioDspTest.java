@@ -107,7 +107,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		a(cp(filterCoeffs), c(coeffs)).get().run();
+		filterCoeffs.setMem(coeffs);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -197,7 +197,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		a(cp(filterCoeffs), c(coeffs)).get().run();
+		filterCoeffs.setMem(coeffs);
 
 		// Build fir_filter
 		Map<String, Object> firArgs = new HashMap<>();
@@ -253,7 +253,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		a(cp(filterCoeffs), c(coeffs)).get().run();
+		filterCoeffs.setMem(coeffs);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -497,15 +497,13 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		int delaySamples = 4;
 
 		PackedCollection coeffs = new PackedCollection(firTaps);
-		double[] cd = new double[firTaps];
-		cd[0] = 1.0; // pass-through FIR (impulse) — keeps the test filter-shape agnostic
-		a(cp(coeffs), c(cd)).get().run();
+		coeffs.setMem(0, 1.0); // pass-through FIR (impulse) — keeps the test filter-shape agnostic
 		PackedCollection wetLevel = new PackedCollection(1);
 		wetLevel.setMem(0.5);
 		PackedCollection automation = new PackedCollection(1);
 		automation.setMem(1.0);
 		PackedCollection delaySlot = new PackedCollection(1);
-		a(cp(delaySlot), c((double) delaySamples)).get().run();
+		delaySlot.fill(delaySamples);
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(0.0);
@@ -805,7 +803,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// Identity matrix - each output channel passes its input unchanged.
 		PackedCollection identitySlot =
 				new PackedCollection(new TraversalPolicy(channels, channels));
-		identitySlot.fill(0.0);
 		for (int i = 0; i < channels; i++) identitySlot.setMem(i * channels + i, 1.0);
 
 		Map<String, Object> args = new HashMap<>();
@@ -821,9 +818,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Build the input: distinct constant per channel.
 		PackedCollection input = new PackedCollection(inputShape);
-		input.fill(0.0);
-		for (int ch = 0; ch < channels; ch++)
-			a(cp(input.range(shape(SIGNAL_SIZE), ch * SIGNAL_SIZE)), c((ch + 1) * 0.1)).get().run();
+		floor(integers(0, channels * SIGNAL_SIZE).divide((double) SIGNAL_SIZE))
+				.add(1.0).multiply(0.1)
+				.into(input.traverseEach()).evaluate();
 
 		double[] out1 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
 		for (int c = 0; c < channels; c++) {
@@ -834,12 +831,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Mutate the slot to swap channels 0 and 1; the next forward pass must
 		// reflect the new routing without rebuilding the layer.
-		double[] swapped = new double[channels * channels];
-		swapped[0 * channels + 1] = 1.0;
-		swapped[1 * channels + 0] = 1.0;
-		swapped[2 * channels + 2] = 1.0;
-		swapped[3 * channels + 3] = 1.0;
-		a(cp(identitySlot), c(swapped)).get().run();
+		identitySlot.fill(0.0);
+		identitySlot.setMem(0 * channels + 1, 1.0);
+		identitySlot.setMem(1 * channels + 0, 1.0);
+		identitySlot.setMem(2 * channels + 2, 1.0);
+		identitySlot.setMem(3 * channels + 3, 1.0);
 
 		double[] out2 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
 		assertEquals("output channel 0 must now read input channel 1",
@@ -869,7 +865,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// First coefficient set: low-pass.
 		double[] lpCoeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection coeffSlot = new PackedCollection(firTaps);
-		a(cp(coeffSlot), c(lpCoeffs)).get().run();
+		coeffSlot.setMem(lpCoeffs);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("signal_size", SIGNAL_SIZE);
@@ -896,7 +892,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// Mutate the slot to a much narrower low-pass — the producer-bound FIR must
 		// re-read the slot on the next forward pass and produce a different output.
 		double[] narrowCoeffs = referenceLowPassCoefficients(500.0, SAMPLE_RATE, FILTER_ORDER);
-		a(cp(coeffSlot), c(narrowCoeffs)).get().run();
+		coeffSlot.setMem(narrowCoeffs);
 
 		double[] narrowOut = compiled.forward(signal.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 		double diffEnergy = 0.0;

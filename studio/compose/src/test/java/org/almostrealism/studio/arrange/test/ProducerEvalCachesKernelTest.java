@@ -17,8 +17,6 @@
 package org.almostrealism.studio.arrange.test;
 
 import io.almostrealism.code.ComputableBase;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.scope.ScopeSettings;
@@ -87,7 +85,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 	public void assignmentReadsLiveBufferWithoutPreEval() {
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sink.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(Double.NaN)).get().run();
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
@@ -113,7 +111,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 	public void preEvalFreezesAssignment() {
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sink.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(Double.NaN)).get().run();
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
@@ -187,7 +185,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 			throws IOException {
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sink.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(Double.NaN)).get().run();
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
@@ -310,7 +308,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(sink.range(new TraversalPolicy(1), 0)), CollectionFeatures.getInstance().c(Double.NaN)).get().run();
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));

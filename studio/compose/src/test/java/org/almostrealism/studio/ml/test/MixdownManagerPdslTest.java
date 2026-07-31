@@ -660,16 +660,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private PackedCollection rectangularTransmission(int inputChannels, int outputChannels, double main) {
 		double bleed = (1.0 - main) / Math.max(1, outputChannels - 1);
-		double[] data = new double[inputChannels * outputChannels];
-		for (int n = 0; n < inputChannels; n++) {
-			int rowMain = n % outputChannels;
-			for (int m = 0; m < outputChannels; m++) {
-				data[n * outputChannels + m] = (m == rowMain) ? main : bleed;
-			}
-		}
+		int total = inputChannels * outputChannels;
 		PackedCollection matrix = new PackedCollection(
 				new TraversalPolicy(inputChannels, outputChannels));
-		a(cp(matrix), c(data)).get().run();
+		equals(floor(integers(0, total).divide((double) outputChannels)).mod((double) outputChannels),
+				integers(0, total).mod((double) outputChannels), c(main), c(bleed))
+				.into(matrix.traverseEach()).evaluate();
 		return matrix;
 	}
 
@@ -680,11 +676,11 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private void zeroTransmissionColumn(PackedCollection matrix, int inputChannels,
 										 int outputChannels, int colToZero) {
-		double[] data = matrix.toArray(0, inputChannels * outputChannels);
-		for (int n = 0; n < inputChannels; n++) {
-			data[n * outputChannels + colToZero] = 0.0;
-		}
-		a(cp(matrix), c(data)).get().run();
+		int total = inputChannels * outputChannels;
+		a(cp(matrix.range(shape(total), 0)),
+				cp(matrix.range(shape(total), 0)).multiply(
+						equals(integers(0, total).mod((double) outputChannels),
+								c((double) colToZero), c(0.0), c(1.0)))).get().run();
 	}
 
 	/**
@@ -880,7 +876,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < REVERB_PASSES; pass++) {
 			PackedCollection input = new PackedCollection(inputShape);
-			input.fill(0.0);
 			if (pass == 0) input.setMem(0, 1.0);       // impulse
 
 			double[] passOut = compiled.forward(input).toArray(0, REVERB_SIGNAL_SIZE);
@@ -1012,7 +1007,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		a(cp(input), c(data)).get().run();
+		input.setMem(data);
 		return input;
 	}
 
@@ -1030,7 +1025,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		a(cp(input), c(data)).get().run();
+		input.setMem(data);
 		return input;
 	}
 
@@ -1051,7 +1046,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		a(cp(input), c(data)).get().run();
+		input.setMem(data);
 		return input;
 	}
 
@@ -1103,7 +1098,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		double[] delaysData = new double[REVERB_TAPS];
 		for (int i = 0; i < REVERB_TAPS; i++) delaysData[i] = REVERB_DELAY_SAMPLES[i];
 		PackedCollection delaySamples = new PackedCollection(REVERB_TAPS);
-		a(cp(delaySamples), c(delaysData)).get().run();
+		delaySamples.setMem(delaysData);
 		args.put("delay_samples", delaySamples);
 
 		double diag = 0.4;
@@ -1116,7 +1111,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection feedback = new PackedCollection(
 				new TraversalPolicy(REVERB_TAPS, REVERB_TAPS));
-		a(cp(feedback), c(matrixData)).get().run();
+		feedback.setMem(matrixData);
 		args.put("feedback_matrix", feedback);
 
 		// Two frames per line: the read-first ring band is [signal_size, ringSize], so
@@ -1171,7 +1166,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 			System.arraycopy(coeffs, 0, data, c * perChannel, perChannel);
 		}
 		PackedCollection all = new PackedCollection(CHANNELS * perChannel);
-		a(cp(all), c(data)).get().run();
+		all.setMem(data);
 		return all;
 	}
 
@@ -1266,7 +1261,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int sampleOffset = pass * SIGNAL_SIZE;
-			a(cp(slot), c(schedule[pass])).get().run();
+			double slotValue = schedule[pass];
+			slot.fill(slotValue);
 
 			double[] producerOut = producerCompiled
 					.forward(multiChannelCarrier(channelFreqs, sampleOffset))

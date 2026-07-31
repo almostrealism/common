@@ -17,7 +17,6 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Block;
@@ -112,9 +111,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 			Assert.assertEquals(channels * signalSize, flatInput.length);
 			PackedCollection input = new PackedCollection(
 					new TraversalPolicy(channels, signalSize));
-			CollectionFeatures.getInstance().a(
-					CollectionFeatures.getInstance().cp(input),
-					CollectionFeatures.getInstance().c(flatInput)).get().run();
+			input.setMem(flatInput);
 			PackedCollection out = model.forward(input);
 			return out.toArray(0, channels * signalSize);
 		}
@@ -176,10 +173,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				channels * channels, feedbackMatrixRowMajor.length);
 
 		PackedCollection delays = new PackedCollection(channels);
-		a(cp(delays), c(tapDelays)).get().run();
+		delays.setMem(tapDelays);
 		PackedCollection feedback = new PackedCollection(
 				new TraversalPolicy(channels, channels));
-		a(cp(feedback), c(feedbackMatrixRowMajor)).get().run();
+		feedback.setMem(feedbackMatrixRowMajor);
 		PackedCollection buffer = new PackedCollection(channels * bufSize);
 		PackedCollection heads = new PackedCollection(channels);
 
@@ -189,7 +186,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 					channels * channels, passthroughMatrixRowMajor.length);
 			PackedCollection pass = new PackedCollection(
 					new TraversalPolicy(channels, channels));
-			a(cp(pass), c(passthroughMatrixRowMajor)).get().run();
+			pass.setMem(passthroughMatrixRowMajor);
 			passthrough = cp(pass);
 		}
 
@@ -592,15 +589,14 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		m.add(block);
 		CompiledModel compiled = m.compile();
 
-		double[] flat = new double[channels * signalSize];
-		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
-		a(cp(input), c(flat)).get().run();
+		integers(0, channels * signalSize).add(1.0)
+				.into(input.traverseEach()).evaluate();
 		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * flat[ch * signalSize + i];
+				double expected = gains[ch] * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
@@ -638,15 +634,14 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		m.add(block);
 		CompiledModel compiled = m.compile();
 
-		double[] flat = new double[channels * signalSize];
-		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
-		a(cp(input), c(flat)).get().run();
+		integers(0, channels * signalSize).add(1.0)
+				.into(input.traverseEach()).evaluate();
 		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * flat[ch * signalSize + i];
+				double expected = gains[ch] * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
@@ -686,15 +681,14 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		m.add(outer);
 		CompiledModel compiled = m.compile();
 
-		double[] flat = new double[channels * signalSize];
-		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
 		PackedCollection input = new PackedCollection(multiShape);
-		a(cp(input), c(flat)).get().run();
+		integers(0, channels * signalSize).add(1.0)
+				.into(input.traverseEach()).evaluate();
 		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * flat[ch * signalSize + i];
+				double expected = gains[ch] * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",

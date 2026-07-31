@@ -96,10 +96,10 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 		// Row i is output channel i. Each row sums to 1.0 for unity gain.
 		PackedCollection transmission = new PackedCollection(
 				new TraversalPolicy(CHANNELS, CHANNELS));
-		a(cp(transmission), c(
+		transmission.setMem(0,
 				0.4, 0.3, 0.3,
 				0.3, 0.4, 0.3,
-				0.3, 0.3, 0.4).reshape(transmission.getShape())).get().run();
+				0.3, 0.3, 0.4);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/delay_feedback_bank.pdsl");

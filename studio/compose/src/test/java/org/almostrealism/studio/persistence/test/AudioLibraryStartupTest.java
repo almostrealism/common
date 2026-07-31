@@ -17,8 +17,6 @@
 package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveDetails;
@@ -280,7 +278,7 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 	private PackedCollection createFeatureData(int seed) {
 		PackedCollection features = new PackedCollection(16, 32, 1);
 		for (int i = 0; i < features.getMemLength(); i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(features.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(seed * 0.1 + i * 0.01) * 0.5 + 0.5)).get().run();
+			features.setMem(i, Math.sin(seed * 0.1 + i * 0.01) * 0.5 + 0.5);
 		}
 		return features;
 	}
@@ -289,7 +287,7 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 	private PackedCollection createEmbedding(int seed) {
 		PackedCollection embedding = new PackedCollection(32);
 		for (int i = 0; i < 32; i++) {
-			CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(embedding.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.sin(seed * 0.1 + i * 0.3) * 0.5 + 0.5)).get().run();
+			embedding.setMem(i, Math.sin(seed * 0.1 + i * 0.3) * 0.5 + 0.5);
 		}
 		return embedding;
 	}
