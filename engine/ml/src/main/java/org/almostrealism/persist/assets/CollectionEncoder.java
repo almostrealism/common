@@ -102,6 +102,29 @@ public class CollectionEncoder {
 	}
 
 	/**
+	 * Decodes a {@link Collections.CollectionData} message into a {@link PackedCollection}
+	 * that keeps the message itself as its backing store, deferring any device involvement.
+	 *
+	 * <p>No host array is materialized and no device memory is allocated here: the
+	 * collection's root delegates to {@link CollectionDataBytes}, so values are read
+	 * from the message on demand and the framework migrates the data to the compute
+	 * device only when a kernel first requires it. Data that is only ever read on the
+	 * host never reaches a device at all. Migration is one-way — the returned
+	 * collection must be treated as read-only until it has migrated.</p>
+	 *
+	 * @param data The protobuf message to serve as the backing store
+	 * @return A collection with the encoded shape reading from the message,
+	 *         or {@code null} if the encoded shape has zero dimensions
+	 */
+	public static PackedCollection decodeDeferred(Collections.CollectionData data) {
+		TraversalPolicy shape = decode(data.getTraversalPolicy());
+		if (shape.getDimensions() == 0) return null;
+
+		return new PackedCollection(shape, shape.getTraversalAxis(),
+				new CollectionDataBytes(data), 0);
+	}
+
+	/**
 	 * Decodes a {@link Collections.CollectionData} message into an existing destination collection.
 	 *
 	 * @param data        The protobuf message to decode
