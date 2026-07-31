@@ -139,24 +139,90 @@ blocker: every downstream job depends on it, so it MUST stay as short as
 possible. It does one thing: `mvn install -DskipTests`. It does not run tests
 and does not upload coverage.
 
+### Every module with tests must be named by some job
+
+A Maven module whose tests no job runs is worse than one with no tests: new
+tests get added there and silently never execute, so the module reads as
+covered. **Whenever you add a module to the root `pom.xml`, add it to a test job
+in the same change**, even if it has no tests yet — that way the first test
+committed to it runs immediately.
+
+To audit the current state:
+
+```bash
+CI_RUN="base/hardware base/io engine/utils engine/utils-http engine/ml engine/render \
+engine/audio extern/ml-onnx studio/music studio/compose studio/spatial studio/experiments \
+flowtree/api flowtree/base flowtree/python flowtree/agents flowtree/graphpersist \
+flowtree/runtime tools"
+for f in $(find . -maxdepth 3 -name pom.xml | grep -v target | sort); do
+  m=$(dirname $f | sed 's|^\./||'); [ "$m" = "." ] && continue
+  n=$(find "$m/src/test" -name '*Test*.java' 2>/dev/null | wc -l); [ "$n" -eq 0 ] && continue
+  case " $CI_RUN " in *" $m "*) ;; *) echo "UNCOVERED: $m ($n test files)";; esac
+done
+```
+
+Keep `CI_RUN` above in sync with the `-pl` arguments in the job steps.
+
 ### What the `test-flowtree` job covers
 
-Runs `mvn test -pl flowtree/runtime` and uploads JaCoCo coverage as `coverage-flowtree`.
-Gated on the same validation prerequisites as the `test` matrix
-(`code-policy-check`, `test-timeout-check`, `duplicate-code-check`,
-`test-integrity-check`) and runs in parallel with `test`. Extracted from `build`
-because flowtree tests are slow and would otherwise block every other job.
+Runs one Maven invocation over **every** flowtree module —
+`flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime`
+— and uploads JaCoCo coverage as `coverage-flowtree`. `api` and `python` carry
+no tests today and are listed anyway, per the rule above. Gated on the same
+validation prerequisites as the `test` matrix (`code-policy-check`,
+`test-timeout-check`, `duplicate-code-check`, `test-integrity-check`) and runs in
+parallel with `test`. Extracted from `build` because flowtree tests are slow and
+would otherwise block every other job.
 
 ### What the `test` job covers
 
-Runs the main test matrix (8 groups) for engine/domain/compute/base layers.
-Skipped when none of those layers change. Uploads `coverage-group-{0..7}`.
+Runs the main test matrix (8 groups) for engine/domain/compute/base layers:
+`base/hardware`, `engine/utils`, `engine/ml`, plus `engine/render` and
+`base/io,engine/utils-http` on group 0 only. Skipped when none of those layers
+change. Uploads `coverage-group-{0..7}`.
 
 ### What the `test-media` job covers
 
-Runs audio/music/studio tests on a self-hosted runner. Runs after `test` (CPU
-lane, below). Skipped when none of studio/extern/engine/domain/compute/base
-change. Uploads `coverage-media`.
+Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`, and
+`extern/ml-onnx,studio/experiments` on a self-hosted runner. Runs after `test`
+(CPU lane, below). Skipped when none of
+studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
+
+### Tests excluded from the pipeline profile
+
+`@TestProperties(excludeProfiles = TestUtils.PIPELINE)` makes `TestDepthRule`
+skip a method via `Assume.assumeTrue()` when `AR_TEST_PROFILE=pipeline`, while
+leaving it runnable locally. This is the sanctioned mechanism for a test CI
+cannot host — prefer it over an early `return`, which reports the test as
+**passed**. Note that `@TestDepth` and `longRunning()` will not do this: the
+pipeline profile deliberately ignores both.
+
+Three methods carry it, each because it needs an asset or port the runners do
+not have. Drop the annotation if that ever changes:
+
+| Test | Reason |
+|------|--------|
+| `OnnxPrototypeDiscoveryTest.discoverWithOnnxFeatures` (studio/experiments) | `Assert.fail()`s without the ONNX encoder/decoder models and a real sample library |
+| `OnnxAutoEncoderTests.encode` (extern/ml-onnx) | loads a model from `assets/stable-audio`; NPEs from the ONNX runtime when absent |
+| `EventDeliveryTest.deliver` (engine/utils-http) | binds fixed port 8080 (`BindException` if occupied) and sleeps 57s while asserting nothing |
+
+In all three cases the **module** stays in the test matrix, so a test added
+there later runs with no further wiring. That is the point: exclude a method,
+never a module.
+
+### A `needs` chain requires `!cancelled()` to tolerate a skipped stage
+
+GitHub applies an implicit `success()` to every job in `needs` when a job-level
+`if:` contains no status check function (`always()`, `!cancelled()`, `failure()`,
+`success()`). A `needs.<job>.result == 'skipped'` clause is therefore **dead
+code** on its own — the dependent job is skipped before the `if` is evaluated.
+
+Every lane-chained job (`test-media`, `test-media-mac`, `test-cl`,
+`test-media-cl`) starts its `if:` with `!cancelled() &&` for this reason. Their
+explicit `result == 'success'` checks on `build` and the four validation jobs
+already exclude every failure path, so `!cancelled()` does not weaken the gate —
+it is what makes the gate run at all. Never add a lane stage that depends on a
+layer-gated stage without it.
 
 ### Two lanes: CPU (linux) and GPU (macOS)
 
