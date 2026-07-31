@@ -327,8 +327,6 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/d
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	audio.setMem(i, audio.toDouble(i) * scale);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	input.setMem(i, complexSpectrum[i]);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	output.setMem(outIdx, existing + windowed);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/WaveData.java	1	in.setMem(Math.toIntExact(c * w.getNumFrames()), wave[c]);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/WaveDataProviderAdapter.java	1	rate.setMem(0, playbackRate);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/filter/ADSREnvelopeData.java	1	default void setAttackTime(double seconds) { attackTime().setMem(0, seconds); }
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/filter/ADSREnvelopeData.java	1	default void setCurrentLevel(double level) { currentLevel().setMem(0, level); }
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/filter/ADSREnvelopeData.java	1	default void setDecayTime(double seconds) { decayTime().setMem(0, seconds); }
@@ -423,7 +421,6 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardwar
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	nativeProvider.setMem(original, 0, values, 0, n);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	nativeProvider.setMem(returned, 0, device, 0, n);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	nativeProvider.setMem(source, 0, values, 0, n);
-SETMEM_NON_LITERAL_ARGUMENT	flowtree/graphpersist/src/test/java/io/almostrealism/db/test/DatabaseTest.java	1	s.setMem(0, value);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/arrange/DefaultChannelSectionFactory.java	1	repeat.setMem(Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray());
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/arrange/EfxManager.java	1	c.setMem(choices);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/MidiDataset.java	1	oneHot.setMem(0, values);
@@ -461,6 +458,4 @@ SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studi
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/AudioLibraryStartupTest.java	1	features.setMem(i, Math.sin(seed * 0.1 + i * 0.01) * 0.5 + 0.5);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/DiskStoreAudioLibraryTest.java	1	features.setMem(f * FEATURE_BINS + b, magnitude);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/DrawingFeaturePipelineTest.java	1	features.setMem(f * FEATURE_BINS + b, Math.abs(energy) / windowSize);
-SETMEM_NON_LITERAL_ARGUMENT	studio/experiments/src/test/java/org/almostrealism/studio/generate/test/DrawingGenerationEndToEndTest.java	1	freqData.setMem(f * FREQ_BINS + b, Math.max(0, value));
-SETMEM_NON_LITERAL_ARGUMENT	studio/experiments/src/test/java/org/almostrealism/studio/generate/test/DrawingGenerationEndToEndTest.java	1	position.setMem(i, Math.random());
 SETMEM_NON_LITERAL_ARGUMENT	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	dest.setMem(values);

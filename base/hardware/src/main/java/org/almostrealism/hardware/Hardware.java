@@ -1401,14 +1401,22 @@ public final class Hardware implements ConsoleFeatures {
 	}
 
 	/**
-	 * Returns the native buffer memory provider if NIO memory is enabled.
+	 * Returns the native buffer memory provider, creating it on first use when
+	 * {@code AR_HARDWARE_NIO_MEMORY} did not already.
 	 *
-	 * <p>Only available when {@code AR_HARDWARE_NIO_MEMORY=true}. Provides direct
-	 * native buffer allocation for shared memory between backends.</p>
+	 * <p>This provider supplies direct native buffer allocation: shared memory
+	 * between backends when NIO memory is enabled, and the ByteBuffer staging
+	 * area that system-boundary ingest populates before the framework migrates
+	 * the data to a compute device.</p>
 	 *
-	 * @return The NIO memory provider, or null if not enabled
+	 * @return The NIO memory provider
 	 */
-	public MemoryProvider<? extends RAM> getNativeBufferMemoryProvider() {
+	public synchronized MemoryProvider<? extends RAM> getNativeBufferMemoryProvider() {
+		if (nioMemory == null) {
+			nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32,
+					Precision.FP32.bytes() * maxReservation);
+		}
+
 		return nioMemory;
 	}
 

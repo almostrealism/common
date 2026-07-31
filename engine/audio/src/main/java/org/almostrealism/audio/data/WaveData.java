@@ -23,6 +23,11 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.Ops;
+import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.audio.SamplingFeatures;
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.collect.CollectionFeatures;
@@ -35,6 +40,7 @@ import org.almostrealism.graph.temporal.WaveCellData;
 import org.almostrealism.io.Console;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.io.IOException;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -639,14 +645,28 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 	public static WaveData load(File f) throws IOException {
 		try (WavFile w = WavFile.openWavFile(f)) {
 			int channelCount = w.getNumChannels();
-			PackedCollection in = new PackedCollection(new TraversalPolicy(channelCount, w.getNumFrames()));
+			int frames = Math.toIntExact(w.getNumFrames());
+			int total = channelCount * frames;
 
-			double[][] wave = new double[w.getNumChannels()][(int) w.getFramesRemaining()];
-			w.readFrames(wave, 0, (int) w.getFramesRemaining());
+			// The standard ByteBuffer ingest sequence: decoded samples land in a
+			// native buffer staging allocation, and the framework moves them to a
+			// device only when a kernel first requires them
+			MemoryProvider<? extends RAM> provider =
+					Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+			RAM mem = provider.allocate(total);
 
-			for (int c = 0; c < wave.length; c++) {
-				in.setMem(Math.toIntExact(c * w.getNumFrames()), wave[c]);
+			ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+			int count = Math.toIntExact(w.getFramesRemaining());
+
+			if (provider.getNumberSize() == 4) {
+				w.readFrames(staging.asFloatBuffer(), frames, count);
+			} else {
+				w.readFrames(staging.asDoubleBuffer(), frames, count);
 			}
+
+			TraversalPolicy shape = new TraversalPolicy(channelCount, frames);
+			PackedCollection in = new PackedCollection(shape, shape.getTraversalAxis(),
+					Bytes.of(mem, total), 0);
 
 			return new WaveData(in, (int) w.getSampleRate());
 		}

@@ -28,8 +28,8 @@ import org.junit.Test;
 
 /**
  * Tests for {@link OnnxFeatures#pack(OnnxTensor)}: the resulting collection
- * reads from the tensor's buffer copy, survives the tensor being closed,
- * works as a kernel argument, and rejects writes while buffer-backed.
+ * stages the tensor's values through native buffer memory, survives the
+ * tensor being closed, and works as a kernel argument.
  */
 public class OnnxFeaturesTests extends TestSuiteBase implements OnnxFeatures {
 
@@ -68,8 +68,6 @@ public class OnnxFeaturesTests extends TestSuiteBase implements OnnxFeatures {
 	public void packSurvivesTensorClose() throws OrtException {
 		PackedCollection packed = packedFromClosedTensor();
 
-		Assert.assertEquals("NIO",
-				packed.getRootDelegate().getMem().getProvider().getName());
 		Assert.assertEquals(2, packed.getShape().getDimensions());
 		Assert.assertEquals(4, packed.getShape().length(0));
 		Assert.assertEquals(15, packed.getShape().length(1));
@@ -91,22 +89,6 @@ public class OnnxFeaturesTests extends TestSuiteBase implements OnnxFeatures {
 		for (int i = 0; i < SIZE; i++) {
 			Assert.assertEquals("element " + i,
 					2.0 * valueAt(i), doubled.toDouble(i), 1e-6);
-		}
-	}
-
-	/**
-	 * Packed tensors are read-only sources: writes are rejected rather than
-	 * silently lost, since migration is one-way.
-	 */
-	@Test(timeout = 120000)
-	public void packedTensorRejectsWrites() throws OrtException {
-		PackedCollection packed = packedFromClosedTensor();
-
-		try {
-			packed.setMem(0, 1.0);
-			Assert.fail("Write into tensor-backed memory should be rejected");
-		} catch (UnsupportedOperationException e) {
-			// Expected: the provider is a read-only source
 		}
 	}
 }

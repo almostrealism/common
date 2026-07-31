@@ -17,9 +17,8 @@
 package org.almostrealism.studio.generate.test;
 
 import org.almostrealism.audio.AudioLibrary;
-import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.SentencePieceTokenizer;
 import org.almostrealism.ml.StateDictionary;
@@ -167,9 +166,7 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 			generator.addFeatures(featureData);
 
 			PackedCollection position = new PackedCollection(AudioModel.DIM);
-			for (int i = 0; i < AudioModel.DIM; i++) {
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(position.range(new TraversalPolicy(1), i)), CollectionFeatures.getInstance().c(Math.random())).get().run();
-			}
+			rand(position.getShape()).into(position.traverseEach()).evaluate();
 
 			String outputPath = tempDir.resolve("generated_output.wav").toString();
 			generator.generateAudio(position, "ambient pad", 42L, outputPath);
@@ -201,20 +198,16 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 		details.setFrameCount((int) (FREQ_FRAMES * SAMPLE_RATE / FREQ_SAMPLE_RATE));
 
 		PackedCollection freqData = new PackedCollection(FREQ_FRAMES * FREQ_BINS);
-		for (int f = 0; f < FREQ_FRAMES; f++) {
-			for (int b = 0; b < FREQ_BINS; b++) {
-				double t = (double) f / FREQ_FRAMES;
-				double freq = (double) b / FREQ_BINS;
-
-				double value = 0;
-				value += Math.exp(-0.5 * Math.pow((freq - 0.12) / 0.02, 2)) * 5.0;
-				value += Math.exp(-0.5 * Math.pow((freq - 0.24) / 0.02, 2)) * 3.0;
-				value += Math.exp(-0.5 * Math.pow((freq - 0.36) / 0.02, 2)) * 1.5;
-				value *= Math.sin(Math.PI * t);
-
-				CollectionFeatures.getInstance().a(CollectionFeatures.getInstance().cp(freqData.range(new TraversalPolicy(1), f * FREQ_BINS + b)), CollectionFeatures.getInstance().c(Math.max(0, value))).get().run();
-			}
-		}
+		int total = FREQ_FRAMES * FREQ_BINS;
+		CollectionProducer t = floor(integers(0, total).divide((double) FREQ_BINS))
+				.divide((double) FREQ_FRAMES);
+		CollectionProducer freq = integers(0, total).mod((double) FREQ_BINS)
+				.divide((double) FREQ_BINS);
+		CollectionProducer value = bump(freq, 0.12, 5.0)
+				.add(bump(freq, 0.24, 3.0))
+				.add(bump(freq, 0.36, 1.5))
+				.multiply(sin(t.multiply(Math.PI)));
+		max(value, c(0.0)).into(freqData.traverseEach()).evaluate();
 		details.setFreqData(freqData);
 
 		return details;
@@ -228,5 +221,12 @@ public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 				.map(Asset::new)
 				.toList();
 		return new AssetGroup(assets);
+	}
+
+	/**
+	 * A gaussian bump over normalized frequency: {@code height * exp(-0.5 ((freq - center) / 0.02)^2)}.
+	 */
+	private CollectionProducer bump(CollectionProducer freq, double center, double height) {
+		return exp(sq(freq.add(-center).divide(0.02)).multiply(-0.5)).multiply(height);
 	}
 }

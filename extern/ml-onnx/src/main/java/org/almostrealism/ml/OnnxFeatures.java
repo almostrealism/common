@@ -26,10 +26,14 @@ import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.mem.FloatBufferMemory;
-import org.almostrealism.hardware.mem.FloatBufferMemoryProvider;
-import org.almostrealism.hardware.mem.ProvidedBytes;
+import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
 
+import java.nio.ByteBuffer;
+import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
 import java.util.HashMap;
@@ -85,30 +89,43 @@ public interface OnnxFeatures extends CodeFeatures {
 	}
 
 	/**
-	 * Converts an {@link OnnxTensor} to a {@link PackedCollection} whose backing
-	 * store is the buffer copy returned by {@link OnnxTensor#getFloatBuffer()}.
+	 * Converts an {@link OnnxTensor} to a {@link PackedCollection} through the
+	 * standard ByteBuffer ingest sequence: a native buffer staging allocation is
+	 * created, the tensor's values are written into a view of its ByteBuffer,
+	 * and the resulting collection is rooted over that staging memory.
 	 *
-	 * <p>No further host copy is made and no device memory is touched here: the
-	 * collection's root delegates to {@link ProvidedBytes} over
-	 * {@link FloatBufferMemoryProvider} memory, so the framework migrates the
-	 * values to the compute device only when a kernel first requires them.
-	 * Results that only the host ever reads never occupy device memory at all.
-	 * The buffer is a copy, so the returned collection is independent of the
-	 * tensor's lifetime and the tensor may be closed immediately. Migration is
-	 * one-way — the returned collection must be treated as read-only until it
-	 * has migrated.</p>
+	 * <p>No host array is ever materialized and no compute device is touched
+	 * here: the framework moves the staged data to a device only when a kernel
+	 * first requires it. Results that only the host ever reads never occupy
+	 * device memory at all. The staging buffer holds its own copy of the values,
+	 * so the returned collection is independent of the tensor's lifetime and the
+	 * tensor may be closed immediately.</p>
 	 *
 	 * @param tensor the ONNX tensor to convert; its shape is used for the result
-	 * @return a new {@link PackedCollection} reading from a copy of the tensor's float data
+	 * @return a new {@link PackedCollection} staged over native buffer memory
 	 */
 	default PackedCollection pack(OnnxTensor tensor) {
-		FloatBuffer buffer = tensor.getFloatBuffer();
-		FloatBufferMemory mem = (FloatBufferMemory)
-				FloatBufferMemoryProvider.getInstance().allocate(buffer);
-
 		TraversalPolicy shape = shape(tensor.getInfo());
+		int total = shape.getTotalSize();
+
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(total);
+
+		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+		FloatBuffer source = tensor.getFloatBuffer();
+
+		if (provider.getNumberSize() == 4) {
+			staging.asFloatBuffer().put(source);
+		} else {
+			DoubleBuffer view = staging.asDoubleBuffer();
+			for (int i = 0; i < total; i++) {
+				view.put(i, source.get(i));
+			}
+		}
+
 		return new PackedCollection(shape, shape.getTraversalAxis(),
-				new ProvidedBytes(mem, mem.getLength()), 0);
+				Bytes.of(mem, total), 0);
 	}
 
 	/**

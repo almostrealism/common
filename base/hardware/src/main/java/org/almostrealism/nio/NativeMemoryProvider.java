@@ -246,7 +246,8 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 		RAM mem;
 		if (direct) {
-			mem = allocated(NativeBuffer.create(this, size, shared ? getMemoryName().apply(size) : null));
+			mem = allocated(NativeBuffer.create(this, size,
+					shared && getMemoryName() != null ? getMemoryName().apply(size) : null));
 		} else {
 			if (malloc == null) malloc = new Malloc(compiler());
 

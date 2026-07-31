@@ -28,20 +28,39 @@ device. This is not new machinery — the framework already contains both halves
   (`SharedMemoryAudioLine` consumes them); that case is complete and simply
   gets documented as part of this contract.
 
-Formats where laziness or zero-copy sourcing cannot pay (streaming decode,
-one-shot `byte[]` payloads) instead use a single **eager ingest call** — the
-narrow surface the bulk `setMem` overloads move behind.
+## The standard ingest mode: ByteBuffer (agreed 2026-07-31)
+
+For sources that do not earn a dedicated format provider, **`ByteBuffer` is
+the one standard mode of ingest**. There is no eager array-upload call: host
+`double[]`/`float[]` staging arrays are exactly what encourages host-side
+manipulation of data, so they do not appear anywhere in the ingest path.
+The standard sequence is:
+
+1. Create a `MemoryData` instance backed by a `ByteBuffer`.
+2. Load the data into that `ByteBuffer` — or into a `FloatBuffer`/
+   `DoubleBuffer` view of it, when that is more convenient for the decoder.
+3. Return the `MemoryData` to the caller: as a `PackedCollection` directly,
+   or as the delegate of one.
+4. Let the system move the data off the `ByteBuffer` to a device whenever the
+   device it needs to move to is discovered (a kernel call, etc.) — the same
+   lazy migration every source provider relies on.
+
+The buffer-backed `MemoryData` is the staging area; the decoder writes through
+the buffer views, never through `setMem`, and after step 3 the data is
+read-only until it migrates. Streaming decoders (WAV) and one-shot payloads
+(database rows) both fit this shape, and it is also the surface the bulk
+`double[]`-accepting `setMem` overloads retreat behind.
 
 ## Case decisions
 
 | Source | Decision | Rationale |
 | --- | --- | --- |
 | Protobuf weights (`StateDictionary`/`CollectionEncoder`) | **Format provider** (first migration) | Read-only, per-tensor root allocations, hundreds of MB, loaded eagerly today whether or not used. Lazy per-tensor migration cuts startup and peak memory; `memVersions` caches across contexts. |
-| ONNX tensors (`OnnxFeatures.pack(OnnxTensor)`) | **Format provider** (second migration) | Today: `FloatBuffer -> float[] -> double[] -> device`, two host copies. A provider serves `getMem` from the tensor's native buffer; host-only outputs (sampling, argmax) never touch the device at all. Provider must own `OnnxTensor` lifecycle (session results auto-close). |
+| ONNX tensors (`OnnxFeatures.pack(OnnxTensor)`) | **ByteBuffer staging** (done) | Tensor values are written through a view of a native buffer allocation (`Hardware.getNativeBufferMemoryProvider()`), wrapped with `Bytes.of`, and migrate at first kernel use. The staging copy decouples the collection from the tensor's lifetime (session results auto-close). |
 | Shared memory (`SharedMemoryAudioLine`) | **Format provider — already done** | `DataContext.sharedMemory(...)` is the shipped design. |
 | Resource / reference files | **Format provider — already done** | `LocalExternalMemoryProvider` ("DISK") covers file-backed vectors; roadmap step 4b (reference inputs as resources) rides on it. |
-| WAV (`WavFile`/`WaveData`) | **Eager ingest call** | Streaming reader/writer with PCM scaling and de-interleave in the read path; decoded audio is consumed immediately (resample/FFT), so laziness buys little; the write direction is host-directed I/O. A read-only mmap WAV provider remains a later option for `AudioLibrary` scanning. |
-| Database rows (graphpersist `GraphPersist.read`) | **Eager ingest call** | JDBC delivers a complete `byte[]`; there is nothing incremental to defer — "lazy" would mean deferring the query, a repository concern. `PackedCollection.read(byte[])` is already the choke point; it becomes a formal part of this surface. |
+| WAV (`WavFile`/`WaveData`) | **ByteBuffer staging** | Streaming reader/writer with PCM scaling and de-interleave in the read path; decoded audio is consumed immediately (resample/FFT), so laziness buys little; the write direction is host-directed I/O. A read-only mmap WAV provider remains a later option for `AudioLibrary` scanning. |
+| Database rows (graphpersist `GraphPersist.read`) | **ByteBuffer staging** | JDBC delivers a complete `byte[]`; there is nothing incremental to defer — "lazy" would mean deferring the query, a repository concern. `PackedCollection.read(byte[])` is already the choke point; it becomes a formal part of this surface. |
 
 ## Provider contract for read-only sources
 
@@ -72,16 +91,16 @@ narrow surface the bulk `setMem` overloads move behind.
 
 ## Migration order
 
-1. **Protobuf weights provider** — biggest data, cleanest read-only semantics,
-   single choke point (`StateDictionary`) with an existing `destroy()`.
-   Includes indexing the asset once and decoding a tensor's span on demand.
-2. **ONNX tensor provider** — wraps `OnnxTensor` buffers; retires the
-   `pack(OnnxTensor)` copy chain.
-3. **The eager ingest call** — one named method on the I/O layer
-   (`byte[]`/`ByteBuffer` + layout → collection); migrate `WavFile`/`WaveData`
-   and formalize `PackedCollection.read(byte[])` under it; move the bulk
-   `setMem` overloads behind this surface (or `protected` on
-   `MemoryDataAdapter`) per the census conclusion.
+1. **Protobuf weights provider** — done: `CollectionDataMemoryProvider` +
+   `CollectionEncoder.decodeDeferred`, loaded by `StateDictionary` behind
+   `enableDeferredWeights`.
+2. **ONNX tensors** — done, via the standard ByteBuffer staging sequence
+   rather than a dedicated provider.
+3. **`WavFile`/`WaveData`** — migrate the decoded-frames → collection hop to
+   the standard ByteBuffer staging sequence, and formalize
+   `PackedCollection.read(byte[])` (graphpersist) as part of this surface;
+   then move the bulk `double[]`-accepting `setMem` overloads behind it
+   (or `protected` on `MemoryDataAdapter`) per the census conclusion.
 4. **Retire the corresponding `KNOWN_EXCLUSIONS`** entries as each category
    gains its home, and regenerate the baseline.
 

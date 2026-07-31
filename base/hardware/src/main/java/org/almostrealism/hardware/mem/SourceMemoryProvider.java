@@ -21,8 +21,9 @@ import io.almostrealism.code.MemoryProvider;
 
 /**
  * Base class for read-only {@link MemoryProvider}s that treat data entering the
- * JVM from outside the system — a serialized message, an NIO buffer produced by
- * an external runtime, a mapped file — as its own kind of device.
+ * JVM from outside the system — a serialized message, a mapped file — as its
+ * own kind of device. (Data arriving as raw values instead stages through a
+ * ByteBuffer-backed allocation from the native buffer provider.)
  *
  * <p>Memory managed by a source provider holds no host arrays and no device
  * memory of its own: reads are served from the external source, and the first
