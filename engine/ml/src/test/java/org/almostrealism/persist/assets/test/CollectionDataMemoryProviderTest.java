@@ -33,7 +33,7 @@ import java.util.Map;
 
 /**
  * Tests for the protobuf-backed memory provider: collections produced by
- * {@link CollectionEncoder#decodeDeferred} read from the message on the host,
+ * {@link CollectionEncoder#decode(Collections.CollectionData, boolean)} read from the message on the host,
  * migrate to the compute device at first kernel use, and reject writes while
  * still message-backed.
  */
@@ -60,7 +60,7 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 
 		for (Precision precision : new Precision[] { Precision.FP64, Precision.FP32 }) {
 			Collections.CollectionData data = CollectionEncoder.encode(source, precision);
-			PackedCollection deferred = CollectionEncoder.decodeDeferred(data);
+			PackedCollection deferred = CollectionEncoder.decode(data, false);
 
 			Assert.assertEquals("PROTOBUF",
 					deferred.getRootDelegate().getMem().getProvider().getName());
@@ -84,8 +84,8 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void smallDeferredComputesWithoutMigrating() {
 		PackedCollection source = testValues();
-		PackedCollection deferred = CollectionEncoder.decodeDeferred(
-				CollectionEncoder.encode(source, Precision.FP64));
+		PackedCollection deferred = CollectionEncoder.decode(
+				CollectionEncoder.encode(source, Precision.FP64), false);
 
 		Assert.assertEquals("PROTOBUF",
 				deferred.getRootDelegate().getMem().getProvider().getName());
@@ -113,8 +113,8 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 		integers(0, size).multiply(0.001).add(1.0)
 				.into(source.traverseEach()).evaluate();
 
-		PackedCollection deferred = CollectionEncoder.decodeDeferred(
-				CollectionEncoder.encode(source, Precision.FP64));
+		PackedCollection deferred = CollectionEncoder.decode(
+				CollectionEncoder.encode(source, Precision.FP64), false);
 		Assert.assertEquals("PROTOBUF",
 				deferred.getRootDelegate().getMem().getProvider().getName());
 
@@ -135,13 +135,36 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Materialized decoding copies the message's values into freshly allocated
+	 * memory: the result matches the source, is not message-backed, and is
+	 * ordinary writable storage.
+	 */
+	@Test(timeout = 60000)
+	public void materializedDecodeCopiesIntoAllocatedMemory() {
+		PackedCollection source = testValues();
+		PackedCollection materialized = CollectionEncoder.decode(
+				CollectionEncoder.encode(source, Precision.FP64), true);
+
+		Assert.assertNotEquals("materialized collections use ordinary storage",
+				"PROTOBUF", materialized.getRootDelegate().getMem().getProvider().getName());
+
+		for (int i = 0; i < SIZE; i++) {
+			Assert.assertEquals("element " + i,
+					source.toDouble(i), materialized.toDouble(i), 1e-9);
+		}
+
+		materialized.setMem(0, 42.0);
+		Assert.assertEquals(42.0, materialized.toDouble(0), 1e-9);
+	}
+
+	/**
 	 * Message-backed memory is a read-only source: writes are rejected rather
 	 * than silently lost, since migration is one-way.
 	 */
 	@Test(timeout = 60000)
 	public void deferredRejectsWritesBeforeMigration() {
-		PackedCollection deferred = CollectionEncoder.decodeDeferred(
-				CollectionEncoder.encode(testValues(), Precision.FP64));
+		PackedCollection deferred = CollectionEncoder.decode(
+				CollectionEncoder.encode(testValues(), Precision.FP64), false);
 
 		try {
 			deferred.setMem(0, 1.0);
@@ -165,8 +188,8 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 		Path dir = Files.createTempDirectory("deferred-weights-test");
 		new StateDictionary(weights).save(dir.resolve("weights.pb"), Precision.FP64);
 
-		boolean previous = StateDictionary.enableDeferredWeights;
-		StateDictionary.enableDeferredWeights = true;
+		boolean previous = StateDictionary.enableMaterializeWeights;
+		StateDictionary.enableMaterializeWeights = false;
 
 		try {
 			StateDictionary loaded = new StateDictionary(dir.toString());
@@ -193,7 +216,7 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 
 			loaded.destroy();
 		} finally {
-			StateDictionary.enableDeferredWeights = previous;
+			StateDictionary.enableMaterializeWeights = previous;
 		}
 	}
 }

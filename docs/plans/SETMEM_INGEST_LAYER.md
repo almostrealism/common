@@ -67,7 +67,10 @@ read-only until it migrates. Streaming decoders (WAV) and one-shot payloads
 - `getMem` decodes/reads from the external medium (lazily, per request).
 - `setMem` **into** source-backed memory throws: these are sources; after
   migration, writes land on the device copy, and nothing writes back to the
-  external medium. Migration is one-way by design.
+  external medium. Migration is one-way by design. (The rejecting `setMem`
+  and `allocate` forms are the `MemoryProvider` interface defaults, so a
+  source provider implements only `getName`, `getNumberSize`, `getMem`,
+  `deallocate`, and its own wrapping factory.)
 - Source collections are root allocations (one per tensor/segment/file), since
   `reassignMemory` migrates whole roots and `reallocate` refuses non-zero
   offsets. Views delegate off the root as usual.
@@ -92,7 +95,7 @@ read-only until it migrates. Streaming decoders (WAV) and one-shot payloads
 ## Migration order
 
 1. **Protobuf weights provider** — done: `CollectionDataMemoryProvider` +
-   `CollectionEncoder.decodeDeferred`, loaded by `StateDictionary` behind
+   `CollectionEncoder.decode(data, materialize)` (deferred by default), loaded by `StateDictionary` behind
    `enableDeferredWeights`.
 2. **ONNX tensors** — done, via the standard ByteBuffer staging sequence
    rather than a dedicated provider.

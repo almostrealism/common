@@ -96,36 +96,46 @@ public class CollectionEncoder {
 	 * @return A new {@link PackedCollection} with the encoded shape and values, or {@code null}
 	 */
 	public static PackedCollection decode(Collections.CollectionData data) {
-		TraversalPolicy shape = decode(data.getTraversalPolicy());
-		if (shape.getDimensions() == 0) return null;
-
-		return decode(data, new PackedCollection(shape.getTotalSize()));
+		return decode(data, false);
 	}
 
 	/**
-	 * Decodes a {@link Collections.CollectionData} message into a {@link PackedCollection}
-	 * that keeps the message itself as its backing store, deferring any device involvement.
+	 * Decodes a {@link Collections.CollectionData} message into a {@link PackedCollection},
+	 * either deferred over the message itself or materialized into freshly
+	 * allocated memory.
 	 *
-	 * <p>No host array is materialized and no device memory is allocated here: the
-	 * collection's root is a {@link org.almostrealism.hardware.mem.Bytes} over
-	 * {@link CollectionDataMemoryProvider} memory, so values are read from the
-	 * message on demand and the framework migrates the data to the compute
-	 * device only when a kernel first requires it. Data that is only ever read on the
-	 * host never reaches a device at all. Migration is one-way — the returned
+	 * <p>When {@code materialize} is {@code false}, the collection's root is a
+	 * {@link org.almostrealism.hardware.mem.Bytes} over
+	 * {@link CollectionDataMemoryProvider} memory: no host array is created and
+	 * no device memory is allocated here — values are read from the message on
+	 * demand, and the framework migrates the data to the compute device only
+	 * when a kernel first requires it. Data that is only ever read on the host
+	 * never reaches a device at all. Migration is one-way, so the returned
 	 * collection must be treated as read-only until it has migrated.</p>
 	 *
-	 * @param data The protobuf message to serve as the backing store
-	 * @return A collection with the encoded shape reading from the message,
+	 * <p>When {@code materialize} is {@code true}, a collection is allocated
+	 * the normal way and the deferred collection is copied into it with
+	 * {@link PackedCollection#setFrom}, producing ordinary writable storage.</p>
+	 *
+	 * @param data The protobuf message to decode
+	 * @param materialize whether to copy the values into freshly allocated memory
+	 * @return A collection with the encoded shape,
 	 *         or {@code null} if the encoded shape has zero dimensions
 	 */
-	public static PackedCollection decodeDeferred(Collections.CollectionData data) {
+	public static PackedCollection decode(Collections.CollectionData data, boolean materialize) {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getDimensions() == 0) return null;
 
 		CollectionDataMemory mem = (CollectionDataMemory)
 				CollectionDataMemoryProvider.getInstance().allocate(data);
-		return new PackedCollection(shape, shape.getTraversalAxis(),
+		PackedCollection deferred = new PackedCollection(shape, shape.getTraversalAxis(),
 				Bytes.of(mem, mem.getLength()), 0);
+		if (!materialize) return deferred;
+
+		PackedCollection result = new PackedCollection(shape);
+		result.setFrom(0, deferred, 0, mem.getLength());
+		deferred.getRootDelegate().destroy();
+		return result;
 	}
 
 	/**

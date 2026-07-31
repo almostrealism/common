@@ -17,21 +17,27 @@
 package org.almostrealism.persist.assets;
 
 import io.almostrealism.code.Memory;
-import org.almostrealism.hardware.mem.SourceMemoryProvider;
+import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.protobuf.Collections;
 
 /**
- * Read-only {@link SourceMemoryProvider} that treats protobuf
+ * Read-only {@link MemoryProvider} that treats protobuf
  * {@link Collections.CollectionData} messages as their own kind of device:
  * reads are served element-by-element from the message, at whichever
  * precision it was encoded, and data reaches the compute device only when a
  * kernel first requires it. Weights that only the host ever reads never
  * occupy device memory at all.
  *
+ * <p>This is a source provider: memory is created only from existing messages
+ * via {@link #allocate(Collections.CollectionData)}, and the
+ * {@link MemoryProvider} defaults reject empty allocation and writes —
+ * migration to a device is one-way, so a write into message-backed memory
+ * could only be silently lost.</p>
+ *
  * @see CollectionDataMemory
- * @see CollectionEncoder#decodeDeferred(Collections.CollectionData)
+ * @see CollectionEncoder#decode(Collections.CollectionData, boolean)
  */
-public class CollectionDataMemoryProvider extends SourceMemoryProvider {
+public class CollectionDataMemoryProvider implements MemoryProvider<Memory> {
 	/** The shared provider instance. */
 	private static final CollectionDataMemoryProvider instance = new CollectionDataMemoryProvider();
 
@@ -47,6 +53,14 @@ public class CollectionDataMemoryProvider extends SourceMemoryProvider {
 	 */
 	@Override
 	public String getName() { return "PROTOBUF"; }
+
+	/**
+	 * Returns the size of each number in bytes, as served to readers.
+	 *
+	 * @return 8 (values are read as FP64 regardless of the message's encoded precision)
+	 */
+	@Override
+	public int getNumberSize() { return 8; }
 
 	/**
 	 * Creates memory backed by the given protobuf message.

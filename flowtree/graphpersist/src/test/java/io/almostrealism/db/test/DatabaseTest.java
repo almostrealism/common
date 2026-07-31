@@ -12,26 +12,17 @@ import org.junit.Test;
  */
 public class DatabaseTest extends TestSuiteBase {
 	/**
-	 * Creates a scalar PackedCollection with the given value.
-	 */
-	private static PackedCollection scalarValue(double value) {
-		PackedCollection s = new PackedCollection(1);
-		s.fill(value);
-		return s;
-	}
-
-	/**
 	 * Tests storing and retrieving a tensor of values.
 	 */
 	@Test(timeout = 10000)
 	public void storeAndRetrieve() {
 		Tensor<PackedCollection> t = new Tensor<>();
-		t.insert(scalarValue(1), 0, 0);
-		t.insert(scalarValue(2), 0, 1);
-		t.insert(scalarValue(3), 0, 2);
-		t.insert(scalarValue(4), 1, 0);
-		t.insert(scalarValue(5), 1, 1);
-		t.insert(scalarValue(6), 1, 2);
+		t.insert(pack(1.0), 0, 0);
+		t.insert(pack(2.0), 0, 1);
+		t.insert(pack(3.0), 0, 2);
+		t.insert(pack(4.0), 1, 0);
+		t.insert(pack(5.0), 1, 1);
+		t.insert(pack(6.0), 1, 2);
 
 		GraphPersist.local().save("/test", t.pack());
 

@@ -48,10 +48,18 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	/**
 	 * Allocates a new memory region capable of holding the specified number of elements.
 	 *
+	 * <p>The default implementation rejects allocation: a provider that only wraps
+	 * existing external data (a serialized message, a mapped file) creates its
+	 * memory through its own factory methods and cannot produce empty regions.
+	 * Providers that own storage override this.</p>
+	 *
 	 * @param size the number of elements to allocate
 	 * @return the newly allocated memory handle
+	 * @throws UnsupportedOperationException if this provider cannot allocate empty memory
 	 */
-	T allocate(int size);
+	default T allocate(int size) {
+		throw new UnsupportedOperationException(getName() + " cannot allocate empty memory");
+	}
 
 	/**
 	 * Releases the memory region previously allocated with the given size.
@@ -103,13 +111,21 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	/**
 	 * Copies data from a source memory region into the destination memory region.
 	 *
+	 * <p>The default implementation rejects the write: memory managed by a
+	 * read-only source provider migrates to a device one-way, so a write here
+	 * could only be silently lost. Providers with writable storage override
+	 * this.</p>
+	 *
 	 * @param mem the destination memory region
 	 * @param offset the starting position in the destination
 	 * @param source the source memory region
 	 * @param srcOffset the starting position in the source
 	 * @param length the number of elements to copy
+	 * @throws UnsupportedOperationException if this provider's memory is read-only
 	 */
-	void setMem(T mem, int offset, Memory source, int srcOffset, int length);
+	default void setMem(T mem, int offset, Memory source, int srcOffset, int length) {
+		throw new UnsupportedOperationException(getName() + " backed memory is read-only");
+	}
 
 	/**
 	 * Copies data from a float array into the destination memory region, converting to double.
@@ -127,13 +143,21 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	/**
 	 * Copies data from a double array into the destination memory region.
 	 *
+	 * <p>The default implementation rejects the write: memory managed by a
+	 * read-only source provider migrates to a device one-way, so a write here
+	 * could only be silently lost. Providers with writable storage override
+	 * this.</p>
+	 *
 	 * @param mem the destination memory region
 	 * @param offset the starting position in the destination
 	 * @param source the source double array
 	 * @param srcOffset the starting position in the source array
 	 * @param length the number of elements to copy
+	 * @throws UnsupportedOperationException if this provider's memory is read-only
 	 */
-	void setMem(T mem, int offset, double[] source, int srcOffset, int length);
+	default void setMem(T mem, int offset, double[] source, int srcOffset, int length) {
+		throw new UnsupportedOperationException(getName() + " backed memory is read-only");
+	}
 
 	/**
 	 * Reads elements from the source memory region into a float array.
@@ -165,6 +189,11 @@ public interface MemoryProvider<T extends Memory> extends Named {
 
 	/**
 	 * Releases all resources held by this memory provider.
+	 *
+	 * <p>The default implementation does nothing: providers whose memory only
+	 * references external data drop those references through
+	 * {@link #deallocate} as each owner is destroyed. Providers that hold
+	 * their own storage override this.</p>
 	 */
-	void destroy();
+	default void destroy() { }
 }
