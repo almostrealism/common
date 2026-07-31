@@ -19,6 +19,7 @@ package org.almostrealism.persist.assets;
 import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.ProvidedBytes;
 import org.almostrealism.protobuf.Collections;
 
 import java.util.stream.IntStream;
@@ -106,8 +107,10 @@ public class CollectionEncoder {
 	 * that keeps the message itself as its backing store, deferring any device involvement.
 	 *
 	 * <p>No host array is materialized and no device memory is allocated here: the
-	 * collection's root delegates to {@link CollectionDataBytes}, so values are read
-	 * from the message on demand and the framework migrates the data to the compute
+	 * collection's root delegates to a
+	 * {@link org.almostrealism.hardware.mem.ProvidedBytes} over
+	 * {@link CollectionDataMemoryProvider} memory, so values are read from the
+	 * message on demand and the framework migrates the data to the compute
 	 * device only when a kernel first requires it. Data that is only ever read on the
 	 * host never reaches a device at all. Migration is one-way — the returned
 	 * collection must be treated as read-only until it has migrated.</p>
@@ -120,8 +123,10 @@ public class CollectionEncoder {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getDimensions() == 0) return null;
 
+		CollectionDataMemory mem = (CollectionDataMemory)
+				CollectionDataMemoryProvider.getInstance().allocate(data);
 		return new PackedCollection(shape, shape.getTraversalAxis(),
-				new CollectionDataBytes(data), 0);
+				new ProvidedBytes(mem, mem.getLength()), 0);
 	}
 
 	/**

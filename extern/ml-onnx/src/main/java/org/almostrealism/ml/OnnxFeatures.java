@@ -26,6 +26,9 @@ import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.FloatBufferMemory;
+import org.almostrealism.hardware.mem.FloatBufferMemoryProvider;
+import org.almostrealism.hardware.mem.ProvidedBytes;
 
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
@@ -82,22 +85,30 @@ public interface OnnxFeatures extends CodeFeatures {
 	}
 
 	/**
-	 * Converts an {@link OnnxTensor} to a {@link PackedCollection}.
+	 * Converts an {@link OnnxTensor} to a {@link PackedCollection} whose backing
+	 * store is the buffer copy returned by {@link OnnxTensor#getFloatBuffer()}.
 	 *
-	 * <p>The tensor's float data is read into a Java array and stored in a new
-	 * {@link PackedCollection} whose shape matches the tensor's dimension information.
+	 * <p>No further host copy is made and no device memory is touched here: the
+	 * collection's root delegates to {@link ProvidedBytes} over
+	 * {@link FloatBufferMemoryProvider} memory, so the framework migrates the
+	 * values to the compute device only when a kernel first requires them.
+	 * Results that only the host ever reads never occupy device memory at all.
+	 * The buffer is a copy, so the returned collection is independent of the
+	 * tensor's lifetime and the tensor may be closed immediately. Migration is
+	 * one-way — the returned collection must be treated as read-only until it
+	 * has migrated.</p>
 	 *
 	 * @param tensor the ONNX tensor to convert; its shape is used for the result
-	 * @return a new {@link PackedCollection} containing a copy of the tensor's float data
+	 * @return a new {@link PackedCollection} reading from a copy of the tensor's float data
 	 */
 	default PackedCollection pack(OnnxTensor tensor) {
 		FloatBuffer buffer = tensor.getFloatBuffer();
-		float[] data = new float[buffer.capacity()];
-		buffer.get(data);
+		FloatBufferMemory mem = (FloatBufferMemory)
+				FloatBufferMemoryProvider.getInstance().allocate(buffer);
 
-		PackedCollection result = new PackedCollection(shape(tensor.getInfo()));
-		result.setMem(0, data);
-		return result;
+		TraversalPolicy shape = shape(tensor.getInfo());
+		return new PackedCollection(shape, shape.getTraversalAxis(),
+				new ProvidedBytes(mem, mem.getLength()), 0);
 	}
 
 	/**

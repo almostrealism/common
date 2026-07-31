@@ -14,63 +14,65 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.persist.assets;
+package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
-import org.almostrealism.hardware.mem.SourceMemoryProvider;
-import org.almostrealism.protobuf.Collections;
+
+import java.nio.FloatBuffer;
 
 /**
- * Read-only {@link SourceMemoryProvider} that treats protobuf
- * {@link Collections.CollectionData} messages as their own kind of device:
- * reads are served element-by-element from the message, at whichever
- * precision it was encoded, and data reaches the compute device only when a
- * kernel first requires it. Weights that only the host ever reads never
- * occupy device memory at all.
+ * Read-only {@link SourceMemoryProvider} over java.nio {@link FloatBuffer}s,
+ * so results handed over by external runtimes act as their own kind of device:
+ * reads are served from the buffer, and data reaches the compute device only
+ * when a kernel first requires it. Results that only the host ever reads
+ * never occupy device memory at all.
  *
- * @see CollectionDataMemory
- * @see CollectionEncoder#decodeDeferred(Collections.CollectionData)
+ * @see FloatBufferMemory
  */
-public class CollectionDataMemoryProvider extends SourceMemoryProvider {
+public class FloatBufferMemoryProvider extends SourceMemoryProvider {
 	/** The shared provider instance. */
-	private static final CollectionDataMemoryProvider instance = new CollectionDataMemoryProvider();
+	private static final FloatBufferMemoryProvider instance = new FloatBufferMemoryProvider();
 
 	/**
 	 * Returns the shared provider instance.
 	 */
-	public static CollectionDataMemoryProvider getInstance() { return instance; }
+	public static FloatBufferMemoryProvider getInstance() { return instance; }
 
 	/**
 	 * Returns the provider name for identification.
 	 *
-	 * @return "PROTOBUF"
+	 * @return "NIO"
 	 */
 	@Override
-	public String getName() { return "PROTOBUF"; }
+	public String getName() { return "NIO"; }
 
 	/**
-	 * Creates memory backed by the given protobuf message.
+	 * Creates memory backed by the given buffer.
 	 *
-	 * @param data the message serving as the backing store
-	 * @return read-only memory over the message contents
+	 * <p>The buffer must not be modified after it is handed over: the returned
+	 * memory reads from it until the framework migrates the data to a device,
+	 * and treats it as immutable throughout.</p>
+	 *
+	 * @param data the buffer serving as the backing store
+	 * @return read-only memory over the buffer contents
 	 */
-	public Memory allocate(Collections.CollectionData data) {
-		return new CollectionDataMemory(this, data);
+	public Memory allocate(FloatBuffer data) {
+		return new FloatBufferMemory(this, data);
 	}
 
 	/**
-	 * Releases the message reference held by the given memory.
+	 * Releases the buffer reference held by the given memory.
 	 *
 	 * @param size the number of elements originally wrapped (ignored)
 	 * @param mem the memory to release
 	 */
 	@Override
 	public void deallocate(int size, Memory mem) {
-		((CollectionDataMemory) mem).destroy();
+		((FloatBufferMemory) mem).destroy();
 	}
 
 	/**
-	 * Reads elements from the backing message, converting to double as needed.
+	 * Reads elements from the backing buffer, converting to double.
 	 *
 	 * @param mem the source memory region
 	 * @param sOffset the starting position in the source memory
@@ -80,7 +82,7 @@ public class CollectionDataMemoryProvider extends SourceMemoryProvider {
 	 */
 	@Override
 	public void getMem(Memory mem, int sOffset, double[] out, int oOffset, int length) {
-		CollectionDataMemory src = (CollectionDataMemory) mem;
+		FloatBufferMemory src = (FloatBufferMemory) mem;
 		for (int i = 0; i < length; i++) {
 			out[oOffset + i] = src.valueAt(sOffset + i);
 		}
