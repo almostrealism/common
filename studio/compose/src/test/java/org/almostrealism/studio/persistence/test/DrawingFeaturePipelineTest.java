@@ -22,6 +22,7 @@ import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.util.TestDepth;
@@ -284,13 +285,12 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 
 		// Populate frequency data with a simple harmonic pattern
 		PackedCollection freqData = new PackedCollection(FREQ_FRAMES * FREQ_BINS);
-		for (int f = 0; f < FREQ_FRAMES; f++) {
-			for (int b = 0; b < FREQ_BINS; b++) {
-				double value = Math.sin(2.0 * Math.PI * b / FREQ_BINS) *
-						Math.cos(2.0 * Math.PI * f / FREQ_FRAMES);
-				freqData.setMem(f * FREQ_BINS + b, Math.max(0, value * 10));
-			}
-		}
+		int total = FREQ_FRAMES * FREQ_BINS;
+		CollectionProducer harmonic =
+				sin(integers(0, total).mod((double) FREQ_BINS).multiply(2.0 * Math.PI / FREQ_BINS))
+				.multiply(cos(floor(integers(0, total).divide((double) FREQ_BINS))
+						.multiply(2.0 * Math.PI / FREQ_FRAMES)));
+		max(harmonic.multiply(10.0), c(0.0)).into(freqData.traverseEach()).evaluate();
 		details.setFreqData(freqData);
 
 		return details;

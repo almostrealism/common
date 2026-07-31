@@ -818,9 +818,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		CompiledModel compiled = model.compile();
 
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] ones = new double[sig];
-		Arrays.fill(ones, 1.0);
-		input.setMem(ones);
+		input.fill(1.0);
 
 		double first = compiled.forward(input).toArray(0, sig)[0];
 		gain.setMem(0, 3.0);
@@ -884,10 +882,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		TraversalPolicy inputShape = new TraversalPolicy(channels, sig);
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[channels * sig];
-		Arrays.fill(inData, 0, sig, 0.01);
-		Arrays.fill(inData, sig, 2 * sig, 0.02);
-		input.setMem(inData);
+		floor(integers(0, channels * sig).divide((double) sig)).add(1.0).multiply(0.01)
+				.into(input.traverseEach()).evaluate();
 
 		// Stage A: rows preserved (no sum) — shows exactly which input row each chain saw.
 		Block rowsBlock = loader.buildLayer(program, "fe_rows", inputShape, args);

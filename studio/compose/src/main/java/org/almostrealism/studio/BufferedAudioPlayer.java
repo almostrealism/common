@@ -449,7 +449,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	 * @param v the amplitude value to set
 	 */
 	protected void setLevel(int c, double v) {
-		level[c].setMem(0, v);
+		level[c].fill(v);
 	}
 
 	/**
@@ -470,7 +470,7 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	protected void setLoopDuration(int c, double duration) {
 		double previous = loopDuration[c].toDouble(0);
 
-		loopDuration[c].setMem(duration);
+		loopDuration[c].fill(duration);
 
 		if (enableUnifiedClock) {
 			clock.setReset(0, (int) (duration * sampleRate));

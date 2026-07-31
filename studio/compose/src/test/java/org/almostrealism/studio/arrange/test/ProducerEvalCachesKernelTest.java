@@ -85,7 +85,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 	public void assignmentReadsLiveBufferWithoutPreEval() {
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		sink.setMem(0, Double.NaN);
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
@@ -111,7 +111,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 	public void preEvalFreezesAssignment() {
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		sink.setMem(0, Double.NaN);
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
@@ -185,7 +185,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 			throws IOException {
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		sink.setMem(0, Double.NaN);
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
@@ -308,7 +308,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 
 		PackedCollection buffer = new PackedCollection(1);
 		PackedCollection sink = new PackedCollection(1);
-		sink.setMem(0, Double.NaN);
+		sink.fill(Double.NaN);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));

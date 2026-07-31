@@ -124,7 +124,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * Scalar position for the main transformer KV cache.
 	 *
 	 * <p>Increments by one for each new event position processed by {@code net}.
-	 * Set via {@code netPosition.setMem(0, pos)} before each {@link #netCompiledModel}
+	 * Set via {@code netPosition.fill(pos)} before each {@link #netCompiledModel}
 	 * forward pass.</p>
 	 */
 	private final PackedCollection netPosition;
@@ -329,7 +329,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		// The return value of the last call is the hidden state for the last prompt position.
 		PackedCollection lastHidden = null;
 		for (int pos = 0; pos < sequence.size(); pos++) {
-			netPosition.setMem(0, pos);
+			netPosition.fill(pos);
 			lastHidden = netCompiledModel.forward(embedAndSumNet(sequence.get(pos)));
 		}
 
@@ -352,7 +352,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 						? lastHidden
 						: embedNetToken(newEventTokens[step - 1]);
 
-				netTokenPosition.setMem(0, step);
+				netTokenPosition.fill(step);
 				PackedCollection rawLogits = netTokenCompiledModel.forward(tokenInput);
 
 				// Apply validity mask: zero out logits for tokens that are not valid
@@ -390,7 +390,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 
 			// Advance net's KV cache to the newly generated event position
 			int newPos = sequence.size() - 1;
-			netPosition.setMem(0, newPos);
+			netPosition.fill(newPos);
 			lastHidden = netCompiledModel.forward(embedAndSumNet(newEventTokens));
 		}
 

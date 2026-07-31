@@ -659,17 +659,13 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * sits on the diagonal, yielding a near-identity matrix.
 	 */
 	private PackedCollection rectangularTransmission(int inputChannels, int outputChannels, double main) {
-		double[] data = new double[inputChannels * outputChannels];
 		double bleed = (1.0 - main) / Math.max(1, outputChannels - 1);
-		for (int n = 0; n < inputChannels; n++) {
-			int rowMain = n % outputChannels;
-			for (int m = 0; m < outputChannels; m++) {
-				data[n * outputChannels + m] = (m == rowMain) ? main : bleed;
-			}
-		}
+		int total = inputChannels * outputChannels;
 		PackedCollection matrix = new PackedCollection(
 				new TraversalPolicy(inputChannels, outputChannels));
-		matrix.setMem(data);
+		equals(floor(integers(0, total).divide((double) outputChannels)).mod((double) outputChannels),
+				integers(0, total).mod((double) outputChannels), c(main), c(bleed))
+				.into(matrix.traverseEach()).evaluate();
 		return matrix;
 	}
 
@@ -680,11 +676,11 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private void zeroTransmissionColumn(PackedCollection matrix, int inputChannels,
 										 int outputChannels, int colToZero) {
-		double[] data = matrix.toArray(0, inputChannels * outputChannels);
-		for (int n = 0; n < inputChannels; n++) {
-			data[n * outputChannels + colToZero] = 0.0;
-		}
-		matrix.setMem(data);
+		int total = inputChannels * outputChannels;
+		a(cp(matrix.range(shape(total), 0)),
+				cp(matrix.range(shape(total), 0)).multiply(
+						equals(integers(0, total).mod((double) outputChannels),
+								c((double) colToZero), c(0.0), c(1.0)))).get().run();
 	}
 
 	/**
@@ -820,14 +816,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * buffer boundaries.
 	 */
 	private PackedCollection monoTwoToneInput(double lowHz, double highHz, int sampleOffset) {
-		double[] data = new double[SIGNAL_SIZE];
-		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			double t = (double) (sampleOffset + i) / SAMPLE_RATE;
-			data[i] = 0.5 * Math.sin(2.0 * Math.PI * lowHz * t)
-					+ 0.5 * Math.sin(2.0 * Math.PI * highHz * t);
-		}
+		double wLow = 2.0 * Math.PI * lowHz / SAMPLE_RATE;
+		double wHigh = 2.0 * Math.PI * highHz / SAMPLE_RATE;
 		PackedCollection in = new PackedCollection(new TraversalPolicy(1, SIGNAL_SIZE));
-		in.setMem(data);
+		a(cp(in), add(sin(integers(0, SIGNAL_SIZE).multiply(wLow).add(wLow * sampleOffset)).multiply(0.5),
+				sin(integers(0, SIGNAL_SIZE).multiply(wHigh).add(wHigh * sampleOffset)).multiply(0.5)))
+				.get().run();
 		return in;
 	}
 
@@ -882,9 +876,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < REVERB_PASSES; pass++) {
 			PackedCollection input = new PackedCollection(inputShape);
-			double[] inData = new double[REVERB_SIGNAL_SIZE];
-			if (pass == 0) inData[0] = 1.0;       // impulse
-			input.setMem(inData);
+			if (pass == 0) input.setMem(0, 1.0);       // impulse
 
 			double[] passOut = compiled.forward(input).toArray(0, REVERB_SIGNAL_SIZE);
 			if (pass == 1) {
@@ -1168,8 +1160,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private PackedCollection perChannelWetCoeffs() {
 		int perChannel = FILTER_ORDER + 1;
-		double[] data = new double[CHANNELS * perChannel];
 		double[] coeffs = referenceLowPassCoefficients(WET_LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
+		double[] data = new double[CHANNELS * perChannel];
 		for (int c = 0; c < CHANNELS; c++) {
 			System.arraycopy(coeffs, 0, data, c * perChannel, perChannel);
 		}
@@ -1269,7 +1261,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int sampleOffset = pass * SIGNAL_SIZE;
-			slot.setMem(0, schedule[pass]);
+			double slotValue = schedule[pass];
+			slot.fill(slotValue);
 
 			double[] producerOut = producerCompiled
 					.forward(multiChannelCarrier(channelFreqs, sampleOffset))

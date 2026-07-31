@@ -948,9 +948,8 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		// Create a small test buffer filled with recognizable values
 		int bufferSize = 64;  // Small for quick test
 		PackedCollection sourceBuffer = new PackedCollection(bufferSize);
-		for (int i = 0; i < bufferSize; i++) {
-			sourceBuffer.setMem(i, (i + 1) * 0.01);  // 0.01, 0.02, ..., 0.64
-		}
+		integers(0, bufferSize).add(1.0).multiply(0.01)
+				.into(sourceBuffer.traverseEach()).evaluate();  // 0.01, 0.02, ..., 0.64
 		log("Source buffer filled with values 0.01 to 0.64");
 
 		// Create WaveCell pointing to the source buffer
@@ -1304,7 +1303,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 						if (overlapLength <= 0) continue;
 
 						// --- Partial evaluation ---
-						note.getOffsetArg().setMem(0, sourceOffset);
+						note.getOffsetArg().fill(sourceOffset);
 						Producer<PackedCollection> partialProducer =
 								note.getProducer(overlapLength);
 

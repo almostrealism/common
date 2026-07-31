@@ -19,6 +19,7 @@ package org.almostrealism.studio.persistence.test;
 import com.google.protobuf.ByteString;
 import io.almostrealism.code.Precision;
 import org.almostrealism.audio.api.Audio;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.persist.assets.CollectionEncoder;
@@ -322,11 +323,9 @@ public class AudioLayerGroupPersistenceTest extends TestSuiteBase {
 	public void layerRefChannelSubset() {
 		int frames = 8;
 		PackedCollection full = new PackedCollection(4, frames);
-		for (int ch = 0; ch < 4; ch++) {
-			for (int f = 0; f < frames; f++) {
-				full.setMem(ch * frames + f, ch * 100 + f);
-			}
-		}
+		floor(integers(0, 4 * frames).divide((double) frames)).multiply(100.0)
+				.add(integers(0, 4 * frames).mod((double) frames))
+				.into(full.traverseEach()).evaluate();
 		Audio.WaveDetailData detail = Audio.WaveDetailData.newBuilder()
 				.setIdentifier("multi-ch")
 				.setSampleRate(44100)
@@ -526,7 +525,7 @@ public class AudioLayerGroupPersistenceTest extends TestSuiteBase {
 		// Simulate the AudioLibrary identifier-resolution path: an external
 		// store keyed by identifier returns the actual PCM bytes.
 		PackedCollection pcm = new PackedCollection(2048);
-		for (int i = 0; i < pcm.getMemLength(); i++) pcm.setMem(i, Math.sin(i * 0.01));
+		sin(integers(0, pcm.getMemLength()).multiply(0.01)).into(pcm.traverseEach()).evaluate();
 		Map<String, PackedCollection> externalStore = new HashMap<>();
 		externalStore.put("ext-md5-deadbeef", pcm);
 
@@ -554,7 +553,7 @@ public class AudioLayerGroupPersistenceTest extends TestSuiteBase {
 	 */
 	private static Audio.WaveDetailData audioDetail(String identifier, int channels, int frames) {
 		PackedCollection pcm = new PackedCollection(channels * frames);
-		for (int i = 0; i < pcm.getMemLength(); i++) pcm.setMem(i, i);
+		Ops.o().integers(0, pcm.getMemLength()).into(pcm.traverseEach()).evaluate();
 		return Audio.WaveDetailData.newBuilder()
 				.setIdentifier(identifier)
 				.setSampleRate(44100)

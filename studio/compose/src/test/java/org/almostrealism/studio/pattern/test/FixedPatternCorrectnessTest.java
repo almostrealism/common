@@ -76,10 +76,8 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		PackedCollection audio = new PackedCollection(frames);
 
 		double angularFreq = 2.0 * Math.PI * frequency / SAMPLE_RATE;
-		for (int i = 0; i < frames; i++) {
-			double sample = amplitude * Math.sin(angularFreq * i);
-			audio.setMem(i, sample);
-		}
+		sin(integers(0, frames).multiply(angularFreq)).multiply(amplitude)
+				.into(audio.traverseEach()).evaluate();
 
 		return audio;
 	}
@@ -96,11 +94,10 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		PackedCollection audio = new PackedCollection(frames);
 
 		// Sharp attack, quick decay
-		for (int i = 0; i < frames; i++) {
-			double envelope = Math.exp(-5.0 * i / frames);
-			double sample = amplitude * envelope * Math.sin(2.0 * Math.PI * 1000 * i / SAMPLE_RATE);
-			audio.setMem(i, sample);
-		}
+		exp(integers(0, frames).multiply(-5.0 / frames))
+				.multiply(sin(integers(0, frames).multiply(2.0 * Math.PI * 1000 / SAMPLE_RATE)))
+				.multiply(amplitude)
+				.into(audio.traverseEach()).evaluate();
 
 		return audio;
 	}
@@ -160,11 +157,12 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		int sourceLen = source.getMemLength();
 		int destLen = destination.getMemLength();
 
-		for (int i = 0; i < sourceLen && (startFrame + i) < destLen; i++) {
-			double existing = destination.toDouble(startFrame + i);
-			double newVal = source.toDouble(i);
-			destination.setMem(startFrame + i, existing + newVal);
-		}
+		int len = Math.min(sourceLen, destLen - startFrame);
+		if (len <= 0) return;
+
+		a(cp(destination.range(shape(len), startFrame)),
+				cp(destination.range(shape(len), startFrame))
+						.add(cp(source.range(shape(len), 0)))).get().run();
 	}
 
 	/**
@@ -315,9 +313,8 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 				int end = Math.min(start + bufferSize, totalFrames);
 
 				// Copy the reference content for this buffer
-				for (int i = start; i < end; i++) {
-					rendered.setMem(i, reference.toDouble(i));
-				}
+				a(cp(rendered.range(shape(end - start), start)),
+						cp(reference.range(shape(end - start), start))).get().run();
 			}
 
 			// Compare with reference

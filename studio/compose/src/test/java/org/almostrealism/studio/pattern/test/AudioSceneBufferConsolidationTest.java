@@ -205,9 +205,8 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		Random random = new Random(newSeed);
 		PackedCollection genomeParams = scene.getGenome().getParameters();
 		PackedCollection newParams = new PackedCollection(genomeParams.getShape());
-		for (int i = 0; i < newParams.getMemLength(); i++) {
-			newParams.setMem(i, random.nextDouble());
-		}
+		rand(newParams.getShape(), random)
+				.into(newParams.traverseEach()).evaluate();
 		scene.assignGenome(new ProjectedGenome(newParams));
 
 		// Second render with genome B - reuse same runner (no recompilation)

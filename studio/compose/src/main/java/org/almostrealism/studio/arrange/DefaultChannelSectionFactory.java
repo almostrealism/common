@@ -201,7 +201,10 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList();
-		setup.add(() -> () -> duration.setMem(length * measureDuration.getAsDouble()));
+		setup.add(() -> () -> {
+			double value = length * measureDuration.getAsDouble();
+			duration.fill(value);
+		});
 		return setup;
 	}
 

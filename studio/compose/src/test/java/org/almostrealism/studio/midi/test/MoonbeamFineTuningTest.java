@@ -18,6 +18,7 @@ package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.ml.AttentionFeatures;
@@ -214,9 +215,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 			PackedCollection output = new PackedCollection(
 					new TraversalPolicy(config.decodeVocabSize));
 			double uniformLogit = -Math.log(config.decodeVocabSize);
-			for (int i = 0; i < config.decodeVocabSize; i++) {
-				output.setMem(i, uniformLogit);
-			}
+			output.fill(uniformLogit);
 
 			double loss = nll.loss(output, target);
 			Assert.assertFalse("Loss should not be NaN", Double.isNaN(loss));
@@ -315,9 +314,8 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		// Create a synthetic transformer hidden state
 		PackedCollection hiddenState = new PackedCollection(
 				new TraversalPolicy(config.hiddenSize));
-		for (int i = 0; i < config.hiddenSize; i++) {
-			hiddenState.setMem(i, Math.sin(i * 0.1));
-		}
+		sin(integers(0, config.hiddenSize).multiply(0.1))
+				.into(hiddenState.traverseEach()).evaluate();
 
 		// The GRU decode step works correctly for inference
 		int[] decodeTokens = decoder.decode(hiddenState);
@@ -584,9 +582,9 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	private static PackedCollection smallRandomCollection(int rows, int cols) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(rows, cols));
 		double scale = 0.02 / Math.sqrt(cols);
-		for (int i = 0; i < rows * cols; i++) {
-			collection.setMem(i, (Math.sin(i * 1.618) * 2 - 1) * scale);
-		}
+		Ops.o().sin(Ops.o().integers(0, rows * cols).multiply(1.618))
+				.multiply(2.0).add(-1.0).multiply(scale)
+				.into(collection.traverseEach()).evaluate();
 		return collection;
 	}
 }

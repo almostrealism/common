@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.ml.AutoregressiveModel;
@@ -738,9 +739,8 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 */
 	private static PackedCollection randomCollection(int size, Random rng) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(size));
-		for (int i = 0; i < size; i++) {
-			collection.setMem(i, (rng.nextDouble() - 0.5) * 0.1);
-		}
+		Ops.o().rand(collection.getShape(), rng).add(-0.5).multiply(0.1)
+				.into(collection.traverseEach()).evaluate();
 		return collection;
 	}
 
@@ -749,9 +749,8 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 */
 	private static PackedCollection randomMatrix(int rows, int cols, Random rng) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(rows, cols));
-		for (int i = 0; i < rows * cols; i++) {
-			collection.setMem(i, (rng.nextDouble() - 0.5) * 0.1);
-		}
+		Ops.o().rand(collection.getShape(), rng).add(-0.5).multiply(0.1)
+				.into(collection.traverseEach()).evaluate();
 		return collection;
 	}
 

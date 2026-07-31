@@ -299,9 +299,8 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 		PackedCollection genomeParams = scene.getGenome().getParameters();
 		PackedCollection seededParams = new PackedCollection(genomeParams.getShape());
-		for (int i = 0; i < seededParams.getMemLength(); i++) {
-			seededParams.setMem(i, random.nextDouble());
-		}
+		rand(seededParams.getShape(), random)
+				.into(seededParams.traverseEach()).evaluate();
 
 		return new ProjectedGenome(seededParams);
 	}
