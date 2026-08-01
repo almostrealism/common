@@ -112,8 +112,14 @@ zero stale rows.
 Snapshot 2026-07-30 (after the phase 14 remediation): 621 live grandfathered
 occurrences across 465 entries + 21 exclusions — **642 total exemptions**.
 
-Snapshot 2026-08-01 (phase 19 migration pass): 599 live grandfathered
-occurrences across 444 entries + 17 exclusions — **616 total exemptions**.
+Snapshot 2026-08-01 (phase 19 migration pass, after review remediation):
+589 live grandfathered occurrences across 437 entries + 17 exclusions —
+**606 total exemptions**. Review-driven corrections: redundant zero writes
+to fresh allocations deleted (new allocations are already zeroed); genuine
+resets use PackedCollection::clear; partial run migrations completed as
+whole-group literal calls; several index-derived loops became single device
+kernels (sine buffers, ramps, alternating complex components, hash-affine
+feature tables via the signature-stable pack-scalar idiom).
 The multi-value indexed `setMem` delta is migrated: full-buffer row writes
 merged into offset-0 literal varargs, redundant zero indexes dropped
 repo-wide (251 sites), consecutive-segment writes merged, the SphereTest ray

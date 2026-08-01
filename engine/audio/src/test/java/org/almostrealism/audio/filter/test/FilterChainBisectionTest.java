@@ -294,7 +294,6 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 30000)
 	public void apf05_packedCollectionWritesPersistInCompiledLoop() {
 		PackedCollection state = new PackedCollection(1);
-		state.setMem(0.0);
 
 		// Body: state = state + 1
 		OperationList body = new OperationList("apf05 body");
@@ -314,8 +313,6 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void apf06_twoStatesBothPersist() {
 		PackedCollection a = new PackedCollection(1);
 		PackedCollection b = new PackedCollection(1);
-		a.setMem(0.0);
-		b.setMem(0.0);
 
 		OperationList body = new OperationList("apf06 body");
 		body.add(a(p(a), c(1.0).add(p(a))));
@@ -337,7 +334,6 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		PackedCollection x = new PackedCollection(1);
 		PackedCollection y = new PackedCollection(1);
 		x.setMem(1.0);
-		y.setMem(0.0);
 
 		double a1 = 0.5;
 		double b1 = -0.3;
@@ -362,8 +358,6 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void apf08_sequentialAssignmentReadsLatest() {
 		PackedCollection target = new PackedCollection(1);
 		PackedCollection out = new PackedCollection(1);
-		target.setMem(0.0);
-		out.setMem(0.0);
 
 		OperationList body = new OperationList("apf08 body");
 		// First: target = 5
@@ -1297,13 +1291,11 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		// Pre-populated wave audio source (512 samples of a simple ramp)
 		int bufSize = 512;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
-		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.5 * Math.sin(i * 2 * Math.PI / 64.0));
-		}
+		sin(integers(0, bufSize).multiply(2 * Math.PI / 64.0)).multiply(0.5)
+				.into(audioBuffer.traverseEach()).evaluate();
 
 		// External frame index (incremented in the outer loop)
 		PackedCollection frameIndex = new PackedCollection(1);
-		frameIndex.setMem(0.0);
 
 		// Build a WaveCell with external frame control using the same API
 		// that EfxManager.createCells uses for real-time mode.
@@ -1348,12 +1340,10 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void chain23_externalFrameWaveCellWithLpFilter() {
 		int bufSize = 512;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
-		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.5 * Math.sin(i * 2 * Math.PI / 64.0));
-		}
+		sin(integers(0, bufSize).multiply(2 * Math.PI / 64.0)).multiply(0.5)
+				.into(audioBuffer.traverseEach()).evaluate();
 
 		PackedCollection frameIndex = new PackedCollection(1);
-		frameIndex.setMem(0.0);
 
 		CellList waveCells = w(
 				PolymorphicAudioData.supply(PackedCollection.factory()),
@@ -1395,9 +1385,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void chain24_waveCellHpThenLp() {
 		int bufSize = 512;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
-		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.5 * Math.sin(i * 2 * Math.PI / 64.0));
-		}
+		sin(integers(0, bufSize).multiply(2 * Math.PI / 64.0)).multiply(0.5)
+				.into(audioBuffer.traverseEach()).evaluate();
 
 		PackedCollection frameIndex = new PackedCollection(1);
 
@@ -1455,9 +1444,11 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		for (int s = 0; s < numSources; s++) {
 			buffers[s] = new PackedCollection(bufSize);
 			double freq = 64.0 / (s + 1);
-			for (int i = 0; i < bufSize; i++) {
-				buffers[s].setMem(i, 0.3 * Math.sin(i * 2 * Math.PI / freq));
-			}
+			// The frequency enters as provider data so each source shares
+			// one compiled kernel
+			PackedCollection rate = pack(2 * Math.PI / freq);
+			sin(integers(0, bufSize).multiply(cp(rate))).multiply(0.3)
+					.into(buffers[s].traverseEach()).evaluate();
 		}
 
 		PackedCollection frameIndex = new PackedCollection(1);
@@ -1513,9 +1504,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void chain26_summationCellFastPath() {
 		int bufSize = 256;
 		PackedCollection audioBuffer = new PackedCollection(bufSize);
-		for (int i = 0; i < bufSize; i++) {
-			audioBuffer.setMem(i, 0.1 + i * 0.001);
-		}
+		integers(0, bufSize).multiply(0.001).add(c(0.1))
+				.into(audioBuffer.traverseEach()).evaluate();
 
 		PackedCollection frameIndex = new PackedCollection(1);
 

@@ -361,7 +361,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	@Test(timeout = 30000)
 	public void testBiquadStateBlockBuilds() {
 		PackedCollection history = new PackedCollection(4);
-		history.setMem(0.0, 0.0, 0.0, 0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
@@ -390,7 +389,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	@TestDepth(2)
 	public void testBiquadStatePersistence() {
 		PackedCollection history = new PackedCollection(4);
-		history.setMem(0.0, 0.0, 0.0, 0.0);
 
 		// One-sample delay: y[n] = x[n-1]
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
@@ -446,7 +444,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// kernel clamps to it), which would turn this delay line into a pass-through.
 		PackedCollection buffer = new PackedCollection(2 * SIGNAL_SIZE);
 		PackedCollection head = new PackedCollection(1);
-		head.setMem(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -506,7 +503,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		delaySlot.fill(delaySamples);
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
 		PackedCollection head = new PackedCollection(1);
-		head.setMem(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
@@ -558,7 +554,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		double freqHz = 440.0;
 		double sampleRate = 44100.0;
 		PackedCollection phase = new PackedCollection(1);
-		phase.setMem(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
@@ -765,7 +760,6 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Wrong shape: 4 elements, but declared as producer([1]).
 		PackedCollection wrongShape = new PackedCollection(4);
-		wrongShape.setMem(0.0, 0.0, 0.0, 0.0);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("signal_size", SIGNAL_SIZE);
@@ -803,7 +797,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// Identity matrix - each output channel passes its input unchanged.
 		PackedCollection identitySlot =
 				new PackedCollection(new TraversalPolicy(channels, channels));
-		for (int i = 0; i < channels; i++) identitySlot.setMem(i * channels + i, 1.0);
+		identitySlot.setMem(
+				1.0, 0.0, 0.0, 0.0,
+				0.0, 1.0, 0.0, 0.0,
+				0.0, 0.0, 1.0, 0.0,
+				0.0, 0.0, 0.0, 1.0);
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);
@@ -831,11 +829,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Mutate the slot to swap channels 0 and 1; the next forward pass must
 		// reflect the new routing without rebuilding the layer.
-		identitySlot.fill(0.0);
-		identitySlot.setMem(0 * channels + 1, 1.0);
-		identitySlot.setMem(1 * channels + 0, 1.0);
-		identitySlot.setMem(2 * channels + 2, 1.0);
-		identitySlot.setMem(3 * channels + 3, 1.0);
+		identitySlot.setMem(
+				0.0, 1.0, 0.0, 0.0,
+				1.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 1.0, 0.0,
+				0.0, 0.0, 0.0, 1.0);
 
 		double[] out2 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
 		assertEquals("output channel 0 must now read input channel 1",

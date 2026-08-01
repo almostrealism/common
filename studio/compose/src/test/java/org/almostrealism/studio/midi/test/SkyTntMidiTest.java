@@ -163,7 +163,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 				netFreqCis, netPos, false, EPSILON, null);
 
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, DIM));
-		netPos.setMem(0.0);
+		netPos.clear();
 		PackedCollection output = netModel.forward(input);
 
 		Assert.assertNotNull("Net output should not be null", output);
@@ -202,7 +202,7 @@ public class SkyTntMidiTest extends TestSuiteBase {
 				tokenFreqCis, tokenPos, true, EPSILON, lmHeadWeight);
 
 		PackedCollection input = new PackedCollection(new TraversalPolicy(1, DIM));
-		tokenPos.setMem(0.0);
+		tokenPos.clear();
 		PackedCollection output = netTokenModel.forward(input);
 
 		Assert.assertNotNull("net_token output should not be null", output);

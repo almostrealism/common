@@ -190,7 +190,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
 
-		buffer.setMem(0.0);
+		buffer.clear();
 
 		log(name + ": [phase=after-construct] " + describe("buffer", buffer)
 				+ ", " + describe("sink", sink));
@@ -313,7 +313,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
 
-		buffer.setMem(0.0);
+		buffer.clear();
 
 		double preEval = producer.get().evaluate().toDouble(0);
 		log(name + ": pre-eval = " + preEval + " (expected 0.0)");

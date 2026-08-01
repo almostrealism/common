@@ -341,7 +341,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 
 			// ---- Inner loop: generate tokens for the new event ----
 			int[] newEventTokens = new int[config.maxTokenSeq];  // initialized to PAD_ID
-			netTokenPosition.setMem(0.0);
+			netTokenPosition.clear();
 			int eventTypeId = -1;
 			boolean eosReached = false;
 

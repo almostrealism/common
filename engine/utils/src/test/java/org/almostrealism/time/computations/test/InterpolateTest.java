@@ -148,10 +148,9 @@ public class InterpolateTest extends TestSuiteBase {
 		series.setMem(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 
 		PackedCollection cursor = new PackedCollection(4, 1);
-		cursor.setMem(3.5);
-		cursor.setMem(1, 2.5);
-		cursor.setMem(2, 4.5);
-		cursor.setMem(3, 5.5);
+		cursor.setMem(
+				3.5, 2.5, 4.5,
+				5.5);
 
 		PackedCollection rate = new PackedCollection(2);
 		rate.setMem(1.0);

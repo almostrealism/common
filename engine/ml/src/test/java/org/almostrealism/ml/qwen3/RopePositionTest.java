@@ -90,20 +90,17 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		// Create input: simple values for debugging
 		// Shape: (heads, freqDim, 2) = (2, 2, 2) = 8 elements
 		PackedCollection input = new PackedCollection(ropeShape);
-		// Set input as [1, 0] for each head (represents (1, 0) complex numbers)
-		for (int h = 0; h < heads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				input.setMem((h * freqDim + f) * 2, 1.0);  // real
-				input.setMem((h * freqDim + f) * 2 + 1, 0.0);  // imag
-			}
-		}
+		// Set input as [1, 0] for each head (represents (1, 0) complex
+		// numbers): alternating values from one kernel over an index ramp
+		mod(integers(1, heads * freqDim * 2 + 1), c(2.0))
+				.into(input.traverseEach()).evaluate();
 
 		log("\nInput (all 1+0i complex):");
 		log("  [" + input.toDouble(0) + ", " + input.toDouble(1) + ", " +
 			input.toDouble(2) + ", " + input.toDouble(3) + ", ...]");
 
 		// Test at position 0
-		position.setMem(0.0);
+		position.clear();
 		PackedCollection result0 = compiled.forward(input);
 		double[] r0 = new double[8];
 		for (int i = 0; i < 8; i++) r0[i] = result0.toDouble(i);

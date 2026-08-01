@@ -379,13 +379,7 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/f
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/filter/test/DelayNetworkAmplificationTest.java	1	input.setMem(0, dcLevel);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/filter/test/FeedbackDelayMatrixTest.java	1	current.setMem(input.toDouble(i));
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/filter/test/FeedbackDelayMatrixTest.java	1	output.setMem(i, ev.evaluate().toDouble(0));
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/filter/test/FilterChainBisectionTest.java	1	audioBuffer.setMem(i, 0.1 + i * 0.001);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/filter/test/FilterChainBisectionTest.java	3	audioBuffer.setMem(i, 0.5 * Math.sin(i * 2 * Math.PI / 64.0));
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/filter/test/FilterChainBisectionTest.java	1	buffers[s].setMem(i, 0.3 * Math.sin(i * 2 * Math.PI / freq));
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/filter/test/FilterChainBisectionTest.java	1	sourceVal.setMem(0, Math.sin(i * 0.1) * 0.5);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/line/test/BufferOutputLineTest.java	1	samples.setMem(i, i * 0.01);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/line/test/BufferOutputLineTest.java	1	samples.setMem(i, i * 0.1);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/line/test/BufferOutputLineTest.java	2	samples.setMem(i, i + 1.0);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/notes/NoteAudioGroupTest.java	1	c.setMem(data);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/test/support/TestAudioData.java	1	data.setMem(i, (double) i / (length - 1));
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/test/support/TestAudioData.java	1	data.setMem(i, DEFAULT_AMPLITUDE * Math.sin(phase));
@@ -435,7 +429,6 @@ SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studi
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/PdslAudioDspTest.java	1	coeffSlot.setMem(narrowCoeffs);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/PdslAudioDspTest.java	3	filterCoeffs.setMem(coeffs);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/pattern/test/AudioSceneRealTimeCorrectnessTest.java	1	concatenatedResult.setMem(startFrame + i, val);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/AudioLibraryCacheTest.java	1	featureData.setMem(f * bins + b,
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/AudioLibraryMigrationTest.java	1	featureData.setMem(f * bins + b,
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/AudioLibraryStartupTest.java	1	embedding.setMem(i, Math.sin(seed * 0.1 + i * 0.3) * 0.5 + 0.5);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/AudioLibraryStartupTest.java	1	features.setMem(i, Math.sin(seed * 0.1 + i * 0.01) * 0.5 + 0.5);

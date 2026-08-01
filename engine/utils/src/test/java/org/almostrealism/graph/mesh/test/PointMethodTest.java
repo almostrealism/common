@@ -39,15 +39,10 @@ public class PointMethodTest extends TestSuiteBase {
 		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(1.0);
-		input.setMem(1, 2.0);
-		input.setMem(2, 3.0);   // v0
-		input.setMem(3, 4.0);
-		input.setMem(4, 5.0);
-		input.setMem(5, 6.0);   // v1
-		input.setMem(6, 7.0);
-		input.setMem(7, 8.0);
-		input.setMem(8, 9.0);   // v2
+		input.setMem(
+				1.0, 2.0, 3.0,   // v0
+				4.0, 5.0, 6.0,   // v1
+				7.0, 8.0, 9.0);   // v2
 
 		log("=== Single Triangle Vertex 0 ===");
 		log("Input shape: " + input.getShape());
@@ -71,15 +66,10 @@ public class PointMethodTest extends TestSuiteBase {
 		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(1.0);
-		input.setMem(1, 2.0);
-		input.setMem(2, 3.0);   // v0
-		input.setMem(3, 4.0);
-		input.setMem(4, 5.0);
-		input.setMem(5, 6.0);   // v1
-		input.setMem(6, 7.0);
-		input.setMem(7, 8.0);
-		input.setMem(8, 9.0);   // v2
+		input.setMem(
+				1.0, 2.0, 3.0,   // v0
+				4.0, 5.0, 6.0,   // v1
+				7.0, 8.0, 9.0);   // v2
 
 		log("=== Single Triangle Vertex 1 ===");
 
@@ -102,15 +92,10 @@ public class PointMethodTest extends TestSuiteBase {
 		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(1.0);
-		input.setMem(1, 2.0);
-		input.setMem(2, 3.0);   // v0
-		input.setMem(3, 4.0);
-		input.setMem(4, 5.0);
-		input.setMem(5, 6.0);   // v1
-		input.setMem(6, 7.0);
-		input.setMem(7, 8.0);
-		input.setMem(8, 9.0);   // v2
+		input.setMem(
+				1.0, 2.0, 3.0,   // v0
+				4.0, 5.0, 6.0,   // v1
+				7.0, 8.0, 9.0);   // v2
 
 		log("=== Single Triangle Vertex 2 ===");
 
@@ -135,37 +120,18 @@ public class PointMethodTest extends TestSuiteBase {
 		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
-		input.setMem(1.0);
-		input.setMem(1, 1.0);
-		input.setMem(2, 1.0);   // v0
-		input.setMem(3, 2.0);
-		input.setMem(4, 2.0);
-		input.setMem(5, 2.0);   // v1
-		input.setMem(6, 3.0);
-		input.setMem(7, 3.0);
-		input.setMem(8, 3.0);   // v2
-
-		// Triangle 1: v0=(10,10,10), v1=(20,20,20), v2=(30,30,30)
-		input.setMem(9, 10.0);
-		input.setMem(10, 10.0);
-		input.setMem(11, 10.0);   // v0
-		input.setMem(12, 20.0);
-		input.setMem(13, 20.0);
-		input.setMem(14, 20.0);   // v1
-		input.setMem(15, 30.0);
-		input.setMem(16, 30.0);
-		input.setMem(17, 30.0);   // v2
-
-		// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
-		input.setMem(18, 100.0);
-		input.setMem(19, 100.0);
-		input.setMem(20, 100.0);   // v0
-		input.setMem(21, 200.0);
-		input.setMem(22, 200.0);
-		input.setMem(23, 200.0);   // v1
-		input.setMem(24, 300.0);
-		input.setMem(25, 300.0);
-		input.setMem(26, 300.0);   // v2
+		input.setMem(
+				1.0, 1.0, 1.0,   // v0
+				2.0, 2.0, 2.0,   // v1
+				3.0, 3.0, 3.0,   // v2
+				// Triangle 1: v0=(10,10,10), v1=(20,20,20), v2=(30,30,30)
+				10.0, 10.0, 10.0,   // v0
+				20.0, 20.0, 20.0,   // v1
+				30.0, 30.0, 30.0,   // v2
+				// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
+				100.0, 100.0, 100.0,   // v0
+				200.0, 200.0, 200.0,   // v1
+				300.0, 300.0, 300.0);   // v2
 
 		log("=== Multiple Triangles Vertex 0 ===");
 		log("Input shape: " + input.getShape());
@@ -201,37 +167,18 @@ public class PointMethodTest extends TestSuiteBase {
 		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
-		input.setMem(1.0);
-		input.setMem(1, 1.0);
-		input.setMem(2, 1.0);
-		input.setMem(3, 2.0);
-		input.setMem(4, 2.0);
-		input.setMem(5, 2.0);
-		input.setMem(6, 3.0);
-		input.setMem(7, 3.0);
-		input.setMem(8, 3.0);
-
-		// Triangle 1: v0=(10,10,10), v1=(20,20,20), v2=(30,30,30)
-		input.setMem(9, 10.0);
-		input.setMem(10, 10.0);
-		input.setMem(11, 10.0);
-		input.setMem(12, 20.0);
-		input.setMem(13, 20.0);
-		input.setMem(14, 20.0);
-		input.setMem(15, 30.0);
-		input.setMem(16, 30.0);
-		input.setMem(17, 30.0);
-
-		// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
-		input.setMem(18, 100.0);
-		input.setMem(19, 100.0);
-		input.setMem(20, 100.0);
-		input.setMem(21, 200.0);
-		input.setMem(22, 200.0);
-		input.setMem(23, 200.0);
-		input.setMem(24, 300.0);
-		input.setMem(25, 300.0);
-		input.setMem(26, 300.0);
+		input.setMem(
+				1.0, 1.0, 1.0,
+				2.0, 2.0, 2.0,
+				3.0, 3.0, 3.0,
+				// Triangle 1: v0=(10,10,10), v1=(20,20,20), v2=(30,30,30)
+				10.0, 10.0, 10.0,
+				20.0, 20.0, 20.0,
+				30.0, 30.0, 30.0,
+				// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
+				100.0, 100.0, 100.0,
+				200.0, 200.0, 200.0,
+				300.0, 300.0, 300.0);
 
 		log("=== Multiple Triangles Vertex 1 ===");
 
@@ -266,37 +213,18 @@ public class PointMethodTest extends TestSuiteBase {
 		PackedCollection input = new PackedCollection(shape(3, 3, 3));
 
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
-		input.setMem(1.0);
-		input.setMem(1, 1.0);
-		input.setMem(2, 1.0);
-		input.setMem(3, 2.0);
-		input.setMem(4, 2.0);
-		input.setMem(5, 2.0);
-		input.setMem(6, 3.0);
-		input.setMem(7, 3.0);
-		input.setMem(8, 3.0);
-
-		// Triangle 1: v0=(10,10,10), v1=(20,20,20), v2=(30,30,30)
-		input.setMem(9, 10.0);
-		input.setMem(10, 10.0);
-		input.setMem(11, 10.0);
-		input.setMem(12, 20.0);
-		input.setMem(13, 20.0);
-		input.setMem(14, 20.0);
-		input.setMem(15, 30.0);
-		input.setMem(16, 30.0);
-		input.setMem(17, 30.0);
-
-		// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
-		input.setMem(18, 100.0);
-		input.setMem(19, 100.0);
-		input.setMem(20, 100.0);
-		input.setMem(21, 200.0);
-		input.setMem(22, 200.0);
-		input.setMem(23, 200.0);
-		input.setMem(24, 300.0);
-		input.setMem(25, 300.0);
-		input.setMem(26, 300.0);
+		input.setMem(
+				1.0, 1.0, 1.0,
+				2.0, 2.0, 2.0,
+				3.0, 3.0, 3.0,
+				// Triangle 1: v0=(10,10,10), v1=(20,20,20), v2=(30,30,30)
+				10.0, 10.0, 10.0,
+				20.0, 20.0, 20.0,
+				30.0, 30.0, 30.0,
+				// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
+				100.0, 100.0, 100.0,
+				200.0, 200.0, 200.0,
+				300.0, 300.0, 300.0);
 
 		log("=== Multiple Triangles Vertex 2 ===");
 
@@ -333,15 +261,10 @@ public class PointMethodTest extends TestSuiteBase {
 		PackedCollection input = new PackedCollection(shape(3, 3));
 
 		// Vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(1.0);
-		input.setMem(1, 2.0);
-		input.setMem(2, 3.0);   // v0
-		input.setMem(3, 4.0);
-		input.setMem(4, 5.0);
-		input.setMem(5, 6.0);   // v1
-		input.setMem(6, 7.0);
-		input.setMem(7, 8.0);
-		input.setMem(8, 9.0);   // v2
+		input.setMem(
+				1.0, 2.0, 3.0,   // v0
+				4.0, 5.0, 6.0,   // v1
+				7.0, 8.0, 9.0);   // v2
 
 		log("=== Flat Single Triangle ===");
 		log("Input shape: " + input.getShape());

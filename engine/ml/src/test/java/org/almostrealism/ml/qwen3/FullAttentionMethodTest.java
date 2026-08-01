@@ -115,7 +115,6 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		// Create RoPE frequencies
 		PackedCollection freqCis = computeRopeFreqs(config.seqLen, headSize, config.ropeTheta);
 		PackedCollection position = new PackedCollection(shape(1));
-		position.setMem(0.0);
 
 		// Create the attention block using the actual method
 		Model attModel = new Model(shape(1, dim));

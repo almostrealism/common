@@ -124,8 +124,8 @@ public class LayerTrackingTest extends TestSuiteBase {
 		}
 
 		PackedCollection gradient = new PackedCollection(shape(outputSize));
-		gradient.setMem(0.1);
-		gradient.setMem(1, -0.1);
+		gradient.setMem(
+				0.1, -0.1);
 		trainingCompiled.backward(gradient);
 
 		trainingCompiled.destroy();

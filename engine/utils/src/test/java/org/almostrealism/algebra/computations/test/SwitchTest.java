@@ -65,7 +65,6 @@ public class SwitchTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void threeChoices() {
 		PackedCollection output = new PackedCollection(1);
-		output.setMem(0.0);
 		PackedCollection decision = new PackedCollection(1);
 		decision.setMem(0.4);
 
@@ -87,11 +86,9 @@ public class SwitchTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void choiceList() {
 		PackedCollection output1 = new PackedCollection(1);
-		output1.setMem(0.0);
 		PackedCollection decision1 = new PackedCollection(1);
 		decision1.setMem(0.4);
 		PackedCollection output2 = new PackedCollection(1);
-		output2.setMem(0.0);
 		PackedCollection decision2 = new PackedCollection(1);
 		decision2.setMem(0.8);
 
@@ -119,14 +116,10 @@ public class SwitchTest extends TestSuiteBase {
 		Producer<PackedCollection> multiplier = c(2.0);
 
 		PackedCollection output1a = new PackedCollection(1);
-		output1a.setMem(0.0);
 		PackedCollection output1b = new PackedCollection(1);
-		output1b.setMem(0.0);
 		Producer<PackedCollection> decisionA = c(0.4);
 		PackedCollection output2a = new PackedCollection(1);
-		output2a.setMem(0.0);
 		PackedCollection output2b = new PackedCollection(1);
-		output2b.setMem(0.0);
 		Producer<PackedCollection> decisionB = multiply(c(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");

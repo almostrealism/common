@@ -109,10 +109,9 @@ public class AggregationSignatureTests extends TestSuiteBase {
 	public void aggregationFunctionsDisambiguate() {
 		int n = 4;
 		PackedCollection data = new PackedCollection(shape(n));
-		data.setMem(2.0);
-		data.setMem(1, 3.0);
-		data.setMem(2, 4.0);
-		data.setMem(3, 5.0);
+		data.setMem(
+				2.0, 3.0, 4.0,
+				5.0);
 
 		AggregatedProducerComputation sum = new AggregatedProducerComputation(
 				"agg", shape(n).replace(shape(1)), n,

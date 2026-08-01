@@ -362,10 +362,11 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	public void testGruCellComputation() {
 		// W_ih = [W_ir; W_iz; W_in], shape (3*2, 2) = (6, 2)
 		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(6, 2));
-		// Set W_ir (rows 0-1) to identity
-		weightIh.setMem(1.0); weightIh.setMem(1, 0.0);
-		weightIh.setMem(2, 0.0); weightIh.setMem(3, 1.0);
-		// W_iz (rows 2-3) and W_in (rows 4-5) left as zero
+		// Set W_ir (rows 0-1) to identity; W_iz (rows 2-3) and
+		// W_in (rows 4-5) are left as zero
+		weightIh.setMem(
+				1.0, 0.0,
+				0.0, 1.0);
 
 		// W_hh = [W_hr; W_hz; W_hn], shape (6, 2)
 		PackedCollection weightHh = new PackedCollection(new TraversalPolicy(6, 2));
@@ -375,12 +376,12 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(6));
 
 		PackedCollection x = new PackedCollection(2);
-		x.setMem(1.0);
-		x.setMem(1, 2.0);
+		x.setMem(
+				1.0, 2.0);
 
 		PackedCollection h = new PackedCollection(2);
-		h.setMem(0.5);
-		h.setMem(1, -0.5);
+		h.setMem(
+				0.5, -0.5);
 
 		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
 
@@ -550,9 +551,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 */
 	private static PackedCollection onesCollection(int size) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(size));
-		for (int i = 0; i < size; i++) {
-			collection.setMem(i, 1.0);
-		}
+		collection.fill(1.0);
 		return collection;
 	}
 }

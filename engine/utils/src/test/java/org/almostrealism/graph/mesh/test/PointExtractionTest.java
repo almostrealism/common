@@ -108,20 +108,13 @@ public class PointExtractionTest extends TestSuiteBase {
 		PackedCollection v2 = new PackedCollection(shape(2, 3));
 
 		// Pair 0: [1,2,3] - [0,1,0] = [1,1,3]
-		v1.setMem(1.0);
-		v1.setMem(1, 2.0);
-		v1.setMem(2, 3.0);
-		v2.setMem(0.0);
-		v2.setMem(1, 1.0);
-		v2.setMem(2, 0.0);
-
 		// Pair 1: [5,6,7] - [2,3,4] = [3,3,3]
-		v1.setMem(3, 5.0);
-		v1.setMem(4, 6.0);
-		v1.setMem(5, 7.0);
-		v2.setMem(3, 2.0);
-		v2.setMem(4, 3.0);
-		v2.setMem(5, 4.0);
+		v1.setMem(
+				1.0, 2.0, 3.0,
+				5.0, 6.0, 7.0);
+		v2.setMem(
+				0.0, 1.0, 0.0,
+				2.0, 3.0, 4.0);
 
 		log("\n=== Batch Subtract Test ===");
 
@@ -368,20 +361,13 @@ public class PointExtractionTest extends TestSuiteBase {
 		PackedCollection vec2 = new PackedCollection(shape(2, 3));
 
 		// Pair 0: [1,0,0] x [0,1,0] = [0,0,1]
-		vec1.setMem(1.0);
-		vec1.setMem(1, 0.0);
-		vec1.setMem(2, 0.0);
-		vec2.setMem(0.0);
-		vec2.setMem(1, 1.0);
-		vec2.setMem(2, 0.0);
-
 		// Pair 1: [1,0,0] x [0,0,1] = [0,-1,0]
-		vec1.setMem(3, 1.0);
-		vec1.setMem(4, 0.0);
-		vec1.setMem(5, 0.0);
-		vec2.setMem(3, 0.0);
-		vec2.setMem(4, 0.0);
-		vec2.setMem(5, 1.0);
+		vec1.setMem(
+				1.0, 0.0, 0.0,
+				1.0, 0.0, 0.0);
+		vec2.setMem(
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0);
 
 		log("\n=== Batch Cross Product Test ===");
 		log("Vec1 shape: " + vec1.getShape());
@@ -415,14 +401,10 @@ public class PointExtractionTest extends TestSuiteBase {
 		PackedCollection vecs = new PackedCollection(shape(2, 3));
 
 		// Vector 0: [3, 0, 4] with magnitude 5
-		vecs.setMem(3.0);
-		vecs.setMem(1, 0.0);
-		vecs.setMem(2, 4.0);
-
-		// Vector 1: [0, 5, 12] with magnitude 13
-		vecs.setMem(3, 0.0);
-		vecs.setMem(4, 5.0);
-		vecs.setMem(5, 12.0);
+		vecs.setMem(
+				3.0, 0.0, 4.0,
+				// Vector 1: [0, 5, 12] with magnitude 13
+				0.0, 5.0, 12.0);
 
 		log("\n=== Batch Normalize Test ===");
 		log("Input shape: " + vecs.getShape());
@@ -482,39 +464,20 @@ public class PointExtractionTest extends TestSuiteBase {
 
 		// Triangle 0: vertices (0,1,0), (-1,-1,0), (1,-1,0)
 		// Occupies indices 0-8 (9 scalars)
-		flatData.setMem(0.0);
-		flatData.setMem(1, 1.0);
-		flatData.setMem(2, 0.0);    // v0
-		flatData.setMem(3, -1.0);
-		flatData.setMem(4, -1.0);
-		flatData.setMem(5, 0.0);  // v1
-		flatData.setMem(6, 1.0);
-		flatData.setMem(7, -1.0);
-		flatData.setMem(8, 0.0);   // v2
-
-		// Triangle 1: vertices (-1,1,-1), (-1,-1,0), (0,1,0)
-		// Occupies indices 9-17
-		flatData.setMem(9, -1.0);
-		flatData.setMem(10, 1.0);
-		flatData.setMem(11, -1.0);   // v0
-		flatData.setMem(12, -1.0);
-		flatData.setMem(13, -1.0);
-		flatData.setMem(14, 0.0);  // v1
-		flatData.setMem(15, 0.0);
-		flatData.setMem(16, 1.0);
-		flatData.setMem(17, 0.0);    // v2
-
-		// Triangle 2: vertices (0,1,0), (1,-1,0), (1,1,-1)
-		// Occupies indices 18-26
-		flatData.setMem(18, 0.0);
-		flatData.setMem(19, 1.0);
-		flatData.setMem(20, 0.0);    // v0
-		flatData.setMem(21, 1.0);
-		flatData.setMem(22, -1.0);
-		flatData.setMem(23, 0.0);   // v1
-		flatData.setMem(24, 1.0);
-		flatData.setMem(25, 1.0);
-		flatData.setMem(26, -1.0);   // v2
+		flatData.setMem(
+				0.0, 1.0, 0.0,   // v0
+				-1.0, -1.0, 0.0,   // v1
+				1.0, -1.0, 0.0,   // v2
+				// Triangle 1: vertices (-1,1,-1), (-1,-1,0), (0,1,0)
+				// Occupies indices 9-17
+				-1.0, 1.0, -1.0,   // v0
+				-1.0, -1.0, 0.0,   // v1
+				0.0, 1.0, 0.0,   // v2
+				// Triangle 2: vertices (0,1,0), (1,-1,0), (1,1,-1)
+				// Occupies indices 18-26
+				0.0, 1.0, 0.0,   // v0
+				1.0, -1.0, 0.0,   // v1
+				1.0, 1.0, -1.0);   // v2
 
 		log("\n=== Mesh Data Structure Test ===");
 

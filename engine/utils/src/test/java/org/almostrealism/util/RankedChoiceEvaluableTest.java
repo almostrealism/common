@@ -60,10 +60,9 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void highestRankKernel() {
 		PackedCollection in = new PackedCollection(new TraversalPolicy(4, 1));
-		in.setMem(0.0);
-		in.setMem(1, 2.0);
-		in.setMem(2, 1.0);
-		in.setMem(3, 3.0);
+		in.setMem(
+				0.0, 2.0, 1.0,
+				3.0);
 
 		PackedCollection out = Pair.bank(1);
 

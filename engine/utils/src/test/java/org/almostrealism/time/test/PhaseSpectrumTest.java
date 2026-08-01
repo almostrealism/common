@@ -132,11 +132,10 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		PackedCollection wrappedPhase = new PackedCollection(shape(size));
 
 		// Sequence that jumps across PI boundary
-		wrappedPhase.setMem(2.5);    // Near PI
-		wrappedPhase.setMem(1, -2.5);   // Jumped across -PI (actually continuing forward)
-		wrappedPhase.setMem(2, -1.5);
-		wrappedPhase.setMem(3, -0.5);
-		wrappedPhase.setMem(4, 0.5);
+		wrappedPhase.setMem(
+				2.5,   // Near PI
+				-2.5,   // Jumped across -PI (actually continuing forward)
+				-1.5, -0.5, 0.5);
 
 		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 
