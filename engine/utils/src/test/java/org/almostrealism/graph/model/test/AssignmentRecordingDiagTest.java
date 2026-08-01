@@ -74,11 +74,9 @@ public class AssignmentRecordingDiagTest extends TestSuiteBase implements ModelT
 		DefaultCellularLayer.enableMemoryDataCopy = copyMode;
 		String mode = copyMode ? "copyRecording" : "assignmentRecording";
 
-		PackedCollection weights = new PackedCollection(shape(1, 2));
-		weights.setMem(0.5, -0.25);
+		PackedCollection weights = pack(0.5, -0.25).reshape(shape(1, 2));
 
-		PackedCollection biases = new PackedCollection(shape(1));
-		biases.setMem(0.1);
+		PackedCollection biases = pack(0.1);
 
 		CellularLayer layer = dense(weights, biases).apply(shape(2));
 
@@ -94,8 +92,7 @@ public class AssignmentRecordingDiagTest extends TestSuiteBase implements ModelT
 		try {
 			CompiledModel compiled = model.compile(true, profile);
 
-			PackedCollection input = new PackedCollection(shape(2));
-			input.setMem(2.0, 3.0);
+			PackedCollection input = pack(2.0, 3.0);
 
 			PackedCollection out = compiled.forward(input);
 			log(mode + " forward=" + out.toDouble(0) +
@@ -106,8 +103,7 @@ public class AssignmentRecordingDiagTest extends TestSuiteBase implements ModelT
 					"," + dcl.getInput().toDouble(1) + " expected=2.0,3.0");
 			log(mode + " recordedOutput=" + dcl.getOutput().toDouble(0));
 
-			PackedCollection gradient = new PackedCollection(shape(1));
-			gradient.setMem(1.0);
+			PackedCollection gradient = pack(1.0);
 			compiled.backward(gradient);
 
 			// With learning rate 0.1 and gradient 1.0, the weight update for w_i is

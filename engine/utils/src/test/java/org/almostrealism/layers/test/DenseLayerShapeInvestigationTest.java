@@ -49,8 +49,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 		log("=== Test: Matmul Shape via Dense Layer ===");
 
 		// Weights: (2, 3) - standard (out, in) layout
-		PackedCollection weights = new PackedCollection(shape(2, 3));
-		weights.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
+		PackedCollection weights = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).reshape(shape(2, 3));
 
 		TraversalPolicy inputShape = shape(1, 3);
 		CellularLayer layer = dense(inputShape, weights, false, false);

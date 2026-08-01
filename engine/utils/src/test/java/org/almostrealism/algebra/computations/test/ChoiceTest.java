@@ -32,8 +32,7 @@ public class ChoiceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void oneOrTwo() {
-		PackedCollection bank = new PackedCollection(shape(2, 2).traverse(1));
-		bank.setMem(1.0, 1.0, 2.0, 1.0);
+		PackedCollection bank = pack(1.0, 1.0, 2.0, 1.0).reshape(shape(2, 2)).traverse(1);
 
 		bank.print();
 

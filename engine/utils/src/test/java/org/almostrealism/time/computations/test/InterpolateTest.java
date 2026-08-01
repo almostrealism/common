@@ -65,8 +65,7 @@ public class InterpolateTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void interpolateKernelPassThrough() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		PackedCollection cursors = new PackedCollection(2, 1);
@@ -94,8 +93,7 @@ public class InterpolateTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void interpolateKernel() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		log(series.traverse(0).getCountLong() + " series");
 
 		PackedCollection cursors = new PackedCollection(2, 1);
@@ -118,14 +116,11 @@ public class InterpolateTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void interpolatePassThroughWithShape() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 
-		PackedCollection cursor = new PackedCollection(1);
-		cursor.setMem(5.5);
+		PackedCollection cursor = pack(5.5);
 
-		PackedCollection rate = new PackedCollection(1);
-		rate.setMem(1.0);
+		PackedCollection rate = pack(1.0);
 
 		Interpolate interpolate = new Interpolate(
 				v(shape(10), 0),
@@ -144,8 +139,7 @@ public class InterpolateTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void interpolatePassThroughWithoutShape() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 
 		PackedCollection cursor = new PackedCollection(4, 1);
 		cursor.setMem(

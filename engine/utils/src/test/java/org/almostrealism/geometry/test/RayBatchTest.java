@@ -46,14 +46,13 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<PackedCollection> origins = origin(rays);
 
 		// Create test data: 3 rays with different origins
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
 		// Ray 0: origin (1, 2, 3)
 		// Ray 1: origin (4, 5, 6)
 		// Ray 2: origin (7, 8, 9)
-		rayData.setMem(
+		PackedCollection rayData = pack(
 				1.0, 2.0, 3.0, 0.0, 0.0, -1.0,
 				4.0, 5.0, 6.0, 0.0, 0.0, -1.0,
-				7.0, 8.0, 9.0, 0.0, 0.0, -1.0);
+				7.0, 8.0, 9.0, 0.0, 0.0, -1.0).reshape(shape(3, 6));
 
 		// Evaluate origins
 		PackedCollection originResults = origins.get().evaluate(rayData);
@@ -88,14 +87,13 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<PackedCollection> directions = direction(rays);
 
 		// Create test data: 3 rays with different directions
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
 		// Ray 0: direction (1, 0, 0)
 		// Ray 1: direction (0, 1, 0)
 		// Ray 2: direction (0, 0, 1)
-		rayData.setMem(
+		PackedCollection rayData = pack(
 				0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
 				0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
-				0.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+				0.0, 0.0, 0.0, 0.0, 0.0, 1.0).reshape(shape(3, 6));
 
 		// Evaluate directions
 		PackedCollection directionResults = directions.get().evaluate(rayData);
@@ -128,14 +126,13 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<?> product = multiply(origin(rays), direction(rays));
 
 		// Create test data
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
 		// Ray 0: (1,2,3) * (2,3,4) = (2,6,12)
 		// Ray 1: (1,1,1) * (1,1,1) = (1,1,1)
 		// Ray 2: (0,0,0) * (5,5,5) = (0,0,0)
-		rayData.setMem(
+		PackedCollection rayData = pack(
 				1.0, 2.0, 3.0, 2.0, 3.0, 4.0,
 				1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-				0.0, 0.0, 0.0, 5.0, 5.0, 5.0);
+				0.0, 0.0, 0.0, 5.0, 5.0, 5.0).reshape(shape(3, 6));
 
 		// Evaluate
 		PackedCollection productResults = ((Evaluable<PackedCollection>) product.get()).evaluate(rayData);
@@ -161,14 +158,13 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<?> dotProd = dotProduct(origin(rays), direction(rays));
 
 		// Create test data
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
 		// Ray 0: (0,0,3) dot (0,0,-1) = -3
 		// Ray 1: (1,0,0) dot (1,0,0) = 1
 		// Ray 2: (1,2,3) dot (2,3,4) = 2+6+12 = 20
-		rayData.setMem(
+		PackedCollection rayData = pack(
 				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
 				1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-				1.0, 2.0, 3.0, 2.0, 3.0, 4.0);
+				1.0, 2.0, 3.0, 2.0, 3.0, 4.0).reshape(shape(3, 6));
 
 		// Evaluate
 		PackedCollection dotResults = ((Evaluable<PackedCollection>) dotProd.get()).evaluate(rayData);
@@ -199,14 +195,13 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 
 		// Create test data with traverse(1) for batch processing
-		PackedCollection rayData = new PackedCollection(shape(3, 6).traverse(1));
 		// Ray 0: (0,0,3) dot (0,0,-1) = -3
 		// Ray 1: (1,0,0) dot (1,0,0) = 1
 		// Ray 2: (1,2,3) dot (2,3,4) = 20
-		rayData.setMem(
+		PackedCollection rayData = pack(
 				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
 				1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
-				1.0, 2.0, 3.0, 2.0, 3.0, 4.0);
+				1.0, 2.0, 3.0, 2.0, 3.0, 4.0).reshape(shape(3, 6)).traverse(1);
 
 		// Create destination with traverse(1) for batch output
 		PackedCollection destination = new PackedCollection(shape(3, 1).traverse(1));

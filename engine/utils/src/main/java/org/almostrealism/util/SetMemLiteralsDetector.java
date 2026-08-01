@@ -104,10 +104,11 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Guidance appended to every {@code fill}/{@code pack} violation. */
 	private static final String INGEST_GUIDANCE =
-			"fill and pack exist for small constant vectors and scalar state writes: every argument "
+			"fill and pack exist for constant vectors and scalar state writes: every argument "
 					+ "must be an individual value (a literal or a scalar expression, never an array, "
-					+ "a toArray() result, or a lambda) and there must be fewer than 16 of them. "
-					+ "Anything larger or computed per element must be produced by the computation "
+					+ "a toArray() result, or a lambda). Literal values are permitted in any number; "
+					+ "when any argument is a non-literal scalar there must be fewer than 16 arguments. "
+					+ "Anything computed per element must be produced by the computation "
 					+ "graph (integers(), producer arithmetic, randn/rand, or a producer assignment).";
 
 	/** Rule code for {@code fill} invoked on a {@code range(...)} view. */
@@ -459,11 +460,12 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * Determines whether a {@code fill}/{@code pack} argument list is within the scalar
 	 * allowance: every argument must be an individual scalar value — never an array, a
 	 * device read-back, a lambda, a method reference, or a call (whose result could be an
-	 * array the scan cannot see) — and there must be fewer than {@link #SCALAR_ALLOWANCE}
-	 * of them. A computed scalar is passed by hoisting it to a local first; a local
-	 * declared as an array is recognised and rejected. A zero-argument call transfers
-	 * nothing and is permitted (this also covers method declarations such as
-	 * {@code Tensor.pack()}).
+	 * array the scan cannot see). Literal values are permitted in any number, matching the
+	 * literal varargs {@code setMem} surface; when any argument is a non-literal scalar,
+	 * there must be fewer than {@link #SCALAR_ALLOWANCE} arguments in total. A computed
+	 * scalar is passed by hoisting it to a local first; a local declared as an array is
+	 * recognised and rejected. A zero-argument call transfers nothing and is permitted
+	 * (this also covers method declarations such as {@code Tensor.pack()}).
 	 *
 	 * @param argString  the raw text between the call's parentheses (comment/string masked)
 	 * @param masked     the whole masked file, used to resolve an identifier's declared type
@@ -472,7 +474,8 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private boolean isWithinScalarAllowance(String argString, String masked) {
 		List<String> args = splitTopLevel(argString);
 		if (args.isEmpty()) return true;
-		if (args.size() >= SCALAR_ALLOWANCE) return false;
+
+		boolean allLiterals = true;
 
 		for (String arg : args) {
 			if (isArrayish(arg) || arg.contains("(") || arg.contains("->") || arg.contains("::")) {
@@ -483,8 +486,11 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			if (IDENTIFIER.matcher(trimmed).matches() && isDeclaredArray(masked, trimmed)) {
 				return false;
 			}
+
+			if (!isNumericLiteral(trimmed)) allLiterals = false;
 		}
-		return true;
+
+		return allLiterals || args.size() < SCALAR_ALLOWANCE;
 	}
 
 	/**

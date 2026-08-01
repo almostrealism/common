@@ -92,10 +92,8 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 	@Test(timeout = 120000)
 	public void testCrossFrameContinuity() {
 		int signalSize = 8;
-		PackedCollection prev = new PackedCollection(1);
-		prev.setMem(1.0);
-		PackedCollection curr = new PackedCollection(1);
-		curr.setMem(2.0);
+		PackedCollection prev = pack(1.0);
+		PackedCollection curr = pack(2.0);
 		CompiledModel compiled = build(prev, curr, 1, signalSize);
 
 		PackedCollection input = new PackedCollection(

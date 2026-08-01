@@ -65,8 +65,7 @@ public class SwitchTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void threeChoices() {
 		PackedCollection output = new PackedCollection(1);
-		PackedCollection decision = new PackedCollection(1);
-		decision.setMem(0.4);
+		PackedCollection decision = pack(0.4);
 
 		Switch choice = choice(output, decision, pack(1.0));
 
@@ -86,11 +85,9 @@ public class SwitchTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void choiceList() {
 		PackedCollection output1 = new PackedCollection(1);
-		PackedCollection decision1 = new PackedCollection(1);
-		decision1.setMem(0.4);
+		PackedCollection decision1 = pack(0.4);
 		PackedCollection output2 = new PackedCollection(1);
-		PackedCollection decision2 = new PackedCollection(1);
-		decision2.setMem(0.8);
+		PackedCollection decision2 = pack(0.8);
 
 		OperationList list = new OperationList("Choice List");
 		list.add(choice(output1, decision1, pack(1.0)));

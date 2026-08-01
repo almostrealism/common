@@ -116,8 +116,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	 */
 	@Test(timeout = 30000)
 	public void testUnwrapPhaseSingleValue() {
-		PackedCollection wrappedPhase = new PackedCollection(shape(1));
-		wrappedPhase.setMem(1.5);
+		PackedCollection wrappedPhase = pack(1.5);
 
 		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 		assertEquals("Single value should be unchanged", 1.5, unwrapped.toDouble(0), TOLERANCE);

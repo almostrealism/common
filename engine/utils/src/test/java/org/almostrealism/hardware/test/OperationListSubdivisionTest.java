@@ -50,11 +50,9 @@ public class OperationListSubdivisionTest extends TestSuiteBase implements Model
 		PackedCollection[] external = new PackedCollection[1];
 		PackedCollection recorded = new PackedCollection(shape(2));
 
-		PackedCollection weights = new PackedCollection(shape(1, 2));
-		weights.setMem(0.5, -0.25);
+		PackedCollection weights = pack(0.5, -0.25).reshape(shape(1, 2));
 
-		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0.1);
+		PackedCollection bias = pack(0.1);
 
 		PackedCollection layerOut = new PackedCollection(shape(1));
 		PackedCollection modelOut = new PackedCollection(shape(1));

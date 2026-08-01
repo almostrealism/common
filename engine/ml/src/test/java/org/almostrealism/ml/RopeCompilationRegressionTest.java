@@ -253,8 +253,7 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 		int seqLen = 4;
 		double theta = 10000.0;
 
-		PackedCollection position = new PackedCollection(1);
-		position.setMem(1.0);
+		PackedCollection position = pack(1.0);
 
 		PackedCollection input = new PackedCollection(shape(heads, freqDim, 2)).randFill();
 

@@ -375,12 +375,10 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection biasIh = new PackedCollection(new TraversalPolicy(6));
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(6));
 
-		PackedCollection x = new PackedCollection(2);
-		x.setMem(
+		PackedCollection x = pack(
 				1.0, 2.0);
 
-		PackedCollection h = new PackedCollection(2);
-		h.setMem(
+		PackedCollection h = pack(
 				0.5, -0.5);
 
 		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
@@ -423,10 +421,8 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		biasIh.setMem(1, 10.0); // bias for z (update gate)
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(3));
 
-		PackedCollection x = new PackedCollection(1);
-		x.setMem(5.0);
-		PackedCollection h = new PackedCollection(1);
-		h.setMem(3.0);
+		PackedCollection x = pack(5.0);
+		PackedCollection h = pack(3.0);
 
 		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
 

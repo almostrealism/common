@@ -108,13 +108,12 @@ public class SphereTest extends TestSuiteBase {
 		Producer<?> d = s.discriminant(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
-		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		// Ray 0: hits (center); Ray 1: hits (slightly off-center);
 		// Ray 2: misses (far off to side)
-		rays.setMem(
+		PackedCollection rays = pack(
 				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
 				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
-				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0).reshape(shape(3, 6)).traverse(1);
 
 		// Test each component of discriminant formula
 		// Formula: oDotd^2 - dDotd * (oDoto - 1)
@@ -169,13 +168,12 @@ public class SphereTest extends TestSuiteBase {
 		ShadableIntersection f = s.intersectAt(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
-		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		// Ray 0: hits (center), distance ~2.5; Ray 1: hits (slightly
 		// off-center), distance ~2.5; Ray 2: misses (far off), distance -1.0
-		rays.setMem(
+		PackedCollection rays = pack(
 				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
 				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
-				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0).reshape(shape(3, 6)).traverse(1);
 
 		// Get the distance for each ray
 		PackedCollection distances = new PackedCollection(shape(3, 1).traverse(1));
@@ -206,13 +204,12 @@ public class SphereTest extends TestSuiteBase {
 		Producer<?> dSqrt = s.discriminantSqrt(ray);
 
 		// Create 3 rays: 2 that hit, 1 that misses
-		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		// Ray 0: hits (discriminant = 1.0, sqrt = 1.0); Ray 1: hits
 		// (discriminant = 0.98, sqrt = 0.99); Ray 2: misses (discriminant = -49)
-		rays.setMem(
+		PackedCollection rays = pack(
 				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
 				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
-				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0).reshape(shape(3, 6)).traverse(1);
 
 		PackedCollection sqrtVals = new PackedCollection(shape(3, 1).traverse(1));
 		dSqrt.get().into(sqrtVals.each()).evaluate(rays);
@@ -243,12 +240,11 @@ public class SphereTest extends TestSuiteBase {
 		Producer<?> dDotDInv = dDotd(ray).pow(-1.0);
 
 		// Create a single ray that hits
-		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		// Ray 0: hits (center); Ray 1: hits (slightly off); Ray 2: misses
-		rays.setMem(
+		PackedCollection rays = pack(
 				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
 				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
-				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0).reshape(shape(3, 6)).traverse(1);
 
 		// Test discriminantSqrt
 		PackedCollection dSqrtVals = new PackedCollection(shape(3, 1).traverse(1));
@@ -399,13 +395,12 @@ public class SphereTest extends TestSuiteBase {
 
 		Producer testPair = pair(minusODotD, plusODotD);
 
-		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
 		// Ray 0: origin=[0,0,3], dir=[0,0,-1], oDotd = -3; Ray 1:
 		// origin=[0.1,0.1,3], oDotd = -3; Ray 2: origin=[5,5,15], oDotd = -15
-		rays.setMem(
+		PackedCollection rays = pack(
 				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
 				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
-				5.0, 5.0, 15.0, 0.0, 0.0, -1.0);
+				5.0, 5.0, 15.0, 0.0, 0.0, -1.0).reshape(shape(3, 6)).traverse(1);
 
 		// Evaluate the pair
 		PackedCollection pairResult = new PackedCollection(shape(3, 2).traverse(1));

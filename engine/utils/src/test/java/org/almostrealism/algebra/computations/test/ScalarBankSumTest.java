@@ -30,12 +30,11 @@ public class ScalarBankSumTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void sum() {
-		PackedCollection bank = new PackedCollection(shape(4, 2));
-		bank.setMem(
+		PackedCollection bank = pack(
 				1.0, 0.0,
 				2.0, 0.0,
 				3.0, 0.0,
-				4.0, 0.0);
+				4.0, 0.0).reshape(shape(4, 2));
 
 		Producer<PackedCollection> s = subset(shape(4, 1), p(bank), 0).sum();
 		assertEquals(10, s.get().evaluate());

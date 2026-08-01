@@ -364,8 +364,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 	 */
 	@Test(timeout = 30_000)
 	public void leafMemoryDataIdentityBeforeAndAfterPreEval() {
-		PackedCollection buffer = new PackedCollection(1);
-		buffer.setMem(5.0);
+		PackedCollection buffer = pack(5.0);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));

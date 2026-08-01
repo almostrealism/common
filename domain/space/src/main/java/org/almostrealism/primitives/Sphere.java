@@ -319,8 +319,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 	@Override
 	public Operator<PackedCollection> expect() {
-		PackedCollection one = new PackedCollection(1);
-		one.setMem(1.0);
+		PackedCollection one = pack(1.0);
 		return new Constant<>(one);
 	}
 

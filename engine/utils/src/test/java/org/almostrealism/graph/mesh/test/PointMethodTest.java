@@ -36,13 +36,12 @@ public class PointMethodTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void singleTriangleVertex0() {
 		// Create a single triangle's vertex data: shape (1, 3, 3) = 9 floats
-		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 2.0, 3.0,   // v0
 				4.0, 5.0, 6.0,   // v1
-				7.0, 8.0, 9.0);   // v2
+				7.0, 8.0, 9.0).reshape(shape(1, 3, 3));   // v2
 
 		log("=== Single Triangle Vertex 0 ===");
 		log("Input shape: " + input.getShape());
@@ -63,13 +62,12 @@ public class PointMethodTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void singleTriangleVertex1() {
-		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 2.0, 3.0,   // v0
 				4.0, 5.0, 6.0,   // v1
-				7.0, 8.0, 9.0);   // v2
+				7.0, 8.0, 9.0).reshape(shape(1, 3, 3));   // v2
 
 		log("=== Single Triangle Vertex 1 ===");
 
@@ -89,13 +87,12 @@ public class PointMethodTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void singleTriangleVertex2() {
-		PackedCollection input = new PackedCollection(shape(1, 3, 3));
 
 		// Triangle vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 2.0, 3.0,   // v0
 				4.0, 5.0, 6.0,   // v1
-				7.0, 8.0, 9.0);   // v2
+				7.0, 8.0, 9.0).reshape(shape(1, 3, 3));   // v2
 
 		log("=== Single Triangle Vertex 2 ===");
 
@@ -117,10 +114,8 @@ public class PointMethodTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void multipleTrianglesVertex0() {
 		// Create 3 triangles' vertex data: shape (3, 3, 3) = 27 floats
-		PackedCollection input = new PackedCollection(shape(3, 3, 3));
-
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 1.0, 1.0,   // v0
 				2.0, 2.0, 2.0,   // v1
 				3.0, 3.0, 3.0,   // v2
@@ -131,7 +126,7 @@ public class PointMethodTest extends TestSuiteBase {
 				// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
 				100.0, 100.0, 100.0,   // v0
 				200.0, 200.0, 200.0,   // v1
-				300.0, 300.0, 300.0);   // v2
+				300.0, 300.0, 300.0).reshape(shape(3, 3, 3));   // v2
 
 		log("=== Multiple Triangles Vertex 0 ===");
 		log("Input shape: " + input.getShape());
@@ -164,10 +159,8 @@ public class PointMethodTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void multipleTrianglesVertex1() {
-		PackedCollection input = new PackedCollection(shape(3, 3, 3));
-
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 1.0, 1.0,
 				2.0, 2.0, 2.0,
 				3.0, 3.0, 3.0,
@@ -178,7 +171,7 @@ public class PointMethodTest extends TestSuiteBase {
 				// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
 				100.0, 100.0, 100.0,
 				200.0, 200.0, 200.0,
-				300.0, 300.0, 300.0);
+				300.0, 300.0, 300.0).reshape(shape(3, 3, 3));
 
 		log("=== Multiple Triangles Vertex 1 ===");
 
@@ -210,10 +203,8 @@ public class PointMethodTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void multipleTrianglesVertex2() {
-		PackedCollection input = new PackedCollection(shape(3, 3, 3));
-
 		// Triangle 0: v0=(1,1,1), v1=(2,2,2), v2=(3,3,3)
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 1.0, 1.0,
 				2.0, 2.0, 2.0,
 				3.0, 3.0, 3.0,
@@ -224,7 +215,7 @@ public class PointMethodTest extends TestSuiteBase {
 				// Triangle 2: v0=(100,100,100), v1=(200,200,200), v2=(300,300,300)
 				100.0, 100.0, 100.0,
 				200.0, 200.0, 200.0,
-				300.0, 300.0, 300.0);
+				300.0, 300.0, 300.0).reshape(shape(3, 3, 3));
 
 		log("=== Multiple Triangles Vertex 2 ===");
 
@@ -258,13 +249,12 @@ public class PointMethodTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void flatSingleTriangle() {
 		// Create vertex data in flat (3, 3) format - single triangle
-		PackedCollection input = new PackedCollection(shape(3, 3));
 
 		// Vertices: v0=(1,2,3), v1=(4,5,6), v2=(7,8,9)
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 2.0, 3.0,   // v0
 				4.0, 5.0, 6.0,   // v1
-				7.0, 8.0, 9.0);   // v2
+				7.0, 8.0, 9.0).reshape(shape(3, 3));   // v2
 
 		log("=== Flat Single Triangle ===");
 		log("Input shape: " + input.getShape());

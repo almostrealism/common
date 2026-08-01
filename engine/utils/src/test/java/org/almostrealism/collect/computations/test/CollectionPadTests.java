@@ -303,11 +303,10 @@ public class CollectionPadTests extends TestSuiteBase {
 		Producer<PackedCollection> padded = pad(shape(2), input, 0);
 
 		// Create batch of 3 scalars
-		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
-		scalars.setMem(
+		PackedCollection scalars = pack(
 				5.0,   // Batch 0
 				10.0,   // Batch 1
-				15.0);   // Batch 2
+				15.0).reshape(shape(3, 1)).traverse(1);   // Batch 2
 
 		// Pad to shape(2) - should give [5.0, 0.0], [10.0, 0.0], [15.0, 0.0]
 		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
@@ -339,11 +338,10 @@ public class CollectionPadTests extends TestSuiteBase {
 
 		// Create batch of 3 scalars: [5, 10, 15]
 		// Expected: concat([5, 10], [10, 20], [15, 30])
-		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
-		scalars.setMem(
+		PackedCollection scalars = pack(
 				5.0,   // Batch 0: concat([5], [10]) -> [5, 10]
 				10.0,   // Batch 1: concat([10], [20]) -> [10, 20]
-				15.0);   // Batch 2: concat([15], [30]) -> [15, 30]
+				15.0).reshape(shape(3, 1)).traverse(1);   // Batch 2: concat([15], [30]) -> [15, 30]
 
 		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);

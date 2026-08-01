@@ -56,12 +56,10 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int outLength = 3;
 
 		// Input: [1, 2, 3, 4, 5] with shape (1, 1, 1, 5)
-		PackedCollection input = new PackedCollection(shape(1, 1, 1, 5));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(1, 1, 1, 5));
 
 		// Weights: [0.5, 1.0, 0.5] with shape (1, 1, 1, 3)
-		PackedCollection weights = new PackedCollection(shape(1, 1, 1, 3));
-		weights.setMem(0.5, 1.0, 0.5);
+		PackedCollection weights = pack(0.5, 1.0, 0.5).reshape(shape(1, 1, 1, 3));
 
 		// Define positions for weighted sum (same as conv1d uses)
 		TraversalPolicy resultShape = shape(batchSize, outputChannels, 1, outLength);
@@ -127,11 +125,9 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		// Weights: [0.5, 1.0, 0.5]
 		// Expected: [4.0, 6.0, 8.0]
 
-		PackedCollection input = new PackedCollection(shape(5));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0);
 
-		PackedCollection weights = new PackedCollection(shape(3));
-		weights.setMem(0.5, 1.0, 0.5);
+		PackedCollection weights = pack(0.5, 1.0, 0.5);
 
 		// Compute each output position manually
 		double out0 = input.toDouble(0) * weights.toDouble(0) +
@@ -183,12 +179,10 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int outLength = 3;
 
 		// Create weights: shape [outputChannels, inputChannels, kernelSize] = [1, 1, 3]
-		PackedCollection weights = new PackedCollection(shape(1, 1, 3));
-		weights.setMem(0.5, 1.0, 0.5);
+		PackedCollection weights = pack(0.5, 1.0, 0.5).reshape(shape(1, 1, 3));
 
 		// Create input: shape [batch, channels, seqLength] = [1, 1, 5]
-		PackedCollection input = new PackedCollection(shape(1, 1, 5));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(1, 1, 5));
 
 		// Build conv1d
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels,
@@ -238,12 +232,10 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int outLength = 3;
 
 		// Create input with shape (1, 1, 5) like conv1d expects
-		PackedCollection input = new PackedCollection(shape(1, 1, 5));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(1, 1, 5));
 
 		// Create weights with shape (1, 1, 3)
-		PackedCollection weights = new PackedCollection(shape(1, 1, 3));
-		weights.setMem(0.5, 1.0, 0.5);
+		PackedCollection weights = pack(0.5, 1.0, 0.5).reshape(shape(1, 1, 3));
 
 		// Mimic conv1d's reshape operation
 		CollectionProducer conv = cp(input).reshape(batchSize, 1, inputChannels, paddedLength);
@@ -308,12 +300,10 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int outLength = 3;
 
 		// Create input with shape (1, 1, 5) like conv1d expects
-		PackedCollection input = new PackedCollection(shape(1, 1, 5));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(1, 1, 5));
 
 		// Create weights with shape (1, 1, 3)
-		PackedCollection weights = new PackedCollection(shape(1, 1, 3));
-		weights.setMem(0.5, 1.0, 0.5);
+		PackedCollection weights = pack(0.5, 1.0, 0.5).reshape(shape(1, 1, 3));
 
 		// Mimic conv1d's reshape operation
 		CollectionProducer conv = cp(input).reshape(batchSize, 1, inputChannels, paddedLength);
@@ -393,12 +383,10 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int outLength = 6;
 
 		// Create weights: identity-like [1, 0, 0]
-		PackedCollection weights = new PackedCollection(shape(1, 1, 3));
-		weights.setMem(1.0, 0.0, 0.0);
+		PackedCollection weights = pack(1.0, 0.0, 0.0).reshape(shape(1, 1, 3));
 
 		// Create input with ascending values
-		PackedCollection input = new PackedCollection(shape(1, 1, 8));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0).reshape(shape(1, 1, 8));
 
 		// Build conv1d
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels,
@@ -465,8 +453,7 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		                  0.0, 0.0, 1.0);  // Filter 1
 
 		// Input: [1, 2, 3, 4, 5]
-		PackedCollection input = new PackedCollection(shape(1, 1, 5));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(1, 1, 5));
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels,
 				seqLength, kernelSize, stride, padding, weights, null);
@@ -525,12 +512,10 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int outLength = 3;
 
 		// Weights: [1, 0, 0] - takes first element
-		PackedCollection weights = new PackedCollection(shape(1, 1, 3));
-		weights.setMem(1.0, 0.0, 0.0);
+		PackedCollection weights = pack(1.0, 0.0, 0.0).reshape(shape(1, 1, 3));
 
 		// Input: [1, 2, 3, 4, 5, 6, 7, 8]
-		PackedCollection input = new PackedCollection(shape(1, 1, 8));
-		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0).reshape(shape(1, 1, 8));
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels,
 				seqLength, kernelSize, stride, padding, weights, null);
@@ -582,18 +567,16 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		// Weights: shape [1, 2, 3]
 		// Channel 0 filter: [1, 0, 0]
 		// Channel 1 filter: [0, 0, 1]
-		PackedCollection weights = new PackedCollection(shape(1, 2, 3));
-		weights.setMem(
+		PackedCollection weights = pack(
 				1.0, 0.0, 0.0,   // Filter for input channel 0
-				0.0, 0.0, 1.0);  // Filter for input channel 1
+				0.0, 0.0, 1.0).reshape(shape(1, 2, 3));  // Filter for input channel 1
 
 		// Input: shape [1, 2, 5]
 		// Channel 0: [1, 2, 3, 4, 5]
 		// Channel 1: [10, 20, 30, 40, 50]
-		PackedCollection input = new PackedCollection(shape(1, 2, 5));
-		input.setMem(
+		PackedCollection input = pack(
 				1.0, 2.0, 3.0, 4.0, 5.0,      // Channel 0
-				10.0, 20.0, 30.0, 40.0, 50.0); // Channel 1
+				10.0, 20.0, 30.0, 40.0, 50.0).reshape(shape(1, 2, 5)); // Channel 1
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels,
 				seqLength, kernelSize, stride, padding, weights, null);

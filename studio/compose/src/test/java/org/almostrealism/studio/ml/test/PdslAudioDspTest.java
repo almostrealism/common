@@ -495,10 +495,8 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		PackedCollection coeffs = new PackedCollection(firTaps);
 		coeffs.setMem(1.0); // pass-through FIR (impulse) — keeps the test filter-shape agnostic
-		PackedCollection wetLevel = new PackedCollection(1);
-		wetLevel.setMem(0.5);
-		PackedCollection automation = new PackedCollection(1);
-		automation.setMem(1.0);
+		PackedCollection wetLevel = pack(0.5);
+		PackedCollection automation = pack(1.0);
 		PackedCollection delaySlot = new PackedCollection(1);
 		delaySlot.fill(delaySamples);
 		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
@@ -652,8 +650,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testScaleProducerMutableSlot() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PackedCollection volumeSlot = new PackedCollection(1);
-		volumeSlot.setMem(0.25);
+		PackedCollection volumeSlot = pack(0.25);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
@@ -701,8 +698,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testScaleProducerClockDriven() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PackedCollection counter = new PackedCollection(1);
-		counter.setMem(0.1);
+		PackedCollection counter = pack(0.1);
 
 		// Composed producer: counter * 0.5. Demonstrates that a derived producer
 		// expression — not just a direct cp(slot) — is correctly embedded in the
