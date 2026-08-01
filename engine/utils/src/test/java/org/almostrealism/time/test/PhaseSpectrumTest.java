@@ -128,12 +128,11 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	@Test(timeout = 30000)
 	public void testUnwrapPhaseLargeJumps() {
 		int size = 5;
-		PackedCollection wrappedPhase = new PackedCollection(shape(size));
 
 		// Sequence that jumps across PI boundary
-		wrappedPhase.setMem(
+		PackedCollection wrappedPhase = pack(
 				2.5,   // Near PI
-				-2.5,   // Jumped across -PI (actually continuing forward)
+				-2.5,  // Jumped across -PI (actually continuing forward)
 				-1.5, -0.5, 0.5);
 
 		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
@@ -201,10 +200,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		int numMfccCoeffs = 13;
 
 		// All mel bands have same energy
-		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			melEnergies.setMem(i, 1.0);
-		}
+		PackedCollection melEnergies = new PackedCollection(shape(numMelBands)).fill(1.0);
 
 		PackedCollection mfccs = mfcc(numMfccCoeffs, melEnergies);
 
@@ -252,10 +248,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		int numMelBands = 10;
 		int numMfccCoeffs = 20;  // More coefficients than mel bands
 
-		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			melEnergies.setMem(i, 1.0);
-		}
+		PackedCollection melEnergies = new PackedCollection(shape(numMelBands)).fill(1.0);
 
 		mfcc(numMfccCoeffs, melEnergies);  // Should throw
 	}

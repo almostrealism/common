@@ -107,8 +107,7 @@ public class NormShapeInvestigationTest extends TestSuiteBase {
 		// Create test input: [1, 2, 3, 4]
 		// Mean = 2.5, Var = 1.25
 		// Normalized: (x - mean) / sqrt(var + eps) = (x - 2.5) / sqrt(1.25)
-		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0).reshape(inputShape);
 
 		log("Input: " + input.toArrayString());
 

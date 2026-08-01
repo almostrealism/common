@@ -83,7 +83,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Test at position 2
 		log("\n\nTesting at position 2:");
-		position.setMem(2.0);
+		position.fill(2.0);
 
 		PackedCollection input2 = new PackedCollection(shape(heads, seqLen));
 		input2.fill(Math::random);

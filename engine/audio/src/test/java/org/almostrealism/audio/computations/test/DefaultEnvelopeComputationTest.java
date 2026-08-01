@@ -29,11 +29,7 @@ import org.junit.Test;
 public class DefaultEnvelopeComputationTest extends TestSuiteBase {
 
 	/** Input collection containing a single sample value. */
-	private static final PackedCollection input = new PackedCollection(1);
-
-	static {
-		input.setMem(0.5);
-	}
+	private static final PackedCollection input = PackedCollection.of(0.5);
 
 	/**
 	 * Creates a new {@link org.almostrealism.audio.computations.DefaultEnvelopeComputation}
@@ -54,9 +50,9 @@ public class DefaultEnvelopeComputationTest extends TestSuiteBase {
 	public void evaluate() {
 		Evaluable<PackedCollection> s = computation().get();
 
-		input.setMem(0.5);
+		input.fill(0.5);
 		assertEquals(0.7071067811865, s.evaluate().toDouble(0));
-		input.setMem(1.0);
+		input.fill(1.0);
 		assertEquals(0.0, s.evaluate().toDouble(0));
 	}
 }

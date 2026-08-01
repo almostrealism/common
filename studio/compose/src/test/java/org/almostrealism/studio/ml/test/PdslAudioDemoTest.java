@@ -144,7 +144,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		// Buffer size equals signal size so the circular buffer holds exactly one frame.
 		int delaySamples = SIGNAL_SIZE / 4;
 		PackedCollection delayBuffer = new PackedCollection(SIGNAL_SIZE);
-		PackedCollection delayHead = pack(0.0);
+		PackedCollection delayHead = new PackedCollection(1);
 
 		Map<String, Object> delayArgs = new HashMap<>();
 		delayArgs.put("signal_size", SIGNAL_SIZE);
@@ -203,7 +203,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		double wetLevel = 0.5;
 
 		PackedCollection mixBuffer = new PackedCollection(SIGNAL_SIZE);
-		PackedCollection mixHead = pack(0.0);
+		PackedCollection mixHead = new PackedCollection(1);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");

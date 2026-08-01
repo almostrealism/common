@@ -791,13 +791,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
 
 		// Identity matrix - each output channel passes its input unchanged.
-		PackedCollection identitySlot =
-				new PackedCollection(new TraversalPolicy(channels, channels));
-		identitySlot.setMem(
+		PackedCollection identitySlot = pack(
 				1.0, 0.0, 0.0, 0.0,
 				0.0, 1.0, 0.0, 0.0,
 				0.0, 0.0, 1.0, 0.0,
-				0.0, 0.0, 0.0, 1.0);
+				0.0, 0.0, 0.0, 1.0).reshape(shape(channels, channels));
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);

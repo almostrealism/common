@@ -555,10 +555,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void collectionMaxTwoSeries() {
-		PackedCollection series = new PackedCollection(2, 10);
-		series.setMem(
+		PackedCollection series = pack(
 				7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0,
-				12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
+				12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0).reshape(shape(2, 10));
 		log(String.valueOf(series.traverse(1).getCountLong() + " series"));
 
 		Producer<PackedCollection> max = max(v(shape(-1, 10), 0));

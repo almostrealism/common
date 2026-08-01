@@ -448,9 +448,9 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		// Weights: [2, 1, 3] - shape [2, 1, 3]
 		// Filter 0: [1, 0, 0] - takes first element
 		// Filter 1: [0, 0, 1] - takes last element
-		PackedCollection weights = new PackedCollection(shape(2, 1, 3));
-		weights.setMem(1.0, 0.0, 0.0,   // Filter 0
-		                  0.0, 0.0, 1.0);  // Filter 1
+		PackedCollection weights = pack(
+				1.0, 0.0, 0.0,   // Filter 0
+				0.0, 0.0, 1.0).reshape(shape(2, 1, 3));  // Filter 1
 
 		// Input: [1, 2, 3, 4, 5]
 		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0).reshape(shape(1, 1, 5));

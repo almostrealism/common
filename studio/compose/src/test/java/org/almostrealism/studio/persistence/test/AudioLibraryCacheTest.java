@@ -743,16 +743,15 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		int frames = 3;
 		int bins = 4;
 		WaveDetails details = new WaveDetails("embed-test", 44100);
-		PackedCollection featureData = new PackedCollection(frames, bins, 1);
 
 		// Frame 0: [1, 2, 3, 4]
 		// Frame 1: [5, 6, 7, 8]
 		// Frame 2: [3, 3, 3, 3]
 		// Mean:    [3, 3.667, 4.333, 5]
-		featureData.setMem(
+		PackedCollection featureData = pack(
 				1.0, 2.0, 3.0, 4.0,
 				5.0, 6.0, 7.0, 8.0,
-				3.0, 3.0, 3.0, 3.0);
+				3.0, 3.0, 3.0, 3.0).reshape(shape(frames, bins, 1));
 		details.setFeatureData(featureData);
 
 		PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);

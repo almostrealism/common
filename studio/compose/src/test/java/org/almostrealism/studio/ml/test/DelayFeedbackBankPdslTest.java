@@ -94,12 +94,11 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 
 		// Routing matrix: near-identity with slight cross-channel bleed.
 		// Row i is output channel i. Each row sums to 1.0 for unity gain.
-		PackedCollection transmission = new PackedCollection(
-				new TraversalPolicy(CHANNELS, CHANNELS));
-		transmission.setMem(
+		PackedCollection transmission = pack(
 				0.4, 0.3, 0.3,
 				0.3, 0.4, 0.3,
-				0.3, 0.3, 0.4);
+				0.3, 0.3, 0.4)
+				.reshape(shape(CHANNELS, CHANNELS));
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/delay_feedback_bank.pdsl");

@@ -331,7 +331,6 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 		PackedCollection attrPositions = new PackedCollection(thetas.length);
 		Producer<PackedCollection>[] positions = new Producer[thetas.length];
 		for (int g = 0; g < thetas.length; g++) {
-			attrPositions.setMem(g, 0.0);
 			positions[g] = cp(attrPositions).subset(shape(1), g);
 		}
 

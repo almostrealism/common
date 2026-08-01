@@ -31,12 +31,9 @@ import java.util.OptionalInt;
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * // Create a collection with custom index ordering: [2, 0, 3, 1]
- * PackedCollection indices = new PackedCollection(4);
- * indices.setMem(2.0);  // First access element 2
- * indices.setMem(1, 0.0);  // Then element 0
- * indices.setMem(2, 3.0);  // Then element 3
- * indices.setMem(3, 1.0);  // Finally element 1
+ * // Create a collection with custom index ordering: access element 2
+ * // first, then 0, then 3, and finally element 1
+ * PackedCollection indices = pack(2.0, 0.0, 3.0, 1.0);
  *
  * ExplicitIndexTraversalOrdering ordering = new ExplicitIndexTraversalOrdering(indices);
  * // Traversal will access elements in order: [2, 0, 3, 1]

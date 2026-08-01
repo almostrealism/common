@@ -104,17 +104,14 @@ public class PointExtractionTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void batchSubtract() {
 		// Test batch subtraction
-		PackedCollection v1 = new PackedCollection(shape(2, 3));
-		PackedCollection v2 = new PackedCollection(shape(2, 3));
-
 		// Pair 0: [1,2,3] - [0,1,0] = [1,1,3]
 		// Pair 1: [5,6,7] - [2,3,4] = [3,3,3]
-		v1.setMem(
+		PackedCollection v1 = pack(
 				1.0, 2.0, 3.0,
-				5.0, 6.0, 7.0);
-		v2.setMem(
+				5.0, 6.0, 7.0).reshape(shape(2, 3));
+		PackedCollection v2 = pack(
 				0.0, 1.0, 0.0,
-				2.0, 3.0, 4.0);
+				2.0, 3.0, 4.0).reshape(shape(2, 3));
 
 		log("\n=== Batch Subtract Test ===");
 
@@ -357,17 +354,14 @@ public class PointExtractionTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void batchCrossProduct() {
 		// Create test data: 2 pairs of vectors to cross
-		PackedCollection vec1 = new PackedCollection(shape(2, 3));
-		PackedCollection vec2 = new PackedCollection(shape(2, 3));
-
 		// Pair 0: [1,0,0] x [0,1,0] = [0,0,1]
 		// Pair 1: [1,0,0] x [0,0,1] = [0,-1,0]
-		vec1.setMem(
+		PackedCollection vec1 = pack(
 				1.0, 0.0, 0.0,
-				1.0, 0.0, 0.0);
-		vec2.setMem(
+				1.0, 0.0, 0.0).reshape(shape(2, 3));
+		PackedCollection vec2 = pack(
 				0.0, 1.0, 0.0,
-				0.0, 0.0, 1.0);
+				0.0, 0.0, 1.0).reshape(shape(2, 3));
 
 		log("\n=== Batch Cross Product Test ===");
 		log("Vec1 shape: " + vec1.getShape());
@@ -398,13 +392,11 @@ public class PointExtractionTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void batchNormalize() {
 		// Create test data: 2 vectors with different magnitudes
-		PackedCollection vecs = new PackedCollection(shape(2, 3));
-
 		// Vector 0: [3, 0, 4] with magnitude 5
-		vecs.setMem(
+		PackedCollection vecs = pack(
 				3.0, 0.0, 4.0,
 				// Vector 1: [0, 5, 12] with magnitude 13
-				0.0, 5.0, 12.0);
+				0.0, 5.0, 12.0).reshape(shape(2, 3));
 
 		log("\n=== Batch Normalize Test ===");
 		log("Input shape: " + vecs.getShape());
@@ -460,11 +452,9 @@ public class PointExtractionTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void meshDataStructure() {
 		// Test with proper (N, 3, 3) shape: N triangles, 3 vertices per triangle, 3 components per vertex
-		PackedCollection flatData = new PackedCollection(shape(3 * 3 * 3));  // 27 scalars total
-
 		// Triangle 0: vertices (0,1,0), (-1,-1,0), (1,-1,0)
 		// Occupies indices 0-8 (9 scalars)
-		flatData.setMem(
+		PackedCollection flatData = pack(
 				0.0, 1.0, 0.0,   // v0
 				-1.0, -1.0, 0.0,   // v1
 				1.0, -1.0, 0.0,   // v2
@@ -477,7 +467,7 @@ public class PointExtractionTest extends TestSuiteBase {
 				// Occupies indices 18-26
 				0.0, 1.0, 0.0,   // v0
 				1.0, -1.0, 0.0,   // v1
-				1.0, 1.0, -1.0);   // v2
+				1.0, 1.0, -1.0);  // v2
 
 		log("\n=== Mesh Data Structure Test ===");
 

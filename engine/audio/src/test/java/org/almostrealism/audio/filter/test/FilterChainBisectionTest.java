@@ -120,7 +120,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(100), scalar(0.1), true);
 		filter.getResultant(p(input)).get();
 
-		input.setMem(0.7);
+		input.fill(0.7);
 		filter.tick().get().run();
 
 		double a1 = readA1(filter);
@@ -137,7 +137,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		Evaluable<PackedCollection> ev = filter.getResultant(p(input)).get();
 		Runnable tick = filter.tick().get();
 
-		input.setMem(0.7);
+		input.fill(0.7);
 		tick.run();
 		double afterFirstTick = ev.evaluate().toDouble(0);
 
@@ -157,7 +157,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		body.add(filter.tick());
 		Runnable compiled = HardwareFeatures.getInstance().loop(body, 100).get();
 
-		input.setMem(0.7);
+		input.fill(0.7);
 		compiled.run();
 
 		double afterRun = ev.evaluate().toDouble(0);
@@ -181,8 +181,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		body.add(f2.tick());
 		Runnable compiled = HardwareFeatures.getInstance().loop(body, 100).get();
 
-		input1.setMem(0.7);
-		input2.setMem(0.3);
+		input1.fill(0.7);
+		input2.fill(0.3);
 		compiled.run();
 
 		double o1 = ev1.evaluate().toDouble(0);
@@ -225,7 +225,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 
 		FilteredCell<PackedCollection> cell = new FilteredCell<>(filter);
 
-		input.setMem(0.7);
+		input.fill(0.7);
 		cell.tick().get().run();
 		double after = ev.evaluate().toDouble(0);
 		Assert.assertTrue("FilteredCell.tick should update output (got " + after + ")",
@@ -416,9 +416,9 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain03_multiSourceMapFcHp() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.2);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.4);
-		PackedCollection s3 = new PackedCollection(1); s3.setMem(0.6);
+		PackedCollection s1 = pack(0.2);
+		PackedCollection s2 = pack(0.4);
+		PackedCollection s3 = pack(0.6);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -992,8 +992,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain16_exactMixdownShape() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
+		PackedCollection s1 = pack(0.3);
+		PackedCollection s2 = pack(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1036,8 +1036,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain17_exactMixdownShapeInCompiledLoop() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
+		PackedCollection s1 = pack(0.3);
+		PackedCollection s2 = pack(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1082,8 +1082,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain18_hpWithProducerCutoff() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
+		PackedCollection s1 = pack(0.3);
+		PackedCollection s2 = pack(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1128,8 +1128,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain19_hpWithProducerCutoffCompiledLoop() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
+		PackedCollection s1 = pack(0.3);
+		PackedCollection s2 = pack(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1217,8 +1217,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain21_chainedMapsHpThenVolume() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
+		PackedCollection s1 = pack(0.3);
+		PackedCollection s2 = pack(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));

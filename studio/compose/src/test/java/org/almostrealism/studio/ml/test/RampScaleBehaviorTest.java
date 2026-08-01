@@ -60,10 +60,8 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 	public void testRampFollowsSlotsExactly() {
 		int channels = 2;
 		int signalSize = 8;
-		PackedCollection prev = new PackedCollection(channels);
-		prev.setMem(1.0, 4.0);
-		PackedCollection curr = new PackedCollection(channels);
-		curr.setMem(2.0, 0.0);
+		PackedCollection prev = pack(1.0, 4.0);
+		PackedCollection curr = pack(2.0, 0.0);
 		CompiledModel compiled = build(prev, curr, channels, signalSize);
 
 		PackedCollection input = new PackedCollection(

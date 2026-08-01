@@ -836,8 +836,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// subgraphs and get frozen at compile, so the runner refreshes coefficient VALUES
 		// into slots instead; that only works if fir() re-reads its slot per forward).
 		int taps = 3;
-		PackedCollection coeffs = new PackedCollection(taps);
-		coeffs.setMem(1.0, 0.0, 0.0);
+		PackedCollection coeffs = pack(1.0, 0.0, 0.0);
 		Map<String, Object> firArgs = new HashMap<>();
 		firArgs.put("signal_size", sig);
 		firArgs.put("fir_taps", taps);
@@ -873,8 +872,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(VERIFICATION_PDSL);
 
-		PackedCollection volume = new PackedCollection(new TraversalPolicy(channels));
-		volume.setMem(2.0, 3.0);
+		PackedCollection volume = pack(2.0, 3.0);
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", channels);
 		args.put("signal_size", sig);

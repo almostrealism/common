@@ -114,10 +114,8 @@ public class FloatingPointModTypeTests extends TestSuiteBase implements Expressi
 		int seqLen = 8;
 		int total = channels * seqLen;
 
-		PackedCollection values = new PackedCollection(shape(channels));
-		values.setMem(
-				10.0, 20.0, 30.0,
-				40.0);
+		PackedCollection values = pack(10.0, 20.0, 30.0, 40.0)
+				.reshape(shape(channels));
 
 		PackedCollection expanded = new PackedCollection(shape(channels, seqLen));
 
