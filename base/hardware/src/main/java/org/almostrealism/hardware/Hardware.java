@@ -636,6 +636,12 @@ public final class Hardware implements ConsoleFeatures {
 		this.nativeDirectBuffers = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_DIRECT_BUFFERS").orElse(true);
 		this.nativeSharedMemory = sharedMemory;
 
+		if (sharedMemory && !nativeDirectBuffers) {
+			warn("Shared memory between backends requires direct buffers, so" +
+					" disabling AR_HARDWARE_NATIVE_DIRECT_BUFFERS will be ignored" +
+					" wherever the shared bridge provides memory");
+		}
+
 		int count;
 
 		if (sharedMemory) {
