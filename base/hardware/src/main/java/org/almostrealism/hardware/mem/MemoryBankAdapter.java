@@ -292,7 +292,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	 * @param values Double values to write into the entry
 	 */
 	public void set(int index, double... values) {
-		setMem(index * getAtomicMemLength(), values, 0, values.length);
+		setMem(index * getAtomicMemLength(), values);
 	}
 
 	@Override

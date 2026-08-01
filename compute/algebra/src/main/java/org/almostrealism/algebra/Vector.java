@@ -341,7 +341,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 		if (v.getMem().getProvider() == this.getMem().getProvider()) {
 			setFrom(0, v, 0, 3);
 		} else {
-			setMem(v.toArray(), 0);
+			setMem(0, v.toArray());
 		}
 
 		return this;

@@ -123,7 +123,7 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures {
 			bb.order(ByteOrder.LITTLE_ENDIAN);
 
 			config = new Llama2Config(bb);
-			weights = new Llama2Weights(config, bb.asFloatBuffer());
+			weights = new Llama2Weights(config, bb);
 			log("Loaded weights in " + (System.currentTimeMillis() - start) + "ms");
 		}
 

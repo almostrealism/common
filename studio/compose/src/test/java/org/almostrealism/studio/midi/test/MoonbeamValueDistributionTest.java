@@ -19,6 +19,16 @@ package org.almostrealism.studio.midi.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.ByteBufferTransfer;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
@@ -934,9 +944,17 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 			hNew[i] = (1.0 - z[i]) * n[i] + z[i] * hArr[i];
 		}
 
-		PackedCollection result = new PackedCollection(dh);
-		result.setMem(0, hNew, 0, dh);
-		return result;
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(dh);
+		ByteBuffer source = ByteBuffer.allocate(dh * Precision.FP64.bytes())
+				.order(ByteOrder.nativeOrder());
+		source.asDoubleBuffer().put(hNew);
+		new ByteBufferTransfer(source, Precision.FP64,
+				((DirectMemory) mem).asByteBuffer(),
+				Precision.ofBytes(provider.getNumberSize())).copyAll();
+
+		return new PackedCollection(new TraversalPolicy(dh), 0, Bytes.of(mem, dh), 0);
 	}
 
 	/**
@@ -958,9 +976,17 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 			}
 			resultArr[i] = sum;
 		}
-		PackedCollection result = new PackedCollection(outputSize);
-		result.setMem(0, resultArr, 0, outputSize);
-		return result;
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(outputSize);
+		ByteBuffer source = ByteBuffer.allocate(outputSize * Precision.FP64.bytes())
+				.order(ByteOrder.nativeOrder());
+		source.asDoubleBuffer().put(resultArr);
+		new ByteBufferTransfer(source, Precision.FP64,
+				((DirectMemory) mem).asByteBuffer(),
+				Precision.ofBytes(provider.getNumberSize())).copyAll();
+
+		return new PackedCollection(new TraversalPolicy(outputSize), 0, Bytes.of(mem, outputSize), 0);
 	}
 
 	/**

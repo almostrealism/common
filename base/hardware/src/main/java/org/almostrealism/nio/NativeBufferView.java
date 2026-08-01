@@ -75,6 +75,9 @@ public class NativeBufferView extends BaseNative {
 
 	/**
 	 * Native method that wraps a native memory range in a direct {@link ByteBuffer}.
+	 * {@code NewDirectByteBuffer} returns a big-endian buffer regardless of the
+	 * platform, so callers must set the byte order to match the memory they are
+	 * viewing before reading or writing typed values through it.
 	 *
 	 * @param arg    The native memory address the range belongs to
 	 * @param offset The starting offset within the allocation, in bytes

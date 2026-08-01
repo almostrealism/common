@@ -269,7 +269,7 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		} else {
 			double data[] = new double[mem.getMemLength()];
 			readBinary(src, data);
-			mem.setMem(data, 0);
+			mem.setMem(0, data);
 		}
 	}
 

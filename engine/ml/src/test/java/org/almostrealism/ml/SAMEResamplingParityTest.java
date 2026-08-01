@@ -24,6 +24,14 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.ByteBufferTransfer;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
+import io.almostrealism.collect.TraversalPolicy;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
@@ -279,14 +287,24 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @throws IOException if the file cannot be read
 	 */
 	protected PackedCollection loadShaped(File dir, String name, int... shape) throws IOException {
-		float[] data = loadFlat(new File(dir, name + ".bin").toPath());
-		PackedCollection pc = new PackedCollection(shape(shape));
-		if (data.length != pc.getShape().getTotalSize()) {
-			throw new IllegalStateException(name + ": file has " + data.length
-					+ " values but shape expects " + pc.getShape().getTotalSize());
+		ByteBuffer data = loadBuffer(new File(dir, name + ".bin").toPath());
+		TraversalPolicy resultShape = shape(shape);
+		int count = data.remaining() / 4;
+		if (count != resultShape.getTotalSize()) {
+			throw new IllegalStateException(name + ": file has " + count
+					+ " values but shape expects " + resultShape.getTotalSize());
 		}
-		pc.setMem(0, data, 0, data.length);
-		return pc;
+
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(count);
+
+		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
+		new ByteBufferTransfer(data, Precision.FP32, staging,
+				Precision.ofBytes(provider.getNumberSize())).copyAll();
+
+		return new PackedCollection(resultShape, resultShape.getTraversalAxis(),
+				Bytes.of(mem, count), 0);
 	}
 
 	/**
@@ -297,18 +315,30 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @throws IOException if the file cannot be read
 	 */
 	protected float[] loadFlat(Path path) throws IOException {
+		ByteBuffer buffer = loadBuffer(path);
+		float[] values = new float[buffer.remaining() / 4];
+		for (int i = 0; i < values.length; i++) {
+			values[i] = buffer.getFloat(i * 4);
+		}
+		return values;
+	}
+
+	/**
+	 * Reads a {@code [uint32 count][float32 ...]} little-endian reference file
+	 * into a buffer positioned over the payload values.
+	 *
+	 * @param path the file path
+	 * @return a little-endian buffer holding the payload values
+	 * @throws IOException if the file cannot be read
+	 */
+	protected ByteBuffer loadBuffer(Path path) throws IOException {
 		try (DataInputStream in = new DataInputStream(new FileInputStream(path.toFile()))) {
 			byte[] header = new byte[4];
 			in.readFully(header);
 			int count = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt();
 			byte[] payload = new byte[count * 4];
 			in.readFully(payload);
-			ByteBuffer buffer = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
-			float[] values = new float[count];
-			for (int i = 0; i < count; i++) {
-				values[i] = buffer.getFloat(i * 4);
-			}
-			return values;
+			return ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
 		}
 	}
 

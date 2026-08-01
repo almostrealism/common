@@ -15,18 +15,6 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/a
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(0).fill((double) (TOTAL_FRAMES + 1));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(0).fill((double) (timelineFrames - 100));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(1).fill((double) (TOTAL_FRAMES + 1));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	: pack(take(buffer, config.vocabSize, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	pack(take(buffer, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	pack(take(buffer, config.layerCount, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	pack(take(buffer, config.vocabSize, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.rmsFfn = pack(take(buffer, config.layerCount, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.w1 = pack(take(buffer, config.layerCount, config.hiddenDim, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.w2 = pack(take(buffer, config.layerCount, config.dim, config.hiddenDim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.w3 = pack(take(buffer, config.layerCount, config.hiddenDim, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wk = pack(take(buffer, config.layerCount, config.dim, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wo = pack(take(buffer, config.layerCount, config.dim, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wq = pack(take(buffer, config.layerCount, config.dim, config.dim))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/llama2/Llama2Weights.java	1	this.wv = pack(take(buffer, config.layerCount, config.dim, config.dim))
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcA = new PackedCollection(a.length).fill(a);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcB = new PackedCollection(b.length).fill(b);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	return new PackedCollection(data.length).fill(data);
@@ -428,12 +416,8 @@ SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studi
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	topKLogits.setMem(0, filtered);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/optimize/AudioSceneOptimizer.java	1	combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/discovery/test/PrototypeDiscoveryPersistenceTest.java	1	features.setMem(f * FEATURE_BINS + b, magnitude);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamComponentTest.java	1	collection.setMem(0, data, 0, total);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamFineTuningTest.java	1	input.setMem(j, Math.sin(j * 0.1 + i * 0.5));
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamFineTuningTest.java	1	target.setMem(j, Math.cos(j * 0.1 + i * 0.3));
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamMidiTest.java	1	result.setMem(0, hNew, 0, dh);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java	1	result.setMem(0, hNew, 0, dh);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java	1	result.setMem(0, resultArr, 0, outputSize);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	delays.setMem(tapDelays);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	feedback.setMem(feedbackMatrixRowMajor);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	input.setMem(flatInput);

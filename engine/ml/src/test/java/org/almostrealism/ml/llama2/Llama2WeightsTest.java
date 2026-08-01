@@ -22,68 +22,82 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.nio.FloatBuffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
  * Unit tests for {@link Llama2Weights} helper methods.
  *
- * <p>Validates the {@code take} and {@code packComplex} static helpers
- * that convert raw float buffers into {@link PackedCollection} tensors.</p>
+ * <p>Validates the {@code take} and {@code stage} helpers that move
+ * checkpoint regions into {@link PackedCollection} tensors buffer to
+ * buffer, without host arrays.</p>
  *
  * @author Michael Murray
  */
 public class Llama2WeightsTest extends TestSuiteBase {
 
 	/**
-	 * Verifies that {@code take} reads the correct number of floats
-	 * from the buffer and advances its position.
+	 * Builds a little-endian checkpoint-style buffer holding the given values,
+	 * as {@link Llama2Weights} receives from a mapped checkpoint file.
+	 */
+	private ByteBuffer checkpoint(float... values) {
+		ByteBuffer buffer = ByteBuffer.allocate(values.length * 4)
+				.order(ByteOrder.LITTLE_ENDIAN);
+		buffer.asFloatBuffer().put(values);
+		return buffer;
+	}
+
+	/**
+	 * Verifies that {@code take} slices regions of the correct extent
+	 * off the buffer and advances its position past them.
 	 */
 	@Test(timeout = 60000)
 	public void testTakeReadsCorrectElements() {
-		float[] data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-		FloatBuffer buffer = FloatBuffer.wrap(data);
+		ByteBuffer buffer = checkpoint(1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f);
 
-		float[] first = Llama2Weights.take(buffer, 2, 2);
-		float[] second = Llama2Weights.take(buffer, 2);
+		ByteBuffer first = Llama2Weights.take(buffer, 4);
+		ByteBuffer second = Llama2Weights.take(buffer, 2);
 
-		Assert.assertEquals("First take should have 4 elements", 4, first.length);
-		Assert.assertEquals(1.0f, first[0], 0.0f);
-		Assert.assertEquals(4.0f, first[3], 0.0f);
+		Assert.assertEquals("First take should have 4 elements", 16, first.remaining());
+		Assert.assertEquals(1.0f, first.getFloat(0), 0.0f);
+		Assert.assertEquals(4.0f, first.getFloat(12), 0.0f);
 
-		Assert.assertEquals("Second take should have 2 elements", 2, second.length);
-		Assert.assertEquals(5.0f, second[0], 0.0f);
-		Assert.assertEquals(6.0f, second[1], 0.0f);
+		Assert.assertEquals("Second take should have 2 elements", 8, second.remaining());
+		Assert.assertEquals(5.0f, second.getFloat(0), 0.0f);
+		Assert.assertEquals(6.0f, second.getFloat(4), 0.0f);
 
-		Assert.assertEquals("Buffer should be fully consumed", 6, buffer.position());
+		Assert.assertEquals("Buffer should be fully consumed", 0, buffer.remaining());
 	}
 
 	/**
-	 * Verifies that {@code take} with a single dimension returns
-	 * the correct flat array.
+	 * Verifies that {@code stage} with a single source copies the tensor's
+	 * values in order and advances the checkpoint past them.
 	 */
 	@Test(timeout = 60000)
-	public void testTakeSingleDimension() {
-		float[] data = {10.0f, 20.0f, 30.0f};
-		FloatBuffer buffer = FloatBuffer.wrap(data);
+	public void testStageSingleSource() {
+		ByteBuffer buffer = checkpoint(10.0f, 20.0f, 30.0f);
 
-		float[] result = Llama2Weights.take(buffer, 3);
+		PackedCollection result = Llama2Weights.stage(new TraversalPolicy(3), buffer);
 
-		Assert.assertEquals(3, result.length);
-		Assert.assertEquals(10.0f, result[0], 0.0f);
-		Assert.assertEquals(30.0f, result[2], 0.0f);
+		Assert.assertEquals(3, result.getMemLength());
+		Assert.assertEquals(10.0, result.toDouble(0), 1e-6);
+		Assert.assertEquals(30.0, result.toDouble(2), 1e-6);
+		Assert.assertEquals("Buffer should be fully consumed", 0, buffer.remaining());
 	}
 
 	/**
-	 * Verifies that {@code packComplex} correctly interleaves real and
-	 * imaginary parts into the expected [real, imag, real, imag, ...] layout.
+	 * Verifies that {@code stage} with two sources correctly interleaves real
+	 * and imaginary parts into the expected [real, imag, real, imag, ...]
+	 * layout, as for the RoPE frequency tensor.
 	 */
 	@Test(timeout = 60000)
-	public void testPackComplexInterleaving() {
-		float[] real = {1.0f, 2.0f, 3.0f, 4.0f};
-		float[] imag = {0.1f, 0.2f, 0.3f, 0.4f};
+	public void testStageInterleaving() {
+		ByteBuffer buffer = checkpoint(
+				1.0f, 2.0f, 3.0f, 4.0f, 0.1f, 0.2f, 0.3f, 0.4f);
 		TraversalPolicy shape = new TraversalPolicy(2, 2, 2);
 
-		PackedCollection result = Llama2Weights.packComplex(real, imag, shape);
+		PackedCollection result = Llama2Weights.stage(shape,
+				Llama2Weights.take(buffer, 4), Llama2Weights.take(buffer, 4));
 
 		Assert.assertEquals("Total size should be 8", 8, result.getMemLength());
 		Assert.assertEquals(1.0, result.toDouble(0), 1e-6);
@@ -97,15 +111,15 @@ public class Llama2WeightsTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that {@code packComplex} rejects a shape whose last
-	 * dimension is not 2.
+	 * Verifies that {@code stage} rejects a shape whose element count does
+	 * not divide evenly across the given sources.
 	 */
 	@Test(timeout = 60000, expected = IllegalArgumentException.class)
-	public void testPackComplexRejectsInvalidShape() {
-		float[] real = {1.0f, 2.0f, 3.0f};
-		float[] imag = {0.1f, 0.2f, 0.3f};
+	public void testStageRejectsInvalidShape() {
+		ByteBuffer buffer = checkpoint(1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f);
 		TraversalPolicy badShape = new TraversalPolicy(3, 1);
 
-		Llama2Weights.packComplex(real, imag, badShape);
+		Llama2Weights.stage(badShape,
+				Llama2Weights.take(buffer, 3), Llama2Weights.take(buffer, 3));
 	}
 }

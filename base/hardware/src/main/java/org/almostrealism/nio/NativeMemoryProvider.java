@@ -31,6 +31,7 @@ import org.almostrealism.io.TimingMetric;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
@@ -431,6 +432,8 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	/**
 	 * Returns a direct {@link ByteBuffer} view over a range of calloc memory, compiling the
 	 * {@code NewDirectByteBuffer} operation on first use. Backs {@link NativeMemory#asByteBuffer()}.
+	 * The view uses {@link ByteOrder#nativeOrder() native byte order} to match the memory it
+	 * views, the same order direct-mode allocations use.
 	 *
 	 * @param pointer the native address of the allocation
 	 * @param bytes   the length of the range, in bytes
@@ -438,7 +441,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 */
 	synchronized ByteBuffer viewBuffer(long pointer, long bytes) {
 		if (bufferView == null) bufferView = new NativeBufferView(compiler());
-		return bufferView.apply(pointer, 0, bytes);
+		return bufferView.apply(pointer, 0, bytes).order(ByteOrder.nativeOrder());
 	}
 
 	/** Copies elements between two {@link NativeBuffer} instances and flushes shared memory. */

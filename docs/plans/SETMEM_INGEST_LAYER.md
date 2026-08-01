@@ -99,13 +99,40 @@ read-only until it migrates. Streaming decoders (WAV) and one-shot payloads
    `enableDeferredWeights`.
 2. **ONNX tensors** — done, via the standard ByteBuffer staging sequence
    rather than a dedicated provider.
-3. **`WavFile`/`WaveData`** — migrate the decoded-frames → collection hop to
-   the standard ByteBuffer staging sequence, and formalize
-   `PackedCollection.read(byte[])` (graphpersist) as part of this surface;
-   then move the bulk `double[]`-accepting `setMem` overloads behind it
-   (or `protected` on `MemoryDataAdapter`) per the census conclusion.
-4. **Retire the corresponding `KNOWN_EXCLUSIONS`** entries as each category
-   gains its home, and regenerate the baseline.
+3. **`WavFile`/`WaveData`** — done, via the standard ByteBuffer staging
+   sequence (buffer-view `readFrames` overloads on `WavFile`).
+4. **`MemoryData.read(ByteBuffer)`** — done: the primary form of the
+   serialization ingest surface, with the `byte[]` and `InputStream` forms
+   reduced to adapters over it (graphpersist reads through it).
+5. **The `setMem` narrowing** — done: the four explicit-array overloads
+   (`(double[], int)`, `(double[], int, int)`, `(int, double[], int, int)`,
+   `(int, float[], int, int)`) are removed from `MemoryData`; the literal
+   varargs forms remain public and route through private internals that
+   resolve the delegate chain. Every former caller (one in main code, five in
+   tests) now stages through a ByteBuffer. **Known residue**: Java varargs
+   binding still accepts an array at a varargs call site — the compile
+   surface cannot reject that without removing the literal path, so that
+   residue remains detector-enforced (`SETMEM_NON_LITERAL_ARGUMENT`).
+6. **Exclusions retired** as their lines disappeared (Llama2Weights,
+   OnnxFeatures, SAMEResamplingParityTest) — 21 → 18 remaining; the baseline
+   regenerated to 600 grandfathered occurrences (618 total exemptions).
+7. **`ByteBufferTransfer`** (`org.almostrealism.hardware.mem`) is the named
+   home for precision-aware movement between buffers: construct with a
+   source and destination `ByteBuffer`, each with its own `Precision`, and
+   `copyAll()`/`copy(n)`/`copyNext()` handle conversion (bulk when precision
+   and byte order match; element-wise otherwise, honoring each buffer's
+   order). This replaced every pick-view-by-number-size branch: Llama2Weights
+   now stages checkpoint slices buffer-to-buffer with no host arrays (its 12
+   non-scalar `pack(take(...))` baseline rows retired with it),
+   SAMEResamplingParityTest transfers the reference file's payload buffer
+   directly, and the Moonbeam helpers transfer from a heap FP64 buffer.
+
+**Open follow-up**: the remaining shared shape is
+allocate-staging-then-wrap (`allocate` → `asByteBuffer` → transfer →
+`Bytes.of` → `PackedCollection`), still repeated per site. A general
+`stage(double[])` convenience would resurrect the removed bulk-upload API,
+so any further consolidation should compose `ByteBufferTransfer` with a
+buffer-typed source, not an array-typed one.
 
 Each step is verified by the tests that exercise the migrated path (ML weight
 loading and inference tests for 1; ONNX inference tests for 2; audio I/O and
