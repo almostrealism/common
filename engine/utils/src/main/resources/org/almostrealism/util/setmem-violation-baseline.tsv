@@ -306,7 +306,7 @@ SETMEM_NON_LITERAL_ARGUMENT	domain/space/src/main/java/org/almostrealism/space/P
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/AudioLibrary.java	1	result.setMem(b, embedding[b] * invFrames);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	for (double frame : data[chan]) waveform.setMem(index++, frame);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	for (int frame : data[chan]) waveform.setMem(index++, frame);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	waveform.setMem(0, data[chan]);
+SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	waveform.setMem(data[chan]);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/AudioFilterData.java	1	default void setFrequency(double frequency) { frequency().setMem(0, frequency); }
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/AudioFilterData.java	1	default void setResonance(double resonance) { resonance().setMem(0, resonance); }
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/AudioFilterData.java	1	default void setSampleRate(double sampleRate) { sampleRate().setMem(0, sampleRate); }
@@ -390,7 +390,7 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/t
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/test/support/TestAudioData.java	1	data.setMem(i, value * DEFAULT_AMPLITUDE / harmonicCount);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/test/support/TestAudioData.java	1	data.setMem(i, value);
 SETMEM_NON_LITERAL_ARGUMENT	engine/ml/src/main/java/org/almostrealism/ml/audio/DiffusionSampler.java	1	tTensor.setMem(0, t);
-SETMEM_NON_LITERAL_ARGUMENT	engine/ml/src/main/java/org/almostrealism/ml/midi/MoonbeamMidi.java	1	attributePositions.setMem(0, values);
+SETMEM_NON_LITERAL_ARGUMENT	engine/ml/src/main/java/org/almostrealism/ml/midi/MoonbeamMidi.java	1	attributePositions.setMem(values);
 SETMEM_NON_LITERAL_ARGUMENT	engine/render/src/main/java/org/almostrealism/raytrace/AbsorberHashSet.java	1	di.setMem(0, dist);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	clProvider.setMem(dest, 0, sentinel, 0, n);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	clProvider.setMem(dest, 16, source, 8, 32);
@@ -403,8 +403,8 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardwar
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	nativeProvider.setMem(source, 0, values, 0, n);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/arrange/DefaultChannelSectionFactory.java	1	repeat.setMem(Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray());
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/arrange/EfxManager.java	1	c.setMem(choices);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	masked.setMem(0, values);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	topKLogits.setMem(0, filtered);
+SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	masked.setMem(values);
+SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	topKLogits.setMem(filtered);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/optimize/AudioSceneOptimizer.java	1	combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/discovery/test/PrototypeDiscoveryPersistenceTest.java	1	features.setMem(f * FEATURE_BINS + b, magnitude);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamFineTuningTest.java	1	input.setMem(j, Math.sin(j * 0.1 + i * 0.5));

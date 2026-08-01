@@ -166,19 +166,20 @@ public class CollectionEncoder {
 		TraversalPolicy shape = decode(data.getTraversalPolicy());
 		if (shape.getDimensions() == 0) return null;
 
+		PackedCollection decoded = destination.range(shape, destinationOffset);
+
 		if (data.getDataList().isEmpty()) {
 			float f[] = new float[data.getData32Count()];
 			for (int i = 0; i < f.length; i++) {
 				f[i] = data.getData32(i);
 			}
 
-			destination.setMem(destinationOffset, f);
+			decoded.setMem(f);
 		} else {
-			destination.setMem(destinationOffset,
-					data.getDataList().stream().mapToDouble(d -> d).toArray());
+			decoded.setMem(data.getDataList().stream().mapToDouble(d -> d).toArray());
 		}
 
-		return destination.range(shape, destinationOffset);
+		return decoded;
 	}
 
 	/**

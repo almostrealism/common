@@ -643,25 +643,33 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	/**
-	 * Writes double values to this memory starting at the specified offset.
+	 * Writes one double value to this memory at the specified offset.
 	 *
-	 * @param offset Starting index in this memory
-	 * @param values Values to write
+	 * <p>This is the only indexed write. The multi-value form it replaces
+	 * ({@code setMem(int, double...)}) was the shape a host-computed array
+	 * arrived in, so a call that needs to place more than one value writes
+	 * the whole buffer with {@link #setMem(double...)} at index 0, or is a
+	 * computation and belongs in a Producer rather than at a write site.</p>
+	 *
+	 * @param offset Index in this memory
+	 * @param value Value to write
 	 */
-	default void setMem(int offset, double... values) {
-		setMemInternal(offset, values, 0, values.length);
+	default void setMem(int offset, double value) {
+		setMemInternal(offset, new double[] { value }, 0, 1);
 	}
 
 	/**
-	 * Writes float values to this memory starting at the specified offset.
+	 * Writes one float value to this memory at the specified offset.
 	 *
-	 * <p>Values are converted from float to double precision.</p>
+	 * <p>The value is converted from float to double precision. See
+	 * {@link #setMem(int, double)} for why only a single value may be
+	 * written at an offset.</p>
 	 *
-	 * @param offset Starting index in this memory
-	 * @param values Values to write
+	 * @param offset Index in this memory
+	 * @param value Value to write
 	 */
-	default void setMem(int offset, float... values) {
-		setMemInternal(offset, values, 0, values.length);
+	default void setMem(int offset, float value) {
+		setMemInternal(offset, new float[] { value }, 0, 1);
 	}
 
 	/**

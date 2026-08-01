@@ -760,7 +760,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			values[id] = source[id];
 		}
 		PackedCollection masked = new PackedCollection(config.vocabSize);
-		masked.setMem(0, values);
+		masked.setMem(values);
 		return masked;
 	}
 
@@ -795,7 +795,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 				filtered[i] = values[i] >= threshold ? values[i] : -1e9;
 			}
 			PackedCollection topKLogits = new PackedCollection(config.vocabSize);
-			topKLogits.setMem(0, filtered);
+			topKLogits.setMem(filtered);
 			return AutoregressiveModel.sampleToken(topKLogits, config.vocabSize,
 					temperature, topP, random);
 		}

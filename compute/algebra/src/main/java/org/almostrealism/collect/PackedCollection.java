@@ -344,7 +344,7 @@ public class PackedCollection extends MemoryDataAdapter
 			throw new IllegalArgumentException("Range exceeds collection size");
 		}
 
-		setMem(index * getAtomicMemLength(), values);
+		range(new TraversalPolicy(values.length), index * getAtomicMemLength()).setMem(values);
 	}
 
 	@Override
@@ -478,7 +478,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public PackedCollection fill(double... value) {
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
-		setMem(0, data);
+		setMem(data);
 		return this;
 	}
 
@@ -490,7 +490,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public PackedCollection fill(DoubleSupplier values) {
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
-		setMem(0, data);
+		setMem(data);
 		return this;
 	}
 
@@ -504,7 +504,7 @@ public class PackedCollection extends MemoryDataAdapter
 	public PackedCollection fill(Function<int[], Double> f) {
 		double[] data = new double[getMemLength()];
 		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
-		setMem(0, data);
+		setMem(data);
 		return this;
 	}
 
@@ -517,7 +517,7 @@ public class PackedCollection extends MemoryDataAdapter
 	public PackedCollection replace(DoubleUnaryOperator f) {
 		double[] in = toArray(0, getMemLength());
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
-		setMem(0, data);
+		setMem(data);
 		return this;
 	}
 
@@ -938,7 +938,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 */
 	public static PackedCollection of(double... values) {
 		PackedCollection collection = factory().apply(values.length);
-		collection.setMem(0, values);
+		collection.setMem(values);
 		return collection;
 	}
 

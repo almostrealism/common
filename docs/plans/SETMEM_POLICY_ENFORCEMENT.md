@@ -14,8 +14,14 @@ host into device memory.** Every other value that ends up in device memory must 
    The per-element host-compute overloads (`fill(DoubleSupplier)`,
    `fill(Function<int[], Double>)`) are removed.
 4. `setMem(index, value)` — a **new single-value** form; the value must be a
-   literal.
+   literal. *(Landed in phase 20.)*
 5. `setMem(index, value...)` — the multi-value indexed form is **removed**.
+   *(Landed in phase 20.)* Note that removing the overload does not make the old
+   shape a compile error: `setMem(i, 1.0, 2.0)` now binds to the whole-content
+   varargs form and writes the index itself as data at offset 0. The detector
+   rejects an index expression followed by more than one value for that reason.
+   An all-literal argument list is textually identical to a legal whole-content
+   write, so that case is accepted either way.
 6. `setMem(values...)` — literal varargs only (unchanged).
 7. **The system-boundary ingest API** — a named surface for data entering the JVM
    from outside the system: disk (protobuf weights, WAV, resource files), external
@@ -232,6 +238,17 @@ closes out the last three migrated sites. From there:
    flip the detector to the target semantics, add the single-value
    `setMem(index, value)`, and physically remove `setMem(int, double...)` and the
    two `fill` lambda overloads. In this order the flip adds zero baseline rows.
+
+   Phase 19 completed the migrations; phase 20 removed `setMem(int, double...)`
+   and `setMem(int, float...)`, added the single-value forms, and flipped the
+   detector — the baseline held at 435 entries with no row added or removed, as
+   predicted. Four rows had their recorded source text updated because the
+   removal forced those exact lines to change (`setMem(0, array)` became
+   `setMem(array)`, an identical write).
+
+   The `fill` lambda overloads were deliberately **left in place**: they have
+   ~334 live call sites and `PackedCollection.identityFill` uses one internally,
+   so removing them is bucket 4a below rather than part of the flip.
 4. **Burn down the baseline by bucket, not by module**: (a) the ~356
    `fill(pos -> ...)` sites → whole-buffer producers and `rand`/`randn`
    (mechanical; concentrated in engine/utils and engine/ml tests); (b)

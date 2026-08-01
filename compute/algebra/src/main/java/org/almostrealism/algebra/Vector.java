@@ -256,7 +256,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @param x  the new X coordinate
 	 */
 	public void setX(double x) {
-		this.setMem(0, x);
+		this.setMem(x);
 	}
 
 	/**
@@ -341,7 +341,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 		if (v.getMem().getProvider() == this.getMem().getProvider()) {
 			setFrom(0, v, 0, 3);
 		} else {
-			setMem(0, v.toArray());
+			setMem(v.toArray());
 		}
 
 		return this;
