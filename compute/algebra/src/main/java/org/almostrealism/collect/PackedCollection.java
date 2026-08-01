@@ -102,7 +102,7 @@ import java.util.stream.Stream;
  * PackedCollection data = new PackedCollection(10, 5);
  *
  * // Indexed access
- * data.setMem(0, 1.5);
+ * data.setMem(1.5);
  * double value = data.toDouble(0);
  *
  * // Array access
@@ -156,7 +156,7 @@ import java.util.stream.Stream;
  * );
  *
  * // Changes to subset modify largeBuffer
- * subset.setMem(0, 5.0);
+ * subset.setMem(5.0);
  * }</pre>
  *
  * <h2>I/O Operations</h2>

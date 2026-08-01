@@ -86,7 +86,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 		// Initialize position - will be updated before each forward pass
 		position = new PackedCollection(1);
-		position.setMem(0, 0.0);
+		position.setMem(0.0);
 
 		log("Building transformer model...");
 		Model transformer = buildTransformerWithoutVocabProjection(config, stateDict);

@@ -619,10 +619,11 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// Create a batch of 4 input vectors
 		PackedCollection inputBatch = new PackedCollection(shape(4, 3));
-		inputBatch.setMem(0, 1.0, 0.0, 0.0);
-		inputBatch.setMem(3, 0.0, 1.0, 0.0);
-		inputBatch.setMem(6, 0.0, 0.0, 1.0);
-		inputBatch.setMem(9, 3.0, 4.0, 5.0);
+		inputBatch.setMem(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0,
+				3.0, 4.0, 5.0);
 
 		log("Input vectors:");
 		for (int i = 0; i < 4; i++) {
@@ -698,9 +699,10 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// Create batch of 3 input vectors
 		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
-		inputBatch.setMem(0, 1.0, 0.0, 0.0);
-		inputBatch.setMem(3, 4.0, 5.0, 6.0);
-		inputBatch.setMem(6, 7.0, 8.0, 9.0);
+		inputBatch.setMem(
+				1.0, 0.0, 0.0,
+				4.0, 5.0, 6.0,
+				7.0, 8.0, 9.0);
 
 		// Single eval first
 		log("Single evaluation:");
@@ -743,9 +745,10 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing batch concat(variable, constant)...");
 
 		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
-		inputBatch.setMem(0, 1.0, 2.0, 3.0);
-		inputBatch.setMem(3, 4.0, 5.0, 6.0);
-		inputBatch.setMem(6, 7.0, 8.0, 9.0);
+		inputBatch.setMem(
+				1.0, 2.0, 3.0,
+				4.0, 5.0, 6.0,
+				7.0, 8.0, 9.0);
 
 		Producer<PackedCollection> input = v(shape(-1, 3), 0);
 		CollectionProducer result = concat(shape(4), input, c(1.0));
@@ -781,9 +784,10 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing batch dot product of constant * concat(variable, constant)...");
 
 		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
-		inputBatch.setMem(0, 1.0, 0.0, 0.0);
-		inputBatch.setMem(3, 0.0, 1.0, 0.0);
-		inputBatch.setMem(6, 0.0, 0.0, 1.0);
+		inputBatch.setMem(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0);
 
 		Producer<PackedCollection> input = v(shape(-1, 3), 0);
 		CollectionProducer vec4 = concat(shape(4), input, c(1.0));
@@ -792,7 +796,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		c(new PackedCollection(shape(4)));
 		// Need to set the data
 		PackedCollection rowData = new PackedCollection(shape(4));
-		rowData.setMem(0, 1.0, 0.0, 0.0, -2.0);
+		rowData.setMem(1.0, 0.0, 0.0, -2.0);
 
 		CollectionProducer dot = multiply(cp(rowData), vec4).sum();
 
@@ -826,19 +830,20 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing batch concat of 3 dot products...");
 
 		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
-		inputBatch.setMem(0, 1.0, 0.0, 0.0);
-		inputBatch.setMem(3, 0.0, 1.0, 0.0);
-		inputBatch.setMem(6, 0.0, 0.0, 1.0);
+		inputBatch.setMem(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0);
 
 		Producer<PackedCollection> input = v(shape(-1, 3), 0);
 
 		// Three different constant vectors
 		PackedCollection r0 = new PackedCollection(shape(3));
-		r0.setMem(0, 1.0, 0.0, 0.0);
+		r0.setMem(1.0, 0.0, 0.0);
 		PackedCollection r1 = new PackedCollection(shape(3));
-		r1.setMem(0, 0.0, 1.0, 0.0);
+		r1.setMem(0.0, 1.0, 0.0);
 		PackedCollection r2 = new PackedCollection(shape(3));
-		r2.setMem(0, 0.0, 0.0, 1.0);
+		r2.setMem(0.0, 0.0, 1.0);
 
 		CollectionProducer dot0 = multiply(cp(r0), input).sum();
 		CollectionProducer dot1 = multiply(cp(r1), input).sum();
@@ -876,20 +881,21 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Testing batch transform pattern: 3 shape(4) dot products → concat(3)...");
 
 		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
-		inputBatch.setMem(0, 1.0, 0.0, 0.0);
-		inputBatch.setMem(3, 0.0, 1.0, 0.0);
-		inputBatch.setMem(6, 0.0, 0.0, 1.0);
+		inputBatch.setMem(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0);
 
 		Producer<PackedCollection> input = v(shape(-1, 3), 0);
 		CollectionProducer vec4 = concat(shape(4), input, c(1.0));
 
 		// Identity-like matrix rows (3x4): row i selects component i
 		PackedCollection r0 = new PackedCollection(shape(4));
-		r0.setMem(0, 1.0, 0.0, 0.0, 0.0);
+		r0.setMem(1.0, 0.0, 0.0, 0.0);
 		PackedCollection r1 = new PackedCollection(shape(4));
-		r1.setMem(0, 0.0, 1.0, 0.0, 0.0);
+		r1.setMem(0.0, 1.0, 0.0, 0.0);
 		PackedCollection r2 = new PackedCollection(shape(4));
-		r2.setMem(0, 0.0, 0.0, 1.0, 0.0);
+		r2.setMem(0.0, 0.0, 1.0, 0.0);
 
 		CollectionProducer dot0 = multiply(cp(r0), vec4).sum();
 		CollectionProducer dot1 = multiply(cp(r1), vec4).sum();
@@ -931,13 +937,14 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		// Create batch of 3 rays (each 6 elements: origin + direction)
-		PackedCollection inputBatch = new PackedCollection(shape(3, 6));
 		// Ray 0: from (2,0,10) towards (0,0,-1) - should hit sphere at (2,0,0)
-		inputBatch.setMem(0, 2.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 		// Ray 1: from (5,0,10) towards (0,0,-1) - would miss sphere at (2,0,0)
-		inputBatch.setMem(6, 5.0, 0.0, 10.0, 0.0, 0.0, -1.0);
 		// Ray 2: from (2,3,10) towards (0,0,-1) - would miss sphere at (2,0,0)
-		inputBatch.setMem(12, 2.0, 3.0, 10.0, 0.0, 0.0, -1.0);
+		PackedCollection inputBatch = new PackedCollection(shape(3, 6));
+		inputBatch.setMem(
+				2.0, 0.0, 10.0, 0.0, 0.0, -1.0,
+				5.0, 0.0, 10.0, 0.0, 0.0, -1.0,
+				2.0, 3.0, 10.0, 0.0, 0.0, -1.0);
 
 		log("Input rays:");
 		for (int i = 0; i < 3; i++) {
@@ -1009,9 +1016,10 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		// Ray 1: from (5, 0, 5) towards (0, 0, -1) — should MISS
 		// Ray 2: from (-1.5, 0.5, 5) towards (0, 0, -1) — should HIT (near edge)
 		PackedCollection rayBatch = new PackedCollection(shape(3, 6));
-		rayBatch.setMem(0, -1.5, 0.0, 5.0, 0.0, 0.0, -1.0);
-		rayBatch.setMem(6, 5.0, 0.0, 5.0, 0.0, 0.0, -1.0);
-		rayBatch.setMem(12, -1.5, 0.5, 5.0, 0.0, 0.0, -1.0);
+		rayBatch.setMem(
+				-1.5, 0.0, 5.0, 0.0, 0.0, -1.0,
+				5.0, 0.0, 5.0, 0.0, 0.0, -1.0,
+				-1.5, 0.5, 5.0, 0.0, 0.0, -1.0);
 
 		// Test single evaluation first
 		log("\n=== Single evaluation ===");
@@ -1072,10 +1080,13 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Sphere at origin, isIdentity: " + sphere.getTransform(true).isIdentity());
 
 		// Create a batch of 3 rays aimed at the origin sphere
+		// Row 1: straight on, should hit at ~4.0; row 2: far right, should
+		// miss; row 3: near edge, should hit at ~4.13
 		PackedCollection rayBatch = new PackedCollection(shape(3, 6));
-		rayBatch.setMem(0, 0.0, 0.0, 5.0, 0.0, 0.0, -1.0);   // straight on, should hit at ~4.0
-		rayBatch.setMem(6, 5.0, 0.0, 5.0, 0.0, 0.0, -1.0);   // far right, should miss
-		rayBatch.setMem(12, 0.0, 0.5, 5.0, 0.0, 0.0, -1.0);  // near edge, should hit at ~4.13
+		rayBatch.setMem(
+				0.0, 0.0, 5.0, 0.0, 0.0, -1.0,
+				5.0, 0.0, 5.0, 0.0, 0.0, -1.0,
+				0.0, 0.5, 5.0, 0.0, 0.0, -1.0);
 
 		log("Single evaluation:");
 		for (int i = 0; i < 3; i++) {
@@ -1112,9 +1123,10 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// Create a batch of 3 input vectors (3 elements each)
 		PackedCollection inputBatch = new PackedCollection(shape(3, 3));
-		inputBatch.setMem(0, 1.0, 2.0, 3.0);
-		inputBatch.setMem(3, 4.0, 5.0, 6.0);
-		inputBatch.setMem(6, 7.0, 8.0, 9.0);
+		inputBatch.setMem(
+				1.0, 2.0, 3.0,
+				4.0, 5.0, 6.0,
+				7.0, 8.0, 9.0);
 
 		// Variable input
 		Producer<PackedCollection> input = v(shape(-1, 3), 0);

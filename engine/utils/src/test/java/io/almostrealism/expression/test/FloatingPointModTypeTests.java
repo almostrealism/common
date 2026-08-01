@@ -115,7 +115,7 @@ public class FloatingPointModTypeTests extends TestSuiteBase implements Expressi
 		int total = channels * seqLen;
 
 		PackedCollection values = new PackedCollection(shape(channels));
-		values.setMem(0, 10.0);
+		values.setMem(10.0);
 		values.setMem(1, 20.0);
 		values.setMem(2, 30.0);
 		values.setMem(3, 40.0);

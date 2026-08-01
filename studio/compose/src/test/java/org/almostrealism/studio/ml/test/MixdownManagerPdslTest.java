@@ -876,7 +876,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		for (int pass = 0; pass < REVERB_PASSES; pass++) {
 			PackedCollection input = new PackedCollection(inputShape);
-			if (pass == 0) input.setMem(0, 1.0);       // impulse
+			if (pass == 0) input.setMem(1.0);       // impulse
 
 			double[] passOut = compiled.forward(input).toArray(0, REVERB_SIGNAL_SIZE);
 			if (pass == 1) {

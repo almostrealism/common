@@ -193,7 +193,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
 		PackedCollection samples = new PackedCollection(4);
-		samples.setMem(0, 1.0);
+		samples.setMem(1.0);
 		samples.setMem(1, -1.0);
 		samples.setMem(2, 1.0);
 		samples.setMem(3, -1.0);
@@ -211,7 +211,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
 		PackedCollection samples = new PackedCollection(8);
-		samples.setMem(0, 1.0);
+		samples.setMem(1.0);
 		samples.setMem(1, 0.5);
 		samples.setMem(2, -0.5);
 		samples.setMem(3, -1.0);

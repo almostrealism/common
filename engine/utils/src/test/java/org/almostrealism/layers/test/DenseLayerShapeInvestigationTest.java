@@ -50,7 +50,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
 		// Weights: (2, 3) - standard (out, in) layout
 		PackedCollection weights = new PackedCollection(shape(2, 3));
-		weights.setMem(0, 1, 2, 3, 4, 5, 6);
+		weights.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
 		TraversalPolicy inputShape = shape(1, 3);
 		CellularLayer layer = dense(inputShape, weights, false, false);
@@ -78,7 +78,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
 		// Create weights with known values
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 2, 3, 4, 5, 6);
+		weights.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
 		log("Weights shape: " + weights.getShape());
 
@@ -113,7 +113,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
 		// Create weights: (2, 3) - 2 outputs, 3 inputs
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6);
+		weights.setMem(0.1, 0.2, 0.3, 0.4, 0.5, 0.6);
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -131,7 +131,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
 		// Create test input
 		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1.0, 2.0, 3.0);
+		input.setMem(1.0, 2.0, 3.0);
 		log("Input: " + input.toArrayString());
 
 		// Expected output (manual calculation):
@@ -230,7 +230,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
 		// Create batched input
 		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 		log("Input (2 samples): " + input.toArrayString());
 
 		// Run inference

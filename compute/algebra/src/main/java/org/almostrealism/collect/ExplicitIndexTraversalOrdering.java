@@ -33,7 +33,7 @@ import java.util.OptionalInt;
  * <pre>{@code
  * // Create a collection with custom index ordering: [2, 0, 3, 1]
  * PackedCollection indices = new PackedCollection(4);
- * indices.setMem(0, 2.0);  // First access element 2
+ * indices.setMem(2.0);  // First access element 2
  * indices.setMem(1, 0.0);  // Then element 0
  * indices.setMem(2, 3.0);  // Then element 3
  * indices.setMem(3, 1.0);  // Finally element 1

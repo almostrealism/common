@@ -289,7 +289,6 @@ PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/gr
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	PackedCollection.of(referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER)));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/spatial/src/main/java/org/almostrealism/spatial/GenomicTimeseries.java	1	this.genome = new ProjectedGenome(PackedCollection.of(params));
-PACKED_COLLECTION_OF_NON_LITERAL	studio/spatial/src/main/java/org/almostrealism/spatial/series/AudioModelOutput.java	1	return PackedCollection.of(getEmbed().stream().mapToDouble(d -> d).toArray());
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	resets.setMem(index, (double) value);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	time.setMem(0, newLeft);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	time.setMem(f, f);

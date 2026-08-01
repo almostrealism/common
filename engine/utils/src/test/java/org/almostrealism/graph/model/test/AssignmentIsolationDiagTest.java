@@ -198,11 +198,11 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 	@Test(timeout = 120000)
 	public void standaloneIsolatedSourceAssignment() {
 		PackedCollection weights = new PackedCollection(shape(2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection in = new PackedCollection(shape(2));
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection out = new PackedCollection(shape(1));
 
@@ -216,15 +216,15 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		Runnable assign = a("standalone isolated", p(out), dense).get();
 		log("standaloneIsolatedSourceAssignment runnable=" + assign.getClass().getSimpleName());
 
-		in.setMem(0, 2.0, 3.0);
+		in.setMem(2.0, 3.0);
 		assign.run();
 		log("standaloneIsolatedSourceAssignment pass=1 result=" + out.toDouble(0) + " expected=0.35");
 
-		in.setMem(0, 4.0, 6.0);
+		in.setMem(4.0, 6.0);
 		assign.run();
 		log("standaloneIsolatedSourceAssignment pass=2 result=" + out.toDouble(0) + " expected=0.6");
 
-		in.setMem(0, 8.0, 12.0);
+		in.setMem(8.0, 12.0);
 		assign.run();
 		log("standaloneIsolatedSourceAssignment pass=3 result=" + out.toDouble(0) + " expected=1.1");
 	}
@@ -243,10 +243,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		PackedCollection recorded = new PackedCollection(shape(2));
 
 		PackedCollection weights = new PackedCollection(shape(2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection out = new PackedCollection(shape(1));
 
@@ -283,10 +283,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		PackedCollection recorded = new PackedCollection(shape(2));
 
 		PackedCollection weights = new PackedCollection(shape(1, 2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection out = new PackedCollection(shape(1));
 
@@ -324,10 +324,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		PackedCollection recorded = new PackedCollection(shape(2));
 
 		PackedCollection weights = new PackedCollection(shape(2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection out = new PackedCollection(shape(1));
 
@@ -369,10 +369,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		PackedCollection recorded = new PackedCollection(shape(2));
 
 		PackedCollection weights = new PackedCollection(shape(1, 2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection layerOut = new PackedCollection(shape(1));
 		PackedCollection modelOut = new PackedCollection(shape(1));
@@ -424,10 +424,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		PackedCollection recorded = new PackedCollection(shape(2));
 
 		PackedCollection weights = new PackedCollection(shape(1, 2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection layerOut = new PackedCollection(shape(1));
 		PackedCollection modelOut = new PackedCollection(shape(1));
@@ -520,10 +520,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		PackedCollection recorded = new PackedCollection(shape(2));
 
 		PackedCollection weights = new PackedCollection(shape(2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection out = new PackedCollection(shape(1));
 
@@ -557,11 +557,11 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 	@Test(timeout = 120000)
 	public void standaloneInlineSourceAssignment() {
 		PackedCollection weights = new PackedCollection(shape(2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection in = new PackedCollection(shape(2));
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection out = new PackedCollection(shape(1));
 
@@ -572,11 +572,11 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		Runnable assign = a("standalone inline", p(out), dense).get();
 		log("standaloneInlineSourceAssignment runnable=" + assign.getClass().getSimpleName());
 
-		in.setMem(0, 2.0, 3.0);
+		in.setMem(2.0, 3.0);
 		assign.run();
 		log("standaloneInlineSourceAssignment pass=1 result=" + out.toDouble(0) + " expected=0.35");
 
-		in.setMem(0, 4.0, 6.0);
+		in.setMem(4.0, 6.0);
 		assign.run();
 		log("standaloneInlineSourceAssignment pass=2 result=" + out.toDouble(0) + " expected=0.6");
 	}
@@ -698,10 +698,10 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 	 */
 	private double[] forwardDense(PackedCollection inputs) {
 		PackedCollection weights = new PackedCollection(shape(1, 2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection biases = new PackedCollection(shape(1));
-		biases.setMem(0, 0.1);
+		biases.setMem(0.1);
 
 		CellularLayer layer = dense(weights, biases).apply(shape(2));
 

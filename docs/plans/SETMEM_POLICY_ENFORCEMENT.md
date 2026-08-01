@@ -110,7 +110,21 @@ occurrences across 514 entries, all 21 exclusions live — **699 total exemption
 zero stale rows.
 
 Snapshot 2026-07-30 (after the phase 14 remediation): 621 live grandfathered
-occurrences across 465 entries + 21 exclusions — **642 total exemptions**. By rule:
+occurrences across 465 entries + 21 exclusions — **642 total exemptions**.
+
+Snapshot 2026-08-01 (phase 19 migration pass): 599 live grandfathered
+occurrences across 444 entries + 17 exclusions — **616 total exemptions**.
+The multi-value indexed `setMem` delta is migrated: full-buffer row writes
+merged into offset-0 literal varargs, redundant zero indexes dropped
+repo-wide (251 sites), consecutive-segment writes merged, the SphereTest ray
+grids and closestBatch256 pairs became genuine device producers (index-ramp
+kernel; pack + repeat), and AudioModelOutput's deserialized embedding moved
+onto the ByteBuffer ingest sequence. Remaining indexed sites are deliberate:
+the framework Memory-level API, MemoryDataViewWriteTest (exercises the write
+surface itself), and the enforcement-test fixture — all resolved by the
+detector flip. The non-scalar `pack`/`of` delta is empty: remaining matches
+are the sanctioned creation surface, the ONNX ingest overload, and legal
+single-scalar packs. By rule:
 426 fill/pack beyond the scalar allowance (of which ~356 are `fill(pos -> ...)`
 lambda calls), 176 non-literal `setMem`, 19 non-literal `PackedCollection.of`. By
 module: engine/utils 311, engine/audio 120, engine/ml 98, studio/compose 54,

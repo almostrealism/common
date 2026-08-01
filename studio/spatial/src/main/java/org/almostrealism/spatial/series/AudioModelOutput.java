@@ -7,6 +7,17 @@ package org.almostrealism.spatial.series;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.ByteBufferTransfer;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.RAM;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
 
 import java.util.List;
 import java.util.Random;
@@ -201,6 +212,26 @@ public class AudioModelOutput extends SimpleTimeseries<AudioModelOutput> {
 	@JsonIgnore
 	public PackedCollection getPackedEmbed() {
 		if (getEmbed() == null) return null;
-		return PackedCollection.of(getEmbed().stream().mapToDouble(d -> d).toArray());
+
+		// The embedding arrives from deserialized JSON, so it enters device
+		// memory through the standard ByteBuffer ingest sequence
+		List<Double> embed = getEmbed();
+		int total = embed.size();
+		MemoryProvider<? extends RAM> provider =
+				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
+		RAM mem = provider.allocate(total);
+
+		ByteBuffer source = ByteBuffer.allocate(total * Precision.FP64.bytes())
+				.order(ByteOrder.nativeOrder());
+		DoubleBuffer values = source.asDoubleBuffer();
+		for (int i = 0; i < total; i++) {
+			values.put(i, embed.get(i));
+		}
+
+		new ByteBufferTransfer(source, Precision.FP64,
+				((DirectMemory) mem).asByteBuffer(),
+				Precision.ofBytes(provider.getNumberSize())).copyAll();
+
+		return new PackedCollection(new TraversalPolicy(total), 0, Bytes.of(mem, total), 0);
 	}
 }

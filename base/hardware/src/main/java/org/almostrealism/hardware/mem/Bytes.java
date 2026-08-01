@@ -60,7 +60,7 @@ import org.almostrealism.hardware.MemoryData;
  * Bytes view = new Bytes(100, original, 100);
  *
  * // Modifications to view affect original
- * view.setMem(0, 42.0);  // Also modifies original at offset 100
+ * view.setMem(42.0);  // Also modifies original at offset 100
  * }</pre>
  *
  * <h2>Common Usage Patterns</h2>
@@ -69,7 +69,7 @@ import org.almostrealism.hardware.MemoryData;
  * <pre>{@code
  * // Allocate 500 bytes
  * Bytes buffer = new Bytes(500);
- * buffer.setMem(0, 1.0f);
+ * buffer.setMem(1.0f);
  * buffer.setMem(1, 2.0f);
  * }</pre>
  *

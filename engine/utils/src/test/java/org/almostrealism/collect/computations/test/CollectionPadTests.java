@@ -304,7 +304,7 @@ public class CollectionPadTests extends TestSuiteBase {
 
 		// Create batch of 3 scalars
 		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
-		scalars.setMem(0, 5.0);   // Batch 0
+		scalars.setMem(5.0);   // Batch 0
 		scalars.setMem(1, 10.0);  // Batch 1
 		scalars.setMem(2, 15.0);  // Batch 2
 
@@ -339,7 +339,7 @@ public class CollectionPadTests extends TestSuiteBase {
 		// Create batch of 3 scalars: [5, 10, 15]
 		// Expected: concat([5, 10], [10, 20], [15, 30])
 		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
-		scalars.setMem(0, 5.0);   // Batch 0: concat([5], [10]) -> [5, 10]
+		scalars.setMem(5.0);   // Batch 0: concat([5], [10]) -> [5, 10]
 		scalars.setMem(1, 10.0);  // Batch 1: concat([10], [20]) -> [10, 20]
 		scalars.setMem(2, 15.0);  // Batch 2: concat([15], [30]) -> [15, 30]
 

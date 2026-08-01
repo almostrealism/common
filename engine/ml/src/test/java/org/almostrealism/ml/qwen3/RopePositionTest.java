@@ -103,7 +103,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 			input.toDouble(2) + ", " + input.toDouble(3) + ", ...]");
 
 		// Test at position 0
-		position.setMem(0, 0.0);
+		position.setMem(0.0);
 		PackedCollection result0 = compiled.forward(input);
 		double[] r0 = new double[8];
 		for (int i = 0; i < 8; i++) r0[i] = result0.toDouble(i);
@@ -112,7 +112,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		log("  Expected (cos(0), sin(0)): [1, 0, 1, 0, ...]");
 
 		// Test at position 3
-		position.setMem(0, 3.0);
+		position.setMem(3.0);
 		PackedCollection result3 = compiled.forward(input);
 		double[] r3 = new double[8];
 		for (int i = 0; i < 8; i++) r3[i] = result3.toDouble(i);

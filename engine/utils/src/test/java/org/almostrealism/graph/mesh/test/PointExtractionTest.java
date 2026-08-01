@@ -108,10 +108,10 @@ public class PointExtractionTest extends TestSuiteBase {
 		PackedCollection v2 = new PackedCollection(shape(2, 3));
 
 		// Pair 0: [1,2,3] - [0,1,0] = [1,1,3]
-		v1.setMem(0, 1.0);
+		v1.setMem(1.0);
 		v1.setMem(1, 2.0);
 		v1.setMem(2, 3.0);
-		v2.setMem(0, 0.0);
+		v2.setMem(0.0);
 		v2.setMem(1, 1.0);
 		v2.setMem(2, 0.0);
 
@@ -368,10 +368,10 @@ public class PointExtractionTest extends TestSuiteBase {
 		PackedCollection vec2 = new PackedCollection(shape(2, 3));
 
 		// Pair 0: [1,0,0] x [0,1,0] = [0,0,1]
-		vec1.setMem(0, 1.0);
+		vec1.setMem(1.0);
 		vec1.setMem(1, 0.0);
 		vec1.setMem(2, 0.0);
-		vec2.setMem(0, 0.0);
+		vec2.setMem(0.0);
 		vec2.setMem(1, 1.0);
 		vec2.setMem(2, 0.0);
 
@@ -415,7 +415,7 @@ public class PointExtractionTest extends TestSuiteBase {
 		PackedCollection vecs = new PackedCollection(shape(2, 3));
 
 		// Vector 0: [3, 0, 4] with magnitude 5
-		vecs.setMem(0, 3.0);
+		vecs.setMem(3.0);
 		vecs.setMem(1, 0.0);
 		vecs.setMem(2, 4.0);
 
@@ -482,7 +482,7 @@ public class PointExtractionTest extends TestSuiteBase {
 
 		// Triangle 0: vertices (0,1,0), (-1,-1,0), (1,-1,0)
 		// Occupies indices 0-8 (9 scalars)
-		flatData.setMem(0, 0.0);
+		flatData.setMem(0.0);
 		flatData.setMem(1, 1.0);
 		flatData.setMem(2, 0.0);    // v0
 		flatData.setMem(3, -1.0);

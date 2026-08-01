@@ -273,7 +273,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	public Operator<PackedCollection> expect() {
 		// TODO  This isn't right
 		PackedCollection zero = new PackedCollection(1);
-		zero.setMem(0, 0.0);
+		zero.setMem(0.0);
 		return new Constant<>(zero);
 	}
 }

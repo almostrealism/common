@@ -96,7 +96,7 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 		// Row i is output channel i. Each row sums to 1.0 for unity gain.
 		PackedCollection transmission = new PackedCollection(
 				new TraversalPolicy(CHANNELS, CHANNELS));
-		transmission.setMem(0,
+		transmission.setMem(
 				0.4, 0.3, 0.3,
 				0.3, 0.4, 0.3,
 				0.3, 0.3, 0.4);

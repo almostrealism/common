@@ -440,7 +440,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	public void testTopPSamplingRestriction() {
 		int vocabSize = 10;
 		PackedCollection logits = new PackedCollection(new TraversalPolicy(vocabSize));
-		logits.setMem(0, 10.0);
+		logits.setMem(10.0);
 		logits.setMem(1, 5.0);
 		logits.setMem(2, 1.0);
 		for (int i = 3; i < vocabSize; i++) {

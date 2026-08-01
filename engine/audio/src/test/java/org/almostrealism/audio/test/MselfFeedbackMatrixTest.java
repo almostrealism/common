@@ -106,7 +106,7 @@ public class MselfFeedbackMatrixTest extends TestSuiteBase implements CellFeatur
 		double wetIn = 0.5;
 
 		PackedCollection impulseData = new PackedCollection(SAMPLE_RATE);
-		impulseData.setMem(0, 1.0);
+		impulseData.setMem(1.0);
 		WaveData impulse = new WaveData(impulseData, SAMPLE_RATE);
 
 		WaveData[] sources = new WaveData[sourceChannels];
@@ -151,7 +151,7 @@ public class MselfFeedbackMatrixTest extends TestSuiteBase implements CellFeatur
 		double wetOut = 0.25;
 
 		PackedCollection impulseData = new PackedCollection(SAMPLE_RATE);
-		impulseData.setMem(0, 1.0);
+		impulseData.setMem(1.0);
 		WaveData impulse = new WaveData(impulseData, SAMPLE_RATE);
 
 		WaveData[] sources = new WaveData[sourceChannels];
@@ -210,7 +210,7 @@ public class MselfFeedbackMatrixTest extends TestSuiteBase implements CellFeatur
 		double wetOut = 0.25;
 
 		PackedCollection impulseData = new PackedCollection(SAMPLE_RATE);
-		impulseData.setMem(0, 1.0);
+		impulseData.setMem(1.0);
 		WaveData impulse = new WaveData(impulseData, SAMPLE_RATE);
 
 		WaveData[] sources = new WaveData[sourceChannels];
@@ -258,7 +258,7 @@ public class MselfFeedbackMatrixTest extends TestSuiteBase implements CellFeatur
 	 */
 	private void runMselfMatrix(String name, double transmission, double wetOut) {
 		PackedCollection impulseData = new PackedCollection(SAMPLE_RATE);
-		impulseData.setMem(0, 1.0);
+		impulseData.setMem(1.0);
 		WaveData impulse = new WaveData(impulseData, SAMPLE_RATE);
 
 		CellList sources = w(0, impulse);

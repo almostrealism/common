@@ -185,8 +185,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
-			new String[] {"/primitives/test/SphereTest.java",
-					"rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);"},
 			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset, f);"},
 			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset,"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},

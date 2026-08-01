@@ -134,7 +134,7 @@ import java.util.stream.IntStream;
  * subRange.setDelegate(fullArray, 100);
  *
  * // Modifications to subRange affect fullArray
- * subRange.setMem(0, 42.0);  // Sets fullArray[100] = 42.0
+ * subRange.setMem(42.0);  // Sets fullArray[100] = 42.0
  * }</pre>
  *
  * <h3>Persistence and Serialization</h3>

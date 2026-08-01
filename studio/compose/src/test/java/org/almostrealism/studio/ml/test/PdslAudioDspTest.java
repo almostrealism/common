@@ -497,7 +497,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		int delaySamples = 4;
 
 		PackedCollection coeffs = new PackedCollection(firTaps);
-		coeffs.setMem(0, 1.0); // pass-through FIR (impulse) — keeps the test filter-shape agnostic
+		coeffs.setMem(1.0); // pass-through FIR (impulse) — keeps the test filter-shape agnostic
 		PackedCollection wetLevel = new PackedCollection(1);
 		wetLevel.setMem(0.5);
 		PackedCollection automation = new PackedCollection(1);
@@ -658,7 +658,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
 		PackedCollection volumeSlot = new PackedCollection(1);
-		volumeSlot.setMem(0, 0.25);
+		volumeSlot.setMem(0.25);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
@@ -683,7 +683,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		}
 
 		// Mutate the slot between forward calls — the second pass must reflect it.
-		volumeSlot.setMem(0, 0.75);
+		volumeSlot.setMem(0.75);
 
 		PackedCollection output2 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
@@ -707,7 +707,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
 		PackedCollection counter = new PackedCollection(1);
-		counter.setMem(0, 0.1);
+		counter.setMem(0.1);
 
 		// Composed producer: counter * 0.5. Demonstrates that a derived producer
 		// expression — not just a direct cp(slot) — is correctly embedded in the
@@ -740,7 +740,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		double output1FirstSample = output1.toDouble(0);
 
 		// Advance the "clock" — counter = 0.4, expected scale = 0.2
-		counter.setMem(0, 0.4);
+		counter.setMem(0.4);
 		PackedCollection output2 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		double expected2 = 0.4 * 0.5;
 		for (int i = 0; i < SIGNAL_SIZE; i++) {

@@ -90,14 +90,18 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		// Create input: channel 0 = [1,2,3,4], channel 1 = [5,6,7,8]
 		TraversalPolicy inputShape = shape(outerCount, inputLength);
 		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1.0, 2.0, 3.0, 4.0);  // Channel 0
-		input.setMem(4, 5.0, 6.0, 7.0, 8.0);  // Channel 1
+		// Channel 0 then channel 1
+		input.setMem(
+				1.0, 2.0, 3.0, 4.0,
+				5.0, 6.0, 7.0, 8.0);
 
 		// Create weights: channel 0 = [0.1, 0.2, 0.3], channel 1 = [0.4, 0.5, 0.6]
 		TraversalPolicy weightShape = shape(outerCount, innerCount);
 		PackedCollection weights = new PackedCollection(weightShape);
-		weights.setMem(0, 0.1, 0.2, 0.3);  // Channel 0
-		weights.setMem(3, 0.4, 0.5, 0.6);  // Channel 1
+		// Channel 0 then channel 1
+		weights.setMem(
+				0.1, 0.2, 0.3,
+				0.4, 0.5, 0.6);
 
 		// Expected output: [10.6, 12.7]
 		double[] expected = {10.6, 12.7};
@@ -162,13 +166,15 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 
 		TraversalPolicy inputShape = shape(outerCount, inputLength);
 		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1.0, 2.0, 3.0, 4.0);
-		input.setMem(4, 5.0, 6.0, 7.0, 8.0);
+		input.setMem(
+				1.0, 2.0, 3.0, 4.0,
+				5.0, 6.0, 7.0, 8.0);
 
 		TraversalPolicy weightShape = shape(outerCount, innerCount);
 		PackedCollection weights = new PackedCollection(weightShape);
-		weights.setMem(0, 0.1, 0.2, 0.3);
-		weights.setMem(3, 0.4, 0.5, 0.6);
+		weights.setMem(
+				0.1, 0.2, 0.3,
+				0.4, 0.5, 0.6);
 
 		double[] expected = {10.6, 12.7};
 

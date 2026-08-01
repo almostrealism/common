@@ -315,6 +315,6 @@ public abstract class BatchedCell extends CellAdapter<PackedCollection>
 		output.clear();
 		cachedRender = null;
 		tickCount = 0;
-		batchCounter.setMem(0, 0.0);
+		batchCounter.setMem(0.0);
 	}
 }

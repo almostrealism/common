@@ -51,10 +51,10 @@ public class OperationListSubdivisionTest extends TestSuiteBase implements Model
 		PackedCollection recorded = new PackedCollection(shape(2));
 
 		PackedCollection weights = new PackedCollection(shape(1, 2));
-		weights.setMem(0, 0.5, -0.25);
+		weights.setMem(0.5, -0.25);
 
 		PackedCollection bias = new PackedCollection(shape(1));
-		bias.setMem(0, 0.1);
+		bias.setMem(0.1);
 
 		PackedCollection layerOut = new PackedCollection(shape(1));
 		PackedCollection modelOut = new PackedCollection(shape(1));

@@ -39,7 +39,7 @@ public class MemoryDataViewWriteTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void rootWrites() {
 		PackedCollection root = new PackedCollection(shape(SIZE));
-		root.setMem(0, 1.0, 2.0, 3.0);
+		root.setMem(1.0, 2.0, 3.0);
 		root.setMem(SIZE - 1, 9.0);
 
 		Assert.assertEquals(1.0, root.toDouble(0), 0.0);
@@ -57,7 +57,7 @@ public class MemoryDataViewWriteTest extends TestSuiteBase {
 		PackedCollection root = new PackedCollection(shape(SIZE));
 
 		PackedCollection view = root.range(new TraversalPolicy(8), 10);
-		view.setMem(0, 5.0, 6.0);
+		view.setMem(5.0, 6.0);
 		view.setMem(7, 7.0);
 
 		Assert.assertEquals(5.0, root.toDouble(10), 0.0);

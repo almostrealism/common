@@ -220,7 +220,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 
 		PackedCollection automation =
 				new PackedCollection(6);
-		automation.setMem(0, 0.5);
+		automation.setMem(0.5);
 		element.setAutomationParameters(automation);
 
 		AudioSceneContext context = createContext(4, scale);

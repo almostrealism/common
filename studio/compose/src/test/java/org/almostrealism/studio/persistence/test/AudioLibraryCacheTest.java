@@ -749,7 +749,7 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		// Frame 1: [5, 6, 7, 8]
 		// Frame 2: [3, 3, 3, 3]
 		// Mean:    [3, 3.667, 4.333, 5]
-		featureData.setMem(0, 1.0); featureData.setMem(1, 2.0);
+		featureData.setMem(1.0); featureData.setMem(1, 2.0);
 		featureData.setMem(2, 3.0); featureData.setMem(3, 4.0);
 		featureData.setMem(4, 5.0); featureData.setMem(5, 6.0);
 		featureData.setMem(6, 7.0); featureData.setMem(7, 8.0);

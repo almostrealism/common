@@ -924,7 +924,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void batchNormalizeTwoVectors() {
 		PackedCollection vecs = new PackedCollection(shape(2, 3));
-		vecs.setMem(0, 3.0);
+		vecs.setMem(3.0);
 		vecs.setMem(1, 0.0);
 		vecs.setMem(2, 4.0);
 		vecs.setMem(3, 0.0);
@@ -944,7 +944,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void batchNormalizedLength() {
 		PackedCollection vecs = new PackedCollection(shape(2, 3));
-		vecs.setMem(0, 1.0);
+		vecs.setMem(1.0);
 		vecs.setMem(1, 2.0);
 		vecs.setMem(2, 2.0);
 		vecs.setMem(3, 6.0);
@@ -1030,7 +1030,7 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void batchNormalizeThreeVectors() {
 		PackedCollection vecs = new PackedCollection(shape(3, 3));
-		vecs.setMem(0, 1.0);
+		vecs.setMem(1.0);
 		vecs.setMem(1, 0.0);
 		vecs.setMem(2, 0.0);
 		vecs.setMem(3, 0.0);

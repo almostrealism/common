@@ -110,7 +110,7 @@ public class SignatureReuseProbeTest extends TestSuiteBase {
 		int n = 4;
 
 		PackedCollection table = new PackedCollection(shape(coeff.length));
-		table.setMem(0, 0.3, -0.2, 0.5, 0.1);
+		table.setMem(0.3, -0.2, 0.5, 0.1);
 
 		PackedCollection in = pack(1.0, 2.0, 3.0, 4.0);
 

@@ -72,7 +72,7 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
 
-		multiplier.setMem(0, 2.0);
+		multiplier.setMem(2.0);
 		assertEquals(4.0, pev.evaluate());
 		assertEquals(9.0, qev.evaluate());
 	}
@@ -93,7 +93,7 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(2.0, pev.evaluate());
 
 		// Make sure the process respects the update to a provided value
-		multiplier.setMem(0, 2.0);
+		multiplier.setMem(2.0);
 		assertEquals(4.0, p.get().evaluate());
 		assertEquals(9.0, q.get().evaluate());
 
@@ -149,7 +149,7 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(2.0, p.get().evaluate());
 		assertEquals(7.0, q.get().evaluate());
 
-		multiplier.setMem(0, 2.0);
+		multiplier.setMem(2.0);
 		assertEquals(20.0, r.get().evaluate());
 		assertEquals(9.0, q.get().evaluate());
 		assertEquals(4.0, p.get().evaluate());
@@ -162,13 +162,13 @@ public class CodeFeaturesTests extends TestSuiteBase {
 	public void addToProvider() {
 		PackedCollection value = pack(1.0);
 		Producer<PackedCollection> s = add(c(1), p(value));
-		value.setMem(0, 2.0);
+		value.setMem(2.0);
 
 		Evaluable<PackedCollection> ev = s.get();
 		PackedCollection out = ev.evaluate();
 		assertEquals(3.0, out.toDouble(0));
 
-		value.setMem(0, 3.0);
+		value.setMem(3.0);
 		out = ev.evaluate();
 		assertEquals(4.0, out.toDouble(0));
 	}
@@ -181,14 +181,14 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		PackedCollection value = pack(1.0);
 		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = a(1, p(dest), add(c(1), p(value)).divide(c(2.0)));
-		value.setMem(0, 2.0);
+		value.setMem(2.0);
 
 		Runnable r = s.get();
 		r.run();
 		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(1.5, dest.toDouble(0));
 
-		value.setMem(0, 3.0);
+		value.setMem(3.0);
 		r.run();
 		assertEquals(2.0, dest.toDouble(0));
 	}
@@ -201,14 +201,14 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		PackedCollection value = pack(1.0);
 		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = lp(a(1, p(dest), add(c(1), p(value)).divide(c(2.0))), 2);
-		value.setMem(0, 2.0);
+		value.setMem(2.0);
 
 		Runnable r = s.get();
 		r.run();
 		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(1.5, dest.toDouble(0));
 
-		value.setMem(0, 3.0);
+		value.setMem(3.0);
 		r.run();
 		assertEquals(2.0, dest.toDouble(0));
 	}

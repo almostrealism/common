@@ -45,7 +45,7 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 
 		IntStream.range(0, 5).forEach(i -> {
 			PackedCollection in = new PackedCollection(1);
-			in.setMem(0, 1.0);
+			in.setMem(1.0);
 			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 					in, new Pair(3, Intersection.e));
 
@@ -60,7 +60,7 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void highestRankKernel() {
 		PackedCollection in = new PackedCollection(new TraversalPolicy(4, 1));
-		in.setMem(0, 0.0);
+		in.setMem(0.0);
 		in.setMem(1, 2.0);
 		in.setMem(2, 1.0);
 		in.setMem(3, 3.0);

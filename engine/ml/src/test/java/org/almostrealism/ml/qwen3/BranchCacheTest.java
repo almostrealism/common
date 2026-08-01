@@ -41,7 +41,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 		// Create position indicator
 		position = new PackedCollection(shape(1));
-		position.setMem(0, 0.0);
+		position.setMem(0.0);
 
 		// Create a simple block with a branch that writes to cache
 		SequentialBlock block = new SequentialBlock(shape(1, dim));
@@ -115,7 +115,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 		// Create position indicator
 		position = new PackedCollection(shape(1));
-		position.setMem(0, 0.0);
+		position.setMem(0.0);
 
 		// Create a simple block with a branch that transforms and writes to cache
 		SequentialBlock block = new SequentialBlock(shape(1, dim));
@@ -194,7 +194,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 
 		// Create position indicator
 		position = new PackedCollection(shape(1));
-		position.setMem(0, 0.0);
+		position.setMem(0.0);
 
 		// Create a block with two branches (like K and V paths)
 		SequentialBlock block = new SequentialBlock(shape(1, dim));

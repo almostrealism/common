@@ -38,7 +38,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Create a position tracker
 		PackedCollection position = new PackedCollection(shape(1));
-		position.setMem(0, 0.0); // Start at position 0
+		position.setMem(0.0); // Start at position 0
 
 		// Create a simple model that just adds the causal mask to the input
 		Model model = new Model(shape(heads, seqLen));
@@ -59,7 +59,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Test at position 0
 		log("Testing at position 0:");
-		position.setMem(0, 0.0);
+		position.setMem(0.0);
 
 		PackedCollection input0 = new PackedCollection(shape(heads, seqLen));
 		input0.fill(Math::random); // Random input
@@ -84,7 +84,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Test at position 2
 		log("\n\nTesting at position 2:");
-		position.setMem(0, 2.0);
+		position.setMem(2.0);
 
 		PackedCollection input2 = new PackedCollection(shape(heads, seqLen));
 		input2.fill(Math::random);
@@ -123,7 +123,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Create a position tracker
 		PackedCollection position = new PackedCollection(shape(1));
-		position.setMem(0, 0.0);
+		position.setMem(0.0);
 
 		// Create model with causal mask
 		Model model = new Model(shape(heads, seqLen));

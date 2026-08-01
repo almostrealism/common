@@ -43,7 +43,7 @@ import org.almostrealism.collect.PackedCollection;
  * <pre>{@code
  * // Define discrete choices
  * PackedCollection strategies = new PackedCollection(3);  // 3 strategies
- * strategies.setMem(0, 1.0, 2.0, 3.0);  // Strategy values
+ * strategies.setMem(1.0, 2.0, 3.0);  // Strategy values
  *
  * // Create underlying gene that produces values in [0, 1]
  * Gene<PackedCollection> continuousGene = HeredityFeatures.getInstance().g(0.0, 0.5, 1.0);

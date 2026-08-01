@@ -247,7 +247,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 				PackedCollection result = new PackedCollection(1);
 				if (discriminant < 0) {
-					result.setMem(0, -1.0);
+					result.setMem(-1.0);
 					return result;
 				}
 
@@ -271,7 +271,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 				} else if (t[1] > 0) {
 					st = t[1];
 				} else {
-					result.setMem(0, -1.0);
+					result.setMem(-1.0);
 					return result;
 				}
 
@@ -320,7 +320,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	@Override
 	public Operator<PackedCollection> expect() {
 		PackedCollection one = new PackedCollection(1);
-		one.setMem(0, 1.0);
+		one.setMem(1.0);
 		return new Constant<>(one);
 	}
 

@@ -120,7 +120,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(100), scalar(0.1), true);
 		filter.getResultant(p(input)).get();
 
-		input.setMem(0, 0.7);
+		input.setMem(0.7);
 		filter.tick().get().run();
 
 		double a1 = readA1(filter);
@@ -137,7 +137,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		Evaluable<PackedCollection> ev = filter.getResultant(p(input)).get();
 		Runnable tick = filter.tick().get();
 
-		input.setMem(0, 0.7);
+		input.setMem(0.7);
 		tick.run();
 		double afterFirstTick = ev.evaluate().toDouble(0);
 
@@ -157,7 +157,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		body.add(filter.tick());
 		Runnable compiled = HardwareFeatures.getInstance().loop(body, 100).get();
 
-		input.setMem(0, 0.7);
+		input.setMem(0.7);
 		compiled.run();
 
 		double afterRun = ev.evaluate().toDouble(0);
@@ -181,8 +181,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		body.add(f2.tick());
 		Runnable compiled = HardwareFeatures.getInstance().loop(body, 100).get();
 
-		input1.setMem(0, 0.7);
-		input2.setMem(0, 0.3);
+		input1.setMem(0.7);
+		input2.setMem(0.3);
 		compiled.run();
 
 		double o1 = ev1.evaluate().toDouble(0);
@@ -225,7 +225,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 
 		FilteredCell<PackedCollection> cell = new FilteredCell<>(filter);
 
-		input.setMem(0, 0.7);
+		input.setMem(0.7);
 		cell.tick().get().run();
 		double after = ev.evaluate().toDouble(0);
 		Assert.assertTrue("FilteredCell.tick should update output (got " + after + ")",
@@ -241,7 +241,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain01_mapFcHpProducesOutput() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		// A trivial "source" cell that just holds a value.
 		ProbeCell src = new ProbeCell(p(sourceVal));
@@ -294,7 +294,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 30000)
 	public void apf05_packedCollectionWritesPersistInCompiledLoop() {
 		PackedCollection state = new PackedCollection(1);
-		state.setMem(0, 0.0);
+		state.setMem(0.0);
 
 		// Body: state = state + 1
 		OperationList body = new OperationList("apf05 body");
@@ -314,8 +314,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void apf06_twoStatesBothPersist() {
 		PackedCollection a = new PackedCollection(1);
 		PackedCollection b = new PackedCollection(1);
-		a.setMem(0, 0.0);
-		b.setMem(0, 0.0);
+		a.setMem(0.0);
+		b.setMem(0.0);
 
 		OperationList body = new OperationList("apf06 body");
 		body.add(a(p(a), c(1.0).add(p(a))));
@@ -336,8 +336,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void apf07_iirStyleSelfReferenceInCompiledLoop() {
 		PackedCollection x = new PackedCollection(1);
 		PackedCollection y = new PackedCollection(1);
-		x.setMem(0, 1.0);
-		y.setMem(0, 0.0);
+		x.setMem(1.0);
+		y.setMem(0.0);
 
 		double a1 = 0.5;
 		double b1 = -0.3;
@@ -362,8 +362,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	public void apf08_sequentialAssignmentReadsLatest() {
 		PackedCollection target = new PackedCollection(1);
 		PackedCollection out = new PackedCollection(1);
-		target.setMem(0, 0.0);
-		out.setMem(0, 0.0);
+		target.setMem(0.0);
+		out.setMem(0.0);
 
 		OperationList body = new OperationList("apf08 body");
 		// First: target = 5
@@ -387,7 +387,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain02_mapFcHpSumProducesOutput() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -425,9 +425,9 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain03_multiSourceMapFcHp() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0, 0.2);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0, 0.4);
-		PackedCollection s3 = new PackedCollection(1); s3.setMem(0, 0.6);
+		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.2);
+		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.4);
+		PackedCollection s3 = new PackedCollection(1); s3.setMem(0.6);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -470,9 +470,9 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain04_mapFcHpWithMultipliedCutoff() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 		PackedCollection geneVal = new PackedCollection(1);
-		geneVal.setMem(0, 0.005);  // gene * 20000 = 100 Hz cutoff
+		geneVal.setMem(0.005);  // gene * 20000 = 100 Hz cutoff
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -529,7 +529,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain05_mapHpSumReceptor() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -567,7 +567,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain06_composedVolumeAndHp() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -608,7 +608,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain07_manyIterationsViaCellListTick() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -646,7 +646,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain08_cellListTickCompiledInLoop() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -704,7 +704,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain09_combinedFactorIdentityNoFilter() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -740,7 +740,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain10_combinedTemporalIdentityThenHp() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -780,7 +780,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain11_combinedFactorIsolatedCompile() {
 		PackedCollection input = new PackedCollection(1);
-		input.setMem(0, 0.7);
+		input.setMem(0.7);
 		PackedCollection out = new PackedCollection(1);
 
 		TemporalFactor<PackedCollection> volume = in -> multiply(in, c(1.0));
@@ -817,7 +817,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain12_manualCompositionInsteadOfCombinedFactor() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -891,7 +891,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain13_combinedHpThenIdentity() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -932,7 +932,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain14_exactMixdownComposedFactor() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -975,7 +975,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain15_combinedIdentityThenHpWithTerminal() {
 		PackedCollection sourceVal = new PackedCollection(1);
-		sourceVal.setMem(0, 0.7);
+		sourceVal.setMem(0.7);
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();
@@ -1014,8 +1014,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain16_exactMixdownShape() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0, 0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0, 0.5);
+		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
+		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1058,8 +1058,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain17_exactMixdownShapeInCompiledLoop() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0, 0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0, 0.5);
+		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
+		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1104,8 +1104,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain18_hpWithProducerCutoff() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0, 0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0, 0.5);
+		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
+		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1116,7 +1116,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		AudioPassFilter[] filters = new AudioPassFilter[2];
 		// Producer-valued gene (constant 0.001 → cutoff 20 Hz, HP passes most audio)
 		PackedCollection geneVal = new PackedCollection(1);
-		geneVal.setMem(0, 0.001);
+		geneVal.setMem(0.001);
 
 		IntFunction<Factor<PackedCollection>> composedFactory = i -> {
 			Factor<PackedCollection> inner = v -> multiply(v, c(0.5));
@@ -1151,8 +1151,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain19_hpWithProducerCutoffCompiledLoop() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0, 0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0, 0.5);
+		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
+		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1162,7 +1162,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 
 		AudioPassFilter[] filters = new AudioPassFilter[2];
 		PackedCollection geneVal = new PackedCollection(1);
-		geneVal.setMem(0, 0.001);
+		geneVal.setMem(0.001);
 
 		IntFunction<Factor<PackedCollection>> composedFactory = i -> {
 			Factor<PackedCollection> inner = v -> multiply(v, c(0.5));
@@ -1241,8 +1241,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 60000)
 	public void chain21_chainedMapsHpThenVolume() {
-		PackedCollection s1 = new PackedCollection(1); s1.setMem(0, 0.3);
-		PackedCollection s2 = new PackedCollection(1); s2.setMem(0, 0.5);
+		PackedCollection s1 = new PackedCollection(1); s1.setMem(0.3);
+		PackedCollection s2 = new PackedCollection(1); s2.setMem(0.5);
 
 		ProbeCell src1 = new ProbeCell(p(s1));
 		ProbeCell src2 = new ProbeCell(p(s2));
@@ -1252,7 +1252,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 
 		AudioPassFilter[] filters = new AudioPassFilter[2];
 		PackedCollection geneVal = new PackedCollection(1);
-		geneVal.setMem(0, 0.001);
+		geneVal.setMem(0.001);
 
 		IntFunction<Factor<PackedCollection>> hpFactory = i -> {
 			Producer<PackedCollection> cutoff = scalar(20000).multiply(cp(geneVal));
@@ -1303,7 +1303,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 
 		// External frame index (incremented in the outer loop)
 		PackedCollection frameIndex = new PackedCollection(1);
-		frameIndex.setMem(0, 0.0);
+		frameIndex.setMem(0.0);
 
 		// Build a WaveCell with external frame control using the same API
 		// that EfxManager.createCells uses for real-time mode.
@@ -1353,7 +1353,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		}
 
 		PackedCollection frameIndex = new PackedCollection(1);
-		frameIndex.setMem(0, 0.0);
+		frameIndex.setMem(0.0);
 
 		CellList waveCells = w(
 				PolymorphicAudioData.supply(PackedCollection.factory()),

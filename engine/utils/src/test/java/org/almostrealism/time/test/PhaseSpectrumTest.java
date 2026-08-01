@@ -117,7 +117,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 	@Test(timeout = 30000)
 	public void testUnwrapPhaseSingleValue() {
 		PackedCollection wrappedPhase = new PackedCollection(shape(1));
-		wrappedPhase.setMem(0, 1.5);
+		wrappedPhase.setMem(1.5);
 
 		PackedCollection unwrapped = unwrapPhase(cp(wrappedPhase)).evaluate();
 		assertEquals("Single value should be unchanged", 1.5, unwrapped.toDouble(0), TOLERANCE);
@@ -132,7 +132,7 @@ public class PhaseSpectrumTest extends TestSuiteBase implements TemporalFeatures
 		PackedCollection wrappedPhase = new PackedCollection(shape(size));
 
 		// Sequence that jumps across PI boundary
-		wrappedPhase.setMem(0, 2.5);    // Near PI
+		wrappedPhase.setMem(2.5);    // Near PI
 		wrappedPhase.setMem(1, -2.5);   // Jumped across -PI (actually continuing forward)
 		wrappedPhase.setMem(2, -1.5);
 		wrappedPhase.setMem(3, -0.5);

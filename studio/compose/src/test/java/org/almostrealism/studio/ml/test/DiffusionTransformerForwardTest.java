@@ -76,7 +76,7 @@ public class DiffusionTransformerForwardTest extends TestSuiteBase {
 
 		PackedCollection x = new PackedCollection(1, ioChannels, audioSeqLen);
 		PackedCollection t = new PackedCollection(1);
-		t.setMem(0, 0.5);
+		t.setMem(0.5);
 
 		// This is exactly what DiffusionSampler.runSamplingLoop does
 		// during unconditional generation

@@ -84,7 +84,7 @@ public class SphereTest extends TestSuiteBase {
 		Producer<?> d = s.discriminant(ray);
 
 		PackedCollection singleRay = new PackedCollection(shape(1, 6).traverse(1));
-		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
+		singleRay.setMem(0.0, 0.0, 3.0, 0.0, 0.0, -1.0); // origin (0,0,3), direction (0,0,-1)
 
 		PackedCollection result = new PackedCollection(shape(1, 1).traverse(1));
 		Evaluable<PackedCollection> ev = greaterThan(c(d), c(0.0), c(1.0), c(-1.0)).get();
@@ -109,9 +109,12 @@ public class SphereTest extends TestSuiteBase {
 
 		// Create 3 rays: 2 that hit, 1 that misses
 		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
-		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center)
-		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off-center)
-		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (far off to side)
+		// Ray 0: hits (center); Ray 1: hits (slightly off-center);
+		// Ray 2: misses (far off to side)
+		rays.setMem(
+				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
+				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
 
 		// Test each component of discriminant formula
 		// Formula: oDotd^2 - dDotd * (oDoto - 1)
@@ -167,9 +170,12 @@ public class SphereTest extends TestSuiteBase {
 
 		// Create 3 rays: 2 that hit, 1 that misses
 		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
-		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center) - should get distance ~2.5
-		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off-center) - should get distance ~2.5
-		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (far off to side) - should get distance -1.0
+		// Ray 0: hits (center), distance ~2.5; Ray 1: hits (slightly
+		// off-center), distance ~2.5; Ray 2: misses (far off), distance -1.0
+		rays.setMem(
+				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
+				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
 
 		// Get the distance for each ray
 		PackedCollection distances = new PackedCollection(shape(3, 1).traverse(1));
@@ -201,9 +207,12 @@ public class SphereTest extends TestSuiteBase {
 
 		// Create 3 rays: 2 that hit, 1 that misses
 		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
-		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (discriminant = 1.0, sqrt = 1.0)
-		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (discriminant = 0.98, sqrt = 0.99)
-		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses (discriminant = -49, sqrt = NaN)
+		// Ray 0: hits (discriminant = 1.0, sqrt = 1.0); Ray 1: hits
+		// (discriminant = 0.98, sqrt = 0.99); Ray 2: misses (discriminant = -49)
+		rays.setMem(
+				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
+				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
 
 		PackedCollection sqrtVals = new PackedCollection(shape(3, 1).traverse(1));
 		dSqrt.get().into(sqrtVals.each()).evaluate(rays);
@@ -235,9 +244,11 @@ public class SphereTest extends TestSuiteBase {
 
 		// Create a single ray that hits
 		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
-		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // Ray 0: hits (center)
-		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // Ray 1: hits (slightly off)
-		rays.setMem(12, 5, 5, 3, 0, 0, -1);     // Ray 2: misses
+		// Ray 0: hits (center); Ray 1: hits (slightly off); Ray 2: misses
+		rays.setMem(
+				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
+				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
+				5.0, 5.0, 3.0, 0.0, 0.0, -1.0);
 
 		// Test discriminantSqrt
 		PackedCollection dSqrtVals = new PackedCollection(shape(3, 1).traverse(1));
@@ -327,18 +338,14 @@ public class SphereTest extends TestSuiteBase {
 		// Elements 64-127: Both positive, left > right (should return right)
 		// Elements 128-191: Only left positive (should return left)
 		// Elements 192-255: Only right positive (should return right)
-		for (int i = 0; i < 64; i++) {
-			pairs.setMem(i * 2, 2.0, 5.0);  // left=2.0, right=5.0 -> expect 2.0
-		}
-		for (int i = 64; i < 128; i++) {
-			pairs.setMem(i * 2, 5.0, 2.0);  // left=5.0, right=2.0 -> expect 2.0
-		}
-		for (int i = 128; i < 192; i++) {
-			pairs.setMem(i * 2, 3.0, -1.0);  // left=3.0, right=-1.0 -> expect 3.0
-		}
-		for (int i = 192; i < 256; i++) {
-			pairs.setMem(i * 2, -1.0, 4.0);  // left=-1.0, right=4.0 -> expect 4.0
-		}
+		PackedCollection quarters = pack(
+				2.0, 5.0,   // left=2.0, right=5.0 -> expect 2.0
+				5.0, 2.0,   // left=5.0, right=2.0 -> expect 2.0
+				3.0, -1.0,  // left=3.0, right=-1.0 -> expect 3.0
+				-1.0, 4.0)  // left=-1.0, right=4.0 -> expect 4.0
+				.reshape(shape(4, 2));
+		a(cp(pairs), cp(quarters).traverse(1).repeat(batchSize / 4)
+				.reshape(pairs.getShape())).get().run();
 
 		// Apply closest() to the batch
 		Producer<Pair> pairProducer = v(shape(-1, 2), 0);
@@ -393,9 +400,12 @@ public class SphereTest extends TestSuiteBase {
 		Producer testPair = pair(minusODotD, plusODotD);
 
 		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
-		rays.setMem(0, 0, 0, 3, 0, 0, -1);      // origin=[0,0,3], dir=[0,0,-1], oDotd = 0*0 + 0*0 + 3*(-1) = -3
-		rays.setMem(6, 0.1, 0.1, 3, 0, 0, -1);  // origin=[0.1,0.1,3], dir=[0,0,-1], oDotd = -3
-		rays.setMem(12, 5, 5, 15, 0, 0, -1);    // origin=[5,5,15], dir=[0,0,-1], oDotd = 5*0 + 5*0 + 15*(-1) = -15
+		// Ray 0: origin=[0,0,3], dir=[0,0,-1], oDotd = -3; Ray 1:
+		// origin=[0.1,0.1,3], oDotd = -3; Ray 2: origin=[5,5,15], oDotd = -15
+		rays.setMem(
+				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
+				0.1, 0.1, 3.0, 0.0, 0.0, -1.0,
+				5.0, 5.0, 15.0, 0.0, 0.0, -1.0);
 
 		// Evaluate the pair
 		PackedCollection pairResult = new PackedCollection(shape(3, 2).traverse(1));
@@ -427,12 +437,7 @@ public class SphereTest extends TestSuiteBase {
 		Sphere s = new Sphere();
 		s.setSize(0.5);
 
-		PackedCollection rays = new PackedCollection(shape(h, w, 6).traverse(2));
-		for (int x = 0; x < w; x++) {
-			for (int y = 0; y < h; y++) {
-				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
-			}
-		}
+		PackedCollection rays = rayGrid(h, w);
 
 		PackedCollection destination = new PackedCollection(shape(h, w, 1).traverse(2));
 
@@ -464,7 +469,7 @@ public class SphereTest extends TestSuiteBase {
 
 		// Ray from (0, 0, 3) pointing towards sphere at origin
 		PackedCollection singleRay = new PackedCollection(shape(1, 6).traverse(1));
-		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
+		singleRay.setMem(0.0, 0.0, 3.0, 0.0, 0.0, -1.0); // origin (0,0,3), direction (0,0,-1)
 
 		PackedCollection destination = new PackedCollection(shape(1, 1).traverse(1));
 		Evaluable<PackedCollection> ev = f.getDistance().get();
@@ -489,12 +494,7 @@ public class SphereTest extends TestSuiteBase {
 
 		ShadableIntersection f = s.intersectAt(v(shape(-1, 6), 0));
 
-		PackedCollection rays = new PackedCollection(shape(h, w, 6).traverse(2));
-		for (int x = 0; x < w; x++) {
-			for (int y = 0; y < h; y++) {
-				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
-			}
-		}
+		PackedCollection rays = rayGrid(h, w);
 
 		PackedCollection destination = new PackedCollection(shape(h, w, 1).traverse(2));
 
@@ -569,5 +569,32 @@ public class SphereTest extends TestSuiteBase {
 
 		log(String.valueOf(hits + " hits"));
 		// Assert.assertEquals(4900, hits);
+	}
+
+	/**
+	 * Builds an (h, w, 6) grid of parallel rays as a single device
+	 * computation over an index ramp, following the idiom used by the
+	 * render engine: each cell holds origin
+	 * ((x - w/2) * 0.1, (y - h/2) * 0.1, 3) and direction (0, 0, -1).
+	 */
+	private PackedCollection rayGrid(int h, int w) {
+		PackedCollection rays = new PackedCollection(shape(h, w, 6).traverse(2));
+
+		CollectionProducer index = integers(0, h * w * 6);
+		CollectionProducer component = mod(index, c(6.0));
+		CollectionProducer cell = floor(index.divide(c(6.0)));
+		CollectionProducer x = mod(cell, c((double) w));
+		CollectionProducer y = floor(cell.divide(c((double) w)));
+
+		CollectionProducer originX = x.subtract(c((double) (w / 2))).multiply(c(0.1));
+		CollectionProducer originY = y.subtract(c((double) (h / 2))).multiply(c(0.1));
+
+		a(cp(rays), lessThan(component, c(0.5), originX,
+				lessThan(component, c(1.5), originY,
+						lessThan(component, c(2.5), c(3.0),
+								lessThan(component, c(4.5), c(0.0), c(-1.0)))))
+				.reshape(rays.getShape())).get().run();
+
+		return rays;
 	}
 }

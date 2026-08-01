@@ -153,7 +153,7 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 					source.toDouble(i), materialized.toDouble(i), 1e-9);
 		}
 
-		materialized.setMem(0, 42.0);
+		materialized.setMem(42.0);
 		Assert.assertEquals(42.0, materialized.toDouble(0), 1e-9);
 	}
 
@@ -167,7 +167,7 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 				CollectionEncoder.encode(testValues(), Precision.FP64), false);
 
 		try {
-			deferred.setMem(0, 1.0);
+			deferred.setMem(1.0);
 			Assert.fail("Write into message-backed memory should be rejected");
 		} catch (UnsupportedOperationException e) {
 			// Expected: the provider is a read-only source

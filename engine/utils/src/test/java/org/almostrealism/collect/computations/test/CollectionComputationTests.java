@@ -268,7 +268,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 	public void multiply() {
 		verboseLog(() -> {
 			PackedCollection testInput = new PackedCollection(1);
-			testInput.setMem(0, 9.0);
+			testInput.setMem(9.0);
 			PackedCollection result = c(3).multiply(p(testInput)).get().evaluate();
 			assertEquals(27, result.toDouble(0));
 		});
@@ -557,8 +557,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void collectionMaxTwoSeries() {
 		PackedCollection series = new PackedCollection(2, 10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
+		series.setMem(
+				7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0,
+				12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
 		log(String.valueOf(series.traverse(1).getCountLong() + " series"));
 
 		Producer<PackedCollection> max = max(v(shape(-1, 10), 0));
@@ -575,7 +576,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void collectionMax() {
 		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		series.setMem(7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		Producer<PackedCollection> max = max(v(shape(10), 0));
@@ -602,7 +603,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void greaterThanMax() {
 		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		series.setMem(7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		PackedCollection dest = new PackedCollection(1);

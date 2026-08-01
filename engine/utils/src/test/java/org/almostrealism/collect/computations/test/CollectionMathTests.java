@@ -565,12 +565,12 @@ public class CollectionMathTests extends TestSuiteBase {
 	public void lessThanSmallBatch() {
 		// Test lessThan with a small batch of 3 elements
 		PackedCollection valuesA = new PackedCollection(shape(3, 1).traverse(1));
-		valuesA.setMem(0, 2.0);  // a[0] = 2.0
+		valuesA.setMem(2.0);  // a[0] = 2.0
 		valuesA.setMem(1, 8.0);  // a[1] = 8.0
 		valuesA.setMem(2, 5.0);  // a[2] = 5.0
 
 		PackedCollection valuesB = new PackedCollection(shape(3, 1).traverse(1));
-		valuesB.setMem(0, 7.0);  // b[0] = 7.0
+		valuesB.setMem(7.0);  // b[0] = 7.0
 		valuesB.setMem(1, 3.0);  // b[1] = 3.0
 		valuesB.setMem(2, 5.0);  // b[2] = 5.0
 

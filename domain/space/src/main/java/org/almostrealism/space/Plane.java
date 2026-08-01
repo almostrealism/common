@@ -172,7 +172,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	@Override
 	public Operator<PackedCollection> expect() {
 		PackedCollection zero = new PackedCollection(1);
-		zero.setMem(0, 0.0);
+		zero.setMem(0.0);
 		return new Constant<>(zero);
 	}
 

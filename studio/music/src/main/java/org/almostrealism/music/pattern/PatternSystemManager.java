@@ -181,7 +181,7 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	/** Initializes the volume to 1.0. */
 	public void init() {
 		volume = new PackedCollection(1);
-		volume.setMem(0, 1.0);
+		volume.setMem(1.0);
 		volumeValue = 1.0;
 	}
 

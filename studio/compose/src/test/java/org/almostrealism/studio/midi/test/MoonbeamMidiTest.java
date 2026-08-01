@@ -363,7 +363,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		// W_ih = [W_ir; W_iz; W_in], shape (3*2, 2) = (6, 2)
 		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(6, 2));
 		// Set W_ir (rows 0-1) to identity
-		weightIh.setMem(0, 1.0); weightIh.setMem(1, 0.0);
+		weightIh.setMem(1.0); weightIh.setMem(1, 0.0);
 		weightIh.setMem(2, 0.0); weightIh.setMem(3, 1.0);
 		// W_iz (rows 2-3) and W_in (rows 4-5) left as zero
 
@@ -375,11 +375,11 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(6));
 
 		PackedCollection x = new PackedCollection(2);
-		x.setMem(0, 1.0);
+		x.setMem(1.0);
 		x.setMem(1, 2.0);
 
 		PackedCollection h = new PackedCollection(2);
-		h.setMem(0, 0.5);
+		h.setMem(0.5);
 		h.setMem(1, -0.5);
 
 		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
@@ -423,9 +423,9 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection biasHh = new PackedCollection(new TraversalPolicy(3));
 
 		PackedCollection x = new PackedCollection(1);
-		x.setMem(0, 5.0);
+		x.setMem(5.0);
 		PackedCollection h = new PackedCollection(1);
-		h.setMem(0, 3.0);
+		h.setMem(3.0);
 
 		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
 

@@ -63,11 +63,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		//      [3, 4],    -> output[1] = 3*in[0] + 4*in[1]
 		//      [5, 6]]    -> output[2] = 5*in[0] + 6*in[1]
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 2, 3, 4, 5, 6);
+		weights.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
 		// Create input: [1, 2] (batch=1, features=2)
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2);
+		input.setMem(1.0, 2.0);
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -125,14 +125,14 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		//      [1, 1],    -> output[2] = 1*in[0] + 1*in[1] = in[0] + in[1]
 		//      [2, 3]]    -> output[3] = 2*in[0] + 3*in[1]
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 1, 1, 1, 2, 3);
+		weights.setMem(1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0);
 
 		// Create batched input: 3 samples, each with 2 features
 		// Sample 0: [1, 2]
 		// Sample 1: [3, 4]
 		// Sample 2: [5, 6]
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -243,11 +243,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		//      [0, 1, 0]]
 		// This extracts the first two features
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 0, 1, 0);
+		weights.setMem(1.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
 		// Input: single sample [10, 20, 30]
 		PackedCollection input = new PackedCollection(shape(1, inputSize));
-		input.setMem(0, 10, 20, 30);
+		input.setMem(10.0, 20.0, 30.0);
 
 		log("Weights: " + weights.toArrayString());
 		log("Input: " + input.toArrayString());
@@ -348,11 +348,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 
 		// Create weights: 4x2 matrix
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 1, 1, 1, 2, 3);
+		weights.setMem(1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0);
 
 		// Input: (3, 2) - batched
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		input.setMem(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
 
 		log("Weights (4x2): " + weights.toArrayString());
 		log("Input (3x2): " + input.toArrayString());

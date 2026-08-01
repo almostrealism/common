@@ -44,7 +44,7 @@ import java.util.OptionalInt;
  * <pre>{@code
  * // Mask indicating we want elements at positions 5, 2, 8, 1
  * PackedCollection mask = new PackedCollection(4);
- * mask.setMem(0, 5.0);
+ * mask.setMem(5.0);
  * mask.setMem(1, 2.0);
  * mask.setMem(2, 8.0);
  * mask.setMem(3, 1.0);

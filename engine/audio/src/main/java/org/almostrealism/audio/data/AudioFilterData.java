@@ -85,17 +85,17 @@ public interface AudioFilterData extends BaseAudioData {
 	 * Resets all filter state to zero, clearing coefficients and history buffers.
 	 */
 	default void reset() {
-		c().setMem(0, 0.0);
-		a1().setMem(0, 0.0);
-		a2().setMem(0, 0.0);
-		a3().setMem(0, 0.0);
-		b1().setMem(0, 0.0);
-		b2().setMem(0, 0.0);
-		output().setMem(0, 0.0);
-		inputHistory0().setMem(0, 0.0);
-		inputHistory1().setMem(0, 0.0);
-		outputHistory0().setMem(0, 0.0);
-		outputHistory1().setMem(0, 0.0);
-		outputHistory2().setMem(0, 0.0);
+		c().setMem(0.0);
+		a1().setMem(0.0);
+		a2().setMem(0.0);
+		a3().setMem(0.0);
+		b1().setMem(0.0);
+		b2().setMem(0.0);
+		output().setMem(0.0);
+		inputHistory0().setMem(0.0);
+		inputHistory1().setMem(0.0);
+		outputHistory0().setMem(0.0);
+		outputHistory1().setMem(0.0);
+		outputHistory2().setMem(0.0);
 	}
 }

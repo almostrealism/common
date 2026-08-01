@@ -109,7 +109,7 @@ public class AggregationSignatureTests extends TestSuiteBase {
 	public void aggregationFunctionsDisambiguate() {
 		int n = 4;
 		PackedCollection data = new PackedCollection(shape(n));
-		data.setMem(0, 2.0);
+		data.setMem(2.0);
 		data.setMem(1, 3.0);
 		data.setMem(2, 4.0);
 		data.setMem(3, 5.0);
