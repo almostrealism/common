@@ -175,7 +175,6 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		if (getTarget() == null) {
 			super.setTarget(target);
 			this.abortFlag = new PackedCollection(1);
-			this.abortFlag.setMem(0, 0.0);
 			this.targetSetup = target.setup().get();
 			this.targetTick = target.tick().get();
 		} else if (getTarget() != target) {
@@ -214,7 +213,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 				if (!endTimeoutTrigger && isTimeout()) {
 					if (enableVerbose) log("Trigger timeout");
 
-					abortFlag.setMem(0, 1.0);
+					abortFlag.fill(1.0);
 
 					if (enableVerbose) {
 						log("Timeout flag set");
@@ -239,7 +238,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	/** Signals the timeout trigger thread to stop and clears the abort flag. */
 	protected void endTimeoutTrigger() {
 		endTimeoutTrigger = true;
-		abortFlag.setMem(0, 0.0);
+		abortFlag.clear();
 	}
 
 	/**
@@ -252,7 +251,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	@Override
 	public void reset() {
 		if (abortFlag != null)
-			abortFlag.setMem(0, 0.0);
+			abortFlag.clear();
 
 		super.reset();
 		getTarget().reset();

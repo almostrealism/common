@@ -56,7 +56,6 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	 */
 	public ScaleFactor() {
 		scale = new PackedCollection(1);
-		scale.setMem(0, 0.0);
 	}
 
 	/**

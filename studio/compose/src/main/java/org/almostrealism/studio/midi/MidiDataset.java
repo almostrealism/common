@@ -217,7 +217,7 @@ public class MidiDataset implements Dataset<PackedCollection> {
 		PackedCollection oneHot = new PackedCollection(new TraversalPolicy(vocabSize));
 
 		if (token.isSpecial()) {
-			oneHot.setMem(0, 1.0);
+			oneHot.setMem(1.0);
 			return oneHot;
 		}
 

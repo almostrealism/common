@@ -923,13 +923,9 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	/** Batch normalize two vectors using shape (2, 3). */
 	@Test(timeout = 60000)
 	public void batchNormalizeTwoVectors() {
-		PackedCollection vecs = new PackedCollection(shape(2, 3));
-		vecs.setMem(0, 3.0);
-		vecs.setMem(1, 0.0);
-		vecs.setMem(2, 4.0);
-		vecs.setMem(3, 0.0);
-		vecs.setMem(4, 5.0);
-		vecs.setMem(5, 12.0);
+		PackedCollection vecs = pack(
+				3.0, 0.0, 4.0,
+				0.0, 5.0, 12.0).reshape(shape(2, 3));
 		PackedCollection result = new PackedCollection(shape(2, 3));
 		normalize(c(p(vecs))).get().into(result.traverse(1)).evaluate();
 		assertEquals(3.0 / 5.0, result.toDouble(0));
@@ -943,13 +939,9 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	/** Batch normalize length verification. */
 	@Test(timeout = 60000)
 	public void batchNormalizedLength() {
-		PackedCollection vecs = new PackedCollection(shape(2, 3));
-		vecs.setMem(0, 1.0);
-		vecs.setMem(1, 2.0);
-		vecs.setMem(2, 2.0);
-		vecs.setMem(3, 6.0);
-		vecs.setMem(4, 0.0);
-		vecs.setMem(5, 8.0);
+		PackedCollection vecs = pack(
+				1.0, 2.0, 2.0,
+				6.0, 0.0, 8.0).reshape(shape(2, 3));
 		PackedCollection normalized = new PackedCollection(shape(2, 3));
 		normalize(c(p(vecs))).get().into(normalized.traverse(1)).evaluate();
 		PackedCollection lengths = new PackedCollection(shape(2, 1));
@@ -1029,16 +1021,10 @@ public class BatchVectorNormalizeTest extends TestSuiteBase {
 	/** Batch of 3 vectors: normalize and verify all unit length. */
 	@Test(timeout = 60000)
 	public void batchNormalizeThreeVectors() {
-		PackedCollection vecs = new PackedCollection(shape(3, 3));
-		vecs.setMem(0, 1.0);
-		vecs.setMem(1, 0.0);
-		vecs.setMem(2, 0.0);
-		vecs.setMem(3, 0.0);
-		vecs.setMem(4, 3.0);
-		vecs.setMem(5, 4.0);
-		vecs.setMem(6, 2.0);
-		vecs.setMem(7, 2.0);
-		vecs.setMem(8, 1.0);
+		PackedCollection vecs = pack(
+				1.0, 0.0, 0.0,
+				0.0, 3.0, 4.0,
+				2.0, 2.0, 1.0).reshape(shape(3, 3));
 		PackedCollection normalized = new PackedCollection(shape(3, 3));
 		normalize(c(p(vecs))).get().into(normalized.traverse(1)).evaluate();
 		PackedCollection lengths = new PackedCollection(shape(3, 1));

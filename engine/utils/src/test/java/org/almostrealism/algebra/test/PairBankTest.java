@@ -36,11 +36,9 @@ public class PairBankTest extends TestSuiteBase {
 
 		CollectionProducer concat = concat(shape(2), l, r);
 
-		PackedCollection left = new PackedCollection(shape(4, 1));
-		left.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection left = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(4, 1));
 
-		PackedCollection right = new PackedCollection(shape(4, 1));
-		right.setMem(5.0, 6.0, 7.0, 8.0);
+		PackedCollection right = pack(5.0, 6.0, 7.0, 8.0).reshape(shape(4, 1));
 
 		PackedCollection destination = new PackedCollection(shape(4, 2));
 
@@ -61,8 +59,7 @@ public class PairBankTest extends TestSuiteBase {
 
 		CollectionProducer concat = concat(shape(4, 2), in, in);
 
-		PackedCollection timeline = new PackedCollection(shape(4, 1));
-		timeline.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection timeline = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(4, 1));
 
 		PackedCollection destination = new PackedCollection(shape(4, 2));
 
@@ -94,8 +91,7 @@ public class PairBankTest extends TestSuiteBase {
 		Producer<PackedCollection> pairFromPairBank =
 				(Producer<PackedCollection>) pairFromBank(v(shape(10, 2), 0), index);
 
-		PackedCollection timeline = new PackedCollection(shape(4, 1));
-		timeline.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection timeline = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(4, 1));
 
 		PackedCollection destination = new PackedCollection(shape(4, 2));
 

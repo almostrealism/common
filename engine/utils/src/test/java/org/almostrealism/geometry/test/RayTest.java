@@ -255,8 +255,7 @@ public class RayTest extends TestSuiteBase {
 		// Test that dot products work for a single ray in batch mode
 		Producer<Ray> ray = v(shape(-1, 6), 0);
 
-		PackedCollection singleRay = new PackedCollection(shape(1, 6).traverse(1));
-		singleRay.setMem(0, 0, 0, 3, 0, 0, -1); // origin (0,0,3), direction (0,0,-1)
+		PackedCollection singleRay = pack(0.0, 0.0, 3.0, 0.0, 0.0, -1.0).reshape(shape(1, 6)).traverse(1);  // origin (0,0,3), direction (0,0,-1)
 
 		// Test oDoto (origin dot origin) = 0^2 + 0^2 + 3^2 = 9
 		PackedCollection oDotoResult = new PackedCollection(shape(1, 1).traverse(1));

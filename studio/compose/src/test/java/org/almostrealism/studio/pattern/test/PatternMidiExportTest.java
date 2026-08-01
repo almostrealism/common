@@ -219,8 +219,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		element.setRepeatDuration(0.25);
 
 		PackedCollection automation =
-				new PackedCollection(6);
-		automation.setMem(0, 0.5);
+				pack(0.5, 0.0, 0.0, 0.0, 0.0, 0.0);
 		element.setAutomationParameters(automation);
 
 		AudioSceneContext context = createContext(4, scale);

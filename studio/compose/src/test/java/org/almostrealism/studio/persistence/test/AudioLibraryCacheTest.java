@@ -743,18 +743,15 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		int frames = 3;
 		int bins = 4;
 		WaveDetails details = new WaveDetails("embed-test", 44100);
-		PackedCollection featureData = new PackedCollection(frames, bins, 1);
 
 		// Frame 0: [1, 2, 3, 4]
 		// Frame 1: [5, 6, 7, 8]
 		// Frame 2: [3, 3, 3, 3]
 		// Mean:    [3, 3.667, 4.333, 5]
-		featureData.setMem(0, 1.0); featureData.setMem(1, 2.0);
-		featureData.setMem(2, 3.0); featureData.setMem(3, 4.0);
-		featureData.setMem(4, 5.0); featureData.setMem(5, 6.0);
-		featureData.setMem(6, 7.0); featureData.setMem(7, 8.0);
-		featureData.setMem(8, 3.0); featureData.setMem(9, 3.0);
-		featureData.setMem(10, 3.0); featureData.setMem(11, 3.0);
+		PackedCollection featureData = pack(
+				1.0, 2.0, 3.0, 4.0,
+				5.0, 6.0, 7.0, 8.0,
+				3.0, 3.0, 3.0, 3.0).reshape(shape(frames, bins, 1));
 		details.setFeatureData(featureData);
 
 		PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
@@ -938,12 +935,13 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		details.setFreqData(new PackedCollection(bins));
 
 		PackedCollection featureData = new PackedCollection(frames, bins, 1);
-		for (int f = 0; f < frames; f++) {
-			for (int b = 0; b < bins; b++) {
-				featureData.setMem(f * bins + b,
-						(identifier.hashCode() + f * bins + b) * 0.001);
-			}
-		}
+
+		// The identifier hash enters as provider data rather than a baked
+		// constant, so every identifier shares one compiled kernel
+		double hashValue = identifier.hashCode();
+		PackedCollection hash = pack(hashValue);
+		integers(0, frames * bins).add(cp(hash)).multiply(0.001)
+				.into(featureData.traverseEach()).evaluate();
 		details.setFeatureData(featureData);
 		details.setFeatureSampleRate(16.0);
 		details.setFeatureChannelCount(1);

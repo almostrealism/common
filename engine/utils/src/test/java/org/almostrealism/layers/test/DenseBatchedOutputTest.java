@@ -62,12 +62,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		// W = [[1, 2],    -> output[0] = 1*in[0] + 2*in[1]
 		//      [3, 4],    -> output[1] = 3*in[0] + 4*in[1]
 		//      [5, 6]]    -> output[2] = 5*in[0] + 6*in[1]
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection weights = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Create input: [1, 2] (batch=1, features=2)
-		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2);
+		PackedCollection input = pack(1.0, 2.0).reshape(shape(batchSize, inputSize));
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -124,15 +123,15 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		//      [0, 1],    -> output[1] = 0*in[0] + 1*in[1] = in[1]
 		//      [1, 1],    -> output[2] = 1*in[0] + 1*in[1] = in[0] + in[1]
 		//      [2, 3]]    -> output[3] = 2*in[0] + 3*in[1]
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 1, 1, 1, 2, 3);
+		PackedCollection weights = pack(1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Create batched input: 3 samples, each with 2 features
 		// Sample 0: [1, 2]
 		// Sample 1: [3, 4]
 		// Sample 2: [5, 6]
-		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(batchSize, inputSize));
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -242,12 +241,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		// W = [[1, 0, 0],
 		//      [0, 1, 0]]
 		// This extracts the first two features
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 0, 1, 0);
+		PackedCollection weights = pack(1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Input: single sample [10, 20, 30]
-		PackedCollection input = new PackedCollection(shape(1, inputSize));
-		input.setMem(0, 10, 20, 30);
+		PackedCollection input = pack(10.0, 20.0, 30.0).reshape(shape(1, inputSize));
 
 		log("Weights: " + weights.toArrayString());
 		log("Input: " + input.toArrayString());
@@ -347,12 +345,12 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		int batchSize = 3;
 
 		// Create weights: 4x2 matrix
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 1, 1, 1, 2, 3);
+		PackedCollection weights = pack(1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Input: (3, 2) - batched
-		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(batchSize, inputSize));
 
 		log("Weights (4x2): " + weights.toArrayString());
 		log("Input (3x2): " + input.toArrayString());

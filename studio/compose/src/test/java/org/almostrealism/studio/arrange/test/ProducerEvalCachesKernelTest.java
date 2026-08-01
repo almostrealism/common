@@ -90,7 +90,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
 
-		buffer.setMem(0, 100.0);
+		buffer.fill(100.0);
 		a(p(sink), producer).get().run();
 
 		double sinkValue = sink.toDouble(0);
@@ -117,14 +117,14 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
 
 		// Step 1: initial buffer value
-		buffer.setMem(0, 5.0);
+		buffer.fill(5.0);
 
 		// Step 2: pre-eval the producer from Java
 		double preEval = producer.get().evaluate().toDouble(0);
 		log("preEvalFreezesAssignment: pre-eval = " + preEval + " (expected 10.0)");
 
 		// Step 3: mutate the buffer
-		buffer.setMem(0, 100.0);
+		buffer.fill(100.0);
 
 		// Step 4: run the Assignment using the same producer instance
 		a(p(sink), producer).get().run();
@@ -190,7 +190,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
 
-		buffer.setMem(0, 0.0);
+		buffer.clear();
 
 		log(name + ": [phase=after-construct] " + describe("buffer", buffer)
 				+ ", " + describe("sink", sink));
@@ -313,7 +313,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
 
-		buffer.setMem(0, 0.0);
+		buffer.clear();
 
 		double preEval = producer.get().evaluate().toDouble(0);
 		log(name + ": pre-eval = " + preEval + " (expected 0.0)");
@@ -364,8 +364,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 	 */
 	@Test(timeout = 30_000)
 	public void leafMemoryDataIdentityBeforeAndAfterPreEval() {
-		PackedCollection buffer = new PackedCollection(1);
-		buffer.setMem(0, 5.0);
+		PackedCollection buffer = pack(5.0);
 
 		Producer<PackedCollection> producer =
 				(Producer) cp(buffer).multiply((Producer) c(2.0));
@@ -385,7 +384,7 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		// new value if the leaf is still 'buffer'. If pre-eval cached an
 		// independent destination collection somewhere, evaluating again
 		// might return the stale value.
-		buffer.setMem(0, 100.0);
+		buffer.fill(100.0);
 		double v2 = producer.get().evaluate().toDouble(0);
 		log("--- after buffer.setMem(0,100), eval returned: " + v2
 				+ " (expected 200.0; if 10.0 the producer's leaf points at "

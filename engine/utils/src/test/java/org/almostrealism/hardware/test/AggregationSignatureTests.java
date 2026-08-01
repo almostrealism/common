@@ -108,11 +108,7 @@ public class AggregationSignatureTests extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void aggregationFunctionsDisambiguate() {
 		int n = 4;
-		PackedCollection data = new PackedCollection(shape(n));
-		data.setMem(0, 2.0);
-		data.setMem(1, 3.0);
-		data.setMem(2, 4.0);
-		data.setMem(3, 5.0);
+		PackedCollection data = pack(2.0, 3.0, 4.0, 5.0);
 
 		AggregatedProducerComputation sum = new AggregatedProducerComputation(
 				"agg", shape(n).replace(shape(1)), n,

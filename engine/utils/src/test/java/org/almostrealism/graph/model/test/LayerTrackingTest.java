@@ -27,7 +27,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
-import java.util.stream.IntStream;
 
 /**
  * Tests for the layer IO tracking mechanism, verifying that inference-mode
@@ -123,9 +122,7 @@ public class LayerTrackingTest extends TestSuiteBase {
 					Double.isInfinite(trainingOutput.valueAt(i)));
 		}
 
-		PackedCollection gradient = new PackedCollection(shape(outputSize));
-		gradient.setMem(0, 0.1);
-		gradient.setMem(1, -0.1);
+		PackedCollection gradient = pack(0.1, -0.1);
 		trainingCompiled.backward(gradient);
 
 		trainingCompiled.destroy();
@@ -222,7 +219,7 @@ public class LayerTrackingTest extends TestSuiteBase {
 		CompiledModel trainingCompiled = trainingModel.compile(true, trainingProfile);
 
 		PackedCollection input = new PackedCollection(shape(inputSize));
-		IntStream.range(0, inputSize).forEach(i -> input.setMem(i, 1.0));
+		input.fill(1.0);
 		trainingCompiled.forward(input);
 
 		Model inferenceModel = createDenseModel(inputSize, hiddenSize, outputSize);

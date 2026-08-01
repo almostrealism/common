@@ -67,7 +67,6 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 				RotationFeatures.computeRopeFreqs(10000.0, headDim, seqLen);
 
 		PackedCollection position = new PackedCollection(1);
-		position.setMem(0, 0.0);
 
 		PackedCollection input = new PackedCollection(shape(heads, freqDim, 2)).randFill();
 
@@ -104,8 +103,6 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 
 		// Two groups, one head each — mirrors MoonbeamConfig.testConfig() layout
 		PackedCollection attrPositions = new PackedCollection(2);
-		attrPositions.setMem(0, 0.0);
-		attrPositions.setMem(1, 0.0);
 
 		Producer<PackedCollection>[] positions = new Producer[2];
 		positions[0] = cp(attrPositions).subset(shape(1), 0);
@@ -256,8 +253,7 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 		int seqLen = 4;
 		double theta = 10000.0;
 
-		PackedCollection position = new PackedCollection(1);
-		position.setMem(0, 1.0);
+		PackedCollection position = pack(1.0);
 
 		PackedCollection input = new PackedCollection(shape(heads, freqDim, 2)).randFill();
 
@@ -335,7 +331,6 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 		PackedCollection attrPositions = new PackedCollection(thetas.length);
 		Producer<PackedCollection>[] positions = new Producer[thetas.length];
 		for (int g = 0; g < thetas.length; g++) {
-			attrPositions.setMem(g, 0.0);
 			positions[g] = cp(attrPositions).subset(shape(1), g);
 		}
 

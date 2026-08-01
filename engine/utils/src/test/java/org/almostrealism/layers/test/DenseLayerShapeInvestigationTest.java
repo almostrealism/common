@@ -49,8 +49,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 		log("=== Test: Matmul Shape via Dense Layer ===");
 
 		// Weights: (2, 3) - standard (out, in) layout
-		PackedCollection weights = new PackedCollection(shape(2, 3));
-		weights.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection weights = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).reshape(shape(2, 3));
 
 		TraversalPolicy inputShape = shape(1, 3);
 		CellularLayer layer = dense(inputShape, weights, false, false);
@@ -77,8 +76,8 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 		int outputSize = 2;
 
 		// Create weights with known values
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection weights = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(outputSize, inputSize));
 
 		log("Weights shape: " + weights.getShape());
 
@@ -112,8 +111,8 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 		int outputSize = 2;
 
 		// Create weights: (2, 3) - 2 outputs, 3 inputs
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6);
+		PackedCollection weights = pack(0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+				.reshape(shape(outputSize, inputSize));
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -130,8 +129,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 		log("Model output shape: " + model.getOutputShape());
 
 		// Create test input
-		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1.0, 2.0, 3.0);
+		PackedCollection input = pack(1.0, 2.0, 3.0).reshape(inputShape);
 		log("Input: " + input.toArrayString());
 
 		// Expected output (manual calculation):
@@ -229,8 +227,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 		log("Model output shape: " + model.getOutputShape());
 
 		// Create batched input
-		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).reshape(inputShape);
 		log("Input (2 samples): " + input.toArrayString());
 
 		// Run inference

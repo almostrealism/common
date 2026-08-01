@@ -51,8 +51,7 @@ public class PackedCollectionTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void clear() {
-		PackedCollection data = new PackedCollection(4);
-		data.setMem(0, 1.0, 2.0, 3.0, 4.0);
+		PackedCollection data = pack(1.0, 2.0, 3.0, 4.0);
 		data.clear();
 		assertEquals(0, data.toArray(0, 4)[1]);
 	}

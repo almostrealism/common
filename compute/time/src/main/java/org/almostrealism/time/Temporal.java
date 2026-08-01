@@ -125,7 +125,7 @@ import java.util.function.Supplier;
  *
  *     @Override
  *     public void reset() {
- *         state.setMem(0, 0.0);  // Reset to initial state
+ *         state.clear();  // Reset to initial state
  *     }
  * }
  * }</pre>

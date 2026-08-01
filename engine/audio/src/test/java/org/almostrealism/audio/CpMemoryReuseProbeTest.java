@@ -46,8 +46,7 @@ public class CpMemoryReuseProbeTest extends TestSuiteBase implements CollectionF
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void cpRereadsBufferMemoryOnReevaluate() {
-		PackedCollection buf = new PackedCollection(4);
-		buf.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection buf = pack(1.0, 2.0, 3.0, 4.0);
 
 		CollectionProducer producer = cp(buf).multiply(c(2.0));
 		Evaluable<PackedCollection> evaluable = producer.get();

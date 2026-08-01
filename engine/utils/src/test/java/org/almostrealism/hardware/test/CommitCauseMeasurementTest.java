@@ -102,8 +102,7 @@ public class CommitCauseMeasurementTest extends TestSuiteBase implements ModelTe
 			PackedCollection input = new PackedCollection(shape(FEATURES));
 			input.fill(pos -> Math.random());
 
-			PackedCollection gradient = new PackedCollection(shape(1));
-			gradient.setMem(0, 1.0);
+			PackedCollection gradient = pack(1.0);
 
 			MetalCommandRunner runner = metal.getCommandRunner();
 

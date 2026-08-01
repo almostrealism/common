@@ -65,9 +65,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
 		PackedCollection samples = new PackedCollection(10);
-		for (int i = 0; i < 10; i++) {
-			samples.setMem(i, i * 0.1);
-		}
+		integers(0, 10).multiply(0.1).into(samples.traverseEach()).evaluate();
 
 		buffer.write(samples);
 
@@ -87,9 +85,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		BufferOutputLine buffer = new BufferOutputLine(10);
 
 		PackedCollection samples = new PackedCollection(15);
-		for (int i = 0; i < 15; i++) {
-			samples.setMem(i, i + 1.0);
-		}
+		integers(1, 16).into(samples.traverseEach()).evaluate();
 
 		buffer.write(samples);
 
@@ -113,9 +109,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		buffer.setCircular(false);
 
 		PackedCollection samples = new PackedCollection(15);
-		for (int i = 0; i < 15; i++) {
-			samples.setMem(i, i + 1.0);
-		}
+		integers(1, 16).into(samples.traverseEach()).evaluate();
 
 		buffer.write(samples);
 
@@ -134,9 +128,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
 		PackedCollection samples = new PackedCollection(50);
-		for (int i = 0; i < 50; i++) {
-			samples.setMem(i, i * 0.01);
-		}
+		integers(0, 50).multiply(0.01).into(samples.traverseEach()).evaluate();
 
 		buffer.write(samples);
 
@@ -192,11 +184,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 	public void testRmsAmplitude() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
-		PackedCollection samples = new PackedCollection(4);
-		samples.setMem(0, 1.0);
-		samples.setMem(1, -1.0);
-		samples.setMem(2, 1.0);
-		samples.setMem(3, -1.0);
+		PackedCollection samples = pack(1.0, -1.0, 1.0, -1.0);
 
 		buffer.write(samples);
 
@@ -210,15 +198,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 	public void testZeroCrossings() {
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
-		PackedCollection samples = new PackedCollection(8);
-		samples.setMem(0, 1.0);
-		samples.setMem(1, 0.5);
-		samples.setMem(2, -0.5);
-		samples.setMem(3, -1.0);
-		samples.setMem(4, -0.5);
-		samples.setMem(5, 0.5);
-		samples.setMem(6, 1.0);
-		samples.setMem(7, 0.5);
+		PackedCollection samples = pack(1.0, 0.5, -0.5, -1.0, -0.5, 0.5, 1.0, 0.5);
 
 		buffer.write(samples);
 
@@ -264,9 +244,7 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 		BufferOutputLine buffer = new BufferOutputLine(100);
 
 		PackedCollection samples = new PackedCollection(50);
-		for (int i = 0; i < 50; i++) {
-			samples.setMem(i, 0.5);
-		}
+		samples.fill(0.5);
 		buffer.write(samples);
 
 		assertEquals(50, buffer.getTotalFramesWritten());

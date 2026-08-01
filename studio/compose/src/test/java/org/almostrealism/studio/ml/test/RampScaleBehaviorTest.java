@@ -60,10 +60,8 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 	public void testRampFollowsSlotsExactly() {
 		int channels = 2;
 		int signalSize = 8;
-		PackedCollection prev = new PackedCollection(channels);
-		prev.setMem(0, 1.0, 4.0);
-		PackedCollection curr = new PackedCollection(channels);
-		curr.setMem(0, 2.0, 0.0);
+		PackedCollection prev = pack(1.0, 4.0);
+		PackedCollection curr = pack(2.0, 0.0);
 		CompiledModel compiled = build(prev, curr, channels, signalSize);
 
 		PackedCollection input = new PackedCollection(
@@ -92,10 +90,8 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 	@Test(timeout = 120000)
 	public void testCrossFrameContinuity() {
 		int signalSize = 8;
-		PackedCollection prev = new PackedCollection(1);
-		prev.setMem(0, 1.0);
-		PackedCollection curr = new PackedCollection(1);
-		curr.setMem(0, 2.0);
+		PackedCollection prev = pack(1.0);
+		PackedCollection curr = pack(2.0);
 		CompiledModel compiled = build(prev, curr, 1, signalSize);
 
 		PackedCollection input = new PackedCollection(
@@ -106,8 +102,8 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 				2.0, frame1[signalSize - 1], EPS);
 
 		// The per-buffer refresh: prev takes the value the last ramp ended on.
-		prev.setMem(0, 2.0);
-		curr.setMem(0, 4.0);
+		prev.fill(2.0);
+		curr.fill(4.0);
 		double[] frame2 = compiled.forward(input).toArray(0, signalSize);
 
 		double increment = (4.0 - 2.0) / signalSize;

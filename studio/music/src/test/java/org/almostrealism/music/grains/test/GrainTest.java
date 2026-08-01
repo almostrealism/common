@@ -98,8 +98,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		grain.setDuration(0.015);
 		grain.setRate(0.3);
 
-		PackedCollection w = new PackedCollection(1);
-		w.setMem(0.75);
+		PackedCollection w = pack(0.75);
 
 		Producer<PackedCollection> g = v(shape(3), 1);
 		CollectionProducer start = c(g, 0).multiply(c(OutputLine.sampleRate));
@@ -161,8 +160,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 			PackedCollection p = new PackedCollection(1);
 			rand(p.getShape()).add(-0.5).into(p.traverseEach()).evaluate();
 
-			PackedCollection a = new PackedCollection(1);
-			a.setMem(1.0);
+			PackedCollection a = pack(1.0);
 
 			return new WaveData(processor.into(new PackedCollection(shape(tot), 1))
 					.evaluate(input.traverse(0), grain, w, p, a), OutputLine.sampleRate);
@@ -209,8 +207,7 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 			PackedCollection p = new PackedCollection(1);
 			rand(p.getShape()).add(-0.5).into(p.traverseEach()).evaluate();
 
-			PackedCollection a = new PackedCollection(1);
-			a.setMem(0.2);
+			PackedCollection a = pack(0.2);
 
 			return new WaveData(processor.into(new PackedCollection(shape(tot), 1))
 					.evaluate(input.traverse(0), grain, w, p, a), OutputLine.sampleRate);

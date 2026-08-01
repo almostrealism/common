@@ -371,9 +371,9 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	public void setRed(double r) {
 		if (r < 0.0) {
-			this.data.setMem(0, 0.0);
+			this.data.setMem(0.0);
 		} else if (r > 1.0) {
-			this.data.setMem(0, 1.0);
+			this.data.setMem(1.0);
 		} else {
 			this.data.setMem(0, r);
 		}

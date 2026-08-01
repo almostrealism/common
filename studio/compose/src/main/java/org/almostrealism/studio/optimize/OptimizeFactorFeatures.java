@@ -416,9 +416,7 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 										Producer<PackedCollection> e,
 										Producer<PackedCollection> time,
 										Producer<PackedCollection> duration) {
-		PackedCollection directionChoices = new PackedCollection(shape(2, 1).traverse(1));
-		directionChoices.setMem(0, -1);
-		directionChoices.setMem(1, 1);
+		PackedCollection directionChoices = pack(-1.0, 1.0).reshape(shape(2, 1)).traverse(1);
 
 		double sc = maxValue - minValue;
 
