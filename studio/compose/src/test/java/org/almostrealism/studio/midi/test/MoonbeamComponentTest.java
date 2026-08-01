@@ -18,15 +18,8 @@ package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.code.MemoryProvider;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.DirectMemory;
-import org.almostrealism.hardware.mem.RAM;
-import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
@@ -575,31 +568,13 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	}
 
 	/**
-	 * Create a PackedCollection with random values scaled by 0.02 (typical weight init).
-	 * The Gaussian sequence is written directly into a native buffer staging
-	 * allocation, which migrates to the compute device at first kernel use.
+	 * Create a PackedCollection with random N(0, 0.02) values, generated as a
+	 * device computation.
 	 */
 	private static PackedCollection createRandomCollection(Random rng, int... dims) {
-		TraversalPolicy shape = new TraversalPolicy(dims);
-		int total = shape.getTotalSize();
-
-		MemoryProvider<? extends RAM> provider =
-				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(total);
-
-		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
-		if (provider.getNumberSize() == 4) {
-			FloatBuffer view = staging.asFloatBuffer();
-			for (int i = 0; i < total; i++) {
-				view.put(i, (float) (rng.nextGaussian() * 0.02));
-			}
-		} else {
-			DoubleBuffer view = staging.asDoubleBuffer();
-			for (int i = 0; i < total; i++) {
-				view.put(i, rng.nextGaussian() * 0.02);
-			}
-		}
-
-		return new PackedCollection(shape, 0, Bytes.of(mem, total), 0);
+		PackedCollection collection = new PackedCollection(new TraversalPolicy(dims));
+		Ops.o().randn(collection.getShape(), rng).multiply(0.02)
+				.into(collection.traverseEach()).evaluate();
+		return collection;
 	}
 }

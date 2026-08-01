@@ -16,26 +16,28 @@
 
 package org.almostrealism.ml.llama2;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.ByteBufferTransfer;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.RAM;
 
 import java.nio.ByteBuffer;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
 
 /**
  * Weight tensors for a Llama2 model, loaded from a binary checkpoint.
  *
- * <p>Weights are read sequentially from the checkpoint file's float buffer
- * in the order defined by the original llama2.c format. All tensors are
- * stored as {@link PackedCollection} instances for use with the AR compute
- * pipeline.</p>
+ * <p>Weights are read sequentially from the checkpoint buffer in the order
+ * defined by the original llama2.c format. Each tensor moves directly from
+ * the checkpoint into a staging allocation via {@link ByteBufferTransfer} —
+ * no host arrays — and the framework migrates it to a compute device when a
+ * kernel first requires it. All tensors are stored as {@link PackedCollection}
+ * instances for use with the AR compute pipeline.</p>
  *
  * @author Michael Murray
  */
@@ -83,94 +85,86 @@ public class Llama2Weights implements CodeFeatures {
 	 * Reads all weight tensors from the checkpoint buffer.
 	 *
 	 * @param config the model configuration (defines tensor shapes)
-	 * @param buffer the float buffer positioned after the header
+	 * @param buffer the checkpoint buffer positioned after the header
 	 */
-	public Llama2Weights(Llama2Config config, FloatBuffer buffer) {
-		this.tokenEmbeddings =
-				pack(take(buffer, config.vocabSize, config.dim))
-				.reshape(shape(config.vocabSize, config.dim));
+	public Llama2Weights(Llama2Config config, ByteBuffer buffer) {
+		this.tokenEmbeddings = stage(shape(config.vocabSize, config.dim), buffer);
+		this.rmsAttWeights = stage(shape(config.layerCount, config.dim), buffer);
 
-		this.rmsAttWeights =
-				pack(take(buffer, config.layerCount, config.dim))
-				.reshape(shape(config.layerCount, config.dim));
+		this.wq = stage(shape(config.layerCount, config.dim, config.dim), buffer);
+		this.wk = stage(shape(config.layerCount, config.dim, config.dim), buffer);
+		this.wv = stage(shape(config.layerCount, config.dim, config.dim), buffer);
+		this.wo = stage(shape(config.layerCount, config.dim, config.dim), buffer);
 
-		this.wq = pack(take(buffer, config.layerCount, config.dim, config.dim))
-				.reshape(shape(config.layerCount, config.dim, config.dim));
-		this.wk = pack(take(buffer, config.layerCount, config.dim, config.dim))
-				.reshape(shape(config.layerCount, config.dim, config.dim));
-		this.wv = pack(take(buffer, config.layerCount, config.dim, config.dim))
-				.reshape(shape(config.layerCount, config.dim, config.dim));
-		this.wo = pack(take(buffer, config.layerCount, config.dim, config.dim))
-				.reshape(shape(config.layerCount, config.dim, config.dim));
+		this.rmsFfn = stage(shape(config.layerCount, config.dim), buffer);
 
-		this.rmsFfn = pack(take(buffer, config.layerCount, config.dim))
-				.reshape(shape(config.layerCount, config.dim));
+		this.w1 = stage(shape(config.layerCount, config.hiddenDim, config.dim), buffer);
+		this.w2 = stage(shape(config.layerCount, config.dim, config.hiddenDim), buffer);
+		this.w3 = stage(shape(config.layerCount, config.hiddenDim, config.dim), buffer);
 
-		this.w1 = pack(take(buffer, config.layerCount, config.hiddenDim, config.dim))
-				.reshape(shape(config.layerCount, config.hiddenDim, config.dim));
-		this.w2 = pack(take(buffer, config.layerCount, config.dim, config.hiddenDim))
-				.reshape(shape(config.layerCount, config.dim, config.hiddenDim));
-		this.w3 = pack(take(buffer, config.layerCount, config.hiddenDim, config.dim))
-				.reshape(shape(config.layerCount, config.hiddenDim, config.dim));
+		this.rmsFinalWeight = stage(shape(config.dim), buffer);
 
-		this.rmsFinalWeight =
-				pack(take(buffer, config.dim))
-				.reshape(shape(config.dim));
-
-		this.freqCis = packComplex(
-				take(buffer, config.seqLen, config.headSize / 2),
-				take(buffer, config.seqLen, config.headSize / 2),
-				shape(config.seqLen, config.headSize / 2, 2));
+		int freqCount = config.seqLen * (config.headSize / 2);
+		this.freqCis = stage(shape(config.seqLen, config.headSize / 2, 2),
+				take(buffer, freqCount), take(buffer, freqCount));
 
 		this.wcls = config.sharedWeights ? tokenEmbeddings
-				: pack(take(buffer, config.vocabSize, config.dim))
-						.reshape(shape(config.vocabSize, config.dim));
+				: stage(shape(config.vocabSize, config.dim), buffer);
 	}
 
 	/**
-	 * Reads the next {@code product(dims)} floats from the buffer into a new array.
+	 * Slices the next {@code count} elements off the buffer as an independent
+	 * region, advancing the buffer past them. Used when a tensor combines
+	 * multiple checkpoint regions, such as the interleaved RoPE frequencies.
 	 *
-	 * @param buffer the float buffer positioned at the next tensor's data
-	 * @param dims   the dimensions of the tensor to read
-	 * @return a float array containing the tensor values
+	 * @param buffer the checkpoint buffer positioned at the region's data
+	 * @param count  the number of elements in the region
+	 * @return a buffer covering exactly the region, in the checkpoint's byte order
 	 */
-	static float[] take(FloatBuffer buffer, int... dims) {
-		TraversalPolicy shape = new TraversalPolicy(dims);
-		float[] floats = new float[shape.getTotalSize()];
-		buffer.get(floats);
-		return floats;
+	static ByteBuffer take(ByteBuffer buffer, int count) {
+		int bytes = count * Precision.FP32.bytes();
+		ByteBuffer slice = buffer.slice().order(buffer.order());
+		slice.limit(bytes);
+		buffer.position(buffer.position() + bytes);
+		return slice;
 	}
 
 	/**
-	 * Packs real and imaginary float arrays into a single interleaved
-	 * {@link PackedCollection} suitable for RoPE frequency tensors.
+	 * Stages the next tensor into a native buffer allocation, interleaving the
+	 * given checkpoint regions element by element. With a single source this is
+	 * a straight copy of the tensor's data; with several, one element is drawn
+	 * from each source in turn, as for tensors stored as separate planes in the
+	 * checkpoint but consumed interleaved.
 	 *
-	 * @param real  real components of each complex frequency entry
-	 * @param imag  imaginary components of each complex frequency entry
-	 * @param shape expected shape of the output collection; the last dimension must be 2
-	 * @return a packed collection with alternating real/imaginary values
+	 * @param shape   the shape of the tensor being staged
+	 * @param sources one or more checkpoint regions holding the tensor's values
+	 * @return a collection rooted over the staging allocation
 	 */
-	static PackedCollection packComplex(float[] real, float[] imag, TraversalPolicy shape) {
-		if (shape.length(shape.getDimensions() - 1) != 2)
+	static PackedCollection stage(TraversalPolicy shape, ByteBuffer... sources) {
+		int total = shape.getTotalSize();
+		if (total % sources.length != 0)
 			throw new IllegalArgumentException();
 
-		int total = shape.getTotalSize();
 		MemoryProvider<? extends RAM> provider =
 				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
 		RAM mem = provider.allocate(total);
 
 		ByteBuffer staging = ((DirectMemory) mem).asByteBuffer();
-		if (provider.getNumberSize() == 4) {
-			FloatBuffer view = staging.asFloatBuffer();
-			for (int i = 0; i < total; i += 2) {
-				view.put(i, real[i / 2]);
-				view.put(i + 1, imag[i / 2]);
-			}
+		Precision destination = Precision.ofBytes(provider.getNumberSize());
+
+		ByteBufferTransfer transfers[] = new ByteBufferTransfer[sources.length];
+		for (int i = 0; i < sources.length; i++) {
+			transfers[i] = new ByteBufferTransfer(sources[i], Precision.FP32,
+					staging, destination);
+		}
+
+		if (transfers.length == 1) {
+			transfers[0].copy(total);
 		} else {
-			DoubleBuffer view = staging.asDoubleBuffer();
-			for (int i = 0; i < total; i += 2) {
-				view.put(i, real[i / 2]);
-				view.put(i + 1, imag[i / 2]);
+			for (int i = 0; i < total; i += transfers.length) {
+				for (ByteBufferTransfer transfer : transfers) {
+					transfer.copyNext();
+				}
 			}
 		}
 

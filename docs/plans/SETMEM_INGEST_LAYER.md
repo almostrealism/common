@@ -115,15 +115,24 @@ read-only until it migrates. Streaming decoders (WAV) and one-shot payloads
    residue remains detector-enforced (`SETMEM_NON_LITERAL_ARGUMENT`).
 6. **Exclusions retired** as their lines disappeared (Llama2Weights,
    OnnxFeatures, SAMEResamplingParityTest) — 21 → 18 remaining; the baseline
-   regenerated to 612 grandfathered occurrences (630 total exemptions).
+   regenerated to 600 grandfathered occurrences (618 total exemptions).
+7. **`ByteBufferTransfer`** (`org.almostrealism.hardware.mem`) is the named
+   home for precision-aware movement between buffers: construct with a
+   source and destination `ByteBuffer`, each with its own `Precision`, and
+   `copyAll()`/`copy(n)`/`copyNext()` handle conversion (bulk when precision
+   and byte order match; element-wise otherwise, honoring each buffer's
+   order). This replaced every pick-view-by-number-size branch: Llama2Weights
+   now stages checkpoint slices buffer-to-buffer with no host arrays (its 12
+   non-scalar `pack(take(...))` baseline rows retired with it),
+   SAMEResamplingParityTest transfers the reference file's payload buffer
+   directly, and the Moonbeam helpers transfer from a heap FP64 buffer.
 
-**Open follow-up**: the allocate-staging-then-pick-view-by-number-size
-sequence now appears at six call sites (OnnxFeatures, WaveData,
-Llama2Weights, three test helpers). It may deserve a named home — e.g. a
-staging factory that returns the correctly-typed view alongside the
-allocation — but a general `stage(double[])` convenience would simply
-resurrect the removed bulk-upload API, so the shape needs a deliberate
-decision rather than a reflexive helper.
+**Open follow-up**: the remaining shared shape is
+allocate-staging-then-wrap (`allocate` → `asByteBuffer` → transfer →
+`Bytes.of` → `PackedCollection`), still repeated per site. A general
+`stage(double[])` convenience would resurrect the removed bulk-upload API,
+so any further consolidation should compose `ByteBufferTransfer` with a
+buffer-typed source, not an array-typed one.
 
 Each step is verified by the tests that exercise the migrated path (ML weight
 loading and inference tests for 1; ONNX inference tests for 2; audio I/O and

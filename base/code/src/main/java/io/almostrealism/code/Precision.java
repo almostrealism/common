@@ -53,6 +53,27 @@ public enum Precision {
 	}
 
 	/**
+	 * Returns the precision whose elements occupy the given number of bytes,
+	 * the inverse of {@link #bytes()}.
+	 *
+	 * @param bytes the byte count per element (2, 4, or 8)
+	 * @return the matching precision
+	 * @throws IllegalArgumentException if no precision uses the given byte count
+	 */
+	public static Precision ofBytes(int bytes) {
+		switch (bytes) {
+			case 2:
+				return FP16;
+			case 4:
+				return FP32;
+			case 8:
+				return FP64;
+			default:
+				throw new IllegalArgumentException(bytes + " bytes does not correspond to a supported precision");
+		}
+	}
+
+	/**
 	 * Returns the most negative finite value representable at this precision.
 	 *
 	 * @return the minimum (most negative) finite floating-point value
