@@ -512,7 +512,7 @@ public final class Hardware implements ConsoleFeatures {
 
 		List<ComputeRequirement> requirements = new ArrayList<>();
 
-		boolean nioMem = false;
+		boolean sharedMem = false;
 
 		for (String driver : drivers) {
 			if ("cl".equalsIgnoreCase(driver)) {
@@ -538,16 +538,16 @@ public final class Hardware implements ConsoleFeatures {
 
 				if (drivers.length <= 1 && requirements.contains(ComputeRequirement.MTL)) {
 					KernelPreferences.enableSharedMemory();
-					nioMem = true;
+					sharedMem = true;
 				}
 			} else {
 				throw new IllegalStateException("Unknown driver " + driver);
 			}
 		}
 
-		nioMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(nioMem);
+		sharedMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(sharedMem);
 
-		if (nioMem) {
+		if (sharedMem) {
 			if (memLocation != null) {
 				if (location == Location.HOST) {
 					console.warn("NIO memory is enabled, location will be set to DELEGATE instead of HOST");
@@ -571,7 +571,7 @@ public final class Hardware implements ConsoleFeatures {
 				new ParallelismTargetOptimization()
 		));
 
-		local = new Hardware(requirements, location, nioMem);
+		local = new Hardware(requirements, location, sharedMem);
 	}
 
 	/** Display name for this hardware instance, used in log messages. */
@@ -611,10 +611,10 @@ public final class Hardware implements ConsoleFeatures {
 	 *
 	 * @param type List of required compute backends (e.g., JNI, MTL, CL)
 	 * @param location CL memory location strategy
-	 * @param nioMemory If true, NIO-based shared memory is enabled
+	 * @param sharedMemory If true, NIO-based shared memory between backends is enabled
 	 */
-	private Hardware(List<ComputeRequirement> type, Location location, boolean nioMemory) {
-		this("local", type, location, nioMemory);
+	private Hardware(List<ComputeRequirement> type, Location location, boolean sharedMemory) {
+		this("local", type, location, sharedMemory);
 	}
 
 	/**
@@ -623,9 +623,9 @@ public final class Hardware implements ConsoleFeatures {
 	 * @param name Display name for logging
 	 * @param reqs List of required compute backends to initialize
 	 * @param location CL memory location strategy
-	 * @param nioMemory If true, NIO-based shared memory is enabled for Metal/NIO mode
+	 * @param sharedMemory If true, NIO-based shared memory between backends is enabled
 	 */
-	private Hardware(String name, List<ComputeRequirement> reqs, Location location, boolean nioMemory) {
+	private Hardware(String name, List<ComputeRequirement> reqs, Location location, boolean sharedMemory) {
 		this.name = name;
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
@@ -634,11 +634,11 @@ public final class Hardware implements ConsoleFeatures {
 		this.contextListeners = Collections.synchronizedList(new ArrayList<>());
 		this.contexts = new ArrayList<>();
 		this.nativeDirectBuffers = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_DIRECT_BUFFERS").orElse(true);
-		this.nativeSharedMemory = nioMemory;
+		this.nativeSharedMemory = sharedMemory;
 
 		int count;
 
-		if (nioMemory) {
+		if (sharedMemory) {
 			this.nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32, Precision.FP32.bytes() * maxReservation);
 			count = processRequirements(reqs, Precision.FP32);
 		} else {
