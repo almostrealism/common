@@ -28,10 +28,24 @@ import org.almostrealism.collect.PackedCollection;
  * @see PackedCollection
  */
 public class AudioBuffer {
+	/** Metadata describing the buffer's sample rate and frame count. */
 	private final BufferDetails details;
+
+	/** Input audio buffer holding the source samples. */
 	private final PackedCollection input;
+
+	/** Output audio buffer for writing processed samples. */
 	private final PackedCollection output;
 
+	/**
+	 * Creates an AudioBuffer with the given details and pre-allocated buffers.
+	 * The input and output buffer sizes must match the frame count in {@code details}.
+	 *
+	 * @param details metadata describing the buffer configuration
+	 * @param input   input audio data buffer
+	 * @param output  output audio data buffer
+	 * @throws IllegalArgumentException if buffer sizes do not match the frame count in details
+	 */
 	public AudioBuffer(BufferDetails details,
 					   PackedCollection input,
 					   PackedCollection output) {
@@ -45,10 +59,22 @@ public class AudioBuffer {
 		}
 	}
 
+	/** Returns the buffer metadata. */
 	public BufferDetails getDetails() { return details; }
+
+	/** Returns the input audio buffer. */
 	public PackedCollection getInputBuffer() { return input; }
+
+	/** Returns the output audio buffer. */
 	public PackedCollection getOutputBuffer() { return output; }
 
+	/**
+	 * Creates a new AudioBuffer with freshly allocated input and output buffers.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 * @param frames     number of audio frames
+	 * @return a new AudioBuffer with empty input and output buffers
+	 */
 	public static AudioBuffer create(int sampleRate, int frames) {
 		return new AudioBuffer(
 				new BufferDetails(sampleRate, frames),

@@ -221,19 +221,20 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 							isolationFlags.stream().map(p -> p.test(c))
 									.reduce(false, (a, b) -> a | b))
 					.anyMatch(v -> v)) {
-				System.out.println("ParallelProcess: Flagged for isolation");
-			}
+		}
 		}
 
 		ProcessOptimizationStrategy strategy = context.getOptimizationStrategy();
 
 		if (strategy != null) {
-			return (ParallelProcess)
-					strategy.optimize(context, (Process) this, children,
-							c -> processChildren(c).map(p -> (P) p));
+			Process<P, T> result = strategy.optimize(context, (Process) this, children,
+					c -> processChildren(c).map(p -> (P) p));
+			if (result != null) {
+				return (ParallelProcess) result;
+			}
 		}
 
-		throw new UnsupportedOperationException();
+		return (ParallelProcess) generate(new ArrayList<>(children));
 	}
 
 	/**

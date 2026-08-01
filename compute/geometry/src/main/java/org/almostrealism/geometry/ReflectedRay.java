@@ -46,9 +46,16 @@ import org.almostrealism.hardware.MemoryBank;
  * @see GeometryFeatures#reflect(Producer, Producer)
  */
 public class ReflectedRay implements ProducerComputation<Ray>, GeometryFeatures {
+	/** The intersection point where the reflection originates. */
 	private final Producer<PackedCollection> point;
+
+	/** The surface normal at the intersection point. */
 	private final Producer<PackedCollection> normal;
+
+	/** The pre-computed ideally reflected direction (before blur perturbation). */
 	private final Producer<PackedCollection> reflected;
+
+	/** The amount of random perturbation applied to the reflected direction for glossy effects. */
 	private final double blur;
 
 	/**

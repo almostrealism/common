@@ -16,8 +16,6 @@
 
 package org.almostrealism.projection;
 
-import io.almostrealism.uml.ModelEntity;
-
 /**
  * A {@link ThinLensCamera} provides a camera with viewing rays that originate
  * from a random point on a circular lens. By default the width and height of
@@ -27,9 +25,18 @@ import io.almostrealism.uml.ModelEntity;
  * 
  * @author  Michael Murray
  */
-@ModelEntity
 public class ThinLensCamera extends PinholeCamera {
-	private double focalLength, radius, width, height;
+	/** The focal length of the lens (distance from lens to the plane of sharpest focus). */
+	private double focalLength;
+
+	/** The radius of the circular lens aperture used for depth-of-field sampling. */
+	private double radius;
+
+	/** The intrinsic projection width before the thin-lens magnification factor is applied. */
+	private double width;
+
+	/** The intrinsic projection height before the thin-lens magnification factor is applied. */
+	private double height;
 
 	/**
 	 * Constructs a new ThinLensCamera object.
@@ -43,6 +50,10 @@ public class ThinLensCamera extends PinholeCamera {
 		this.setLensRadius(this.getFocalLength() / 10);
 	}
 	
+	/**
+	 * Recomputes and applies the effective projection dimensions to the parent {@link PinholeCamera}
+	 * using the thin-lens magnification factor derived from the focus distance and focal length.
+	 */
 	protected void updateProjectionDimensions() {
 		double u = (super.getFocalLength() - this.focalLength) / this.focalLength;
 		super.setProjectionDimensions(this.width * u, this.height * u);
@@ -51,6 +62,7 @@ public class ThinLensCamera extends PinholeCamera {
 	/**
 	 * Sets the projection dimensions used by this ThinLensCamera object to the specified values.
 	 */
+	@Override
 	public void setProjectionDimensions(double w, double h) {
 		this.width = w;
 		this.height = h;
@@ -60,6 +72,7 @@ public class ThinLensCamera extends PinholeCamera {
 	/**
 	 * Sets the projection width of this ThinLensCamera object to the specified projection width.
 	 */
+	@Override
 	public void setProjectionWidth(double w) {
 		this.width = w;
 		this.updateProjectionDimensions();
@@ -68,6 +81,7 @@ public class ThinLensCamera extends PinholeCamera {
 	/**
 	 * Sets the projection height of this ThinLensCamera object to the specified projection height.
 	 */
+	@Override
 	public void setProjectionHeight(double h) {
 		this.height = h;
 		this.updateProjectionDimensions();
@@ -76,11 +90,13 @@ public class ThinLensCamera extends PinholeCamera {
 	/**
 	 * Returns the projection width of this ThinLensCamera object as a double value.
 	 */
+	@Override
 	public double getProjectionWidth() { return this.width; }
 	
 	/**
 	 * Returns the projection height of this ThinLensCamera object as a double value.
 	 */
+	@Override
 	public double getProjectionHeight() { return this.height; }
 	
 	/**
@@ -94,23 +110,29 @@ public class ThinLensCamera extends PinholeCamera {
 	}
 	
 	/**
+	 * Returns the distance at which this ThinLensCamera object is focused.
+	 *
 	 * @return  The distance at which this ThinLensCamera object is focused.
 	 */
 	public double getFocus() { return super.getFocalLength(); }
 	
 	/**
 	 * Sets the focal length used by this ThinLensCamera object.
-	 * 
+	 *
 	 * @param focalLength  The focal length value to use.
 	 */
+	@Override
 	public void setFocalLength(double focalLength) {
 		this.focalLength = focalLength;
 		this.updateProjectionDimensions();
 	}
 	
 	/**
+	 * Returns the focal length value used by this ThinLensCamera object.
+	 *
 	 * @return  The focal length value used by this ThinLensCamera object.
 	 */
+	@Override
 	public double getFocalLength() { return this.focalLength; }
 	
 	/**
@@ -121,13 +143,18 @@ public class ThinLensCamera extends PinholeCamera {
 	public void setLensRadius(double radius) { this.radius = radius; }
 	
 	/**
-	 * @return  The radius of the lens used by this ThinLensCamera object.
+	 * Returns the radius of the lens used by this ThinLensCamera object.
+	 *
+	 * @return  the lens radius
 	 */
 	public double getLensRadius() { return this.radius; }
 	
 	/**
+	 * Returns the horizontal and vertical fields of view in radians.
+	 *
 	 * @return  {Horizontal FOV, Vertical FOV} Measured in radians.
 	 */
+	@Override
 	public double[] getFOV() {
 		double u = (super.getFocalLength() - this.focalLength) / this.focalLength;
 		

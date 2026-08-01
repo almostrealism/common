@@ -36,9 +36,19 @@ import org.almostrealism.time.TemporalRunner;
  * @see AudioLineOperation
  */
 public class AudioLineMix implements AudioLineOperation, CellFeatures {
+	/** The audio effect operation whose output is blended with the clean signal. */
 	private final AudioLineOperation operation;
+
+	/** Proportion of unprocessed (clean) signal in the output (0.0–1.0). */
 	private final double cleanLevel;
 
+	/**
+	 * Creates an AudioLineMix that blends the processed and clean signals.
+	 *
+	 * @param operation  the audio processing operation to mix
+	 * @param cleanLevel fraction of the clean signal in the output (0.0–1.0)
+	 * @throws IllegalArgumentException if cleanLevel is outside [0.0, 1.0]
+	 */
 	public AudioLineMix(AudioLineOperation operation, double cleanLevel) {
 		this.operation = operation;
 		this.cleanLevel = cleanLevel;

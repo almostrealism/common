@@ -17,20 +17,46 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Product;
-import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * A {@link UniformCollectionExpression} that computes the element-wise product of its operands.
+ *
+ * <p>When {@link #enableDiagonalDelta} is {@code true} and the differentiation target appears
+ * exactly once among the operands (with no references to the target in any other operand),
+ * the delta is computed as a {@link DiagonalCollectionExpression} whose diagonal values are the
+ * product of the remaining operands. This avoids generating a full Jacobian for simple
+ * element-wise products.</p>
+ */
 public class ProductCollectionExpression extends UniformCollectionExpression {
+	/**
+	 * Whether to use the diagonal optimisation in {@link #delta} when the differentiation
+	 * target appears exactly once among the operands.
+	 */
 	public static boolean enableDiagonalDelta = true;
 
+	/**
+	 * Creates a product collection expression with the given shape and operands.
+	 *
+	 * @param shape    the output shape
+	 * @param operands the operand expressions to multiply element-wise
+	 */
 	public ProductCollectionExpression(TraversalPolicy shape, TraversableExpression... operands) {
 		super("product", shape, Product::of, operands);
 		setIndexPolicy(UniformCollectionExpression.NonZeroIndexPolicy.DISJUNCTIVE);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the diagonal optimisation is enabled and the target appears exactly once among
+	 * the operands, returns a {@link DiagonalCollectionExpression} whose diagonal values are
+	 * the product of the remaining operands. Otherwise delegates to the parent implementation.</p>
+	 */
 	@Override
 	public CollectionExpression delta(CollectionExpression target) {
 		if (!enableDiagonalDelta ||

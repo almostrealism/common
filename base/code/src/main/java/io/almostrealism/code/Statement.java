@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Fragment;
@@ -76,4 +77,19 @@ public interface Statement<T extends KernelStructure> extends Fragment, KernelSt
 	 * @return a list of variable dependencies, may be empty but not null
 	 */
 	List<Variable<?, ?>> getDependencies();
+
+	/**
+	 * Returns a copy of this statement with every occurrence of {@code target} within its
+	 * expressions replaced by {@code replacement}, mirroring
+	 * {@link Expression#replace(Expression, Expression)} at the statement level.
+	 *
+	 * <p>Like {@link #simplify(io.almostrealism.kernel.KernelStructureContext, int)}, this
+	 * returns the statement's own type; a statement with no expressions returns itself
+	 * unchanged.</p>
+	 *
+	 * @param target      the expression to find and replace
+	 * @param replacement the expression to substitute for the target
+	 * @return a statement of the same type with the substitution applied
+	 */
+	T replace(Expression target, Expression replacement);
 }

@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio.data;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
@@ -35,7 +35,13 @@ public interface AudioDataProvider extends DataResource, Setup {
 	@Override
 	String getIdentifier();
 
+	/**
+	 * Returns the audio sample rate in Hz.
+	 *
+	 * @return sample rate in Hz
+	 */
 	int getSampleRate();
 
+	@Override
 	default Supplier<Runnable> setup() { return new OperationList(); }
 }

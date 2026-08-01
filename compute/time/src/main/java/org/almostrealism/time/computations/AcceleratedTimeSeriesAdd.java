@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -28,7 +29,6 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.TemporalScalar;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Hardware-accelerated operation for adding {@link TemporalScalar} values to
@@ -69,7 +69,8 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  */
-public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries> {
+public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries>
+		implements ExpressionFeatures {
 	/**
 	 * Constructs an add operation for the specified series and temporal scalar.
 	 *
@@ -99,15 +100,12 @@ public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<Accele
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression<?> bank1 = getArgument(0).valueAt(1);
-		String banklast0 = getArgument(0).reference(bank1.toInt().multiply(2)).getSimpleExpression(getLanguage());
-		String banklast1 = getArgument(0).reference(bank1.toInt().multiply(2).add(1)).getSimpleExpression(getLanguage());
-		String input0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
-		String input1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
 
-		Consumer<String> code = scope.code();
-		code.accept(banklast0 + " = " + input0 + ";\n");
-		code.accept(banklast1 + " = " + input1 + ";\n");
-		code.accept(bank1.getSimpleExpression(getLanguage()) + " = " + bank1.getSimpleExpression(getLanguage()) + " + 1.0;\n");
+		scope.assign(getArgument(0).reference(bank1.toInt().multiply(2)),
+				getArgument(1).valueAt(0));
+		scope.assign(getArgument(0).reference(bank1.toInt().multiply(2).add(1)),
+				getArgument(1).valueAt(1));
+		scope.assign(getArgument(0).reference(e(1)), bank1.add(e(1.0)));
 		return scope;
 	}
 }

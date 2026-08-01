@@ -22,8 +22,19 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalLong;
 
+/**
+ * A special expression representing the machine epsilon for the current floating-point precision.
+ *
+ * <p>Renders to the precision-specific epsilon literal via
+ * {@link io.almostrealism.lang.LanguageOperations#getPrecision()}.
+ * The upper bound is 1 and the lower bound is 0; numeric evaluation returns {@code 0.0}.</p>
+ */
 public class Epsilon extends StaticReference<Double> {
 
+	/**
+	 * Constructs an epsilon expression.
+	 * The rendered value is determined by the precision at code-generation time.
+	 */
 	public Epsilon() {
 		super(Double.class, null);
 	}

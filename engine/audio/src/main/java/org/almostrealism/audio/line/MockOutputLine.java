@@ -36,11 +36,19 @@ import org.almostrealism.collect.PackedCollection;
  * @see BufferedOutputScheduler for scheduled output management
  */
 public class MockOutputLine implements OutputLine {
+	/** Size of the simulated circular buffer in frames. */
 	private final int bufferSize;
+
+	/** Audio sample rate in Hz used for read position timing simulation. */
 	private final int sampleRate;
 
+	/** Total number of frames written since the line became active. */
 	private long framesWritten;
+
+	/** System nanosecond timestamp recorded on the first write call. */
 	private long startTimeNanos;
+
+	/** True after the first write call; used to initialize the start timestamp. */
 	private boolean active;
 
 	/**

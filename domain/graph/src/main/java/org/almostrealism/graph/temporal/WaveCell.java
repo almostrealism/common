@@ -70,14 +70,28 @@ import java.util.function.Supplier;
  * @see WaveCellPush
  */
 public class WaveCell extends CollectionTemporalCellAdapter {
+	/** The configuration data (sample rate, looping flag, etc.) for this wave cell. */
 	private final WaveCellData data;
+
+	/** The audio waveform samples stored as a {@link PackedCollection}. */
 	private final Producer<PackedCollection> wave;
 
+	/** The hardware-accelerated frame counter used to track playback position. */
 	private final TimeCell clock;
-	private final Producer<PackedCollection> frameIndex, frameCount;
+
+	/** Producer for the current frame index within the waveform. */
+	private final Producer<PackedCollection> frameIndex;
+
+	/** Producer for the total number of frames in the waveform. */
+	private final Producer<PackedCollection> frameCount;
+
+	/** Producer that computes the output sample for the current frame. */
 	private final Producer<PackedCollection> frame;
 
+	/** The amplitude (gain) applied to each output sample. */
 	private double amplitude;
+
+	/** The wavelength scaling factor applied to playback position. */
 	private double waveLength;
 
 	/**
@@ -152,6 +166,18 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 				offset, repeat, frameIndex, frameCount);
 	}
 
+	/**
+	 * Full constructor accepting a producer-wrapped waveform.
+	 *
+	 * @param data        configuration data including sample rate and looping behaviour
+	 * @param wav         the waveform producer
+	 * @param sampleRate  the sample rate in Hz
+	 * @param amplitude   the amplitude scaling factor applied to each output sample
+	 * @param offset      producer for a per-frame playback offset in samples
+	 * @param repeat      producer for the repeat/looping count
+	 * @param frameIndex  producer for the current frame index
+	 * @param frameCount  producer for the total number of frames
+	 */
 	public WaveCell(WaveCellData data, Producer<PackedCollection> wav,
 					int sampleRate, double amplitude,
 					Producer<PackedCollection> offset, Producer<PackedCollection> repeat,
@@ -365,10 +391,18 @@ public class WaveCell extends CollectionTemporalCellAdapter {
 	 *
 	 * @return a Factor that wraps this cell's functionality
 	 */
+	@Override
 	public Factor<PackedCollection> toFactor() {
 		return toFactor(() -> new PackedCollection(shape(1)), p -> protein -> new Assignment<>(1, p, protein));
 	}
 
+	/**
+	 * Validates the waveform producer and converts it to the expected traversal shape.
+	 *
+	 * @param wav the candidate waveform producer
+	 * @return the validated producer, reshaped for element-wise traversal if necessary
+	 * @throws IllegalArgumentException if the waveform collection has zero samples
+	 */
 	private static Producer<PackedCollection> validate(Producer<PackedCollection> wav) {
 		if (!(wav instanceof Shape)) return wav;
 

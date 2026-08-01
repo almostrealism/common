@@ -63,10 +63,10 @@ import java.util.function.Supplier;
  *         inputShape.getSize(), // Iterate over all elements
  *         (args, index) -> e(0), // Initialize with index 0
  *         (args, index) -> {
- *             Expression<?> currentIndex = args[0].getValueRelative(e(0));
+ *             Expression<?> currentIndex = args[0].getValueAt(e(0));
  *             return conditional(
- *                 args[1].getValueRelative(index)
- *                     .greaterThan(args[1].getValueRelative(currentIndex)),
+ *                 args[1].getValueAt(index)
+ *                     .greaterThan(args[1].getValueAt(currentIndex)),
  *                 index, 
  *                 currentIndex
  *             );

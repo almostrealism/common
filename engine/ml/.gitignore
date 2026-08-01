@@ -7,3 +7,21 @@ classpath.txt
 
 # Generated protobuf Python code (regenerate from src/main/proto/collections.proto)
 scripts/collections_pb2.py
+
+# SAME / Stable Audio reference dumps and local weight caches.
+# These are regenerated locally by scripts/dump_same_references.py and
+# scripts/dump_same_resampling_weights.py; they must never be committed.
+src/test/resources/same-s-references/**
+same-s/**
+same-refs/**
+same-weights/**
+
+# Model weights, checkpoints, and raw reference/activation dumps.
+# Regenerate locally from the extractor/dump scripts — do not commit binaries.
+*.bin
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.npy
+*.npz

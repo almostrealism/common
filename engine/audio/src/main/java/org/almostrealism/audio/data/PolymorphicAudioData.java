@@ -50,10 +50,19 @@ import java.util.function.Supplier;
  * @see org.almostrealism.audio.PolymorphicAudioCell
  */
 public class PolymorphicAudioData extends DefaultWaveCellData implements SineWaveCellData, AudioFilterData {
+	/**
+	 * Creates a new PolymorphicAudioData with freshly allocated internal memory.
+	 */
 	public PolymorphicAudioData() {
 		super();
 	}
 
+	/**
+	 * Creates a PolymorphicAudioData backed by a slice of the given delegate memory.
+	 *
+	 * @param delegate       the parent memory object
+	 * @param delegateOffset byte offset within the delegate
+	 */
 	public PolymorphicAudioData(MemoryData delegate, int delegateOffset) {
 		super(delegate, delegateOffset);
 	}
@@ -61,11 +70,25 @@ public class PolymorphicAudioData extends DefaultWaveCellData implements SineWav
 	@Override
 	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
+	/**
+	 * Creates a PackedCollection of {@code count} PolymorphicAudioData instances
+	 * laid out contiguously in memory.
+	 *
+	 * @param count number of PolymorphicAudioData instances to allocate
+	 * @return a PackedCollection shaped as (count, SIZE*2) with PolymorphicAudioData views
+	 */
 	public static PackedCollection bank(int count) {
 		return new PackedCollection(new TraversalPolicy(count, SIZE * 2), 1, delegateSpec ->
 			new PolymorphicAudioData(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
+	/**
+	 * Returns a supplier that creates PolymorphicAudioData instances backed by memory
+	 * produced by the given allocation function.
+	 *
+	 * @param supply function that allocates a PackedCollection of the required size (2*SIZE elements)
+	 * @return supplier of PolymorphicAudioData instances
+	 */
 	public static Supplier<PolymorphicAudioData> supply(IntFunction<PackedCollection> supply) {
 		return () -> new PolymorphicAudioData(supply.apply(2 * SIZE), 0);
 	}

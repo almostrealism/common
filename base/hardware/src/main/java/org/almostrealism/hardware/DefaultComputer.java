@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -31,12 +32,13 @@ import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Stack;
+import java.util.ArrayDeque;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -53,8 +55,6 @@ import java.util.function.Supplier;
  *   <li><strong>Instruction Caching:</strong> Maintaining multi-level caches to avoid redundant kernel compilation</li>
  *   <li><strong>Requirements Management:</strong> Thread-local stack of {@link ComputeRequirement}s for
  *       controlling execution targets</li>
- *   <li><strong>Container Creation:</strong> Supporting the {@link HardwareFeatures#instruct} pattern for
- *       cacheable instruction sequences</li>
  *   <li><strong>Compilation:</strong> Converting {@link Computation}s into executable {@link Runnable}s
  *       and {@link Evaluable}s</li>
  * </ul>
@@ -74,18 +74,11 @@ import java.util.function.Supplier;
  * -  - (default)    -                                        -
  * -  ---------------                                        -
  * -                                                           -
- * -  Instruction Caches                                      -
- * -  ----------------------------------------------          -
- * -  - operationsCache (Map)                      -          -
- * -  - - Instruction containers (unlimited)        -          -
- * -  ---------------------------------------------          -
- * -  ----------------------------------------------          -
- * -  - processTreeCache (FrequencyCache 500*0.4)  -          -
- * -  - - Process tree instruction managers         -          -
- * -  ---------------------------------------------          -
+ * -  Instruction Cache                                       -
  * -  ----------------------------------------------          -
  * -  - instructionsCache (FrequencyCache 500*0.4) -          -
  * -  - - Scope instruction managers                -          -
+ * -  - - Keyed by signature + compute context      -          -
  * -  - - Auto-destroys evicted managers            -          -
  * -  ---------------------------------------------          -
  * -                                                           -
@@ -200,6 +193,11 @@ import java.util.function.Supplier;
  * );
  * }</pre>
  *
+ * <p>Entries are keyed by the operation signature <em>and</em> the {@link ComputeContext},
+ * because a compiled kernel dispatches through the command runner of the context it was
+ * compiled under. Operations reuse a kernel only when they share both structure and
+ * context; a structurally-identical operation from another context compiles its own.</p>
+ *
  * <p><strong>Cache Properties:</strong></p>
  * <ul>
  *   <li>Type: {@link FrequencyCache} (LFU-based)</li>
@@ -220,29 +218,6 @@ import java.util.function.Supplier;
  * ScopeInstructionsManager mgr2 = computer.getScopeInstructionsManager(...);
  * // Either returns cached instance or creates new one
  * }</pre>
- *
- * <h2>Instruction Container Pattern</h2>
- *
- * <p>The {@link #createContainer} method implements the caching strategy for
- * {@link HardwareFeatures#instruct}:</p>
- *
- * <h3>Container Creation Flow</h3>
- * <pre>
- * 1. Check operationsCache for key
- *    - Found: Reuse container
- *    -         Apply argument substitutions
- *    -         Return delegated producer
- *    -
- *    - Not Found: Create new container
- *                  Apply function to arguments
- *                  Extract/apply instruction managers
- *                  Cache container
- *                  Return delegated producer
- * </pre>
- *
- * <h3>Argument Substitution</h3>
- * <p>Containers store argument templates and substitute actual data at evaluation time.
- * The argument evaluator handles mapping template arguments to actual data during evaluation.</p>
  *
  * <h2>Compilation Methods</h2>
  *
@@ -301,22 +276,6 @@ import java.util.function.Supplier;
  * }
  * }</pre>
  *
- * <h3>Cached Instruction Patterns</h3>
- * <pre>{@code
- * public class AudioProcessor implements HardwareFeatures {
- *     private static final String FILTER_KEY = "lowpass_1000hz";
- *
- *     public Producer<PackedCollection> filter(Producer<PackedCollection> input) {
- *         // First call: compiles and caches
- *         // Subsequent calls: reuse cached kernel with new input
- *         return instruct(FILTER_KEY,
- *             args -> lowPass(args[0], c(1000.0), 44100),
- *             input
- *         );
- *     }
- * }
- * }</pre>
- *
  * <h3>Inspecting Active Requirements</h3>
  * <pre>{@code
  * List<ComputeRequirement> active = computer.getActiveRequirements();
@@ -328,8 +287,6 @@ import java.util.function.Supplier;
  *
  * <h3>Cache Efficiency</h3>
  * <ul>
- *   <li><strong>Instruction keys should be stable:</strong> Use constant strings for {@code instruct()} keys</li>
- *   <li><strong>Avoid dynamic keys:</strong> {@code instruct("key_" + Math.random(), ...)} defeats caching</li>
  *   <li><strong>FrequencyCache tuning:</strong> 500 entries @ 0.4 eviction works for most workloads</li>
  *   <li><strong>Cache hits are 1000x+ faster than compilation</strong></li>
  * </ul>
@@ -353,8 +310,8 @@ import java.util.function.Supplier;
  * <p>{@link DefaultComputer} uses {@link ThreadLocal} for the requirements stack, making
  * it thread-safe for concurrent access. Each thread maintains its own requirements stack.</p>
  *
- * <p>The caches ({@code operationsCache}, {@code processTreeCache}, {@code instructionsCache})
- * are shared across threads but use thread-safe data structures.</p>
+ * <p>The instruction cache ({@code instructionsCache}) is shared across threads but uses
+ * a thread-safe data structure.</p>
  *
  * <h2>Integration with Hardware</h2>
  *
@@ -385,21 +342,6 @@ import java.util.function.Supplier;
  * }
  * }</pre>
  *
- * <h3>Using Dynamic Instruction Keys</h3>
- * <pre>{@code
- * // BAD: Cache never hits
- * for (int i = 0; i < 1000; i++) {
- *     instruct("scale_" + i, args -> multiply(args[0], c(2.0)), data);
- *     // Creates 1000 cache entries, no reuse
- * }
- *
- * // GOOD: Single cache entry, 1000 reuses
- * for (int i = 0; i < 1000; i++) {
- *     instruct("scale_op", args -> multiply(args[0], c(2.0)), data);
- *     // Compiles once, reuses 999 times
- * }
- * }</pre>
- *
  * <h3>Assuming postProcessOutput is Applied</h3>
  * <pre>{@code
  * // compileProducer bypasses postProcessOutput
@@ -421,11 +363,22 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
+	/**
+	 * When enabled, {@link #getContext(Computation)} logs the compute-target decision for every
+	 * computation — its count/parallelism, the active {@link ComputeRequirement}s, the available
+	 * contexts, and the chosen one — so the platform's per-operation provider selection can be
+	 * inspected (e.g. on CI). TEMPORARY DIAGNOSTIC: defaults to OFF so it stays dormant on master;
+	 * enable with {@code AR_LOG_COMPUTE_TARGETING=enabled} when investigating a routing question
+	 * (e.g. the FourierTransform shared-JVM routing regression). Remove once that is diagnosed.
+	 */
+	public static boolean enableTargetingLog =
+			SystemUtils.isEnabled("AR_LOG_COMPUTE_TARGETING").orElse(false);
+
 	/** The hardware instance this computer is associated with. */
 	private Hardware hardware;
 
 	/** Thread-local stack of compute requirements for context selection. */
-	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
+	private ThreadLocal<ArrayDeque<List<ComputeRequirement>>> requirements;
 
 	/** Frequency-based cache of scope instruction managers with auto-destroy on eviction. */
 	private FrequencyCache<String, ScopeInstructionsManager<ScopeSignatureExecutionKey>> instructionsCache;
@@ -438,8 +391,9 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 */
 	public DefaultComputer(Hardware hardware) {
 		this.hardware = hardware;
-		this.requirements = ThreadLocal.withInitial(Stack::new);
-		this.instructionsCache = new FrequencyCache<>(500, 0.4);
+		this.requirements = ThreadLocal.withInitial(ArrayDeque::new);
+		this.instructionsCache = new FrequencyCache<>(
+				SystemUtils.getInt("AR_INSTRUCTION_CACHE_SIZE").orElse(500), 0.4);
 		this.instructionsCache.setEvictionListener(
 				(key, mgr) -> mgr.destroy());
 	}
@@ -464,23 +418,42 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		boolean fixed = Countable.isFixedCount(c);
 		boolean sequential = fixed && count == 1;
 		boolean accelerator = !fixed || count > 128;
+		List<ComputeRequirement> active = getActiveRequirements();
 		List<ComputeContext<MemoryData>> contexts = hardware
 				.getComputeContexts(sequential, accelerator,
-					getActiveRequirements().toArray(ComputeRequirement[]::new));
+					active.toArray(ComputeRequirement[]::new));
 		if (contexts.isEmpty()) throw new RuntimeException("No compute contexts available");
-		if (contexts.size() == 1) return contexts.get(0);
 
-		if (!fixed || count > 1) {
-			return contexts.stream()
+		ComputeContext<MemoryData> chosen;
+
+		if (contexts.size() == 1) {
+			chosen = contexts.get(0);
+		} else if (!fixed || count > 1) {
+			chosen = contexts.stream()
 					.filter(cc -> !cc.isCPU())
 					.findFirst()
 					.orElse(contexts.get(0));
 		} else {
-			return contexts.stream()
+			chosen = contexts.stream()
 					.filter(cc -> cc.isCPU())
 					.findFirst()
 					.orElse(contexts.get(0));
 		}
+
+		if (enableTargetingLog) {
+			StringBuilder avail = new StringBuilder();
+			for (ComputeContext<MemoryData> cc : contexts) {
+				if (avail.length() > 0) avail.append(",");
+				avail.append(cc.getClass().getSimpleName()).append(cc.isCPU() ? "[cpu]" : "[gpu]");
+			}
+
+			log("computeTarget " + OperationInfo.name(c) + " count=" + count + " fixed=" + fixed
+					+ " sequential=" + sequential + " accelerator=" + accelerator
+					+ " requirements=" + active + " available=[" + avail + "]"
+					+ " -> " + chosen.getClass().getSimpleName() + (chosen.isCPU() ? "[cpu]" : "[gpu]"));
+		}
+
+		return chosen;
 	}
 
 	/**
@@ -552,16 +525,25 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 																							Computation<?> computation,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
+		// Keyed by signature alone: structurally identical computations share one compiled
+		// kernel across the whole DataContext. This is safe because a DataContext exposes a
+		// single ComputeContext (and therefore a single command runner) per backend, so a
+		// reused kernel always encodes into — and is committed by — the same runner. (Earlier
+		// this had to include the ComputeContext identity because Metal handed out a context
+		// per thread, which let a reused kernel encode into a command buffer the executing
+		// thread never committed; MetalDataContext now shares one context.)
+		String cacheKey = Objects.requireNonNull(signature);
+
 		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
 				accessListener =mgr -> {
 					// Ensure that usage of any InstructionSets updates
 					// the access frequency in the cache if it is present
 					// or restores it to the cache if it had previously
 					// been evicted
-					instructionsCache.computeIfAbsent(signature, () -> mgr);
+					instructionsCache.computeIfAbsent(cacheKey, () -> mgr);
 				};
 
-		return instructionsCache.computeIfAbsent(Objects.requireNonNull(signature),
+		return instructionsCache.computeIfAbsent(cacheKey,
 				() -> {
 					ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
 							new ScopeInstructionsManager<>(context, scope, accessListener);
@@ -572,6 +554,21 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 					return mgr;
 				});
+	}
+
+	/**
+	 * Removes and destroys the cached instruction manager for the given signature,
+	 * exactly as capacity pressure would: the manager's compiled instructions are
+	 * destroyed and every operation holding it is notified through its destroy
+	 * listeners. The next operation with this signature compiles a fresh manager.
+	 *
+	 * <p>This exists so tests can exercise the eviction lifecycle deterministically
+	 * instead of flooding the cache past capacity.</p>
+	 *
+	 * @param signature the computation signature whose manager should be evicted
+	 */
+	public void evictInstructions(String signature) {
+		instructionsCache.evict(signature);
 	}
 
 	/**
@@ -593,7 +590,7 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 */
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, true));
+		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c));
 	}
 
 	/**

@@ -30,6 +30,7 @@ import java.lang.ref.ReferenceQueue;
  * @see MetalMemory
  */
 public class MetalMemoryRef extends NativeRef<MetalMemory> {
+	/** Retained reference to the Metal buffer, held until the GC notification arrives for deallocation. */
 	private MTLBuffer buffer;
 
 	/**

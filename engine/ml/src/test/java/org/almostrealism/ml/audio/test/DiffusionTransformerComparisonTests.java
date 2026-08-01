@@ -28,12 +28,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
+/**
+ * Comparison tests for DiffusionTransformer against reference Python implementation.
+ */
 public class DiffusionTransformerComparisonTests extends TestSuiteBase implements DiffusionTransformerFeatures {
+
 	/**
-	 * Tests fourierFeatures against reference data generated from the actual
-	 * stable-audio-tools FourierFeatures class. This ensures our Java implementation
-	 * matches the real Python behavior including the 2pi factor, matrix multiplication,
-	 * and correct concatenation order.
+	 * Tests fourierFeatures against reference data.
 	 */
 	@Test(timeout = 120000)
 	public void fourierFeaturesCompare() throws Exception {
@@ -44,7 +45,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -133,7 +134,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -218,7 +219,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -307,7 +308,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -395,7 +396,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -442,7 +443,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 				new StateDictionary(weightsDir));
 
 		// Run forward pass to populate the captured state
-		PackedCollection output = transformer.forward(input, timestep, crossAttnCond, globalCond);
+		transformer.forward(input, timestep, crossAttnCond, globalCond);
 
 		// Get the captured intermediate state
 		PackedCollection actualCapturedState = transformer.getPreTransformerState();
@@ -500,7 +501,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -546,7 +547,7 @@ public class DiffusionTransformerComparisonTests extends TestSuiteBase implement
 				new StateDictionary(weightsDir));
 
 		// Run forward pass to populate the captured states
-		PackedCollection output = transformer.forward(input, timestep, crossAttnCond, globalCond);
+		transformer.forward(input, timestep, crossAttnCond, globalCond);
 
 		// Get the captured post-transformer state
 		PackedCollection actualPostTransformerOutput = transformer.getPostTransformerState();

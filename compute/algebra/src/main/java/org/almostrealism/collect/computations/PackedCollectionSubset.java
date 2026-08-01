@@ -23,7 +23,9 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
@@ -122,6 +124,7 @@ import java.util.stream.Stream;
  */
 public class PackedCollectionSubset
 		extends IndexProjectionProducerComputation {
+	/** The position expressions specifying the starting offset within each dimension of the source collection. */
 	private Expression[] pos;
 
 	/**
@@ -224,7 +227,15 @@ public class PackedCollectionSubset
 	 */
 	@Override
 	public long getCountLong() {
-		return getShape().traverseEach().getCountLong();
+		long count = getShape().traverseEach().getCountLong();
+		if (count <= 0) {
+			throw new IllegalStateException(
+				"PackedCollectionSubset reports count=" + count +
+				" for shape " + getShape() +
+				"; the source TraversalPolicy is zero-sized — " +
+				"check the collection producer's shape");
+		}
+		return count;
 	}
 
 	/**
@@ -299,6 +310,33 @@ public class PackedCollectionSubset
 		}
 
 		return block.multiply(inputShape.getTotalSizeLong()).add(p);
+	}
+
+	/**
+	 * Computes the derivative of this subset operation with respect to a target producer.
+	 *
+	 * <p>For the direct case where the input matches the target (d(subset(x))/dx),
+	 * this method returns an efficient sparse projection matrix via
+	 * {@link SubsetProjectionComputation}. Each Jacobian entry is computed in O(1)
+	 * using a conditional expression, avoiding the expensive identity matrix creation
+	 * and projection that the parent class would perform.</p>
+	 *
+	 * <p>For the chain rule case (d(subset(f(x)))/dx), this delegates to the parent
+	 * class which applies index projection to the input's delta.</p>
+	 *
+	 * @param target The producer with respect to which the derivative is computed
+	 * @return A CollectionProducer representing the Jacobian matrix
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target) {
+		if (pos != null && AlgebraFeatures.match(getInputs().get(1), target)) {
+			TraversalPolicy outputShape = getShape();
+			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
+			TraversalPolicy jacobianShape = outputShape.append(inputShape);
+			return new SubsetProjectionComputation(jacobianShape, outputShape, inputShape, pos);
+		}
+
+		return super.delta(target);
 	}
 
 	/**

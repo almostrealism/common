@@ -74,7 +74,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 	private static final String externalWrapper;
 
 	static {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		try (BufferedReader in =
 					 new BufferedReader(new InputStreamReader(
@@ -85,7 +85,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 				buf.append("\n");
 			}
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new RuntimeException(e.getMessage(), e);
 		}
 
 		externalWrapper = buf.toString();
@@ -139,7 +139,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		inst.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 
 		long start = System.nanoTime();
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		try {
 			buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", getLanguage().getPrecision(), true), Accessibility.EXTERNAL).apply(scope));

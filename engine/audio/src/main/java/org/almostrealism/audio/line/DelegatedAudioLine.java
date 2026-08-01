@@ -34,18 +34,38 @@ import org.almostrealism.collect.PackedCollection;
  * @see OutputLine
  */
 public class DelegatedAudioLine implements AudioLine, Delegated<AudioLine> {
+	/** The input line used for reading audio data; may be null if no input is configured. */
 	private InputLine inputDelegate;
+
+	/** The output line used for writing audio data; may be null if no output is configured. */
 	private OutputLine outputDelegate;
+
+	/** Nominal buffer size in frames reported by {@link #getBufferSize()}. */
 	private final int bufferSize;
 
+	/** Current passthrough level (0.0–1.0) applied to audio passing through this line. */
 	private double passthrough;
 
+	/** Creates a DelegatedAudioLine with no delegate and the default buffer size. */
 	public DelegatedAudioLine() { this(null, BufferDefaults.defaultBufferSize); }
 
+	/**
+	 * Creates a DelegatedAudioLine backed by a single AudioLine for both input and output.
+	 *
+	 * @param line       the AudioLine to use for both input and output
+	 * @param bufferSize the nominal buffer size in frames
+	 */
 	public DelegatedAudioLine(AudioLine line, int bufferSize) {
 		this(line, line, bufferSize);
 	}
 
+	/**
+	 * Creates a DelegatedAudioLine with separate input and output delegates.
+	 *
+	 * @param inputDelegate  the line to delegate read operations to
+	 * @param outputDelegate the line to delegate write operations to
+	 * @param bufferSize     the nominal buffer size in frames
+	 */
 	public DelegatedAudioLine(InputLine inputDelegate,
 							  OutputLine outputDelegate,
 							  int bufferSize) {
@@ -59,24 +79,41 @@ public class DelegatedAudioLine implements AudioLine, Delegated<AudioLine> {
 		return outputDelegate == inputDelegate ? (AudioLine) outputDelegate : null;
 	}
 
+	/**
+	 * Sets both the input and output delegates to the given AudioLine and propagates settings.
+	 *
+	 * @param delegate the AudioLine to use for both input and output
+	 */
 	public void setDelegate(AudioLine delegate) {
 		setInputDelegate(delegate);
 		setOutputDelegate(delegate);
 		updateDelegateSettings();
 	}
 
+	/** Returns the delegate used for read (input) operations, or null if none is configured. */
 	public InputLine getInputDelegate() {
 		return inputDelegate;
 	}
 
+	/**
+	 * Sets the input delegate used for read operations.
+	 *
+	 * @param delegate the new input delegate
+	 */
 	public void setInputDelegate(InputLine delegate) {
 		this.inputDelegate = delegate;
 	}
 
+	/** Returns the delegate used for write (output) operations, or null if none is configured. */
 	public OutputLine getOutputDelegate() {
 		return outputDelegate;
 	}
 
+	/**
+	 * Sets the output delegate used for write operations.
+	 *
+	 * @param delegate the new output delegate
+	 */
 	public void setOutputDelegate(OutputLine delegate) {
 		this.outputDelegate = delegate;
 	}
@@ -111,6 +148,9 @@ public class DelegatedAudioLine implements AudioLine, Delegated<AudioLine> {
 	@Override
 	public double getPassthroughLevel() { return passthrough; }
 
+	/**
+	 * Propagates the current passthrough level to the delegate if it provides a single unified line.
+	 */
 	protected void updateDelegateSettings() {
 		if (getDelegate() != null) {
 			getDelegate().setPassthroughLevel(getPassthroughLevel());

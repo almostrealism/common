@@ -19,10 +19,35 @@ package io.almostrealism.collect;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 
+/**
+ * A {@link BinaryGroupExpression} that computes a weighted sum (dot product) of two operands.
+ *
+ * <p>For each output index, {@code memberCount} elements are gathered from the input ({@code a})
+ * and weight ({@code b}) operands and accumulated as {@code sum(input[i] * weight[i])}. Each
+ * element pair is simplified before multiplication to keep the expression tree manageable when
+ * the group size is large.</p>
+ */
 public class WeightedSumExpression extends BinaryGroupExpression {
+	/**
+	 * Whether to use a {@link CollectionExpression}-based implementation when available.
+	 */
 	public static boolean enableCollectionExpression = true;
+
+	/**
+	 * Node-count threshold at which each gathered element expression is simplified
+	 * before being included in the sum.
+	 */
 	public static int simplifyThreshold = 1 << 16;
 
+	/**
+	 * Creates a weighted sum expression with the given shape, group size, operands, and index generator.
+	 *
+	 * @param shape                the output shape
+	 * @param memberCount          the number of elements to sum per output index
+	 * @param a                    the input operand (values to be weighted)
+	 * @param b                    the weight operand
+	 * @param memberIndexGenerator the generator producing input/weight indices for each group member
+	 */
 	public WeightedSumExpression(TraversalPolicy shape, int memberCount,
 								 TraversableExpression a, TraversableExpression b,
 								 MemberIndexGenerator memberIndexGenerator) {

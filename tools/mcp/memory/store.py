@@ -5,7 +5,9 @@ Each namespace gets its own FAISS index file and ID mapping file.
 """
 
 import json
+import logging
 import os
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +18,64 @@ import faiss
 import numpy as np
 
 from embedder import Embedder
+
+log = logging.getLogger(__name__)
+
+# A namespace becomes a filename component ("<ns>.index", "<ns>.ids.json").
+# Restrict to characters that are safe across filesystems and cannot smuggle
+# path separators or control characters from a malformed tool argument. A
+# single bad value (e.g. an XML literal pasted into the namespace field) used
+# to brick startup by making the FAISS index path uncreatable.
+_NAMESPACE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+# The exact leader emitted by PassthroughBackend (tools/mcp/common/inference.py)
+# when no inference model is reachable. Content that begins with this is a
+# backend-down dump — raw documentation with a notice — not real knowledge.
+# A census of the corpus found 36 such entries stored as memories; they lead
+# recall for large queries and are pure noise. Guarding here, at the single
+# chokepoint every store passes through, stops new ones from any caller
+# (interactive remember and FlowTree jobs alike).
+_PASSTHROUGH_BANNER = "[Consultant model not available. Returning raw context.]"
+
+
+def is_passthrough_dump(content: Optional[str]) -> bool:
+    """True when content is a backend-down passthrough dump.
+
+    Anchored to the start of the content so a memory that merely *quotes*
+    the banner (e.g. a QC audit note) is not mistaken for an actual dump,
+    which always leads with it.
+    """
+    return (content or "").lstrip().startswith(_PASSTHROUGH_BANNER)
+
+
+def _parse_non_semantic_namespaces() -> frozenset:
+    """Namespaces stored for branch/recency retrieval only, not embedded.
+
+    ``messages`` is inter-agent chatter — the majority of the corpus — that
+    is retrieved by branch via :meth:`MemoryStore.search_by_branch`
+    (``workstream_context``) and never usefully by semantic similarity.
+    Embedding it wastes compute and memory and bloats the FAISS index loaded
+    at startup for no retrieval benefit. Entries in these namespaces are
+    still written to SQLite, so branch/recency retrieval keeps working; they
+    are simply excluded from the semantic index.
+
+    Configurable via ``AR_MEMORY_NON_SEMANTIC_NAMESPACES`` (comma-separated);
+    defaults to ``messages``. An empty value disables the exclusion.
+    """
+    raw = os.environ.get("AR_MEMORY_NON_SEMANTIC_NAMESPACES", "messages")
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
+NON_SEMANTIC_NAMESPACES = _parse_non_semantic_namespaces()
+
+
+def _validate_namespace(namespace: str) -> str:
+    if not isinstance(namespace, str) or not _NAMESPACE_RE.match(namespace):
+        raise ValueError(
+            f"invalid namespace: must match {_NAMESPACE_RE.pattern} "
+            f"(got {namespace!r})"
+        )
+    return namespace
 
 
 def _normalize_repo_url(url: Optional[str]) -> Optional[str]:
@@ -59,6 +119,32 @@ class MemoryStore:
         # namespace -> (faiss.Index, list[int])  where list[int] is SQLite rowids
         self._indices: dict[str, tuple[faiss.Index, list[int]]] = {}
         self._load_all_indices()
+        # Drop any FAISS files for namespaces that were embedded before being
+        # designated non-semantic (e.g. the existing ~6.7k `messages` rows).
+        self._purge_non_semantic_indices()
+
+    def _is_semantic(self, namespace: str) -> bool:
+        """True when a namespace participates in the semantic FAISS index."""
+        return namespace not in NON_SEMANTIC_NAMESPACES
+
+    def _purge_non_semantic_indices(self) -> None:
+        """Remove stale on-disk FAISS files for non-semantic namespaces.
+
+        A namespace may have been embedded before it was designated
+        non-semantic. Its index files are now dead weight that must not be
+        loaded or searched; delete them and drop any in-memory handle. The
+        SQLite rows are untouched, so ``search_by_branch`` retrieval keeps
+        working.
+        """
+        for namespace in NON_SEMANTIC_NAMESPACES:
+            self._indices.pop(namespace, None)
+            for path in (self._index_path(namespace), self._ids_path(namespace)):
+                try:
+                    if path.exists():
+                        path.unlink()
+                        log.info("purged non-semantic index file: %s", path)
+                except OSError as exc:
+                    log.warning("could not purge %s: %s", path, exc)
 
     def _init_db(self):
         self._conn.execute("""
@@ -125,7 +211,13 @@ class MemoryStore:
         return self._data_dir / f"{namespace}.ids.json"
 
     def _load_all_indices(self):
-        """Load FAISS indices for all namespaces that have persisted index files."""
+        """Load FAISS indices for all namespaces that have persisted index files.
+
+        Namespaces that do not satisfy ``_NAMESPACE_RE`` are skipped with a
+        warning. They cannot be written to disk as a FAISS index path, and
+        previously caused startup to crash-loop. Skipping leaves the SQLite
+        rows intact so an operator can repair them.
+        """
         namespaces = {
             row[0]
             for row in self._conn.execute(
@@ -133,6 +225,13 @@ class MemoryStore:
             ).fetchall()
         }
         for ns in namespaces:
+            try:
+                _validate_namespace(ns)
+            except ValueError as exc:
+                log.warning("skipping unloadable namespace: %s", exc)
+                continue
+            if not self._is_semantic(ns):
+                continue
             self._load_index(ns)
 
     def _load_index(self, namespace: str):
@@ -201,6 +300,13 @@ class MemoryStore:
         Returns:
             Dictionary with the created entry's fields.
         """
+        _validate_namespace(namespace)
+        if is_passthrough_dump(content):
+            raise ValueError(
+                "refusing to store a passthrough/backend-down dump as a "
+                "memory: the inference backend was unavailable when this "
+                "content was generated. Retry once a model is reachable."
+            )
         entry_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
         tags_json = json.dumps(tags) if tags else None
@@ -213,22 +319,25 @@ class MemoryStore:
         )
         self._conn.commit()
 
-        # Get the rowid of the just-inserted row
-        row = self._conn.execute(
-            "SELECT rowid FROM entries WHERE id = ?", (entry_id,)
-        ).fetchone()
-        rowid = row["rowid"]
+        # Non-semantic namespaces (e.g. messages) are stored for branch /
+        # recency retrieval only; skip embedding and FAISS indexing entirely.
+        if self._is_semantic(namespace):
+            # Get the rowid of the just-inserted row
+            row = self._conn.execute(
+                "SELECT rowid FROM entries WHERE id = ?", (entry_id,)
+            ).fetchone()
+            rowid = row["rowid"]
 
-        # Embed and add to FAISS index
-        vector = self._embedder.embed(content)
-        if namespace not in self._indices:
-            dim = self._embedder.dimension
-            self._indices[namespace] = (faiss.IndexFlatL2(dim), [])
+            # Embed and add to FAISS index
+            vector = self._embedder.embed(content)
+            if namespace not in self._indices:
+                dim = self._embedder.dimension
+                self._indices[namespace] = (faiss.IndexFlatL2(dim), [])
 
-        index, id_map = self._indices[namespace]
-        index.add(vector.reshape(1, -1))
-        id_map.append(rowid)
-        self._save_index(namespace)
+            index, id_map = self._indices[namespace]
+            index.add(vector.reshape(1, -1))
+            id_map.append(rowid)
+            self._save_index(namespace)
 
         return {
             "id": entry_id,
@@ -263,6 +372,11 @@ class MemoryStore:
         Returns:
             List of entry dicts with an added "score" field (L2 distance).
         """
+        _validate_namespace(namespace)
+        # Non-semantic namespaces have no index; they are retrieved by branch
+        # (search_by_branch), never by semantic similarity.
+        if not self._is_semantic(namespace):
+            return []
         if namespace not in self._indices:
             return []
 
@@ -319,7 +433,7 @@ class MemoryStore:
         self,
         repo_url: str,
         branch: str,
-        namespace: str = "default",
+        namespace: Optional[str] = "default",
         limit: int = 20,
     ) -> list[dict]:
         """List memory entries for a specific repo and branch, newest first.
@@ -331,19 +445,32 @@ class MemoryStore:
         Args:
             repo_url: Repository URL to match.
             branch: Branch name to match.
-            namespace: Namespace to search within.
+            namespace: Namespace to search within. Pass ``None`` or an
+                empty string to search across every namespace — useful when
+                the caller wants the full branch context without knowing
+                ahead of time which namespaces the memories were stored in.
             limit: Maximum number of entries to return.
 
         Returns:
             List of entry dicts ordered by creation time (newest first).
         """
+        if namespace:
+            _validate_namespace(namespace)
         repo_url = _normalize_repo_url(repo_url)
-        rows = self._conn.execute(
-            "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
-            "FROM entries WHERE namespace = ? AND repo_url = ? AND branch = ? "
-            "ORDER BY created_at DESC LIMIT ?",
-            (namespace, repo_url, branch, limit),
-        ).fetchall()
+        if namespace:
+            rows = self._conn.execute(
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+                "FROM entries WHERE namespace = ? AND repo_url = ? AND branch = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (namespace, repo_url, branch, limit),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
+                "FROM entries WHERE repo_url = ? AND branch = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (repo_url, branch, limit),
+            ).fetchall()
 
         results = []
         for row in rows:
@@ -362,6 +489,7 @@ class MemoryStore:
         Returns:
             Dictionary with status information.
         """
+        _validate_namespace(namespace)
         row = self._conn.execute(
             "SELECT id FROM entries WHERE id = ? AND namespace = ?",
             (entry_id, namespace),
@@ -373,8 +501,10 @@ class MemoryStore:
         self._conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
         self._conn.commit()
 
-        # Rebuild the FAISS index for this namespace
-        self._rebuild_index(namespace)
+        # Rebuild the FAISS index (semantic namespaces only; non-semantic
+        # namespaces have no index to rebuild).
+        if self._is_semantic(namespace):
+            self._rebuild_index(namespace)
 
         return {"deleted": True, "id": entry_id, "namespace": namespace}
 
@@ -396,6 +526,7 @@ class MemoryStore:
         Returns:
             List of entry dicts ordered by creation time (newest first).
         """
+        _validate_namespace(namespace)
         rows = self._conn.execute(
             "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
             "FROM entries WHERE namespace = ? "
@@ -414,3 +545,64 @@ class MemoryStore:
                 results.append(entry)
 
         return results
+
+    def namespace_stats(
+        self,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
+    ) -> list[dict]:
+        """Summarize every namespace by entry count and most-recent entry.
+
+        Lets a caller discover which namespaces exist and, crucially, when each
+        was last written — so locating "where did the latest memory land?" is a
+        single call instead of guessing namespaces and issuing one search each.
+
+        Args:
+            repo_url: Optional repository URL filter (normalized to canonical
+                SSH form before matching). When provided, only entries for that
+                repository are counted.
+            branch: Optional branch name filter. When provided, only entries on
+                that branch are counted.
+
+        Returns:
+            A list of dicts, one per namespace, ordered by ``latest_created_at``
+            descending (most recently written namespace first). Each dict has:
+            ``namespace``, ``count``, ``latest_created_at`` (ISO-8601 string),
+            and ``latest_id`` (the id of that newest entry). Returns an empty
+            list when no entries match.
+        """
+        repo_url = _normalize_repo_url(repo_url)
+        filters = []
+        params: list = []
+        if repo_url:
+            filters.append("repo_url = ?")
+            params.append(repo_url)
+        if branch:
+            filters.append("branch = ?")
+            params.append(branch)
+        where = (" WHERE " + " AND ".join(filters)) if filters else ""
+
+        grouped = self._conn.execute(
+            "SELECT namespace, COUNT(*) AS count, MAX(created_at) AS latest "
+            f"FROM entries{where} GROUP BY namespace ORDER BY latest DESC",
+            params,
+        ).fetchall()
+
+        stats = []
+        for row in grouped:
+            # Resolve the id of the newest entry in this namespace. created_at
+            # is an ISO-8601 string, so MAX()/ORDER BY DESC are lexicographically
+            # correct; a tie just returns one of the simultaneous entries.
+            id_row = self._conn.execute(
+                "SELECT id FROM entries WHERE namespace = ?"
+                + ("".join(f" AND {f}" for f in filters))
+                + " ORDER BY created_at DESC LIMIT 1",
+                [row["namespace"], *params],
+            ).fetchone()
+            stats.append({
+                "namespace": row["namespace"],
+                "count": row["count"],
+                "latest_created_at": row["latest"],
+                "latest_id": id_row["id"] if id_row else None,
+            })
+        return stats

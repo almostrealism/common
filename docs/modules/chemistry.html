@@ -88,20 +88,20 @@
                         <p>Marker interface for all chemical substances. Enables participation in graph-based relationships and reaction networks.</p>
                     </div>
                     <div class="class-item">
-                        <h4>PeriodicTable</h4>
-                        <p>Central access point for all elements. Provides static constants and methods for accessing elements by category.</p>
+                        <h4>Element (enum)</h4>
+                        <p>Central enum with all 118 enum constants and static methods for accessing elements by category.</p>
                     </div>
                 </div>
 
                 <h3>Accessing Individual Elements</h3>
                 <pre><code class="language-java">import org.almostrealism.chem.*;
-import org.almostrealism.physics.Atom;
+import org.almostrealism.chem.Atom;
 
-// Access individual elements via PeriodicTable
-Element hydrogen = PeriodicTable.Hydrogen;
-Element carbon = PeriodicTable.Carbon;
-Element gold = PeriodicTable.Gold;
-Element oxygen = PeriodicTable.Oxygen;
+// Access individual elements via Element enum
+Element hydrogen = Element.Hydrogen;
+Element carbon = Element.Carbon;
+Element gold = Element.Gold;
+Element oxygen = Element.Oxygen;
 
 // Get atomic number
 int atomicNumber = carbon.getAtomicNumber();  // Returns 6
@@ -148,46 +148,46 @@ Atom goldAtom = gold.construct();</code></pre>
 
                 <h3>Accessing Element Groups</h3>
                 <pre><code class="language-java">// By chemical family
-List&lt;Element&gt; alkaliMetals = PeriodicTable.alkaliMetals();       // Li, Na, K, Rb, Cs, Fr
-List&lt;Element&gt; nobleGases = PeriodicTable.nobleGasses();          // He, Ne, Ar, Kr, Xe, Rn
-List&lt;Element&gt; halogens = PeriodicTable.halogens();               // F, Cl, Br, I, At, Ts
-List&lt;Element&gt; transitionMetals = PeriodicTable.transitionMetals();
-List&lt;Element&gt; lanthanoids = PeriodicTable.lanthanoids();
-List&lt;Element&gt; actinoids = PeriodicTable.actinoids();
+List&lt;Element&gt; alkaliMetals = Element.alkaliMetals();       // Li, Na, K, Rb, Cs, Fr
+List&lt;Element&gt; nobleGases = Element.nobleGasses();          // He, Ne, Ar, Kr, Xe, Rn
+List&lt;Element&gt; halogens = Element.halogens();               // F, Cl, Br, I, At, Ts
+List&lt;Element&gt; transitionMetals = Element.transitionMetals();
+List&lt;Element&gt; lanthanoids = Element.lanthanoids();
+List&lt;Element&gt; actinoids = Element.actinoids();
 
 // By orbital block
-List&lt;Element&gt; sBlock = PeriodicTable.sBlock();  // Groups 1-2
-List&lt;Element&gt; pBlock = PeriodicTable.pBlock();  // Groups 13-18
+List&lt;Element&gt; sBlock = Element.sBlock();  // Groups 1-2
+List&lt;Element&gt; pBlock = Element.pBlock();  // Groups 13-18
 
 // By category
-List&lt;Element&gt; metals = PeriodicTable.metals();
-List&lt;Element&gt; nonMetals = PeriodicTable.nonMetals();
-List&lt;Element&gt; metalloids = PeriodicTable.metalloids();
-List&lt;Element&gt; mainGroup = PeriodicTable.mainGroup();
+List&lt;Element&gt; metals = Element.metals();
+List&lt;Element&gt; nonMetals = Element.nonMetals();
+List&lt;Element&gt; metalloids = Element.metalloids();
+List&lt;Element&gt; mainGroup = Element.mainGroup();
 
 // Special groups
-List&lt;Element&gt; chalcogens = PeriodicTable.chalcogens();   // O, S, Se, Te, Po, Lv (Group 16)
-List&lt;Element&gt; pnictogens = PeriodicTable.pnictogens();   // N, P, As, Sb, Bi, Mc (Group 15)
-List&lt;Element&gt; organics = PeriodicTable.organics();       // Common organic elements</code></pre>
+List&lt;Element&gt; chalcogens = Element.chalcogens();   // O, S, Se, Te, Po, Lv (Group 16)
+List&lt;Element&gt; pnictogens = Element.pnictogens();   // N, P, As, Sb, Bi, Mc (Group 15)
+List&lt;Element&gt; organics = Element.organics();       // Common organic elements</code></pre>
 
                 <h3>Periods and Groups</h3>
                 <pre><code class="language-java">// By period (horizontal row)
-List&lt;Element&gt; period1 = PeriodicTable.Periods.first();    // H, He
-List&lt;Element&gt; period2 = PeriodicTable.Periods.second();   // Li through Ne
-List&lt;Element&gt; period3 = PeriodicTable.Periods.third();    // Na through Ar
-List&lt;Element&gt; period4 = PeriodicTable.Periods.fourth();   // K through Kr (18 elements)
-List&lt;Element&gt; period5 = PeriodicTable.Periods.fifth();    // Rb through Xe
-List&lt;Element&gt; period6 = PeriodicTable.Periods.sixth();    // Cs through Rn (32 elements)
-List&lt;Element&gt; period7 = PeriodicTable.Periods.seventh();  // Fr through Og
+List&lt;Element&gt; period1 = Element.Periods.first();    // H, He
+List&lt;Element&gt; period2 = Element.Periods.second();   // Li through Ne
+List&lt;Element&gt; period3 = Element.Periods.third();    // Na through Ar
+List&lt;Element&gt; period4 = Element.Periods.fourth();   // K through Kr (18 elements)
+List&lt;Element&gt; period5 = Element.Periods.fifth();    // Rb through Xe
+List&lt;Element&gt; period6 = Element.Periods.sixth();    // Cs through Rn (32 elements)
+List&lt;Element&gt; period7 = Element.Periods.seventh();  // Fr through Og
 
 // By group (vertical column)
-List&lt;Element&gt; group1 = PeriodicTable.Groups.first();      // H, Li, Na, K, Rb, Cs, Fr
-List&lt;Element&gt; group2 = PeriodicTable.Groups.second();     // Be, Mg, Ca, Sr, Ba, Ra
-List&lt;Element&gt; group11 = PeriodicTable.Groups.eleventh();  // Cu, Ag, Au, Rg (coinage metals)
-List&lt;Element&gt; group18 = PeriodicTable.Groups.eigthteenth(); // Noble gases
+List&lt;Element&gt; group1 = Element.Groups.first();      // H, Li, Na, K, Rb, Cs, Fr
+List&lt;Element&gt; group2 = Element.Groups.second();     // Be, Mg, Ca, Sr, Ba, Ra
+List&lt;Element&gt; group11 = Element.Groups.eleventh();  // Cu, Ag, Au, Rg (coinage metals)
+List&lt;Element&gt; group18 = Element.Groups.eigthteenth(); // Noble gases
 
 // Get all elements
-List&lt;Element&gt; all = PeriodicTable.elements();  // All 118 elements</code></pre>
+List&lt;Element&gt; all = Element.elements();  // All 118 elements</code></pre>
 
                 <h3>Periodic Table Summary</h3>
                 <table class="comparison-table">
@@ -242,8 +242,8 @@ List&lt;Element&gt; all = PeriodicTable.elements();  // All 118 elements</code><
 
                 <div class="class-list">
                     <div class="class-item">
-                        <h4>Element Classes</h4>
-                        <p>118 individual classes (Hydrogen, Carbon, etc.) implementing the Element interface with proper electron configurations.</p>
+                        <h4>Element Enum Constants</h4>
+                        <p>118 enum constants (Hydrogen, Carbon, etc.) in the Element enum with proper electron configurations.</p>
                     </div>
                     <div class="class-item">
                         <h4>Shell Configuration</h4>
@@ -262,23 +262,14 @@ List&lt;Element&gt; all = PeriodicTable.elements();  // All 118 elements</code><
                 <h3>Electron Configuration Example</h3>
                 <pre><code class="language-java">// Carbon: Atomic number 6
 // Electron configuration: 1s2 2s2 2p2 or [He] 2s2 2p2
-public class Carbon implements Element {
-
-    public int getAtomicNumber() { return 6; }
-
-    public Atom construct() {
-        return new Atom(getAtomicNumber(), getShells());
-    }
-
-    private List&lt;Shell&gt; getShells() {
-        ArrayList&lt;Shell&gt; shells = new ArrayList&lt;&gt;();
-        // Reuse Helium's shell (1s2)
-        shells.addAll(PeriodicTable.Helium.getShells());
-        // Add second shell (2s2 2p2 = 4 electrons)
-        shells.add(Shell.second(2, 2));
-        return Collections.unmodifiableList(shells);
-    }
-}</code></pre>
+// As an enum constant in Element:
+//   Carbon(6) with shells built on Helium's core
+//
+// Usage:
+Element carbon = Element.Carbon;
+int z = carbon.getAtomicNumber();  // 6
+Atom carbonAtom = carbon.construct();
+// Internally builds shells: Helium core (1s2) + second shell (2s2 2p2)</code></pre>
 
                 <h3>Molecule Interface</h3>
                 <p>The Molecule interface models chemical compounds as graphs where elements are nodes and bonds are edges:</p>
@@ -325,19 +316,19 @@ import java.util.Arrays;
 
 // Bronze: 88% Copper, 12% Tin
 Alloy bronze = new Alloy(
-    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
+    Arrays.asList(Element.Copper, Element.Tin),
     0.88, 0.12
 );
 
 // Steel: 98% Iron, 1.5% Carbon, 0.5% Manganese
 Alloy steel = new Alloy(
-    Arrays.asList(PeriodicTable.Iron, PeriodicTable.Carbon, PeriodicTable.Manganese),
+    Arrays.asList(Element.Iron, Element.Carbon, Element.Manganese),
     0.98, 0.015, 0.005
 );
 
 // Brass: 70% Copper, 30% Zinc
 Alloy brass = new Alloy(
-    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Zinc),
+    Arrays.asList(Element.Copper, Element.Zinc),
     0.70, 0.30
 );
 
@@ -390,20 +381,20 @@ for (int i = 0; i < 1000; i++) {
                 <pre><code class="language-java">import java.util.stream.Collectors;
 
 // Find all metals with atomic number > 50 (heavy metals)
-List&lt;Element&gt; heavyMetals = PeriodicTable.metals().stream()
+List&lt;Element&gt; heavyMetals = Element.metals().stream()
     .filter(e -> e.getAtomicNumber() > 50)
     .collect(Collectors.toList());
 
 // Get organic elements (C, H, N, O, P, S)
-List&lt;Element&gt; organicElements = PeriodicTable.organics();
+List&lt;Element&gt; organicElements = Element.organics();
 
 // Find elements in specific atomic number range
-List&lt;Element&gt; middleElements = PeriodicTable.elements().stream()
+List&lt;Element&gt; middleElements = Element.elements().stream()
     .filter(e -> e.getAtomicNumber() >= 20 && e.getAtomicNumber() <= 40)
     .collect(Collectors.toList());
 
 // Get all radioactive elements (simplified - actinoids are mostly radioactive)
-List&lt;Element&gt; radioactive = PeriodicTable.actinoids();</code></pre>
+List&lt;Element&gt; radioactive = Element.actinoids();</code></pre>
 
                 <h3>Material Science Applications</h3>
                 <pre><code class="language-java">// Common alloy definitions
@@ -412,9 +403,9 @@ public class CommonAlloys {
     public static Alloy stainlessSteel() {
         return new Alloy(
             Arrays.asList(
-                PeriodicTable.Iron,
-                PeriodicTable.Chromium,
-                PeriodicTable.Nickel
+                Element.Iron,
+                Element.Chromium,
+                Element.Nickel
             ),
             0.74, 0.18, 0.08  // 74% Fe, 18% Cr, 8% Ni
         );
@@ -422,21 +413,21 @@ public class CommonAlloys {
 
     public static Alloy bronze() {
         return new Alloy(
-            Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
+            Arrays.asList(Element.Copper, Element.Tin),
             0.88, 0.12
         );
     }
 
     public static Alloy solder() {
         return new Alloy(
-            Arrays.asList(PeriodicTable.Tin, PeriodicTable.Lead),
+            Arrays.asList(Element.Tin, Element.Lead),
             0.60, 0.40
         );
     }
 
     public static Alloy sterling_silver() {
         return new Alloy(
-            Arrays.asList(PeriodicTable.Silver, PeriodicTable.Copper),
+            Arrays.asList(Element.Silver, Element.Copper),
             0.925, 0.075
         );
     }
@@ -448,14 +439,14 @@ public class CommonAlloys {
 
                 <h3>Basic Element Access</h3>
                 <pre><code class="language-java">import org.almostrealism.chem.*;
-import org.almostrealism.physics.Atom;
+import org.almostrealism.chem.Atom;
 
 public class ElementDemo {
     public static void main(String[] args) {
         // Access elements
-        Element carbon = PeriodicTable.Carbon;
-        Element oxygen = PeriodicTable.Oxygen;
-        Element hydrogen = PeriodicTable.Hydrogen;
+        Element carbon = Element.Carbon;
+        Element oxygen = Element.Oxygen;
+        Element hydrogen = Element.Hydrogen;
 
         // Print atomic numbers
         System.out.println("Carbon: Z=" + carbon.getAtomicNumber());   // 6
@@ -468,14 +459,14 @@ public class ElementDemo {
         Atom h = hydrogen.construct();
 
         // Work with element groups
-        List&lt;Element&gt; organics = PeriodicTable.organics();
+        List&lt;Element&gt; organics = Element.organics();
         System.out.println("Organic elements: " + organics.size());
     }
 }</code></pre>
 
                 <h3>Material Simulation</h3>
                 <pre><code class="language-java">import org.almostrealism.chem.*;
-import org.almostrealism.physics.Atom;
+import org.almostrealism.chem.Atom;
 import java.util.*;
 
 public class MaterialSimulation {
@@ -484,9 +475,9 @@ public class MaterialSimulation {
         // Create a steel alloy
         Alloy steel = new Alloy(
             Arrays.asList(
-                PeriodicTable.Iron,
-                PeriodicTable.Carbon,
-                PeriodicTable.Manganese
+                Element.Iron,
+                Element.Carbon,
+                Element.Manganese
             ),
             0.98, 0.015, 0.005
         );
@@ -512,33 +503,33 @@ public class MaterialSimulation {
                 <pre><code class="language-java">import org.almostrealism.chem.*;
 import java.util.*;
 
-public class PeriodicTableExplorer {
+public class ElementExplorer {
 
     public static void main(String[] args) {
         // Print all element families
         System.out.println("=== Alkali Metals ===");
-        PeriodicTable.alkaliMetals().forEach(e ->
+        Element.alkaliMetals().forEach(e ->
             System.out.println("  " + e.getClass().getSimpleName() +
                              " (Z=" + e.getAtomicNumber() + ")"));
 
         System.out.println("\n=== Noble Gases ===");
-        PeriodicTable.nobleGasses().forEach(e ->
+        Element.nobleGasses().forEach(e ->
             System.out.println("  " + e.getClass().getSimpleName() +
                              " (Z=" + e.getAtomicNumber() + ")"));
 
         System.out.println("\n=== Transition Metals ===");
-        PeriodicTable.transitionMetals().forEach(e ->
+        Element.transitionMetals().forEach(e ->
             System.out.println("  " + e.getClass().getSimpleName() +
                              " (Z=" + e.getAtomicNumber() + ")"));
 
         // Count elements by category
         System.out.println("\n=== Element Counts ===");
-        System.out.println("Total elements: " + PeriodicTable.elements().size());
-        System.out.println("Metals: " + PeriodicTable.metals().size());
-        System.out.println("Nonmetals: " + PeriodicTable.nonMetals().size());
-        System.out.println("Metalloids: " + PeriodicTable.metalloids().size());
-        System.out.println("Lanthanoids: " + PeriodicTable.lanthanoids().size());
-        System.out.println("Actinoids: " + PeriodicTable.actinoids().size());
+        System.out.println("Total elements: " + Element.elements().size());
+        System.out.println("Metals: " + Element.metals().size());
+        System.out.println("Nonmetals: " + Element.nonMetals().size());
+        System.out.println("Metalloids: " + Element.metalloids().size());
+        System.out.println("Lanthanoids: " + Element.lanthanoids().size());
+        System.out.println("Actinoids: " + Element.actinoids().size());
     }
 }</code></pre>
 
@@ -560,9 +551,9 @@ public class MaterialEvolution implements HeredityFeatures {
     public void evolve() {
         // Create base components
         List&lt;Atomic&gt; components = Arrays.asList(
-            PeriodicTable.Copper,
-            PeriodicTable.Zinc,
-            PeriodicTable.Tin
+            Element.Copper,
+            Element.Zinc,
+            Element.Tin
         );
 
         // Create evolvable alloy
@@ -596,7 +587,7 @@ public class MaterialEvolution implements HeredityFeatures {
 
                 <div class="warning">
                     <strong>Issue:</strong> Missing element class<br>
-                    <strong>Solution:</strong> All 118 elements are included. Access via PeriodicTable.ElementName (e.g., PeriodicTable.Gold).
+                    <strong>Solution:</strong> All 118 elements are included. Access via Element.ElementName (e.g., Element.Gold).
                 </div>
             </section>
 

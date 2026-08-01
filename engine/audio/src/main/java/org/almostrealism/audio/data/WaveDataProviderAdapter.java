@@ -49,9 +49,11 @@ import java.util.Map;
  * @see WaveDataProvider
  * @see FileWaveDataProvider
  */
-public abstract class WaveDataProviderAdapter implements WaveDataProvider,
-								Comparable<WaveDataProvider>, CodeFeatures {
+public abstract class WaveDataProviderAdapter implements WaveDataProvider, CodeFeatures {
+	/** Cache of loaded WaveData instances keyed by provider key, scoped to the current context. */
 	private static final Map<String, ContextSpecific<WaveData>> loaded;
+
+	/** Compiled interpolation evaluable for resampling audio at non-native playback rates. */
 	private static final ContextSpecific<Evaluable<PackedCollection>> interpolate;
 
 	static {
@@ -65,10 +67,21 @@ public abstract class WaveDataProviderAdapter implements WaveDataProvider,
 						v -> Product.of(v, ExpressionFeatures.getInstance().e(OutputLine.sampleRate))).get());
 	}
 
+	/**
+	 * Removes the cached WaveData entry for the given key, forcing a reload on next access.
+	 *
+	 * @param key the provider key to evict from the cache
+	 */
 	protected void clearKey(String key) {
 		loaded.remove(key);
 	}
 
+	/**
+	 * Loads and returns the audio data from the underlying source.
+	 * Implementations should not cache internally; caching is handled by this adapter.
+	 *
+	 * @return freshly loaded WaveData
+	 */
 	protected abstract WaveData load();
 
 	protected void unload() { clearKey(getKey()); }
@@ -89,7 +102,7 @@ public abstract class WaveDataProviderAdapter implements WaveDataProvider,
 		if (playbackRate == 1.0) return original.getChannelData(channel);
 
 		PackedCollection rate = PackedCollection.factory().apply(1);
-		rate.setMem(0, playbackRate);
+		rate.fill(playbackRate);
 
 		PackedCollection audio = original.getChannelData(channel);
 		int len = (int) (audio.getMemLength() / playbackRate);

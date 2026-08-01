@@ -16,8 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
@@ -27,7 +26,7 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
@@ -137,6 +136,7 @@ public class ReshapeProducer
 	 */
 	public static boolean enableShapeDelegateIsolation = true;
 
+	/** When true, validates that traversal shapes are compatible during reshape operations. */
 	public static boolean enableTraversalShapeValidation = false;
 
 	/** Metadata describing this reshape operation for debugging and introspection. */
@@ -327,6 +327,7 @@ public class ReshapeProducer
 		return producer.isConstant();
 	}
 
+	@Override
 	public boolean isProvider() { return producer.isProvider(); }
 
 	/**
@@ -360,6 +361,15 @@ public class ReshapeProducer
 		}
 
 		return TraversableExpression.super.isDiagonal(width);
+	}
+
+	@Override
+	public boolean isRowMonomial() {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isRowMonomial();
+		}
+
+		return TraversableExpression.super.isRowMonomial();
 	}
 
 	@Override
@@ -437,9 +447,14 @@ public class ReshapeProducer
 	}
 
 	@Override
+	public long getExpansionWidth() {
+		return producer instanceof Process ? ((Process<?, ?>) producer).getExpansionWidth() : 1;
+	}
+
+	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx) {
 		if (producer instanceof Process) {
-			return generateReplacement(List.of(optimize(ctx, ((Process) producer))));
+			return CollectionProducerParallelProcess.super.optimize(ctx);
 		}
 
 		return this;
@@ -472,15 +487,9 @@ public class ReshapeProducer
 		}
 	}
 
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		if (producer instanceof ScopeLifecycle) {
-			((ScopeLifecycle) producer).prepareArguments(map);
-		}
-	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		if (producer instanceof ScopeLifecycle) {
 			((ScopeLifecycle) producer).prepareScope(manager, context);
 		}
@@ -513,11 +522,6 @@ public class ReshapeProducer
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
-	}
-
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueRelative(index) : null;
 	}
 
 	@Override
@@ -565,6 +569,7 @@ public class ReshapeProducer
 	 * CollectionProducer columnTraversal = matrix.traverse(1);
 	 * }</pre>
 	 */
+	@Override
 	public CollectionProducer traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
 			if (producer instanceof CollectionProducerComputation) {

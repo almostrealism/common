@@ -206,13 +206,7 @@ The implementation includes full QK-Norm support:
 
 ## Hardware Acceleration
 
-**CRITICAL**: Set the required environment variable before running:
-
-```bash
-export AR_HARDWARE_LIBS=/home/developer/.libs/
-```
-
-`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `cl`, or `mtl`.
+`AR_HARDWARE_LIBS` is auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `cl`, or `mtl`.
 
 See [`claude.md`](./claude.md) for details.
 
@@ -313,10 +307,7 @@ The tokenizer uses byte-level BPE where:
 # 1. Extract weights (Python)
 python extract_qwen3_weights.py Qwen/Qwen3-Instruct-2507-4B ./qwen3_weights --bf16
 
-# 2. Set environment variable
-export AR_HARDWARE_LIBS=/home/developer/.libs/
-
-# 3. Run Java code
+# 2. Run Java code (AR_HARDWARE_LIBS is auto-detected)
 cat > Qwen3Demo.java << 'EOF'
 import org.almostrealism.ml.qwen3.Qwen3;
 import java.io.IOException;

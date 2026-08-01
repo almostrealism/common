@@ -71,9 +71,16 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 	/** Counter used to generate unique names for timing metrics. */
 	public static long id = 0;
 
+	/** An optional grouping key used to cluster related profiles. */
 	private String key;
+
+	/** The human-readable name of this profile. */
 	protected String name;
+
+	/** The timing metric that accumulates invocation data for this profile. */
 	private TimingMetric metric;
+
+	/** A function that extracts a unique string identifier from an {@link OperationMetadata} instance. */
 	private Function<OperationMetadata, String> identifier;
 
 	/** Creates a default profile with no key and the name "default". */

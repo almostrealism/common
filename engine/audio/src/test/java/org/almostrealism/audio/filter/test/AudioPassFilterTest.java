@@ -32,7 +32,10 @@ import org.junit.Test;
  */
 public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 
+	/** Audio sample rate from {@link OutputLine}. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** Duration of test signals in seconds. */
 	private static final double DURATION = 0.5; // seconds
 
 	/**

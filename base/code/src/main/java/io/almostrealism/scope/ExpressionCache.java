@@ -83,15 +83,30 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class ExpressionCache {
+	/** The cache instance active on the current thread, or {@code null} if none. */
 	private static ThreadLocal<ExpressionCache> current = new ThreadLocal<>();
+
+	/** Operation metadata associated with the current cache scope, used for timing annotations. */
 	private static ThreadLocal<OperationMetadata> currentMetadata = new ThreadLocal<>();
 
+	/** Per-depth frequency caches keyed by {@link Expression#treeDepth()}. */
 	private Map<Integer, FrequencyCache<Expression<?>, Expression<?>>> caches;
 
+	/**
+	 * Creates a new, empty {@link ExpressionCache}.
+	 */
 	public ExpressionCache() {
 		caches = new HashMap<>();
 	}
 
+	/**
+	 * Returns a cached equivalent of the supplied expression, or the expression itself
+	 * if no equivalent has been seen before or if the expression is not a cache target.
+	 *
+	 * @param <T>        the type of the expression
+	 * @param expression the expression to look up or insert
+	 * @return the canonical cached expression, or {@code expression} if not cached
+	 */
 	public <T> Expression<T> get(Expression<T> expression) {
 		if (!ScopeSettings.isExpressionCacheTarget(expression))
 			return expression;
@@ -118,6 +133,13 @@ public class ExpressionCache {
 		}
 	}
 
+	/**
+	 * Returns the {@link FrequencyCache} for expressions at the given tree depth,
+	 * creating it on first access.
+	 *
+	 * @param depth the expression tree depth
+	 * @return the frequency cache for that depth
+	 */
 	protected FrequencyCache<Expression<?>, Expression<?>> getCache(int depth) {
 		return caches.computeIfAbsent(depth,
 				k -> new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7));
@@ -149,16 +171,35 @@ public class ExpressionCache {
 		return candidates.stream().map(Map.Entry::getKey).collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns {@code true} if this cache contains no entries.
+	 *
+	 * @return {@code true} when all depth sub-caches are empty
+	 */
 	public boolean isEmpty() {
 		if (caches.isEmpty()) return true;
 		return caches.values().stream().allMatch(FrequencyCache::isEmpty);
 	}
 
 
+	/**
+	 * Activates this cache on the current thread for the duration of the given {@link Runnable}.
+	 *
+	 * @param r the task to run with this cache active
+	 * @return this cache instance
+	 */
 	public ExpressionCache use(Runnable r) {
 		return use(null, r);
 	}
 
+	/**
+	 * Activates this cache on the current thread with the given operation metadata
+	 * for the duration of the given {@link Runnable}.
+	 *
+	 * @param metadata the operation metadata to associate with the cache scope
+	 * @param r        the task to run with this cache active
+	 * @return this cache instance
+	 */
 	public ExpressionCache use(OperationMetadata metadata, Runnable r) {
 		use(metadata, () -> {
 			r.run();
@@ -168,10 +209,27 @@ public class ExpressionCache {
 		return this;
 	}
 
+	/**
+	 * Activates this cache on the current thread for the duration of the given {@link Supplier}
+	 * and returns its result.
+	 *
+	 * @param <T> the return type
+	 * @param r   the task to run with this cache active
+	 * @return the value returned by {@code r}
+	 */
 	public <T> T use(Supplier<T> r) {
 		return use(null, r);
 	}
 
+	/**
+	 * Activates this cache on the current thread with the given operation metadata
+	 * for the duration of the given {@link Supplier} and returns its result.
+	 *
+	 * @param <T>      the return type
+	 * @param metadata the operation metadata to associate with the cache scope
+	 * @param r        the task to run with this cache active
+	 * @return the value returned by {@code r}
+	 */
 	public <T> T use(OperationMetadata metadata, Supplier<T> r) {
 		OperationMetadata oldMetadata = currentMetadata.get();
 		ExpressionCache old = current.get();
@@ -186,6 +244,14 @@ public class ExpressionCache {
 		}
 	}
 
+	/**
+	 * Looks up the given expression in the current thread's active cache and returns
+	 * a canonical equivalent if one exists, or the expression itself otherwise.
+	 *
+	 * @param <T>        the type of the expression
+	 * @param expression the expression to deduplicate
+	 * @return the canonical cached expression, or {@code expression} if no cache is active
+	 */
 	public static <T> Expression<T> match(Expression<T> expression) {
 		ExpressionCache cache = getCurrent();
 		if (cache == null) return expression;
@@ -193,6 +259,12 @@ public class ExpressionCache {
 		return cache.get(expression);
 	}
 
+	/**
+	 * Returns the {@link ExpressionCache} active on the current thread, or {@code null}
+	 * if no cache has been activated.
+	 *
+	 * @return the current thread-local cache, or {@code null}
+	 */
 	public static ExpressionCache getCurrent() {
 		return current.get();
 	}

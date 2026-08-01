@@ -16,12 +16,15 @@
 
 package org.almostrealism.render;
 
+import org.almostrealism.collect.CollectionFeatures;
+
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.stream.IntStream;
 
@@ -61,7 +64,7 @@ import java.util.stream.IntStream;
  * @see org.almostrealism.raytrace.RenderParameters
  * @author Michael Murray
  */
-public class SuperSampler implements Producer<PackedCollection> {
+public class SuperSampler implements Producer<PackedCollection>, ConsoleFeatures, CollectionFeatures {
 
 	/**
 	 * The 2D grid of sample color producers. First index is horizontal (x),
@@ -138,25 +141,21 @@ public class SuperSampler implements Producer<PackedCollection> {
 					PackedCollection allSamples = Pair.bank(((MemoryBank) args[0]).getCount());
 					PackedCollection out[][] = new PackedCollection[w][h];
 
-					System.out.println("SuperSampler: Evaluating sample kernels...");
+					SuperSampler.this.log("Evaluating sample kernels...");
 					for (int i = 0; i < ev.length; i++) {
 						for (int j = 0; j < ev[i].length; j++) {
-							double pos[] = ((MemoryBank<?>) args[0]).toArray(0, allSamples.getMemLength());
-							double pairs[] = new double[allSamples.getMemLength()];
-
-							for (int k = 0; k < ((MemoryBank) args[0]).getCount(); k++) {
-								pairs[2 * k] = pos[2 * k] + ((double) i / (double) ev.length);
-								pairs[2 * k + 1] = pos[2 * k + 1] + ((double) j / (double) ev[i].length);
-							}
-
-							allSamples.setMem(pairs);
+							// Offset every sample pair by this kernel's sub-pixel position
+							a(cp(allSamples.traverse(1)),
+									cp(((PackedCollection) args[0]).traverse(1)).add(c(
+											(double) i / (double) ev.length,
+											(double) j / (double) ev[i].length))).get().run();
 
 							out[i][j] = RGB.bank(allSamples.getCount());
 							ev[i][j].into(out[i][j]).evaluate(allSamples);
 						}
 					}
 
-					System.out.println("SuperSampler: Combining samples...");
+					SuperSampler.this.log("Combining samples...");
 					for (int k = 0; k < ((MemoryBank) destination).getCount(); k++) {
 						for (int i = 0; i < ev.length; i++) {
 							j:

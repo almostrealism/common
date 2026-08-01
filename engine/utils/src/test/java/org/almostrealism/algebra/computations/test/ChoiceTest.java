@@ -22,13 +22,17 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for {@link Choice} computation.
+ */
 public class ChoiceTest extends TestSuiteBase {
 
+	/**
+	 * Tests the Choice computation with valid inputs.
+	 */
 	@Test(timeout = 10000)
 	public void oneOrTwo() {
-		PackedCollection bank = new PackedCollection(shape(2, 2).traverse(1));
-		bank.setMem(0, 1.0, 1.0);
-		bank.setMem(2, 2.0, 1.0);
+		PackedCollection bank = pack(1.0, 1.0, 2.0, 1.0).reshape(shape(2, 2)).traverse(1);
 
 		bank.print();
 

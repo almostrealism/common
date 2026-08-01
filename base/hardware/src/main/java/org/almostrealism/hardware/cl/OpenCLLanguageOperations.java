@@ -48,13 +48,63 @@ import org.jocl.cl_event;
  */
 public class OpenCLLanguageOperations extends CLanguageOperations {
 
+	/**
+	 * Creates OpenCL language operations for the given precision.
+	 *
+	 * @param precision Numeric precision for generated kernel code
+	 */
 	public OpenCLLanguageOperations(Precision precision) {
 		super(precision, false, false);
 	}
 
+	/**
+	 * Returns the kernel index expression with an explicit signed cast.
+	 *
+	 * <p>OpenCL C's {@code get_global_id} returns the unsigned {@code size_t}, so using it
+	 * raw poisons any expression containing a negative intermediate: a subtraction wraps to
+	 * a huge positive value and comparisons like {@code (id % n) - k >= 0} are always true.
+	 * The Metal generator casts its thread position to {@code long} for the same reason;
+	 * this must match, since both backends compile the same expression trees.</p>
+	 *
+	 * @param index Dimension index (0=x, 1=y, 2=z)
+	 * @return Index expression like {@code ((long) get_global_id(0))}
+	 */
 	@Override
 	public String kernelIndex(int index) {
-		return "get_global_id(" + index + ")";
+		return "((long) get_global_id(" + index + "))";
+	}
+
+	/**
+	 * Indicates that OpenCL C supports 64-bit integers.
+	 *
+	 * <p>OpenCL C provides {@code long} as a core 64-bit signed integer type, and this
+	 * backend already emits {@code long}-typed index expressions (see {@link #kernelIndex(int)}).
+	 * Reporting int64 support lets {@link io.almostrealism.lang.LanguageOperations#stringForLong(long)}
+	 * render integer constants outside the {@code int} range (for example large Jacobian strides in
+	 * a backward pass) as full 64-bit literals rather than throwing, matching
+	 * {@link org.almostrealism.hardware.metal.MetalLanguageOperations#isInt64()}. Without it the
+	 * {@link io.almostrealism.code.Precision}-based fallback rejects such constants under FP32.</p>
+	 *
+	 * @return Always true (OpenCL C supports the {@code long} integer type)
+	 */
+	@Override
+	public boolean isInt64() { return true; }
+
+	/**
+	 * Returns the absolute value expression using {@code fabs}.
+	 *
+	 * <p>{@link io.almostrealism.expression.Absolute} is always a floating point
+	 * expression, and OpenCL C's {@code abs} is defined only for integer types —
+	 * passing a floating point argument is ambiguous among the integer overloads
+	 * and fails compilation. Metal and C++ resolve {@code abs} for floating point
+	 * arguments, so only this backend needs the distinction.</p>
+	 *
+	 * @param value The expression to take the absolute value of
+	 * @return Expression like {@code fabs(value)}
+	 */
+	@Override
+	public String abs(String value) {
+		return "fabs(" + value + ")";
 	}
 
 	@Override

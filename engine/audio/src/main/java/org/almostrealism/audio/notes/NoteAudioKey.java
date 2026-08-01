@@ -30,18 +30,37 @@ import java.util.Objects;
  * @see KeyPosition
  */
 public class NoteAudioKey {
+	/** The musical key position (pitch) component of this key. */
 	private final KeyPosition<?> position;
+
+	/** The audio channel index component of this key. */
 	private final int audioChannel;
 
+	/**
+	 * Creates a NoteAudioKey for the given position and audio channel.
+	 *
+	 * @param position     the musical key position
+	 * @param audioChannel the audio channel index
+	 */
 	public NoteAudioKey(KeyPosition<?> position, int audioChannel) {
 		this.position = position;
 		this.audioChannel = audioChannel;
 	}
 
+	/**
+	 * Returns the musical key position component of this key.
+	 *
+	 * @return the key position
+	 */
 	public KeyPosition<?> getPosition() {
 		return position;
 	}
 
+	/**
+	 * Returns the audio channel index component of this key.
+	 *
+	 * @return the channel index
+	 */
 	public int getAudioChannel() {
 		return audioChannel;
 	}

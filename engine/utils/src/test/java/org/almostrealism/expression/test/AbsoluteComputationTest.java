@@ -40,8 +40,16 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 	 * This is similar to what Bartlett window does.
 	 */
 	static class AbsoluteTestComputation extends CollectionProducerComputationBase {
+		/**
+		 * Size of the computation.
+		 */
 		private final int size;
 
+		/**
+		 * Creates an absolute test computation with the given size.
+		 *
+		 * @param size Size for the computation
+		 */
 		public AbsoluteTestComputation(int size) {
 			super("absoluteTest", new TraversalPolicy(size).traverse());
 			this.size = size;
@@ -109,8 +117,16 @@ public class AbsoluteComputationTest extends TestSuiteBase {
 	 * Simpler test: just compute |x| directly without subtraction.
 	 */
 	static class SimpleAbsoluteComputation extends CollectionProducerComputationBase {
+		/**
+		 * Size of the computation.
+		 */
 		private final int size;
 
+		/**
+		 * Creates a simple absolute computation with the given size.
+		 *
+		 * @param size Size for the computation
+		 */
 		public SimpleAbsoluteComputation(int size) {
 			super("simpleAbsolute", new TraversalPolicy(size).traverse());
 			this.size = size;

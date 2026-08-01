@@ -29,6 +29,12 @@ import org.jocl.CLException;
  * @see HardwareException
  */
 public class InvalidContextException extends HardwareException {
+	/**
+	 * Creates an invalid context exception with the given message and OpenCL cause.
+	 *
+	 * @param message Description of the invalid context condition
+	 * @param cause   The underlying {@link CLException}
+	 */
 	public InvalidContextException(String message, CLException cause) {
 		super(message, cause);
 	}

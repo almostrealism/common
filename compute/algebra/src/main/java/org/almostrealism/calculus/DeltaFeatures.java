@@ -112,6 +112,11 @@ import java.util.stream.Collectors;
  *   <li><b>enableRestoreReplacements:</b> When true, restores original producers after delta computation (default: false)</li>
  * </ul>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author  Michael Murray
  * @see MatrixFeatures
  * @see InputStub
@@ -119,7 +124,10 @@ import java.util.stream.Collectors;
  * @see org.almostrealism.collect.CollectionProducer#delta
  */
 public interface DeltaFeatures extends MatrixFeatures {
+	/** When true, enables total isolation of sub-expressions during delta computation. */
 	boolean enableTotalIsolation = false;
+
+	/** When true, restores replaced inputs after completing a delta computation pass. */
 	boolean enableRestoreReplacements = false;
 
 	/**
@@ -374,6 +382,16 @@ public interface DeltaFeatures extends MatrixFeatures {
 		}
 	}
 
+	/**
+	 * Replaces specific input suppliers of the given computation with substitute producers.
+	 * This is used during delta computation to temporarily swap inputs for differentiation.
+	 *
+	 * @param <T>          the element type of the computation
+	 * @param producer     the computation whose inputs are to be replaced
+	 * @param toReplace    the list of input suppliers that should be replaced
+	 * @param replacements a map from original producers to their replacements (updated in place)
+	 * @return a new computation with the specified inputs replaced
+	 */
 	default <T extends PackedCollection> ComputationBase<T, T, Evaluable<T>> replaceInput(
 			ComputationBase<T, T, Evaluable<T>> producer,
 			List<Supplier> toReplace,

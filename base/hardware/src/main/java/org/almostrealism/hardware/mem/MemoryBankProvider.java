@@ -95,10 +95,21 @@ import java.util.function.IntFunction;
  * @see MemoryBankAdapter
  */
 public class MemoryBankProvider<T extends MemoryData> implements IntFunction<MemoryBank<T>>, ConsoleFeatures {
+	/** Factory that creates or replaces the current bank given the previous bank and requested size. */
 	private BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier;
+	/** Most recently created or returned bank. */
 	private MemoryBank<T> last;
+	/** Size of the most recently created or returned bank. */
 	private int lastSize;
 
+	/**
+	 * Creates a provider backed by a simple factory function.
+	 *
+	 * <p>The factory is called with the previous bank (for cleanup) and the new requested size.
+	 * If the size is 0 or negative, the factory should return null.</p>
+	 *
+	 * @param supplier Factory that creates banks for a given size
+	 */
 	public MemoryBankProvider(IntFunction<MemoryBank<T>> supplier) {
 		this((v, i) -> {
 			if (v != null) v.destroy();
@@ -106,15 +117,32 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		});
 	}
 
+	/**
+	 * Creates a provider backed by a bi-function that receives the previous bank and requested size.
+	 *
+	 * @param supplier Factory function receiving the previous bank and the new size
+	 */
 	public MemoryBankProvider(BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> supplier) {
 		this.supplier = supplier;
 	}
 
+	/**
+	 * Replaces the cached bank with a newly created one for the specified size.
+	 *
+	 * @param size Requested bank size
+	 */
 	protected void updateLast(int size) {
 		last = supplier.apply(last, size);
 		lastSize = size;
 	}
 
+	/**
+	 * Returns a bank for the given size, reusing the cached bank if the size matches.
+	 *
+	 * @param size Requested bank size
+	 * @return Existing or newly created {@link MemoryBank}
+	 */
+	@Override
 	public MemoryBank<T> apply(int size) {
 		if (lastSize == size && last != null && last.getMem() != null) {
 			return last;
@@ -124,6 +152,9 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		return last;
 	}
 
+	/**
+	 * Destroys the cached bank and clears the internal reference.
+	 */
 	public void destroy() {
 		updateLast(0);
 	}

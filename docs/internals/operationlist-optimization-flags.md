@@ -317,8 +317,8 @@ section). The flags remain at their defaults (`false`). If kernel fusion is
 pursued in the future, it should be implemented at the composition level
 rather than by toggling these global flags.
 
-See [../journals/AUDIO_SCENE_LOOP.md](../journals/AUDIO_SCENE_LOOP.md) for
-the decision journal entry.
+See [../plans/audio-scene-redesign/STATE_OF_PLAY.md](../plans/audio-scene-redesign/STATE_OF_PLAY.md)
+§7 (durable lessons) for why expression-level kernel-fusion toggling was abandoned.
 
 ---
 

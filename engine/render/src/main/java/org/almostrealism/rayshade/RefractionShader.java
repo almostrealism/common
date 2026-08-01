@@ -16,11 +16,12 @@
 
 package org.almostrealism.rayshade;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGBFeatures;
@@ -97,7 +98,7 @@ import java.util.List;
  * @author Michael Murray
  */
 // TODO  Fix refraction algorithm.
-public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFeatures, CodeFeatures {
+public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, CodeFeatures, ConsoleFeatures {
 
 	/**
 	 * The last refracted ray direction (for debugging purposes).
@@ -109,20 +110,14 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 	 */
 	public static boolean produceOutput = false;
   
-	private static final String propNames[] = {"Index of refraction", "Red attenuation", "Green attenuation", "Blue attenuation"};
-	private static final String propDesc[] = {"The index of refraction of the medium",
-						"The attenuation factor for the red channel",
-						"The attenuation factor for the green channel",
-						"The attenuation factor for the blue channel"};
-	private static final Class propTypes[] = {Double.class, Double.class, Double.class, Double.class};
-  
+	/** The index of refraction of the material (e.g., 1.0 for air, 1.5 for glass). */
 	private double indexOfRefraction;
+	/** Red, green, and blue attenuation factors applied to the refracted color. */
 	private double ra, ga, ba;
+	/** The step distance used when sampling material density for variable IOR computation. */
 	private double sampleDistance = 0.01;
+	/** The number of density samples taken along the surface normal for IOR estimation. */
 	private int sampleCount = 1;
-	private double lra, lga, lba;
-  
-	private int entered, exited;
 
 	/**
 	 * Constructs a new {@link RefractionShader} with default settings.
@@ -141,6 +136,7 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 	 * @param normals The surface normals at the intersection point
 	 * @return A Producer that computes the refracted color
 	 */
+	@Override
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
 		Producer pr = (Producer<PackedCollection>) () -> (Evaluable<PackedCollection>) args -> {
 			p.addReflection();
@@ -151,7 +147,7 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 
 			if (Math.random() < 0.01 &&
 					po.getX() * po.getX() + po.getY() * po.getY() + po.getZ() * po.getZ() - 1.0 > 0.01)
-				System.out.println("RefractionShader: " + po);
+				log(String.valueOf(po));
 
 			Vector n = new Ray(normals.iterator().next().get().evaluate(args), 0).getDirection();
 
@@ -163,7 +159,7 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 				try {
 					point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
 				} catch (Exception e) {
-					e.printStackTrace();
+					warn(e.getMessage(), e);
 					return null;
 				}
 
@@ -174,7 +170,7 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 				c = multiply(rgb(10, 10, 10), c);
 
 				if (Math.random() < 0.01)
-					System.out.println("RefractionShader.shadeFront: " + c.get().evaluate(args));
+					log(String.valueOf(c.get().evaluate(args)));
 
 				if (c != null) {
 					if (color == null) {
@@ -193,7 +189,7 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 						p.getOtherSurfaces(), n.minus(), p);
 
 				if (Math.random() < 0.01)
-					System.out.println("RefractionShader.shadeBack: " + c.get().evaluate(args));
+					log(String.valueOf(c.get().evaluate(args)));
 
 				if (c != null) {
 					if (color == null) {
@@ -210,6 +206,24 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 		return GeneratedColorProducer.fromProducer(this, pr);
 	}
 	
+	/**
+	 * Computes the refracted color contribution for a specific ray entry or exit through the surface.
+	 *
+	 * <p>Applies Snell's law to compute the refracted ray direction, then traces it through the scene
+	 * using a {@link LightingEngineAggregator}. If the recursion depth exceeds the maximum allowed
+	 * reflections, black is returned immediately.</p>
+	 *
+	 * @param point           The surface intersection point
+	 * @param viewerDirection The direction from the intersection toward the viewer
+	 * @param lightDirection  The direction of the current light source
+	 * @param light           The current light source
+	 * @param otherLights     Other lights in the scene
+	 * @param surface         The refracting surface
+	 * @param otherSurfaces   Other surfaces in the scene
+	 * @param n               The surface normal at the intersection point
+	 * @param p               The shader context
+	 * @return A producer computing the refracted color contribution
+	 */
 	protected Producer<PackedCollection> shade(Vector point, Vector viewerDirection, Producer<PackedCollection> lightDirection,
 								  Light light, Iterable<Light> otherLights, Curve<PackedCollection> surface,
 								  Curve<PackedCollection> otherSurfaces[], Vector n, ShaderContext p) {
@@ -414,18 +428,18 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 	 */
 	@Deprecated
 	public static Vector refract(Vector vector, Vector normal, double ni, double nr, boolean v) {
-		if (v) System.out.println("Vector = " + vector);
+		if (v) Console.root().println("Vector = " + vector);
 
 		vector = vector.minus();
 
 		double p = -vector.dotProduct(normal);
 		double r = ni / nr;
 
-		if (v) System.out.println("p = " + p + " r = " + r);
+		if (v) Console.root().println("p = " + p + " r = " + r);
 
 		vector = vector.minus();
 		if (vector.dotProduct(normal) < 0) {
-			if (v) System.out.println("LALA");
+			if (v) Console.root().println("LALA");
 			normal = normal.minus();
 			p = -p;
 		}
@@ -433,11 +447,11 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 
 		double s = Math.sqrt(1.0 - r * r * (1.0 - p * p));
 
-		if (v) System.out.println("s = " + s);
+		if (v) Console.root().println("s = " + s);
 
 		Vector refracted = vector.multiply(r);
 
-		if (v) System.out.println(refracted);
+		if (v) Console.root().println(String.valueOf(refracted));
 
 		//	if (p >= 0.0) {
 		refracted.addTo(normal.multiply((p * r) - s));
@@ -445,7 +459,7 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 		//		refracted.addTo(normal.multiply((p * r) - s));
 		//	}
 
-		if (v) System.out.println(refracted);
+		if (v) Console.root().println(String.valueOf(refracted));
 
 		// Vector refracted = ((vector.subtract(normal.multiply(p))).multiply(r)).subtract(normal.multiply(s));
 
@@ -466,10 +480,6 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 		this.ra = r;
 		this.ga = g;
 		this.ba = b;
-		
-		this.lra = Math.log(this.ra);
-		this.lga = Math.log(this.ga);
-		this.lba = Math.log(this.ba);
 	}
 	
 	/**
@@ -485,83 +495,8 @@ public class RefractionShader implements Shader<ShaderContext>, Editable, RGBFea
 	}
 	
 	/**
-	 * Returns an array of String objects with names for each editable property of this RefractionShader object.
-	 */
-	public String[] getPropertyNames() { return RefractionShader.propNames; }
-	
-	/**
-	 * Returns an array of String objects with descriptions for each editable property of this RefractionShader object.
-	 */
-	public String[] getPropertyDescriptions() { return RefractionShader.propDesc; }
-	
-	/**
-	 * Returns an array of Class objects representing the class types of each editable property of this RefractionShader object.
-	 */
-	public Class[] getPropertyTypes() { return RefractionShader.propTypes; }
-	
-	/**
-	 * Returns the values of the properties of this ReflectionShader object as an Object array.
-	 */
-	public Object[] getPropertyValues() {
-		return new Object[] {Double.valueOf(this.indexOfRefraction), Double.valueOf(this.ra), Double.valueOf(this.ga), Double.valueOf(this.ba)};
-	}
-	
-	/**
-	 * Sets the value of the property of this RefractionShader object at the specified index to the specified value.
-	 * 
-	 * @throws IllegalArgumentException  If the object specified is not of the correct type.
-	 * @throws IndexOutOfBoundsException  If the index specified does not correspond to an editable property of this
-	 *                                    RefractionShader object.
-	 */
-	public void setPropertyValue(Object value, int index) {
-		if (value instanceof Double == false)
-			throw new IllegalArgumentException("Illegal argument: " + value.toString());
-		
-		if (index == 0) {
-				this.setIndexOfRefraction(((Double)value).doubleValue());
-		} else if (index == 1) {
-				this.setAttenuationFactors(((Double)value).doubleValue(),
-								this.getAttenuationFactors()[1],
-								this.getAttenuationFactors()[2]);
-		} else if (index == 2) {
-				this.setAttenuationFactors(this.getAttenuationFactors()[0],
-								((Double)value).doubleValue(),
-								this.getAttenuationFactors()[2]);
-		} else if (index == 3) {
-				this.setAttenuationFactors(this.getAttenuationFactors()[0],
-								this.getAttenuationFactors()[1],
-								((Double)value).doubleValue());
-		} else {
-			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-		}
-	}
-	
-	/**
-	 * @return  An empty array.
-	 */
-	@Override
-	public Producer[] getInputPropertyValues() { return new Producer[0]; }
-	
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void setInputPropertyValue(int index, Producer p) { }
-	
-	/**
-	 * Sets the values of editable properties of this ReflectionShader object to those specified.
-	 * 
-	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
-	 *                                   (Note: none of the values after the erroneous value will be set)
-	 * @throws IndexOutOfBoundsException  If the length of the specified array is longer than permitted.
-	 */
-	public void setPropertyValues(Object values[]) {
-		for (int i = 0; i < values.length; i++)
-			this.setPropertyValue(values[i], i);
-	}
-	
-	/**
 	 * Returns "Refraction Shader".
 	 */
+	@Override
 	public String toString() { return "Refraction Shader"; }
 }

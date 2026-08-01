@@ -25,20 +25,25 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
+/**
+ * Tests for interpolation operations.
+ */
 public class InterpolateTest extends TestSuiteBase {
+	/**
+	 * Tests interpolating between two series.
+	 */
 	@Test(timeout = 10000)
 	public void interpolateTwoSeries() {
-		PackedCollection series = new PackedCollection(2, 10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
-		System.out.println(series.traverse(1).getCountLong() + " series");
+		PackedCollection series = pack(
+				7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0,
+				12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0)
+				.reshape(shape(2, 10));
+		log(String.valueOf(series.traverse(1).getCountLong() + " series"));
 
-		PackedCollection cursors = new PackedCollection(2, 1);
-		cursors.setMem(0, 5.5, 3.5);
-		System.out.println(cursors.traverse(1).getCountLong() + " cursors");
+		PackedCollection cursors = pack(5.5, 3.5).reshape(shape(2, 1));
+		log(String.valueOf(cursors.traverse(1).getCountLong() + " cursors"));
 
-		PackedCollection rate = new PackedCollection(2, 1);
-		rate.setMem(0, 1.0, 1.0);
+		PackedCollection rate = new PackedCollection(2, 1).fill(1.0);
 
 		Interpolate interpolate = new Interpolate(
 				v(shape(-1, 10), 0),
@@ -48,23 +53,23 @@ public class InterpolateTest extends TestSuiteBase {
 				v -> Sum.of(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series.traverse(1), cursors.traverse(1), rate.traverse(1));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(15, dest.toArray(0, 1)[0]);
 		assertEquals(11, dest.toArray(1, 1)[0]);
 	}
 
+	/**
+	 * Tests interpolate kernel pass-through.
+	 */
 	@Test(timeout = 10000)
 	public void interpolateKernelPassThrough() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCountLong() + " series");
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
-		PackedCollection cursors = new PackedCollection(2, 1);
-		cursors.setMem(0, 5.5, 6.5);
-		System.out.println(cursors.traverse(1).getCountLong() + " cursors");
+		PackedCollection cursors = pack(5.5, 6.5).reshape(shape(2, 1));
+		log(String.valueOf(cursors.traverse(1).getCountLong() + " cursors"));
 
-		PackedCollection rate = new PackedCollection(2, 1);
-		rate.setMem(0, 1.0, 1.0);
+		PackedCollection rate = new PackedCollection(2, 1).fill(1.0);
 
 		Interpolate interpolate = new Interpolate(
 				v(shape(10), 0),
@@ -74,23 +79,23 @@ public class InterpolateTest extends TestSuiteBase {
 		interpolate.get().into(dest.traverse(1))
 				.evaluate(series.traverse(0), cursors.traverse(1), rate.traverse(1));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(11.5, dest.toArray(0, 1)[0]);
 		assertEquals(10.5, dest.toArray(1, 1)[0]);
 	}
 
+	/**
+	 * Tests interpolate kernel computation.
+	 */
 	@Test(timeout = 10000)
 	public void interpolateKernel() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		log(series.traverse(0).getCountLong() + " series");
 
-		PackedCollection cursors = new PackedCollection(2, 1);
-		cursors.setMem(0, 5.5, 6.5);
+		PackedCollection cursors = pack(5.5, 6.5).reshape(shape(2, 1));
 		log(cursors.traverse(1).getCountLong() + " cursors");
 
-		PackedCollection rate = new PackedCollection(2, 1);
-		rate.setMem(0, 1.0, 1.0);
+		PackedCollection rate = new PackedCollection(2, 1).fill(1.0);
 
 		Interpolate interpolate = new Interpolate(cp(series), traverse(1, cp(cursors)), cp(rate));
 		PackedCollection dest = interpolate.get().evaluate();
@@ -100,16 +105,16 @@ public class InterpolateTest extends TestSuiteBase {
 		assertEquals(10.5, dest.toDouble(1));
 	}
 
+	/**
+	 * Tests interpolate pass-through with explicit shape.
+	 */
 	@Test(timeout = 10000)
 	public void interpolatePassThroughWithShape() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 
-		PackedCollection cursor = new PackedCollection(1);
-		cursor.setMem(0, 5.5);
+		PackedCollection cursor = pack(5.5);
 
-		PackedCollection rate = new PackedCollection(1);
-		rate.setMem(0, 1.0);
+		PackedCollection rate = pack(1.0);
 
 		Interpolate interpolate = new Interpolate(
 				v(shape(10), 0),
@@ -119,20 +124,18 @@ public class InterpolateTest extends TestSuiteBase {
 				v -> Sum.of(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series, cursor, rate);
 
-		System.out.println(Arrays.toString(dest.toArray(0, 1)));
+		log(Arrays.toString(dest.toArray(0, 1)));
 		assertEquals(15, dest.toArray(0, 1)[0]);
 	}
 
+	/**
+	 * Tests interpolate pass-through without explicit shape.
+	 */
 	@Test(timeout = 10000)
 	public void interpolatePassThroughWithoutShape() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 
-		PackedCollection cursor = new PackedCollection(4, 1);
-		cursor.setMem(0, 3.5);
-		cursor.setMem(1, 2.5);
-		cursor.setMem(2, 4.5);
-		cursor.setMem(3, 5.5);
+		PackedCollection cursor = pack(3.5, 2.5, 4.5, 5.5).reshape(shape(4, 1));
 
 		PackedCollection rate = new PackedCollection(2);
 		rate.setMem(0, 1.0);

@@ -59,6 +59,7 @@ public interface TemporalFactor<T> extends Factor<T>, Temporal {
 	 * @param next the factor to apply after this one
 	 * @return a new CombinedFactor that chains this and next
 	 */
+	@Override
 	default Factor<T> andThen(Factor<T> next) {
 		return new CombinedFactor<>(this, next);
 	}
@@ -70,5 +71,6 @@ public interface TemporalFactor<T> extends Factor<T>, Temporal {
 	 *
 	 * @return a supplier providing the tick operation
 	 */
+	@Override
 	default Supplier<Runnable> tick() { return new OperationList(); }
 }

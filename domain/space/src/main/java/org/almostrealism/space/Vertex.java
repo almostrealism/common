@@ -44,9 +44,17 @@ import org.almostrealism.color.RGB;
  * @see Vector
  */
 public class Vertex extends Vector {
-	private final Vector n = new Vector();  // Vertex normals
-	private double r, g, b;  // Vertex color
-	private double tu, tv;  // TODO  Texture coordinates
+	/** Accumulated surface normal for this vertex, used for smooth shading. */
+	private final Vector n = new Vector();
+
+	/** Red component of the vertex color (0.0-1.0). */
+	private double r;
+
+	/** Green component of the vertex color (0.0-1.0). */
+	private double g;
+
+	/** Blue component of the vertex color (0.0-1.0). */
+	private double b;
 
 	/**
 	 * Constructs a new {@link Vertex} at the origin with a zero normal and black color.

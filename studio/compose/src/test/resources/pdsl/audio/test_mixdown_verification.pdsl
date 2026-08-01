@@ -1,0 +1,37 @@
+// ---------------------------------------------------------------------------
+// Test-only layers for MixdownManagerPdslVerificationTest.
+//
+// live_test / fir_live — slot-liveness probes: a compiled model must re-read a
+// collection-valued argument on EVERY forward pass (the real-time runner
+// delivers all time-varying automation, including the swept FIR coefficients,
+// through collection slots mutated between forwards).
+//
+// fe_rows / fe_test — multi-channel routing regressions with DISTINCT
+// per-channel content: `for each channel` must feed each chain its OWN row,
+// and `sum_channels` must sum the distinct rows (a flat-offset subset bug
+// once collapsed every term to row 0, making the whole mix channels * row0).
+// ---------------------------------------------------------------------------
+
+layer live_test(signal_size: int, gain: producer([1])) -> [1, signal_size] {
+    scale(gain)
+}
+
+layer fir_live(signal_size: int, fir_taps: int,
+               coeffs: producer([fir_taps])) -> [1, signal_size] {
+    fir(coeffs)
+}
+
+layer fe_rows(channels: int, signal_size: int,
+              volume: producer([channels])) -> [channels, signal_size] {
+    for each channel {
+        scale(volume[channel])
+    }
+}
+
+layer fe_test(channels: int, signal_size: int,
+              volume: producer([channels])) -> [1, signal_size] {
+    for each channel {
+        scale(volume[channel])
+    }
+    sum_channels()
+}

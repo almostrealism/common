@@ -16,14 +16,14 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
@@ -33,12 +33,13 @@ import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
-import io.almostrealism.profile.OperationTimingListener;
+import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.mem.MemoryRegionList;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -130,7 +131,7 @@ import java.util.stream.Stream;
  * });
  *
  * ops.isComputation();  // Returns false
- * ops.get().run();      // Sequential execution via Runner
+ * ops.get().run();      // Sequential execution via OperationListRunner
  * }</pre>
  *
  * <h2>Common Usage Patterns</h2>
@@ -242,7 +243,7 @@ import java.util.stream.Stream;
  *     deepList.get().run();
  *
  *     // To abort mid-execution, set flag value to non-zero
- *     abortFlag.setMem(0, 1.0);  // Triggers abort on next check
+ *     abortFlag.fill(1.0);  // Triggers abort on next check
  * } finally {
  *     OperationList.removeAbortFlag();
  * }
@@ -329,9 +330,9 @@ import java.util.stream.Stream;
  *
  * <h3>Flag Precedence in {@code get()}</h3>
  * <ol>
- *   <li>If {@code enableAutomaticOptimization &amp;&amp; !isUniform()} → call {@code optimize().get()}</li>
- *   <li>If {@code isComputation() &amp;&amp; (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
- *   <li>Otherwise → sequential {@link Runner} execution</li>
+ *   <li>If {@code enableAutomaticOptimization && !isUniform()} → call {@code optimize().get()}</li>
+ *   <li>If {@code isComputation() && (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
+ *   <li>Otherwise → sequential {@link OperationListRunner} execution</li>
  * </ol>
  *
  * <h3>Uniform Lists</h3>
@@ -364,7 +365,7 @@ import java.util.stream.Stream;
  *   <tr>
  *     <th>Aspect</th>
  *     <th>Compiled (Computation)</th>
- *     <th>Sequential (Runner)</th>
+ *     <th>Sequential (OperationListRunner)</th>
  *   </tr>
  *   <tr>
  *     <td>Execution Speed</td>
@@ -513,9 +514,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>,
 					ComputableParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, Destroyable, ComputerFeatures {
-	/** Enable logging of operation list execution (controlled by AR_HARDWARE_RUN_LOGGING environment variable). */
-	public static boolean enableRunLogging = SystemUtils.isEnabled("AR_HARDWARE_RUN_LOGGING").orElse(false);
-
 	/**
 	 * Enable automatic optimization of operation lists before execution.
 	 *
@@ -618,6 +616,15 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public static boolean enableSegmenting = false;
 
 	/**
+	 * Enable logging when {@link #subdivide()} cuts a list at a read-after-write hazard
+	 * boundary, naming the list and the member whose {@link Isolated} reads triggered the
+	 * cut. Controlled by {@code AR_SUBDIVISION_LOGGING}.
+	 */
+	public static boolean enableSubdivisionLogging =
+			SystemUtils.isEnabled("AR_SUBDIVISION_LOGGING").orElse(false);
+
+
+	/**
 	 * Enable non-uniform compilation where operations with different counts can be compiled
 	 * into a single hardware kernel.
 	 *
@@ -641,7 +648,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * <ol>
 	 *   <li>If {@code enableAutomaticOptimization && !isUniform()} → optimize and recurse</li>
 	 *   <li>If {@code isComputation() && (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
-	 *   <li>Otherwise → sequential {@link Runner} execution</li>
+	 *   <li>Otherwise → sequential {@link OperationListRunner} execution</li>
 	 * </ol>
 	 *
 	 * @see #enableAutomaticOptimization
@@ -650,26 +657,92 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	public static boolean enableNonUniformCompilation = false;
 
+	/**
+	 * When {@code true}, {@link #flatten()} labels each inlined child operation with the
+	 * provenance of its originating sub-list by wrapping it in an
+	 * {@link io.almostrealism.profile.OperationWithInfo}. This aids profile diagnostics by
+	 * carrying a "parent ==&gt; child" description through the flattened operation stream.
+	 *
+	 * <p><strong>Disabled by default, and do not flip it back on without addressing the
+	 * problem below.</strong> Wrapping an operation in {@link io.almostrealism.profile.OperationWithInfo}
+	 * does not merely attach a label &mdash; it inserts a decorator into the
+	 * {@link io.almostrealism.compute.Process} tree, and that decorator <em>changes how the
+	 * wrapped {@link io.almostrealism.compute.Process} is optimized and ultimately executed</em>.
+	 * Optimization proceeds by calling {@code optimize(...)}, then {@code isolate()} /
+	 * {@code generate(...)} on each node; a wrapper that does not faithfully delegate every
+	 * one of these (and re-wrap the result) silently alters the optimization path. The
+	 * concrete failure we hit: with the wrapper in place on the model-compilation path,
+	 * expression embedding was no longer broken up where the optimizer intended, the emitted
+	 * kernel exploded, and {@code Model.compile()} hung to the test timeout
+	 * (see {@code LoRALinearTests.testModelCompilation}). Even when the wrapper's
+	 * {@code optimize}/{@code isolate}/{@code generate} are made to delegate, the wrapper still
+	 * participates in the process tree and can change which {@link Computation}s are fused,
+	 * isolated, or inlined &mdash; i.e. it changes what is actually executed, not just what is
+	 * reported. Re-enabling this requires proving (with a model-compilation regression test,
+	 * not just provenance-string assertions) that the wrapping is transparent to optimization
+	 * for every path that flows through {@link #flatten()}.</p>
+	 *
+	 * <p>The rest of the provenance infrastructure
+	 * ({@link io.almostrealism.profile.OperationMetadata#withProvenance(String)} and the
+	 * profile-analysis tooling) does not insert wrappers into the process tree and is
+	 * unaffected by this flag &mdash; it remains available regardless of this setting.</p>
+	 */
+	public static boolean enableProvenance = false;
+
+	/** Thread-local flag set when a kernel abort has been triggered; holds the offending MemoryData. */
 	private static ThreadLocal<MemoryData> abortFlag;
-	private static boolean abortArgs, abortScope;
+	/** If true, the abort operation's scope has already been prepared. */
+	private static boolean abortScope;
+	/** Optional abort handler invoked when compilation or evaluation is aborted. */
 	private static Abort abort;
 
 	static {
 		abortFlag = new ThreadLocal<>();
 	}
 
+	/** Maximum nesting depth of operation lists before compilation is forced. */
 	private static int maxDepth = 500;
+	/** Nesting depth at which an operation list is considered abortable. */
 	private static int abortableDepth = 1000;
+	/** Monotonically increasing counter used to generate unique function names. */
 	private static long functionCount = 0;
 
+	/** If true, this operation list may be compiled to a native kernel. */
 	private boolean enableCompilation;
+	/** Unique name used as the generated function name when this list is compiled. */
 	private String functionName;
+	/** Human-readable description for logging and profiling. */
 	private String description;
+	/** Optional fixed element count; when set, the kernel is sized to this value. */
 	private Long count;
 
+	/** Metadata describing the operation for profiling, naming, and context identification. */
 	private OperationMetadata metadata;
+	/** Optional profile for recording timing and invocation statistics per operation. */
 	private OperationProfile profile;
+	/** Compute requirements specifying which backend(s) this list should be executed on. */
 	private List<ComputeRequirement> requirements;
+	/**
+	 * Marks an instance as already produced by the {@link #enableAutomaticOptimization}
+	 * branch of {@link #get(OperationProfile)}. When set, {@code get(profile)} skips
+	 * the {@code optimize().get()} call, preventing infinite recursion when the
+	 * optimization strategy declines to isolate and returns a structurally equivalent
+	 * non-uniform list.
+	 */
+	private boolean autoOptimized;
+
+	/**
+	 * Marks an instance whose members must execute as separately-dispatched units, in
+	 * order, rather than fusing into a single compiled kernel. Set by
+	 * {@link #subdivide()} when a member's {@link Isolated} subtree reads memory that an
+	 * earlier member writes: an isolated subtree is evaluated during argument
+	 * preparation, before a fused kernel would run, so fusing across that boundary would
+	 * let the read observe memory from before the write. When set,
+	 * {@link #isComputation()} returns {@code false} so {@link #get(OperationProfile)}
+	 * takes the {@link OperationListRunner} path; members that are themselves lists may
+	 * still compile internally.
+	 */
+	private boolean sequential;
 
 	/**
 	 * Creates an empty operation list with no description.
@@ -710,6 +783,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	@Override
 	public String getFunctionName() { return this.functionName; }
+
+	/**
+	 * Returns the description of this operation list.
+	 *
+	 * @return The description, or null if not set
+	 */
+	public String getDescription() { return this.description; }
 
 	/**
 	 * Returns the operation metadata for profiling and identification.
@@ -822,8 +902,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				((OperationProfileNode) profile).addChild(getMetadata());
 			}
 
-			if (enableAutomaticOptimization && !isUniform()) {
-				return optimize().get();
+			if (!autoOptimized && enableAutomaticOptimization && !isUniform()) {
+				Supplier<Runnable> opt = optimize();
+				if (opt instanceof OperationList && opt != this) {
+					((OperationList) opt).autoOptimized = true;
+				}
+				return opt.get();
 			} else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
 				AcceleratedOperation op = (AcceleratedOperation) compileRunnable(this);
 				op.setFunctionName(functionName);
@@ -839,7 +923,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					return run.get(0);
 				}
 
-				return new Runner(getMetadata(), run, getComputeRequirements(),
+				return new OperationListRunner(getMetadata(), run, getComputeRequirements(),
 						profile == null ? null : profile.getTimingListener());
 			}
 		} finally {
@@ -860,6 +944,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * @return true if this list can be compiled to a hardware kernel
 	 */
 	public boolean isComputation() {
+		if (sequential) return false;
 		if (!enableCompilation) return false;
 		if (getDepth() > maxDepth) return false;
 
@@ -875,24 +960,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	/**
-	 * Prepares arguments for all operations in this list.
-	 *
-	 * <p>Delegates to {@link ScopeLifecycle#prepareArguments} for all operations.
-	 * If an abort flag is set, also prepares the abort operation.</p>
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		ScopeLifecycle.prepareArguments(stream(), map);
-		if (abortFlag != null & !abortArgs) {
-			if (abort == null) abort = new Abort(abortFlag::get);
-			abortArgs = true;
-			abort.prepareArguments(map);
-		}
-	}
-
-	/**
 	 * Prepares scope for all operations in this list.
 	 *
 	 * <p>Delegates to {@link ScopeLifecycle#prepareScope} for all operations.
@@ -902,7 +969,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * @param context The kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.prepareScope(stream(), manager, context);
 		if (!abortScope) {
 			if (abort == null) abort = new Abort(abortFlag::get);
@@ -959,11 +1026,24 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns true if this operation list contains no operations, or contains only empty nested lists.
+	 *
+	 * <p>An operation list is functionally empty even when it has entries if all entries are
+	 * themselves functionally empty {@link OperationList} instances.</p>
+	 *
+	 * @return True if there is no executable work in this list or any nested lists
+	 */
 	public boolean isFunctionallyEmpty() {
 		if (isEmpty()) return true;
 		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
 	}
 
+	/**
+	 * Returns the maximum nesting depth of non-empty operation lists within this list.
+	 *
+	 * @return Nesting depth; 0 for a functionally empty list
+	 */
 	public int getDepth() {
 		if (isFunctionallyEmpty()) return 0;
 
@@ -971,13 +1051,26 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				.mapToInt(OperationList::getDepth).max().orElse(0) + 1;
 	}
 
+	/**
+	 * Flattens nested operation lists into a single level where possible.
+	 *
+	 * <p>Nested lists that have no specific compute requirements are inlined into the parent.
+	 * Lists with explicit requirements are kept as nested entries.</p>
+	 *
+	 * @return A new flattened {@link OperationList}
+	 */
 	public OperationList flatten() {
 		OperationList flat = stream()
 				.flatMap(o -> {
 					if (o instanceof OperationList) {
-						OperationList op = ((OperationList) o).flatten();
+						OperationList original = (OperationList) o;
+						String provenance = original.getDescription();
+						OperationList op = original.flatten();
 
 						if (op.getComputeRequirements() == null) {
+							if (enableProvenance && provenance != null) {
+								return op.stream().map(child -> withProvenance(child, provenance));
+							}
 							return op.stream();
 						} else {
 							return Stream.of(op);
@@ -990,6 +1083,41 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		flat.enableCompilation = enableCompilation;
 		flat.setComputeRequirements(getComputeRequirements());
 		return flat;
+	}
+
+	/**
+	 * Returns an operation labelled with the given provenance, without mutating the
+	 * input or any metadata it shares with other holders.
+	 *
+	 * <p>When {@code op} is a leaf {@link OperationInfo} with non-null metadata, this
+	 * returns an {@link OperationWithInfo} wrapping {@code op} with a fresh
+	 * {@link OperationMetadata#withProvenance(String)} copy, so the original metadata
+	 * (which may still be referenced by the un-flattened nested lists, or read again on
+	 * a subsequent {@link #flatten()}) is left untouched and provenance prefixes cannot
+	 * accumulate across repeated flattens.</p>
+	 *
+	 * <p>A nested {@link OperationList} child (which arises when a sub-list carried its
+	 * own {@link #getComputeRequirements() compute requirements} and was therefore kept
+	 * intact during the recursive flatten) is returned unchanged: wrapping it in an
+	 * {@link OperationWithInfo} would discard its list structure and compute
+	 * requirements, and its leaf operations already received provenance when that
+	 * sub-list was flattened. Operations that are not {@link OperationInfo} or have no
+	 * metadata are also returned unchanged.</p>
+	 *
+	 * @param op         the operation to label
+	 * @param provenance the provenance string to prepend to the short description
+	 * @return a provenance-labelled wrapper, or {@code op} unchanged when it is a nested
+	 *         list or carries no metadata
+	 */
+	private static Supplier<Runnable> withProvenance(Supplier<Runnable> op, String provenance) {
+		if (op instanceof OperationInfo && !(op instanceof OperationList)) {
+			OperationMetadata metadata = ((OperationInfo) op).getMetadata();
+			if (metadata != null) {
+				return OperationWithInfo.of(metadata.withProvenance(provenance), op);
+			}
+		}
+
+		return op;
 	}
 
 	public void run() { get().run(); }
@@ -1026,10 +1154,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> optimize(ProcessContext context) {
-		if (!enableSegmenting || size() <= 1 || isUniform()) return ComputableParallelProcess.super.optimize(context);
+		if (!enableSegmenting || size() <= 1 || isUniform()) return optimizeAndSubdivide(context);
 
 		boolean match = IntStream.range(1, size()).anyMatch(i -> Countable.countLong(get(i - 1)) == Countable.countLong(get(i)));
-		if (!match) return ComputableParallelProcess.super.optimize(context);
+		if (!match) return optimizeAndSubdivide(context);
 
 		OperationList op = new OperationList();
 		OperationList current = new OperationList();
@@ -1053,6 +1181,88 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		if (current.size() > 0) op.add(current.size() == 1 ? current.get(0) : current);
 
 		return op.optimize(context);
+	}
+
+	/**
+	 * Applies the standard optimization pipeline and then subdivides the result at
+	 * read-after-write hazard boundaries.
+	 *
+	 * <p>Subdivision must follow optimization because the hazards it guards against are
+	 * created by the optimization strategies: an {@link Isolated} subtree only exists
+	 * once a strategy has decided to isolate it.</p>
+	 *
+	 * @param context The process context for optimization decisions
+	 * @return The optimized process, subdivided where required
+	 */
+	private ParallelProcess<Process<?, ?>, Runnable> optimizeAndSubdivide(ProcessContext context) {
+		ParallelProcess<Process<?, ?>, Runnable> optimized = ComputableParallelProcess.super.optimize(context);
+
+		if (optimized instanceof OperationList) {
+			return ((OperationList) optimized).subdivide();
+		}
+
+		return optimized;
+	}
+
+	/**
+	 * Partitions this list into sequentially-executed segments wherever a member's
+	 * {@link Isolated} subtree reads memory that an earlier member of the same segment
+	 * writes.
+	 *
+	 * <p>When every member of a list is a computation, {@link #get(OperationProfile)}
+	 * fuses the list into a single compiled operation. Fusion is correct for inline
+	 * reads — an earlier member's write and a later member's read become ordered
+	 * statements in one kernel — but an {@link Isolated} subtree is evaluated during
+	 * argument preparation, <em>before</em> the fused kernel runs, so its read would
+	 * observe memory from before the write. Only that read-after-write direction forces
+	 * a cut: an isolated read followed by a later write observes the pre-kernel
+	 * contents either way, which matches the inline statement order.</p>
+	 *
+	 * <p>Each resulting segment may still fuse internally; the partitioned outer list
+	 * executes them in order through the {@link OperationListRunner}, whose chained
+	 * submission carries each segment's completion into the next segment's argument
+	 * preparation.</p>
+	 *
+	 * <p>Writes are recognized for members (including members of nested lists) whose
+	 * destination is a provider — the only destination form whose memory can be
+	 * resolved without running anything. A member whose destination is supplied by an
+	 * opaque function is not treated as a writer.</p>
+	 *
+	 * @return this list when no hazard boundary exists, otherwise a new sequential
+	 *         list of segments
+	 */
+	public ParallelProcess<Process<?, ?>, Runnable> subdivide() {
+		if (size() <= 1 || sequential) return this;
+
+		List<OperationList> segments = new ArrayList<>();
+		OperationList current = new OperationList();
+		MemoryRegionList written = new MemoryRegionList();
+
+		for (Supplier<Runnable> member : this) {
+			if (!current.isEmpty() && written.overlaps(MemoryRegionList.dependentReads(member))) {
+				if (enableSubdivisionLogging) {
+					log("subdividing " + describe() + " before " + OperationInfo.display(member));
+				}
+
+				segments.add(current);
+				current = new OperationList();
+				written.clear();
+			}
+
+			current.add(member);
+			written.include(MemoryRegionList.writes(member));
+		}
+
+		segments.add(current);
+		if (segments.size() == 1) return this;
+
+		OperationList op = new OperationList(description);
+		op.sequential = true;
+		for (OperationList segment : segments) {
+			op.add(segment.size() == 1 ? segment.get(0) : segment);
+		}
+
+		return op;
 	}
 
 	@Override
@@ -1189,102 +1399,4 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
-	/**
-	 * Compiled runner for executing a sequence of operations with metadata and timing support.
-	 */
-	public static class Runner implements Runnable, Destroyable, OperationInfo, ConsoleFeatures {
-		private OperationMetadata metadata;
-		private List<Runnable> run;
-		private List<ComputeRequirement> requirements;
-		private OperationTimingListener timingListener;
-
-		/**
-		 * Creates a runner for the specified operations.
-		 *
-		 * @param metadata Operation metadata for identification
-		 * @param run List of runnables to execute sequentially
-		 * @param requirements Compute requirements (may be null)
-		 * @param timingListener Timing listener for profiling (may be null)
-		 */
-		public Runner(OperationMetadata metadata, List<Runnable> run,
-					  List<ComputeRequirement> requirements,
-					  OperationTimingListener timingListener) {
-			this.metadata = metadata;
-			this.run = run;
-			this.requirements = requirements;
-			this.timingListener = timingListener;
-		}
-
-		/**
-		 * Returns the operation metadata.
-		 *
-		 * @return The metadata
-		 */
-		@Override
-		public OperationMetadata getMetadata() { return metadata; }
-
-		/**
-		 * Returns the list of operations to execute.
-		 *
-		 * @return List of runnables
-		 */
-		public List<Runnable> getOperations() { return run; }
-
-		/**
-		 * Executes all operations in sequence with compute requirements and timing.
-		 */
-		@Override
-		public void run() {
-			try {
-				if (requirements != null) {
-					Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
-				}
-
-				if (timingListener == null) {
-					for (int i = 0; i < run.size(); i++) {
-						run.get(i).run();
-					}
-				} else {
-					for (int i = 0; i < run.size(); i++) {
-						if (enableRunLogging)
-							log("Running " + OperationInfo.display(run.get(i)));
-						timingListener.recordDuration(getMetadata(), run.get(i));
-					}
-				}
-			} finally {
-				if (requirements != null) {
-					Hardware.getLocalHardware().getComputer().popRequirements();
-				}
-			}
-		}
-
-		/**
-		 * Returns a description of this runner.
-		 *
-		 * @return The short description from metadata
-		 */
-		@Override
-		public String describe() {
-			return getMetadata().getShortDescription();
-		}
-
-		/**
-		 * Destroys all operations and releases resources.
-		 */
-		@Override
-		public void destroy() {
-			if (run == null) return;
-
-			run.forEach(Destroyable::destroy);
-			run = null;
-		}
-
-		/**
-		 * Returns the console for logging.
-		 *
-		 * @return The hardware console
-		 */
-		@Override
-		public Console console() { return Hardware.console; }
-	}
 }

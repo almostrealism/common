@@ -16,16 +16,24 @@
 
 package org.almostrealism.graph.mesh.test;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.space.MeshData;
+import io.almostrealism.collect.Shape;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for point extraction from mesh data.
+ */
 public class PointExtractionTest extends TestSuiteBase {
 
+	/**
+	 * Tests batch edge computation from extracted vertices.
+	 */
 	@Test(timeout = 10000)
 	public void batchEdgeComputation() {
 		// Test computing edges from extracted vertices
@@ -90,27 +98,20 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, normals.toDouble(5));
 	}
 
+	/**
+	 * Tests batch subtraction of vectors.
+	 */
 	@Test(timeout = 10000)
 	public void batchSubtract() {
 		// Test batch subtraction
-		PackedCollection v1 = new PackedCollection(shape(2, 3));
-		PackedCollection v2 = new PackedCollection(shape(2, 3));
-
 		// Pair 0: [1,2,3] - [0,1,0] = [1,1,3]
-		v1.setMem(0, 1.0);
-		v1.setMem(1, 2.0);
-		v1.setMem(2, 3.0);
-		v2.setMem(0, 0.0);
-		v2.setMem(1, 1.0);
-		v2.setMem(2, 0.0);
-
 		// Pair 1: [5,6,7] - [2,3,4] = [3,3,3]
-		v1.setMem(3, 5.0);
-		v1.setMem(4, 6.0);
-		v1.setMem(5, 7.0);
-		v2.setMem(3, 2.0);
-		v2.setMem(4, 3.0);
-		v2.setMem(5, 4.0);
+		PackedCollection v1 = pack(
+				1.0, 2.0, 3.0,
+				5.0, 6.0, 7.0).reshape(shape(2, 3));
+		PackedCollection v2 = pack(
+				0.0, 1.0, 0.0,
+				2.0, 3.0, 4.0).reshape(shape(2, 3));
 
 		log("\n=== Batch Subtract Test ===");
 
@@ -132,6 +133,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(3.0, result.toDouble(5));
 	}
 
+	/**
+	 * Tests extracting vertex 1 from batch triangles.
+	 */
 	@Test(timeout = 10000)
 	public void batchPointExtractionVertex1() {
 		// Test extracting vertex 1 from batch
@@ -175,6 +179,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, output.toDouble(5));
 	}
 
+	/**
+	 * Tests batch point extraction of vertices.
+	 */
 	@Test(timeout = 10000)
 	public void batchPointExtraction() {
 		// Create test data: 2 triangles with distinct vertices
@@ -219,6 +226,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, output.toDouble(5));
 	}
 
+	/**
+	 * Tests batch triangle computation with normals.
+	 */
 	@Test(timeout = 10000)
 	public void batchTriangleComputation() {
 		// Create test data: 2 triangles with different orientations
@@ -269,8 +279,8 @@ public class PointExtractionTest extends TestSuiteBase {
 
 		Producer<PackedCollection> rawP = p(reshaped);
 		log("rawP class: " + rawP.getClass().getSimpleName());
-		if (rawP instanceof io.almostrealism.collect.Shape) {
-			log("rawP shape: " + ((io.almostrealism.collect.Shape) rawP).getShape());
+		if (rawP instanceof Shape) {
+			log("rawP shape: " + ((Shape) rawP).getShape());
 		}
 		CollectionProducer cP = c(rawP);
 		log("cP class: " + cP.getClass().getSimpleName());
@@ -338,27 +348,20 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, output.get(1).get(3).toDouble(2));
 	}
 
+	/**
+	 * Tests batch cross product computation.
+	 */
 	@Test(timeout = 10000)
 	public void batchCrossProduct() {
 		// Create test data: 2 pairs of vectors to cross
-		PackedCollection vec1 = new PackedCollection(shape(2, 3));
-		PackedCollection vec2 = new PackedCollection(shape(2, 3));
-
 		// Pair 0: [1,0,0] x [0,1,0] = [0,0,1]
-		vec1.setMem(0, 1.0);
-		vec1.setMem(1, 0.0);
-		vec1.setMem(2, 0.0);
-		vec2.setMem(0, 0.0);
-		vec2.setMem(1, 1.0);
-		vec2.setMem(2, 0.0);
-
 		// Pair 1: [1,0,0] x [0,0,1] = [0,-1,0]
-		vec1.setMem(3, 1.0);
-		vec1.setMem(4, 0.0);
-		vec1.setMem(5, 0.0);
-		vec2.setMem(3, 0.0);
-		vec2.setMem(4, 0.0);
-		vec2.setMem(5, 1.0);
+		PackedCollection vec1 = pack(
+				1.0, 0.0, 0.0,
+				1.0, 0.0, 0.0).reshape(shape(2, 3));
+		PackedCollection vec2 = pack(
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0).reshape(shape(2, 3));
 
 		log("\n=== Batch Cross Product Test ===");
 		log("Vec1 shape: " + vec1.getShape());
@@ -383,20 +386,17 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, result.toDouble(5));
 	}
 
+	/**
+	 * Tests batch vector normalization.
+	 */
 	@Test(timeout = 10000)
 	public void batchNormalize() {
 		// Create test data: 2 vectors with different magnitudes
-		PackedCollection vecs = new PackedCollection(shape(2, 3));
-
 		// Vector 0: [3, 0, 4] with magnitude 5
-		vecs.setMem(0, 3.0);
-		vecs.setMem(1, 0.0);
-		vecs.setMem(2, 4.0);
-
-		// Vector 1: [0, 5, 12] with magnitude 13
-		vecs.setMem(3, 0.0);
-		vecs.setMem(4, 5.0);
-		vecs.setMem(5, 12.0);
+		PackedCollection vecs = pack(
+				3.0, 0.0, 4.0,
+				// Vector 1: [0, 5, 12] with magnitude 13
+				0.0, 5.0, 12.0).reshape(shape(2, 3));
 
 		log("\n=== Batch Normalize Test ===");
 		log("Input shape: " + vecs.getShape());
@@ -446,46 +446,28 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(12.0 / 13.0, normalized.toDouble(5));
 	}
 
+	/**
+	 * Tests mesh data structure with reshaped data.
+	 */
 	@Test(timeout = 10000)
 	public void meshDataStructure() {
 		// Test with proper (N, 3, 3) shape: N triangles, 3 vertices per triangle, 3 components per vertex
-		PackedCollection flatData = new PackedCollection(shape(3 * 3 * 3));  // 27 scalars total
-
 		// Triangle 0: vertices (0,1,0), (-1,-1,0), (1,-1,0)
 		// Occupies indices 0-8 (9 scalars)
-		flatData.setMem(0, 0.0);
-		flatData.setMem(1, 1.0);
-		flatData.setMem(2, 0.0);    // v0
-		flatData.setMem(3, -1.0);
-		flatData.setMem(4, -1.0);
-		flatData.setMem(5, 0.0);  // v1
-		flatData.setMem(6, 1.0);
-		flatData.setMem(7, -1.0);
-		flatData.setMem(8, 0.0);   // v2
-
-		// Triangle 1: vertices (-1,1,-1), (-1,-1,0), (0,1,0)
-		// Occupies indices 9-17
-		flatData.setMem(9, -1.0);
-		flatData.setMem(10, 1.0);
-		flatData.setMem(11, -1.0);   // v0
-		flatData.setMem(12, -1.0);
-		flatData.setMem(13, -1.0);
-		flatData.setMem(14, 0.0);  // v1
-		flatData.setMem(15, 0.0);
-		flatData.setMem(16, 1.0);
-		flatData.setMem(17, 0.0);    // v2
-
-		// Triangle 2: vertices (0,1,0), (1,-1,0), (1,1,-1)
-		// Occupies indices 18-26
-		flatData.setMem(18, 0.0);
-		flatData.setMem(19, 1.0);
-		flatData.setMem(20, 0.0);    // v0
-		flatData.setMem(21, 1.0);
-		flatData.setMem(22, -1.0);
-		flatData.setMem(23, 0.0);   // v1
-		flatData.setMem(24, 1.0);
-		flatData.setMem(25, 1.0);
-		flatData.setMem(26, -1.0);   // v2
+		PackedCollection flatData = pack(
+				0.0, 1.0, 0.0,   // v0
+				-1.0, -1.0, 0.0,   // v1
+				1.0, -1.0, 0.0,   // v2
+				// Triangle 1: vertices (-1,1,-1), (-1,-1,0), (0,1,0)
+				// Occupies indices 9-17
+				-1.0, 1.0, -1.0,   // v0
+				-1.0, -1.0, 0.0,   // v1
+				0.0, 1.0, 0.0,   // v2
+				// Triangle 2: vertices (0,1,0), (1,-1,0), (1,1,-1)
+				// Occupies indices 18-26
+				0.0, 1.0, 0.0,   // v0
+				1.0, -1.0, 0.0,   // v1
+				1.0, 1.0, -1.0);  // v2
 
 		log("\n=== Mesh Data Structure Test ===");
 

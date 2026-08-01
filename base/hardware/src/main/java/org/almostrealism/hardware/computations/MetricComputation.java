@@ -149,16 +149,27 @@ import org.almostrealism.hardware.mem.Bytes;
  * @see io.almostrealism.relation.Producer
  */
 public class MetricComputation<T> extends OperationComputationAdapter<T> implements ExpressionFeatures {
+	/** Label displayed in the metric log output. */
 	private String message;
+	/** Number of invocations between each logged output. */
 	private int logFrequency;
-	private int pos, memLength;
+	/** Element position within the measured memory to log. */
+	private int pos;
 
+	/**
+	 * Creates a metric computation that logs the element at {@code pos} of the measured producer.
+	 *
+	 * @param message      Label to display in the log output
+	 * @param logFrequency Number of invocations between log entries
+	 * @param measure      Producer supplying the data to measure
+	 * @param pos          Element offset within the measurement to log
+	 * @param memLength    Total memory length of the measurement
+	 */
 	public MetricComputation(String message, int logFrequency, Producer<T> measure, int pos, int memLength) {
 		super(() -> new Provider(new Bytes(1)), measure);
 		this.message = message;
 		this.logFrequency = logFrequency;
 		this.pos = pos;
-		this.memLength = memLength;
 	}
 
 	@Override

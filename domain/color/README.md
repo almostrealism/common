@@ -353,11 +353,7 @@ RGB finalColor = new RGB(result, 0);
 
 The color module respects the standard hardware acceleration environment variables:
 
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
-
-`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
+`AR_HARDWARE_LIBS` is auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
 
 ## Dependencies
 

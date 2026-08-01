@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.Absorber;
 import org.almostrealism.physics.Clock;
 import org.almostrealism.physics.Volume;
@@ -34,14 +35,33 @@ import java.util.ArrayList;
  * 
  * @author  Michael Murray
  */
-public class SnellAbsorber implements Absorber, VectorFeatures {
+public class SnellAbsorber implements Absorber, VectorFeatures, ConsoleFeatures {
+	/** The 3D volume within which photon absorption occurs. */
 	private Volume<?> volume;
+
+	/** The simulation clock used to synchronize absorption and emission timing. */
 	private Clock clock;
+
+	/** Queue of pending photon data arrays, each holding position, direction, and energy. */
 	private final ArrayList<Object[]> queue = new ArrayList<>();
+
+	/** Refraction indices for the two media at the interface: {@code n[0]} is the incident medium,
+	 *  {@code n[1]} is the refracting medium. */
 	private final double[] n = {0, 0}; // Refraction values for mediums
-		
-	// Upon absorption energy of incoming rays is added to the Queue as an array
-	// with important information, like angle and energy, so that conservation is correct.
+
+	/**
+	 * Absorbs a photon at the given position and direction if it is inside the configured volume.
+	 * <p>
+	 * The position, direction, and energy are stored in the internal queue for processing
+	 * during the emit phase, where Snell's law is applied to compute the refracted direction.
+	 * </p>
+	 *
+	 * @param Position   the position of the incoming photon
+	 * @param Direction  the direction of travel of the incoming photon
+	 * @param Energy     the energy of the incoming photon
+	 * @return           {@code true} if the position is inside the volume and the photon was queued
+	 */
+	@Override
 	public boolean absorb(Vector Position, Vector Direction, double Energy) {
 		if (!this.volume.inside(v(Position))) return false;
 		
@@ -92,7 +112,7 @@ public class SnellAbsorber implements Absorber, VectorFeatures {
 		Vector R = n.multiply(alpha).multiply(-1).add(n.crossProduct(n.crossProduct(new Vector(d))).multiply(Math.sqrt(1 - ((alpha * alpha)))));
 		
 		if (Math.random() < 0.0001) {
-			System.out.println(R.toString());
+			log(R.toString());
 		}
 		
 		this.queue.remove(0);
@@ -133,7 +153,7 @@ public class SnellAbsorber implements Absorber, VectorFeatures {
 	public Producer<PackedCollection> getEmitPosition() {
 		if (!queue.isEmpty()) {
 			if (Math.random() < 0.0001)
-				System.out.println(queue.get(0)[0].toString());
+				log(queue.get(0)[0].toString());
 
 			return v((Vector) queue.get(0)[0]);
 		} else {

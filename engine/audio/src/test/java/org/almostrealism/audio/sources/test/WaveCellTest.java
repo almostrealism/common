@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package org.almostrealism.audio.sources.test;
 
 import io.almostrealism.relation.Evaluable;
@@ -34,7 +33,6 @@ import org.almostrealism.time.TemporalList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -44,19 +42,32 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for {@link WaveCell} including playback, sequencing, and clock synchronization.
+ */
 public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/**
+	 * Creates a WaveCell from the test WAV file with a 1000-sample window.
+	 *
+	 * @return Configured WaveCell ready for testing
+	 * @throws IOException If test file cannot be loaded
+	 */
 	protected WaveCell cell() throws IOException {
 		return WaveData.load(getTestWavFile())
 						.toCell(0, 1000, null, c(10))
 				.apply(new DefaultWaveCellData());
 	}
 
+	/**
+	 * Tests that the cell's receptor mechanism is properly invoked during push.
+	 */
 	@Test(timeout = 60000)
 	public void push() throws IOException {
 		WaveCell cell = cell();
 		cell.setReceptor(protein -> {
 			Evaluable<? extends PackedCollection> ev = protein.get();
-			return () -> () -> System.out.println(ev.evaluate().toDouble(0));
+			return () -> () -> log(String.valueOf(ev.evaluate().toDouble(0)));
 		});
 
 		OperationList l = (OperationList) cell.push(c(0.0));
@@ -65,12 +76,20 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		IntStream.range(0, 100).forEach(i -> r.run());
 	}
 
+	/**
+	 * Tests sustained playback over an extended period with cycling.
+	 * <p>
+	 * Known issue: cycling 100 dc(...) blocks aborts on Linux glibc with
+	 * "double free or corruption (out)". Root cause appears to be that
+	 * NativeDataContext.destroy() bulk-frees every allocated native pointer
+	 * via NativeMemoryProvider, but Java NativeMemory wrappers may still be
+	 * referenced; their cleaner later free()s the same address. macOS libmalloc
+	 * tolerates this; glibc detects it and aborts the JVM.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
-	@TestProperties(longRunning = true)
+	@TestProperties(longRunning = true, knownIssue = true)
 	public void endless() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AtomicInteger total = new AtomicInteger();
 
 		IntStream.range(0, 100).forEach(x -> {
@@ -84,13 +103,16 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 					int tot = total.incrementAndGet();
 
 					if (tot % 10 == 0) {
-						System.out.println(Instant.now() + " - Completed " + tot);
+						log(String.valueOf(Instant.now() + " - Completed " + tot));
 					}
 				}
 			});
 		});
 	}
 
+	/**
+	 * Tests clean single-pass wave file playback.
+	 */
 	@Test(timeout = 60000)
 	public void clean() {
 		int count = 8;
@@ -101,6 +123,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests repeating a hi-hat sample across multiple beats.
+	 */
 	@Test(timeout = 60000)
 	public void repeatHat() {
 		int count = 32;
@@ -112,6 +137,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests repeating a snare sample across multiple beats.
+	 */
 	@Test(timeout = 60000)
 	public void repeatSnare() {
 		int count = 32;
@@ -123,10 +151,11 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests sequential playback of multiple wave file instances.
+	 */
 	@Test(timeout = 60000)
 	public void sequence() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		int count = 32;
 
 		CellList cells = silence().and(w(0, c(bpm(128).l(0.5)), c(bpm(128).l(1)),
@@ -138,6 +167,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests output assignment from wave cell to a receptor.
+	 */
 	@Test(timeout = 60000)
 	public void assignment() {
 		PackedCollection out = new PackedCollection(1);
@@ -147,16 +179,19 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		OperationList ops = (OperationList) cells.sec(10);
 		Runnable r = ops.get();
 		r.run();
-		System.out.println("Result after 10s: " + out.toDouble(0) + " (expected !" + 0.0 + ")");
+		log("Result after 10s: " + out.toDouble(0) + " (expected !" + 0.0 + ")");
 		Assert.assertNotEquals(0.0, out.toDouble(0), 0.0);
 	}
 
+	/**
+	 * Tests wave cell playback synchronized to internal clock.
+	 */
 	@Test(timeout = 60000)
 	public void internalClock() {
 		double rate = 2 * Math.PI / 1000;
 
 		PackedCollection data = new PackedCollection(OutputLine.sampleRate).traverseEach();
-		data.setMem(IntStream.range(0, OutputLine.sampleRate).mapToDouble(i -> Math.sin(i * rate)).toArray());
+		a(cp(data), sin(integers(0, OutputLine.sampleRate).multiply(rate))).get().run();
 
 		WaveCell cell = new WaveCell(data, OutputLine.sampleRate);
 		PackedCollection out = new PackedCollection(1);
@@ -176,17 +211,19 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		Runnable r = op.get();
 		r.run();
 
-		System.out.println("Result after 0.3s: " + out.toDouble(0) + " (expected " +
-				data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
+		log("Result after 0.3s: " + out.toDouble(0) + " (expected " + data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
 		assertEquals(data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1), out.toDouble(0));
 	}
 
+	/**
+	 * Tests wave cell playback synchronized to external TimeCell clock.
+	 */
 	@Test(timeout = 60000)
 	public void externalClock() {
 		double rate = 2 * Math.PI / 1000;
 
 		PackedCollection data = new PackedCollection(OutputLine.sampleRate).traverseEach();
-		data.setMem(IntStream.range(0, OutputLine.sampleRate).mapToDouble(i -> Math.sin(i * rate)).toArray());
+		a(cp(data), sin(integers(0, OutputLine.sampleRate).multiply(rate))).get().run();
 
 		TimeCell clock = new TimeCell();
 		WaveCell cell = new WaveCell(data, clock);
@@ -207,10 +244,8 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		op.add(sec(temporals, 0.3));
 		op.get().run();
 
-		System.out.println("Clock after 0.3s: " + clock.frame().evaluate().toDouble() +
-				" (expected " + 0.3 * OutputLine.sampleRate + ")");
-		System.out.println("Result after 0.3s: " + out.toDouble(0) + " (expected " +
-				data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
+		log("Clock after 0.3s: " + clock.frame().evaluate().toDouble() + " (expected " + 0.3 * OutputLine.sampleRate + ")");
+		log("Result after 0.3s: " + out.toDouble(0) + " (expected " + data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1) + ")");
 		assertEquals(data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1), out.toDouble(0));
 	}
 }

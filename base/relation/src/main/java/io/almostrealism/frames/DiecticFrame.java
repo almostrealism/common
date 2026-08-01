@@ -52,6 +52,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class DiecticFrame {
+	/** The subject predicate {@code a} and characterizing predicate {@code b} of this deictic relation. */
 	private Predicate a, b;
 
 	/**
@@ -71,5 +72,6 @@ public class DiecticFrame {
 	 *
 	 * @return a string in the format "{@code a} is {@code b}"
 	 */
+	@Override
 	public String toString() { return a + " is " + b; }
 }

@@ -1,24 +1,43 @@
 # Relation Module (ar-relation)
 
-The `ar-relation` module provides the foundational abstractions for the Almost Realism computational framework. It defines the core interfaces for producers, evaluables, and process-based computation that form the basis for all hardware-accelerated operations.
+## The Idea
 
-## Overview
+The central idea of this module is that computation can be modeled as *relations* — declarative descriptions of how things relate to each other — rather than as imperative procedures.
 
-This module provides:
-- **Producer/Evaluable Pattern** - Two-phase execution model separating computation description from execution
-- **Countable Interface** - Element counting for parallel kernel execution
-- **Process Framework** - Composable, optimizable computational work units
-- **Relational Frames** - Cognitive modeling abstractions based on Relational Frame Theory
-- **Streaming Evaluables** - Asynchronous computation support
+Consider a sphere. Imperatively, you write an intersection function that takes a ray and solves a quadratic equation. Relationally, you describe what is *true* about the sphere: every point on its surface satisfies `len(x) = r`. The intersection with a ray is then the solution to the system formed by composing the sphere's relation with the ray's relation. The computation emerges from the relation, not the other way around.
+
+This module provides the vocabulary for describing, composing, transforming, and executing such relations. The `Producer` interface is the primary vehicle: it describes a relation between inputs and an output without executing it. A `Factor` transforms one relation into another. A `Composition` combines two relations. A `Process` tree organizes composed relations for optimization before execution. An `Evaluable` is the compiled, executable form of a fully described relation.
 
 ## Package Structure
 
 | Package | Purpose |
 |---------|---------|
-| `io.almostrealism.relation` | Core producer, evaluable, and computation abstractions |
-| `io.almostrealism.compute` | Process execution, parallelism, and optimization strategies |
-| `io.almostrealism.streams` | Asynchronous streaming computation adapters |
-| `io.almostrealism.frames` | Relational Frame Theory cognitive modeling |
+| `io.almostrealism.relation` | Core types for describing, composing, and transforming relations |
+| `io.almostrealism.compute` | Optimization of composed relation trees for parallel execution |
+| `io.almostrealism.streams` | Asynchronous delivery of relation results |
+| `io.almostrealism.frames` | Semantic relation types — extending relational descriptions to real-world domains |
+
+### What lives where
+
+**`io.almostrealism.relation`** — The core vocabulary:
+- **Describing relations**: `Producer`, `Evaluable`, `Computable`, `FixedEvaluable`, `Provider`, `DynamicProducer`
+- **Transforming relations**: `Factor`, `Composition`, `Realization`, `ProducerFeatures`, `ProducerWithRank`
+- **Composing relations into structures**: `Node`, `Graph`, `Tree`, `Group`, `NodeGroup`, `NodeList`, `WeightedGraph`, `IndexedGraph`, `Parent`, `Path`, `TreeRef`
+- **Execution and lifecycle**: `Process`, `Operation`, `Countable`, `Series`, `Validity`, `Delegated`, `Generated`, `Factory`
+
+**`io.almostrealism.compute`** — Optimization infrastructure for deciding how to execute composed relation trees efficiently on hardware. `ProcessContext`, optimization strategies (`ParallelismTargetOptimization`, `ReplicationMismatchOptimization`, `CascadingOptimizationStrategy`), and parallelism scoring.
+
+**`io.almostrealism.streams`** — Adapters for delivering relation results asynchronously via push-based consumers (`StreamingEvaluable`, `EvaluableStreamingAdapter`).
+
+**`io.almostrealism.frames`** — A forward-looking extension. See [Semantic Relations and Relational Frames](#semantic-relations-and-relational-frames) below.
+
+## Overview
+
+Today, the module's relation types are used to describe computational relations — mathematical operations, data transformations, GPU kernel compositions. The framework provides:
+- **Producer/Evaluable Pattern** — Two-phase execution model separating relation description from execution
+- **Process Framework** — Composable, optimizable trees of computational work
+- **Countable Interface** — Element counting for parallel kernel execution
+- **Streaming Evaluables** — Asynchronous computation support
 
 ## Key Concepts
 
@@ -310,26 +329,28 @@ With custom executor:
 StreamingEvaluable<T> streaming = evaluable.async(myExecutor);
 ```
 
-### Relational Frames
+### Semantic Relations and Relational Frames
 
-The `frames` package provides abstractions for cognitive modeling based on Relational Frame Theory (RFT):
+The `frames` package represents a forward-looking extension of the relation concept. Today, the module's relation types describe *computational* relations — a `Producer` relates inputs to outputs through mathematical operations. But the relational model has the potential to generalize in two directions:
 
-| Frame Type | Relationship |
-|------------|--------------|
-| `CoordinationFrame` | "A is the same as B" (equivalence) |
-| `ComparativeFrame` | "B is larger than A" (magnitude) |
-| `SpatialFrame` | "A is closer than B" (proximity) |
-| `TemporalFrame` | "A is before B" (sequence) |
-| `CausalFrame` | "B is because of A" (cause-effect) |
-| `DiecticFrame` | Perspective-dependent (I-YOU, HERE-THERE) |
+**Generalization 1: Complexity of the relation.** Instead of only representing relations that map to hardware-accelerable arithmetic, the system could represent relations between arbitrary computational artifacts. For example: a relation asserting that one `Scope` should produce the same result as another `Scope`, enabling a solver to search for conditions under which two programs are equivalent.
 
-```java
-// Create relational frames
-Predicate subject = new Predicate("sun");
-Predicate referent = new Predicate("hot");
-CausalFrame frame = new CausalFrame(subject, referent);
-// Represents: "hot is because of sun"
-```
+**Generalization 2: Semantic domain of the relation.** Instead of only representing mathematical relations, the system could represent relations that carry real-world meaning — and with that meaning, additional axioms and modes of reasoning that a solver could exploit.
+
+This is where Relational Frame Theory (RFT) enters. RFT identifies a small set of relational frame types that humans use to organize knowledge:
+
+| Frame Type | Relationship | Entailment Properties |
+|------------|--------------|----------------------|
+| `CoordinationFrame` | "A is the same as B" | Symmetric, transitive (equivalence) |
+| `ComparativeFrame` | "B is larger than A" | Asymmetric, transitive (ordering) |
+| `SpatialFrame` | "A is closer than B" | Asymmetric, context-dependent |
+| `TemporalFrame` | "A is before B" | Asymmetric, transitive (total order) |
+| `CausalFrame` | "B is because of A" | Asymmetric, not transitive in general |
+| `DiecticFrame` | Perspective relations (I/you, here/there, now/then) | Context-dependent, non-reversible |
+
+Each frame type carries *entailment rules*. If you establish "A is before B" and "B is before C" through `TemporalFrame`s, the system can derive "A is before C" without being told — the frame type itself provides the axiom. This is fundamentally different from a mathematical relation, where the rules of combination come from the algebra rather than the domain.
+
+The current implementation is embryonic — each frame is a pair of `Predicate` references. But the aspiration is to connect these semantic frames to the same compositional and solving infrastructure that the computational relation types use, enabling experiments in reasoning about the real world using mathematical, logical, and algorithmic relations as a unified substrate.
 
 ## Usage Guidelines
 
@@ -389,10 +410,11 @@ T result = optimized.generate(args);
 
 ## Dependencies
 
-This is a foundational module with minimal dependencies.
+Depends only on `ar-meta` (foundational interfaces for naming, identity, lifecycle).
 
 ## See Also
 
-- `ar-code` module - Code generation using Producer/Evaluable abstractions
-- `ar-hardware` module - Hardware acceleration implementations
-- `ar-collect` module - Collection operations built on these abstractions
+- `ar-meta` module — Shared contracts (Named, Signature, Destroyable) used by relation types
+- `ar-code` module — Code generation using Producer/Evaluable abstractions
+- `ar-hardware` module — Hardware acceleration implementations
+- `ar-collect` module — Collection operations built on these abstractions

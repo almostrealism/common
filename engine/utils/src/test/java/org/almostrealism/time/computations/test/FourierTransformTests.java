@@ -28,13 +28,22 @@ import org.junit.Test;
 
 import java.util.List;
 
+/**
+ * Tests for Fourier transform operations including forward and inverse transforms.
+ */
 public class FourierTransformTests extends TestSuiteBase {
 
+	/**
+	 * Tests Fourier transform compilation on CPU.
+	 */
 	@Test(timeout = 60000)
 	public void compileCpu() {
 		compile(ComputeRequirement.CPU);
 	}
 
+	/**
+	 * Tests Fourier transform compilation on GPU.
+	 */
 	@Test(timeout = 60000)
 	public void compileGpu() {
 		if (FourierTransform.enableRecursion) {
@@ -45,6 +54,9 @@ public class FourierTransformTests extends TestSuiteBase {
 		compile(ComputeRequirement.GPU);
 	}
 
+	/**
+	 * Helper to compile Fourier transform with given compute requirement.
+	 */
 	public void compile(ComputeRequirement requirement) {
 		int bins = 256;
 
@@ -54,11 +66,17 @@ public class FourierTransformTests extends TestSuiteBase {
 		ft.get().evaluate();
 	}
 
+	/**
+	 * Tests forward and inverse Fourier transform on CPU.
+	 */
 	@Test(timeout = 60000)
 	public void forwardAndInverse() {
 		forwardAndInverse(ComputeRequirement.CPU);
 	}
 
+	/**
+	 * Helper for forward and inverse Fourier transform testing.
+	 */
 	public void forwardAndInverse(ComputeRequirement requirement) {
 		int bins = 1024;
 		Frequency f1 = new Frequency(440.00);
@@ -91,6 +109,9 @@ public class FourierTransformTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Generates test wave signals for Fourier transform testing.
+	 */
 	protected PackedCollection generateWaves(int sampleRate, int frames, TraversalPolicy shape) {
 		Frequency f1 = new Frequency(440.00);
 		Frequency f2 = new Frequency(587.33);
@@ -104,6 +125,9 @@ public class FourierTransformTests extends TestSuiteBase {
 		return input;
 	}
 
+	/**
+	 * Tests multi-batch Fourier transform with single comparison.
+	 */
 	@Test(timeout = 60000)
 	public void multiBatchTransform1() {
 		int sampleRate = 44100;
@@ -141,6 +165,9 @@ public class FourierTransformTests extends TestSuiteBase {
 		Assert.assertTrue(total > 300);
 	}
 
+	/**
+	 * Tests multi-batch Fourier transform with 4 slices.
+	 */
 	@Test(timeout = 60000)
 	public void multiBatchTransform2() {
 		int sampleRate = 44100;
@@ -149,6 +176,9 @@ public class FourierTransformTests extends TestSuiteBase {
 		multiBatchTransformAndReverse(sampleRate, bins, 4, 1, false);
 	}
 
+	/**
+	 * Tests multi-batch Fourier transform with embedding.
+	 */
 	@Test(timeout = 60000)
 	public void multiBatchTransform3() {
 		int sampleRate = 44100;
@@ -157,6 +187,9 @@ public class FourierTransformTests extends TestSuiteBase {
 		multiBatchTransformAndReverse(sampleRate, bins, 4, 1, true);
 	}
 
+	/**
+	 * Tests multi-batch Fourier transform with 8 slices.
+	 */
 	@Test(timeout = 60000)
 	public void multiBatchTransform4() {
 		int sampleRate = 44100;
@@ -165,6 +198,9 @@ public class FourierTransformTests extends TestSuiteBase {
 		multiBatchTransformAndReverse(sampleRate, bins, 8, 3, true);
 	}
 
+	/**
+	 * Tests multi-batch Fourier transform with custom expansion.
+	 */
 	@Test(timeout = 60000)
 	public void multiBatchTransform5() {
 		int sampleRate = 44100;
@@ -179,6 +215,9 @@ public class FourierTransformTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Helper for multi-batch transform and reverse testing.
+	 */
 	protected void multiBatchTransformAndReverse(int sampleRate, int bins,
 												 int totalSlices, int comparisonSlice,
 												 boolean embedExpansion) {
@@ -187,6 +226,9 @@ public class FourierTransformTests extends TestSuiteBase {
 				embedExpansion, in -> traverse(1, in).repeat(2));
 	}
 
+	/**
+	 * Helper for multi-batch transform and reverse testing with custom expansion.
+	 */
 	protected void multiBatchTransformAndReverse(int sampleRate, int bins,
 												 int totalSlices, int comparisonSlice,
 												 boolean embedExpansion,

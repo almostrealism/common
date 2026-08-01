@@ -16,6 +16,17 @@
 
 package io.almostrealism.compute;
 
+/**
+ * Identifies the memory address space of a variable or buffer in GPU kernel code.
+ *
+ * <p>In OpenCL and Metal, buffers must be tagged with their address space:
+ * {@link #GLOBAL} for device-accessible memory shared across work groups and
+ * {@link #LOCAL} for per-work-group shared memory.</p>
+ */
 public enum PhysicalScope {
-	GLOBAL, LOCAL;
+	/** Device-accessible global memory, visible to all work groups and the host. */
+	GLOBAL,
+
+	/** Per-work-group shared memory, visible only within a single work group. */
+	LOCAL;
 }

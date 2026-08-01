@@ -41,15 +41,35 @@ import java.util.stream.IntStream;
  * @see CollectionTemporalCellAdapter
  */
 public class ValueSequenceCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
+	/** Audio state data providing wave position and length for sequencing. */
 	private final BaseAudioData data;
+
+	/** Ordered list of value producers, one per step in the sequence. */
 	private final List<Producer<PackedCollection>> values;
+
+	/** Duration of each step in frames. */
 	private final Producer<PackedCollection> durationFrames;
 
+	/**
+	 * Creates a ValueSequenceCell with freshly allocated audio data.
+	 *
+	 * @param values   function mapping step index to a value producer
+	 * @param duration duration of each step in seconds
+	 * @param steps    number of steps in the sequence
+	 */
 	public ValueSequenceCell(IntFunction<Producer<PackedCollection>> values,
 							 Producer<PackedCollection> duration, int steps) {
 		this(new PolymorphicAudioData(), values, duration, steps);
 	}
 
+	/**
+	 * Creates a ValueSequenceCell with the given audio data and step configuration.
+	 *
+	 * @param data     audio state data for wave position tracking
+	 * @param values   function mapping step index to a value producer
+	 * @param duration duration of each step in seconds
+	 * @param steps    number of steps in the sequence
+	 */
 	public ValueSequenceCell(BaseAudioData data,
 							 IntFunction<Producer<PackedCollection>> values,
 							 Producer<PackedCollection> duration, int steps) {

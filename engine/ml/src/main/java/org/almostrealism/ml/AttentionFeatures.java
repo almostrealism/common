@@ -25,6 +25,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
@@ -160,11 +161,16 @@ import java.util.function.Function;
  *   <li><strong>Memory Efficiency:</strong> KV caching for autoregressive generation</li>
  * </ul>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see RotationFeatures
  * @see org.almostrealism.layers.LayerFeatures
  * @see org.almostrealism.model.Block
  */
-public interface AttentionFeatures extends RotationFeatures {
+public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
 
 	/**
 	 * Creates a layer that reshapes input for split-half RoPE format.
@@ -177,6 +183,10 @@ public interface AttentionFeatures extends RotationFeatures {
 	 *
 	 * <p>This is the format expected by PyTorch's Qwen/Llama RoPE implementation.</p>
 	 *
+	 * <p>The permutation is {@code output[h, f, 0] = input[h * headSize + f]} and
+	 * {@code output[h, f, 1] = input[h * headSize + freqDim + f]}, expressed as arithmetic
+	 * over the output index so that the gather indices are computed by the graph.</p>
+	 *
 	 * @param flatDim Input dimension (heads * headSize)
 	 * @param heads Number of attention heads
 	 * @param headSize Size of each head (must be even)
@@ -184,37 +194,17 @@ public interface AttentionFeatures extends RotationFeatures {
 	 */
 	default CellularLayer reshapeToSplitHalfRope(int flatDim, int heads, int headSize) {
 		int freqDim = headSize / 2;
-		// Input shape is (1, flatDim) - with batch dimension from dense projection
 		TraversalPolicy inputShape = shape(1, flatDim);
-		// Output shape is (heads, freqDim, 2) - stripped batch for ropeRotation
 		TraversalPolicy outputShape = shape(heads, freqDim, 2);
 
-		// Build index mapping from output to input using pure arithmetic
-		// output[h, f, 0] = input[h * headSize + f]  (first half)
-		// output[h, f, 1] = input[h * headSize + freqDim + f]  (second half)
-		int outputSize = heads * freqDim * 2;
-		int[] indexMap = new int[outputSize];
-		for (int h = 0; h < heads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				// First half: index [h, f, 0]
-				int outIdx0 = h * freqDim * 2 + f * 2 + 0;
-				indexMap[outIdx0] = h * headSize + f;
-				// Second half: index [h, f, 1]
-				int outIdx1 = h * freqDim * 2 + f * 2 + 1;
-				indexMap[outIdx1] = h * headSize + freqDim + f;
-			}
-		}
+		CollectionProducer index = integers(0, heads * freqDim * 2);
+		CollectionProducer head = floor(index.divide(freqDim * 2));
+		CollectionProducer withinHead = index.mod(freqDim * 2);
+		CollectionProducer freq = floor(withinHead.divide(2.0));
+		CollectionProducer half = withinHead.mod(2.0);
 
-		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
-		for (int i = 0; i < outputSize; i++) {
-			indexCollection.setMem(i, indexMap[i]);
-		}
-
-		return layer("reshapeToSplitHalfRope", inputShape, outputShape, input -> {
-			// Use index-based gathering: output[i] = input[indexMap[i]]
-			return c(shape(outputSize), c(input).reshape(shape(flatDim)), p(indexCollection))
-					.reshape(outputShape);
-		});
+		return gather("reshapeToSplitHalfRope", inputShape, outputShape,
+				head.multiply(headSize).add(half.multiply(freqDim)).add(freq));
 	}
 
 	/**
@@ -223,6 +213,10 @@ public interface AttentionFeatures extends RotationFeatures {
 	 * <p>Transforms from (heads, freqDim, 2) back to (flatDim) where elements are
 	 * interleaved per head as [firstHalf, secondHalf].</p>
 	 *
+	 * <p>The permutation is {@code output[h, f] = input[h, f, 0]} for the first half and
+	 * {@code output[h, freqDim + f] = input[h, f, 1]} for the second, expressed as arithmetic
+	 * over the output index so that the gather indices are computed by the graph.</p>
+	 *
 	 * @param heads Number of attention heads
 	 * @param headSize Size of each head (must be even)
 	 * @return CellularLayer that transforms from split-half format to flat
@@ -230,38 +224,16 @@ public interface AttentionFeatures extends RotationFeatures {
 	default CellularLayer reshapeFromSplitHalfRope(int heads, int headSize) {
 		int freqDim = headSize / 2;
 		TraversalPolicy inputShape = shape(heads, freqDim, 2);
-		// Output (heads, headSize) for use with attentionKeys
 		TraversalPolicy outputShape = shape(heads, headSize);
 
-		// Build index mapping from output to input using pure arithmetic
-		// output[h, 0..freqDim-1] = input[h, 0..freqDim-1, 0] (first half)
-		// output[h, freqDim..headSize-1] = input[h, 0..freqDim-1, 1] (second half)
-		int inputSize = heads * freqDim * 2;
-		int outputSize = heads * headSize;
-		int[] indexMap = new int[outputSize];
-		for (int h = 0; h < heads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				// First half: output[h, f] = input[h, f, 0]
-				int outIdx0 = h * headSize + f;
-				int inIdx0 = h * freqDim * 2 + f * 2 + 0;
-				indexMap[outIdx0] = inIdx0;
-				// Second half: output[h, freqDim + f] = input[h, f, 1]
-				int outIdx1 = h * headSize + freqDim + f;
-				int inIdx1 = h * freqDim * 2 + f * 2 + 1;
-				indexMap[outIdx1] = inIdx1;
-			}
-		}
+		CollectionProducer index = integers(0, heads * headSize);
+		CollectionProducer head = floor(index.divide(headSize));
+		CollectionProducer withinHead = index.mod(headSize);
+		CollectionProducer half = floor(withinHead.divide(freqDim));
+		CollectionProducer freq = withinHead.mod(freqDim);
 
-		PackedCollection indexCollection = new PackedCollection(shape(outputSize));
-		for (int i = 0; i < outputSize; i++) {
-			indexCollection.setMem(i, indexMap[i]);
-		}
-
-		return layer("reshapeFromSplitHalfRope", inputShape, outputShape, input -> {
-			// Use index-based gathering: output[i] = input[indexMap[i]]
-			return c(shape(outputSize), c(input).reshape(shape(inputSize)), p(indexCollection))
-					.reshape(outputShape);
-		});
+		return gather("reshapeFromSplitHalfRope", inputShape, outputShape,
+				head.multiply(freqDim * 2).add(freq.multiply(2.0)).add(half));
 	}
 
 	/**
@@ -298,7 +270,6 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		int heads = inputShape.length(0);
 		int headSize = inputShape.length(1);
-		int dim = heads * headSize;
 
 		int seqLength = keyShape.length(0);
 		int kvHeads = keyShape.length(1);
@@ -318,7 +289,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		if (kvHeads == heads) {
 			// No GQA - use simple attention
 			return layer("attentionKeys", inputShape, outputShape, input ->
-					traverse(1, keys).map(v -> v.multiply(input))
+					traverse(1, keys).multiply(input)
 							.traverse(2).sum()
 							.divide(c(Math.sqrt(headSize)))
 							.reshape(shape(seqLength, heads))
@@ -355,7 +326,7 @@ public interface AttentionFeatures extends RotationFeatures {
 						// query: (headSize), keysForKv: (seqLen, headSize)
 						// output: (seqLen)
 						CollectionProducer dotProducts = traverse(1, keysForKv)
-								.map(v -> v.multiply(query))
+								.multiply(query)
 								.sum()
 								.divide(c(Math.sqrt(headSize)));
 
@@ -410,32 +381,13 @@ public interface AttentionFeatures extends RotationFeatures {
 		TraversalPolicy inputShape = shape(1, kvDim);
 		TraversalPolicy outputShape = shape(1, dim);
 
-		// Build index mapping from output to input using pure arithmetic
-		// For output index i in [0, dim):
-		//   outputHead = i / headSize
-		//   inHeadOffset = i % headSize
-		//   kvHead = outputHead / headsPerKvGroup
-		//   inputIdx = kvHead * headSize + inHeadOffset
-		int[] indexMap = new int[dim];
-		for (int i = 0; i < dim; i++) {
-			int outputHead = i / headSize;
-			int inHeadOffset = i % headSize;
-			int kvHead = outputHead / headsPerKvGroup;
-			indexMap[i] = kvHead * headSize + inHeadOffset;
-		}
+		CollectionProducer index = integers(0, dim);
+		CollectionProducer outputHead = floor(index.divide(headSize));
+		CollectionProducer inHeadOffset = index.mod(headSize);
+		CollectionProducer kvHead = floor(outputHead.divide(headsPerKvGroup));
 
-		// Create index producer from the precomputed map
-		PackedCollection indexCollection = new PackedCollection(shape(dim));
-		for (int i = 0; i < dim; i++) {
-			indexCollection.setMem(i, indexMap[i]);
-		}
-
-		return layer("gqa_expand", inputShape, outputShape, input -> {
-			// Use index-based gathering: output[i] = input[indexMap[i]]
-			// The c(collection, index) method does exactly this
-			return c(shape(dim), c(input).reshape(shape(kvDim)), p(indexCollection))
-					.reshape(outputShape);
-		}, requirements);
+		return gather("gqa_expand", inputShape, outputShape,
+				kvHead.multiply(headSize).add(inHeadOffset), requirements);
 	}
 
 	/**
@@ -598,7 +550,7 @@ public interface AttentionFeatures extends RotationFeatures {
 		// instead of enumerate(1, 1) which uses subset internally
 		return layer("attentionKeysStd", inputShape, outputShape, input ->
 				permute(
-					traverse(1, keys).map(v -> v.multiply(input))
+					traverse(1, keys).multiply(input)
 						.traverse(2).sum()
 						.divide(c(Math.sqrt(headSize)))
 						.reshape(shape(seqLength, heads)),
@@ -691,7 +643,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection rmsAttWeight,
 							PackedCollection wk, PackedCollection wv,
 							PackedCollection wq, PackedCollection wo,
-							PackedCollection freqCis,
+							CollectionProducer freqCis,
 							Producer<PackedCollection> position,
 							ComputeRequirement... requirements) {
 		return attention(heads, heads, rmsAttWeight, wk, wv, wq, wo,
@@ -732,7 +684,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection bk, PackedCollection bv,
 							PackedCollection bq,
 							PackedCollection qkNormQ, PackedCollection qkNormK,
-							PackedCollection freqCis,
+							CollectionProducer freqCis,
 							Producer<PackedCollection> position,
 							ComputeRequirement... requirements) {
 		return attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, bk, bv, bq,
@@ -767,16 +719,103 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection bk, PackedCollection bv,
 							PackedCollection bq,
 							PackedCollection qkNormQ, PackedCollection qkNormK,
-							PackedCollection freqCis,
+							CollectionProducer freqCis,
 							Producer<PackedCollection> position,
 							double epsilon,
 							ComputeRequirement... requirements) {
+		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				bk, bv, bq, qkNormQ, qkNormK,
+				freqCis, null, position, epsilon, requirements);
+	}
+
+	/**
+	 * Attention with per-head-group rotary embeddings (Multidimensional Relative Attention).
+	 *
+	 * <p>Unlike standard attention which applies a single RoPE uniformly to all heads,
+	 * MRA partitions heads into groups and applies per-group RoPE with different theta
+	 * values and attribute-derived position IDs. This is the key architectural novelty
+	 * of the Moonbeam MIDI Foundation Model.</p>
+	 *
+	 * <p>The flow is identical to standard attention except for the RoPE application:</p>
+	 * <ol>
+	 *   <li>Q/K projection (standard)</li>
+	 *   <li>Split Q/K into head groups along head dimension</li>
+	 *   <li>Apply per-group RoPE with the group's precomputed freqCis and position</li>
+	 *   <li>Concatenate rotated groups back</li>
+	 *   <li>Standard scaled dot-product attention (unchanged)</li>
+	 * </ol>
+	 *
+	 * @param heads total number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param headGroups per-head-group RoPE configuration (freqCis + position per group)
+	 * @param position sequential position for KV cache indexing and causal masking
+	 * @param epsilon RMSNorm epsilon
+	 * @param requirements compute requirements
+	 * @return attention block with MRA
+	 */
+	default Block attention(int heads, int kvHeads,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							HeadGroupConfig[] headGroups,
+							Producer<PackedCollection> position,
+							double epsilon,
+							ComputeRequirement... requirements) {
+		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				null, null, null, null, null,
+				null, headGroups, position, epsilon, requirements);
+	}
+
+	/**
+	 * Unified attention implementation supporting both standard RoPE and
+	 * Multidimensional Relative Attention (MRA).
+	 *
+	 * <p>When {@code headGroups} is non-null, MRA mode is active and per-group
+	 * {@link #mraRopeRotation} is used for Q and K. Otherwise standard
+	 * {@link RotationFeatures#ropeRotation} is applied using {@code freqCis}.
+	 * Optional bias ({@code bk}, {@code bv}, {@code bq}) and QK-Norm
+	 * ({@code qkNormQ}, {@code qkNormK}) parameters are applied only when non-null,
+	 * and are ignored in MRA mode.</p>
+	 */
+	private Block attentionImpl(int heads, int kvHeads,
+								PackedCollection rmsAttWeight,
+								PackedCollection wk, PackedCollection wv,
+								PackedCollection wq, PackedCollection wo,
+								PackedCollection bk, PackedCollection bv, PackedCollection bq,
+								PackedCollection qkNormQ, PackedCollection qkNormK,
+								CollectionProducer freqCis,
+								HeadGroupConfig[] headGroups,
+								Producer<PackedCollection> position,
+								double epsilon,
+								ComputeRequirement... requirements) {
+		boolean useMRA = headGroups != null;
+
 		int dim = rmsAttWeight.getShape().length(0);
-		int headSize = freqCis.getShape().length(1) * 2; // freqCis is (seqLen, headSize/2, 2)
-		int seqLen = freqCis.getShape().length(0);
+		int headSize = useMRA ? headGroups[0].freqCis.getShape().length(1) * 2
+							  : freqCis.getShape().length(1) * 2;
+		int seqLen = useMRA ? headGroups[0].freqCis.getShape().length(0)
+							: freqCis.getShape().length(0);
 		int kvDim = dim * kvHeads / heads;
 		int headsPerKvGroup = heads / kvHeads;
 		boolean useGQA = kvHeads != heads;
+
+		// For MRA: compute per-group head counts for keys and queries
+		int numGroups = useMRA ? headGroups.length : 0;
+		int[] kvHeadsPerGroup = null;
+		int[] queryHeadsPerGroup = null;
+		if (useMRA) {
+			kvHeadsPerGroup = new int[numGroups];
+			queryHeadsPerGroup = new int[numGroups];
+			for (int g = 0; g < numGroups; g++) {
+				kvHeadsPerGroup[g] = headGroups[g].headCount / headsPerKvGroup;
+				queryHeadsPerGroup[g] = headGroups[g].headCount;
+			}
+		}
 
 		TraversalPolicy inputShape = shape(1, dim);
 		SequentialBlock attention = new SequentialBlock(inputShape);
@@ -808,7 +847,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
 		keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
-		keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
+		if (useMRA) {
+			keys.add(mraRopeRotation(kvHeads, headSize, kvHeadsPerGroup, headGroups, requirements));
+		} else {
+			keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
+		}
 		// Reshape back to (kvHeads, headSize) then flatten to (kvDim)
 		keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
 		keys.add(reshape(kvHeadShape, shape(kvDim)));
@@ -850,7 +893,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
 		attention.add(reshapeToSplitHalfRope(dim, heads, headSize));
-		attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		if (useMRA) {
+			attention.add(mraRopeRotation(heads, headSize, queryHeadsPerGroup, headGroups, requirements));
+		} else {
+			attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		}
 		// Reshape back to (heads, headSize) for attention computation
 		attention.add(reshapeFromSplitHalfRope(heads, headSize));
 		// Expanded keys cache (seqLen, heads, headSize) - use standard non-GQA attention
@@ -1126,245 +1173,6 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
-	 * Creates a SwiGLU feed-forward block with RMSNorm (simplified version without biases).
-	 * Delegates to the full feedForward method with null biases.
-	 *
-	 * @param rms RMSNorm weights
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			PackedCollection rms,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			ComputeRequirement... requirements) {
-		int dim = w2.getShape().length(0);
-		return feedForward(shape(1, dim), rms, null,
-				w1, w2, w3, null, null, null,
-				requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
-	 *
-	 * @param rms RMSNorm weights
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			PackedCollection rms,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			double epsilon,
-			ComputeRequirement... requirements) {
-		int dim = w2.getShape().length(0);
-		return feedForward(shape(1, dim), rms, null,
-				w1, w2, w3, null, null, null, epsilon,
-				requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with optional biases.
-	 *
-	 * <p>Implements the SwiGLU activation: FFN(x) = (SiLU(x @ W1 + b1) * (x @ W3 + b3)) @ W2 + b2
-	 * This is the standard feed-forward layer used in modern transformers.</p>
-	 *
-	 * @param shape Input/output shape
-	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
-	 * @param normBiases Normalization biases (null for RMSNorm)
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param w1Bias Gate projection bias (null if not used)
-	 * @param w2Bias Down projection bias (null if not used)
-	 * @param w3Bias Up projection bias (null if not used)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			TraversalPolicy shape,
-			PackedCollection normWeights, PackedCollection normBiases,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
-			ComputeRequirement... requirements) {
-		return feedForward(shape, normWeights, normBiases, w1, w2, w3,
-				w1Bias, w2Bias, w3Bias, 1e-5, requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
-	 *
-	 * @param shape Input/output shape
-	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
-	 * @param normBiases Normalization biases (null for RMSNorm)
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param w1Bias Gate projection bias (null if not used)
-	 * @param w2Bias Down projection bias (null if not used)
-	 * @param w3Bias Up projection bias (null if not used)
-	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			TraversalPolicy shape,
-			PackedCollection normWeights, PackedCollection normBiases,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
-			double epsilon,
-			ComputeRequirement... requirements) {
-		SequentialBlock feedForward = new SequentialBlock(shape);
-		feedForward.add(rmsnorm(shape, normWeights, normBiases, epsilon, requirements));
-
-		SequentialBlock hidden = new SequentialBlock(shape);
-		hidden.add(dense(w1, w1Bias));
-		hidden.add(silu());
-
-		feedForward.product(dense(w3, w3Bias), hidden);
-		feedForward.add(dense(w2, w2Bias));
-		return feedForward;
-	}
-
-	/**
-	 * Creates a gated linear unit (GLU) function that can be applied to different input shapes.
-	 *
-	 * @param weight Linear projection weights (projects to 2x output dimension)
-	 * @param bias Linear projection bias
-	 * @return A function that creates a GLU block for a given input shape
-	 */
-	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection weight,
-														 PackedCollection bias) {
-		return inputShape -> gatedLinear(inputShape, weight, bias);
-	}
-
-	/**
-	 * Creates a gated linear unit (GLU) block with SiLU activation.
-	 *
-	 * <p>Implements GLU(x) = Linear(x)_left * SiLU(Linear(x)_right)
-	 * The linear projection outputs 2x the input dimension, which is then split
-	 * into two equal parts for gating.</p>
-	 *
-	 * @param inputShape Input shape
-	 * @param weight Linear projection weights
-	 * @param bias Linear projection bias
-	 * @return Gated linear block
-	 */
-	default Block gatedLinear(TraversalPolicy inputShape,
-							  PackedCollection weight,
-							  PackedCollection bias) {
-		SequentialBlock glu = new SequentialBlock(inputShape);
-		glu.add(dense(weight, bias));
-
-		// Split the output into two parts, one for
-		// the linear transform and one for the gate
-		List<Block> split = glu.split(2, glu.getOutputShape().getDimensions() - 1, 0);
-		Block gate = split.get(1).andThen(silu());
-
-		// Apply activation to the gate and multiply
-		// it with the linear output
-		glu.add(product(gate));
-		return glu;
-	}
-
-	/**
-	 * Creates a gated linear feed-forward function with normalization.
-	 *
-	 * @param normWeights Normalization weights
-	 * @param normBiases Normalization biases
-	 * @param weightIn Input projection weights (GLU)
-	 * @param biasIn Input projection bias
-	 * @param weightOut Output projection weights
-	 * @param biasOut Output projection bias
-	 * @param requirements Compute requirements
-	 * @return A function that creates a gated linear FFN block for a given input shape
-	 */
-	default Function<TraversalPolicy, Block> gatedLinearFeedForward(PackedCollection normWeights, PackedCollection normBiases,
-																	 PackedCollection weightIn, PackedCollection biasIn,
-																	 PackedCollection weightOut, PackedCollection biasOut,
-																	ComputeRequirement... requirements) {
-		return inputShape ->
-				gatedLinearFeedForward(inputShape, normWeights, normBiases,
-										weightIn, biasIn, weightOut, biasOut,
-										requirements);
-	}
-
-	/**
-	 * Creates a gated linear feed-forward block with normalization.
-	 *
-	 * <p>Combines normalization, gated linear unit, and output projection:
-	 * FFN(x) = Linear_out(GLU(Norm(x)))</p>
-	 *
-	 * @param inputShape Input/output shape
-	 * @param normWeights Normalization weights
-	 * @param normBiases Normalization biases
-	 * @param weightIn Input projection weights (GLU)
-	 * @param biasIn Input projection bias
-	 * @param weightOut Output projection weights
-	 * @param biasOut Output projection bias
-	 * @param requirements Compute requirements
-	 * @return Gated linear feed-forward block
-	 */
-	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
-										 PackedCollection normWeights, PackedCollection normBiases,
-										 PackedCollection weightIn, PackedCollection biasIn,
-										 PackedCollection weightOut, PackedCollection biasOut,
-										 ComputeRequirement... requirements) {
-		return gatedLinearFeedForward(inputShape, normWeights, normBiases,
-				weightIn, biasIn, weightOut, biasOut,
-				ProjectionFactory.dense(), requirements);
-	}
-
-	/**
-	 * Creates a gated linear feed-forward block with customizable projection layers.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param inputShape Input/output shape
-	 * @param normWeights Normalization weights
-	 * @param normBiases Normalization biases
-	 * @param weightIn Input projection weights (GLU)
-	 * @param biasIn Input projection bias
-	 * @param weightOut Output projection weights
-	 * @param biasOut Output projection bias
-	 * @param projectionFactory Factory for creating projection layers
-	 * @param requirements Compute requirements
-	 * @return Gated linear feed-forward block
-	 */
-	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
-										 PackedCollection normWeights, PackedCollection normBiases,
-										 PackedCollection weightIn, PackedCollection biasIn,
-										 PackedCollection weightOut, PackedCollection biasOut,
-										 ProjectionFactory projectionFactory,
-										 ComputeRequirement... requirements) {
-		SequentialBlock feedForward = new SequentialBlock(inputShape);
-		feedForward.add(norm(normWeights, normBiases, requirements));
-
-		// Gate projection with factory
-		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightIn, biasIn,
-				AdapterConfig.TargetLayer.FFN_GATE));
-
-		// Split into gate and up projections, apply SwiGLU gating
-		List<Block> split = feedForward.split(2, feedForward.getOutputShape().getDimensions() - 1, 0);
-		Block gate = split.get(1).andThen(silu());
-
-		// Multiply linear output with gated branch
-		feedForward.add(product(gate));
-
-		// Output projection with factory
-		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightOut, biasOut,
-				AdapterConfig.TargetLayer.FFN_OUT));
-
-		return feedForward;
-	}
-
-	/**
 	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
 	 * Simplified version without attention score capturing - delegates to the full transformerBlock method.
 	 *
@@ -1584,28 +1392,189 @@ public interface AttentionFeatures extends RotationFeatures {
 								   PackedCollection w1Bias, PackedCollection w2Bias,
 								   Receptor<PackedCollection> attentionScores,
 								   ProjectionFactory projectionFactory) {
-		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
-
-		// Self-attention with pre-normalization inside residual branch
-		// Python: x = x + self_attn(pre_norm(x))
-		SequentialBlock selfAttentionWithNorm = new SequentialBlock(shape(batchSize, seqLen, dim));
-		selfAttentionWithNorm.add(norm(preNormWeight, preNormBias));
-		selfAttentionWithNorm.add(sequenceAttention(
-				batchSize, seqLen, dim, heads,
+		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
+				contextSeqLen, context,
+				preNormWeight, preNormBias,
 				selfQkv, selfWo,
 				selfQNormWeight, selfQNormBias,
 				selfKNormWeight, selfKNormBias,
-				invFreq, projectionFactory));
+				invFreq,
+				crossAttPreNormWeight, crossAttPreNormBias,
+				crossWq, crossKv, crossWo,
+				crossQNormWeight, crossQNormBias,
+				crossKNormWeight, crossKNormBias,
+				ffnNormWeight, ffnNormBias,
+				w1, w2, w1Bias, w2Bias,
+				attentionScores, projectionFactory,
+				AttentionVariant.STANDARD, null, null);
+	}
+
+	/**
+	 * Constructs the self-attention sub-computation for the selected {@link AttentionVariant}.
+	 *
+	 * <p>This is the attention-variant seam threaded through {@link #transformerBlock}. The base
+	 * implementation supports {@link AttentionVariant#STANDARD} only, delegating to
+	 * {@link #sequenceAttention(int, int, int, int, PackedCollection, PackedCollection,
+	 * PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection,
+	 * ProjectionFactory) sequenceAttention} so the default path is unchanged. Alternative variants
+	 * are provided by sub-interfaces that override this method (for example
+	 * {@link DifferentialAttentionFeatures}). Because the call site in {@code transformerBlock} is a
+	 * virtual dispatch, a consumer that implements such a sub-interface automatically obtains the
+	 * variant without forking the block builder.</p>
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param variant           the attention variant to construct ({@code null} is treated as
+	 *                          {@link AttentionVariant#STANDARD})
+	 * @param toQkvWeight       fused projection weights ({@code dim*3} for STANDARD, wider variants
+	 *                          define their own width)
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights
+	 * @param qNormBias         query normalization biases
+	 * @param kNormWeight       key normalization weights
+	 * @param kNormBias         key normalization biases
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        learned lambda for variants that require it (unused by STANDARD,
+	 *                          may be {@code null})
+	 * @param projectionFactory factory for creating projection layers
+	 * @return the self-attention block for the requested variant
+	 */
+	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
+								AttentionVariant variant,
+								PackedCollection toQkvWeight, PackedCollection toOutWeight,
+								PackedCollection qNormWeight, PackedCollection qNormBias,
+								PackedCollection kNormWeight, PackedCollection kNormBias,
+								PackedCollection invFreq,
+								Producer<PackedCollection> diffLambda,
+								ProjectionFactory projectionFactory) {
+		if (variant == null || variant == AttentionVariant.STANDARD) {
+			return sequenceAttention(batchSize, seqLen, dim, heads,
+					toQkvWeight, toOutWeight,
+					qNormWeight, qNormBias, kNormWeight, kNormBias,
+					invFreq, projectionFactory);
+		}
+
+		throw new UnsupportedOperationException("Attention variant " + variant +
+				" is not available on the base AttentionFeatures; implement DifferentialAttentionFeatures" +
+				" (or another sub-interface) to use it");
+	}
+
+	/**
+	 * Creates a complete transformer block, selecting the self-attention implementation via an
+	 * {@link AttentionVariant}.
+	 *
+	 * <p>This is the variant-aware base overload. All other {@code transformerBlock} overloads
+	 * delegate here with {@link AttentionVariant#STANDARD} and a {@code null} lambda, so the
+	 * standard scaled-dot-product path is byte-for-byte identical to the previous behaviour. The
+	 * only difference from the standard path is that the self-attention sub-block is built through
+	 * {@link #selfAttention} rather than {@link #sequenceAttention} directly, which routes the
+	 * construction to the selected variant.</p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param dim Model dimension
+	 * @param seqLen Sequence length
+	 * @param heads Number of attention heads
+	 * @param crossAttend Whether to include cross-attention layer
+	 * @param contextSeqLen Context sequence length (for cross-attention)
+	 * @param context Context input block (for cross-attention)
+	 * @param preNormWeight Self-attention pre-normalization weights
+	 * @param preNormBias Self-attention pre-normalization biases
+	 * @param selfQkv Self-attention fused projection weights (width depends on {@code variant})
+	 * @param selfWo Self-attention output projection weights
+	 * @param selfQNormWeight Self-attention Q normalization weights
+	 * @param selfQNormBias Self-attention Q normalization biases
+	 * @param selfKNormWeight Self-attention K normalization weights
+	 * @param selfKNormBias Self-attention K normalization biases
+	 * @param invFreq RoPE inverse frequencies
+	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
+	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
+	 * @param crossWq Cross-attention Q projection weights
+	 * @param crossKv Cross-attention KV projection weights
+	 * @param crossWo Cross-attention output projection weights
+	 * @param crossQNormWeight Cross-attention Q normalization weights
+	 * @param crossQNormBias Cross-attention Q normalization biases
+	 * @param crossKNormWeight Cross-attention K normalization weights
+	 * @param crossKNormBias Cross-attention K normalization biases
+	 * @param ffnNormWeight Feed-forward pre-normalization weights
+	 * @param ffnNormBias Feed-forward pre-normalization biases
+	 * @param w1 Feed-forward gate projection weights
+	 * @param w2 Feed-forward output projection weights
+	 * @param w1Bias Feed-forward gate projection bias
+	 * @param w2Bias Feed-forward output projection bias
+	 * @param attentionScores Optional receptor to capture cross-attention scores
+	 * @param projectionFactory Factory for creating projection layers (enables LoRA support)
+	 * @param variant Attention variant for the self-attention sub-block
+	 * @param diffLambda Learned lambda supplied to variants that require it (may be {@code null})
+	 * @param modulation Optional packed adaLN modulation, shape {@code [batch, 6, dim]}, whose six
+	 *                   {@code [batch, dim]} components are scale/shift/gate for self-attention followed
+	 *                   by scale/shift/gate for the feed-forward. When {@code null} no modulation is
+	 *                   applied and the block is the standard pre-norm residual block (the prepend path).
+	 * @return Complete transformer block
+	 */
+	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
+								   boolean crossAttend,
+								   int contextSeqLen, Block context,
+								   // Self-attention weights
+								   PackedCollection preNormWeight, PackedCollection preNormBias,
+								   PackedCollection selfQkv, PackedCollection selfWo,
+								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
+								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
+								   PackedCollection invFreq,
+								   // Cross-attention weights
+								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
+								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
+								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
+								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
+								   // Feed-forward weights
+								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
+								   PackedCollection w1, PackedCollection w2,
+								   PackedCollection w1Bias, PackedCollection w2Bias,
+								   Receptor<PackedCollection> attentionScores,
+								   ProjectionFactory projectionFactory,
+								   AttentionVariant variant,
+								   Producer<PackedCollection> diffLambda,
+								   Producer<PackedCollection> modulation) {
+		TraversalPolicy blockShape = shape(batchSize, seqLen, dim);
+		SequentialBlock block = new SequentialBlock(blockShape);
+
+		// adaLN-Zero modulation components (null when unmodulated): scale/shift/gate for self-attention
+		// followed by scale/shift/gate for the feed-forward.
+		Producer<PackedCollection> scaleSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 0);
+		Producer<PackedCollection> shiftSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 1);
+		Producer<PackedCollection> gateSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 2);
+		Producer<PackedCollection> scaleFf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 3);
+		Producer<PackedCollection> shiftFf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 4);
+		Producer<PackedCollection> gateFf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 5);
+
+		// Self-attention with pre-normalization inside residual branch
+		// Python: x = x + gate_self * self_attn(scale_self * pre_norm(x) + shift_self)
+		SequentialBlock selfAttentionWithNorm = new SequentialBlock(blockShape);
+		selfAttentionWithNorm.add(norm(preNormWeight, preNormBias));
+		if (modulation != null) {
+			selfAttentionWithNorm.add(adaptiveModulate(blockShape, scaleSelf, shiftSelf));
+		}
+		selfAttentionWithNorm.add(selfAttention(
+				batchSize, seqLen, dim, heads, variant,
+				selfQkv, selfWo,
+				selfQNormWeight, selfQNormBias,
+				selfKNormWeight, selfKNormBias,
+				invFreq, diffLambda, projectionFactory));
+		if (modulation != null) {
+			selfAttentionWithNorm.add(adaptiveGate(blockShape, gateSelf));
+		}
 		block.add(residual(selfAttentionWithNorm));
 
-		// Cross-attention with pre-normalization inside residual branch (if needed)
+		// Cross-attention with pre-normalization inside residual branch (if needed). adaLN modulation
+		// drives only the self-attention and feed-forward sub-layers, so cross-attention is unmodulated.
 		// Python: x = x + cross_attn(cross_attend_norm(x))
 		if (crossAttend) {
 			if (context == null) {
 				throw new IllegalArgumentException("Context block cannot be null for cross-attention");
 			}
 
-			SequentialBlock crossAttentionWithNorm = new SequentialBlock(shape(batchSize, seqLen, dim));
+			SequentialBlock crossAttentionWithNorm = new SequentialBlock(blockShape);
 			crossAttentionWithNorm.add(norm(crossAttPreNormWeight, crossAttPreNormBias));
 			crossAttentionWithNorm.add(sequenceCrossAttention(
 					batchSize, seqLen, contextSeqLen, dim, heads,
@@ -1617,8 +1586,18 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 
 		// Feed-forward with normalization inside residual branch
-		block.add(residual(gatedLinearFeedForward(block.getOutputShape(),
-				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias, projectionFactory)));
+		// Python: x = x + gate_ff * ff(scale_ff * ff_norm(x) + shift_ff)
+		Block feedForward = gatedLinearFeedForward(block.getOutputShape(),
+				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias,
+				scaleFf, shiftFf, projectionFactory);
+		if (modulation == null) {
+			block.add(residual(feedForward));
+		} else {
+			SequentialBlock gatedFeedForward = new SequentialBlock(block.getOutputShape());
+			gatedFeedForward.add(feedForward);
+			gatedFeedForward.add(adaptiveGate(blockShape, gateFf));
+			block.add(residual(gatedFeedForward));
+		}
 
 		return block;
 	}
@@ -1631,7 +1610,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection rmsAttWeight,
 							  PackedCollection wk, PackedCollection wv,
 							  PackedCollection wq, PackedCollection wo,
-							  PackedCollection freqCis,
+							  CollectionProducer freqCis,
 							  PackedCollection rmsFfnWeight,
 							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
 							  Producer<PackedCollection> position,
@@ -1674,7 +1653,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection bk, PackedCollection bv,
 							  PackedCollection bq,
 							  PackedCollection qkNormQ, PackedCollection qkNormK,
-							  PackedCollection freqCis,
+							  CollectionProducer freqCis,
 							  PackedCollection rmsFfnWeight,
 							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
 							  Producer<PackedCollection> position,
@@ -1715,7 +1694,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection bk, PackedCollection bv,
 							  PackedCollection bq,
 							  PackedCollection qkNormQ, PackedCollection qkNormK,
-							  PackedCollection freqCis,
+							  CollectionProducer freqCis,
 							  PackedCollection rmsFfnWeight,
 							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
 							  Producer<PackedCollection> position,
@@ -1726,6 +1705,49 @@ public interface AttentionFeatures extends RotationFeatures {
 		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
 		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
 				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon, requirements), requirements);
+		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
+		return transformer;
+	}
+
+	/**
+	 * Transformer layer with Multidimensional Relative Attention (MRA).
+	 *
+	 * <p>Combines MRA attention (per-head-group RoPE) with a standard SwiGLU
+	 * feed-forward block. This is the building block for the Moonbeam MIDI
+	 * transformer.</p>
+	 *
+	 * @param heads number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param headGroups per-head-group RoPE configuration
+	 * @param rmsFfnWeight pre-FFN RMSNorm weights
+	 * @param w1 FFN gate projection weights
+	 * @param w2 FFN down projection weights
+	 * @param w3 FFN up projection weights
+	 * @param position sequential position for KV cache and causal masking
+	 * @param epsilon RMSNorm epsilon
+	 * @param requirements compute requirements
+	 * @return transformer block with MRA attention
+	 */
+	default Block transformer(int heads, int kvHeads,
+							  PackedCollection rmsAttWeight,
+							  PackedCollection wk, PackedCollection wv,
+							  PackedCollection wq, PackedCollection wo,
+							  HeadGroupConfig[] headGroups,
+							  PackedCollection rmsFfnWeight,
+							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
+							  Producer<PackedCollection> position,
+							  double epsilon,
+							  ComputeRequirement... requirements) {
+		int dim = rmsAttWeight.getShape().length(0);
+
+		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
+		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				headGroups, position, epsilon, requirements), requirements);
 		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
 		return transformer;
 	}
@@ -1849,11 +1871,34 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
+	/**
+	 * Builds a scaled dot-product attention block using the same sequence length for queries and context.
+	 *
+	 * @param batchSize Batch dimension
+	 * @param seqLen    Sequence length for both queries and context
+	 * @param heads     Number of attention heads
+	 * @param dimHead   Dimension per head
+	 * @param k         Key tensor (batch, heads, seqLen, dimHead)
+	 * @param v         Value tensor (batch, heads, seqLen, dimHead)
+	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
+	 */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v) {
 		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
 	}
 
+	/**
+	 * Builds a scaled dot-product attention block with optional attention score capture.
+	 *
+	 * @param batchSize       Batch dimension
+	 * @param seqLen          Sequence length for both queries and context
+	 * @param heads           Number of attention heads
+	 * @param dimHead         Dimension per head
+	 * @param k               Key tensor (batch, heads, seqLen, dimHead)
+	 * @param v               Value tensor (batch, heads, seqLen, dimHead)
+	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
+	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
+	 */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v,
 											Receptor<PackedCollection> attentionScores) {

@@ -9,16 +9,8 @@
  * <h2>Key Components</h2>
  *
  * <h3>Atomic Structure</h3>
- * <ul>
- *   <li><b>{@link org.almostrealism.physics.Atom}</b> - Complete atomic model with electron shells
- *       and quantum mechanical structure</li>
- *   <li><b>{@link org.almostrealism.physics.Shell}</b> - Electron shells (K, L, M, N, etc.) with
- *       orbital configuration</li>
- *   <li><b>{@link org.almostrealism.physics.Orbital}</b> - Quantum orbitals (1s, 2s, 2p, etc.)
- *       with energy levels</li>
- *   <li><b>{@link org.almostrealism.physics.Electron}</b> - Individual electrons with spin and
- *       excitation state</li>
- * </ul>
+ * <p>Atomic structure types (Atom, Shell, Orbital, Electron, etc.) have been moved to the
+ * {@code org.almostrealism.chem} package in the ar-chemistry module.</p>
  *
  * <h3>Photon Fields</h3>
  * <ul>
@@ -86,12 +78,11 @@
  *
  * <h2>Integration with Other Modules</h2>
  * <ul>
- *   <li><b>ar-chemistry</b> - Uses Atom class for element construction</li>
+ *   <li><b>ar-chemistry</b> - Atomic types (Atom, Shell, Orbital, Electron, Element) now reside here</li>
  *   <li><b>ar-space</b> - RigidBody surfaces for physics-enabled rendering</li>
  *   <li><b>ar-algebra</b> - Vector and matrix operations for physics calculations</li>
  * </ul>
  *
- * @see org.almostrealism.physics.Atom
  * @see org.almostrealism.physics.PhotonField
  * @see org.almostrealism.physics.RigidBody
  * @see org.almostrealism.physics.PhysicalConstants

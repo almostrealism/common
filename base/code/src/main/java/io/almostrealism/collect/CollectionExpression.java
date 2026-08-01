@@ -18,7 +18,6 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelIndex;
 import org.almostrealism.io.Describable;
 
 import java.util.function.Function;
@@ -67,13 +66,6 @@ import java.util.stream.Stream;
  * ExpressionList<Double> exponentials = list.exp();
  * }</pre>
  *
- * <h2>Relative Indexing</h2>
- *
- * <p>The {@link #getValueRelative(Expression)} method provides kernel-aware indexing
- * where the provided index is offset by the current kernel position multiplied
- * by the collection size. This enables efficient parallel processing where each
- * kernel instance operates on its own portion of the data.
- *
  * <h2>Shape Context</h2>
  *
  * <p>When a {@link CollectionExpression} represents a subset of a larger collection,
@@ -101,24 +93,6 @@ public interface CollectionExpression<T> extends TraversableExpression<Double>, 
 	@Override
 	default Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
-	}
-
-	/**
-	 * Retrieves a value at an index relative to the current kernel position.
-	 *
-	 * <p>This method computes the absolute index by adding the relative index
-	 * to the base offset determined by the current kernel index multiplied by
-	 * the collection's size. This enables each kernel instance to access its
-	 * own portion of the data during parallel execution.
-	 *
-	 * <p>The formula used is: {@code absoluteIndex = kernelIndex * size + relativeIndex}
-	 *
-	 * @param index the relative index within the current kernel's data portion
-	 * @return an {@link Expression} representing the value at the computed absolute index
-	 */
-	@Override
-	default Expression<Double> getValueRelative(Expression index) {
-		return getValueAt(new KernelIndex().multiply(getShape().getSize()).add(index.toInt()));
 	}
 
 	/**

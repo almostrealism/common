@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+LaunchAgent that supervises tools/bin/llama.sh.
+
+llama.sh launches one or two llama-server children and runs a /health
+watchdog. If the watchdog detects a crash or a wedged server, llama.sh
+exits non-zero. With KeepAlive.SuccessfulExit=false below, launchd
+restarts the script on non-zero exit and leaves it alone on clean stops
+(SIGTERM via `launchctl bootout`).
+
+Install:
+  cp tools/launchd/com.almostrealism.llama-server.plist \
+     ~/Library/LaunchAgents/
+  # Edit the copy to match your actual repo path if it isn't
+  # /Users/michael/AlmostRealism/common.
+  launchctl bootstrap gui/$(id -u) \
+     ~/Library/LaunchAgents/com.almostrealism.llama-server.plist
+  launchctl kickstart -k gui/$(id -u)/com.almostrealism.llama-server
+
+Status / logs:
+  launchctl print gui/$(id -u)/com.almostrealism.llama-server | head
+  tail -f ~/.llama-logs/launchd.out.log ~/.llama-logs/launchd.err.log
+  tail -f ~/.llama-logs/opencode.log
+
+Stop without auto-restart:
+  launchctl bootout gui/$(id -u)/com.almostrealism.llama-server
+
+If you need to run the consultant on a separate port (8083), set
+CONSULTANT_GGUF in the EnvironmentVariables dict below to the full path
+of the consultant GGUF.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.almostrealism.llama-server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/michael/AlmostRealism/common/tools/bin/llama.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- KeepAlive.SuccessfulExit=false: restart on non-zero exits
+         (watchdog-detected crash/wedge) but NOT on clean stops. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Don't hammer-restart if we're stuck in a crash loop. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/michael/.llama-logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/michael/.llama-logs/launchd.err.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/michael</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/michael</string>
+        <!-- Uncomment + set to enable the dedicated consultant server on :8083.
+        <key>CONSULTANT_GGUF</key>
+        <string>/Users/Shared/models/qwen2.5-coder-32b-instruct-q4_k_m.gguf</string>
+        -->
+    </dict>
+</dict>
+</plist>

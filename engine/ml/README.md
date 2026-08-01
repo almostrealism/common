@@ -527,13 +527,7 @@ See `DiffusionTransformer.prependConditioning()` for implementation.
 
 ## Environment Configuration
 
-Hardware acceleration requires the following environment variable:
-
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
-
-`AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
+`AR_HARDWARE_LIBS` is auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
 
 ## Performance Features
 
@@ -591,6 +585,125 @@ Console.root().addListener(OutputFeatures.fileOutput("test_output.txt"));
     <!-- Check pom.xml for current version -->
 </dependency>
 ```
+
+## Moonbeam MIDI Foundation Model
+
+The `org.almostrealism.ml.midi` package implements Moonbeam — a ~200M parameter LLaMA-style transformer for symbolic music generation. Two architectural features distinguish it from standard transformer implementations:
+
+### Compound MIDI Tokenization
+
+Each MIDI note is represented as a **6-tuple compound token**, not a single integer:
+
+| Index | Attribute | Vocab Size | Encoding |
+|-------|-----------|-----------|---------|
+| 0 | Onset (relative delta) | 4099 | `onset[i] - onset[i-1]` in ticks |
+| 1 | Duration | 4099 | Note duration in ticks |
+| 2 | Octave | 13 | `pitch // 12` |
+| 3 | Pitch class | 14 | `pitch % 12` (+ 2 reserved) |
+| 4 | Instrument | 131 | MIDI program number (128 = drums) |
+| 5 | Velocity | 130 | MIDI velocity (+ 2 reserved) |
+
+Special tokens: SOS = all -1, EOS = all -2, PAD = all -3.
+
+`MidiTokenizer` in `studio/music/` converts standard MIDI files to compound token sequences. `MidiFileReader`/`MidiFileWriter` use `javax.sound.midi` (standard JDK, no external dependency).
+
+### Fundamental Music Embedding (FME)
+
+Sinusoidal embedding for continuous attributes — mathematically identical to positional encoding but with a learnable bias and linear projection:
+
+```
+angle_rates = 1 / base^(2*(i//2) / dim)
+encoding[2i]   = sin((value + bias) * angle_rates[i])
+encoding[2i+1] = cos((value + bias) * angle_rates[i])
+output = Linear(encoding)
+```
+
+`FundamentalMusicEmbedding` implements `Block` for a single attribute. `CompoundMidiEmbedding` concatenates 5 FME embeddings (onset, duration, octave, pitch, velocity) and one standard instrument embedding lookup into a `hidden_size` vector (6 × 320 = 1920 for Moonbeam).
+
+### Multidimensional Relative Attention (MRA)
+
+The 12 attention heads are partitioned into 6 groups of 2. Each group applies RoPE with a different theta and position IDs derived from the corresponding attribute values, rather than sequential position IDs. This is handled in `AttentionFeatures` — pass attribute-derived position tensors instead of sequential indices.
+
+### GRU Decoder
+
+A 4-layer GRU that autoregressively decodes 7 tokens per note from the transformer's hidden states. Implemented in `GRUDecoder.java` as a single `CompiledModel` using the Producer pattern — no separate GRU cell class, no imperative Java loops in the decode path.
+
+### MoonbeamMidi
+
+Top-level entry point that wires together:
+- `CompoundMidiEmbedding` → transformer layers → `GRUDecoder` → output
+- `StateDictionary` for weight loading from protobuf format
+- `AutoregressiveModel` for compound token generation
+
+### Key Classes
+
+| Class | Package | Role |
+|-------|---------|------|
+| `MoonbeamMidi` | `org.almostrealism.ml.midi` | Top-level model |
+| `GRUDecoder` | `org.almostrealism.ml.midi` | 4-layer GRU, single CompiledModel |
+| `CompoundMidiEmbedding` | `org.almostrealism.ml.midi` | 6-attribute compound embedding |
+| `FundamentalMusicEmbedding` | `org.almostrealism.ml.midi` | Sinusoidal embedding, single attribute |
+| `MidiTokenizer` | `org.almostrealism.music.midi` | MIDI → compound token conversion |
+| `MidiFileReader` | `org.almostrealism.music.midi` | Standard MIDI file parsing |
+| `MidiCompoundToken` | `org.almostrealism.music.midi` | 6-tuple note representation |
+
+---
+
+## Protobuf Disk Store
+
+`org.almostrealism.persist` provides a general-purpose key-value store for datasets up to ~10 GB with bounded memory usage via `FrequencyCache`.
+
+### ProtobufDiskStore
+
+Generic over `T extends com.google.protobuf.Message`. Records are written in protobuf wire format using `writeDelimitedTo` — no wrapper messages, no double serialization. The store is already available in `ar-ml` (which has the protobuf-maven-plugin and dependency).
+
+```java
+// Construct with root directory, protobuf parser, and memory budget
+ProtobufDiskStore<MyRecord> store = new ProtobufDiskStore<>(
+    new File("/data/store"),
+    MyRecord.parser(),
+    500 * 1024 * 1024L  // 500 MB max in memory
+);
+
+store.put("id-1", myRecord);
+MyRecord r = store.get("id-1");
+store.scan(record -> process(record));
+store.pairwiseScan((a, b) -> compare(a, b));  // Visits every unordered pair exactly once
+store.close();
+```
+
+**Data layout:**
+```
+<store-root>/
+├── index.bin          # DiskStoreIndex: record ID → (batch_id, byte_offset)
+├── hnsw.bin           # HnswIndex for vector search (if vectors were stored)
+├── batch_0000.bin     # Length-delimited protobuf records
+├── batch_0001.bin
+└── ...
+```
+
+Batch files default to ~4 MB each. The index is loaded into memory on startup. Records are loaded batch-by-batch into `FrequencyCache`.
+
+### HnswIndex — Vector Search
+
+`HnswIndex` implements HNSW (Hierarchical Navigable Small World) for approximate nearest-neighbor search. Integrated into `ProtobufDiskStore` via the `put(id, record, vector)` overload:
+
+```java
+// Store with embedding vector
+store.put("id-1", myRecord, new float[]{0.1f, 0.2f, ...});
+
+// Search by vector similarity
+List<SearchResult<MyRecord>> results = store.search(queryVector, 10);  // top-10
+// SearchResult<T> has: id, record, similarity (cosine by default)
+```
+
+**Parameters:** `M=16` (connections per node, higher = better recall, more memory), `efConstruction=200` (build quality), `efSearch=50` (query-time candidate list, tunable).
+
+**Memory:** For 768-dimensional vectors with M=16, each node uses ~3.2 KB. The index is persisted as `hnsw.bin` and reloaded on startup.
+
+When the index exceeds `maxIndexSize`, new vectors are still stored but not indexed — `search()` falls back to brute-force scan for un-indexed vectors so correctness is preserved at all dataset sizes.
+
+---
 
 ## Further Reading
 

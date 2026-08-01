@@ -60,6 +60,8 @@ public interface PotentialMapSet extends PotentialMap, Set {
 	int removePotentialMap(PotentialMap m);
 	
 	/**
+	 * Sets the maximum proximity radius for this potential map set.
+	 *
 	 * @param radius  The farthest distance from the origin of a given potential map in the set
 	 *                to a point where the potential map has nearly zero potential. This means
 	 *                that points at a distance greater than this radius from the origin of a
@@ -68,8 +70,10 @@ public interface PotentialMapSet extends PotentialMap, Set {
 	 *                be evaluated in all cases.
 	 */
 	void setMaxProximity(double radius);
-	
+
 	/**
+	 * Returns the maximum proximity radius for this potential map set.
+	 *
 	 * @return  The farthest distance from the origin of a given potential map in the set
 	 *          to a point where the potential map has nearly zero potential. This means
 	 *          that points at a distance greater than this radius from the origin of a

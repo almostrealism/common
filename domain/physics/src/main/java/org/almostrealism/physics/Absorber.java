@@ -60,27 +60,42 @@ public interface Absorber {
 	Producer<PackedCollection> emit();
 	
 	/**
+	 * Returns the quantity of energy that would be emitted by this absorber if the emit
+	 * method were invoked right now (usually measured in electron volts).
+	 *
 	 * @return  The quantity of energy that would be emitted by this absorber if the emit
 	 *          method were invoked right now. (Usually measured in electron volts).
 	 */
 	double getEmitEnergy();
-	
+
 	/**
+	 * Returns the time until this absorber will next emit a photon (usually measured in
+	 * microseconds).
+	 *
 	 * @return  The time until this absorber will getDependencies emit a photon. (Usually measured in
 	 *          microseconds).
 	 */
 	double getNextEmit();
 
-
 	/**
+	 * Returns the position of the photon that will be emitted by this Absorber.
+	 *
 	 * @return  {x, y, z} - The position of the photon that will getDependencies be emitted by this
 	 *          Absorber.
 	 */
 	Producer<PackedCollection> getEmitPosition();
-	
-	/** @param c  The Clock instance for this absorber to use to keep time. */
+
+	/**
+	 * Sets the Clock instance for this absorber to use to keep time.
+	 *
+	 * @param c  The Clock instance for this absorber to use to keep time.
+	 */
 	void setClock(Clock c);
-	
-	/** @return  The Clock instance used by this absorber to keep time. */
+
+	/**
+	 * Returns the Clock instance used by this absorber to keep time.
+	 *
+	 * @return  The Clock instance used by this absorber to keep time.
+	 */
 	Clock getClock();
 }

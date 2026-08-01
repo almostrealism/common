@@ -29,8 +29,18 @@ import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
+/**
+ * Tests for rotary position embedding (RoPE) and rotation features.
+ * Validates both compilation correctness and numerical accuracy of RoPE implementation.
+ *
+ * @see RotationFeatures
+ */
 public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
+	/**
+	 * Tests that permutation compilation works correctly in SequentialBlock.
+	 * Double permutation (0,2,1,3 twice) should result in identity.
+	 */
 	@Test(timeout = 30000)
 	public void permutationCompilation() {
 		int batchSize = 1, seqLen = 4, heads = 2, dimHead = 8;
@@ -61,7 +71,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		log("Permutation compilation difference: " + diff);
 
 		if (Math.abs(diff) > 1e-6) {
-			log("ERROR: SequentialBlock permutation compilation is broken!");
+			log("SequentialBlock permutation compilation is broken!");
 
 			// Print detailed comparison
 			for (int i = 0; i < Math.min(20, input.getShape().getTotalSize()); i++) {
@@ -73,6 +83,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertEquals(input, compiledResult);
 	}
 
+	/**
+	 * Tests batch cosine product computation with frequency expansion.
+	 * Verifies that cos(expandedFreqs) produces correct values across batch and heads.
+	 */
 	@Test(timeout = 30000)
 	public void batchCosineProduct() {
 		int batchSize = 2;
@@ -111,6 +125,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
 
+	/**
+	 * Tests batch rotary sum: left * cos(freqs) + right * sin(freqs).
+	 * Verifies the combined rotation operation with both inputs.
+	 */
 	@Test(timeout = 30000)
 	public void batchRotarySum() {
 		int batchSize = 2;
@@ -155,6 +173,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
 
+	/**
+	 * Tests the rotateHalf operation that interleaves and negates halves of the input.
+	 * First half becomes negated second half, second half becomes first half.
+	 */
 	@Test(timeout = 30000)
 	public void rotateHalf() {
 		int batchSize = 1;
@@ -187,6 +209,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		}
 	}
 
+	/**
+	 * Tests the rotateHalf sum: input + rotateHalf(input).
+	 * Verifies that the sum of original and rotated input produces expected values.
+	 */
 	@Test(timeout = 30000)
 	public void rotateHalfSum() {
 		int batchSize = 1;
@@ -225,6 +251,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
+	/**
+	 * Tests the full rotary product sum: input * cos(freqs) + rotateHalf(input) * sin(freqs).
+	 * This is the complete rotary embedding application used in transformers.
+	 */
 	@Test(timeout = 30000)
 	public void rotateHalfProductSum() {
 		int batchSize = 1;
@@ -289,6 +319,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
+	/**
+	 * Tests the applyRotaryTransform method directly.
+	 * Verifies that the rotary transform produces correct values matching manual computation.
+	 */
 	@Test(timeout = 30000)
 	public void applyRotaryTransform() {
 		int batchSize = 2;
@@ -343,6 +377,12 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
+	/**
+	 * Tests applyRotaryTransform against reference data from PyTorch rotary embedding.
+	 * Compares computeRotaryFreqs and applyRotaryPositionEmbedding against expected outputs.
+	 *
+	 * @throws Exception if reference data cannot be loaded
+	 */
 	@Test(timeout = 30000)
 	public void applyRotaryTransformCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -352,7 +392,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -373,7 +413,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		log("\n=== Testing computeRotaryFreqs ===");
-		PackedCollection computedFreqs = computeRotaryFreqs(seqLen, invFreq);
+		PackedCollection computedFreqs = computeRotaryFreqs(seqLen, invFreq).evaluate();
 		log("Computed freqs shape - " + computedFreqs.getShape());
 		log("Expected freqs shape - " + freqs.getShape());
 
@@ -398,6 +438,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue(diff < 1e-4);
 	}
 
+	/**
+	 * Tests ropeRotation with pre-computed weights at a specific position.
+	 * Verifies that complex multiplication produces expected rotated values.
+	 */
 	@Test(timeout = 60000)
 	public void ropeRotation() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -414,12 +458,11 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		Producer<PackedCollection> pos = c(p, 0, 0);
 
-		CollectionProducer q = c(p(in)).traverse(2);
 		CollectionProducer r = subset(shape(1, headSize, 2),
 				c(p(weights)), pos);
 		// r = c(p(r.get().evaluate()));
 
-		// CollectionProducer<PackedCollection> o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
+		// CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
 		// Repeat frequencies for each head - multiplyComplex doesn't properly broadcast
 		CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.traverse(1).repeat(heads));
 
@@ -436,13 +479,73 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 				double expected = q0 * fcr - q1 * fci;
 				double actual = out.valueAt(h, i, 0);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 
 				expected = q0 * fci + q1 * fcr;
 				actual = out.valueAt(h, i, 1);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
+			}
+		}
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces a frequency tensor
+	 * with the correct shape and numerically correct cos/sin values.
+	 *
+	 * <p>This test is the direct guard against reverting {@code computeRopeFreqs} to a
+	 * manual Java loop. If the CollectionProducer implementation is broken, this test
+	 * will fail with wrong values — do NOT work around a failure by switching to Java math.</p>
+	 */
+	@Test(timeout = 30000)
+	public void computeRopeFreqsShape() {
+		double theta = 10000.0;
+		int headDim = 8;
+		int seqLen = 4;
+		int freqDim = headDim / 2;
+
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen).evaluate();
+
+		assertEquals("Shape dim 0 (seqLen)", seqLen, freqCis.getShape().length(0));
+		assertEquals("Shape dim 1 (freqDim)", freqDim, freqCis.getShape().length(1));
+		assertEquals("Shape dim 2 (cos/sin pair)", 2, freqCis.getShape().length(2));
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces numerically correct
+	 * cos/sin values matching the expected RoPE formula.
+	 *
+	 * <p>For position {@code pos} and frequency index {@code f}:
+	 * <pre>
+	 * invFreq[f] = theta^(-2f/headDim)
+	 * angle      = pos * invFreq[f]
+	 * freqCis[pos, f, 0] = cos(angle)
+	 * freqCis[pos, f, 1] = sin(angle)
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void computeRopeFreqsValues() {
+		double theta = 10000.0;
+		int headDim = 8;
+		int seqLen = 4;
+		int freqDim = headDim / 2;
+
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen).evaluate();
+
+		for (int pos = 0; pos < seqLen; pos++) {
+			for (int f = 0; f < freqDim; f++) {
+				double invFreq = Math.pow(theta, -2.0 * f / headDim);
+				double angle = pos * invFreq;
+
+				double expectedCos = Math.cos(angle);
+				double expectedSin = Math.sin(angle);
+
+				double actualCos = freqCis.valueAt(pos, f, 0);
+				double actualSin = freqCis.valueAt(pos, f, 1);
+
+				assertEquals("cos[" + pos + "," + f + "]", expectedCos, actualCos, 1e-6);
+				assertEquals("sin[" + pos + "," + f + "]", expectedSin, actualSin, 1e-6);
 			}
 		}
 	}

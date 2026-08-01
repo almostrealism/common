@@ -34,6 +34,11 @@ import java.util.function.Function;
  * Factory interface for comparison and logical operations on collections.
  * This interface provides methods for equals, greaterThan, lessThan, and, and related operations.
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author Michael Murray
  * @see CollectionFeatures
  */
@@ -41,12 +46,16 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 
 	/**
 	 * Performs element-wise equality comparison between two collections with custom return values.
-	 *
+	 * This method compares corresponding elements and returns specified values based on the comparison result.
+	 * 
+	 * to produce
 	 * @param a the first collection to compare
-	 * @param b the second collection to compare
+	 * @param b the second collection to compare  
 	 * @param trueValue the value to return when elements are equal
 	 * @param falseValue the value to return when elements are not equal
 	 * @return a {@link CollectionProducer} that generates comparison results
+	 * 
+	 * @see org.almostrealism.collect.computations.CollectionComparisonComputation
 	 */
 	default CollectionProducer equals(Producer<PackedCollection> a, Producer<PackedCollection> b,
 									  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
@@ -91,11 +100,31 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 				a, b, trueValue, falseValue);
 	}
 
+	/**
+	 * Returns the true value where {@code a > b}, the false value elsewhere.
+	 *
+	 * @param a          the left-hand operand collection
+	 * @param b          the right-hand operand collection
+	 * @param trueValue  the value returned where the condition holds
+	 * @param falseValue the value returned where the condition does not hold
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return greaterThanConditional(a, b, trueValue, falseValue, false);
 	}
 
+	/**
+	 * Returns the true value where {@code a > b} (or {@code a >= b} if {@code includeEqual} is true),
+	 * the false value elsewhere.
+	 *
+	 * @param a            the left-hand operand collection
+	 * @param b            the right-hand operand collection
+	 * @param trueValue    the value returned where the condition holds
+	 * @param falseValue   the value returned where the condition does not hold
+	 * @param includeEqual if true, the condition also includes equality (i.e., {@code >=})
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 													  boolean includeEqual) {
@@ -114,11 +143,31 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 				a, b, trueValue, falseValue);
 	}
 
+	/**
+	 * Returns the true value where {@code a < b}, the false value elsewhere.
+	 *
+	 * @param a          the left-hand operand collection
+	 * @param b          the right-hand operand collection
+	 * @param trueValue  the value returned where the condition holds
+	 * @param falseValue the value returned where the condition does not hold
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue) {
 		return lessThan(a, b, trueValue, falseValue, false);
 	}
 
+	/**
+	 * Returns the true value where {@code a < b} (or {@code a <= b} if {@code includeEqual} is true),
+	 * the false value elsewhere.
+	 *
+	 * @param a            the left-hand operand collection
+	 * @param b            the right-hand operand collection
+	 * @param trueValue    the value returned where the condition holds
+	 * @param falseValue   the value returned where the condition does not hold
+	 * @param includeEqual if true, the condition also includes equality (i.e., {@code <=})
+	 * @return a producer for the conditional result
+	 */
 	default CollectionProducer lessThan(Producer<PackedCollection> a, Producer<PackedCollection> b,
 										Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 										boolean includeEqual) {
@@ -174,8 +223,11 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 	}
 
 	/**
-	 * Performs element-wise logical AND operation with custom return values.
+	 * Performs element-wise logical AND operation on two collections with custom return values.
+	 * Returns trueValue if both operands are non-zero (considered true), otherwise returns falseValue.
+	 * This is useful for combining multiple conditions with custom result values.
 	 *
+	 * to produce
 	 * @param a the first operand (non-zero = true)
 	 * @param b the second operand (non-zero = true)
 	 * @param trueValue the value to return when both a AND b are non-zero
@@ -193,7 +245,9 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 	}
 
 	/**
-	 * Performs element-wise logical AND operation, returning 1.0 for true and 0.0 for false.
+	 * Performs element-wise logical AND operation on two collections, returning 1.0 for true
+	 * and 0.0 for false. Returns 1.0 if both operands are non-zero, otherwise returns 0.0.
+	 * This is useful for chaining multiple conditions.
 	 *
 	 * @param a the first operand (non-zero = true)
 	 * @param b the second operand (non-zero = true)
@@ -203,7 +257,17 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 		return and(a, b, c(1.0), c(0.0));
 	}
 
-	// Required for internal use
+	/**
+	 * Internal utility method for constructing comparison computations.
+	 * Implementations must provide the logic for determining the output shape
+	 * and constructing the computation kernel from the provided producers.
+	 *
+	 * @param <P>         the specific computation type produced
+	 * @param processor   a function that takes the output shape and list of input producers and returns a computation
+	 * @param description an optional function for describing the operation (may be null)
+	 * @param arguments   the input producer arguments to the computation
+	 * @return a CollectionProducer wrapping the computation
+	 */
 	<P extends Producer<PackedCollection>> CollectionProducer compute(BiFunction<TraversalPolicy, List<Producer<PackedCollection>>, P> processor,
 																	  Function<List<String>, String> description, Producer<PackedCollection>... arguments);
 }

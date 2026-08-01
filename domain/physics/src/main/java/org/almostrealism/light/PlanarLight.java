@@ -29,62 +29,103 @@ import org.almostrealism.color.SurfaceLight;
 import org.almostrealism.geometry.Locatable;
 import org.almostrealism.geometry.UniformSphericalRandom;
 
+/**
+ * A planar area light source that emits photons from a rectangular surface.
+ * <p>
+ * The {@code PlanarLight} models a flat luminaire with configurable width, height,
+ * surface normal, and orientation vector. Emission positions are sampled uniformly
+ * across the plane, and emission directions are either normal to the surface or
+ * distributed over a hemisphere (based on the {@code lightProp} flag).
+ * </p>
+ */
 public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, VectorFeatures, RGBFeatures {
-	private double w, h;
+	/** Width of the emission plane in scene units (typically micrometers). */
+	private double w;
+
+	/** Height of the emission plane in scene units (typically micrometers). */
+	private double h;
+
+	/** Unit vector normal to the plane surface, pointing in the primary emission direction. */
 	private Vector normal;
-	private Vector up, across;
+
+	/** Vector pointing upward across the plane surface; {@code across} is derived from this. */
+	private Vector up;
+
+	/** Vector pointing across the plane surface, computed as the cross product of up and normal. */
+	private Vector across;
+
+	/** When {@code true}, emission directions are distributed over a hemisphere; otherwise normal only. */
 	private boolean lightProp = false;
+
+	/** Alignment blend factor between the random hemisphere direction and the surface normal. */
 	private final double align = 0.0;
-	
+
+	/** Optional color tint applied to all light samples produced by this planar light. */
+	private RGB color;
+
+	/** World-space location of the center of this planar light. */
 	private Vector location;
 	
 	/**
+	 * Sets the width of the planar light (usually measured in micrometers).
+	 *
 	 * @param w  The width of the planar light (usually measured in micrometers).
 	 */
 	public void setWidth(double w) { this.w = w; }
-	
+
 	/**
 	 * Returns the width of the planar light (usually measured in micrometers).
 	 */
 	public double getWidth() { return this.w; }
-	
+
 	/**
+	 * Sets the height of the planar light (usually measured in micrometers).
+	 *
 	 * @param h  The height of the planar light (usually measured in micrometers).
 	 */
 	public void setHeight(double h) { this.h = h; }
-	
+
 	/**
 	 * Returns the height of the planar light (usually measured in micrometers).
 	 */
 	public double getHeight() { return this.h; }
-	
+
 	/**
+	 * Sets the vector normal to the absorption plane.
+	 *
 	 * @param p  {x, y, z} - The vector normal to the absorption plane.
 	 */
 	public void setSurfaceNormal(Vector p) { this.normal = p;	this.across = null; }
-	
+
 	/**
+	 * Returns the vector normal to the absorption plane.
+	 *
 	 * @return  {x, y, z} - The vector normal to the absorption plane.
 	 */
 	public Vector getSurfaceNormal() { return this.normal; }
-	
+
 	/**
+	 * Sets the vector pointing upwards across the surface of this absorption plane.
+	 *
 	 * @param p  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane. This vector must be orthagonal to the surface normal.
 	 */
 	public void setOrientation(Vector p) { this.up = p; this.across = null; }
-	
+
 	/**
+	 * Returns the vector pointing upwards across the surface of this absorption plane.
+	 *
 	 * @return  {x, y, z} - The vector pointing upwards across the surface of this
 	 *           absorption plane.
 	 */
 	public Vector getOrientation() { return this.up; }
-	
+
 	/**
+	 * Sets whether light emission direction is distributed over a hemisphere or is normal only.
+	 *
 	 * @param t  true sets the direction of light to be in a uniform semisphere
 	 * 			 normal to the plane. false sets the direction to be normal to
 	 *           the plane.
-	 *           
 	 */
 	public void setLightPropagation(boolean t) { this.lightProp = t; }
 	
@@ -127,10 +168,10 @@ public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, V
 	public double getIntensity() { return 1.0; }
 
 	@Override
-	public void setColor(RGB color) { } // TODO
+	public void setColor(RGB color) { this.color = color; }
 
 	@Override
-	public RGB getColor() { return null; }  // TODO
+	public RGB getColor() { return this.color; }
 
 	@Override
 	public void setLocation(Vector l) { this.location = l; }
@@ -145,7 +186,8 @@ public class PlanarLight extends LightBulb implements SurfaceLight, Locatable, V
 			double[] x = this.getSpatialCoords(new double[] {Math.random(), Math.random()});
 			Vector p = new Vector(x[0], x[1], x[2]);
 			p.addTo(this.location);
-			l[i] = new PointLight(p, in, new RGB(1.0, 1.0, 1.0));
+			RGB sampleColor = this.color != null ? this.color : new RGB(1.0, 1.0, 1.0);
+			l[i] = new PointLight(p, in, sampleColor);
 		}
 		
 		return l;

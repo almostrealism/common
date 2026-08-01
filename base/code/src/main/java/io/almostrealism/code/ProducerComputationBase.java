@@ -29,11 +29,37 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Abstract base for producer computations that produce typed output values and implement {@link Operator}.
+ *
+ * <p>{@code ProducerComputationBase} extends {@link ComputationBase} with output-variable tracking
+ * and unique signature generation. The first argument (index 0) is treated as the output/destination
+ * variable, and the remaining arguments are inputs that contribute to the signature.</p>
+ *
+ * @param <I> the input element type
+ * @param <O> the output element type
+ *
+ * @see ComputationBase
+ * @see Operator
+ * @see ProducerComputation
+ */
 public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns the first argument (index 0), which is the output variable by convention.
+	 *
+	 * @return the output variable
+	 */
 	@Override
 	public Variable getOutputVariable() { return getArgument( 0); }
 
+	/**
+	 * Returns the destination evaluable for this computation, which is the first input producer's value.
+	 *
+	 * @return the destination evaluable
+	 */
 	public Evaluable<O> getDestination() {
 		return (Evaluable<O>) getInputs().get(0).get();
 	}

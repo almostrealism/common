@@ -20,13 +20,28 @@ import org.almostrealism.event.DefaultEvent;
 import org.almostrealism.event.EventDeliveryQueue;
 import org.almostrealism.event.SimpleEventServer;
 import org.almostrealism.event.DefaultHttpEventDelivery;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.IOException;
 
+/**
+ * Tests event delivery functionality via HTTP.
+ */
 public class EventDeliveryTest extends TestSuiteBase {
+	/**
+	 * Tests that events can be delivered via HTTP.
+	 *
+	 * <p>Excluded from the {@link TestUtils#PIPELINE} profile: it binds the fixed port
+	 * 8080, so it fails with {@code BindException} on any host already serving there,
+	 * and it spends 57 seconds in {@code Thread.sleep} while asserting nothing. It is a
+	 * manual smoke test rather than a verification. The module itself is in the CI test
+	 * matrix, so any test added here in future runs without further wiring.</p>
+	 */
 	@Test(timeout = 60000)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void deliver() throws IOException, InterruptedException {
 		SimpleEventServer server = new SimpleEventServer();
 		server.start();

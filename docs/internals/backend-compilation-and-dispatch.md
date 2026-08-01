@@ -19,8 +19,11 @@ Scope (computation AST)
   ├── ComputationScopeCompiler
   │     Prepares scope: arguments, simplification, metadata
   │
+  ├── CompiledKernelStructureContext
+  │     Manager-owned series/traversal resources referenced by the kernel
+  │
   ├── ScopeInstructionsManager
-  │     Manages lifecycle, caching, lazy compilation
+  │     Owns compiled instructions and their structure context
   │
   ├── ComputeContext.deliver(scope)
   │     Backend-specific compilation
@@ -37,17 +40,22 @@ Scope (computation AST)
 `ComputationScopeCompiler` (`base/hardware/src/.../instructions/ComputationScopeCompiler.java`)
 prepares a `Computation` for compilation by generating and enriching its `Scope`.
 
+### Compilation requires an instruction set manager
+
+Compilation must be established through the operation's `InstructionSetManager`. The manager owns the compiled instruction set and its `CompiledKernelStructureContext`; calling `compile()` without first creating or obtaining that manager is an error. There is no supported manual-compilation path outside manager ownership.
+
 ### Compilation Lifecycle
 
 ```java
 // 1. Create compiler from a Computation
-ComputationScopeCompiler<T> compiler = new ComputationScopeCompiler<>(computation, nameProvider);
+ComputationScopeCompiler<T> compiler = new ComputationScopeCompiler<>(computation);
 
-// 2. Prepare arguments (for Process tree wiring)
-compiler.prepareArguments(argumentMap);
+// 2. Establish the manager that owns the compiled instructions
+ComputableInstructionSetManager<?> manager = operation.getInstructionSetManager();
+KernelStructureContext structureContext = manager.getKernelStructureContext(computation);
 
-// 3. Prepare scope inputs
-compiler.prepareScope(inputManager, kernelStructureContext);
+// 3. Prepare scope inputs (argument wiring happens here)
+compiler.prepareScope(argumentProvider, structureContext);
 
 // 4. Compile — generates the Scope AST
 Scope<T> scope = compiler.compile();
@@ -65,12 +73,14 @@ if (compiler.isCompiled()) {
 
 1. **Scope generation** — Calls `Computation.getScope(KernelStructureContext)` to produce
    the raw AST
-2. **Argument binding** — Sets up `ArgumentMap` connecting producer inputs to scope variables
+2. **Argument binding** — Sets up the `ArgumentProvider` (e.g. `MemoryDataArgumentMap`) connecting producer inputs to scope variables
 3. **Simplification** — Optimizes the expression tree (constant folding, identity elimination —
    see [expression-evaluation.md](expression-evaluation.md))
 4. **Metadata enrichment** — Adds shape information, operation signature, traversal policy
-5. **Kernel structure support** — Manages `KernelSeriesCache` and
-   `KernelTraversalOperationGenerator` for complex kernel patterns
+5. **Kernel structure support** — Compiles with the manager-owned
+   `CompiledKernelStructureContext`, which materializes `KernelSeriesCache` and
+   `KernelTraversalOperationGenerator` when the computation supports those optimizations.
+   The compiler does not own or destroy these resources; the instruction set manager does.
 
 ### Operation Signatures
 
@@ -90,8 +100,12 @@ Signatures ensure that identical operations compile once and reuse the cached ke
 
 ## InstructionSetManager — Compilation Caching
 
-The `InstructionSetManager` hierarchy manages compiled kernels with lazy compilation
-and caching.
+The `InstructionSetManager` hierarchy manages compiled kernels with lazy compilation and caching.
+The manager is also the owner of resources referenced by compiled instructions. In the standard
+path, `ScopeInstructionsManager` creates one `CompiledKernelStructureContext` for a compiled
+instruction set; that context owns the kernel series cache and traversal operation generator and
+is destroyed with the instruction set. Consequently, an eager caller must obtain its manager
+before calling `AcceleratedComputationOperation.compile()`.
 
 ### Class Hierarchy
 
@@ -173,18 +187,72 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 | `gpu` | GPU-optimized backend |
 | `*` or unset | Auto-detect best available |
 
-**Auto-detection by platform:**
-- **ARM64 (Apple Silicon):** JNI → Metal → OpenCL
-- **x86/x64 (Linux/Windows):** OpenCL → JNI
+**Backends LOADED by platform under `*`/unset** (this is the set of providers made
+available — **NOT** a per-operation priority order; see "Per-operation provider selection"
+below for how a backend is actually chosen for each operation):
+- **ARM64 (Apple Silicon):** JNI, Metal, OpenCL
+- **x86/x64 (Linux/Windows):** OpenCL, JNI
 - **x86/x64 (macOS):** OpenCL (no JNI)
+
+### Backend Coverage in CI
+
+The CI pipeline (`.github/workflows/analysis.yaml`) exercises **more than one
+backend** — do not assume CI is Linux/JNI-only:
+
+- **Ubuntu jobs** (`runs-on: ubuntu-latest` / `[self-hosted, linux, ar-ci]`) run
+  the bulk of the matrix with `-DAR_HARDWARE_DRIVER=native`, i.e. the JNI/native
+  backend. Metal and OpenCL are not available there.
+- **Self-hosted macOS jobs** (`runs-on: [self-hosted, macos, ar-ci]` — the
+  `test-mac` and `test-media-mac` jobs) run on Apple Silicon hardware with
+  `-DAR_HARDWARE_DRIVER=*`, so JNI, **Metal**, and OpenCL are all loaded and
+  auto-selected. These jobs cover `base/hardware`, `engine/utils`, `engine/ml`,
+  `engine/render`, and the audio/music/studio suites.
+
+Consequence: Metal-specific code **is** reachable in CI, but only on the macOS
+runners, and only for operations the selector actually routes to Metal. To guarantee a
+kernel runs on Metal in a test, force it with `-DAR_HARDWARE_DRIVER=mtl`.
+
+### Per-operation provider selection (the actual mechanism)
+
+> ⚠️ There is **no fixed backend priority order** and **no "try one, fall back to the next".**
+> The whole point of this framework is to make an *intelligent, per-operation* decision about
+> where each computation runs. Loading JNI+Metal+OpenCL under `*` only makes those providers
+> *available*; the choice for each operation is made by `DefaultComputer.getContext(Computation)`.
+
+For every computation, `DefaultComputer.getContext` decides the target provider from:
+
+1. **The active `ComputeRequirement`s** — the thread-local requirement stack
+   (`DefaultComputer.getActiveRequirements()`), populated by `pushRequirements`
+   (`AcceleratedOperation.run`/`submit`, `OperationList.Runner.run`) from an operation's
+   `getComputeRequirements()` and from `OperationList.setComputeRequirements(...)`. These
+   **filter the candidate contexts** via `Hardware.getComputeContexts(... , requirements)`. A
+   computation whose requirement differs from its parent context becomes an **isolation target**
+   (`ComputableParallelProcess.isIsolationTarget`) and is executed on the required hardware.
+2. **The computation's parallelism** — `count = Countable.countLong(c)` and
+   `fixed = Countable.isFixedCount(c)`. Among the candidate contexts:
+   - a **parallel** computation (`!fixed || count > 1`) prefers a **non-CPU (GPU)** context;
+   - a **scalar/sequential** computation (`fixed && count == 1`) prefers a **CPU** context.
+
+So whether an operation runs on Metal vs JNI is a function of *that operation's* requirements and
+shape — it is decided when the operation/evaluable is created (`getContext` is called from
+`compileRunnable`/`compileProducer`), and there is **no cross-backend retry** afterward (see
+"Fallback Behavior"). An operation whose generated code a provider cannot express **must** carry a
+`ComputeRequirement` that keeps it on a compatible provider — e.g. `FourierTransform` emits a
+**recursive** kernel, which Metal forbids (Metal has no recursion), so it is run with a **CPU**
+requirement; if that requirement is ever lost, the selector will route it to Metal and Metal
+compilation fails ("no matching function for call to f_fourierTransform_*_radix2").
+
+To observe the decision for every computation, set `-DAR_LOG_COMPUTE_TARGETING=enabled`; each
+selection logs `computeTarget <op> count=.. fixed=.. requirements=[..] available=[..] -> <context>`
+via `DefaultComputer.getContext`.
 
 ### Key Environment Variables
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `AR_HARDWARE_LIBS` | Directory for compiled native libraries | **Required** |
+| `AR_HARDWARE_LIBS` | Directory for compiled native libraries | Auto-detected (do not set manually) |
 | `AR_HARDWARE_PRECISION` | `FP32` (float) or `FP64` (double) | `FP64` |
-| `AR_HARDWARE_MEMORY_SCALE` | Max memory: 2^scale × 64MB | 4 (1GB) |
+| `AR_HARDWARE_MEMORY_SCALE` | Max memory: precision.bytes() × 2^scale × 64MB | 4 (~4GB FP32) |
 | `AR_HARDWARE_MEMORY_LOCATION` | OpenCL memory strategy | device |
 | `AR_HARDWARE_NATIVE_COMPILER` | Path to C compiler | clang |
 
@@ -260,7 +328,7 @@ Scope
 ```
 
 **Configuration:**
-- `AR_HARDWARE_LIBS` — Output directory for compiled libraries (required)
+- `AR_HARDWARE_LIBS` — Output directory for compiled libraries (auto-detected; do not set manually)
 - `AR_HARDWARE_NATIVE_COMPILER` — Compiler path (default: clang)
 - `AR_HARDWARE_NATIVE_LINKER` — Linker path (Clang only)
 
@@ -380,13 +448,18 @@ dispatch). This is why warm-up runs matter for benchmarking.
 
 ## Fallback Behavior
 
-When a preferred backend is unavailable:
+> ⚠️ "Fallback" here is about which providers are **loaded/available**, not about per-operation
+> selection. Per-operation selection is the intelligent decision described in "Per-operation
+> provider selection" above — it does **not** try one backend and fall back to another.
 
-1. **Hardware auto-detection** tries backends in priority order (platform-dependent)
-2. If no GPU backend is available, falls back to JNI/CPU
-3. If compilation fails on one backend, the error propagates — there is no automatic
-   retry on a different backend
-4. `ComputeContext.isCPU()` allows code to adapt behavior based on the active backend
+1. Which backends are **loaded** depends on `AR_HARDWARE_DRIVER` and the platform (e.g. on x86
+   macOS there is no JNI, so only OpenCL is loaded).
+2. Once loaded, each operation is routed by `DefaultComputer.getContext` (requirements +
+   parallelism). There is **no automatic retry on a different backend**: if an operation is routed
+   to a provider and compilation fails there, the error propagates. Routing an operation to a
+   provider that cannot express it is therefore a **bug in the operation's `ComputeRequirement`s or
+   in how they are preserved**, not something the runtime silently recovers from.
+3. `ComputeContext.isCPU()` lets code adapt behavior based on the chosen provider.
 
 ## Debugging Compilation
 
@@ -416,12 +489,12 @@ Logs each kernel dispatch with timing information.
 
 ### Common Issues
 
-**`NoClassDefFoundError: PackedCollection`** — `AR_HARDWARE_LIBS` is not set. This
-environment variable is required for native library loading.
+**`NoClassDefFoundError: PackedCollection`** — The auto-detected native library directory
+is not writable. `AR_HARDWARE_LIBS` is auto-detected; do not set it manually.
 
 **Compilation timeout** — The C compiler (clang) is invoked as a subprocess. On systems
-with slow I/O, compilation can take longer than expected. Check that `AR_HARDWARE_LIBS`
-points to a fast filesystem.
+with slow I/O, compilation can take longer than expected. Check that the auto-detected
+library directory is on a fast filesystem.
 
 **`HardwareException: Memory max reached`** — The operation exceeds the configured
 memory limit. Increase `AR_HARDWARE_MEMORY_SCALE` or optimize the process tree to
@@ -430,8 +503,9 @@ reduce memory usage.
 ## Related Files
 
 - `ComputationScopeCompiler.java` (`base/hardware/src/.../instructions/`) — Scope preparation
-- `ScopeInstructionsManager.java` (`base/hardware/src/.../instructions/`) — Compilation caching
-- `ComputableInstructionSetManager.java` (`base/hardware/src/.../instructions/`) — Output tracking
+- `CompiledKernelStructureContext.java` (`base/hardware/src/.../kernel/`) — Manager-owned kernel structure resources
+- `ScopeInstructionsManager.java` (`base/hardware/src/.../instructions/`) — Compilation caching and resource lifecycle
+- `ComputableInstructionSetManager.java` (`base/hardware/src/.../instructions/`) — Output and structure-context ownership
 - `InstructionSetManager.java` (`base/hardware/src/.../instructions/`) — Cache interface
 - `ExecutionKey.java` (`base/hardware/src/.../instructions/`) — Cache key marker
 - `Hardware.java` (`base/hardware/src/.../hardware/`) — Backend initialization

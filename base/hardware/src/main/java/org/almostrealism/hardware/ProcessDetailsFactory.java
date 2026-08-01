@@ -17,6 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -36,10 +38,12 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -180,14 +184,9 @@ import java.util.stream.Stream;
  * public class MyAcceleratedOperation extends AcceleratedOperation {
  *     @Override
  *     protected AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
- *         // Get factory (created in createDetailsFactory())
- *         ProcessDetailsFactory factory = getDetailsFactory();
- *
- *         // Initialize with output and args
- *         factory.init(output, args);
- *
- *         // Construct process details (evaluates arguments async)
- *         return factory.construct();
+ *         // Get factory (created in createDetailsFactory()), prepare the
+ *         // arguments, and construct process details (evaluates arguments async)
+ *         return getDetailsFactory().construct(output, args, null);
  *     }
  * }
  * }</pre>
@@ -226,41 +225,98 @@ import java.util.stream.Stream;
  * @see MemoryReplacementManager
  */
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
-	// TODO  Should be switched and removed
+	/** If true, infer kernel size from the first MemoryBank argument when not derivable from output. Pending removal. */
 	public static boolean enableArgumentKernelSize = true;
+	/** If true, infer kernel size from arguments that reference a ProducerArgumentReference. Pending removal. */
 	public static boolean enableArgumentReferenceKernelSize = true;
 
-	// TODO  Should be removed?
+	/** If true, use the output count to determine the kernel size rather than the declared count. */
 	public static boolean enableOutputCount = true;
 
+	/** If true, constant kernel arguments are evaluated once and cached across invocations. Controlled by {@code AR_HARDWARE_CONSTANT_CACHE}. */
 	public static boolean enableConstantCache =
 			SystemUtils.isEnabled("AR_HARDWARE_CONSTANT_CACHE").orElse(true);
+	/** If true, emit a warning when kernel size differs from the declared count. Controlled by {@code AR_HARDWARE_KERNEL_SIZE_WARNINGS}. */
 	public static boolean enableKernelSizeWarnings =
 			SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
-	private boolean kernel;
+	/**
+	 * If true, sized argument destinations are reused across invocations via per-argument
+	 * {@link DestinationSlot}s, gated on each invocation's completion chain instead of the
+	 * thread identity the former {@code ThreadLocal} provider relied on (which stopped
+	 * implying exclusive use once argument evaluation became asynchronous). Controlled by
+	 * {@code AR_HARDWARE_DESTINATION_REUSE}.
+	 *
+	 * <p><b>Defaults to disabled</b> because the completion-gated release path can deadlock a
+	 * multi-channel real-scene render on the Metal backend: the release callback runs on the
+	 * device-completion pool and needs the {@link AcceleratedProcessDetails} monitor, which
+	 * another thread already holds while synchronously awaiting that same device completion, so
+	 * the completion can never be delivered. See
+	 * {@link AcceleratedProcessDetails#releaseDestinationLeases()} for the full lock-ordering
+	 * hazard. Re-enable (set {@code AR_HARDWARE_DESTINATION_REUSE=enabled}) only once the leasing
+	 * no longer participates in that lock.</p>
+	 */
+	public static boolean enableDestinationReuse =
+			SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_REUSE").orElse(false);
+
+	/**
+	 * If true (strict mode, the default), the result an invocation hands back from a plain
+	 * {@code evaluate()} is portable: the caller may hold it indefinitely, so its buffer is
+	 * never served from a reuse slot. When disabled, that buffer participates in destination
+	 * reuse like any other — improving allocation rate and memory use — and the contract
+	 * changes: a result of {@code evaluate()} is only valid until the same operation's next
+	 * invocation, unless the caller supplied the destination via {@code into(...)}.
+	 * Controlled by {@code AR_HARDWARE_PORTABLE_RESULTS}.
+	 */
+	public static boolean enablePortableResults =
+			SystemUtils.isEnabled("AR_HARDWARE_PORTABLE_RESULTS").orElse(true);
+
+	/** True if the count is fixed at construction time and cannot be inferred from arguments. */
 	private boolean fixedCount;
+	/** Declared number of parallel work items (kernel size) for fixed-count operations. */
 	private int count;
 
+	/** Evaluates {@link ArrayVariable} producers into {@link Evaluable} instances for kernel dispatch. */
 	private ProcessArgumentEvaluator evaluator;
+	/** Ordered list of array variables representing kernel arguments, including output. */
 	private List<ArrayVariable<? extends T>> arguments;
+	/** Index of the output argument in {@link #arguments}; negative if no output is used. */
 	private int outputArgIndex;
 
+	/** Supplier of the memory replacement manager, used to redirect memory from one provider to another. */
 	private Supplier<MemoryReplacementManager> replacements;
 
-	private MemoryBank output;
-	private Object args[];
-	private boolean allMemoryData;
+	/**
+	 * The most recently prepared argument snapshot, reused when {@link #init}
+	 * is called again with the same output and argument identities.
+	 *
+	 * <p>Only ever assigned a fully constructed {@link PreparedArguments}
+	 * instance, as the last step of preparation. A preparation that fails
+	 * partway through leaves the previous (complete) snapshot in place, so
+	 * no caller can observe argument state that is only partially resolved.</p>
+	 */
+	private PreparedArguments prepared;
 
-	private long kernelSize;
-	private MemoryData kernelArgs[];
-	private Evaluable kernelArgEvaluables[];
-	private StreamingEvaluable asyncEvaluables[];
-	private AcceleratedProcessDetails currentDetails;
-
+	/** Executor used to dispatch asynchronous kernel execution when {@link Hardware#isAsync()} is true. */
 	private Executor executor;
 
-	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
+	/**
+	 * Per-argument destination reuse slots, indexed like {@link #arguments}. Lazily
+	 * created on first use when {@link #enableDestinationReuse} is active.
+	 */
+	private DestinationSlot[] destinationSlots;
+
+	/**
+	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances.
+	 *
+	 * @param fixedCount True if the kernel size is fixed at construction time
+	 * @param count Declared number of parallel work items (used when fixedCount is true)
+	 * @param arguments Ordered list of array variables representing kernel arguments
+	 * @param outputArgIndex Index of the output argument in the arguments list; negative if no output
+	 * @param replacements Supplier of the memory replacement manager
+	 * @param executor Executor for asynchronous kernel dispatch
+	 */
+	public ProcessDetailsFactory(boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
 								 int outputArgIndex,
 								 Supplier<MemoryReplacementManager> replacements,
@@ -269,7 +325,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			throw new IllegalArgumentException();
 		}
 
-		this.kernel = kernel;
 		this.fixedCount = fixedCount;
 		this.count = count;
 
@@ -287,28 +342,61 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		this.executor = executor;
 	}
 
-	public boolean isKernel() { return kernel; }
+	@Override
 	public boolean isFixedCount() { return fixedCount; }
+	@Override
 	public long getCountLong() { return count; }
 
 	public ProcessArgumentEvaluator getEvaluator() { return evaluator; }
 	public void setEvaluator(ProcessArgumentEvaluator evaluator) { this.evaluator = evaluator; }
 
+	/**
+	 * Initializes this factory with an output bank and positional arguments for the next invocation.
+	 *
+	 * <p>Resolves kernel size, evaluates constant arguments, and prepares evaluables for
+	 * dynamic arguments. If the output and args are identical to those from the last call,
+	 * the factory is considered already initialized and returns immediately.</p>
+	 *
+	 * @param output Output {@link MemoryBank} to write results into; may be null for operations without output
+	 * @param args Positional arguments passed at evaluation time
+	 * @return This factory instance for chaining
+	 */
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
-		if (kernelArgEvaluables != null && output == this.output &&
-				Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
-			// The configuration is already valid as does not need to be repeated
-			return this;
+		prepare(output, args);
+		return this;
+	}
+
+	/**
+	 * Prepares (or reuses) the argument snapshot for the given output and arguments.
+	 *
+	 * <p>The snapshot is built entirely in local state and only published to
+	 * {@link #prepared} once every argument slot has been resolved. A failure
+	 * during preparation (for example, a kernel compilation error raised while
+	 * obtaining an argument's {@link Evaluable}) therefore leaves the previous
+	 * snapshot untouched, and a reentrant invocation triggered by evaluating a
+	 * constant argument can never observe a partially populated snapshot.</p>
+	 *
+	 * @param output Output {@link MemoryBank} to write results into; may be null for operations without output
+	 * @param args Positional arguments passed at evaluation time
+	 * @return The fully prepared argument snapshot for this combination of output and arguments
+	 */
+	protected PreparedArguments prepare(MemoryBank output, Object args[]) {
+		PreparedArguments existing = prepared;
+		if (existing != null && existing.matches(output, args)) {
+			// The prepared snapshot is already valid and does not need to be rebuilt
+			return existing;
 		}
 
-		this.output = output;
-		this.args = args;
+		if (outputArgIndex < 0 && output != null) {
+			// There is no output for this process
+			throw new UnsupportedOperationException();
+		}
 
-		allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
+		boolean allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
 
-		if (!isKernel()) {
-			kernelSize = 1;
-		} else if (isFixedCount()) {
+		long kernelSize;
+
+		if (isFixedCount()) {
 			kernelSize = getCount();
 
 			if (output != null) {
@@ -339,14 +427,8 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			kernelSize = -1;
 		}
 
-		kernelArgs = new MemoryData[arguments.size()];
-		kernelArgEvaluables = new Evaluable[arguments.size()];
-		asyncEvaluables = new StreamingEvaluable[arguments.size()];
-
-		if (outputArgIndex < 0 && output != null) {
-			// There is no output for this process
-			throw new UnsupportedOperationException();
-		}
+		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
+		Evaluable kernelArgEvaluables[] = new Evaluable[arguments.size()];
 
 		/*
 		 * In the first pass, kernel size is inferred from Producer arguments that
@@ -389,12 +471,27 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 		}
 
-		return this;
+		/*
+		 * If the kernel size is still not known, the kernel size will be the count.
+		 */
+		if (kernelSize < 0) {
+			if (enableKernelSizeWarnings)
+				warn("Could not infer kernel size, it will be set to " + getCount());
+			kernelSize = getCount();
+		}
+
+		PreparedArguments result = new PreparedArguments(output, args, kernelSize, kernelArgs, kernelArgEvaluables);
+		prepared = result;
+		return result;
 	}
-	
+
+	/**
+	 * Clears the prepared argument snapshot so the next {@link #init} call fully re-evaluates all arguments.
+	 *
+	 * <p>Call this when argument producers may have changed since the last {@link #init} call.</p>
+	 */
 	public void reset() {
-		this.kernelArgEvaluables = null;
-		this.asyncEvaluables = null;
+		this.prepared = null;
 	}
 
 	/**
@@ -404,21 +501,92 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 *
 	 * @return the fully configured process details ready for execution
 	 */
+	@Override
 	public AcceleratedProcessDetails construct() {
+		return construct((Semaphore) null);
+	}
+
+	/**
+	 * Constructs an {@link AcceleratedProcessDetails} from the most recently
+	 * prepared arguments, ordering dispatch-backed argument evaluations after
+	 * the given completion.
+	 *
+	 * @param dependsOn completion that dispatch-backed argument evaluations must chain
+	 *                  on, or {@code null} when there is no dependency
+	 * @return the fully configured process details ready for execution
+	 * @throws IllegalStateException if no arguments have been prepared via {@link #init}
+	 */
+	public AcceleratedProcessDetails construct(Semaphore dependsOn) {
+		PreparedArguments current = prepared;
+
+		if (current == null) {
+			throw new IllegalStateException("No arguments have been prepared");
+		}
+
+		return construct(current, dependsOn);
+	}
+
+	/**
+	 * Prepares the given output and arguments, then constructs an
+	 * {@link AcceleratedProcessDetails} from the resulting snapshot.
+	 *
+	 * <p>This is the preferred entry point for a complete invocation: the
+	 * snapshot produced by preparation is carried directly into construction,
+	 * so an invocation that (through argument evaluation) reaches this same
+	 * factory again cannot substitute its own arguments into this one.</p>
+	 *
+	 * @param output Output {@link MemoryBank} to write results into; may be null for operations without output
+	 * @param args Positional arguments passed at evaluation time
+	 * @param dependsOn completion that dispatch-backed argument evaluations must chain
+	 *                  on, or {@code null} when there is no dependency
+	 * @return the fully configured process details ready for execution
+	 */
+	public AcceleratedProcessDetails construct(MemoryBank output, Object args[], Semaphore dependsOn) {
+		return construct(prepare(output, args), dependsOn);
+	}
+
+	/**
+	 * Constructs an {@link AcceleratedProcessDetails} from the given argument snapshot,
+	 * ordering dispatch-backed argument evaluations after the given completion.
+	 *
+	 * <p>Each argument's {@link StreamingEvaluable} is requested with {@code dependsOn}.
+	 * An argument whose evaluation is itself a hardware dispatch chains the dependency
+	 * through the provider, so an argument kernel never reads memory written by the work
+	 * {@code dependsOn} represents before that work has completed — without any host wait.
+	 * Plain host evaluables are handle-producers (they return {@link MemoryData} handles;
+	 * the kernel reads the contents on the device, ordered by its own chained dispatch)
+	 * and disregard {@code dependsOn}, evaluating immediately: blocking them on it would
+	 * violate the non-blocking submission contract (a submit with an outstanding foreign
+	 * dependency must return, and a same-provider dependency must remain free), so a
+	 * host function that reads memory <em>contents</em> rather than returning a handle
+	 * is responsible for its own ordering.</p>
+	 *
+	 * <p>All working state lives in locals of this method, so overlapping
+	 * constructions (whether from another thread or from an argument evaluation
+	 * that reenters this factory) each operate on their own state and deliver
+	 * results to their own {@link AcceleratedProcessDetails}.</p>
+	 *
+	 * @param prepared the argument snapshot to construct from
+	 * @param dependsOn completion that dispatch-backed argument evaluations must chain
+	 *                  on, or {@code null} when there is no dependency
+	 * @return the fully configured process details ready for execution
+	 */
+	protected AcceleratedProcessDetails construct(PreparedArguments prepared, Semaphore dependsOn) {
+		Evaluable kernelArgEvaluables[] = prepared.kernelArgEvaluables;
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 		for (int i = 0; i < kernelArgs.length; i++) {
-			if (this.kernelArgs[i] != null) kernelArgs[i] = this.kernelArgs[i];
+			if (prepared.kernelArgs[i] != null) kernelArgs[i] = prepared.kernelArgs[i];
 		}
 
 		/*
-		 * Reset asyncEvaluables for each construct() call.
-		 * This ensures fresh StreamingEvaluable instances are created with
-		 * new downstream consumers that point to the new AcceleratedProcessDetails.
-		 * Without this reset, reused asyncEvaluables would throw UnsupportedOperationException
-		 * when trying to set a different downstream consumer.
+		 * Fresh StreamingEvaluable instances are created for each construction,
+		 * so that each has a downstream consumer pointing at the specific
+		 * AcceleratedProcessDetails produced here. A reused StreamingEvaluable
+		 * would throw UnsupportedOperationException when trying to set a
+		 * different downstream consumer.
 		 */
-		asyncEvaluables = new StreamingEvaluable[arguments.size()];
+		StreamingEvaluable asyncEvaluables[] = new StreamingEvaluable[arguments.size()];
 
 		/*
 		 * First pass: determine which arguments need async evaluation and create
@@ -460,26 +628,46 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 		}
 
-		/*
-		 * If the kernel size is still not known, the kernel size will be the count.
-		 */
-		if (kernelSize < 0) {
-			if (enableKernelSizeWarnings)
-				warn("Could not infer kernel size, it will be set to " + getCount());
-			kernelSize = getCount();
-		}
-
-		int size = Math.toIntExact(kernelSize);
+		int size = Math.toIntExact(prepared.kernelSize);
 
 		/*
 		 * Second pass: create async evaluables for kernel arguments that need
-		 * sized destinations.
+		 * sized destinations. Destinations come from this factory's per-argument
+		 * reuse slots when one is free; a slot that is still leased to an
+		 * overlapping invocation falls back to a fresh allocation, which is
+		 * tracked by the active Heap stage exactly as before. Under portable
+		 * results (strict mode), the output argument is leased only when the
+		 * caller supplied an output bank — its factory-created buffer is then
+		 * internal staging, delivered to the caller by copy-out; without a
+		 * caller output that buffer is what evaluate() hands back, so it is
+		 * allocated fresh. With portable results disabled, the output buffer
+		 * is leased like any other and evaluate() results are transient (see
+		 * enablePortableResults).
 		 */
+		List<Runnable> leases = null;
+		boolean outputEscapes = enablePortableResults && prepared.output == null;
+
 		for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null || asyncEvaluables[i] != null) continue;
 
-			MemoryData result = (MemoryData) kernelArgEvaluables[i].createDestination(size);
-			Heap.addCreatedMemory(result);
+			MemoryData result = null;
+
+			if (enableDestinationReuse && (i != outputArgIndex || !outputEscapes)) {
+				DestinationSlot slot = destinationSlot(i);
+				Evaluable allocator = kernelArgEvaluables[i];
+				result = slot.acquire(size,
+						s -> (MemoryData) allocator.createDestination(s));
+
+				if (result != null) {
+					if (leases == null) leases = new ArrayList<>();
+					leases.add(slot::release);
+				}
+			}
+
+			if (result == null) {
+				result = (MemoryData) kernelArgEvaluables[i].createDestination(size);
+				Heap.addCreatedMemory(result);
+			}
 
 			asyncEvaluables[i] = kernelArgEvaluables[i].into(result).async(this::execute);
 		}
@@ -487,33 +675,34 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		/*
 		 * Create AcceleratedProcessDetails BEFORE setting downstream on async evaluables.
 		 * This ensures that the downstream lambdas capture the specific details instance
-		 * rather than accessing the mutable currentDetails field at execution time.
+		 * produced by this construction.
 		 */
-		currentDetails = new AcceleratedProcessDetails(kernelArgs, size,
+		AcceleratedProcessDetails details = new AcceleratedProcessDetails(kernelArgs, size,
 											replacements.get(), executor);
 
-		/*
-		 * Set downstream on all async evaluables, passing the specific details instance.
-		 * FIX: Previously, result(i) created a lambda that accessed 'this.currentDetails'
-		 * at execution time. Now we pass the specific instance to avoid the mutable field.
-		 */
+		if (leases != null) {
+			leases.forEach(details::addDestinationLease);
+		}
+
+		/* Set downstream on all async evaluables, passing the specific details instance */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
-			asyncEvaluables[i].setDownstream(result(i, currentDetails));
+			asyncEvaluables[i].setDownstream(result(i, details));
 		}
 
 		/*
 		 * Now that every StreamingEvaluable is configured to deliver
-		 * results to the current AcceleratedProcessDetails, their work
+		 * results to the new AcceleratedProcessDetails, their work
 		 * can be initiated via StreamingEvaluable#request
 		 */
 		for (int i = 0; i < asyncEvaluables.length; i++) {
 			if (asyncEvaluables[i] == null || kernelArgs[i] != null) continue;
-			asyncEvaluables[i].request(args);
+
+			asyncEvaluables[i].request(prepared.args, dependsOn);
 		}
 
 		/* The details are ready */
-		return currentDetails;
+		return details;
 	}
 
 	/**
@@ -524,14 +713,30 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * ensuring that async results are delivered to the correct details even when
 	 * multiple constructions overlap.</p>
 	 *
+	 * <p>The returned consumer is a {@link CompletionConsumer}, so a producer that issues
+	 * its work asynchronously can deliver the argument together with the {@link
+	 * io.almostrealism.streams.Semaphore} for its completion instead of blocking the
+	 * host until the argument's contents are valid. The completion is recorded via
+	 * {@link AcceleratedProcessDetails#result(int, Object, io.almostrealism.streams.Semaphore)}
+	 * and merged into the kernel dispatch's {@code dependsOn}.</p>
+	 *
 	 * @param index the argument index
 	 * @param targetDetails the specific details instance to deliver results to
 	 * @return a consumer that delivers results to the target details
 	 */
 	protected Consumer<Object> result(int index, AcceleratedProcessDetails targetDetails) {
-		return result -> targetDetails.result(index, result);
+		return (CompletionConsumer<Object>)
+				(result, completion) -> targetDetails.result(index, result, completion);
 	}
 
+	/**
+	 * Executes a runnable either asynchronously via the executor or synchronously on the calling thread.
+	 *
+	 * <p>When {@link Hardware#isAsync()} is true, the runnable is submitted to the configured executor.
+	 * Otherwise it is run directly on the calling thread.</p>
+	 *
+	 * @param r The runnable to execute
+	 */
 	protected void execute(Runnable r) {
 		if (Hardware.getLocalHardware().isAsync()) {
 			executor.execute(r);
@@ -540,6 +745,72 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 	}
 
+	/**
+	 * Immutable snapshot of the argument state prepared for one combination of
+	 * output and positional arguments.
+	 *
+	 * <p>An instance is only created once every argument slot has been fully
+	 * resolved, so any consumer can rely on the invariant that each slot holds
+	 * either a pre-resolved {@link MemoryData} in {@link #kernelArgs} or an
+	 * {@link Evaluable} in {@link #kernelArgEvaluables} (slots whose argument
+	 * variable is absent hold the pre-resolved null). Because the snapshot is
+	 * immutable, a construction that overlaps with the preparation of different
+	 * arguments — from another thread, or from an argument evaluation that
+	 * reenters the same operation — always observes consistent state.</p>
+	 */
+	protected static class PreparedArguments {
+		/** The output {@link MemoryBank} this snapshot was prepared for. */
+		private final MemoryBank output;
+		/** The positional arguments this snapshot was prepared for. */
+		private final Object args[];
+		/** Resolved kernel size (number of parallel work items). */
+		private final long kernelSize;
+		/** Pre-resolved {@link MemoryData} instances for each kernel argument slot. */
+		private final MemoryData kernelArgs[];
+		/** {@link Evaluable} instances for kernel arguments that could not be statically resolved. */
+		private final Evaluable kernelArgEvaluables[];
+
+		/**
+		 * Captures a fully resolved argument snapshot.
+		 *
+		 * @param output Output {@link MemoryBank} the snapshot was prepared for; may be null
+		 * @param args Positional arguments the snapshot was prepared for
+		 * @param kernelSize Resolved kernel size for the invocation
+		 * @param kernelArgs Pre-resolved {@link MemoryData} for each argument slot
+		 * @param kernelArgEvaluables {@link Evaluable} for each argument slot not covered by kernelArgs
+		 */
+		private PreparedArguments(MemoryBank output, Object args[], long kernelSize,
+								  MemoryData kernelArgs[], Evaluable kernelArgEvaluables[]) {
+			this.output = output;
+			this.args = args;
+			this.kernelSize = kernelSize;
+			this.kernelArgs = kernelArgs;
+			this.kernelArgEvaluables = kernelArgEvaluables;
+		}
+
+		/**
+		 * Returns true if this snapshot was prepared for exactly the given output
+		 * and argument identities.
+		 *
+		 * @param output Output {@link MemoryBank} for the invocation being prepared
+		 * @param args Positional arguments for the invocation being prepared
+		 * @return True if this snapshot can be reused for the invocation
+		 */
+		protected boolean matches(MemoryBank output, Object args[]) {
+			return output == this.output &&
+					Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1);
+		}
+	}
+
+	/**
+	 * Returns the {@link ProducerArgumentReference} index for an argument variable, or -1 if not applicable.
+	 *
+	 * <p>Checks both the argument's producer directly and, if the producer is a {@link Delegated},
+	 * its delegate for a {@link ProducerArgumentReference}.</p>
+	 *
+	 * @param arg The argument variable to inspect
+	 * @return Referenced argument index, or -1 if the argument is not a reference
+	 */
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
 		if (arg.getProducer() instanceof ProducerArgumentReference) {
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
@@ -551,6 +822,123 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 
 		return -1;
+	}
+
+	/**
+	 * Returns the reuse slot for the given argument index, creating the slot array
+	 * on first use.
+	 *
+	 * @param index the argument index
+	 * @return the slot for that argument
+	 */
+	private synchronized DestinationSlot destinationSlot(int index) {
+		if (destinationSlots == null) {
+			destinationSlots = new DestinationSlot[arguments.size()];
+			for (int i = 0; i < destinationSlots.length; i++) {
+				destinationSlots[i] = new DestinationSlot();
+			}
+		}
+
+		return destinationSlots[index];
+	}
+
+	/**
+	 * Destroys the destination buffers held by this factory's reuse slots. Called when
+	 * the owning operation is destroyed; a buffer still leased to an in-flight
+	 * invocation is left for garbage collection rather than destroyed underneath it.
+	 */
+	public void destroy() {
+		DestinationSlot[] slots;
+
+		synchronized (this) {
+			slots = destinationSlots;
+			destinationSlots = null;
+		}
+
+		if (slots != null) {
+			for (DestinationSlot slot : slots) {
+				slot.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A single-buffer destination reuse slot for one kernel argument position.
+	 *
+	 * <p>An invocation checks the slot's buffer out with {@link #acquire(int, IntFunction)}
+	 * and returns it by running the release callback recorded on its
+	 * {@link AcceleratedProcessDetails} once the invocation's completion chain has fired.
+	 * While the buffer is checked out, an overlapping invocation of the same operation
+	 * receives {@code null} and allocates a fresh, unpooled destination — reuse is
+	 * opportunistic and never shares a buffer between in-flight invocations.</p>
+	 *
+	 * <p>Argument sizes are stable for a given operation in steady state, so a single
+	 * cached buffer per argument position captures nearly all reuse; a size change
+	 * destroys the cached buffer and allocates at the new size, mirroring
+	 * {@link org.almostrealism.hardware.mem.MemoryBankProvider}. A buffer destroyed
+	 * externally (its memory released elsewhere) is detected via {@link MemoryData#getMem()}
+	 * and replaced.</p>
+	 *
+	 * <p>Buffers are leased only while they remain internal to the invocation. The
+	 * output argument's buffer participates when the caller supplied an output bank
+	 * (the factory buffer is then staging, delivered by copy-out); when no output was
+	 * supplied it is what {@code evaluate()} returns to the caller, so under
+	 * {@link #enablePortableResults} (the default) it is allocated fresh, and with
+	 * portable results disabled it is leased like any other — trading the
+	 * hold-it-indefinitely guarantee for allocation-rate and memory improvements.</p>
+	 */
+	public static class DestinationSlot {
+		/** The cached destination buffer, or null before first use or after destruction. */
+		private MemoryData bank;
+		/** Element size the cached buffer was allocated for. */
+		private int size;
+		/** True while the buffer is leased to an in-flight invocation. */
+		private boolean inUse;
+
+		/**
+		 * Checks the slot's buffer out for one invocation, allocating or replacing it
+		 * as needed.
+		 *
+		 * @param requestedSize the destination size for this invocation
+		 * @param allocate      allocates a new destination of a given size
+		 * @return the leased buffer, or {@code null} when the slot is already leased
+		 *         (the caller should allocate an unpooled destination)
+		 */
+		public synchronized MemoryData acquire(int requestedSize, IntFunction<MemoryData> allocate) {
+			if (inUse) return null;
+
+			if (bank == null || bank.getMem() == null || size != requestedSize) {
+				if (bank != null && bank.getMem() != null) {
+					bank.destroy();
+				}
+
+				bank = allocate.apply(requestedSize);
+				size = requestedSize;
+			}
+
+			if (bank == null) return null;
+
+			inUse = true;
+			return bank;
+		}
+
+		/** Returns the leased buffer to this slot for the next invocation. */
+		public synchronized void release() {
+			inUse = false;
+		}
+
+		/**
+		 * Destroys the cached buffer unless it is currently leased, in which case it is
+		 * abandoned to garbage collection instead of being destroyed mid-invocation.
+		 */
+		public synchronized void destroy() {
+			if (!inUse && bank != null && bank.getMem() != null) {
+				bank.destroy();
+			}
+
+			bank = null;
+			size = 0;
+		}
 	}
 
 	@Override

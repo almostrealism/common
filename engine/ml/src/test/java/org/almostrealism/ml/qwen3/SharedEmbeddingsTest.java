@@ -5,6 +5,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assume;
@@ -12,20 +13,27 @@ import org.junit.Test;
 
 /**
  * Narrowly focused test to verify shared embeddings (lm_head weight sharing).
- * <p>
- * Purpose: Validate that the output projection (lm_head) correctly uses
+ *
+ * <p>Purpose: Validate that the output projection (lm_head) correctly uses
  * the shared token embeddings weights, which is critical for the model to
- * produce correct logits.
- * <p>
- * This test checks:
- * 1. Whether lm_head weight exists separately or is shared
- * 2. That the weight reference is correct
- * 3. That the weight transpose is applied correctly
+ * produce correct logits.</p>
+ *
+ * <p>This test checks:
+ * <ul>
+ *   <li>Whether lm_head weight exists separately or is shared</li>
+ *   <li>That the weight reference is correct</li>
+ *   <li>That the weight transpose is applied correctly</li>
+ * </ul></p>
  */
 public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
 
+	/**
+	 * Test shared embeddings configuration.
+	 * Verifies that lm_head correctly references embeddings when sharedWeights is true.
+	 */
 	@Test(timeout = 30000)
 	public void testSharedEmbeddingsConfiguration() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -70,9 +78,9 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 				}
 
 				if (identical) {
-					log("[INFO] Content appears identical (copy, not reference)");
+					log("Content appears identical (copy, not reference)");
 				} else {
-					log("[FAIL] Content is DIFFERENT!");
+					log("Content is DIFFERENT!");
 				}
 			}
 		}
@@ -112,9 +120,9 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 
 		if (embeddings.getShape().length(0) == vocabSize &&
 				embeddings.getShape().length(1) == dim) {
-			log("[PASS] Embeddings shape matches expected");
+			log("Embeddings shape matches expected");
 		} else {
-			log("[FAIL] Embeddings shape mismatch!");
+			log("Embeddings shape mismatch!");
 		}
 
 		// The model should use embeddings as lm_head with transpose
@@ -128,6 +136,9 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 		stateDict.destroy();
 	}
 
+	/**
+	 * Test output projection shape matches vocabulary size.
+	 */
 	@Test(timeout = 30000)
 	public void testOutputProjectionShape() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -155,7 +166,7 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 		Qwen3 model = new Qwen3(config, stateDict, tokenizer);
 
 		// Get compiled model output shape
-		org.almostrealism.model.CompiledModel compiled = model.getCompiledModel();
+		CompiledModel compiled = model.getCompiledModel();
 
 		log("Model input shape: " + compiled.getInputShape());
 		log("Model output shape: " + compiled.getOutputShape());

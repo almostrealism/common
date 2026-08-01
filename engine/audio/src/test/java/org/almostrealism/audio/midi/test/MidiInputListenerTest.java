@@ -31,6 +31,9 @@ import static org.junit.Assert.*;
  */
 public class MidiInputListenerTest extends TestSuiteBase {
 
+	/**
+	 * Tests that all default MidiInputListener methods are callable without exception.
+	 */
 	@Test(timeout = 5000)
 	public void testDefaultMethodsDoNotThrow() {
 		MidiInputListener listener = new MidiInputListener() {};
@@ -49,6 +52,9 @@ public class MidiInputListenerTest extends TestSuiteBase {
 		listener.midiContinue();
 	}
 
+	/**
+	 * Tests that MidiInputListener.CC constants have expected values.
+	 */
 	@Test(timeout = 5000)
 	public void testCCConstants() {
 		assertEquals(1, MidiInputListener.CC.MODULATION);
@@ -58,6 +64,9 @@ public class MidiInputListenerTest extends TestSuiteBase {
 		assertEquals(123, MidiInputListener.CC.ALL_NOTES_OFF);
 	}
 
+	/**
+	 * Tests that a custom MidiInputListener receives noteOn, noteOff, and controlChange messages.
+	 */
 	@Test(timeout = 5000)
 	public void testCustomListenerReceivesMessages() {
 		List<String> received = new ArrayList<>();
@@ -89,6 +98,9 @@ public class MidiInputListenerTest extends TestSuiteBase {
 		assertEquals("cc:0:1:64", received.get(2));
 	}
 
+	/**
+	 * Tests that VelocityCurve.LINEAR produces expected normalized values.
+	 */
 	@Test(timeout = 5000)
 	public void testVelocityCurveLinear() {
 		assertEquals(0.0, VelocityCurve.LINEAR.apply(0), 0.001);
@@ -96,6 +108,9 @@ public class MidiInputListenerTest extends TestSuiteBase {
 		assertEquals(1.0, VelocityCurve.LINEAR.apply(127), 0.001);
 	}
 
+	/**
+	 * Tests that VelocityCurve.SOFT produces higher values at low velocities than linear.
+	 */
 	@Test(timeout = 5000)
 	public void testVelocityCurveSoft() {
 		// Soft curve should give higher values at low velocities
@@ -107,6 +122,9 @@ public class MidiInputListenerTest extends TestSuiteBase {
 		assertEquals(1.0, VelocityCurve.SOFT.apply(127), 0.001);
 	}
 
+	/**
+	 * Tests that VelocityCurve.HARD produces lower values at low velocities than linear.
+	 */
 	@Test(timeout = 5000)
 	public void testVelocityCurveHard() {
 		// Hard curve should give lower values at low velocities
@@ -118,6 +136,9 @@ public class MidiInputListenerTest extends TestSuiteBase {
 		assertEquals(1.0, VelocityCurve.HARD.apply(127), 0.001);
 	}
 
+	/**
+	 * Tests that VelocityCurve.FIXED always returns 1.0 for any non-zero velocity.
+	 */
 	@Test(timeout = 5000)
 	public void testVelocityCurveFixed() {
 		assertEquals(0.0, VelocityCurve.FIXED.apply(0), 0.001);
@@ -126,6 +147,9 @@ public class MidiInputListenerTest extends TestSuiteBase {
 		assertEquals(1.0, VelocityCurve.FIXED.apply(127), 0.001);
 	}
 
+	/**
+	 * Tests that apply with floor correctly applies a minimum threshold while preserving zero.
+	 */
 	@Test(timeout = 5000)
 	public void testVelocityCurveWithFloor() {
 		double floor = 0.2;

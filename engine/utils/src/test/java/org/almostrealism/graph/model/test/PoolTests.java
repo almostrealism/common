@@ -26,8 +26,14 @@ import org.junit.Test;
 
 import java.util.function.Supplier;
 
+/**
+ * Tests for 2D pooling operations including square, steps, and optimization variants.
+ */
 public class PoolTests extends TestSuiteBase implements KernelAssertions {
 
+	/**
+	 * Tests 2D pooling with square and optimize operations.
+	 */
 	@Test(timeout = 60000)
 	public void pool2dSquareAndOptimize() {
 		pool2dSquareOptimize();
@@ -35,6 +41,9 @@ public class PoolTests extends TestSuiteBase implements KernelAssertions {
 		pool2dSquare();
 	}
 
+	/**
+	 * Tests 2D pooling with given dimensions.
+	 */
 	@Test(timeout = 60000)
 	public void pool2d() {
 		int r = 12;
@@ -44,6 +53,9 @@ public class PoolTests extends TestSuiteBase implements KernelAssertions {
 		pool(r, c, d, w, false);
 	}
 
+	/**
+	 * Tests 2D pooling with square dimensions.
+	 */
 	@Test(timeout = 60000)
 	public void pool2dSquare() {
 		int r = 8;
@@ -53,6 +65,9 @@ public class PoolTests extends TestSuiteBase implements KernelAssertions {
 		pool(r, c, d, w, false);
 	}
 
+	/**
+	 * Tests 2D pooling with square dimensions and steps.
+	 */
 	@Test(timeout = 60000)
 	public void pool2dSquareSteps() {
 		int r = 8;
@@ -62,6 +77,9 @@ public class PoolTests extends TestSuiteBase implements KernelAssertions {
 		pool(r, c, d, w, true);
 	}
 
+	/**
+	 * Tests 2D pooling with square dimensions and optimization.
+	 */
 	@Test(timeout = 60000)
 	public void pool2dSquareOptimize() {
 		int r = 8;
@@ -84,6 +102,15 @@ public class PoolTests extends TestSuiteBase implements KernelAssertions {
 		kernelTest(pool, output -> pool2d(r, c, d, w, input, output), true, false, false);
 	}
 
+	/**
+	 * Runs pooling test with specified parameters.
+	 *
+	 * @param r Rows
+	 * @param c Columns
+	 * @param d Depth
+	 * @param w Window size
+	 * @param kernel Whether to use kernel mode
+	 */
 	public void pool(int r, int c, int d, int w, boolean kernel) {
 		PackedCollection input = new PackedCollection(shape(r, c, d)).randFill();
 

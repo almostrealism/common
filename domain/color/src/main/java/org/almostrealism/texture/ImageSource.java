@@ -16,12 +16,44 @@
 
 package org.almostrealism.texture;
 
+/**
+ * Provides raw pixel data and dimensional information for an image.
+ *
+ * <p>Implementations supply the flat pixel array and dimensions used by
+ * {@link ImageTexture} and {@link ImageLayers} to map textures onto surfaces.</p>
+ *
+ * @see URLImageSource
+ * @see ImageLayers
+ * @author Michael Murray
+ */
 public interface ImageSource {
+	/**
+	 * Returns the flat pixel data array for this image.
+	 *
+	 * <p>Pixels are stored in row-major order as packed ARGB integers.</p>
+	 *
+	 * @return the pixel array
+	 */
 	int[] getPixels();
-	
+
+	/**
+	 * Returns the width of the image in pixels.
+	 *
+	 * @return the image width
+	 */
 	int getWidth();
-	
+
+	/**
+	 * Returns the height of the image in pixels.
+	 *
+	 * @return the image height
+	 */
 	int getHeight();
-	
+
+	/**
+	 * Returns {@code true} if this image has an alpha (transparency) channel.
+	 *
+	 * @return {@code true} if the image supports transparency
+	 */
 	boolean isAlpha();
 }

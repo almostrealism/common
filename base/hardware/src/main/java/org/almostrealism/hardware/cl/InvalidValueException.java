@@ -38,22 +38,58 @@ import java.util.Optional;
  * @see HardwareException
  */
 public class InvalidValueException extends HardwareException {
+	/**
+	 * Creates an invalid value exception with a generic message.
+	 *
+	 * @param cause The underlying {@link CLException}
+	 */
 	public InvalidValueException(CLException cause) {
 		super("Invalid Value", cause);
 	}
 
+	/**
+	 * Creates an invalid value exception with index and length information.
+	 *
+	 * @param cause     The underlying {@link CLException}
+	 * @param srcIndex  Source buffer index that caused the error
+	 * @param destIndex Destination buffer index that caused the error
+	 * @param length    Length of the failed transfer
+	 */
 	public InvalidValueException(CLException cause, int srcIndex, int destIndex, int length) {
 		super(message(srcIndex, destIndex, length), cause);
 	}
 
+	/**
+	 * Creates an invalid value exception wrapping an existing one with additional destination size info.
+	 *
+	 * @param cause Existing invalid value exception
+	 * @param size  Total destination memory length at the time of the error
+	 */
 	public InvalidValueException(InvalidValueException cause, int size) {
 		super(cause.getMessage() + " (Destination Total Memory Length " + size + ")", cause);
 	}
 
+	/**
+	 * Formats an error message describing the source index, destination index, and length of a failed operation.
+	 *
+	 * @param srcIndex  Source buffer index
+	 * @param destIndex Destination buffer index
+	 * @param length    Length of the operation
+	 * @return Formatted error message
+	 */
 	protected static String message(int srcIndex, int destIndex, int length) {
 		return "Source Index " + srcIndex + ", Destination Index " + destIndex + ", Length " + length;
 	}
 
+	/**
+	 * Creates an invalid value exception from a CL exception if it matches {@code CL_INVALID_VALUE}.
+	 *
+	 * @param e         CL exception to check
+	 * @param srcIndex  Source buffer index
+	 * @param destIndex Destination buffer index
+	 * @param length    Length of the operation
+	 * @return An {@link Optional} containing a new exception if the error code matches, or empty
+	 */
 	public static Optional<HardwareException> from(CLException e, int srcIndex, int destIndex, int length) {
 		if ("CL_INVALID_VALUE".equals(e.getMessage())) {
 			return Optional.of(new InvalidValueException(e, srcIndex, destIndex, length));

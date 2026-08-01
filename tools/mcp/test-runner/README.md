@@ -10,6 +10,42 @@ An MCP server for running and managing Almost Realism test executions. This serv
 - **Selective Testing**: Run specific classes or methods
 - **Result Parsing**: Parse surefire XML reports for detailed results
 - **Output Capture**: Access console output with filtering options
+- **Preflight Seeding**: On the first invocation in a fresh worktree, the
+  upstream `ar-*` module artifacts for the target Maven module are seeded
+  into `~/.m2/repository/` automatically. This avoids the previous
+  fail→install→retry cycle that pushed agents toward bash `mvn install`.
+  Subsequent invocations skip the seed (idempotent).
+
+## Preflight Seeding
+
+Maven's `mvn test -pl <module>` (without `-am`) assumes the upstream
+modules' jars are already installed in `~/.m2`. In a fresh worktree
+they aren't — the first test invocation used to fail with an
+unresolvable-dependency error, forcing the agent to drop to bash
+`mvn install` to seed them.
+
+The test runner now performs that seed itself, lazily, before the
+first test invocation. Implementation: `preflight.py`.
+
+The flow per `start_test_run`:
+
+1. Parse the target module's `pom.xml` for direct `<dependency>`
+   entries with `<groupId>org.almostrealism</groupId>`.
+2. Look for each artifact's `.jar` in `~/.m2/repository/...`.
+3. If every direct dep is already present, **skip** the seed (a few
+   milliseconds of inspection).
+4. Otherwise, run `mvn -pl <module> -am install -DskipTests -B` from
+   the project root. `-am` ensures Maven builds the entire upstream
+   reactor chain — so the next test invocation has everything it needs.
+
+The seed's stdout/stderr is captured in the run's `output.txt`
+between two `PREFLIGHT:` banners, so an agent inspecting
+`get_run_output` sees clearly what was done.
+
+When the seed itself fails (e.g., a build error in an upstream
+module), the run is marked `failed` immediately and no Maven test
+process is launched — the agent gets a fast, accurate failure
+instead of a redundant dependency-resolution error from `mvn test`.
 
 ## Installation
 
@@ -45,7 +81,7 @@ Start a new test run asynchronously.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `depth` | int (0-10) | No | AR_TEST_DEPTH value |
-| `module` | string | No | Maven module (default: "utils") |
+| `module` | string | No | Maven module (default: "engine/utils") |
 | `test_classes` | string[] | No | Specific test class names |
 | `test_methods` | object[] | No | Specific methods: `[{"class": "...", "method": "..."}]` |
 | `timeout_minutes` | int | No | Max run time (default: 30) |
@@ -76,8 +112,14 @@ Check the status of a test run.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `run_id` | string | Yes | The run identifier |
+| `block` | boolean | No | When true, wait server-side until the run reaches a terminal state (completed/failed/timeout/cancelled) before responding. Default: false. |
+| `timeout_seconds` | integer | No | Maximum seconds to wait when `block=true` (default: 600, max: 3600). If it elapses, the latest still-running status is returned. Ignored when `block` is false. |
 
 **Returns:** Status, timing, and test counts from surefire reports.
+
+With `block=true` you can wait for a run to finish with a single call instead of
+polling in a loop. Use it when you have nothing else to do while waiting;
+otherwise leave it off, return, and do other work between checks.
 
 ### get_run_output
 
@@ -131,8 +173,7 @@ Maximum 50 runs are retained; oldest runs are cleaned up automatically.
 
 ## Environment Variables
 
-The server sets these for test execution:
-- `AR_HARDWARE_LIBS=/tmp/ar_libs/`
+The server does not set `AR_HARDWARE_LIBS` — it is auto-detected by the system. Do not set it manually.
 
 `AR_HARDWARE_DRIVER` is **not** set by the test runner — leave it unset to inherit the best available backend for the system.
 

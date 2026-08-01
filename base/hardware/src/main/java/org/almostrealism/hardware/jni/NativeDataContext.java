@@ -22,7 +22,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.compute.ComputeRequirement;
-import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.HardwareDataContext;
@@ -181,27 +181,69 @@ import java.util.concurrent.Callable;
  * @see NativeCompiler
  */
 public class NativeDataContext extends HardwareDataContext {
+	/** If true, use the external execution backend instead of the JNI-based one. Controlled by {@code AR_HARDWARE_NATIVE_EXECUTION=external}. */
 	private static boolean external = SystemUtils.getProperty("AR_HARDWARE_NATIVE_EXECUTION", "").equalsIgnoreCase("external");
 
-	private final boolean isExternal, isClMemory;
+	/** True if using the external execution backend; false for JNI-based execution. */
+	private final boolean isExternal;
+	/** True if CL (OpenCL) memory management is enabled; controls inclusion of the OpenCL header during compilation. */
+	private final boolean isClMemory;
 
+	/** The native compiler used to generate and compile C kernel code. */
 	private NativeCompiler compiler;
+	/** Optional delegate data context used to satisfy memory provider requests that this context cannot handle. */
 	private DataContext<MemoryData> delegate;
+	/** The primary memory provider for this context. */
 	private MemoryProvider<? extends Memory> ram;
+	/** True if a custom memory provider was set via {@link #setMemoryProvider}. */
 	private boolean providedRam = false;
+	/** If true, the default native provider allocates NIO direct buffers; if false, JNI malloc blocks. */
+	private final boolean direct;
 
+	/** Numeric precision for generated kernel code and memory allocation sizes. */
 	private Precision precision;
+	/** The compute context providing kernel compilation and execution for this data context. */
 	private ComputeContext<MemoryData> context;
 
+	/**
+	 * Creates a native data context for JNI-based CPU execution.
+	 *
+	 * @param name Display name for this context
+	 * @param precision Numeric precision for generated kernels
+	 * @param maxReservation Maximum number of elements that may be allocated
+	 */
 	public NativeDataContext(String name, Precision precision, long maxReservation) {
-		this(name, precision, maxReservation, false);
+		this(name, precision, maxReservation, false, true);
 	}
 
+	/**
+	 * Creates a native data context with optional OpenCL memory support.
+	 *
+	 * @param name Display name for this context
+	 * @param precision Numeric precision for generated kernels
+	 * @param maxReservation Maximum number of elements that may be allocated
+	 * @param clMemory If true, the OpenCL header is included in generated C source files
+	 */
 	public NativeDataContext(String name, Precision precision, long maxReservation, boolean clMemory) {
+		this(name, precision, maxReservation, clMemory, true);
+	}
+
+	/**
+	 * Creates a native data context with explicit OpenCL-memory and allocation-mode settings.
+	 *
+	 * @param name Display name for this context
+	 * @param precision Numeric precision for generated kernels
+	 * @param maxReservation Maximum number of elements that may be allocated
+	 * @param clMemory If true, the OpenCL header is included in generated C source files
+	 * @param direct If true, the default native provider allocates NIO direct buffers rather than JNI malloc
+	 */
+	public NativeDataContext(String name, Precision precision, long maxReservation,
+							 boolean clMemory, boolean direct) {
 		super(name, maxReservation);
 		this.precision = precision;
 		this.isExternal = external;
 		this.isClMemory = clMemory;
+		this.direct = direct;
 	}
 
 	@Override
@@ -209,11 +251,8 @@ public class NativeDataContext extends HardwareDataContext {
 		if (context != null) return;
 		compiler = NativeCompiler.factory(getPrecision(), isClMemory).construct();
 
-		if (ram == null) {
-			ram = new NativeMemoryProvider(compiler, getMaxReservation() * getPrecision().bytes());
-		}
-
 		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);
+		log("Hardware[" + getName() + "]: Using the CPU for kernels");
 	}
 
 	@Override
@@ -221,10 +260,27 @@ public class NativeDataContext extends HardwareDataContext {
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
 
+	/**
+	 * Sets an optional delegate data context used for memory provider lookups.
+	 *
+	 * <p>When set, {@link #getMemoryProvider(int)} delegates to the alternate context for
+	 * allocations the native context cannot satisfy (e.g., CL memory).</p>
+	 *
+	 * @param ctx The delegate {@link DataContext} to use for delegated memory requests
+	 */
 	public void setDelegate(DataContext<MemoryData> ctx) {
 		this.delegate = ctx;
 	}
 
+	/**
+	 * Replaces the default memory provider with a custom one.
+	 *
+	 * <p>The replacement provider must use the same element size (byte width) as this context's precision.
+	 * After calling this, memory allocation uses the provided {@code ram}.</p>
+	 *
+	 * @param ram Custom {@link MemoryProvider} to use for memory allocation
+	 * @throws UnsupportedOperationException if the provider's element size does not match this context's precision
+	 */
 	public void setMemoryProvider(MemoryProvider<? extends Memory> ram) {
 		if (getPrecision().bytes() != ram.getNumberSize()) {
 			throw new UnsupportedOperationException();
@@ -236,10 +292,26 @@ public class NativeDataContext extends HardwareDataContext {
 
 	@Override
 	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
-		return List.of(ram);
+		return List.of(getMemoryProvider());
 	}
 
-	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
+	/**
+	 * Returns this context's memory provider, creating the default native provider on first use.
+	 *
+	 * <p>The default is created lazily rather than in {@link #init()} so that a provider supplied by
+	 * {@link #setMemoryProvider} (for example the shared-memory bridge, when NIO memory is enabled) is
+	 * used without this context first building — and immediately discarding — a provider of its own.</p>
+	 *
+	 * @return the memory provider for this context
+	 */
+	public MemoryProvider<? extends Memory> getMemoryProvider() {
+		if (ram == null) {
+			ram = new NativeMemoryProvider(getPrecision(),
+					getMaxReservation() * getPrecision().bytes(), false, compiler, direct);
+		}
+
+		return ram;
+	}
 
 	@Override
 	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
@@ -252,7 +324,7 @@ public class NativeDataContext extends HardwareDataContext {
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (context == null) {
-			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
 			context = new NativeComputeContext(this, getNativeCompiler());
 		}
 
@@ -270,6 +342,16 @@ public class NativeDataContext extends HardwareDataContext {
 		}
 	}
 
+	/**
+	 * Executes a callable within the compute context, re-throwing any exceptions as unchecked.
+	 *
+	 * @param <T> The return type of the callable
+	 * @param exec The callable to execute
+	 * @param expectations Compute requirements (currently unused)
+	 * @return The value returned by {@code exec}
+	 * @throws RuntimeException if execution fails
+	 */
+	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		try {
 			return exec.call();
@@ -283,6 +365,6 @@ public class NativeDataContext extends HardwareDataContext {
 	@Override
 	public void destroy() {
 		// TODO  Destroy all compute contexts
-		if (!providedRam) ram.destroy();
+		if (!providedRam && ram != null) ram.destroy();
 	}
 }

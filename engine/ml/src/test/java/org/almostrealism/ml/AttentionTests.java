@@ -37,21 +37,22 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Tests for attention mechanisms including self-attention, cross-attention,
+ * scaled dot-product attention, and comparison against reference implementations.
+ */
 public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
-	private static final int TEST_BATCH_SIZE = 1;
-	private static final int TEST_SEQ_LEN = 4;
-	private static final int TEST_DIM = 16;
-	private static final int TEST_HEADS = 2;
-	private static final int TEST_DIM_HEAD = TEST_DIM / TEST_HEADS;
-	private static final int TEST_INV_FREQ_SIZE = TEST_DIM_HEAD / 4;
-
+	/**
+	 * Tests the attention key computation with direct verification.
+	 * Uses query and key cache to compute attention scores manually and
+	 * compares against the computed result.
+	 */
 	@Test(timeout = 120000)
 	public void attentionKeys() {
 		int seqLength = 128;
 		int heads = 12;
 		int headSize = 64;
-		int dim = heads * headSize;
 
 		TraversalPolicy inputShape = shape(heads, headSize);
 		TraversalPolicy keyShape = shape(seqLength, heads, headSize);
@@ -63,7 +64,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		q.fill(pos -> Math.random());
 		keyCache.fill(pos -> Math.random());
 
-		Producer<PackedCollection> o = c(p(keyCache)).traverse(1).map(v -> v.multiply(p(q)))
+		Producer<PackedCollection> o = c(p(keyCache)).traverse(1).multiply(p(q))
 				.traverse(2).sum()
 				.divide(c(Math.sqrt(headSize)))
 				.reshape(shape(seqLength, heads))
@@ -87,13 +88,17 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
 				score /= Math.sqrt(headSize);
 
-				System.out.println("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
+				log("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
 				assertEquals(score, att.valueAt(h, t));
 			}
 		}
 	}
 
 
+	/**
+	 * Tests the attention value computation with a larger sequence length.
+	 * Verifies that value-weighted sum produces correct results.
+	 */
 	@Test(timeout = 120000)
 	public void attentionValues() {
 		int seqLength = 1024;
@@ -140,12 +145,16 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 					vo += att.valueAt(h, t) * values.valueAt(t, h, i);
 				}
 
-				System.out.println("AttentionTests[" + i + "]: " + vo + " vs " + out.valueAt(h * headSize + i));
+				log("AttentionTests[" + i + "]: " + vo + " vs " + out.valueAt(h * headSize + i));
 				assertEquals(vo, out.valueAt(h * headSize + i));
 			}
 		}
 	}
 
+	/**
+	 * Tests the linear attention mechanism with a simple model.
+	 * Verifies that the linear attention block can be set up and executed.
+	 */
 	@Test(timeout = 120000)
 	public void linearAttention() {
 		int batchSize = 1;
@@ -166,6 +175,10 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		Process.optimized(b.forward(cp(input))).get().run();
 	}
 
+	/**
+	 * Tests the QKV split operation using subset operations on a SequentialBlock.
+	 * Verifies that input can be correctly split into query, key, and value components.
+	 */
 	@Test(timeout = 120000)
 	public void qkvSplitOperation() {
 		int batchSize = 1;
@@ -224,6 +237,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	/**
 	 * Tests isolated QK normalization against Python LayerNorm reference.
 	 * This helps debug the norm step in sequenceAttention by testing it in isolation.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void qkNormCompare() throws Exception {
@@ -234,7 +249,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -291,6 +306,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	/**
 	 * Tests scaledDotProductAttention against PyTorch's F.scaled_dot_product_attention
 	 * to isolate and verify just the attention computation mechanism.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void scaledDotProductAttentionCompare() throws Exception {
@@ -301,7 +318,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test inputs and expected output
 		PackedCollection q = referenceData.get("q");
@@ -342,6 +359,10 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		assertTrue("Scaled dot-product attention output does not match PyTorch reference within tolerance", diff < 1e-5);
 	}
 
+	/**
+	 * Tests sequenceAttention with a simplified configuration using near-identity weights.
+	 * This is useful for debugging attention behavior with predictable weights.
+	 */
 	@Test(timeout = 120000)
 	public void sequenceAttentionSimplified() {
 		// Use smaller dimensions for easier debugging
@@ -407,6 +428,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests sequenceAttention against reference data generated from the actual
 	 * DiT Attention class in stable-audio-tools. This ensures our Java implementation
 	 * matches the real Python behavior rather than a made-up reference.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void sequenceAttentionCompare() throws Exception {
@@ -417,7 +440,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract input and expected output
 		PackedCollection referenceInput = referenceData.get("input");
@@ -426,7 +449,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		assertNotNull("Reference input not found", referenceInput);
 		assertNotNull("Expected output not found", expectedOutput);
 
-		System.out.println("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
+		log("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
 
 		// Load all weights
 		PackedCollection toQKV = referenceData.get("model.model.transformer.layers.0.self_attn.to_qkv.weight");
@@ -496,6 +519,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests sequenceCrossAttention against reference data generated from the actual
 	 * DiT Attention class in cross-attention mode. This ensures our Java implementation
 	 * matches the real Python cross-attention behavior.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void sequenceCrossAttentionCompare() throws Exception {
@@ -506,7 +531,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -604,6 +629,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests feedForward against reference data generated from the actual
 	 * DiT FeedForward class. This ensures our Java SwiGLU implementation
 	 * matches the real Python behavior.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void feedForwardCompare() throws Exception {
@@ -614,7 +641,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -656,8 +683,6 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		Model model = new Model(shape(batchSize, seqLen, dim));
 		SequentialBlock main = model.sequential();
 
-		List<PackedCollection> states = new ArrayList<>();
-
 		// Add feed-forward block
 		main.add(gatedLinearFeedForward(
 				shape(batchSize, seqLen, dim),
@@ -686,6 +711,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * DiT TransformerBlock class. This ensures our Java implementation of the
 	 * complete transformer block (self-attention + cross-attention + feed-forward)
 	 * matches the real Python behavior.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void transformerBlockCompare() throws Exception {
@@ -696,7 +723,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -753,7 +780,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		PackedCollection w2Weight = referenceData.get("ff.w2_weight");
 		PackedCollection w2Bias = referenceData.get("ff.w2_bias");
 		PackedCollection w3Weight = referenceData.get("ff.w3_weight");
-		PackedCollection w3Bias = referenceData.get("ff.w3_bias");
+		referenceData.get("ff.w3_bias");
 
 		// Rotary embeddings
 		PackedCollection invFreq = referenceData.get("rope.inv_freq");

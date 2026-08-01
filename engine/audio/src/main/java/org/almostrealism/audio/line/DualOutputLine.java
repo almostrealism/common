@@ -24,9 +24,31 @@ package org.almostrealism.audio.line;
  * @see OutputLine
  */
 public interface DualOutputLine {
+	/**
+	 * Sets the stereo mix balance.
+	 *
+	 * @param m mix value (typically 0.0 for full left to 1.0 for full right)
+	 */
 	void setMix(double m);
+
+	/**
+	 * Returns the current stereo mix balance.
+	 *
+	 * @return the mix value
+	 */
 	double getMix();
-	
+
+	/**
+	 * Returns the left-channel output line.
+	 *
+	 * @return the left OutputLine
+	 */
 	OutputLine getLeftLine();
+
+	/**
+	 * Returns the right-channel output line.
+	 *
+	 * @return the right OutputLine
+	 */
 	OutputLine getRightLine();
 }

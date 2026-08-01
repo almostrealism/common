@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# pre-commit hook for enforcement config protection
+#
+# This hook runs the verify-enforcement-config.sh script to ensure that
+# protected enforcement configuration files have not been modified before
+# allowing the commit to proceed.
+#
+# Protected files:
+#   - checkstyle.xml
+#   - checkstyle-suppressions.xml
+#   - scripts/check-exempt-file-lengths.sh
+#   - scripts/verify-enforcement-config.sh
+#   - scripts/enforcement-config.sha256
+#
+# If any protected file has been modified, the commit is rejected.
+#
+# Setup: Run this once to enable the hook:
+#   git config core.hooksPath hooks
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SCRIPT_DIR="$REPO_ROOT/scripts"
+
+echo "Running enforcement config verification..."
+
+if ! "$SCRIPT_DIR/verify-enforcement-config.sh"; then
+    echo "" >&2
+    echo "Commit rejected: Enforcement configuration files must not be modified." >&2
+    echo "If you are intentionally changing the rules, you must manually" >&2
+    echo "regenerate the baseline after committing." >&2
+    exit 1
+fi
+
+exit 0

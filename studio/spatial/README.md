@@ -104,7 +104,7 @@ hub.pause();
 | `GenomicNetwork` | Neural network output with health score |
 | `PlaceholderTimeseries` | Fallback visualization |
 
-### Series Package (`com.almostrealism.spatial.series`)
+### Series Package (`org.almostrealism.spatial.series`)
 
 | Class | Purpose |
 |-------|---------|
@@ -203,7 +203,7 @@ This module depends on:
 ## Package Structure
 
 ```
-com.almostrealism.spatial
+org.almostrealism.spatial
 ├── Spatial.java                    # Base interface
 ├── SpatialElement.java             # Positioned object
 ├── SpatialGroup.java               # Element container

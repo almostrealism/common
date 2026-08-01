@@ -27,21 +27,66 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+/**
+ * A cell that fans out input to a list of downstream cells, modulating each
+ * output through a corresponding {@link Gene} factor.
+ *
+ * <p>{@code MultiCell} distributes a single input producer to multiple downstream
+ * cells in parallel. Each cell receives the input transformed by the factor at the
+ * corresponding index in the {@link Gene}. If the gene returns {@code null} for an
+ * index, that cell is skipped for that push.</p>
+ *
+ * <p>The static factory method {@link #split(Cell, Cell, List, Gene)} creates
+ * a {@link CellPair} that routes a source cell's output through this distribution
+ * mechanism.</p>
+ *
+ * @param <T> the type of data processed, typically {@link org.almostrealism.collect.PackedCollection}
+ * @see CellAdapter
+ * @see Gene
+ * @see CellPair
+ * @author Michael Murray
+ */
 public class MultiCell<T> extends CellAdapter<T> {
+	/** The list of downstream cells that each receive a copy of the input. */
 	private final List<Cell<T>> cells;
+
+	/** The gene providing per-cell modulation factors. */
 	private final Gene<T> gene;
-	
+
+	/**
+	 * Creates a new MultiCell that distributes input to the given cells
+	 * using the provided gene for per-cell modulation.
+	 *
+	 * @param cells the downstream cells to receive input
+	 * @param gene  the gene providing factors for each cell, or null for identity
+	 */
 	public MultiCell(List<Cell<T>> cells, Gene<T> gene) {
 		this.cells = cells;
 		this.gene = gene;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Runs the setup operation for all downstream cells.</p>
+	 *
+	 * @return a combined setup operation for all cells
+	 */
 	@Override
 	public Supplier<Runnable> setup() {
 		List<Runnable> r = cells.stream().map(Cell::setup).map(Supplier::get).collect(Collectors.toList());
 		return () -> () -> r.forEach(Runnable::run);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Fans out the input to each downstream cell, applying the gene's factor
+	 * for each cell. Cells for which the gene returns {@code null} are skipped.</p>
+	 *
+	 * @param protein the input data producer
+	 * @return a combined push operation for all active cells
+	 */
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) {
 		OperationList push = new OperationList("MultiCell Push");
@@ -59,10 +104,33 @@ public class MultiCell<T> extends CellAdapter<T> {
 
 		return push;
 	}
+	/**
+	 * Creates a {@link CellPair} that routes a source cell's output to multiple
+	 * destination cells via a MultiCell.
+	 *
+	 * @param <T>          the data type
+	 * @param source       the source cell providing input
+	 * @param adapter      an optional adapter cell to interpose on the MultiCell path, or null
+	 * @param destinations the destination cells to receive the distributed input
+	 * @param transmission the gene providing per-destination modulation factors
+	 * @return a CellPair connecting the source to the multi-destination fan-out
+	 */
 	public static <T> CellPair<T> split(Cell<T> source, Cell<T> adapter, List<Cell<T>> destinations, Gene<T> transmission) {
 		return split(source, adapter, destinations, transmission, null);
 	}
 
+	/**
+	 * Creates a {@link CellPair} that routes a source cell's output to multiple
+	 * destination cells via a MultiCell, with an optional passthrough cell.
+	 *
+	 * @param <T>          the data type
+	 * @param source       the source cell providing input
+	 * @param adapter      an optional adapter cell to interpose on the MultiCell path, or null
+	 * @param destinations the destination cells to receive the distributed input
+	 * @param transmission the gene providing per-destination modulation factors
+	 * @param passthrough  an optional cell to receive a copy of the source output in parallel, or null
+	 * @return a CellPair connecting the source to the multi-destination fan-out
+	 */
 	public static <T> CellPair<T> split(Cell<T> source, Cell<T> adapter, List<Cell<T>> destinations, Gene<T> transmission, Cell<T> passthrough) {
 		MultiCell<T> m = new MultiCell<>(destinations, transmission);
 

@@ -42,7 +42,9 @@ import java.io.PrintStream;
  * @see FilePrintWriter
  */
 public class PrintStreamPrintWriter implements PrintWriter {
+	/** The underlying stream to which formatted output is written. */
 	private PrintStream out;
+	/** Current indentation level, incremented and decremented by tab/moreTab/lessTab methods. */
 	private int indent = 0;
 
 	/**

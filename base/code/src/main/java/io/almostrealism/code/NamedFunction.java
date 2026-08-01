@@ -52,4 +52,33 @@ public interface NamedFunction {
 	 * @return the function name, or {@code null} if not set
 	 */
 	String getFunctionName();
+
+	/**
+	 * Returns the prefix used for generating local variable names.
+	 *
+	 * <p>The prefix is derived from the function name; if the function name contains
+	 * underscores, the suffix from the last underscore onward is used. Since function
+	 * names are globally unique, this prefix namespaces variables to this function.
+	 *
+	 * @return the variable prefix string
+	 */
+	default String getVariablePrefix() {
+		String f = getFunctionName();
+		if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
+		return f;
+	}
+
+	/**
+	 * Returns the name for the local variable at the specified index.
+	 *
+	 * @param index the zero-based variable index
+	 * @return the local variable name (e.g., {@code prefix_l0})
+	 * @throws UnsupportedOperationException if the variable prefix is {@code null}
+	 */
+	default String getVariableName(int index) {
+		if (getVariablePrefix() == null)
+			throw new UnsupportedOperationException();
+
+		return getVariablePrefix() + "_l" + index;
+	}
 }

@@ -67,9 +67,19 @@ import java.util.stream.IntStream;
  * @see TimeCellReset
  */
 public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, CodeFeatures {
+	/** The downstream receptor that receives the current time value on each tick. */
 	private Receptor r;
+
+	/** A {@link Pair} holding the current frame counter and step size. */
 	private Pair time;
-	private Producer<PackedCollection> initial, loopDuration;
+
+	/** Producer for the initial frame value, used when the counter is first reset. */
+	private Producer<PackedCollection> initial;
+
+	/** Producer for the loop duration; when set, the counter wraps at this value. */
+	private Producer<PackedCollection> loopDuration;
+
+	/** Collection of conditional reset values; each entry triggers a reset when the frame matches. */
 	private PackedCollection resets;
 
 	/**
@@ -117,9 +127,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	 * Initializes all reset slots to -1 (disabled).
 	 */
 	protected void initResets() {
-		double[] initial = new double[resets.getMemLength()];
-		IntStream.range(0, initial.length).forEach(i -> initial[i] = -1);
-		resets.setMem(initial);
+		resets.fill(-1.0);
 	}
 
 	/**
@@ -232,6 +240,27 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	public void setFrame(double frame) {
 		double f = Math.floor(frame);
 		time.setMem(f, f);
+	}
+
+	/**
+	 * Re-derives the looping frame counter from the total frame counter
+	 * using the supplied loop duration in frames. This is intended to be
+	 * called after the loop duration changes mid-playback, so that the
+	 * channel rephases to the global frame grid rather than carrying a
+	 * wrap state computed against the previous loop duration.
+	 *
+	 * <p>The total counter (the non-wrapping right value) is left
+	 * untouched; only the looping left counter is rewritten to
+	 * {@code right mod loopDurationFrames}. Has no effect when
+	 * {@code loopDurationFrames} is non-positive.</p>
+	 *
+	 * @param loopDurationFrames the new loop duration in frames
+	 */
+	public void rephaseLeft(double loopDurationFrames) {
+		if (loopDurationFrames <= 0) return;
+		double right = time.toDouble(1);
+		double newLeft = right - Math.floor(right / loopDurationFrames) * loopDurationFrames;
+		time.setMem(0, newLeft);
 	}
 
 	/**

@@ -3,6 +3,7 @@ package org.almostrealism.hardware.metal.test;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.metal.MTL;
 import org.almostrealism.hardware.metal.MetalComputeContext;
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -14,7 +15,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
+/**
+ * Tests for Metal JNI integration.
+ */
 public class MetalJNI extends TestSuiteBase {
+	/**
+	 * Runs the Metal vector-matrix multiplication test.
+	 */
 	@Test(timeout = 30000)
 	public void run() throws IOException {
 		if (!(Hardware.getLocalHardware().getComputeContext() instanceof MetalComputeContext)) return;
@@ -28,9 +35,18 @@ public class MetalJNI extends TestSuiteBase {
 
 		multiplyVectorWithMatrix(vector, matrix, result, 4);
 
-		System.out.println("Result: " + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3]);
+		log("Result: " + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3]);
 	}
 
+	/**
+	 * Multiplies a vector with a matrix using Metal compute.
+	 *
+	 * @param vector the input vector
+	 * @param matrix the input matrix
+	 * @param result the output result buffer
+	 * @param numElements the number of elements
+	 * @throws IOException if an I/O error occurs
+	 */
 	public static void multiplyVectorWithMatrix(float[] vector, float[] matrix, float[] result, int numElements) throws IOException {
 		StringBuilder functionSource = new StringBuilder();
 
@@ -45,13 +61,13 @@ public class MetalJNI extends TestSuiteBase {
 
 		long device = MTL.createSystemDefaultDevice();
 
-		System.out.println("Loaded device: " + device);
+		Console.root().println("Loaded device: " + device);
 
 		long function = MTL.createFunction(device, "vectorMatrixMultiply", functionSource.toString());
 
 		// Create a compute pipeline
 		long pipeline = MTL.createComputePipelineState(device, function);
-		System.out.println("Created pipeline: " + pipeline);
+		Console.root().println("Created pipeline: " + pipeline);
 
 		long commandQueue = MTL.createCommandQueue(device);
 		long commandBuffer;
@@ -77,7 +93,7 @@ public class MetalJNI extends TestSuiteBase {
 
 			MTL.commitCommandBuffer(commandBuffer);
 			MTL.waitUntilCompleted(commandBuffer);
-			System.out.println("Time: " + (System.nanoTime() - start));
+			Console.root().println("Time: " + (System.nanoTime() - start));
 
 			ByteBuffer resultBufferByte = ByteBuffer.allocateDirect(result.length * 4).order(ByteOrder.nativeOrder());
 			FloatBuffer resultBufferFloat = resultBufferByte.asFloatBuffer();

@@ -58,17 +58,20 @@ import java.util.stream.IntStream;
  */
 public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTestFeatures {
 
-	private final double[] coeff = { 0.24, -0.1, 0.36 };
+	/**
+	 * Coefficients for linear function.
+	 */
+	private final PackedCollection coeff = pack(0.24, -0.1, 0.36);
 
-	private final UnaryOperator<PackedCollection> linearFunc =
-			in -> {
-				PackedCollection out = new PackedCollection(in.getShape());
-				for (int i = 0; i < in.getMemLength(); i++) {
-					int coeffIdx = i % coeff.length;
-					out.setMem(i, coeff[coeffIdx] * in.valueAt(i));
-				}
-				return out;
-			};
+	/**
+	 * Linear function that applies coefficient-based transformation.
+	 */
+	private final UnaryOperator<PackedCollection> linearFunc = in -> {
+		int n = in.getMemLength();
+		return cp(coeff).valueAt(integers(0, n).mod(coeff.getMemLength()))
+				.multiply(cp(in).reshape(shape(n)))
+				.evaluate().reshape(in.getShape());
+	};
 
 	/**
 	 * Test dense layer shape compatibility.

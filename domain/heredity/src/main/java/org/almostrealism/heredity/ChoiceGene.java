@@ -42,8 +42,7 @@ import org.almostrealism.collect.PackedCollection;
  * <h2>Example Usage</h2>
  * <pre>{@code
  * // Define discrete choices
- * PackedCollection strategies = new PackedCollection(3);  // 3 strategies
- * strategies.setMem(0, 1.0, 2.0, 3.0);  // Strategy values
+ * PackedCollection strategies = PackedCollection.of(1.0, 2.0, 3.0);  // 3 strategy values
  *
  * // Create underlying gene that produces values in [0, 1]
  * Gene<PackedCollection> continuousGene = HeredityFeatures.getInstance().g(0.0, 0.5, 1.0);
@@ -62,7 +61,9 @@ import org.almostrealism.collect.PackedCollection;
  * @see GeneParameters
  */
 public class ChoiceGene implements Gene<PackedCollection>, GeneParameters, ScalarFeatures, CollectionFeatures {
+	/** The discrete set of candidate values that continuous gene outputs are mapped onto. */
 	private PackedCollection choices;
+	/** The underlying gene providing continuous factor values used to index into {@code choices}. */
 	private Gene<PackedCollection> values;
 
 	/**

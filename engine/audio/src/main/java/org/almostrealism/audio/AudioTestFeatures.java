@@ -29,6 +29,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Test utility interface providing helper methods for audio testing.
@@ -52,6 +55,11 @@ import java.nio.file.Files;
  *     }
  * }
  * </pre>
+ *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
  */
 public interface AudioTestFeatures extends GeometryFeatures {
 
@@ -453,12 +461,21 @@ public interface AudioTestFeatures extends GeometryFeatures {
 	 * across all tests in the same JVM.
 	 */
 	final class TestWavFileHolder {
+		/** Lazily initialized default test WAV file shared across all tests in the JVM. */
 		private static volatile File cachedFile;
-		private static final java.util.Map<String, File> namedFiles =
-				new java.util.concurrent.ConcurrentHashMap<>();
 
+		/** Cache of named test WAV files keyed by their descriptive name. */
+		private static final Map<String, File> namedFiles =
+				new ConcurrentHashMap<>();
+
+		/** Prevents instantiation; all members are static. */
 		private TestWavFileHolder() {}
 
+		/**
+		 * Returns the shared default test WAV file, creating it on first access.
+		 *
+		 * @return the default test WAV file (440 Hz, 2 seconds)
+		 */
 		static File getTestWavFile() {
 			if (cachedFile == null) {
 				synchronized (TestWavFileHolder.class) {
@@ -481,6 +498,14 @@ public interface AudioTestFeatures extends GeometryFeatures {
 							: createMelodicWavFile(frequency, durationSeconds));
 		}
 
+		/**
+		 * Creates a test WAV file with the given frequency and duration.
+		 * Delegates to {@link #createMelodicWavFile(double, double)}.
+		 *
+		 * @param frequency       tone frequency in Hz
+		 * @param durationSeconds duration in seconds (must be &lt;= 5)
+		 * @return the created WAV file
+		 */
 		static File createTestWavFile(double frequency, double durationSeconds) {
 			return createMelodicWavFile(frequency, durationSeconds);
 		}
@@ -543,7 +568,7 @@ public interface AudioTestFeatures extends GeometryFeatures {
 				int validBits = 16;
 
 				double[][] buffer = new double[numChannels][numFrames];
-				java.util.Random rng = new java.util.Random(Double.doubleToLongBits(frequency));
+				Random rng = new Random(Double.doubleToLongBits(frequency));
 
 				double decayRate = 5.0 / durationSeconds;
 				double phaseIncrement = 2.0 * Math.PI * frequency / sampleRate;

@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.instructions;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
@@ -27,6 +28,7 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
+import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -57,7 +59,7 @@ import java.util.stream.Collectors;
  *
  * <pre>{@code
  * // Create compiler
- * ComputationScopeCompiler<Matrix> compiler = new ComputationScopeCompiler<>(computation, nameProvider);
+ * ComputationScopeCompiler<Matrix> compiler = new ComputationScopeCompiler<>(computation);
  *
  * // Create manager with scope supplier (NOT YET COMPILED!)
  * ScopeInstructionsManager<ScopeSignatureExecutionKey> manager =
@@ -151,6 +153,9 @@ import java.util.stream.Collectors;
  * // - Clears cached operators
  * }</pre>
  *
+ * TODO(review): this example omits that destroy() also destroys the manager-owned
+ * CompiledKernelStructureContext (see the destroy() method below) — update to match.
+ *
  * @param <K> The {@link ExecutionKey} type used for operation lookup
  * @see InstructionSetManager
  * @see ComputableInstructionSetManager
@@ -184,6 +189,23 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 
 	/** Map for routing arguments from Process tree to scope arguments. */
 	private ProcessArgumentMap argumentMap;
+
+	/**
+	 * The aggregate replacement positions the compiled kernel was built against, as recorded
+	 * by the operation that compiled the scope (see
+	 * {@code MemoryDataArgumentMap#describeAggregatePositions()}). The generated source bakes
+	 * these positions in, so any operation reusing this manager's instructions must reproduce
+	 * them exactly; a difference means the signature matched two distinct kernels
+	 * (an instruction cache collision) and is grounds for failing the reuse with an exception.
+	 */
+	private String aggregatePositions;
+
+	/**
+	 * The structure context of this manager's compiled instructions, owning the kernel
+	 * structure resources the compiled code references. Created on first request and
+	 * destroyed with the instructions.
+	 */
+	private CompiledKernelStructureContext kernelStructureContext;
 
 	/** Map of execution keys to their output argument indices. */
 	private Map<K, Integer> outputArgIndices;
@@ -246,6 +268,24 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	 */
 	public ProcessArgumentMap getArgumentMap() { return argumentMap; }
 
+	/** {@inheritDoc} */
+	@Override
+	public void setAggregatePositions(String positions) { this.aggregatePositions = positions; }
+
+	/** {@inheritDoc} */
+	@Override
+	public String getAggregatePositions() { return aggregatePositions; }
+
+	/** {@inheritDoc} */
+	@Override
+	public synchronized CompiledKernelStructureContext getKernelStructureContext(Computation<?> computation) {
+		if (kernelStructureContext == null) {
+			kernelStructureContext = new CompiledKernelStructureContext(computation);
+		}
+
+		return kernelStructureContext;
+	}
+
 	/**
 	 * {@inheritDoc}
 	 */
@@ -301,6 +341,10 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 
 	/**
 	 * Adds a listener to be notified when this manager is destroyed.
+	 *
+	 * <p>Used by operations bound to shared instructions to reset themselves when
+	 * the instructions are released, so they recompile rather than execute through
+	 * bindings derived from a destroyed scope.</p>
 	 *
 	 * @param listener the destroy listener
 	 */
@@ -383,6 +427,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		if (operators != null) {
 			operators.destroy();
 			operators = null;
+		}
+
+		if (kernelStructureContext != null) {
+			kernelStructureContext.destroy();
+			kernelStructureContext = null;
 		}
 
 		destroyListeners.forEach(Runnable::run);

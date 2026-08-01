@@ -65,12 +65,22 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	/** Global counter for assigning unique IDs to metadata instances. */
 	private static long opIndex = 0;
 
+	/** Unique identifier assigned sequentially at construction time. */
 	private long id;
+
+	/** Human-readable name, short summary, and detailed description for this operation. */
 	private String displayName, shortDescription, longDescription;
+
+	/** The output shape of the operation, if known. */
 	private TraversalPolicy shape;
+
+	/** An optional string identifying the execution context (e.g. thread or device). */
 	private String contextName;
+
+	/** A compact signature string uniquely identifying the operation within its context. */
 	private String signature;
 
+	/** Child operations nested within this metadata node. */
 	private List<OperationMetadata> children;
 
 	/** Default constructor for deserialization. */
@@ -212,6 +222,7 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	public void setSignature(String signature) { this.signature = signature; }
 
 	/** Returns the child metadata list, or {@code null} if this is a leaf. */
+	@Override
 	public List<OperationMetadata> getChildren() { return children; }
 
 	/** Sets the child metadata list. */
@@ -275,6 +286,26 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	public OperationMetadata appendShortDescription(String desc) {
 		OperationMetadata metadata = new OperationMetadata(this);
 		metadata.setShortDescription(metadata.getShortDescription() + desc);
+		return metadata;
+	}
+
+	/**
+	 * Returns a new {@link OperationMetadata} with the same data as this instance but
+	 * with a shortDescription that indicates the provenance of the operation.
+	 *
+	 * <p>The new shortDescription follows the pattern {@code "parent ==> child"} where
+	 * {@code child} is this metadata's current shortDescription (or its displayName if
+	 * no shortDescription is set). This method does not mutate this instance, so a
+	 * metadata instance shared by multiple holders is never altered and provenance
+	 * prefixes cannot accumulate across repeated applications.</p>
+	 *
+	 * @param parent the parent context name to prepend
+	 * @return a new OperationMetadata with provenance in the shortDescription
+	 */
+	public OperationMetadata withProvenance(String parent) {
+		String child = shortDescription != null ? shortDescription : displayName;
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setShortDescription(parent + " ==> " + child);
 		return metadata;
 	}
 

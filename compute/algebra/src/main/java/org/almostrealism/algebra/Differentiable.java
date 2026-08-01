@@ -16,16 +16,10 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.relation.Function;
-
 /**
- * A function from {@link Vector} positions to values that can be differentiated.
- *
- * <p>
- * {@link Differentiable} marks a {@link Function} as being differentiable with respect to
- * its spatial {@link Vector} input. This is a marker interface that indicates the function
- * has continuous derivatives, making it suitable for:
- * </p>
+ * A marker for types that can be differentiated with respect to
+ * a spatial {@link Vector} input, indicating the type has
+ * continuous derivatives suitable for:
  * <ul>
  *   <li>Gradient-based optimization</li>
  *   <li>Surface normal computation</li>
@@ -40,9 +34,8 @@ import io.almostrealism.relation.Function;
  * @param <T>  the type of value produced by the function
  * @author  Michael Murray
  * @see Gradient
- * @see Function
  * @see Vector
  */
-public interface Differentiable<T> extends Function<Vector, T> {
+public interface Differentiable<T> {
 
 }

@@ -22,8 +22,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for conditional computations.
+ */
 public class ConditionalTest extends TestSuiteBase {
 
+	/**
+	 * Tests conditional selection with positive comparison.
+	 */
 	@Test(timeout = 10000)
 	public void positive() {
 		CollectionProducerBase a = c(2);
@@ -33,10 +39,13 @@ public class ConditionalTest extends TestSuiteBase {
 		Evaluable<PackedCollection> ev = equals(a, b, c, d).get();
 
 		PackedCollection result = ev.evaluate();
-		System.out.println(result.toDouble(0));
+		log(String.valueOf(result.toDouble(0)));
 		assertEquals(3, result.toDouble(0));
 	}
 
+	/**
+	 * Tests conditional selection with negative comparison.
+	 */
 	@Test(timeout = 10000)
 	public void negative() {
 		CollectionProducerBase a = c(2);
@@ -46,7 +55,7 @@ public class ConditionalTest extends TestSuiteBase {
 		Evaluable<PackedCollection> ev = equals(a, b, c, d).get();
 
 		PackedCollection result = ev.evaluate();
-		System.out.println(result.toDouble(0));
+		log(String.valueOf(result.toDouble(0)));
 		assertEquals(5, result.toDouble(0));
 	}
 }

@@ -31,6 +31,7 @@ import org.almostrealism.collect.PackedCollection;
  */
 public class NoiseGenerator implements StatelessSource, SamplingFeatures {
 
+	/** Creates a new NoiseGenerator with default amplitude. */
 	public NoiseGenerator() {
 	}
 

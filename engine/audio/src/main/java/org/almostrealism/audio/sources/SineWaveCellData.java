@@ -35,33 +35,73 @@ public interface SineWaveCellData extends BaseAudioData {
 	default PackedCollection phase() { return get(5); }
 	default PackedCollection depth() { return get(6); }
 
+	/**
+	 * Returns the current note position as a producer for use in computation graphs.
+	 *
+	 * @return producer yielding the note position value
+	 */
 	default Producer<PackedCollection> getNotePosition() {
 		return cp(notePosition().range(shape(1)));
 	}
 
+	/**
+	 * Sets the note position in the underlying memory.
+	 *
+	 * @param notePosition note position value in seconds
+	 */
 	default void setNotePosition(double notePosition) {
 		notePosition().setMem(0, notePosition);
 	}
 
+	/**
+	 * Returns the note length as a producer for use in computation graphs.
+	 *
+	 * @return producer yielding the note length in seconds
+	 */
 	default Producer<PackedCollection> getNoteLength() {
 		return cp(noteLength().range(shape(1)));
 	}
 
+	/**
+	 * Sets the note length in the underlying memory.
+	 *
+	 * @param noteLength note length in seconds
+	 */
 	default void setNoteLength(double noteLength) {
 		noteLength().setMem(0, noteLength);
 	}
 
+	/**
+	 * Returns the current oscillator phase as a producer for use in computation graphs.
+	 *
+	 * @return producer yielding the phase value in radians
+	 */
 	default Producer<PackedCollection> getPhase() {
 		return cp(phase().range(shape(1)));
 	}
 
+	/**
+	 * Sets the oscillator phase in the underlying memory.
+	 *
+	 * @param phase phase value in radians
+	 */
 	default void setPhase(double phase) {
 		phase().setMem(0, phase);
 	}
 
+	/**
+	 * Returns the oscillation depth as a producer for use in computation graphs.
+	 *
+	 * @return producer yielding the depth value (0.0–1.0)
+	 */
 	default Producer<PackedCollection> getDepth() {
 		return p(depth().range(shape(1)));
 	}
 
+	/**
+	 * Sets the oscillation depth in the underlying memory.
+	 *
+	 * @param depth depth value (0.0–1.0)
+	 */
 	default void setDepth(double depth) { depth().setMem(0, depth); }
 }

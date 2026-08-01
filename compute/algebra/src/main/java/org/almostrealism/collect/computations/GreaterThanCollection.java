@@ -159,6 +159,13 @@ public class GreaterThanCollection extends CollectionComparisonComputation {
 		super("greaterThan", shape,  left, right, trueValue, falseValue);
 		this.includeEqual = includeEqual;
 		init();
+		long count = getCountLong();
+		if (count <= 0) {
+			throw new IllegalStateException(
+				"GreaterThanCollection constructed with shape " + shape +
+				" (count=" + count + "); at least one of left/right/trueValue/falseValue " +
+				"has a zero-sized shape — check the operand producers");
+		}
 	}
 
 	/**
@@ -216,6 +223,18 @@ public class GreaterThanCollection extends CollectionComparisonComputation {
 		return (CollectionProducerParallelProcess)
 				greaterThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
 						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The emitted expression is a ternary {@code Conditional(lhs >= rhs, truePath, falsePath)}
+	 * &mdash; both branches materialise in the expression tree. The expansion width is
+	 * therefore {@code 2}.</p>
+	 */
+	@Override
+	public long getExpansionWidth() {
+		return 2;
 	}
 
 	@Override

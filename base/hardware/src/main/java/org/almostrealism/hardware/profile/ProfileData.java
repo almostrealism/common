@@ -66,6 +66,7 @@ import java.util.List;
  * @see org.almostrealism.hardware.HardwareOperator
  */
 public class ProfileData {
+	/** Ordered list of recorded run measurements for this operation. */
 	private List<RunData> runs;
 
 	/**

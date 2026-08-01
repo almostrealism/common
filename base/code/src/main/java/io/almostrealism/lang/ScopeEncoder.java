@@ -29,24 +29,54 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Renders a {@link Scope} tree to a string of generated source code.
+ *
+ * <p>Applies the active {@link ScopeSettings} simplification configuration
+ * and writes the resulting code through a {@link CodePrintWriter} produced by a
+ * language-specific factory function.</p>
+ */
 public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
+	/**
+	 * Maximum number of characters that may be accumulated in a single encoding run.
+	 * Exceeding this limit throws an {@link IllegalArgumentException}.
+	 */
 	public static final int MAX_CHARACTERS = 512 * 1024 * 1024;
 
+	/** Factory that produces the language-specific {@link CodePrintWriter}. */
 	private final Function<PrintWriter, CodePrintWriter> generator;
+
+	/** The accessibility level applied to all encoded declarations. */
 	private final Accessibility access;
 
+	/** The language-specific writer that formats individual statements. */
 	private final CodePrintWriter output;
-	private StringBuffer result;
 
+	/** The accumulated output buffer. */
+	private StringBuilder result;
+
+	/** Names of functions already written in a previous encoding pass, used to avoid duplicates. */
 	private final List<String> functionsWritten;
 
-	private int indent = 0;
-
+	/**
+	 * Constructs a scope encoder with an empty function-written list.
+	 *
+	 * @param generator a factory function that creates the language-specific writer
+	 * @param access    the accessibility level for encoded declarations
+	 */
 	public ScopeEncoder(Function<PrintWriter, CodePrintWriter> generator,
 						Accessibility access) {
 		this(generator, access, new ArrayList<>());
 	}
 
+	/**
+	 * Constructs a scope encoder that shares a function-written list with a parent encoder,
+	 * preventing the same function from being emitted twice.
+	 *
+	 * @param generator        a factory function that creates the language-specific writer
+	 * @param access           the accessibility level for encoded declarations
+	 * @param functionsWritten a mutable list of already-written function names
+	 */
 	protected ScopeEncoder(Function<PrintWriter, CodePrintWriter> generator,
 						   Accessibility access,
 						   List<String> functionsWritten) {
@@ -66,7 +96,7 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 
 		functionsWritten.add(scope.getName());
 
-		this.result = new StringBuffer();
+		this.result = new StringBuilder();
 
 		scope.getAllRequiredScopes().stream()
 				.map(new ScopeEncoder(generator, Accessibility.INTERNAL, functionsWritten))
@@ -91,10 +121,10 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	}
 
 	@Override
-	public void moreIndent() { indent++; }
+	public void moreIndent() { }
 
 	@Override
-	public void lessIndent() { indent--; }
+	public void lessIndent() { }
 
 	@Override
 	public void print(String s) { append(s); }
@@ -105,6 +135,12 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	@Override
 	public void println() { append("\n"); }
 
+	/**
+	 * Appends a string to the output buffer, enforcing the {@link #MAX_CHARACTERS} limit.
+	 *
+	 * @param s the string to append
+	 * @throws IllegalArgumentException if appending would exceed the maximum character limit
+	 */
 	protected void append(String s) {
 		if (result.length() + s.length() > MAX_CHARACTERS) {
 			throw new IllegalArgumentException("Cannot encode Scope with more than " + MAX_CHARACTERS + " characters");

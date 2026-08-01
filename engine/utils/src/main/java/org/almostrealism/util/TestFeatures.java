@@ -96,12 +96,18 @@ import java.util.stream.LongStream;
  * <p>{@code AR_HARDWARE_DRIVER} is optional and best left unset to inherit the best
  * available backend for the current platform.</p>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author Michael Murray
  * @see TestSettings for test configuration options
  * @see ModelTestFeatures for ML-specific testing utilities
  * @see TensorTestFeatures for tensor creation utilities
  */
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
+	/** Child console used for test-scoped logging, isolated from the root console output. */
 	Console console = Console.root.child();
 
 	/**
@@ -118,7 +124,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 
 		value.reshape(shape(rows, colWidth).traverse()).print();
-		System.out.println("--");
+		log("--");
 	}
 
 	/**
@@ -397,6 +403,33 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Asserts that two boolean values are equal, with a custom error message.
+	 *
+	 * @param msg      the message to display if the assertion fails
+	 * @param expected the expected value
+	 * @param actual   the actual value
+	 * @throws AssertionError if the values are not equal
+	 */
+	default void assertEquals(String msg, boolean expected, boolean actual) {
+		if (actual != expected) {
+			throw new AssertionError(msg == null ? actual + " != " + expected : msg);
+		}
+	}
+
+	/**
+	 * Asserts that two boolean values are equal.
+	 *
+	 * @param expected the expected value
+	 * @param actual   the actual value
+	 * @throws AssertionError if the values are not equal
+	 */
+	default void assertEquals(boolean expected, boolean actual) {
+		if (actual != expected) {
+			throw new AssertionError(actual + " != " + expected);
+		}
+	}
+
+	/**
 	 * Asserts that two double values are not equal within hardware precision tolerance.
 	 *
 	 * @param a the first value
@@ -407,10 +440,26 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertEquals(a, b, false);
 	}
 
+	/**
+	 * Asserts equality or inequality of two doubles using the hardware precision epsilon.
+	 *
+	 * @param a        the expected value
+	 * @param b        the actual value
+	 * @param positive {@code true} to assert equality, {@code false} to assert inequality
+	 */
 	private static void assertEquals(double a, double b, boolean positive) {
 		assertEquals(null, a, b, positive);
 	}
 
+	/**
+	 * Asserts equality or inequality of two doubles using the hardware precision epsilon,
+	 * with an optional message included in the assertion error.
+	 *
+	 * @param msg      optional message to include in the assertion error, or {@code null}
+	 * @param a        the expected value
+	 * @param b        the actual value
+	 * @param positive {@code true} to assert equality, {@code false} to assert inequality
+	 */
 	private static void assertEquals(String msg, double a, double b, boolean positive) {
 		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon(true);
 		double fallbackGap = 10 * gap;
@@ -418,14 +467,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (Math.abs(a - b) >= gap) {
 			if (positive) {
 				if (Math.abs(a - b) >= fallbackGap) {
-					System.err.println("TestFeatures: " + b + " != " + a);
+					Console.root().warn(b + " != " + a, null);
 					throw new AssertionError(msg == null ? b + " != " + a : msg);
 				} else {
-					System.out.println("TestFeatures: " + b + " != " + a);
+					Console.root().println(String.valueOf(b) + " != " + a);
 				}
 			}
 		} else if (!positive) {
-			System.err.println("TestFeatures: " + b + " == " + a);
+			Console.root().warn(b + " == " + a, null);
 			throw new AssertionError(msg == null ? b + " == " + a : msg);
 		}
 	}
@@ -571,7 +620,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		AtomicReference<PackedCollection> outputRef = new AtomicReference<>();
 
 		if (kernel) {
-			System.out.println("TestFeatures: Running kernel evaluation...");
+			log("Running kernel evaluation...");
 			Producer<PackedCollection> p = supply.get();
 			profile(profile, () -> {
 				PackedCollection output = p.get().evaluate();
@@ -635,11 +684,30 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
-	 * Initializes kernel metrics collection with a custom profile.
-	 * Associates the profile with the local hardware for timing collection.
+	 * Initializes kernel metrics collection with a custom profile, capturing both timing
+	 * and generated kernel source.
+	 *
+	 * <p>Assigns the profile as the active profile (see
+	 * {@link org.almostrealism.hardware.Hardware#assignProfile}), which installs its
+	 * compilation listener so that the generated kernel source of every scope compiled
+	 * <em>after this call</em> is recorded into the profile. To capture the source of an
+	 * operation, call this method <em>before</em> the operation is compiled, then save the
+	 * profile:</p>
+	 *
+	 * <pre>{@code
+	 * OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("myKernel"));
+	 * Runnable r = ((OperationList) op.optimize()).get(profile); // compiles -> source captured
+	 * r.run();
+	 * profile.save(new File("results/myKernel.xml"));
+	 * // Inspect with ar-profile-analyzer: load_profile, then get_source on the operation node.
+	 * }</pre>
+	 *
+	 * <p>An operation compiled before this call (for example a warm-up run, or a prior run
+	 * whose signature is still in the instruction cache) is served from cache without
+	 * recompiling, so no source is recorded for it and {@code get_source} returns nothing.</p>
 	 *
 	 * @param <T>     the profile type
-	 * @param profile the operation profile to use for metrics collection
+	 * @param profile the operation profile to use for metrics and source collection
 	 * @return the same profile instance for method chaining
 	 */
 	default <T extends OperationProfile> T initKernelMetrics(T profile) {

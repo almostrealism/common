@@ -17,7 +17,8 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
@@ -124,33 +125,43 @@ import java.util.stream.Stream;
  * // -> Listeners run on executor thread pool
  * }</pre>
  *
- * <h2>Semaphore Integration</h2>
+ * <h2>Two-stage synchronization: readiness latch vs. completion semaphore</h2>
  *
- * <p>Optional {@link Semaphore} integration for coordinating multiple kernel executions:</p>
+ * <p>Because {@code apply} returns this process <em>before</em> its {@link #whenReady(Runnable)}
+ * listener has run (the listener may run later on an {@link Executor} thread), two distinct
+ * synchronization points are tracked. They are <em>not</em> the same event:</p>
+ *
+ * <ul>
+ *   <li><b>Readiness latch</b> ({@link #setReadyLatch}/{@link #awaitReady()}) — a host-thread
+ *       {@link DefaultLatchSemaphore} that fires once the {@code whenReady} listener has run,
+ *       meaning the arguments are processed and the dispatch has been <em>issued</em>. This is an
+ *       internal gate, not the operation's result.</li>
+ *   <li><b>Completion semaphore</b> ({@link #setSemaphore(Semaphore)}/{@link #getSemaphore()}) —
+ *       the device-completion {@link Semaphore} published by the operator dispatch, which fires
+ *       once the kernel has actually <em>finished</em>. This is the operation's true completion
+ *       and the handle a dependent operation chains on.</li>
+ * </ul>
+ *
+ * <p>Under fully synchronous dispatch these two collapse to the same instant; under batched
+ * (sustained) dispatch the kernel completion comes strictly after the dispatch is issued, which is
+ * why the two are tracked separately. A typical caller waits for both, in order:</p>
  * <pre>{@code
- * DefaultLatchSemaphore sem = new DefaultLatchSemaphore(3);  // 3 permits
- * details.setSemaphore(sem);
- *
- * details.whenReady(() -> kernel1.execute());
- * details.whenReady(() -> kernel2.execute());
- * details.whenReady(() -> kernel3.execute());
- *
- * // After all listeners execute
- * // sem.countDown() called 3 times -> semaphore released
+ * AcceleratedProcessDetails details = operation.apply(output, args);
+ * details.awaitReady();                 // dispatch has been issued
+ * details.getSemaphore().waitFor();     // kernel has completed
  * }</pre>
  *
  * <h2>Memory Replacement Operations</h2>
  *
  * <p>Integration with {@link MemoryReplacementManager} provides prepare/postprocess operations:</p>
  * <pre>{@code
- * OperationList prepare = details.getPrepare();
- * prepare.get().run();  // Prepare memory substitutions
+ * Semaphore prepared = Submittable.submit(details.getPrepareOperations(), dependsOn);
  *
- * // Execute kernel with processed arguments
- * executeKernel(details.getArguments());
+ * // Execute kernel with processed arguments, ordered after the prepare copies
+ * Semaphore done = executeKernel(details.getArguments(), prepared);
  *
- * OperationList postprocess = details.getPostprocess();
- * postprocess.get().run();  // Restore original memory
+ * // Restore original memory, ordered after the kernel
+ * Submittable.submit(details.getPostprocessOperations(), done);
  * }</pre>
  *
  * @see MemoryReplacementManager
@@ -160,6 +171,16 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 
 	/** Original unprocessed arguments, potentially containing nulls for async results. */
 	private Object[] originalArguments;
+
+	/**
+	 * Completion {@link Semaphore}s delivered with asynchronously produced arguments, indexed
+	 * like {@link #originalArguments}. An entry is non-null when the producer delivered the
+	 * argument via {@link #result(int, Object, Semaphore)} before the work filling it had
+	 * completed; the kernel dispatch must then be ordered after that completion (by merging
+	 * {@link #getArgumentCompletions()} into its {@code dependsOn}) instead of the host
+	 * waiting for the argument.
+	 */
+	private Semaphore[] argumentCompletions;
 
 	/** Final processed arguments after memory replacement, ready for kernel execution. */
 	private Object[] arguments;
@@ -173,11 +194,41 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	/** Executes completion listeners asynchronously when {@link Hardware#isAsync()} is true. */
 	private Executor executor;
 
-	/** Optional semaphore for coordinating kernel execution completion. */
-	private DefaultLatchSemaphore semaphore;
+	/**
+	 * Host-thread readiness latch for the asynchronous {@link #whenReady(Runnable)} mechanism.
+	 *
+	 * <p>This is <em>not</em> the operation's completion. It is counted down by
+	 * {@link #notifyListeners()} once the {@code whenReady} listener has finished running — i.e.
+	 * once the arguments have been processed and the dispatch has been issued (and the
+	 * {@link #semaphore completion semaphore} has been published). Because {@code apply} returns
+	 * the process before that listener runs (it may run later on an {@link Executor} thread),
+	 * callers use {@link #awaitReady()} to block on this latch and guarantee the dispatch has
+	 * happened before they read {@link #getSemaphore()} or issue a dependent operation.</p>
+	 */
+	private DefaultLatchSemaphore readyLatch;
+
+	/**
+	 * The operation's completion {@link Semaphore}, published by the operator dispatch (e.g. a
+	 * {@code MetalSemaphore} or {@code CLSemaphore} backing a device event). When set it is the
+	 * operation's true completion and is returned by {@link #getSemaphore()}, so callers wait on
+	 * (and can chain via {@code dependsOn}) actual kernel completion rather than the host enqueue.
+	 *
+	 * <p>It may be {@code null} for a fully synchronous provider whose dispatch returns no device
+	 * event; in that case {@link #getSemaphore()} falls back to the {@link #readyLatch}, which by
+	 * the time it is read has already fired (so it behaves as an already-completed latch).</p>
+	 */
+	private Semaphore semaphore;
 
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
+
+	/**
+	 * Release callbacks for destination buffers leased to this invocation from a
+	 * per-argument reuse slot (see {@code ProcessDetailsFactory}). Run exactly once
+	 * by {@link #releaseDestinationLeases()} when the invocation's full completion
+	 * chain has fired, returning each buffer to its slot for the next invocation.
+	 */
+	private List<Runnable> destinationLeases;
 
 	/**
 	 * Creates a new process details instance with the specified configuration.
@@ -191,6 +242,7 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 									 MemoryReplacementManager replacementManager,
 									 Executor executor) {
 		this.originalArguments = args;
+		this.argumentCompletions = new Semaphore[args.length];
 		this.kernelSize = kernelSize;
 		this.replacementManager = replacementManager;
 		this.executor = executor;
@@ -198,18 +250,22 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	}
 
 	/**
-	 * Returns the {@link OperationList} for prepare operations before kernel execution.
+	 * Returns the replacement copies that run before kernel execution (originals into
+	 * temporary buffers), each chaining on a {@link Semaphore} via
+	 * {@link io.almostrealism.concurrent.Submittable#submit(Semaphore)}.
 	 *
-	 * @return the prepare operations
+	 * @return the prepare copies
 	 */
-	public OperationList getPrepare() { return replacementManager.getPrepare(); }
+	public List<Submittable> getPrepareOperations() { return replacementManager.getPrepareOperations(); }
 
 	/**
-	 * Returns the {@link OperationList} for postprocess operations after kernel execution.
+	 * Returns the replacement copies that run after kernel execution (temporary buffers
+	 * back into originals), each chaining on a {@link Semaphore} via
+	 * {@link io.almostrealism.concurrent.Submittable#submit(Semaphore)}.
 	 *
-	 * @return the postprocess operations
+	 * @return the postprocess copies
 	 */
-	public OperationList getPostprocess() { return replacementManager.getPostprocess(); }
+	public List<Submittable> getPostprocessOperations() { return replacementManager.getPostprocessOperations(); }
 
 	/**
 	 * Returns true if there are no memory replacements to perform.
@@ -219,18 +275,111 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	public boolean isEmpty() { return replacementManager.isEmpty(); }
 
 	/**
-	 * Returns the {@link Semaphore} for coordinating kernel completion, or null if not set.
+	 * Returns the operation's completion {@link Semaphore} — the {@link #semaphore} published by
+	 * the operator dispatch (a {@code MetalSemaphore}, a {@code CLSemaphore}, or another device
+	 * event). It is valid once {@link #awaitReady()} has returned, which {@code apply} ensures
+	 * before handing the process back.
 	 *
-	 * @return the semaphore, or null if not set
+	 * <p>When the provider published no completion (a fully synchronous dispatch), this falls back
+	 * to the host {@link #readyLatch}; because {@code awaitReady} has already returned, that latch
+	 * has fired, so waiting on it returns immediately.</p>
+	 *
+	 * @return the completion semaphore, or the already-fired readiness latch as a fallback
 	 */
-	public Semaphore getSemaphore() { return semaphore; }
+	public Semaphore getSemaphore() {
+		return semaphore != null ? semaphore : readyLatch;
+	}
 
 	/**
-	 * Sets the {@link Semaphore} for coordinating kernel completion notifications.
-	 *
-	 * @param semaphore the semaphore to set
+	 * Blocks on the {@link #readyLatch} until this operation's arguments have been processed and
+	 * the dispatch has been issued — i.e. until {@link #setSemaphore(Semaphore)} has been called
+	 * with the operator's completion. This is an internal readiness gate, <em>not</em> the
+	 * operation's completion; {@code apply} waits on it before returning so the completion from
+	 * {@link #getSemaphore()} is available, and so a chained dependent operation is issued after
+	 * the one it depends on.
 	 */
-	public void setSemaphore(DefaultLatchSemaphore semaphore) { this.semaphore = semaphore; }
+	public void awaitReady() {
+		if (readyLatch != null) readyLatch.waitFor();
+	}
+
+	/**
+	 * Sets the host-thread {@link #readyLatch readiness latch} that {@link #awaitReady()} blocks
+	 * on. It is counted down by {@link #notifyListeners()} once the {@link #whenReady(Runnable)}
+	 * listener has run and the dispatch has been issued.
+	 *
+	 * @param readyLatch the readiness latch to set
+	 */
+	public void setReadyLatch(DefaultLatchSemaphore readyLatch) { this.readyLatch = readyLatch; }
+
+	/**
+	 * Sets the operation's completion {@link Semaphore}, as published by the operator dispatch.
+	 * When non-null this is returned by {@link #getSemaphore()} so callers wait on (and can chain)
+	 * actual kernel completion rather than the host {@link #readyLatch readiness latch}.
+	 *
+	 * @param semaphore the operator's completion semaphore, or null for a synchronous provider
+	 */
+	public void setSemaphore(Semaphore semaphore) {
+		this.semaphore = semaphore;
+	}
+
+	/**
+	 * Records a release callback for a destination buffer leased to this invocation
+	 * from a per-argument reuse slot.
+	 *
+	 * @param release returns the leased buffer to its slot; run once by
+	 *                {@link #releaseDestinationLeases()}
+	 */
+	public synchronized void addDestinationLease(Runnable release) {
+		if (destinationLeases == null) {
+			destinationLeases = new ArrayList<>();
+		}
+
+		destinationLeases.add(release);
+	}
+
+	/**
+	 * Returns true when this invocation holds leased destination buffers that must be
+	 * released once its completion chain has fired.
+	 *
+	 * @return true when {@link #addDestinationLease(Runnable)} has been called
+	 */
+	public synchronized boolean hasDestinationLeases() {
+		return destinationLeases != null && !destinationLeases.isEmpty();
+	}
+
+	/**
+	 * Releases every leased destination buffer back to its reuse slot, exactly once.
+	 *
+	 * <p>Safe to call only when nothing can still read or write the leased buffers —
+	 * in practice, when the completion from {@link #getSemaphore()} has fired, since
+	 * that is adopted from the end of the kernel/copy-back/copy-out chain. If this is
+	 * never called (an invocation that failed before dispatch), the leased slots stay
+	 * checked out and later invocations simply allocate fresh buffers.</p>
+	 *
+	 * <p><b>Lock-ordering hazard (known deadlock).</b> This method acquires the instance monitor,
+	 * and it is invoked from the device-completion callback — on the Metal backend, the
+	 * command-completion pool. Concurrently, {@link #notifyListeners()} holds that same monitor
+	 * while a listener may synchronously block awaiting device completion. When the completion
+	 * being awaited is the very one whose callback runs this method, the completion-pool thread
+	 * blocks on the monitor while the holder waits for that completion — a hard deadlock that
+	 * appears only under concurrent multi-channel dispatch (invisible in small single-op tests).
+	 * The lease/reuse mechanism that makes this release necessary is therefore disabled by
+	 * default; see {@code ProcessDetailsFactory.enableDestinationReuse}
+	 * ({@code AR_HARDWARE_DESTINATION_REUSE}). Re-enabling reuse requires first removing this
+	 * method from the monitor-holding path.</p>
+	 */
+	public void releaseDestinationLeases() {
+		List<Runnable> leases;
+
+		synchronized (this) {
+			leases = destinationLeases;
+			destinationLeases = null;
+		}
+
+		if (leases != null) {
+			leases.forEach(Runnable::run);
+		}
+	}
 
 	/**
 	 * Returns the processed arguments as a typed array.
@@ -267,16 +416,22 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	/**
 	 * Notifies all registered listeners that arguments are ready.
 	 *
-	 * <p>Executes each listener and counts down the semaphore (if set) after each execution.
-	 * This method is synchronized to prevent concurrent notification.</p>
+	 * <p>Executes each listener and counts down the {@link #readyLatch readiness latch} (if set)
+	 * after each execution. This method is synchronized to prevent concurrent notification.</p>
+	 *
+	 * <p>Because it is {@code synchronized}, the instance monitor is held for the entire duration
+	 * of every listener — including a listener that synchronously awaits device completion. Any
+	 * work that runs on the device-completion path and needs this same monitor (notably
+	 * {@link #releaseDestinationLeases()}) can therefore deadlock against it; see that method for
+	 * the full hazard.</p>
 	 */
 	private synchronized void notifyListeners() {
 		listeners.forEach(r -> {
 			try {
 				r.run();
 			} finally {
-				if (semaphore != null) {
-					semaphore.countDown();
+				if (readyLatch != null) {
+					readyLatch.countDown();
 				}
 			}
 		});
@@ -331,17 +486,57 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * @throws IllegalStateException    if all arguments are already available
 	 */
 	public void result(int index, Object result) {
-		if (originalArguments[index] != null) {
+		result(index, result, null);
+	}
+
+	/**
+	 * Sets an asynchronous result for the specified argument index along with the completion of
+	 * the work producing it. When {@code completion} is non-null the argument's contents are not
+	 * yet valid; the caller of {@link #getArguments()} must order the kernel after every
+	 * completion in {@link #getArgumentCompletions()} (typically by merging them into the
+	 * dispatch's {@code dependsOn}) rather than reading the argument on the host first.
+	 *
+	 * @param index      the argument index to set (0-based)
+	 * @param result     the result value to set at the specified index
+	 * @param completion the completion of the work filling {@code result}, or {@code null}
+	 *                   when the value is already complete
+	 * @throws IllegalArgumentException if a result has already been set for this index
+	 * @throws IllegalStateException    if all arguments are already available
+	 */
+	public void result(int index, Object result, Semaphore completion) {
+		if (result == null) {
+			throw new IllegalArgumentException("Null result for argument index " + index +
+					"; a null argument can never satisfy readiness, so accepting it would " +
+					"leave this process waiting forever");
+		} else if (originalArguments[index] != null) {
 			throw new IllegalArgumentException("Duplicate result for argument index " + index);
 		} else if (isReady()) {
 			throw new IllegalStateException("Received result when details are already available");
 		}
 
+		argumentCompletions[index] = completion;
 		originalArguments[index] = result;
 
 		// TODO  This check should not block the
 		// TODO  return of the results method
 		checkReady();
+	}
+
+	/**
+	 * Returns the completions of any asynchronously produced arguments that were delivered
+	 * before their contents were valid (see {@link #result(int, Object, Semaphore)}). The
+	 * kernel dispatch must be ordered after all of them. The list is safe to read from a
+	 * {@link #whenReady(Runnable)} listener, since every delivery precedes the readiness
+	 * notification.
+	 *
+	 * @return the non-null argument completions, possibly empty
+	 */
+	public List<Semaphore> getArgumentCompletions() {
+		List<Semaphore> completions = new ArrayList<>();
+		for (Semaphore s : argumentCompletions) {
+			if (s != null) completions.add(s);
+		}
+		return completions;
 	}
 
 	/**

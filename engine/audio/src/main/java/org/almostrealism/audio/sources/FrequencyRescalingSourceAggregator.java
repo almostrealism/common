@@ -35,11 +35,21 @@ import org.almostrealism.time.computations.FourierTransform;
  * @see FourierTransform
  */
 public class FrequencyRescalingSourceAggregator implements SourceAggregator, CellFeatures {
+	/** When true, applies the spectral filter in the frequency domain before IFFT. */
 	public static boolean enableFilter = true;
+
+	/** When true, normalizes the filter spectrum to unit mean before applying. */
 	public static boolean enableNormalization = false;
 
+	/** Number of FFT bins used for the forward and inverse transforms. */
 	private final int fftBins = WaveData.FFT_BINS;
 
+	/**
+	 * Computes the forward FFT of the given input, padding to a multiple of {@code fftBins} if necessary.
+	 *
+	 * @param input audio producer to transform
+	 * @return FourierTransform containing the complex spectrum
+	 */
 	protected FourierTransform fft(CollectionProducer input) {
 		int frames = shape(input).getTotalSize();
 		int slices = frames / fftBins;
@@ -54,6 +64,12 @@ public class FrequencyRescalingSourceAggregator implements SourceAggregator, Cel
 		return fft(fftBins, input, ComputeRequirement.CPU);
 	}
 
+	/**
+	 * Computes the inverse FFT of the given complex spectrum.
+	 *
+	 * @param input complex spectrum producer to invert
+	 * @return FourierTransform containing the reconstructed time-domain signal
+	 */
 	protected FourierTransform ifft(CollectionProducer input) {
 		return ifft(fftBins, input, ComputeRequirement.CPU);
 	}
@@ -85,6 +101,13 @@ public class FrequencyRescalingSourceAggregator implements SourceAggregator, Cel
 		return result.flatten();
 	}
 
+	/**
+	 * Extracts a frequency-domain filter from the given audio by computing its FFT
+	 * and averaging the magnitude spectrum across all time slices.
+	 *
+	 * @param input audio producer to use as the filter source
+	 * @return 1D producer of averaged magnitude values per frequency bin
+	 */
 	protected CollectionProducer extractFilter(CollectionProducer input) {
 		CollectionProducer filter = fft(input);
 		filter = filter.transpose(2).magnitude(2);

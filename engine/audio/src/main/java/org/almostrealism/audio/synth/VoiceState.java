@@ -25,13 +25,29 @@ package org.almostrealism.audio.synth;
  * @see VoiceAllocator
  */
 public class VoiceState {
+	/** Index of this voice within the voice pool (0-based). */
 	private final int voiceIndex;
+
+	/** True when this voice is currently playing or releasing a note. */
 	private boolean active;
+
+	/** MIDI note number being played, or -1 when idle. */
 	private int midiNote;
+
+	/** Velocity of the currently playing note (0.0–1.0). */
 	private double velocity;
+
+	/** System nanosecond timestamp when the current note began. */
 	private long startTime;
+
+	/** True during the release phase after a note-off event. */
 	private boolean releasing;
 
+	/**
+	 * Creates a new VoiceState for the voice at the given index.
+	 *
+	 * @param voiceIndex index of this voice in the voice pool
+	 */
 	public VoiceState(int voiceIndex) {
 		this.voiceIndex = voiceIndex;
 		this.active = false;

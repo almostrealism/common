@@ -45,6 +45,7 @@ import java.util.function.BiFunction;
  * @see TransformMatrix
  */
 public class TransformMatrixAdjoint extends CollectionProducerComputationBase {
+	/** Counter used to generate unique variable names in the generated scope. */
 	private int varIdx = 0;
 
 	/**
@@ -96,6 +97,17 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase {
 		return scope;
 	}
 	
+	/**
+	 * Calculates a single cofactor element of the input 4x4 matrix.
+	 * The cofactor at (row, col) is the signed determinant of the 3x3 minor
+	 * obtained by removing the specified row and column.
+	 *
+	 * @param scope  the scope into which intermediate variables are declared
+	 * @param matrix the input 4x4 matrix variable
+	 * @param row    the row index of the element (0-3)
+	 * @param col    the column index of the element (0-3)
+	 * @return an expression representing the cofactor value
+	 */
 	private Expression<Double> calculateCofactor(Scope<?> scope, ArrayVariable<Double> matrix, int row, int col) {
 		// Calculate cofactor = (-1)^(row+col) * determinant of 3x3 minor
 		double sign = ((row + col) % 2 == 0) ? 1.0 : -1.0;
@@ -108,6 +120,16 @@ public class TransformMatrixAdjoint extends CollectionProducerComputationBase {
 			e(sign).multiply(det));
 	}
 	
+	/**
+	 * Computes the determinant of the 3x3 minor formed by removing the specified row and column
+	 * from the 4x4 input matrix. Uses the standard Sarrus/cofactor expansion formula.
+	 *
+	 * @param scope      the scope into which intermediate variables are declared
+	 * @param matrix     the input 4x4 matrix variable
+	 * @param excludeRow the row index to exclude (0-3)
+	 * @param excludeCol the column index to exclude (0-3)
+	 * @return an expression representing the 3x3 determinant value
+	 */
 	private Expression<Double> calculate3x3MinorDeterminant(Scope<?> scope, ArrayVariable<Double> matrix, int excludeRow, int excludeCol) {
 		// Get the 9 elements of the 3x3 minor
 		Expression<Double>[] elements = new Expression[9];

@@ -53,8 +53,13 @@ import java.util.function.Supplier;
  */
 public class BiquadFilterCell extends CollectionTemporalCellAdapter implements CodeFeatures {
 
+	/** Filter state data holding coefficients and delay line values. */
 	private final BiquadFilterData data;
+
+	/** Single-element buffer storing the most recent filtered output sample. */
 	private final PackedCollection outputValue;
+
+	/** Audio sample rate in Hz used for coefficient calculation. */
 	private final int sampleRate;
 
 	/**
@@ -90,6 +95,15 @@ public class BiquadFilterCell extends CollectionTemporalCellAdapter implements C
 	 */
 	public BiquadFilterData getData() {
 		return data;
+	}
+
+	/**
+	 * Returns the sample rate in Hz used for coefficient calculation.
+	 *
+	 * @return the sample rate in Hz
+	 */
+	public int getSampleRate() {
+		return sampleRate;
 	}
 
 	/**

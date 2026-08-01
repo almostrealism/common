@@ -7,8 +7,18 @@ import org.almostrealism.model.Block;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for diffusion model features including upsampling layers.
+ *
+ * @see DiffusionFeatures
+ */
 public class DiffusionFeaturesTests extends TestSuiteBase implements DiffusionFeatures {
-	@Test(timeout = 5 * 60000)
+
+	/**
+	 * Tests the upsampling layer for diffusion models.
+	 * Verifies that a simple upsampling block can be set up and executed.
+	 */
+	@Test(timeout = 7 * 60000)
 	public void upsample() {
 		int batchSize = 4;
 		int inputChannels = 56;

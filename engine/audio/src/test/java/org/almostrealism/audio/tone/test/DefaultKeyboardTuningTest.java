@@ -31,8 +31,11 @@ import org.junit.Test;
  */
 public class DefaultKeyboardTuningTest extends TestSuiteBase {
 
-	private static final double FREQ_TOLERANCE = 0.01; // Hz tolerance for frequency comparison
-	private static final double RATIO_TOLERANCE = 0.0001; // Tolerance for ratio comparisons
+	/** Hz tolerance for frequency comparisons */
+	private static final double FREQ_TOLERANCE = 0.01;
+
+	/** Tolerance for ratio comparisons */
+	private static final double RATIO_TOLERANCE = 0.0001;
 
 	/**
 	 * The semitone ratio in 12-tone equal temperament.

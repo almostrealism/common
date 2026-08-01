@@ -1,6 +1,8 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.collect.CollectionProducer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -154,20 +156,24 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 		log("\n=== BENCHMARK COMPLETE ===");
 	}
 
+	/**
+	 * Initializes weight matrix with test values.
+	 */
 	private void initializeWeights(PackedCollection weights, int rows, int cols) {
-		for (int i = 0; i < Math.min(rows, 100); i++) {
-			for (int j = 0; j < cols; j++) {
-				weights.setMem(i * cols + j, 0.01 * ((i + 1) * (j + 1) % 100));
-			}
-		}
+		int n = Math.min(rows, 100) * cols;
+		a(cp(weights.range(new TraversalPolicy(n), 0)), integers(1, n + 1).multiply(0.001)).get().run();
 	}
 
+	/**
+	 * Initializes input vector with test values.
+	 */
 	private void initializeInput(PackedCollection input, int size) {
-		for (int i = 0; i < size; i++) {
-			input.setMem(i, 0.1 * (i + 1));
-		}
+		a(cp(input), integers(1, size + 1).multiply(0.1)).get().run();
 	}
 
+	/**
+	 * Verifies output correctness against expected computation.
+	 */
 	private void verifyOutput(PackedCollection output, PackedCollection weights,
 							  PackedCollection input, int outputSize, int inputSize) {
 		for (int i = 0; i < Math.min(10, outputSize); i++) {

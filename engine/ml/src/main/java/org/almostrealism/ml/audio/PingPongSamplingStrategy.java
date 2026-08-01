@@ -35,9 +35,16 @@ import java.util.Random;
  */
 public class PingPongSamplingStrategy implements SamplingStrategy, CodeFeatures {
 
+	/** Maximum log signal-to-noise ratio (used as the start of the timestep linspace). */
 	private final float logSnrMax;
+
+	/** Minimum log signal-to-noise ratio (used as the end of the timestep linspace). */
 	private final float logSnrMin;
+
+	/** Maximum sigma value, clamped onto the first timestep boundary. */
 	private final float sigmaMax;
+
+	/** Minimum sigma value, clamped onto the last timestep boundary (typically 0). */
 	private final float sigmaMin;
 
 	/**

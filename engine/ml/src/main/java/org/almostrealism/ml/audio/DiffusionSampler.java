@@ -59,14 +59,28 @@ import java.util.function.DoubleConsumer;
  */
 public class DiffusionSampler implements ConsoleFeatures {
 
+	/** Diffusion model used to compute noise predictions during the sampling loop. */
 	private final DiffusionModel model;
+
+	/** Sampling strategy (e.g., DDIM or ping-pong) that determines each denoising step. */
 	private final SamplingStrategy strategy;
+
+	/** Total number of diffusion training timesteps the scheduler was trained with. */
 	private final int numSteps;
+
+	/** Shape of the latent tensor that is iteratively denoised. */
 	private final TraversalPolicy latentShape;
+
+	/** Total number of elements in the latent tensor; cached for noise generation. */
 	private final int latentSize;
 
+	/** Number of inference steps to actually run (may be less than {@link #numSteps}). */
 	private int numInferenceSteps;
+
+	/** Optional callback invoked with progress fraction (0.0–1.0) after each step. */
 	private DoubleConsumer progressCallback;
+
+	/** Whether to log per-step progress and NaN diagnostics. */
 	private boolean verbose = true;
 
 	/**
@@ -163,6 +177,15 @@ public class DiffusionSampler implements ConsoleFeatures {
 			throw new IllegalArgumentException("Strength must be between 0.0 and 1.0");
 		}
 
+		// The sampler operates in latentShape (the model's latent input shape). Reject
+		// a start latent of any other shape rather than silently reshaping it: a
+		// mismatch means the caller produced the wrong tensor and must be corrected at
+		// the source.
+		if (!startLatent.getShape().equalsIgnoreAxis(latentShape)) {
+			throw new IllegalArgumentException("Start latent shape " + startLatent.getShape() +
+					" does not match the expected latent shape " + latentShape);
+		}
+
 		// Special case: strength = 0.0 means no diffusion
 		if (strength == 0.0) {
 			if (verbose) log("Strength is 0.0 - returning input latent directly");
@@ -211,14 +234,18 @@ public class DiffusionSampler implements ConsoleFeatures {
 		long modelTotal = 0;
 		long samplingTotal = 0;
 
-		PackedCollection tTensor = new PackedCollection(1);
+		// Timestep is a per-batch scalar; supply it in the model's declared
+		// (batchSize, 1) shape rather than a bare 1-D tensor so the model receives
+		// exactly the rank it was compiled for.
+		PackedCollection tTensor = new PackedCollection(new TraversalPolicy(latentShape.length(0), 1));
 		int totalSteps = numInferenceSteps - startStep;
 
 		for (int step = startStep; step < numInferenceSteps; step++) {
 			double t = timesteps[step];
 			double tPrev = timesteps[step + 1];
 
-			// Set timestep tensor
+			// TODO  The schedule is a device-resident table indexed by the step, once
+			// TODO  SamplingStrategy can express it as a producer instead of a double[].
 			tTensor.setMem(0, t);
 
 			// Model forward pass
@@ -275,6 +302,13 @@ public class DiffusionSampler implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Checks the given collection for NaN values and logs a warning if any are found.
+	 * Only active when {@link #verbose} is {@code true}.
+	 *
+	 * @param x       Collection to check
+	 * @param context Human-readable description for the warning message
+	 */
 	private void checkNan(PackedCollection x, String context) {
 		if (verbose) {
 			long nanCount = x.count(Double::isNaN);

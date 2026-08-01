@@ -36,12 +36,31 @@ import java.util.function.Supplier;
  * @see org.almostrealism.audio.AudioLibrary
  */
 public interface FileWaveDataProviderTree<T extends Tree<? extends Supplier<FileWaveDataProvider>>> extends Tree<T>, PathResource, Signature {
+	/**
+	 * Returns a supplier that always reports this tree node as active.
+	 * Implementations may override this to support conditional visibility.
+	 *
+	 * @return a BooleanSupplier returning true
+	 */
 	default BooleanSupplier active() {
 		return () -> true;
 	}
 
+	/**
+	 * Returns the path of this node relative to a root path.
+	 *
+	 * @param path the absolute path to compute the relative path from
+	 * @return the relative path, or the original path if not under this node's root
+	 */
 	String getRelativePath(String path);
 
+	/**
+	 * Computes the path of a file relative to the given root directory.
+	 *
+	 * @param root the root directory
+	 * @param path the absolute path to make relative
+	 * @return the relative path if {@code path} starts with {@code root}'s absolute path, otherwise {@code path}
+	 */
 	static String getRelativePath(File root, String path) {
 		String rootPath = root.getAbsolutePath();
 

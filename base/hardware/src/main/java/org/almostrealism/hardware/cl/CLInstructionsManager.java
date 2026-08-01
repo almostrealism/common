@@ -70,6 +70,7 @@ public class CLInstructionsManager extends AbstractInstructionSetManager<Default
 	 *
 	 * @return the CLComputeContext for this manager
 	 */
+	@Override
 	public CLComputeContext getComputeContext() {
 		return (CLComputeContext) super.getComputeContext();
 	}

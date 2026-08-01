@@ -77,8 +77,13 @@ public class AdapterConfig {
 		FFN_OUT
 	}
 
+	/** The low-rank dimension for LoRA matrices (default 8). */
 	private int rank = 8;
+
+	/** The scaling factor for LoRA contributions (default 16.0). */
 	private double alpha = 16.0;
+
+	/** The set of layer types to which LoRA adaptation is applied. */
 	private Set<TargetLayer> targets = EnumSet.of(
 			TargetLayer.SELF_ATTENTION_QKV,
 			TargetLayer.SELF_ATTENTION_OUT

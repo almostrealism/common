@@ -147,6 +147,7 @@ public class Cases<T> extends Scope<T> {
 	 * @param mapper function to transform each argument
 	 * @return list of mapped arguments with duplicates removed
 	 */
+	@Override
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();
 		args.addAll(extractArgumentDependencies(getConditions().stream()
@@ -217,6 +218,21 @@ public class Cases<T> extends Scope<T> {
 	public Cases<T> generate(List<Scope<T>> children) {
 		Cases<T> scope = getMetadata() == null ? new Cases<>(getName()) : new Cases<>(getName(), getMetadata());
 		scope.getChildren().addAll(children);
+		return scope;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>In addition to the statements and children rewritten by the superclass, this
+	 * rewrites every branch condition so that substitutions reach the expressions a
+	 * {@link Cases} scope stores outside its statement list.</p>
+	 */
+	@Override
+	public Cases<T> replace(Expression<?> target, Expression<?> replacement) {
+		Cases<T> scope = (Cases<T>) super.replace(target, replacement);
+		getConditions().forEach(c ->
+				scope.getConditions().add((Expression<Boolean>) c.replace(target, replacement)));
 		return scope;
 	}
 }

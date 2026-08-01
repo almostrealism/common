@@ -201,6 +201,7 @@ public class CJNIPrintWriter extends CPrintWriter {
 	 *
 	 * @param arguments the array variables to read
 	 */
+	@Override
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
 		println(new ExpressionAssignment<long[]>(true,
 				new StaticReference(long[].class, "*argArr"),
@@ -239,6 +240,7 @@ public class CJNIPrintWriter extends CPrintWriter {
 	 *
 	 * @param arguments the array variables to release
 	 */
+	@Override
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
 		super.renderArgumentWrites(arguments);
 

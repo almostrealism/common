@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package almostrealism.test;
+
+option java_package = "org.almostrealism.persist.test";
+option java_outer_classname = "TestRecordProto";
+
+message TestRecord {
+  string id = 1;
+  string content = 2;
+  int32 value = 3;
+}

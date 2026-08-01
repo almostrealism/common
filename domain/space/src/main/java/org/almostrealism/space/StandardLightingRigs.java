@@ -21,13 +21,25 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.primitives.RectangularLight;
 
 /**
+ * Factory class that provides pre-built standard lighting configurations for scenes.
+ *
  * @author  Michael Murray
  */
 public class StandardLightingRigs {
+	/** When {@code true}, a {@link RectangularLight} is added to the default rig; otherwise only point lights are used. */
 	private static final boolean enableRectangularLight = false;
-	
+
+	/** Default intensity for the point lights added by {@link #addDefaultLights(Scene)}. */
 	public static double defaultBrightness = 1.0;
-	
+
+	/**
+	 * Adds a standard set of lights to the given scene.
+	 *
+	 * <p>The rig consists of a point light above and in front of the scene.
+	 * A {@link RectangularLight} is included only when {@code enableRectangularLight} is {@code true}.</p>
+	 *
+	 * @param scene the scene to which the lights are added
+	 */
 	public static void addDefaultLights(Scene<?> scene) {
 		RectangularLight rl = new RectangularLight(2.0, 2.0);
 		rl.setColor(new RGB(1.0, 1.0, 1.0));

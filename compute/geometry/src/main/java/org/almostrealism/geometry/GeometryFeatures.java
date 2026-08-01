@@ -21,6 +21,8 @@ import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionCosineComputation;
+import org.almostrealism.collect.computations.CollectionSineComputation;
 
 /**
  * A comprehensive feature interface providing geometric and trigonometric operations.
@@ -34,6 +36,11 @@ import org.almostrealism.collect.PackedCollection;
  *   <li>Vector reflection calculations</li>
  *   <li>All ray manipulation utilities from {@link RayFeatures}</li>
  * </ul>
+ *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
  *
  * @author Michael Murray
  * @see ScalarFeatures
@@ -50,25 +57,40 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	/**
 	 * Computes the sine of each element in the input collection.
 	 *
+	 * <p>This method uses {@link CollectionSineComputation} which implements delta() at the
+	 * Producer level, creating isolated computation boundaries for efficient automatic
+	 * differentiation during backpropagation.</p>
+	 *
 	 * @param input the input values
 	 * @return a producer for the sine of the input
 	 */
 	default CollectionProducer sin(Producer<PackedCollection> input) {
-		// TODO  Add shortcircuit
-		return compute("sin",
-				shape -> args -> sin(shape, args[1]), input);
+		return new CollectionSineComputation(shape(input), input);
 	}
 
 	/**
 	 * Computes the cosine of each element in the input collection.
 	 *
+	 * <p>This method uses {@link CollectionCosineComputation} which implements delta() at the
+	 * Producer level, creating isolated computation boundaries for efficient automatic
+	 * differentiation during backpropagation.</p>
+	 *
 	 * @param input the input values
 	 * @return a producer for the cosine of the input
 	 */
 	default CollectionProducer cos(Producer<PackedCollection> input) {
-		// TODO  Add shortcircuit
-		return compute("cos",
-				shape -> args -> cos(shape, args[1]), input);
+		return new CollectionCosineComputation(shape(input), input);
+	}
+
+	/**
+	 * Computes the arc-cosine (inverse cosine) of each element in the input collection.
+	 *
+	 * @param input the input values, each defined on {@code [-1, 1]}
+	 * @return a producer for the arc-cosine of the input
+	 */
+	default CollectionProducer acos(Producer<PackedCollection> input) {
+		return compute("acos",
+				shape -> args -> acos(shape, args[1]), input);
 	}
 
 	/**

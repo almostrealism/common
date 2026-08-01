@@ -34,11 +34,34 @@ import org.almostrealism.collect.PackedCollection;
  * @see KeyPosition
  */
 public interface NoteAudio extends KeyboardTuned {
+	/**
+	 * Returns a producer yielding the pitch-adjusted audio for the given key position and channel.
+	 *
+	 * @param target  the key position (pitch) to generate audio for
+	 * @param channel audio channel index (-1 for all channels)
+	 * @return producer that generates the note audio
+	 */
 	Producer<PackedCollection> getAudio(KeyPosition<?> target, int channel);
 
+	/**
+	 * Returns the playback duration in seconds for the given key position.
+	 *
+	 * @param target the key position
+	 * @return duration in seconds
+	 */
 	double getDuration(KeyPosition<?> target);
 
+	/**
+	 * Returns the underlying WaveData used as the source audio.
+	 *
+	 * @return the source WaveData
+	 */
 	WaveData getWaveData();
 
+	/**
+	 * Returns the audio sample rate in Hz.
+	 *
+	 * @return sample rate in Hz
+	 */
 	int getSampleRate();
 }

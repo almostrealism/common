@@ -48,7 +48,7 @@ import java.util.stream.Stream;
  * <p>Allocation tracking can be configured via environment variables:</p>
  * <ul>
  *   <li><b>AR_HARDWARE_MEMORY_WARNINGS</b>: Enable/disable warnings (default: true)</li>
- *   <li><b>AR_HARDWARE_ALLOCATION_TRACE_FRAMES</b>: Number of stack frames to capture (default: 16, 0 to disable)</li>
+ *   <li><b>AR_HARDWARE_ALLOCATION_TRACE_FRAMES</b>: Number of stack frames to capture (default: 0, disabled)</li>
  * </ul>
  *
  * <pre>
@@ -133,20 +133,22 @@ import java.util.stream.Stream;
  *     System.err.println("  at " + frame);
  * }
  * // Output:
- * //   at DirectBuffer.<init>(DirectBuffer.java:25)
- * //   at MyClass.processData(MyClass.java:42)  <-- Source of leak!
+ * //   at DirectBuffer.<init>(DirectBuffer.java:NN)
+ * //   at MyClass.processData(MyClass.java:NN)  <-- Source of leak!
  * }</pre>
  *
  * <h2>Performance Considerations</h2>
  *
- * <p>Allocation tracking has minimal overhead (~1-2% in typical workloads), but can be
- * disabled for production deployments:</p>
+ * <p>Allocation tracking is disabled by default: capturing a stack trace on every
+ * allocation is measurable overhead on workloads that allocate intermediate buffers
+ * each pass (several percent of a real-time audio tick). Enable it when diagnosing
+ * a leak:</p>
  *
  * <pre>
- * # Development: Full tracking
+ * # Leak diagnosis: capture 16 frames at every allocation
  * export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=16
  *
- * # Production: Disable tracking
+ * # Default: no tracking
  * export AR_HARDWARE_ALLOCATION_TRACE_FRAMES=0
  * </pre>
  *
@@ -154,16 +156,19 @@ import java.util.stream.Stream;
  * @see Bytes
  */
 public abstract class RAM implements Memory {
+	/** If true, warning messages are emitted when suspect memory operations are detected. */
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
-	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(16);
+	/** Number of stack frames to capture at allocation time for leak tracking (0, the default, disables capture). */
+	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(0);
 
+	/** Stack trace captured at allocation time, used to diagnose memory leaks; may be null if disabled. */
 	private final StackTraceElement[] allocationStackTrace;
 
 	/**
 	 * Creates a {@link RAM} instance with default allocation tracking.
 	 *
 	 * <p>Captures the allocation stack trace based on {@link #allocationTraceFrames}
-	 * configuration (default: 16 frames).</p>
+	 * configuration (default: 0, no capture).</p>
 	 */
 	protected RAM() {
 		this(allocationTraceFrames);

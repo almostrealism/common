@@ -22,9 +22,22 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * An exponential expression that computes {@code e^x} for a single operand.
+ *
+ * <p>Generates code of the form {@code exp(input)}. The derivative of {@code exp(x)}
+ * is {@code exp(x)} itself, so the delta pass returns a product of the operand's delta
+ * and this expression.</p>
+ */
 public class Exp extends Expression<Double> {
+	/**
+	 * Constructs an exponential expression for the given operand.
+	 *
+	 * @param input the exponent operand
+	 */
 	protected Exp(Expression<Double> input) {
 		super(Double.class, input);
 	}
@@ -51,6 +64,8 @@ public class Exp extends Expression<Double> {
 		return OptionalLong.empty();
 	}
 
+	/** {@inheritDoc} Evaluates to {@code e^children[0]}. */
+	@Override
 	public Number evaluate(Number... children) {
 		return Math.exp(children[0].doubleValue());
 	}
@@ -71,7 +86,25 @@ public class Exp extends Expression<Double> {
 		return product(target.getShape(), List.of(delta, exp));
 	}
 
+	/**
+	 * Creates an exponential expression for the given operand.
+	 *
+	 * <p>Folds constants where possible. Non-FP operands are widened with
+	 * {@link Expression#toDouble()} so the emitted {@code exp()} call always
+	 * has a floating-point argument — Metal's {@code exp()} overloads are
+	 * FP-only and an integer operand triggers a compile ambiguity.</p>
+	 *
+	 * @param input the exponent operand
+	 * @param <T>   the result type (always {@link Double})
+	 * @return a constant if the input has a known double value, otherwise a new {@link Exp}
+	 */
 	public static <T> Expression<T> of(Expression input) {
-		return (Expression<T>) new Exp(input);
+		OptionalDouble d = input.doubleValue();
+
+		if (d.isPresent()) {
+			return (Expression<T>) new DoubleConstant(Math.exp(d.getAsDouble()));
+		}
+
+		return (Expression<T>) new Exp(input.toDouble());
 	}
 }

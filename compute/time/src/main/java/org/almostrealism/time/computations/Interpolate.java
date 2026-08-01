@@ -32,7 +32,6 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -195,8 +194,11 @@ public class Interpolate extends CollectionProducerComputationBase {
 	 */
 	public static boolean enableFunctionalPosition = true;
 
+	/** Maps an array index expression to the corresponding time value. */
 	private final Function<Expression, Expression> timeForIndex;
+	/** Maps a time value expression to the corresponding fractional array index. */
 	private final Function<Expression, Expression> indexForTime;
+	/** Whether a rate producer was supplied and should be applied during interpolation. */
 	private final boolean applyRate;
 
 	/**
@@ -248,6 +250,12 @@ public class Interpolate extends CollectionProducerComputationBase {
 		this.applyRate = rate != null;
 	}
 
+	/**
+	 * Returns the expression that reads a single complex sample from the input series at the given position.
+	 *
+	 * @param pos the fractional index expression within the time-series
+	 * @return an expression evaluating to the series value at {@code pos}
+	 */
 	protected Expression getSeriesValue(Expression<?> pos) {
 		ArrayVariable<?> var = getArgument(1);
 
@@ -266,15 +274,30 @@ public class Interpolate extends CollectionProducerComputationBase {
 			} else if (c.getShape().isFixedCount()) {
 				return c.getValueAt(pos);
 			}
+
+			// A variable-count series provides one series of getShape().getSize()
+			// values to each kernel instance, so the position is addressed within
+			// the current kernel's series explicitly
+			return c.getValueAt(kernel().multiply(c.getShape().getSize()).add(pos.toInt()));
 		}
 
-		return var.getValueRelative(pos);
+		return var.reference(kernel().multiply(var.length()).add(pos.toInt()));
 	}
 
+	/**
+	 * Returns the expression for the query time value taken from the position producer argument.
+	 *
+	 * @return an expression evaluating to the current kernel's time coordinate
+	 */
 	protected Expression getTime() {
 		return getArgument(2).reference(kernel());
 	}
 
+	/**
+	 * Returns the expression for the playback rate, or a constant 1.0 if no rate producer was supplied.
+	 *
+	 * @return an expression evaluating to the effective sample rate multiplier
+	 */
 	protected Expression<Double> getRate() {
 		if (applyRate) {
 			return getArgument(3).valueAt(0);
@@ -287,16 +310,16 @@ public class Interpolate extends CollectionProducerComputationBase {
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 
-		Expression idx = new StaticReference(Integer.class, getNameProvider().getVariableName(0));
-		Expression left = new StaticReference(Integer.class, getNameProvider().getVariableName(1));
-		Expression right = new StaticReference(Integer.class, getNameProvider().getVariableName(2));
-		Expression leftO = new StaticReference(Integer.class, getNameProvider().getVariableName(3));
-		Expression rightO = new StaticReference(Integer.class, getNameProvider().getVariableName(4));
-		Expression bi = new StaticReference(Double.class, getNameProvider().getVariableName(5));
-		String v1 = getNameProvider().getVariableName(6);
-		String v2 = getNameProvider().getVariableName(7);
-		String t1 = getNameProvider().getVariableName(8);
-		String t2 = getNameProvider().getVariableName(9);
+		Expression idx = new StaticReference(Integer.class, getVariableName(0));
+		Expression left = new StaticReference(Integer.class, getVariableName(1));
+		Expression right = new StaticReference(Integer.class, getVariableName(2));
+		Expression leftO = new StaticReference(Integer.class, getVariableName(3));
+		Expression rightO = new StaticReference(Integer.class, getVariableName(4));
+		Expression bi = new StaticReference(Double.class, getVariableName(5));
+		Expression v1 = new StaticReference(Double.class, getVariableName(6));
+		Expression v2 = new StaticReference(Double.class, getVariableName(7));
+		Expression t1 = new StaticReference(Double.class, getVariableName(8));
+		Expression t2 = new StaticReference(Double.class, getVariableName(9));
 
 		scope.getVariables().add(new ExpressionAssignment(true, idx, e(-1)));
 		scope.getVariables().add(new ExpressionAssignment(true, left, e(-1)));
@@ -304,55 +327,60 @@ public class Interpolate extends CollectionProducerComputationBase {
 		scope.getVariables().add(new ExpressionAssignment(true, leftO, e(-1)));
 		scope.getVariables().add(new ExpressionAssignment(true, rightO, e(-1)));
 		scope.getVariables().add(new ExpressionAssignment(true, bi, e(-1.0)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v1), e(0.0)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v2), e(0.0)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), e(0.0)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, v1, e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, v2, e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, t1, e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, t2, e(0.0)));
 
-		String res = getArgument(0).reference(kernel(context)).getSimpleExpression(getLanguage());
-		String start = "0";
-		String end = getArgument(1).length().getSimpleExpression(getLanguage());
+		Expression res = getArgument(0).reference(kernel(context));
 		Expression<Double> rate = getRate();
 
-		String bankl_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());
-		String bankl_value = getSeriesValue(left).getSimpleExpression(getLanguage());
-		String bankr_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression(getLanguage());
-		String bankr_value = getSeriesValue(right).getSimpleExpression(getLanguage());
-		String cursor = getArgument(2).reference(kernel(context)).getSimpleExpression(getLanguage());
-
-		Consumer<String> code = scope.code();
+		Expression bankl_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(left));
+		Expression bankl_value = getSeriesValue(left);
+		Expression bankr_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(right));
+		Expression bankr_value = getSeriesValue(right);
+		Expression cursor = getArgument(2).reference(kernel(context));
 
 		Expression<Double> time = getTime().multiply(rate);
 		Expression index = indexForTime.apply(time);
 
-		if (enableFunctionalPosition) {
-			code.accept(idx + " = " + index.ceil().toInt().getSimpleExpression(getLanguage()) + " - 1;\n");
-			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : " + idx + ";\n");
-			code.accept(right + " = " + idx + ";\n");
+		Scope<PackedCollection> body = new Scope<>();
 
-			code.accept("if ((" + timeForIndex.apply(idx).getSimpleExpression(getLanguage()) + ") != (" + time.getSimpleExpression(getLanguage()) + ")) {\n");
-			code.accept("    " + left + " = " + left + " + 1;\n");
-			code.accept("    " + right + " = " + right + " + 1;\n");
-			code.accept("}\n");
+		if (enableFunctionalPosition) {
+			body.assign(idx, index.ceil().toInt().subtract(e(1)));
+			body.assign(left, idx.greaterThan(e(0)).conditional(idx.subtract(e(1)), idx));
+			body.assign(right, idx);
+
+			Scope<PackedCollection> bump = new Scope<>();
+			bump.assign(left, left.add(e(1)));
+			bump.assign(right, right.add(e(1)));
+			body.addCase(timeForIndex.apply(idx).neq(time), bump);
 		}
 
-		code.accept("if (" + left + " == -1 || " + right + " == -1) {\n");
-		code.accept("	" + res + " = 0;\n");
-		code.accept("} else if (" + bankl_time + " > " + cursor + ") {\n");
-		code.accept("	" + res + " = 0;\n");
-		code.accept("} else {\n");
-		code.accept("	" + v1 + " = " + bankl_value + ";\n");
-		code.accept("	" + v2 + " = " + bankr_value + ";\n");
-		code.accept("	" + t1 + " = (" + cursor + ") - (" + bankl_time + ");\n");
-		code.accept("	" + t2 + " = (" + bankr_time + ") - (" + bankl_time + ");\n");
+		// Default result; overwritten below only when a valid surrounding interval is found.
+		body.assign(res, e(0));
 
-		code.accept("	if (" + t2 + " == 0) {\n");
-		code.accept("		" + res + " = " + v1 + ";\n");
-		code.accept("	} else {\n");
-		code.accept("		" + res + " = " + v1 + " + (" + t1 + " / " + t2 + ") * (" + v2 + " - " + v1 + ");\n");
-		code.accept("	}\n");
+		// Linear interpolation between the bracketing samples (t1 / t2 == fractional position).
+		Scope<PackedCollection> interp = new Scope<>();
+		interp.assign(v1, bankl_value);
+		interp.assign(v2, bankr_value);
+		interp.assign(t1, cursor.subtract(bankl_time));
+		interp.assign(t2, bankr_time.subtract(bankl_time));
+		interp.assign(res, t2.eq(e(0.0)).conditional(v1,
+				v1.add(t1.divide(t2).multiply(v2.subtract(v1)))));
 
-		code.accept("}");
+		// Nested guards replicate the short-circuit of the original
+		// "left == -1 || right == -1 || bankl_time > cursor" check, so the
+		// out-of-range bank reads in the interpolation block never execute.
+		Scope<PackedCollection> ifRight = new Scope<>();
+		ifRight.addCase(bankl_time.lessThanOrEqual(cursor), interp);
+
+		Scope<PackedCollection> ifLeft = new Scope<>();
+		ifLeft.addCase(right.eq(e(-1)).not(), ifRight);
+
+		body.addCase(left.eq(e(-1)).not(), ifLeft);
+
+		scope.add(body);
 
 		return scope;
 	}
@@ -366,6 +394,16 @@ public class Interpolate extends CollectionProducerComputationBase {
 		return null;
 	}
 
+	/**
+	 * Computes the output shape for an interpolation given the series and position producers.
+	 *
+	 * <p>When {@link #enableAtomicShape} is {@code true}, always returns a scalar shape of size 1.
+	 * Otherwise, derives the shape from the position producer's traversal policy.</p>
+	 *
+	 * @param series   the producer supplying the time-series data
+	 * @param position the producer supplying the query positions
+	 * @return the output {@link TraversalPolicy} for this interpolation computation
+	 */
 	protected static TraversalPolicy computeShape(Producer<PackedCollection> series, Producer<PackedCollection> position) {
 		if (enableAtomicShape) {
 			return new TraversalPolicy(1);

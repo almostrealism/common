@@ -17,13 +17,19 @@
 package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.Ops;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.cl.CLComputeContext;
+import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
+import org.junit.Assume;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -46,6 +52,33 @@ import java.util.stream.DoubleStream;
  * allocation) vs the actual native kernel execution time.</p>
  */
 public class SimilarityOverheadTest extends TestSuiteBase {
+
+	/**
+	 * Skips this suite when OpenCL is the only available GPU backend. The allocation
+	 * churn of these measurements exhausts the OpenCL reservation ceiling, because the
+	 * CL provider frees device memory only on explicit destroy rather than when the
+	 * owning object is collected the way the other providers do.
+	 */
+	@Before
+	public void requireReclaimingGpuProvider() {
+		Assume.assumeFalse("OpenCL is the only available GPU backend",
+				hasContext(CLComputeContext.class, ComputeRequirement.CL) &&
+						!hasContext(MetalComputeContext.class, ComputeRequirement.MTL));
+	}
+
+	/**
+	 * Returns true when a {@link io.almostrealism.code.ComputeContext} of the given
+	 * type is available for the given requirement under the current configuration.
+	 */
+	private static boolean hasContext(Class<?> type, ComputeRequirement requirement) {
+		try {
+			return Hardware.getLocalHardware()
+					.getComputeContexts(false, true, requirement).stream()
+					.anyMatch(type::isInstance);
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
 
 	/** Number of feature bins per frame (matches typical audio feature extraction). */
 	private static final int BINS = 40;
@@ -71,7 +104,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 		for (int i = 0; i < count; i++) {
 			for (int j = i + 1; j < count; j++) {
-				double sim = productSimilarity(
+				productSimilarity(
 						cp(tensors[i]), cp(tensors[j]), FRAMES);
 				totalComparisons++;
 			}
@@ -114,7 +147,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				CollectionProducer computation = buildSimilarityComputation(
 						cp(tensors[i]), cp(tensors[j]));
 				long t1 = System.nanoTime();
-				PackedCollection result = computation.evaluate();
+				computation.evaluate();
 				long t2 = System.nanoTime();
 
 				computationCreationTime += (t1 - t0);
@@ -123,7 +156,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 			}
 		}
 
-		log("=== Baseline Results (" + totalComparisons + " comparisons) ===");
+		log("Baseline Results (" + totalComparisons + " comparisons)");
 		log("Computation creation: " +
 				String.format("%.1f", computationCreationTime / 1_000_000_000.0) + "s total, " +
 				String.format("%.3f", computationCreationTime / (double) totalComparisons / 1_000_000.0) +
@@ -174,7 +207,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 		for (int i = 0; i < count; i++) {
 			for (int j = i + 1; j < count; j++) {
-				CollectionProducer computation = buildSimilarityComputation(
+				buildSimilarityComputation(
 						cp(tensors[i]), cp(tensors[j]));
 				totalCreations++;
 			}
@@ -200,14 +233,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		CollectionProducer cachedComputation = buildSimilarityComputation(
 				cp(tensors[0]), cp(tensors[1]));
 
-		PackedCollection warmup = cachedComputation.evaluate();
+		cachedComputation.evaluate();
 
 		long totalEvals = 0;
 		long start = System.nanoTime();
 
 		for (int i = 0; i < count; i++) {
 			for (int j = i + 1; j < count; j++) {
-				PackedCollection result = cachedComputation.evaluate();
+				cachedComputation.evaluate();
 				totalEvals++;
 			}
 		}
@@ -240,8 +273,9 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 				PackedCollection diff = differenceMagnitude(BINS)
 						.evaluate(a, b);
-				double similarity = diff.doubleStream().sum();
+				double magnitude = diff.doubleStream().sum();
 				totalComparisons++;
+				if (Double.isNaN(magnitude)) break;
 			}
 		}
 
@@ -279,7 +313,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		long elapsed = System.nanoTime() - start;
-		log("=== Cached Cosine Similarity Evaluable ===");
+		log("Cached Cosine Similarity Evaluable");
 		log("Comparisons: " + totalComparisons + " in " +
 				String.format("%.1f", elapsed / 1_000_000_000.0) + "s (" +
 				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
@@ -346,7 +380,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 			total = total - skip - 2;
 		}
 
-		return java.util.stream.DoubleStream.of(values)
+		return DoubleStream.of(values)
 				.sorted().skip(skip).limit(total)
 				.average().orElseThrow();
 	}
@@ -396,12 +430,12 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				int elementsPerItem = FRAMES * BINS;
 				PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < batchSize; b++) {
-					stackedQuery.setMem(b * elementsPerItem, tensors[i], 0, elementsPerItem);
+					stackedQuery.setFrom(b * elementsPerItem, tensors[i], 0, elementsPerItem);
 				}
 
 				PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < actualBatch; b++) {
-					stackedTargets.setMem(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
+					stackedTargets.setFrom(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
 				}
 
 				long t1 = System.nanoTime();
@@ -430,7 +464,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		long totalTime = dataStackTime + kernelTime + extractTime;
-		log("=== Batched Cosine Similarity (batch=" + batchSize + ") ===");
+		log("Batched Cosine Similarity (batch=" + batchSize + ")");
 		log("Comparisons: " + totalComparisons + " in " +
 				String.format("%.1f", totalTime / 1_000_000_000.0) + "s (" +
 				String.format("%.3f", totalTime / (double) totalComparisons / 1_000_000.0) +
@@ -476,12 +510,12 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 		PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
 		for (int b = 0; b < batchSize; b++) {
-			stackedQuery.setMem(b * elementsPerItem, tensors[0], 0, elementsPerItem);
+			stackedQuery.setFrom(b * elementsPerItem, tensors[0], 0, elementsPerItem);
 		}
 
 		PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
 		for (int b = 0; b < batchSize; b++) {
-			stackedTargets.setMem(b * elementsPerItem, tensors[1 + b], 0, elementsPerItem);
+			stackedTargets.setFrom(b * elementsPerItem, tensors[1 + b], 0, elementsPerItem);
 		}
 
 		PackedCollection batchResult = batchEval.evaluate(stackedQuery, stackedTargets);
@@ -529,7 +563,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 			if (batchOffset + FRAMES <= batchAllValues.length) {
 				System.arraycopy(batchAllValues, batchOffset, targetBatch, 0, FRAMES);
 			} else {
-				log("ERROR: batch output too small for target " + b +
+				log("Batch output too small for target " + b +
 						", needed offset " + batchOffset + "+" + FRAMES +
 						" but length=" + batchAllValues.length);
 				continue;
@@ -574,12 +608,12 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 				PackedCollection stackedQuery = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < batchSize; b++) {
-					stackedQuery.setMem(b * elementsPerItem, tensors[i], 0, elementsPerItem);
+					stackedQuery.setFrom(b * elementsPerItem, tensors[i], 0, elementsPerItem);
 				}
 
 				PackedCollection stackedTargets = new PackedCollection(shape(totalFrames, BINS, 1));
 				for (int b = 0; b < actualBatch; b++) {
-					stackedTargets.setMem(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
+					stackedTargets.setFrom(b * elementsPerItem, tensors[batchStart + b], 0, elementsPerItem);
 				}
 
 				PackedCollection allResults = batchEval.evaluate(stackedQuery, stackedTargets);
@@ -608,13 +642,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		long elapsed = System.nanoTime() - startTime;
-		log("=== Batched Similarity at Scale (batch=" + batchSize + ") ===");
+		log("Batched Similarity at Scale (batch=" + batchSize + ")");
 		log("Completed " + totalComparisons + " comparisons in " +
 				String.format("%.1f", elapsed / 1_000_000_000.0) + "s (" +
 				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
 				" ms/comparison)");
 	}
 
+	/** Cache for cosine similarity evaluables to avoid recreating identical computation graphs. */
 	private static final Map<Long, Evaluable<PackedCollection>> cosineCache = new HashMap<>();
 
 	/**
@@ -724,7 +759,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		double reductionPercent = 100.0 * (totalPairs - candidates.size()) / totalPairs;
 		long totalTime = embeddingTime + filterTime + exactTime;
 
-		log("=== Incremental Similarity (Phase 5) ===");
+		log("Incremental Similarity (Phase 5)");
 		log("Clusters: " + clusters + ", Samples: " + count);
 		log("Total pairs: " + totalPairs + ", Candidate pairs: " + candidates.size());
 		log("Exact comparisons reduced by: " + String.format("%.1f%%", reductionPercent));
@@ -790,7 +825,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		// Compute both approximate and exact similarities for sample pairs
-		Evaluable<PackedCollection> cosineEval = cosineSimilarityEvaluable(FRAMES, BINS);
+		cosineSimilarityEvaluable(FRAMES, BINS);
 		int sameClusterCount = 0;
 		int sameClusterHighApprox = 0;
 
@@ -831,26 +866,19 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 */
 	private PackedCollection[] createClusteredTensors(
 			int count, int frames, int bins, int clusters) {
-		Random rng = new Random(42);
 		PackedCollection[] tensors = new PackedCollection[count];
 
-		double[][] centers = new double[clusters][bins];
-		for (int c = 0; c < clusters; c++) {
-			for (int b = 0; b < bins; b++) {
-				centers[c][b] = rng.nextGaussian();
-			}
-		}
+		// Cluster centers (one bins-vector per cluster), generated on-device once.
+		PackedCollection centers = randn(shape(clusters, bins), 0.0, 1.0).evaluate();
 
 		for (int i = 0; i < count; i++) {
 			int cluster = i % clusters;
 			tensors[i] = new PackedCollection(shape(frames, bins, 1));
-			double[] data = new double[frames * bins];
-			for (int f = 0; f < frames; f++) {
-				for (int b = 0; b < bins; b++) {
-					data[f * bins + b] = centers[cluster][b] + rng.nextGaussian() * 0.3;
-				}
-			}
-			tensors[i].setMem(0, data, 0, data.length);
+			// tensor[f, b] = center[cluster, b] + gaussian noise (std 0.3)
+			cp(centers.range(shape(bins), cluster * bins))
+					.valueAt(integers(0, frames * bins).mod(bins))
+					.add(randn(shape(frames * bins), 0.0, 0.3))
+					.into(tensors[i].traverseEach()).evaluate();
 		}
 
 		log("Created " + count + " clustered tensors (" + clusters +
@@ -858,6 +886,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		return tensors;
 	}
 
+	/**
+	 * Creates random tensors for testing.
+	 *
+	 * @param count Number of tensors
+	 * @param frames Number of frames per tensor
+	 * @param bins Number of bins per frame
+	 * @return Array of random tensors
+	 */
 	private PackedCollection[] createRandomTensors(int count, int frames, int bins) {
 		Random rng = new Random(42);
 		PackedCollection[] tensors = new PackedCollection[count];

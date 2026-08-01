@@ -36,20 +36,42 @@ import org.almostrealism.collect.PackedCollection;
  * @see WaveDataProviderAdapter
  */
 public class DelegateWaveDataProvider extends WaveDataProviderAdapter {
+	/** The underlying provider from which audio data is sliced. */
 	private final WaveDataProvider delegate;
+
+	/** Starting frame index within the delegate provider's data. */
 	private final int delegateOffset;
+
+	/** Number of frames to expose from the delegate provider. */
 	private final int length;
 
+	/**
+	 * Creates a delegate provider that exposes a slice of the given provider's data.
+	 *
+	 * @param delegate       the source provider to wrap
+	 * @param delegateOffset starting frame index within the delegate's data
+	 * @param length         number of frames to expose
+	 */
 	public DelegateWaveDataProvider(WaveDataProvider delegate, int delegateOffset, int length) {
 		this.delegate = delegate;
 		this.delegateOffset = delegateOffset;
 		this.length = length;
 	}
 
+	/**
+	 * Returns the underlying provider from which audio data is sliced.
+	 *
+	 * @return the delegate provider
+	 */
 	public WaveDataProvider getDelegate() {
 		return delegate;
 	}
 
+	/**
+	 * Returns the starting frame index within the delegate provider's data.
+	 *
+	 * @return frame offset within the delegate
+	 */
 	public int getDelegateOffset() {
 		return delegateOffset;
 	}

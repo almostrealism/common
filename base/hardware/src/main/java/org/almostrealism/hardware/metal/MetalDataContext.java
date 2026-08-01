@@ -73,15 +73,43 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP32").equals("FP16");
 
+	/** Minimum allocation size in elements below which JVM heap is used instead of Metal buffers. */
 	private final int offHeapSize;
 
+	/** The primary Metal device used for all GPU buffer allocations and kernel execution. */
 	private MTLDevice mainDevice;
 
+	/** Memory provider for Metal-backed GPU buffers (main allocation path). */
 	private MemoryProvider<MetalMemory> mainRam;
+	/** Fallback JVM-backed memory provider for small allocations below {@link #offHeapSize}. */
 	private MemoryProvider<Memory> altRam;
 
-	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
+	/**
+	 * The single {@link MetalComputeContext} shared by every thread of this data context.
+	 *
+	 * <p>A compiled Metal kernel ({@link org.almostrealism.hardware.metal.MTLComputePipelineState})
+	 * is created from the device and is usable from any command queue on that device, but a
+	 * {@link MetalComputeContext} owns the {@link MetalCommandRunner}/command buffer that a
+	 * dispatch encodes into and commits. If each thread held its own context (and therefore its
+	 * own runner), a kernel cached at the {@code DataContext} level and reused on a different
+	 * thread would encode into the originating thread's command buffer, which the executing
+	 * thread never commits — the kernel would silently never run. A single shared context keeps
+	 * the (device-wide) instruction cache and the command-buffer lifecycle aligned; the runner
+	 * already serializes all encoding through one executor, so sharing is safe.</p>
+	 *
+	 * <p>Lazily created via {@link #sharedContext()}; guarded by {@code this} for publication.</p>
+	 */
+	private volatile ComputeContext<MemoryData> sharedContext;
 
+	/**
+	 * Per-thread override installed only for the duration of a
+	 * {@link #computeContext(Callable, ComputeRequirement...)} scope, so an explicitly scoped
+	 * context (e.g. forced requirements) applies to the calling thread without disturbing the
+	 * shared default other threads use.
+	 */
+	private final ThreadLocal<ComputeContext<MemoryData>> scopedContext = new ThreadLocal<>();
+
+	/** Deferred initialization runnable; invoked on first device access, then set to null. */
 	private Runnable start;
 
 	/**
@@ -94,7 +122,6 @@ public class MetalDataContext extends HardwareDataContext {
 	public MetalDataContext(String name, long maxReservation, int offHeapSize) {
 		super(name, maxReservation);
 		this.offHeapSize = offHeapSize;
-		this.computeContext = new ThreadLocal<>();
 	}
 
 	/**
@@ -118,8 +145,16 @@ public class MetalDataContext extends HardwareDataContext {
 		if (mainDevice != null) return;
 
 		mainDevice = MTLDevice.createSystemDefaultDevice();
+		log("Hardware[" + getName() + "]: Using the system default GPU for kernels");
 	}
 
+	/**
+	 * Performs deferred initialization of the Metal device and main memory provider.
+	 *
+	 * <p>Calls {@link #identifyDevices()} to locate the system GPU, then creates a
+	 * {@link MetalMemoryProvider} sized to the configured max reservation. Sets the
+	 * {@code start} field to null to signal that initialization is complete.</p>
+	 */
 	private void start() {
 		if (mainDevice != null) return;
 
@@ -129,6 +164,16 @@ public class MetalDataContext extends HardwareDataContext {
 		start = null;
 	}
 
+	/**
+	 * Creates a new {@link MetalComputeContext} for the given compute requirements.
+	 *
+	 * <p>Triggers deferred device initialization if not yet complete, then constructs
+	 * a {@link MetalComputeContext} backed by the main device.</p>
+	 *
+	 * @param expectations Compute requirements (e.g., profiling); C and PROFILING are not supported
+	 * @return A new {@link MetalComputeContext} initialized with the main Metal device
+	 * @throws UnsupportedOperationException if a C or profiling compute context is requested
+	 */
 	private ComputeContext createContext(ComputeRequirement... expectations) {
 		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
 		Optional<ComputeRequirement> pReq = Stream.of(expectations).filter(ComputeRequirement.PROFILING::equals).findAny();
@@ -243,21 +288,46 @@ public class MetalDataContext extends HardwareDataContext {
 	}
 
 	/**
-	 * Returns the compute contexts for the current thread.
+	 * Returns the compute context to use on the current thread.
 	 *
-	 * <p>Creates a new {@link MetalComputeContext} if none exists for the current thread.
-	 * Each thread maintains its own compute context via {@link ThreadLocal}.</p>
+	 * <p>Returns the per-thread scoped context if one is active (see
+	 * {@link #computeContext(Callable, ComputeRequirement...)}); otherwise the single
+	 * {@link #sharedContext shared context}, lazily created on first use.</p>
 	 *
-	 * @return List containing the thread's {@link MetalComputeContext}
+	 * @return a single-element list containing the active {@link MetalComputeContext}
 	 */
 	@Override
 	public List<ComputeContext<MemoryData>> getComputeContexts() {
-		if (computeContext.get() == null) {
-			if (Hardware.enableVerbose) log("No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContext.set(createContext());
+		ComputeContext<MemoryData> scoped = scopedContext.get();
+		if (scoped != null) {
+			return List.of(scoped);
 		}
 
-		return List.of(computeContext.get());
+		return List.of(sharedContext());
+	}
+
+	/**
+	 * Returns the shared {@link MetalComputeContext}, creating it on first use.
+	 *
+	 * <p>Uses double-checked locking on {@code this} so concurrent threads (e.g. several
+	 * {@code Evaluable.async} dispatch threads) observe a single instance.</p>
+	 *
+	 * @return the shared compute context
+	 */
+	private ComputeContext<MemoryData> sharedContext() {
+		ComputeContext<MemoryData> cc = sharedContext;
+
+		if (cc == null) {
+			synchronized (this) {
+				cc = sharedContext;
+				if (cc == null) {
+					cc = createContext();
+					sharedContext = cc;
+				}
+			}
+		}
+
+		return cc;
 	}
 
 	/**
@@ -274,8 +344,9 @@ public class MetalDataContext extends HardwareDataContext {
 	 * @throws UnsupportedOperationException if PROFILING or C requirements are specified
 	 * @throws RuntimeException if execution fails
 	 */
+	@Override
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
-		ComputeContext current = computeContext.get();
+		ComputeContext<MemoryData> current = scopedContext.get();
 		ComputeContext next = createContext(expectations);
 
 		String ccName = next.toString();
@@ -284,18 +355,23 @@ public class MetalDataContext extends HardwareDataContext {
 		}
 
 		try {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + ccName);
-			computeContext.set(next);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
+			scopedContext.set(next);
 			return exec.call();
 		} catch (RuntimeException e) {
 			throw e;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + ccName);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
 			next.destroy();
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + ccName);
-			computeContext.set(current);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
+
+			if (current == null) {
+				scopedContext.remove();
+			} else {
+				scopedContext.set(current);
+			}
 		}
 	}
 
@@ -336,11 +412,14 @@ public class MetalDataContext extends HardwareDataContext {
 	 */
 	@Override
 	public void destroy() {
-		// TODO  Destroy any other compute contexts
-		if (computeContext.get() != null) {
-			computeContext.get().destroy();
-			computeContext.remove();
+		if (sharedContext != null) {
+			sharedContext.destroy();
+			sharedContext = null;
 		}
+
+		// Any scoped context is created and destroyed within computeContext(...) and so does not
+		// outlive that call; clear the current thread's slot defensively.
+		scopedContext.remove();
 
 		if (mainRam != null) mainRam.destroy();
 		if (altRam != null) altRam.destroy();

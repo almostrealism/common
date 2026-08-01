@@ -20,8 +20,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for PackedCollection and its operations like transpose and clear.
+ */
 public class PackedCollectionTests extends TestSuiteBase {
 
+	/**
+	 * Tests that transpose correctly transposes a 10x4 collection.
+	 */
 	@Test(timeout = 10000)
 	public void transpose() {
 		PackedCollection data = new PackedCollection(shape(10, 4))
@@ -40,10 +46,12 @@ public class PackedCollectionTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests that clear zeros out all elements in a collection.
+	 */
 	@Test(timeout = 10000)
 	public void clear() {
-		PackedCollection data = new PackedCollection(4);
-		data.setMem(0, 1.0, 2.0, 3.0, 4.0);
+		PackedCollection data = pack(1.0, 2.0, 3.0, 4.0);
 		data.clear();
 		assertEquals(0, data.toArray(0, 4)[1]);
 	}

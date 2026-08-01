@@ -20,6 +20,7 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.profile.RunData;
+import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
@@ -80,7 +81,7 @@ import java.util.function.Consumer;
  * @see CLProgram
  * @see InstructionSet
  */
-public class CLOperatorMap implements InstructionSet, BiFunction<String, CLException, HardwareException> {
+public class CLOperatorMap implements InstructionSet, BiFunction<String, CLException, HardwareException>, ConsoleFeatures {
 	/** The compute context for OpenCL operations. */
 	private CLComputeContext context;
 
@@ -121,16 +122,16 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	 */
 	protected void init(OperationMetadata metadata, String src) {
 		if (CLOperator.enableLog) {
-			System.out.println("HardwareOperatorMap: init " + metadata.getDisplayName());
+			log("HardwareOperatorMap: init " + metadata.getDisplayName());
 		}
 
 		if (src.length() > 100000) {
-			System.out.println("WARN: CLOperatorMap source length is " + src.length() + " characters");
+			warn("CLOperatorMap source length is " + src.length() + " characters");
 		}
 
 		if (CLOperator.enableVerboseLog) {
-			System.out.println("Source:");
-			System.out.println(src);
+			log("Source:");
+			log(src);
 		}
 
 		prog = CLProgram.create(context, metadata, src);
@@ -145,7 +146,7 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 
 		if (ex != null) {
 			if (CLOperator.enableLog) {
-				System.out.println("Error compiling:\n" + src);
+				log("Error compiling:\n" + src);
 			}
 
 			throw ex;
@@ -158,6 +159,7 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	 * @param key  the kernel function name
 	 * @return the CLOperator for executing the kernel
 	 */
+	@Override
 	public CLOperator get(String key) {
 		return get(key, 2);
 	}
@@ -170,6 +172,7 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	 * @param argCount  the number of arguments the kernel expects
 	 * @return the CLOperator for executing the kernel
 	 */
+	@Override
 	public CLOperator get(String key, int argCount) {
 		Map<String, CLOperator> ops = operators.get();
 
@@ -221,6 +224,7 @@ public class CLOperatorMap implements InstructionSet, BiFunction<String, CLExcep
 	 * @see  CLProgram#destroy()
 	 * @see  CLOperator#destroy()
 	 */
+	@Override
 	public void destroy() {
 		if (prog != null) prog.destroy();
 

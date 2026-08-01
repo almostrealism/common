@@ -32,9 +32,12 @@ import org.junit.Test;
  */
 public class RayBatchTest extends TestSuiteBase {
 
+	/**
+	 * Tests whether origin(rays) preserves batch dimensions when rays has shape (N, 6).
+	 */
 	@Test(timeout = 10000)
 	public void testOriginShapeWithBatch() {
-		System.out.println("=== Testing origin() shape with batch ===");
+		log("=== Testing origin() shape with batch ===");
 
 		// Create a batch of 3 rays using variable-count shape
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -43,33 +46,39 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<PackedCollection> origins = origin(rays);
 
 		// Create test data: 3 rays with different origins
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
-		rayData.setMem(0, 1, 2, 3, 0, 0, -1);     // Ray 0: origin (1, 2, 3)
-		rayData.setMem(6, 4, 5, 6, 0, 0, -1);     // Ray 1: origin (4, 5, 6)
-		rayData.setMem(12, 7, 8, 9, 0, 0, -1);    // Ray 2: origin (7, 8, 9)
+		// Ray 0: origin (1, 2, 3)
+		// Ray 1: origin (4, 5, 6)
+		// Ray 2: origin (7, 8, 9)
+		PackedCollection rayData = pack(
+				1.0, 2.0, 3.0, 0.0, 0.0, -1.0,
+				4.0, 5.0, 6.0, 0.0, 0.0, -1.0,
+				7.0, 8.0, 9.0, 0.0, 0.0, -1.0).reshape(shape(3, 6));
 
 		// Evaluate origins
 		PackedCollection originResults = origins.get().evaluate(rayData);
 
-		System.out.println("Origin results shape: " + originResults.getShape());
-		System.out.println("  Dimensions: " + originResults.getShape().getDimensions());
-		System.out.println("  Total size: " + originResults.getShape().getTotalSize());
-		System.out.println("  Count: " + originResults.getCount());
+		log("Origin results shape: " + originResults.getShape());
+		log("  Dimensions: " + originResults.getShape().getDimensions());
+		log("  Total size: " + originResults.getShape().getTotalSize());
+		log("  Count: " + originResults.getCount());
 
-		System.out.println("Origin values:");
+		log("Origin values:");
 		for (int i = 0; i < Math.min(originResults.getMemLength(), 15); i++) {
-			System.out.println("  [" + i + "] = " + originResults.toDouble(i));
+			log("  [" + i + "] = " + originResults.toDouble(i));
 		}
 
 		// Expected: If batch-aware, should be (3, 3) = 9 elements
 		// If NOT batch-aware, will be (3) = 3 elements
-		System.out.println("\nExpected: (3, 3) shape with 9 elements if batch-aware");
-		System.out.println("Got: " + originResults.getShape() + " with " + originResults.getMemLength() + " elements");
+		log("\nExpected: (3, 3) shape with 9 elements if batch-aware");
+		log("Got: " + originResults.getShape() + " with " + originResults.getMemLength() + " elements");
 	}
 
+	/**
+	 * Tests whether direction(rays) preserves batch dimensions when rays has shape (N, 6).
+	 */
 	@Test(timeout = 10000)
 	public void testDirectionShapeWithBatch() {
-		System.out.println("\n=== Testing direction() shape with batch ===");
+		log("\n=== Testing direction() shape with batch ===");
 
 		// Create a batch of 3 rays using variable-count shape
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -78,31 +87,37 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<PackedCollection> directions = direction(rays);
 
 		// Create test data: 3 rays with different directions
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
-		rayData.setMem(0, 0, 0, 0, 1, 0, 0);      // Ray 0: direction (1, 0, 0)
-		rayData.setMem(6, 0, 0, 0, 0, 1, 0);      // Ray 1: direction (0, 1, 0)
-		rayData.setMem(12, 0, 0, 0, 0, 0, 1);     // Ray 2: direction (0, 0, 1)
+		// Ray 0: direction (1, 0, 0)
+		// Ray 1: direction (0, 1, 0)
+		// Ray 2: direction (0, 0, 1)
+		PackedCollection rayData = pack(
+				0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0, 1.0, 0.0,
+				0.0, 0.0, 0.0, 0.0, 0.0, 1.0).reshape(shape(3, 6));
 
 		// Evaluate directions
 		PackedCollection directionResults = directions.get().evaluate(rayData);
 
-		System.out.println("Direction results shape: " + directionResults.getShape());
-		System.out.println("  Dimensions: " + directionResults.getShape().getDimensions());
-		System.out.println("  Total size: " + directionResults.getShape().getTotalSize());
-		System.out.println("  Count: " + directionResults.getCount());
+		log("Direction results shape: " + directionResults.getShape());
+		log("  Dimensions: " + directionResults.getShape().getDimensions());
+		log("  Total size: " + directionResults.getShape().getTotalSize());
+		log("  Count: " + directionResults.getCount());
 
-		System.out.println("Direction values:");
+		log("Direction values:");
 		for (int i = 0; i < Math.min(directionResults.getMemLength(), 15); i++) {
-			System.out.println("  [" + i + "] = " + directionResults.toDouble(i));
+			log("  [" + i + "] = " + directionResults.toDouble(i));
 		}
 
-		System.out.println("\nExpected: (3, 3) shape with 9 elements if batch-aware");
-		System.out.println("Got: " + directionResults.getShape() + " with " + directionResults.getMemLength() + " elements");
+		log("\nExpected: (3, 3) shape with 9 elements if batch-aware");
+		log("Got: " + directionResults.getShape() + " with " + directionResults.getMemLength() + " elements");
 	}
 
+	/**
+	 * Tests element-wise multiplication of origin and direction from batched rays.
+	 */
 	@Test(timeout = 10000)
 	public void testMultiplyOriginDirection() {
-		System.out.println("\n=== Testing origin(rays).multiply(direction(rays)) ===");
+		log("\n=== Testing origin(rays).multiply(direction(rays)) ===");
 
 		// Create a batch of 3 rays
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -111,24 +126,30 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<?> product = multiply(origin(rays), direction(rays));
 
 		// Create test data
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
-		rayData.setMem(0, 1, 2, 3, 2, 3, 4);      // Ray 0: (1,2,3) * (2,3,4) = (2,6,12)
-		rayData.setMem(6, 1, 1, 1, 1, 1, 1);      // Ray 1: (1,1,1) * (1,1,1) = (1,1,1)
-		rayData.setMem(12, 0, 0, 0, 5, 5, 5);     // Ray 2: (0,0,0) * (5,5,5) = (0,0,0)
+		// Ray 0: (1,2,3) * (2,3,4) = (2,6,12)
+		// Ray 1: (1,1,1) * (1,1,1) = (1,1,1)
+		// Ray 2: (0,0,0) * (5,5,5) = (0,0,0)
+		PackedCollection rayData = pack(
+				1.0, 2.0, 3.0, 2.0, 3.0, 4.0,
+				1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+				0.0, 0.0, 0.0, 5.0, 5.0, 5.0).reshape(shape(3, 6));
 
 		// Evaluate
 		PackedCollection productResults = ((Evaluable<PackedCollection>) product.get()).evaluate(rayData);
 
-		System.out.println("Product results shape: " + productResults.getShape());
-		System.out.println("Product values:");
+		log("Product results shape: " + productResults.getShape());
+		log("Product values:");
 		for (int i = 0; i < Math.min(productResults.getMemLength(), 15); i++) {
-			System.out.println("  [" + i + "] = " + productResults.toDouble(i));
+			log("  [" + i + "] = " + productResults.toDouble(i));
 		}
 	}
 
+	/**
+	 * Tests dot product computation between origin and direction in batch mode.
+	 */
 	@Test(timeout = 10000)
 	public void testDotProductWithBatch() {
-		System.out.println("\n=== Testing dotProduct(origin(rays), direction(rays)) ===");
+		log("\n=== Testing dotProduct(origin(rays), direction(rays)) ===");
 
 		// Create a batch of 3 rays
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -137,41 +158,50 @@ public class RayBatchTest extends TestSuiteBase {
 		Producer<?> dotProd = dotProduct(origin(rays), direction(rays));
 
 		// Create test data
-		PackedCollection rayData = new PackedCollection(shape(3, 6));
-		rayData.setMem(0, 0, 0, 3, 0, 0, -1);     // Ray 0: (0,0,3) dot (0,0,-1) = -3
-		rayData.setMem(6, 1, 0, 0, 1, 0, 0);      // Ray 1: (1,0,0) dot (1,0,0) = 1
-		rayData.setMem(12, 1, 2, 3, 2, 3, 4);     // Ray 2: (1,2,3) dot (2,3,4) = 2+6+12 = 20
+		// Ray 0: (0,0,3) dot (0,0,-1) = -3
+		// Ray 1: (1,0,0) dot (1,0,0) = 1
+		// Ray 2: (1,2,3) dot (2,3,4) = 2+6+12 = 20
+		PackedCollection rayData = pack(
+				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
+				1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+				1.0, 2.0, 3.0, 2.0, 3.0, 4.0).reshape(shape(3, 6));
 
 		// Evaluate
 		PackedCollection dotResults = ((Evaluable<PackedCollection>) dotProd.get()).evaluate(rayData);
 
-		System.out.println("Dot product results shape: " + dotResults.getShape());
-		System.out.println("  Count: " + dotResults.getCount());
-		System.out.println("  MemLength: " + dotResults.getMemLength());
+		log("Dot product results shape: " + dotResults.getShape());
+		log("  Count: " + dotResults.getCount());
+		log("  MemLength: " + dotResults.getMemLength());
 
-		System.out.println("Dot product values:");
+		log("Dot product values:");
 		for (int i = 0; i < Math.min(dotResults.getMemLength(), 10); i++) {
-			System.out.println("  [" + i + "] = " + dotResults.toDouble(i));
+			log("  [" + i + "] = " + dotResults.toDouble(i));
 		}
 
-		System.out.println("\nExpected if batch-aware:");
-		System.out.println("  Ray 0: -3.0");
-		System.out.println("  Ray 1: 1.0");
-		System.out.println("  Ray 2: 20.0");
+		log("\nExpected if batch-aware:");
+		log("  Ray 0: -3.0");
+		log("  Ray 1: 1.0");
+		log("  Ray 2: 20.0");
 	}
 
+	/**
+	 * Tests oDotd() with into() for proper batch evaluation.
+	 */
 	@Test(timeout = 10000)
 	public void testODotDWithInto() {
-		System.out.println("\n=== Testing oDotd() with into() for proper batch evaluation ===");
+		log("\n=== Testing oDotd() with into() for proper batch evaluation ===");
 
 		// Create a batch of 3 rays
 		Producer<Ray> rays = v(shape(-1, 6), 0);
 
 		// Create test data with traverse(1) for batch processing
-		PackedCollection rayData = new PackedCollection(shape(3, 6).traverse(1));
-		rayData.setMem(0, 0, 0, 3, 0, 0, -1);     // Ray 0: (0,0,3) dot (0,0,-1) = -3
-		rayData.setMem(6, 1, 0, 0, 1, 0, 0);      // Ray 1: (1,0,0) dot (1,0,0) = 1
-		rayData.setMem(12, 1, 2, 3, 2, 3, 4);     // Ray 2: (1,2,3) dot (2,3,4) = 20
+		// Ray 0: (0,0,3) dot (0,0,-1) = -3
+		// Ray 1: (1,0,0) dot (1,0,0) = 1
+		// Ray 2: (1,2,3) dot (2,3,4) = 20
+		PackedCollection rayData = pack(
+				0.0, 0.0, 3.0, 0.0, 0.0, -1.0,
+				1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+				1.0, 2.0, 3.0, 2.0, 3.0, 4.0).reshape(shape(3, 6)).traverse(1);
 
 		// Create destination with traverse(1) for batch output
 		PackedCollection destination = new PackedCollection(shape(3, 1).traverse(1));
@@ -180,11 +210,11 @@ public class RayBatchTest extends TestSuiteBase {
 		Evaluable<?> ev = oDotd(rays).get();
 		ev.into(destination.each()).evaluate(rayData);
 
-		System.out.println("Destination shape: " + destination.getShape());
-		System.out.println("Results:");
-		System.out.println("  Ray 0: " + destination.valueAt(0, 0) + " (expected -3.0)");
-		System.out.println("  Ray 1: " + destination.valueAt(1, 0) + " (expected 1.0)");
-		System.out.println("  Ray 2: " + destination.valueAt(2, 0) + " (expected 20.0)");
+		log("Destination shape: " + destination.getShape());
+		log("Results:");
+		log("  Ray 0: " + destination.valueAt(0, 0) + " (expected -3.0)");
+		log("  Ray 1: " + destination.valueAt(1, 0) + " (expected 1.0)");
+		log("  Ray 2: " + destination.valueAt(2, 0) + " (expected 20.0)");
 
 		// Assertions
 		Assert.assertEquals(-3.0, destination.valueAt(0, 0), 0.01);

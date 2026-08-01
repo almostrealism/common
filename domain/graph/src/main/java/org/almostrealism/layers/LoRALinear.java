@@ -18,6 +18,7 @@ package org.almostrealism.layers;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.uml.Named;
 import org.almostrealism.collect.CollectionProducer;
@@ -78,25 +79,42 @@ import java.util.function.Supplier;
  */
 public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures {
 
+	/** Random number generator used to initialize the LoRA A matrix with Gaussian values. */
 	private static final Random random = new Random(42);
 
+	/** The human-readable name identifying this layer, including rank and dimensions. */
 	private final String name;
+
+	/** The shape of data arriving at this layer's forward cell. */
 	private final TraversalPolicy inputShape;
+
+	/** The shape produced by this layer's forward cell. */
 	private final TraversalPolicy outputShape;
+
+	/** The low-rank dimension used for both LoRA matrices. */
 	private final int rank;
+
+	/** The scaling factor applied to the LoRA contribution ({@code alpha / rank = scale}). */
 	private final double alpha;
+
+	/** The pre-computed scaling factor ({@code alpha / rank}). */
 	private final double scale;
 
+	/** The frozen base weight matrix of shape {@code [outputSize, inputSize]}. */
 	private final PackedCollection baseWeights;
+
+	/** The frozen base bias vector of shape {@code [outputSize]}, or {@code null} if there is no bias. */
 	private final PackedCollection baseBias;
+
+	/** The trainable LoRA A matrix of shape {@code [inputSize, rank]}, initialized from a Gaussian. */
 	private final PackedCollection loraA;
+
+	/** The trainable LoRA B matrix of shape {@code [rank, outputSize]}, initialized to zeros. */
 	private final PackedCollection loraB;
 
-	// Delegate to a properly constructed CellularLayer
+	/** Fully constructed CellularLayer that backs the forward and backward cells for this LoRA layer. */
 	private final CellularLayer delegate;
 
-	private ParameterUpdate<PackedCollection> parameterUpdate;
-	private List<ComputeRequirement> requirements;
 
 	/**
 	 * Creates a LoRA-wrapped linear layer.
@@ -193,9 +211,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	private PackedCollection initializeLoraA(int inputSize, int rank) {
 		PackedCollection a = new PackedCollection(shape(inputSize, rank));
 		double std = 1.0 / Math.sqrt(inputSize);
-		for (int i = 0; i < inputSize * rank; i++) {
-			a.setMem(i, random.nextGaussian() * std);
-		}
+		randn(shape(inputSize, rank), random).multiply(c(std)).into(a).evaluate();
 		return a;
 	}
 
@@ -206,7 +222,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	 */
 	private PackedCollection initializeLoraB(int rank, int outputSize) {
 		PackedCollection b = new PackedCollection(shape(rank, outputSize));
-		b.fill(pos -> 0.0);
+		b.fill(0.0);
 		return b;
 	}
 
@@ -307,14 +323,18 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 
 	@Override
 	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
-		this.parameterUpdate = update;
 		if (delegate instanceof Learning) {
 			((Learning) delegate).setParameterUpdate(update);
 		}
 	}
 
+	/**
+	 * Sets compute requirements to apply to operations in the delegate layer.
+	 *
+	 * @param requirements the list of {@link ComputeRequirement} constraints, or {@code null}
+	 *                     to use the defaults
+	 */
 	public void setComputeRequirements(List<ComputeRequirement> requirements) {
-		this.requirements = requirements;
 		if (delegate instanceof DefaultCellularLayer) {
 			((DefaultCellularLayer) delegate).setComputeRequirements(requirements);
 		}
@@ -334,21 +354,11 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 
 		PackedCollection merged = new PackedCollection(shape(outputSize, inputSize));
 
-		for (int i = 0; i < outputSize; i++) {
-			for (int j = 0; j < inputSize; j++) {
-				double baseVal = baseWeights.toDouble(i * inputSize + j);
-
-				double loraVal = 0.0;
-				for (int r = 0; r < rank; r++) {
-					double aVal = loraA.toDouble(j * rank + r);
-					double bVal = loraB.toDouble(r * outputSize + i);
-					loraVal += aVal * bVal;
-				}
-
-				merged.setMem(i * inputSize + j, baseVal + scale * loraVal);
-			}
-		}
-
+		// Optimizing ahead of compilation isolates the matrix product into its
+		// own kernel; embedding it would unroll the inner-product sums into
+		// every element of the generated expression
+		Process.optimized(a(cp(merged), cp(baseWeights).add(
+				matmul(cp(loraB).transpose(), cp(loraA).transpose()).multiply(c(scale))))).get().run();
 		return merged;
 	}
 

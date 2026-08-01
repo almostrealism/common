@@ -28,6 +28,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
@@ -35,7 +36,8 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.stream.IntStream;
 
 /**
@@ -44,13 +46,13 @@ import java.util.stream.IntStream;
  * <p>This writer extends {@link CodePrintWriterAdapter} to provide C-specific code generation,
  * including method signatures, argument handling, and scope management for compiled kernels.</p>
  */
-public class CPrintWriter extends CodePrintWriterAdapter {
+public class CPrintWriter extends CodePrintWriterAdapter implements ConsoleFeatures {
 	/** The name of the top-level method to generate, or null to use scope names directly. */
 	private final String topLevelMethodName;
 	/** Stack tracking accessibility levels of nested scopes. */
-	private final Stack<Accessibility> accessStack;
+	private final Deque<Accessibility> accessStack;
 	/** Stack tracking array variable arguments for each nested scope level. */
-	private final Stack<List<ArrayVariable<?>>> argumentStack;
+	private final Deque<List<ArrayVariable<?>>> argumentStack;
 
 	/** Whether to generate argument read operations at scope entry. */
 	private boolean enableArgumentValueReads;
@@ -110,8 +112,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	public CPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, boolean isNative, boolean verbose) {
 		super(p, new CLanguageOperations(precision, isNative, false));
 		this.topLevelMethodName = topLevelMethodName;
-		this.accessStack = new Stack<>();
-		this.argumentStack = new Stack<>();
+		this.accessStack = new ArrayDeque<>();
+		this.argumentStack = new ArrayDeque<>();
 		this.verbose = verbose;
 		setScopePrefix("void");
 	}
@@ -167,7 +169,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	public void beginScope(String name, OperationMetadata metadata, Accessibility access,
 						   List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
 		if (arguments.size() > 150) {
-			System.out.println("WARN: " + arguments.size() + " arguments to generated function");
+			warn(arguments.size() + " arguments to generated function");
 		}
 
 		renderMetadata(metadata);
@@ -408,10 +410,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		StringBuilder buf = new StringBuilder();
 
 		for (int i = 0; i < argumentOrder.size(); i++) {
-			Variable v = args.get(argumentOrder.get(i));
-
 //			TODO
-//			if (v instanceof ResourceVariable) {
+//			if (args.get(argumentOrder.get(i)) instanceof ResourceVariable v) {
 //				buf.append(encode(v.getProducer()));
 //			}
 

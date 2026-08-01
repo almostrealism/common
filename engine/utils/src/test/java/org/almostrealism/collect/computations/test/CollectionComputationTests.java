@@ -34,7 +34,13 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for collection computations.
+ */
 public class CollectionComputationTests extends TestSuiteBase {
+	/**
+	 * Tests integer sequence evaluation.
+	 */
 	@Test(timeout = 30000)
 	public void evaluateIntegers() {
 		verboseLog(() -> {
@@ -43,6 +49,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests dividing integer sequences.
+	 */
 	@Test(timeout = 30000)
 	public void divideIntegers() {
 		PackedCollection result = divide(c(6, 18, 48), integers().add(c(2))).get().evaluate();
@@ -52,6 +61,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(12.0, result.toDouble(2));
 	}
 
+	/**
+	 * Tests index-based collection access.
+	 */
 	@Test(timeout = 30000)
 	public void index() {
 		PackedCollection x = pack(1, 1, 1, 2, 2, 2);
@@ -63,7 +75,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 			value.into(result).evaluate();
 		});
 
-		System.out.println(result.toArrayString());
+		log(String.valueOf(result.toArrayString()));
 		assertEquals(5.0, result.toDouble(0));
 		assertEquals(6.0, result.toDouble(1));
 		assertEquals(7.0, result.toDouble(2));
@@ -72,6 +84,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(12.0, result.toDouble(5));
 	}
 
+	/**
+	 * Tests integer index operations.
+	 */
 	@Test(timeout = 30000)
 	public void integersIndex() {
 		int len = 10000;
@@ -83,10 +98,13 @@ public class CollectionComputationTests extends TestSuiteBase {
 			product.get().into(result).evaluate();
 		});
 
-		System.out.println(result.valueAt(5000, 0));
+		log(String.valueOf(result.valueAt(5000, 0)));
 		assertEquals(2 * 5000, result.valueAt(5000, 0));
 	}
 
+	/**
+	 * Tests 2D integer index operations.
+	 */
 	@Test(timeout = 30000)
 	public void integersIndex2d() {
 		int len = 10;
@@ -103,21 +121,31 @@ public class CollectionComputationTests extends TestSuiteBase {
 			product.get().into(result).evaluate();
 		});
 
-		System.out.println(result.toArrayString());
+		log(String.valueOf(result.toArrayString()));
 		assertEquals(8.0, result.toDouble(0));
 		assertEquals(18.0, result.toDouble(1));
 	}
 
+	/**
+	 * Tests integer index assignment.
+	 */
 	@Test(timeout = 30000)
 	public void integersIndexAssignment() {
 		integersIndexAssignment(false);
 	}
 
+	/**
+	 * Tests optimized integer index assignment.
+	 */
 	@Test(timeout = 30000)
 	public void integersIndexAssignmentOptimized() {
 		integersIndexAssignment(true);
 	}
 
+	/**
+	 * Tests integer index assignment with optional optimization.
+	 * @param optimize whether to use operation optimization
+	 */
 	public void integersIndexAssignment(boolean optimize) {
 		int count = 6;
 		int size = 10;
@@ -148,16 +176,26 @@ public class CollectionComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests integer index assignment as an operation.
+	 */
 	@Test(timeout = 30000)
 	public void integersIndexAssignmentOperation() {
 		integersIndexAssignmentOperation(false);
 	}
 
+	/**
+	 * Tests integer index assignment as an isolated operation.
+	 */
 	@Test(timeout = 30000)
 	public void integersIndexAssignmentOperationIsolated() {
 		integersIndexAssignmentOperation(true);
 	}
 
+	/**
+	 * Tests integer index assignment operation with isolation option.
+	 * @param isolate whether to isolate the operation
+	 */
 	public void integersIndexAssignmentOperation(boolean isolate) {
 		int count = 3;
 		int size = 10;
@@ -206,6 +244,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests add-modulo assignment operations.
+	 */
 	@Test(timeout = 30000)
 	public void addModAssignment() {
 		int size = 3;
@@ -220,16 +261,21 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(3.0, indices.toDouble(2));
 	}
 
+	/**
+	 * Tests collection multiplication.
+	 */
 	@Test(timeout = 30000)
 	public void multiply() {
 		verboseLog(() -> {
-			PackedCollection testInput = new PackedCollection(1);
-			testInput.setMem(0, 9.0);
+			PackedCollection testInput = pack(9.0);
 			PackedCollection result = c(3).multiply(p(testInput)).get().evaluate();
 			assertEquals(27, result.toDouble(0));
 		});
 	}
 
+	/**
+	 * Tests sum operation across collection dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void sum() {
 		PackedCollection input = tensor(shape(3, 5)).pack();
@@ -244,12 +290,15 @@ public class CollectionComputationTests extends TestSuiteBase {
 				}
 			}
 
-			System.out.println(output.getShape());
-			System.out.println(output.toDouble(0));
+			log(String.valueOf(output.getShape()));
+			log(String.valueOf(output.toDouble(0)));
 			assertEquals(expected, output.toDouble(0));
 		});
 	}
 
+	/**
+	 * Tests concatenation of two collections.
+	 */
 	@Test(timeout = 30000)
 	public void concat() {
 		int n = 2;
@@ -275,6 +324,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests concatenation of multiplied collections.
+	 */
 	@Test(timeout = 30000)
 	public void concatProduct() {
 		int n = 2;
@@ -307,6 +359,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests concatenation of sine and cosine products.
+	 */
 	@Test(timeout = 30000)
 	public void concatSinCos() {
 		int n = 2;
@@ -345,6 +400,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests size evaluation of collections.
+	 */
 	@Test(timeout = 30000)
 	public void size() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -360,6 +418,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(15.0, result.toDouble(0));
 	}
 
+	/**
+	 * Tests scaling of collection values.
+	 */
 	@Test(timeout = 30000)
 	public void scale() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
@@ -371,16 +432,19 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		Evaluable<PackedCollection> ev = multiply(c(2), c(p(timeline))).get();
 		ev.into(destination.traverseEach()).evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 
 		destination = ev.evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 	}
 
+	/**
+	 * Tests scaling with evaluable collections.
+	 */
 	@Test(timeout = 30000)
 	public void scaleEvaluable() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
@@ -390,16 +454,19 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		Evaluable<PackedCollection> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
 		ev.into(destination.traverseEach()).evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 
 		destination = ev.evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 	}
 
+	/**
+	 * Tests 2D max operation.
+	 */
 	@Test(timeout = 30000)
 	public void max2d() {
 		PackedCollection value = pack(2.0, 3.0, 7.0, 1.0).reshape(2, 2).traverse(1);
@@ -410,6 +477,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(7.0, m.toDouble(1));
 	}
 
+	/**
+	 * Tests index of max value in 2D collection.
+	 */
 	@Test(timeout = 30000)
 	public void indexOfMax2d() {
 		PackedCollection value = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
@@ -421,16 +491,19 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(1.0, m.toDouble(1));
 	}
 
+	/**
+	 * Tests 3D max operation.
+	 */
 	@Test(timeout = 30000)
 	public void max3d() {
 		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
 				.traverse(2);
 		value.print();
-		System.out.println("--");
+		log("--");
 
 		PackedCollection m = max(cp(value)).get().evaluate();
-		System.out.println(m.getShape());
+		log(String.valueOf(m.getShape()));
 		m.print();
 
 		Assert.assertEquals(3, m.getShape().getDimensions());
@@ -446,19 +519,22 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(-0.7, m.toDouble(5));
 	}
 
+	/**
+	 * Tests dynamic max operation.
+	 */
 	// @Test(timeout = 30000)
-	public void dynamicMax() {
+	private void dynamicMax() {
 		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
 				.traverse(2);
 		value.print();
-		System.out.println("--");
+		log("--");
 
 		PackedCollection output = new PackedCollection(shape(2, 3, 1)).traverse(2);
 
 //		PackedCollection m = max(new DynamicCollectionProducer(shape(2, 3, 2), args -> value, false)).get().evaluate();
 		PackedCollection m = max(new DynamicProducer<PackedCollection>(args -> value)).get().into(output).evaluate();
-		System.out.println(m.getShape());
+		log(String.valueOf(m.getShape()));
 		m.print();
 
 		Assert.assertEquals(3, m.getShape().getDimensions());
@@ -474,26 +550,31 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(-0.7, m.toDouble(5));
 	}
 
+	/**
+	 * Tests max across two series.
+	 */
 	@Test(timeout = 30000)
 	public void collectionMaxTwoSeries() {
-		PackedCollection series = new PackedCollection(2, 10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
-		System.out.println(series.traverse(1).getCountLong() + " series");
+		PackedCollection series = pack(
+				7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0,
+				12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0).reshape(shape(2, 10));
+		log(String.valueOf(series.traverse(1).getCountLong() + " series"));
 
 		Producer<PackedCollection> max = max(v(shape(-1, 10), 0));
 		PackedCollection dest = max.get().evaluate(series.traverse(1));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
 		assertEquals(16, dest.toArray(1, 1)[0]);
 	}
 
+	/**
+	 * Tests collection max operation.
+	 */
 	@Test(timeout = 30000)
 	public void collectionMax() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCountLong() + " series");
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		Producer<PackedCollection> max = max(v(shape(10), 0));
 		PackedCollection dest = new PackedCollection(2, 1);
@@ -508,16 +589,18 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		// If this was permitted, it should perhaps repeat the
 		// result for every position in the output
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
 		assertEquals(14, dest.toArray(1, 1)[0]);
 	}
 
+	/**
+	 * Tests greater-than comparison using max value.
+	 */
 	@Test(timeout = 30000)
 	public void greaterThanMax() {
-		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCountLong() + " series");
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		PackedCollection dest = new PackedCollection(1);
 		CollectionProducer max = cp(series.traverse(0)).max();
@@ -529,10 +612,13 @@ public class CollectionComputationTests extends TestSuiteBase {
 			op.get().run();
 		});
 
-		System.out.println("Max = " + dest.toDouble(0));
+		log("Max = " + dest.toDouble(0));
 		assertEquals(0.8 / 14, dest.toDouble(0));
 	}
 
+	/**
+	 * Tests dynamic index projection.
+	 */
 	@Test(timeout = 30000)
 	public void dynamicProjection() {
 		PackedCollection in = pack(2.0, 6.0, 3.0, 1.0).reshape(2, 2).traverse(1);
@@ -564,6 +650,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(3.0, out.toDouble(1));
 	}
 
+	/**
+	 * Tests binary greater-than operation.
+	 */
 	@Test(timeout = 30000)
 	public void binaryGreaterThan() {
 		PackedCollection result = new PackedCollection(1);
@@ -581,6 +670,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
+	/**
+	 * Tests binary greater-than-or-equal operation.
+	 */
 	@Test(timeout = 30000)
 	public void binaryGreaterThanOrEqual() {
 		PackedCollection result = new PackedCollection(1);
@@ -598,6 +690,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
+	/**
+	 * Tests binary less-than operation.
+	 */
 	@Test(timeout = 30000)
 	public void binaryLessThan() {
 		PackedCollection result = new PackedCollection(1);
@@ -615,6 +710,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
+	/**
+	 * Tests binary less-than-or-equal operation.
+	 */
 	@Test(timeout = 30000)
 	public void binaryLessThanOrEqual() {
 		PackedCollection result = new PackedCollection(1);
@@ -632,6 +730,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
+	/**
+	 * Tests binary AND operation.
+	 */
 	@Test(timeout = 30000)
 	public void binaryAnd() {
 		PackedCollection result = new PackedCollection(1);
@@ -661,6 +762,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(0.0, result.toDouble(0));
 	}
 
+	/**
+	 * Tests AND operation with custom true/false values.
+	 */
 	@Test(timeout = 30000)
 	public void andWithCustomValues() {
 		PackedCollection result = new PackedCollection(1);
@@ -677,6 +781,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		assertEquals(-1.0, result.toDouble(0));
 	}
 
+	/**
+	 * Tests chained AND conditions.
+	 */
 	@Test(timeout = 30000)
 	public void chainedAndConditions() {
 		PackedCollection result = new PackedCollection(1);

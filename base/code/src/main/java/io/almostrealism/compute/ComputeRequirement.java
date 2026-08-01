@@ -19,9 +19,38 @@ package io.almostrealism.compute;
 import io.almostrealism.code.Precision;
 import org.almostrealism.io.SystemUtils;
 
+/**
+ * An enumeration of the hardware or language backends that a computation can target.
+ *
+ * <p>Each constant identifies a specific execution context (CPU, GPU, FPGA) or a
+ * target code language (C, OpenCL, Metal, JNI). The {@link #getMaximumPrecision()}
+ * method returns the highest floating-point precision supported by that backend.</p>
+ */
 public enum ComputeRequirement {
-	CPU, GPU, FPGA, C, CL, MTL, JNI, EXTERNAL, PROFILING;
+	/** Native CPU execution. Supports full FP64 precision. */
+	CPU,
+	/** GPU execution. Limited to FP32 precision. */
+	GPU,
+	/** FPGA execution. Limited to FP32 precision. */
+	FPGA,
+	/** Plain C code generation. Supports FP64. */
+	C,
+	/** OpenCL kernel execution. FP64 on x86, FP32 on aarch64. */
+	CL,
+	/** Metal (Apple GPU) kernel execution. Limited to FP32. */
+	MTL,
+	/** JNI (Java Native Interface) execution. Supports FP64. */
+	JNI,
+	/** External process execution. Supports FP64. */
+	EXTERNAL,
+	/** Profiling-only mode (no real computation). Supports FP64. */
+	PROFILING;
 
+	/**
+	 * Returns the highest {@link Precision} supported by this execution backend.
+	 *
+	 * @return the maximum floating-point precision for this backend
+	 */
 	public Precision getMaximumPrecision() {
 			switch (this) {
 			case CPU:

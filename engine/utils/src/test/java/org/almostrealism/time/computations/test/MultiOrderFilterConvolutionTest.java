@@ -47,18 +47,19 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		int signalSize = 256;
 		int filterOrder = 10;
 
-		PackedCollection signal = createSignal(signalSize,
-				i -> Math.sin(2.0 * Math.PI * i / 32.0));
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 32.0))
+				.into(signal.traverseEach()).evaluate();
 
-		double[] coeffs = referenceLowPassCoefficients(5000, 44100, filterOrder);
-		PackedCollection coefficients = new PackedCollection(filterOrder + 1);
-		coefficients.setMem(coeffs);
+		PackedCollection coefficients = lowPassCoefficients(c(5000.0), 44100, filterOrder)
+				.get().evaluate().reshape(shape(filterOrder + 1));
 
 		MultiOrderFilter filter = MultiOrderFilter.create(
 				traverseEach(cp(signal)), p(coefficients));
 		PackedCollection result = filter.get().evaluate();
 
-		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
+		double[] expected = referenceConvolve(
+				signal.toArray(0, signalSize), coefficients.toArray(0, filterOrder + 1));
 		assertConvolutionEquals(expected, result, signalSize);
 	}
 
@@ -76,9 +77,10 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		double cutoff = 5000.0;
 		int sampleRate = 44100;
 
-		PackedCollection signal = createSignal(signalSize,
-				i -> Math.sin(2.0 * Math.PI * i / 16.0)
-						+ 0.5 * Math.sin(2.0 * Math.PI * i / 4.0));
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
+				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI / 4.0)).multiply(0.5))
+				.into(signal.traverseEach()).evaluate();
 
 		MultiOrderFilter filter = lowPass(
 				traverseEach(cp(signal)), c(cutoff), sampleRate, filterOrder);
@@ -102,9 +104,10 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		double cutoff = 8000.0;
 		int sampleRate = 44100;
 
-		PackedCollection signal = createSignal(signalSize,
-				i -> Math.sin(2.0 * Math.PI * 440.0 * i / sampleRate)
-						+ 0.3 * Math.sin(2.0 * Math.PI * 12000.0 * i / sampleRate));
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI * 440.0 / sampleRate))
+				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI * 12000.0 / sampleRate)).multiply(0.3))
+				.into(signal.traverseEach()).evaluate();
 
 		MultiOrderFilter filter = lowPass(
 				traverseEach(cp(signal)), c(cutoff), sampleRate, filterOrder);
@@ -120,7 +123,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 	 * low-pass and high-pass based on a runtime decision variable)
 	 * produces correct results when coefficients are pre-computed
 	 * into a buffer via the two-kernel approach used by
-	 * {@link org.almostrealism.audio.arrange.EfxManager}.
+	 * {@link org.almostrealism.studio.arrange.EfxManager}.
 	 *
 	 * <p>The choice expression tree is evaluated into a buffer in a
 	 * separate operation, then the buffer is passed to MultiOrderFilter
@@ -134,8 +137,9 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		double cutoff = 5000.0;
 		int sampleRate = 44100;
 
-		PackedCollection signal = createSignal(signalSize,
-				i -> Math.sin(2.0 * Math.PI * i / 16.0));
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
+				.into(signal.traverseEach()).evaluate();
 
 		Producer<PackedCollection> decision = cp(pack(0.9));
 

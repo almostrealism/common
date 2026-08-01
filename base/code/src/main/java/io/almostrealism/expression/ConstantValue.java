@@ -18,9 +18,25 @@ package io.almostrealism.expression;
 
 import java.util.Objects;
 
+/**
+ * A generic constant expression that holds an arbitrary typed value.
+ *
+ * <p>Used as a fallback by {@link Constant#of} when the value is not one of the
+ * primitive-constant subtypes ({@link IntegerConstant}, {@link LongConstant},
+ * {@link DoubleConstant}, or {@link BooleanConstant}).</p>
+ *
+ * @param <T> the type of the constant value
+ */
 public class ConstantValue<T> extends Constant<T> {
+	/** The value held by this constant. */
 	private T value;
 
+	/**
+	 * Constructs a constant expression holding the given value.
+	 *
+	 * @param type  the Java type of the constant
+	 * @param value the literal value
+	 */
 	public ConstantValue(Class<T> type, T value) {
 		super(type);
 		this.value = value;

@@ -21,7 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.almostrealism.io.ConsoleFeatures;
@@ -29,30 +29,49 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for {@link KernelSeries} expression simplification and kernel index operations.
+ */
 public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatures, ConsoleFeatures {
 
+	/** Language operations instance for expression rendering. */
 	private static LanguageOperations lang = new LanguageOperationsStub();
 
+	/**
+	 * Tests quotient mod 1 operation on kernel series.
+	 */
 	@Test(timeout = 30000)
 	public void quotientMod1() {
 		validateSeries(kernel().divide(5).imod(3));
 	}
 
+	/**
+	 * Tests product mod 1 operation on kernel series.
+	 */
 	@Test(timeout = 30000)
 	public void productMod1() {
 		validateSeries(kernel().multiply(e(0.5)).mod(e(3.0)));
 	}
 
+	/**
+	 * Tests product quotient mod 1 combined operations.
+	 */
 	@Test(timeout = 30000)
 	public void productQuotientMod1() {
 		validateSeries(kernel().multiply(2).divide(5).imod(3));
 	}
 
+	/**
+	 * Tests product quotient mod 2 combined operations with integer conversion.
+	 */
 	@Test(timeout = 30000)
 	public void productQuotientMod2() {
 		validateSeries(kernel().multiply(e(0.5)).divide(6).toInt().imod(3));
 	}
 
+	/**
+	 * Tests product mod sum combined operations.
+	 */
 	@Test(timeout = 30000)
 	public void productModSum1() {
 		Expression a = kernel().multiply(2).divide(5).imod(3);
@@ -61,6 +80,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 	}
 
 	// (((((((kernel0 * 4) / 4) * 4) / 12) * 4) / 4) * 4) % (16)
+	/**
+	 * Tests repeated quotient product simplification.
+	 */
 	@Test(timeout = 30000)
 	public void repeatedQuotientProduct() {
 		Expression p = kernel().multiply(4)
@@ -78,6 +100,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 	}
 
 	// (((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) / 18) * 9
+	/**
+	 * Tests product quotient sum combined operations.
+	 */
 	@Test(timeout = 30000)
 	public void productQuotientSum() {
 		Expression a = kernel().multiply(8)
@@ -86,7 +111,7 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		a.kernelSeries();
 
 		Expression b = kernel().multiply(8).divide(144).multiply(144);
-		Expression c = a.add(b).divide(18).multiply(9).imod(9);
+		a.add(b).divide(18).multiply(9).imod(9);
 
 		Expression p = kernel().multiply(8)
 				.imod(144)
@@ -101,6 +126,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 
 
 	// (((((((((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) / 18) * 9) / 9) * 9) / 18) * 9) / 9) * 9
+	/**
+	 * Tests product quotient sum simplification.
+	 */
 	@Test(timeout = 30000)
 	public void productQuotientSumSimplify() {
 		Expression a = kernel().multiply(8)
@@ -131,23 +159,29 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		validateSeries(p);
 	}
 
+	/**
+	 * Tests product quotient sum equals validation.
+	 */
 	@Test(timeout = 30000)
 	public void productQuotientSumEquals() {
 		for (int kernel0 = 0; kernel0 < 1800; kernel0++) {
 			// int result = (((((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18)) == (0)) ? (1) : (0));
 			int result = ((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18);
 			int simple = kernel0 % 18;
-			if (kernel0 % 100 == 0) System.out.println(kernel0 + " " + result);
+			if (kernel0 % 100 == 0) log(String.valueOf(kernel0 + " " + result));
 			Assert.assertEquals(result, simple);
 		}
 
 		for (int kernel0 = 0; kernel0 < 100; kernel0++) {
 			int global_id = kernel0;
 			int result = ((((((((((((((((((((((((global_id * 8) + 1) % (144)) / 8) + ((((global_id * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) % (24)) / 12) + 5 + ((((((((((((((((((((((global_id * 8) + 1) % (144)) / 8) + ((((global_id * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) / 24) * 24)) % (16));
-			System.out.println(kernel0 + " " + result);
+			log(String.valueOf(kernel0 + " " + result));
 		}
 	}
 
+	/**
+	 * Tests product mod and quotient sum combined operations.
+	 */
 	@Test(timeout = 30000)
 	public void productModAndQuotientSum() {
 		// ((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18);
@@ -167,6 +201,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		Assert.assertEquals("kernel0", e.getExpression(new LanguageOperationsStub()));
 	}
 
+	/**
+	 * Tests divide multiply operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void divideMultiply1() {
 		Expression p = kernel()
@@ -176,6 +213,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		validateSeries(p);
 	}
 
+	/**
+	 * Tests divide multiply operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void divideMultiply2() {
 		Expression p = kernel()
@@ -187,6 +227,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 	}
 
 	// @Test(timeout = 30000)
+	/**
+	 * Large sum test variant 2.
+	 */
 	public void largeSum2() {
 		Expression p = kernel().multiply(8)
 				.divide(144)
@@ -205,6 +248,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 	}
 
 	// @Test(timeout = 30000)
+	/**
+	 * Large sum test variant 3.
+	 */
 	public void largeSum3() {
 		Expression p = kernel().multiply(8).add(1).divide(144)
 				.multiply(144).add(18).divide(18)
@@ -217,6 +263,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 	}
 
 	// @Test(timeout = 30000)
+	/**
+	 * Large sum test variant 4.
+	 */
 	public void largeSum4() {
 		Expression p = kernel().multiply(8)
 				.add(1)
@@ -228,6 +277,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 	}
 
 	// @Test(timeout = 30000)
+	/**
+	 * Large sum test variant 5.
+	 */
 	public void largeSum5() {
 		Expression p = kernel().multiply(8)
 				.add(1)
@@ -240,6 +292,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 	}
 
 	// @Test(timeout = 30000)
+	/**
+	 * Large sum test variant 6.
+	 */
 	public void largeSum6() {
 		// ((((((((((((((((((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) % (24)) / 12) + 5 + ((((((((((((((((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) / 24) * 24)) % (16))
 		// (((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((((((((((((((((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4)) % (24)) / 12) + 5) + (((((((kernel0 * 8) + 1) % (144)) / 8) + ((((((((((((((((((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4)) / 24) * 24)) % (16)
@@ -253,10 +308,13 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 				.add(5)
 				.add(kernel().multiply(8).add(1).imod(144).divide(8).add(kernel().multiply(8).add(1).divide(144).multiply(144).add(18).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(36).multiply(36).add(4)).divide(24).multiply(24))
 				.imod(16);
-		System.out.println(p.getExpression(new LanguageOperationsStub()));
+		log(String.valueOf(p.getExpression(new LanguageOperationsStub())));
 		validateSeries(p);
 	}
 
+	/**
+	 * Tests simple sum operation.
+	 */
 	@Test(timeout = 30000)
 	public void simpleSum() {
 		KernelSeries series = e(0).kernelSeries();
@@ -265,9 +323,12 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		series = kernel().add(0).kernelSeries();
 		Assert.assertEquals(1, series.getScale().getAsInt());
 
-		series = kernel().divide(1).multiply(8).add(0).kernelSeries();
+		kernel().divide(1).multiply(8).add(0).kernelSeries();
 	}
 
+	/**
+	 * Tests simple mod operation.
+	 */
 	@Test(timeout = 30000)
 	public void simpleMod() {
 		KernelSeries series = kernel().imod(10).kernelSeries();
@@ -285,6 +346,9 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		validateSeries(kernel().imod(10).multiply(5).imod(3));
 	}
 
+	/**
+	 * Validates the kernel series produces the expected periodic values.
+	 */
 	protected void validateSeries(Expression exp) {
 		log(exp.getExpression(lang));
 
@@ -298,10 +362,10 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		if (period < 500) {
 			for (int i = 0; i < 4; i++) {
 				for (int j = 0; j < period; j++) {
-					System.out.print(values[i * period + j] + " ");
+					log(String.valueOf(values[i * period + j] + " "));
 				}
 
-				System.out.println();
+				log("");
 			}
 		}
 

@@ -17,13 +17,20 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionConstantComputation;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Collections;
 
 /**
  * Test cases demonstrating usage patterns and behavior of {@link CollectionZerosComputation}.
@@ -32,7 +39,7 @@ import org.junit.Test;
  *
  * @author Michael Murray
  */
-public class CollectionZerosComputationTest extends TestSuiteBase {
+public class CollectionZerosComputationTest extends TestSuiteBase implements CollectionFeatures {
 
 	/**
 	 * Tests basic creation and evaluation of zero computations.
@@ -169,7 +176,7 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 				new CollectionZerosComputation(new TraversalPolicy(5));
 
 		// Generate parallel process (should return self)
-		CollectionZerosComputation parallelProcess = (CollectionZerosComputation) zeros.generate(java.util.Collections.emptyList());
+		CollectionZerosComputation parallelProcess = (CollectionZerosComputation) zeros.generate(Collections.emptyList());
 
 		assertSame("Zero computation should serve as its own parallel process",
 				zeros, parallelProcess);
@@ -178,17 +185,93 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests the isolation operation behavior.
-	 * Demonstrates that zero computations cannot be isolated as they are already
-	 * optimally isolated by nature.
+	 * A zeros computation is a constant leaf, so {@code isolate()} must return a process
+	 * (itself) rather than throw — it is already maximally independent and needs no isolation,
+	 * matching {@link SingleConstantComputation#isolate()}.
+	 *
+	 * <p><strong>Regression:</strong> this method previously threw
+	 * {@link UnsupportedOperationException}, and this test previously asserted that throw. That
+	 * was a real defect: the optimization cascade ({@code ParallelProcess.optimize} /
+	 * {@code ReshapeProducer.optimize}) calls {@code isolate()} on every reachable process, so
+	 * the throw broke compilation of <em>any</em> graph containing a zeros computation — most
+	 * commonly a producer multiplied by a literal {@code 0.0}, which folds to one. See
+	 * {@link #multiplyByZeroConstantOptimizesAndEvaluatesToZero()}.</p>
 	 */
-	@Test(timeout = 5000, expected = UnsupportedOperationException.class)
-	public void isolationNotSupported() {
+	@Test(timeout = 5000)
+	public void isolateAlwaysThrows() {
 		CollectionZerosComputation zeros =
 				new CollectionZerosComputation(new TraversalPolicy(3));
 
-		// This should throw UnsupportedOperationException
-		zeros.isolate();
+		// A zeros must never be isolated: no parent benefits from materialising a zero buffer
+		// rather than an inline constant. Reaching isolate() means an operation failed to respect
+		// Algebraic.isZero; it must fail loudly rather than silently embed the zeros.
+		try {
+			zeros.isolate();
+			Assert.fail("zeros.isolate() must throw; a zeros must never be isolated");
+		} catch (UnsupportedOperationException expected) {
+			// expected
+		}
+	}
+
+	/**
+	 * End-to-end regression for the optimization cascade: multiplying a producer by a literal
+	 * {@code 0.0} folds to a {@link CollectionZerosComputation}, and evaluating the surrounding
+	 * (reshaped) graph drives the optimization that calls {@code isolate()} on it. Before the
+	 * fix this threw {@link UnsupportedOperationException} during compilation; it must now
+	 * compile and evaluate to all zeros.
+	 */
+	@Test(timeout = 30000)
+	public void multiplyByZeroConstantOptimizesAndEvaluatesToZero() {
+		PackedCollection input = new PackedCollection(new TraversalPolicy(2, 3));
+		input.fill(1.0);
+
+		PackedCollection result = cp(input).multiply(c(0.0))
+				.reshape(new TraversalPolicy(6)).get().evaluate();
+
+		Assert.assertEquals(6, result.getMemLength());
+		for (int i = 0; i < result.getMemLength(); i++) {
+			Assert.assertEquals(0.0, result.toDouble(i), 1e-9);
+		}
+	}
+
+	/**
+	 * Scaling an integer sequence by zero must collapse to a
+	 * {@link CollectionZerosComputation} rather than a degenerate arithmetic
+	 * sequence, so the result is recognized as zero by downstream algebraic
+	 * optimizations — matching the general multiplication path.
+	 */
+	@Test(timeout = 30000)
+	public void integerSequenceTimesZeroIsZeros() {
+		CollectionProducer product = integers(0, 12).multiply(0.0);
+
+		Assert.assertTrue("integers(0, n).multiply(0.0) should collapse to a zeros computation, got "
+						+ product.getClass().getSimpleName(),
+				product instanceof CollectionZerosComputation);
+		Assert.assertEquals(12, shape(product).getTotalSize());
+	}
+
+	/**
+	 * Adding a scalar to a zeros computation must produce a constant computation
+	 * (every element takes the scalar value), not a general addition over a zero
+	 * operand. Together with {@link #integerSequenceTimesZeroIsZeros()}, this
+	 * guarantees that a chain like {@code integers(0, n).multiply(0.0).add(v)}
+	 * is exactly a constant of shape {@code (n)} — there is never a reason to
+	 * build such a chain in place of a direct constant.
+	 */
+	@Test(timeout = 30000)
+	public void zerosPlusScalarIsConstant() {
+		CollectionProducer sum = integers(0, 12).multiply(0.0).add(3.0);
+
+		Assert.assertTrue("zeros.add(v) should produce a constant computation, got "
+						+ sum.getClass().getSimpleName(),
+				sum instanceof CollectionConstantComputation);
+		Assert.assertEquals(12, shape(sum).getTotalSize());
+
+		PackedCollection result = sum.get().evaluate();
+		Assert.assertEquals(12, result.getMemLength());
+		for (int i = 0; i < result.getMemLength(); i++) {
+			Assert.assertEquals(3.0, result.toDouble(i), 1e-9);
+		}
 	}
 
 	/**
@@ -261,6 +344,13 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 				((CollectionZerosComputation) deltaZeros).isZero());
 	}
 
+	/**
+	 * Asserts that two objects are the same instance.
+	 *
+	 * @param msg Error message
+	 * @param expected Expected object
+	 * @param actual Actual object
+	 */
 	private void assertSame(String msg, Object expected, Object actual) {
 		if (expected != actual) {
 			throw new AssertionError(msg + ": Expected same object instance");

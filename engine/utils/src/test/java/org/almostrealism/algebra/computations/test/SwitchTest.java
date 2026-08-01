@@ -27,12 +27,31 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
+/**
+ * Tests for the Switch computation.
+ */
 public class SwitchTest extends TestSuiteBase {
 
+	/**
+	 * Creates a Switch computation with the given output and decision variables.
+	 *
+	 * @param output Output collection
+	 * @param decision Decision collection
+	 * @param multiplier Multiplier collection
+	 * @return Switch computation
+	 */
 	public Switch choice(PackedCollection output, PackedCollection decision, PackedCollection multiplier) {
 		return choice(output, p(decision), p(multiplier));
 	}
 
+	/**
+	 * Creates a Switch computation with producer-based decision and multiplier.
+	 *
+	 * @param output Output collection
+	 * @param decision Decision producer
+	 * @param multiplier Multiplier producer
+	 * @return Switch computation
+	 */
 	public Switch choice(PackedCollection output, Producer<PackedCollection> decision, Producer<PackedCollection> multiplier) {
 		Computation<Void> firstChoice = a(1, p(output), multiply(multiplier, c(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), multiply(multiplier, c(4.0)));
@@ -40,12 +59,13 @@ public class SwitchTest extends TestSuiteBase {
 		return new Switch(decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
+	/**
+	 * Tests three choice switch operation.
+	 */
 	@Test(timeout = 10000)
 	public void threeChoices() {
 		PackedCollection output = new PackedCollection(1);
-		output.setMem(0, 0.0);
-		PackedCollection decision = new PackedCollection(1);
-		decision.setMem(0, 0.4);
+		PackedCollection decision = pack(0.4);
 
 		Switch choice = choice(output, decision, pack(1.0));
 
@@ -54,21 +74,20 @@ public class SwitchTest extends TestSuiteBase {
 			op.run();
 		});
 
-		System.out.println("chosen = " + output.toDouble(0));
+		log("chosen = " + output.toDouble(0));
 		assertEquals(4.0, output);
 	}
 
 
+	/**
+	 * Tests choice list with multiple decisions.
+	 */
 	@Test(timeout = 10000)
 	public void choiceList() {
 		PackedCollection output1 = new PackedCollection(1);
-		output1.setMem(0, 0.0);
-		PackedCollection decision1 = new PackedCollection(1);
-		decision1.setMem(0, 0.4);
+		PackedCollection decision1 = pack(0.4);
 		PackedCollection output2 = new PackedCollection(1);
-		output2.setMem(0, 0.0);
-		PackedCollection decision2 = new PackedCollection(1);
-		decision2.setMem(0, 0.8);
+		PackedCollection decision2 = pack(0.8);
 
 		OperationList list = new OperationList("Choice List");
 		list.add(choice(output1, decision1, pack(1.0)));
@@ -79,26 +98,25 @@ public class SwitchTest extends TestSuiteBase {
 			op.run();
 		});
 
-		System.out.println("first choice = " + output1.toDouble(0));
-		System.out.println("second choice = " + output2.toDouble(0));
+		log("first choice = " + output1.toDouble(0));
+		log("second choice = " + output2.toDouble(0));
 
 		assertEquals(4.0, output1);
 		assertEquals(8.0, output2);
 	}
 
+	/**
+	 * Tests nested choice list with embedded operation lists.
+	 */
 	@Test(timeout = 10000)
 	public void nestedChoiceList() {
 		Producer<PackedCollection> multiplier = c(2.0);
 
 		PackedCollection output1a = new PackedCollection(1);
-		output1a.setMem(0, 0.0);
 		PackedCollection output1b = new PackedCollection(1);
-		output1b.setMem(0, 0.0);
 		Producer<PackedCollection> decisionA = c(0.4);
 		PackedCollection output2a = new PackedCollection(1);
-		output2a.setMem(0, 0.0);
 		PackedCollection output2b = new PackedCollection(1);
-		output2b.setMem(0, 0.0);
 		Producer<PackedCollection> decisionB = multiply(c(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");
@@ -113,10 +131,10 @@ public class SwitchTest extends TestSuiteBase {
 		AcceleratedOperation op = (AcceleratedOperation) list.get();
 		op.run();
 
-		System.out.println("first choice A = " + output1a.toDouble(0));
-		System.out.println("first choice B = " + output1b.toDouble(0));
-		System.out.println("second choice A = " + output2a.toDouble(0));
-		System.out.println("second choice B = " + output2b.toDouble(0));
+		log("first choice A = " + output1a.toDouble(0));
+		log("first choice B = " + output1b.toDouble(0));
+		log("second choice A = " + output2a.toDouble(0));
+		log("second choice B = " + output2b.toDouble(0));
 
 		assertEquals(4.0, output1a);
 		assertEquals(16.0, output1b);

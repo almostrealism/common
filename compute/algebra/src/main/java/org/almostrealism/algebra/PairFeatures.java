@@ -20,6 +20,7 @@ import io.almostrealism.collect.ComplexProductExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.io.Console;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -66,6 +67,11 @@ import java.util.function.BiFunction;
  * CollectionProducer c2 = pair(1.0, 2.0);  // 1 + 2i
  * CollectionProducerComputationBase result = multiplyComplex(c1, c2);  // -5 + 10i
  * }</pre>
+ *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
  *
  * @author  Michael Murray
  * @see Pair
@@ -161,7 +167,7 @@ public interface PairFeatures extends CollectionFeatures {
 						" with a collection of size " + size);
 			} else {
 				// TODO This should actually just call traverseEach if the shapes don't match, but one size is = 1
-				System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
+				Console.root().println("WARN: Multiplying a collection of size " + shape.getSize() +
 						" with a collection of size " + size + " (will broadcast)");
 			}
 		}

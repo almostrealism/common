@@ -50,16 +50,39 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 	 * Available LFO waveform shapes.
 	 */
 	public enum Shape {
-		SINE, TRIANGLE, SQUARE, SAW_UP, SAW_DOWN, SAMPLE_HOLD
+		/** Smooth sinusoidal modulation. */
+		SINE,
+		/** Linear ramp up then down within each cycle. */
+		TRIANGLE,
+		/** Abrupt alternation between +1 and -1 each half-cycle. */
+		SQUARE,
+		/** Rising ramp from -1 to +1 with instant reset at the cycle boundary. */
+		SAW_UP,
+		/** Falling ramp from +1 to -1 with instant reset at the cycle boundary. */
+		SAW_DOWN,
+		/** Random value held constant for each complete cycle, updated at the cycle boundary. */
+		SAMPLE_HOLD
 	}
 
+	/** Current waveform shape that determines how the LFO oscillates. */
 	private Shape shape;
+
+	/** Oscillation frequency in Hz (typically 0.1–20 Hz for sub-audio modulation). */
 	private double frequency;
+
+	/** Current phase position in the range [0, 1), advanced by frequency/sampleRate each tick. */
 	private double phase;
+
+	/** Most recently computed LFO output value in the range [-1, 1]. */
 	private double currentValue;
+
+	/** Held random value for SAMPLE_HOLD mode; updated when phase wraps. */
 	private double sampleHoldValue;
 
+	/** Audio processing sample rate in Hz; used to compute per-tick phase increment. */
 	private final int sampleRate;
+
+	/** Single-element PackedCollection holding the current LFO output for GPU-accessible consumers. */
 	private final PackedCollection output;
 
 	/**
@@ -106,6 +129,8 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 
 	/**
 	 * Sets the waveform shape.
+	 *
+	 * @param shape the new waveform shape
 	 */
 	public void setShape(Shape shape) {
 		this.shape = shape;
@@ -136,6 +161,8 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 
 	/**
 	 * Sets the phase position (0-1).
+	 *
+	 * @param phase the phase value; values outside [0, 1) are wrapped automatically
 	 */
 	public void setPhase(double phase) {
 		this.phase = phase % 1.0;
@@ -205,6 +232,11 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 		sampleHoldValue = Math.random() * 2.0 - 1.0;
 	}
 
+	/**
+	 * Computes the LFO output value for the current phase using the active shape.
+	 *
+	 * @return the waveform value in the range [-1, 1]
+	 */
 	private double calculateValue() {
 		switch (shape) {
 			case SINE:

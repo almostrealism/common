@@ -85,8 +85,13 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class AdamOptimizer implements ParameterUpdate<PackedCollection>, CodeFeatures {
+	/** Producer supplying the learning rate for each update step. */
 	private final Producer<PackedCollection> learningRate;
+
+	/** Producer supplying the first moment exponential decay rate. */
 	private final Producer<PackedCollection> beta1;
+
+	/** Producer supplying the second moment exponential decay rate. */
 	private final Producer<PackedCollection> beta2;
 
 	/**

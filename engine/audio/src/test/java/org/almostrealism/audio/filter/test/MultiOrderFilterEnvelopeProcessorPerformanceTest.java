@@ -44,9 +44,14 @@ import java.util.Random;
  * </p>
  */
 public class MultiOrderFilterEnvelopeProcessorPerformanceTest extends TestSuiteBase {
+
+	/** Sample rate for audio processing, derived from OutputLine defaults. */
 	public static final int SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** Maximum duration in seconds for envelope processing. */
 	public static final double MAX_SECONDS = 90.0;
 
+	/** Flag to enable operation profiling during performance tests. */
 	public static boolean enableProfile = true;
 
 	/**

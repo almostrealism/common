@@ -27,7 +27,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for plane intersection operations.
+ */
 public class PlaneTest extends TestSuiteBase {
+	/**
+	 * Creates a test plane intersection scenario.
+	 */
 	protected ShadableIntersection test1() {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
@@ -35,30 +41,39 @@ public class PlaneTest extends TestSuiteBase {
 		return (ShadableIntersection) p.intersectAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 	}
 
+	/**
+	 * Tests plane intersection calculation.
+	 */
 	// TODO @Test(timeout = 10000)
-	public void intersectionTest1() {
+	private void intersectionTest1() {
 		ShadableIntersection intersection = test1();
 		double distance = intersection.getDistance().evaluate().toDouble();
-		System.out.println("distance = " + distance);
+		log("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
 		Assert.assertEquals(intersection.get(0).get().evaluate(), ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate());
 	}
 
+	/**
+	 * Tests plane intersection with compact representation.
+	 */
 	// TODO  @Test(timeout = 10000)
-	public void intersectionTest1Compact() {
+	private void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
 		Producer<PackedCollection> p = intersection.getDistance();
 
 		double distance = p.get().evaluate().toDouble();
-		System.out.println("distance = " + distance);
+		log("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
 		Assert.assertEquals(intersection.get(0).get().evaluate(), new Ray(new Vector(0.0, -10.0, 21.0),
 				new Vector(0.0, 1.0, 0.0)));
 	}
 
+	/**
+	 * Tests plane intersection with different ray.
+	 */
 	@Test(timeout = 10000)
 	public void intersectionTest2() {
 		Producer<Ray> r = (Producer) ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
@@ -70,10 +85,11 @@ public class PlaneTest extends TestSuiteBase {
 		Assert.assertTrue(intersection.getDistance().get().evaluate().toDouble() < 0);
 	}
 
+	/**
+	 * Tests plane transform operations.
+	 */
 	// TODO @Test(timeout = 10000)
-	public void transformTest() {
-		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
-				new Vector(0.0, 0.5, -1.0)));
+	private void transformTest() {
 		ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0);
 
 		Plane p = new Plane(Plane.XZ);

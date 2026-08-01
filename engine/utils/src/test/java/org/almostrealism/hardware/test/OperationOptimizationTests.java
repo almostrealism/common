@@ -30,7 +30,13 @@ import org.junit.Test;
 
 import java.util.function.Supplier;
 
+/**
+ * Tests for operation optimization and performance profiling.
+ */
 public class OperationOptimizationTests extends TestSuiteBase {
+	/**
+	 * Tests reshape and enumerate operations.
+	 */
 	@Test(timeout = 30000)
 	public void reshapeEnumerate() {
 		int seqLength = 1024;
@@ -67,6 +73,9 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests matrix multiplication loop.
+	 */
 	@Test(timeout = 30000)
 	public void matmulLoop() {
 		int dim = 256;
@@ -78,9 +87,12 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		matrix.fill(pos -> Math.random());
 
 		Supplier<Runnable> loop = lp(a(each(p(out)), matmul(p(matrix), p(in))), 10);
-		System.out.println(Countable.count(loop));
+		log(String.valueOf(Countable.count(loop)));
 	}
 
+	/**
+	 * Compares native vs Java matrix multiplication loops (long-running).
+	 */
 	@Test(timeout = 2 * 60000)
 	@TestDepth(3)
 	@TestProperties(longRunning = true)
@@ -90,19 +102,23 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		int dim = 64;
 		PackedCollection in = new PackedCollection(shape(dim));
 		PackedCollection matrix = new PackedCollection(shape(dim, dim));
-		PackedCollection out = new PackedCollection(shape(dim));
 
 		in.fill(pos -> Math.random());
 		matrix.fill(pos -> Math.random());
 
-		System.out.println("Running native loop...");
+		log("Running native loop...");
 		profile(lp(a(p(in), matmul(p(matrix), p(in))), itr));
-		System.out.println();
+		log("");
 
-		System.out.println("Running Java loop...");
+		log("Running Java loop...");
 		profile(loop(Process.isolated(a(p(in), matmul(p(matrix), p(in)))), itr));
 	}
 
+	/**
+	 * Profiles a runnable operation.
+	 *
+	 * @param r Runnable to profile
+	 */
 	private void profile(Supplier<Runnable> r) {
 		OperationProfile profiles = new OperationProfile();
 		OperationList op = new OperationList("Profiler", false);

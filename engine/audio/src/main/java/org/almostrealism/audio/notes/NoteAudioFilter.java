@@ -32,6 +32,14 @@ import org.almostrealism.collect.PackedCollection;
  * @see SamplingFeatures
  */
 public interface NoteAudioFilter extends SamplingFeatures {
+	/**
+	 * Applies this filter to the given audio input and returns the processed output.
+	 *
+	 * @param input           the input audio producer to filter
+	 * @param noteDuration    producer yielding the note duration in seconds
+	 * @param automationLevel producer yielding a normalized automation level (0.0–1.0)
+	 * @return a producer yielding the filtered audio
+	 */
 	Producer<PackedCollection> apply(Producer<PackedCollection> input,
 										Producer<PackedCollection> noteDuration,
 										Producer<PackedCollection> automationLevel);

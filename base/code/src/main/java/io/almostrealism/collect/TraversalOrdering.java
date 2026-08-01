@@ -21,22 +21,57 @@ import io.almostrealism.expression.IntegerConstant;
 
 import java.util.OptionalInt;
 
+/**
+ * Defines a reordering of element indices for traversal.
+ *
+ * <p>A {@code TraversalOrdering} maps each logical output index to the actual position
+ * within the underlying element sequence. It is used by {@link TraversalPolicy} to
+ * transform indices during collection traversal, enabling patterns such as repetition,
+ * permutation, or arbitrary index remapping.</p>
+ */
 public interface TraversalOrdering extends IndexSet {
+	/**
+	 * Maps a logical traversal index to the physical position in the element sequence.
+	 *
+	 * @param idx the logical traversal index expression
+	 * @return an expression representing the physical position
+	 */
 	Expression<Integer> indexOf(Expression<Integer> idx);
 
+	/** {@inheritDoc} Returns {@code indexOf(index) >= 0}. */
 	@Override
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
 		return indexOf(index).greaterThanOrEqual(0);
 	}
 
+	/**
+	 * Maps a concrete integer logical index to its physical position.
+	 *
+	 * @param idx the logical traversal index
+	 * @return the physical position
+	 * @throws java.util.NoSuchElementException if the index cannot be evaluated at compile time
+	 */
 	default int indexOf(int idx) {
 		return indexOf(new IntegerConstant(idx)).intValue().orElseThrow();
 	}
 
+	/**
+	 * Returns the number of elements covered by this ordering, or empty if unbounded.
+	 *
+	 * @return the optional element count
+	 */
 	default OptionalInt getLength() {
 		return OptionalInt.empty();
 	}
 
+	/**
+	 * Returns a composed ordering that first applies this ordering, then the given ordering.
+	 *
+	 * <p>If {@code other} is {@code null}, returns {@code this} unchanged.</p>
+	 *
+	 * @param other the ordering to apply after this one, or {@code null}
+	 * @return the composed ordering
+	 */
 	default TraversalOrdering compose(TraversalOrdering other) {
 		if (other == null) {
 			return this;

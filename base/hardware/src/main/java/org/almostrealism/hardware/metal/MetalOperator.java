@@ -18,22 +18,25 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
+import java.lang.ref.Reference;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
 /**
  * {@link HardwareOperator} that executes compiled Metal compute kernels.
  *
  * <p>Wraps {@link MTLComputePipelineState} and manages threadgroup sizing,
- * argument encoding, and kernel dispatch on Metal GPU. Thread-local to avoid synchronization.</p>
+ * argument encoding, and kernel dispatch on Metal GPU. An operator may be shared across
+ * threads (its {@link MetalComputeContext} is shared per data context), so
+ * {@link #accept(Object[], io.almostrealism.streams.Semaphore)} is synchronized and
+ * the actual encoding is serialized by the context's {@link MetalCommandRunner}.</p>
  *
  * <h2>Threadgroup Sizing</h2>
  *
@@ -56,14 +59,20 @@ public class MetalOperator extends HardwareOperator {
 	 */
 	public static boolean enableDispatchThreadgroups = false;
 
+	/** Cumulative count of all Metal kernel invocations across all operator instances. */
 	private static long totalInvocations;
 
+	/** The compute context that owns this operator and provides the command runner. */
 	private final MetalComputeContext context;
+	/** The compiled Metal program containing the kernel function for this operator. */
 	private final MetalProgram prog;
+	/** Display name for this operator, used in logging and profiling output. */
 	private final String name;
 
+	/** Number of {@link MTLBuffer} arguments expected by the kernel function. */
 	private final int argCount;
 
+	/** The Metal compute pipeline state wrapping the compiled kernel function. */
 	private MTLComputePipelineState kernel;
 
 	/**
@@ -192,7 +201,9 @@ public class MetalOperator extends HardwareOperator {
 	 * executes at a time per operator instance.</p>
 	 *
 	 * @param args Kernel arguments (must be {@link MemoryData})
-	 * @param dependsOn Optional {@link Semaphore} to wait on before execution
+	 * @param dependsOn Optional {@link Semaphore} this dispatch is ordered after (same-runner
+	 *                  dependencies order on the GPU; foreign dependencies are bridged by the
+	 *                  {@link MetalCommandRunner} without blocking)
 	 * @return Currently always returns null (TODO: return proper Semaphore)
 	 * @throws UnsupportedOperationException if argument count exceeds {@link MetalCommandRunner#MAX_ARGS}
 	 * @throws UnsupportedOperationException if global work size exceeds {@link Integer#MAX_VALUE}
@@ -206,43 +217,56 @@ public class MetalOperator extends HardwareOperator {
 
 		long id = totalInvocations++;
 
-		if (dependsOn != null) dependsOn.waitFor();
-
 		MemoryData data[] = prepareArguments(argCount, args);
 		if (data.length > MetalCommandRunner.MAX_ARGS) {
 			throw new UnsupportedOperationException();
 		}
 
-		Future<?> run = context.getCommandRunner().submit((offset, size, queue) -> {
+		MetalCommandRunner runner = context.getCommandRunner();
+
+		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+
+		// Encode this kernel into the runner's command buffer, ordered after dependsOn (the
+		// runner handles both same-runner and foreign dependencies without blocking here). The
+		// runner returns this dispatch's completion semaphore; the onComplete callback releases
+		// the memory the kernel referenced only after that buffer has completed.
+		return runner.submit(getMetadata(), cmdBuf -> {
 			recordDuration(null, () -> {
 				int index = 0;
-				long totalSize = 0;
 
-				MTLCommandBuffer cmdBuf = queue.commandBuffer();
 				MTLComputeCommandEncoder encoder = cmdBuf.encoder();
 
 				encoder.setComputePipelineState(kernel);
 
 				for (int i = 0; i < argCount; i++) {
-					MetalMemory mem = (MetalMemory) data[i].getMem();
-					totalSize += mem.getSize();
-					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
+					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem());
 				}
 
 				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
 				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
 
-				offset.setContents(offsetValues);
-				size.setContents(sizeValues);
-
 				if (enableVerboseLog) {
 					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
 					log("\tSizes = " + Arrays.toString(sizeValues));
 					log("\tOffsets = " + Arrays.toString(offsetValues));
+
+					StringBuilder desc = new StringBuilder();
+					for (int i = 0; i < argCount; i++) {
+						if (desc.length() > 0) desc.append(",");
+						desc.append(data[i].getMem().getClass().getSimpleName())
+								.append("@").append(System.identityHashCode(data[i].getMem()))
+								.append("+").append(data[i].getOffset())
+								.append("x").append(data[i].getMemLength())
+								.append("=").append(data[i].toDouble(0));
+					}
+
+					log("\tArgs = " + desc);
 				}
 
-				encoder.setBuffer(index++, offset);
-				encoder.setBuffer(index++, size);
+				// Inline the per-dispatch offset/size arrays into the command (Metal copies them at
+				// encode time) so batched commands do not share mutable argument buffers.
+				encoder.setBytes(index++, offsetValues);
+				encoder.setBytes(index, sizeValues);
 
 				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
 					throw new UnsupportedOperationException();
@@ -262,23 +286,12 @@ public class MetalOperator extends HardwareOperator {
 				}
 
 				encoder.endEncoding();
-
-				cmdBuf.commit();
-				cmdBuf.waitUntilCompleted();
 			});
+		}, dependsOn, () -> {
+			KernelMemoryGuard.releaseFor(guard, data);
+			Reference.reachabilityFence(data);
+			Reference.reachabilityFence(args);
 		});
-
-		try {
-			// TODO  This should actually return a Semaphore rather than
-			// TODO  blocking until the process is over
-			run.get();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		} catch (ExecutionException  e) {
-			throw new RuntimeException(e);
-		}
-
-		return null;
 	}
 
 	/**

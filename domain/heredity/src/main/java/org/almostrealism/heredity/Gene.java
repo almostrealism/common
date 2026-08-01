@@ -94,7 +94,7 @@ public interface Gene<T> extends Plural<Factor<T>>, IntFunction<Factor<T>> {
 	 * @return a string representing the combined signatures of all factors
 	 */
 	default String signature() {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		IntStream.range(0, length()).mapToObj(this::valueAt).map(Factor::signature).forEach(buf::append);
 		return buf.toString();
 	}

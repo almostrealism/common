@@ -34,11 +34,7 @@ The hardware module enables:
 
 Before using any Almost Realism functionality, set the **required** environment variable:
 
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
-
-- `AR_HARDWARE_LIBS`: Directory for generated native libraries (required)
+- `AR_HARDWARE_LIBS`: Directory for generated native libraries. **Auto-detected — do not set manually.** Setting this (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
 - `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `gpu`, `cpu`, or `*` to force a specific backend.
 
 ### 2. Basic Usage
@@ -68,7 +64,6 @@ public class Example implements HardwareFeatures {
 Always set the required environment variable when running tests:
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 mvn test
 ```
 
@@ -146,6 +141,36 @@ The hardware module includes comprehensive implementations for multiple accelera
 | **[instructions](src/main/java/org/almostrealism/hardware/instructions/)** | Kernel compilation and caching | InstructionsManager, InstructionSetCompiler |
 
 > **API Documentation:** Comprehensive JavaDoc is available for all 128+ classes in the hardware module. Generate it with `mvn javadoc:aggregate` and view at `target/site/apidocs/index.html`.
+
+### Native Libraries: libMTL and libNIO
+
+The Metal backend and shared-memory helpers are backed by two native libraries whose
+source lives **in this repository** under [`src/main/cpp`](src/main/cpp):
+
+| Library | Source | Backs |
+|---------|--------|-------|
+| **libMTL.dylib** | [`src/main/cpp/MTL.cpp`](src/main/cpp/MTL.cpp) | The `native` methods of [`org.almostrealism.hardware.metal.MTL`](src/main/java/org/almostrealism/hardware/metal/MTL.java) — device/queue/buffer/pipeline creation, command-buffer dispatch, autorelease-pool management |
+| **libNIO.dylib** | [`src/main/cpp/NIO.cpp`](src/main/cpp/NIO.cpp) | Shared-memory (`mmap`) helpers used by `NativeBuffer` |
+
+`MTL.cpp` is Objective-C++ built against [metal-cpp](https://developer.apple.com/metal/cpp/).
+The amalgamated metal-cpp single header is committed as
+[`src/main/cpp/Metal.hpp`](src/main/cpp/Metal.hpp), so the build is **self-contained** —
+no external metal-cpp installation is required. Both libraries are rebuilt with
+[`src/main/cpp/compile.sh`](src/main/cpp/compile.sh) (auto-discovers `JAVA_HOME`); the
+resulting `.dylib` files are written to `src/main/resources/` and packaged into the
+`ar-hardware` jar, from which `MTL`/`NIO` load them at runtime.
+
+**Command-buffer lifecycle (important).** metal-cpp factory methods such as
+`MTL::CommandQueue::commandBuffer()` and `MTL::CommandBuffer::computeCommandEncoder()`
+return **autoreleased** objects. On a long-lived JNI worker thread (the single-threaded
+executor in `MetalCommandRunner`) there is no Objective-C autorelease pool in place, so
+without intervention these per-dispatch command buffers and encoders are never reclaimed
+and accumulate in the Metal driver until it stalls — fatal for sustained real-time
+rendering (thousands of sequential dispatches). `MTL.cpp` therefore exposes
+`autoreleasePoolPush()`/`autoreleasePoolPop(long)`, and `MetalCommandRunner.submit(...)`
+wraps every dispatch between them so the command buffer and encoder drain after each
+dispatch. Add the equivalent pool wrapping to any new code path that issues Metal
+dispatches off this thread.
 
 ## Core Concepts
 
@@ -326,26 +351,25 @@ void loop_x10() {
 
 ### Instruction Caching
 
-The `instruct()` pattern caches compiled operations for reuse:
+Kernel reuse is automatic. Every compiled operation carries a structural signature
+(derived from its type, shapes, and input structure - not data values), and operations
+that share both signature and `ComputeContext` reuse the same compiled kernel with
+their own argument bindings:
 
 ```java
-// First call: compiles and caches
-Producer<?> result1 = instruct("scale_2x",
-    args -> multiply(args[0], c(2.0)),
-    data1
-);
+// First evaluation: compiles the kernel
+multiply(cp(data1), c(2.0)).get().evaluate();
 
-// Subsequent calls: reuse cached kernel
-Producer<?> result2 = instruct("scale_2x",
-    args -> multiply(args[0], c(2.0)),
-    data2  // Only recomputation: argument substitution
-);
+// A structurally-identical computation in the same context
+// reuses the compiled kernel (argument substitution only)
+multiply(cp(data2), c(2.0)).get().evaluate();
 ```
 
 **Performance Impact:**
 - First call: ~100ms (compilation)
 - Subsequent calls: ~0.01ms (substitution only)
-- **10,000x speedup** for repeated operations
+
+See [docs/INSTRUCTION_CACHING.md](docs/INSTRUCTION_CACHING.md) for the caching architecture.
 
 ## Memory Management Patterns
 
@@ -600,8 +624,7 @@ try {
 ### Required Variables
 
 ```bash
-# Directory for generated libraries (REQUIRED)
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 ```
 
 ### Backend Selection
@@ -638,10 +661,11 @@ export AR_HARDWARE_PRECISION=FP64
 ### Memory Configuration
 
 ```bash
-# Maximum memory allocation (2^SCALE x 64MB)
-export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
-export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+# Maximum memory allocation (precision.bytes() * 2^SCALE * 64MB)
+# With FP32 (4 bytes): scale 4 = ~4GB, scale 6 = ~16GB, scale 7 = ~32GB
+export AR_HARDWARE_MEMORY_SCALE=4   # ~4GB (default, FP32)
+export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB (FP32)
+export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 
 # Memory location (OpenCL only)
 export AR_HARDWARE_MEMORY_LOCATION=device   # GPU memory (fastest)
@@ -656,14 +680,14 @@ export AR_HARDWARE_NIO_MEMORY=true
 
 **Development (Fast Compilation, Easy Debugging):**
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 export AR_HARDWARE_PRECISION=FP64
 # AR_HARDWARE_DRIVER left unset to auto-detect the best available backend
 ```
 
 **Production GPU (Maximum Performance):**
 ```bash
-export AR_HARDWARE_LIBS=/var/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 export AR_HARDWARE_DRIVER=gpu
 export AR_HARDWARE_PRECISION=FP32
 export AR_HARDWARE_MEMORY_SCALE=6
@@ -691,14 +715,10 @@ public class MyProcessor implements HardwareFeatures {
 
 ```java
 public class FilterBank implements HardwareFeatures {
-    private static final String LOWPASS_KEY = "lowpass_1000hz";
-
     public Producer<?> lowpass(Producer<?> input) {
-        // Kernel cached under LOWPASS_KEY
-        return instruct(LOWPASS_KEY,
-            args -> lowPass(args[0], c(1000.0), 44100),
-            input
-        );
+        // Structurally-identical filters share one compiled kernel
+        // automatically (signature-based instruction caching)
+        return lowPass(input, c(1000.0), 44100);
     }
 }
 ```
@@ -765,16 +785,11 @@ Evaluable<?> cached = multiply(v1, v2).get();
 for (int i = 0; i < 1000; i++) {
     cached.evaluate();
 }
-
-// BEST: Use instruct() for automatic caching
-Producer<?> result = instruct("multiply",
-    args -> multiply(args[0], args[1]),
-    v1, v2
-);
-for (int i = 0; i < 1000; i++) {
-    result.get().evaluate();  // Automatic kernel reuse
-}
 ```
+
+Even when an `Evaluable` is rebuilt, signature-based instruction caching avoids
+recompiling structurally-identical operations - but holding onto the compiled
+`Evaluable` also avoids the (cheaper) cache lookup and argument setup.
 
 ### 2. Use PassThroughProducer for Kernel Reuse
 
@@ -833,6 +848,18 @@ MemoryBank<PackedCollection<?>> bank =
     new MemoryBankAdapter<>(1000, 3, ...);
 // 1 GPU buffer, 1000 elements
 ```
+
+### 6. Diagnose Command-Buffer Batching (Metal)
+
+On Metal, dispatches batch into a shared command buffer until something on the host
+waits for a result, which commits the buffer on demand. A sustained workload committing
+every few dispatches (instead of every few hundred) has had its batching collapsed by
+synchronous waits. `MetalCommandRunner` partitions its commit count by cause and records
+every commit-forcing wait against the operation that was waited, so the collapse can be
+measured and attributed directly.
+
+See [docs/COMMIT_ATTRIBUTION.md](docs/COMMIT_ATTRIBUTION.md) for the measurement pattern
+and how to interpret the results.
 
 ## Advanced Topics
 
@@ -901,12 +928,9 @@ if (deep.getDepth() > 500) {
 
 ### Error: NoClassDefFoundError
 
-**Cause:** Missing `AR_HARDWARE_LIBS` environment variable.
+**Cause:** The auto-detected native library directory is not writable.
 
-**Solution:**
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
+**Solution:** Ensure the default directory (see `SystemUtils.getExtensionsPath()`) is writable. Do not override `AR_HARDWARE_LIBS` manually unless absolutely necessary.
 
 ### Slow First Execution
 
@@ -914,7 +938,7 @@ export AR_HARDWARE_LIBS=/tmp/ar_libs/
 
 **Expected:** First execution takes 100-1000ms, subsequent executions take 1-10ms.
 
-**Solution:** Use instruction caching patterns to amortize compilation cost.
+**Solution:** Reuse compiled `Evaluable`s; signature-based instruction caching amortizes compilation across structurally-identical operations automatically.
 
 ### OperationList Not Compiling
 
@@ -935,7 +959,7 @@ System.out.println("Compilable: " + canCompile);
 **Solution:**
 ```bash
 # Increase memory scale
-export AR_HARDWARE_MEMORY_SCALE=6  # 4GB
+export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB (FP32)
 
 # Or use host memory
 export AR_HARDWARE_MEMORY_LOCATION=host

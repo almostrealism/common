@@ -27,7 +27,16 @@ import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for {@link NoteAudioProvider} and related audio note playback functionality.
+ */
 public class NoteAudioProviderTests extends TestSuiteBase implements AudioTestFeatures {
+
+	/**
+	 * Creates a NoteAudioProvider for organ samples with default keyboard tuning.
+	 *
+	 * @return a configured NoteAudioProvider instance
+	 */
 	protected NoteAudioProvider organ() {
 		NoteAudioProvider note = NoteAudioProvider.create(
 				getTestWavPath(), WesternChromatic.C1);
@@ -35,6 +44,9 @@ public class NoteAudioProviderTests extends TestSuiteBase implements AudioTestFe
 		return note;
 	}
 
+	/**
+	 * Tests retrieving audio for C1 with default channel and velocity.
+	 */
 	@Test(timeout = 60000)
 	public void noteAudioProvider1() {
 		PackedCollection result = organ().getAudio(WesternChromatic.C1, 0).evaluate();
@@ -42,6 +54,9 @@ public class NoteAudioProviderTests extends TestSuiteBase implements AudioTestFe
 		data.save(new File("results/note-audio-provider-1.wav"));
 	}
 
+	/**
+	 * Tests retrieving audio for G1 with explicit channel and velocity.
+	 */
 	@Test(timeout = 60000)
 	public void noteAudioProvider2() {
 		PackedCollection result = organ().getAudio(WesternChromatic.G1, 1).evaluate();
@@ -49,6 +64,9 @@ public class NoteAudioProviderTests extends TestSuiteBase implements AudioTestFe
 		data.save(new File("results/note-audio-provider-2.wav"));
 	}
 
+	/**
+	 * Tests that alternate sample rates are correctly handled when getting channel data.
+	 */
 	@Test(timeout = 60000)
 	public void alternateSampleRate() {
 		int sampleRate = OutputLine.sampleRate / 2;

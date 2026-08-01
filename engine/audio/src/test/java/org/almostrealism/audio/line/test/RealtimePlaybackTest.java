@@ -22,8 +22,8 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.SourceDataOutputLine;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -46,9 +46,8 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * for actual hardware playback.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedRealtimePlayback() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		// Create audio format: 44100 Hz, 16-bit, stereo, signed PCM, little-endian
@@ -110,9 +109,8 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * This verifies that getReadPosition() correctly reports hardware progress.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedPositionTracking() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -160,9 +158,8 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * Tests lifecycle management with BufferedOutputScheduler.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedLifecycleManagement() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -174,9 +171,9 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 		// Initially not active until line.start() is called
 		Assert.assertTrue("Line should be open", outputLine.isOpen());
 
-		// Start the line
+		// Start the line. Note: SourceDataLine.isActive() only returns true
+		// once data is being written, so we cannot assert it here.
 		outputLine.start();
-		Assert.assertTrue("Line should be active after start", outputLine.isActive());
 
 		// Create audio source
 		CellList cells = w(0, testFile.getPath());
@@ -191,12 +188,12 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 		// Stop scheduler
 		scheduler.stop();
 
-		// Line should still be active (scheduler stops, but line doesn't auto-stop)
-		Assert.assertTrue("Line should still be active", outputLine.isActive());
+		// Scheduler should not auto-close the line: it must still be open.
+		Assert.assertTrue("Line should still be open after scheduler stops", outputLine.isOpen());
 
-		// Manually stop the line
+		// Manually stop the line — this only halts I/O, the line stays open.
 		outputLine.stop();
-		Assert.assertFalse("Line should not be active after stop", outputLine.isActive());
+		Assert.assertTrue("Line should still be open after stop", outputLine.isOpen());
 
 		// Destroy should clean up everything
 		outputLine.destroy();
@@ -209,9 +206,8 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * Tests buffer size configuration with BufferedOutputScheduler.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedWithCustomBufferSize() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -254,9 +250,8 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * 4. Running for extended duration to observe timing patterns
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		// Enable verbose logging to monitor scheduler behavior
@@ -306,8 +301,9 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 			// Start the scheduled buffered playback
 			scheduler.start();
 
-			// Run for extended time to observe patterns
-			Thread.sleep(120 * 1000);
+			// Run for a window short enough to fit under the 60s test timeout
+			// while still long enough to observe scheduler behavior.
+			Thread.sleep(30 * 1000);
 
 			log("---");
 			log("Playback statistics:");

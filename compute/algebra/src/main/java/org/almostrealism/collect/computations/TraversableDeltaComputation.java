@@ -16,9 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
@@ -27,8 +26,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -247,18 +245,6 @@ public class TraversableDeltaComputation
 		return enableAtomicScope ? getShape().traverseEach().getCountLong() : super.getCountLong();
 	}
 
-	/**
-	 * Prepares the argument mapping for kernel compilation.
-	 *
-	 * <p>Delegates to the parent implementation to prepare standard argument mappings
-	 * for the input producers.</p>
-	 *
-	 * @param map The {@link ArgumentMap} for mapping arguments to kernel parameters
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-	}
 
 	/**
 	 * Prepares the computation scope for kernel compilation.
@@ -268,13 +254,13 @@ public class TraversableDeltaComputation
 	 * of the target {@link Producer}. This variable is used during gradient computation
 	 * to identify which variable we're differentiating with respect to.</p>
 	 *
-	 * @param manager The {@link ScopeInputManager} for managing scope inputs
+	 * @param manager The {@link ArgumentProvider} for managing scope inputs
 	 * @param context The {@link KernelStructureContext} providing kernel compilation context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
-		targetVariable = (CollectionVariable<?>) manager.argumentForInput(getNameProvider()).apply((Supplier) target);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput().apply((Supplier) target);
 	}
 
 	/**
@@ -453,21 +439,6 @@ public class TraversableDeltaComputation
 	@Override
 	public Expression getValueAt(Expression index) {
 		return getExpression(index).getValueAt(index);
-	}
-
-	/**
-	 * Gets the gradient value at a position relative to the current output location.
-	 *
-	 * <p>Uses a zero index for the expression (representing the base position) and retrieves
-	 * the value at the specified relative offset. This is used when the actual position
-	 * is determined by the output buffer location rather than absolute indexing.</p>
-	 *
-	 * @param index The {@link Expression} representing the relative offset from output position
-	 * @return An {@link Expression} representing the gradient value at the relative position
-	 */
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return getExpression(new IntegerConstant(0)).getValueRelative(index);
 	}
 
 	/**

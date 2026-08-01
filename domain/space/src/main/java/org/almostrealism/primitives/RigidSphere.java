@@ -30,18 +30,24 @@ import java.awt.*;
 
 
 /**
+ * A sphere that participates in rigid-body simulation, provides particle-group vertices
+ * for rendering, and optionally acts as a spherical area light.
+ *
  * @author  Michael Murray
  */
 public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, SurfaceLight {
+	/** The current rigid-body simulation state (position, velocity, inertia, forces). */
 	private final State state;
-	
+
+	/** Optional {@link SphericalLight} placed at the sphere surface, or {@code null} if disabled. */
 	private SphericalLight light;
-	
+
+	/** Number of samples along each angular axis when computing particle vertices. */
 	private final int radialSample;
+
+	/** World-space vertex positions arranged on the sphere surface for particle rendering. */
 	private final double[][] vertices;
-	
-	private TransformMatrix rotateXMatrix, rotateYMatrix, rotateZMatrix;
-	
+
 	/**
 	 * Constructs a new Sphere object using (0.0, 0.0, 0.0) for all vector values
 	 * 1.0 for mass, 1.0 for the coefficient of restitution, and 4 for the radial sample.
@@ -82,13 +88,24 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 																			{0.0, 0.0, 0.0, 1.0}}), e);
 	}
 	
+	/**
+	 * Sets the radius of this sphere and updates the inertia tensor and vertex positions.
+	 *
+	 * @param radius the new radius value
+	 */
 	public void setRadius(double radius) {
 		super.setSize(radius);
 		this.updateModel();
 	}
 	
+	/** Returns the radius of this sphere. */
 	public double getRadius() { return super.getSize(); }
-	
+
+	/**
+	 * Updates the inertia tensor, rotation matrices, vertex positions, and
+	 * associated light location/size to reflect the current state.
+	 */
+	@Override
 	public void updateModel() {
 		double r = super.getSize();
 		double a = (2.0 / 5.0) * this.state.mass * r * r;
@@ -97,12 +114,6 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 														{0.0, a, 0.0, 0.0},
 														{0.0, 0.0, a, 0.0},
 														{0.0, 0.0, 0.0, 1.0}});
-		
-		Vector rn = this.state.r.divide(this.state.r.length());
-		
-		this.rotateXMatrix = TransformMatrix.createRotateXMatrix(Math.acos(rn.getX()));
-		this.rotateYMatrix = TransformMatrix.createRotateYMatrix(Math.acos(rn.getY()));
-		this.rotateZMatrix = TransformMatrix.createRotateZMatrix(Math.acos(rn.getZ()));
 		
 		super.setLocation(this.state.x);
 		
@@ -114,6 +125,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		this.updateVertices();
 	}
 	
+	/** Recomputes the particle-group vertex positions based on the current state and radius. */
 	public void updateVertices() {
 		for (int i = 0; i < this.radialSample; i++) {
 			double theta = 2 * Math.PI * i / this.radialSample;
@@ -151,6 +163,13 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		}
 	}
 	
+	/**
+	 * Computes the contact point and normal between this sphere and the given rigid body.
+	 *
+	 * @param b the other rigid body to test against
+	 * @return a two-element array {@code {contactPoint, normal}} if intersecting, or an empty array
+	 */
+	@Override
 	public Vector[] intersect(RigidBody b) {
 		double r = super.getSize();
 		
@@ -210,6 +229,11 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 		throw new UnsupportedOperationException();
 	}
 	
+	/**
+	 * Enables or disables the built-in {@link SphericalLight} for this sphere.
+	 *
+	 * @param on {@code true} to create and attach a spherical light; {@code false} to remove it
+	 */
 	public void setLighting(boolean on) {
 		if (on) {
 			this.light = new SphericalLight();
@@ -230,11 +254,14 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	}
 	
 	/**
+	 * Returns the {@link SphericalLight} object stored by this Sphere object.
+	 *
 	 * @return  The SphericalLight object stored by this Sphere object.
 	 */
 	public SphericalLight getLight() { return this.light; }
-	
+
 	/** @see SurfaceLight#getSamples(int) */
+	@Override
 	public Light[] getSamples(int samples) {
 		if (this.light == null)
 			return new Light[0];
@@ -243,6 +270,7 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	}
 	
 	/** @see SurfaceLight#getSamples() */
+	@Override
 	public Light[] getSamples() {
 		if (this.light == null)
 			return new Light[0];
@@ -251,8 +279,10 @@ public class RigidSphere extends Sphere implements RigidBody, ParticleGroup, Sur
 	}
 	
 	/** @see org.almostrealism.color.Light#setIntensity(double) */
+	@Override
 	public void setIntensity(double intensity) { if (this.light != null) this.light.setIntensity(intensity); }
-	
+
 	/** @see org.almostrealism.color.Light#getIntensity() */
+	@Override
 	public double getIntensity() { return this.light == null ? 0.0 : this.light.getIntensity(); }
 }

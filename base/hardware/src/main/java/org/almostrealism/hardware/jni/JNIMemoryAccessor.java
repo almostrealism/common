@@ -100,6 +100,18 @@ import io.almostrealism.scope.ArrayVariable;
  * @see NativeComputeContext
  */
 public interface JNIMemoryAccessor {
+	/**
+	 * Generates an inline C expression that binds a kernel argument to a typed pointer variable.
+	 *
+	 * <p>For read arguments, returns a C declaration casting the opaque {@code argArr[index]} pointer
+	 * to the appropriate precision type. For write arguments, returns null (caller handles output binding).</p>
+	 *
+	 * @param lang Language operations providing precision type names and expression formatting
+	 * @param index Zero-based index of the argument in the {@code argArr} native array
+	 * @param variable The array variable whose name is used in the generated declaration
+	 * @param write True if this is an output (write) argument; false for input (read) arguments
+	 * @return C declaration string for read arguments, or null for write arguments
+	 */
 	default String copyInline(LanguageOperations lang, int index, ArrayVariable<?> variable, boolean write) {
 		String o = "((" + lang.getPrecision().typeName() + " *) argArr[" + index + "])";
 		String v = new InstanceReference<>(variable).getSimpleExpression(lang);

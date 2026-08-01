@@ -1,11 +1,13 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
-import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
@@ -19,6 +21,7 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 
 /**
  * Test that uses Qwen3.java directly (with DynamicCollectionProducer for position)
@@ -32,8 +35,13 @@ import java.nio.file.StandardOpenOption;
  */
 public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Path to the tokenizer binary file. */
 	private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
+
+	/** Directory containing PyTorch reference outputs. */
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference";
 
 	/**
@@ -58,7 +66,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		if (pytorchLogits0 != null) {
 			log("Loaded PyTorch reference logits for position 0: " + pytorchLogits0.length + " values");
 		} else {
-			log("WARNING: Could not load PyTorch reference logits");
+			log("Could not load PyTorch reference logits");
 		}
 
 		// Expected tokens from PyTorch autoregressive generation starting from "Hello"
@@ -83,7 +91,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		log("Model loaded successfully\n");
 
 		// Get the compiled model and embeddings
-		org.almostrealism.model.CompiledModel compiledModel = qwen3.getCompiledModel();
+		CompiledModel compiledModel = qwen3.getCompiledModel();
 		PackedCollection embeddings = qwen3.getTokenEmbeddings();
 
 		// Get the position collection from Qwen3 to update it
@@ -95,20 +103,17 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		log("\n=== Direct Model Forward Pass Test ===\n");
 
 		int[] generatedTokens = new int[5];
-		int allMatch = 0;
+
+		Runnable advancePosition = a(cp(position), add(cp(position), c(1.0))).get();
+		a(cp(position), c(0.0)).get().run();
 
 		for (int step = 0; step < 5; step++) {
 			int inputToken = inputSequence[step];
 			log("--- Step " + step + ": Input token " + inputToken + " ---");
 
-			// Set position
-			position.setMem(0, (double) step);
-
 			// Create input from embedding
 			PackedCollection input = new PackedCollection(compiledModel.getInputShape());
-			for (int i = 0; i < config.dim; i++) {
-				input.setMem(i, embeddings.toDouble(inputToken * config.dim + i));
-			}
+			a(cp(input), cp(embeddings.range(shape(config.dim), inputToken * config.dim))).get().run();
 
 			// Forward pass - output is already logits!
 			PackedCollection logitsCollection = compiledModel.forward(input);
@@ -145,7 +150,6 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 				// Check if top prediction matches
 				if (top5[0] == pytorchTop5[0]) {
 					log("\n[MATCH] Top prediction matches PyTorch!");
-					allMatch++;
 				} else {
 					log("\n[MISMATCH] Top prediction differs from PyTorch");
 					log("  Java logit for PyTorch top token " + pytorchTop5[0] + ": " + logits[pytorchTop5[0]]);
@@ -155,19 +159,20 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 
 			// Check against expected
 			if (top5[0] == expectedOutputs[step]) {
-				log("[PASS] Generated token " + top5[0] + " matches expected " + expectedOutputs[step]);
+				log("Generated token " + top5[0] + " matches expected " + expectedOutputs[step]);
 			} else {
-				log("[FAIL] Generated token " + top5[0] + " but expected " + expectedOutputs[step]);
+				log("Generated token " + top5[0] + " but expected " + expectedOutputs[step]);
 			}
 
+			advancePosition.run();
 			log("");
 		}
 
 		// Summary
 		log("\n=== Generation Summary ===");
-		log("Input sequence:    " + java.util.Arrays.toString(inputSequence));
-		log("Generated tokens:  " + java.util.Arrays.toString(generatedTokens));
-		log("Expected tokens:   " + java.util.Arrays.toString(expectedOutputs));
+		log("Input sequence:    " + Arrays.toString(inputSequence));
+		log("Generated tokens:  " + Arrays.toString(generatedTokens));
+		log("Expected tokens:   " + Arrays.toString(expectedOutputs));
 
 		int matches = 0;
 		for (int i = 0; i < Math.min(generatedTokens.length, expectedOutputs.length); i++) {
@@ -196,6 +201,12 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 				expectedOutputs[0], generatedTokens[0]);
 	}
 
+	/**
+	 * Loads reference logits from a binary file.
+	 *
+	 * @param filename the name of the reference file
+	 * @return array of float values, or null if file cannot be loaded
+	 */
 	private float[] loadReferenceLogits(String filename) {
 		String filepath = REFERENCE_DIR + "/" + filename;
 		try (FileChannel channel = FileChannel.open(Paths.get(filepath), StandardOpenOption.READ)) {
@@ -216,10 +227,17 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		}
 	}
 
+	/**
+	 * Finds the top-k largest values in an array.
+	 *
+	 * @param values the input array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopK(double[] values, int k) {
 		int[] indices = new int[k];
 		double[] topValues = new double[k];
-		java.util.Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			for (int j = 0; j < k; j++) {
@@ -237,10 +255,17 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		return indices;
 	}
 
+	/**
+	 * Finds the top-k largest values in a float array.
+	 *
+	 * @param values the input float array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopKFromFloat(float[] values, int k) {
 		int[] indices = new int[k];
 		float[] topValues = new float[k];
-		java.util.Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			for (int j = 0; j < k; j++) {

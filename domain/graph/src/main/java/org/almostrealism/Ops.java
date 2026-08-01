@@ -75,8 +75,10 @@ import java.util.function.Function;
  * @author Michael Murray
  */
 public class Ops implements CodeFeatures {
+	/** The singleton Ops instance used by {@link #o()} and {@link #op(Function)}. */
 	private static final Ops ops = new Ops();
 
+	/** Private constructor to enforce singleton pattern. */
 	private Ops() { }
 
 	/**

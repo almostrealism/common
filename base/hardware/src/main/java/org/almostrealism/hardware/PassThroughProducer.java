@@ -16,16 +16,15 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationBase;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
@@ -298,7 +297,9 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 					CollectionExpression<PassThroughProducer<T>>,
 					DescribableParent<Process<?, ?>> {
 
+	/** Traversal policy defining the shape of the data this producer passes through. */
 	private TraversalPolicy shape;
+	/** Zero-based index of the kernel argument that this producer passes through. */
 	private int argIndex;
 
 	/**
@@ -314,6 +315,9 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		init();
 	}
 
+	/**
+	 * Creates an uninitialized pass-through producer with a self-referential destination input.
+	 */
 	private PassThroughProducer() {
 		this.setInputs(Arrays.asList(new MemoryDataDestinationProducer(this)));
 	}
@@ -386,28 +390,17 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	}
 
 	/**
-	 * Prepares arguments by adding this producer to the argument map.
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		map.add(this);
-	}
-
-	/**
 	 * Prepares scope by creating an argument variable for this pass-through.
 	 *
 	 * @param manager The scope input manager
 	 * @param context The kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
-		args.add(new Argument<>(manager.argumentForInput(getNameProvider()).apply((Supplier) this), Expectation.NOT_ALTERED));
+		args.add(new Argument<>(manager.argumentForInput().apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
 	}
 
@@ -464,19 +457,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		}
 
 		return (Expression) getArgumentVariables().get(0).reference(index);
-	}
-
-	/**
-	 * Returns an expression for the value at a kernel-relative index.
-	 *
-	 * <p>Computes the absolute index as {@code kernel() * memLength + index}.</p>
-	 *
-	 * @param index The relative index expression
-	 * @return Expression referencing the argument variable at the absolute index
-	 */
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return (Expression) getArgumentVariables().get(0).reference(kernel().multiply(getMemLength()).add(index));
 	}
 
 	/**

@@ -87,18 +87,34 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	/** Width of each histogram bin in frames. */
 	private static final int HISTOGRAM_BIN_WIDTH = (HISTOGRAM_MAX_FRAMES - HISTOGRAM_MIN_FRAMES) / HISTOGRAM_BINS;
 
+	/** Pre-allocated buffer for the time-varying cutoff frequency values computed by the envelope. */
 	private final PackedCollection cutoff;
 
+	/** Single-element collection holding the total envelope duration in seconds. */
 	private final PackedCollection duration;
+
+	/** Single-element collection holding the envelope attack time in seconds. */
 	private final PackedCollection attack;
+
+	/** Single-element collection holding the envelope decay time in seconds. */
 	private final PackedCollection decay;
+
+	/** Single-element collection holding the envelope sustain level (0.0–1.0). */
 	private final PackedCollection sustain;
+
+	/** Single-element collection holding the envelope release time in seconds. */
 	private final PackedCollection release;
 
+	/** Compiled evaluable that converts envelope parameters into a time-varying cutoff frequency array. */
 	private Evaluable<PackedCollection> cutoffEnvelope;
+
+	/** Compiled evaluable implementing the multi-order low-pass filter. */
 	private Evaluable<PackedCollection> multiOrderFilter;
 
+	/** When true, tracks frame count distribution across processed audio chunks. */
 	private boolean histogramEnabled;
+
+	/** Histogram array counting how many times each frame-count range has been processed. */
 	private long[] histogram;
 
 	/**
@@ -142,6 +158,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param duration  Total envelope duration in seconds (must be positive)
 	 */
+	@Override
 	public void setDuration(double duration) {
 		this.duration.set(0, duration);
 	}
@@ -155,6 +172,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param attack  Attack time in seconds (must be positive)
 	 */
+	@Override
 	public void setAttack(double attack) {
 		this.attack.set(0, attack);
 	}
@@ -168,6 +186,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param decay  Decay time in seconds (must be positive)
 	 */
+	@Override
 	public void setDecay(double decay) {
 		this.decay.set(0, decay);
 	}
@@ -181,6 +200,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param sustain  Sustain level (0.0 to 1.0, where 1.0 = full {@link #filterPeak})
 	 */
+	@Override
 	public void setSustain(double sustain) {
 		this.sustain.set(0, sustain);
 	}
@@ -194,6 +214,7 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *
 	 * @param release  Release time in seconds (must be positive)
 	 */
+	@Override
 	public void setRelease(double release) {
 		this.release.set(0, release);
 	}

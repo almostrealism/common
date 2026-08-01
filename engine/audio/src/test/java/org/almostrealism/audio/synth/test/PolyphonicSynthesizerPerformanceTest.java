@@ -18,7 +18,9 @@ package org.almostrealism.audio.synth.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.CellFeatures;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.line.BufferOutputLine;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.OutputLine;
@@ -77,8 +79,6 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileSynthTicks() throws IOException {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		ensureResultsDirectory();
 
 		log("=== PolyphonicSynthesizer Tick Performance Profile ===");
@@ -102,7 +102,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			cells.addRoot(synth);
 
 			// Map to output buffer
-			org.almostrealism.audio.WaveOutput waveOutput = new org.almostrealism.audio.WaveOutput(p(destination));
+			WaveOutput waveOutput = new WaveOutput(p(destination));
 			waveOutput.setCircular(true);
 			synth.setReceptor(waveOutput.getWriterCell(0));
 
@@ -156,7 +156,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			log("Realtime factor: " + String.format("%.2f", realtimeFactor) + "x");
 
 			if (realtimeFactor < 1.0) {
-				log("WARNING: Slower than realtime! Audio will underrun.");
+				log("Performance: Slower than realtime! Audio will underrun.");
 			} else {
 				log("OK: Faster than realtime (" + String.format("%.1f", realtimeFactor) + "x headroom)");
 			}
@@ -184,6 +184,10 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileSchedulerPipeline() throws IOException {
+		// Skipped under PIPELINE profile pending investigation: this profile
+		// times out (120s budget) on Metal; no Linux/native baseline is
+		// available yet to determine whether it is a real perf delta.
+		// See docs/qa/test-media-mac-failures-2026-05-15.md.
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		ensureResultsDirectory();
@@ -263,7 +267,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			log("Required tick time for realtime: " + String.format("%.2f", framesPerTick * 1000.0 / SAMPLE_RATE) + " ms");
 
 			if (realtimeFactor < 1.0) {
-				log("WARNING: Slower than realtime! Audio will underrun.");
+				log("Performance: Slower than realtime! Audio will underrun.");
 				log("Need " + String.format("%.1f", 1.0 / realtimeFactor) + "x speedup for realtime.");
 			} else {
 				log("OK: Faster than realtime (" + String.format("%.1f", realtimeFactor) + "x headroom)");
@@ -294,6 +298,10 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileTemporalRunner() throws IOException {
+		// Skipped under PIPELINE profile pending investigation: this profile
+		// times out (120s budget) on Metal; no Linux/native baseline is
+		// available yet to determine whether it is a real perf delta.
+		// See docs/qa/test-media-mac-failures-2026-05-15.md.
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		ensureResultsDirectory();
@@ -362,7 +370,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			log("Realtime factor: " + String.format("%.2f", realtimeFactor) + "x");
 
 			if (realtimeFactor < 1.0) {
-				log("WARNING: Slower than realtime!");
+				log("Performance: Slower than realtime!");
 			} else {
 				log("OK: Faster than realtime (" + String.format("%.1f", realtimeFactor) + "x headroom)");
 			}
@@ -386,8 +394,6 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileVoiceScaling() throws IOException {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		ensureResultsDirectory();
 
 		log("=== Voice Scaling Performance Profile ===");
@@ -409,7 +415,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 
 				// Create output
 				PackedCollection destination = new PackedCollection(1024);
-				org.almostrealism.audio.WaveOutput waveOutput = new org.almostrealism.audio.WaveOutput(p(destination));
+				WaveOutput waveOutput = new WaveOutput(p(destination));
 				waveOutput.setCircular(true);
 				synth.setReceptor(waveOutput.getWriterCell(0));
 

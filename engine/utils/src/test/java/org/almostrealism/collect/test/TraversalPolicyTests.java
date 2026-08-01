@@ -21,7 +21,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for TraversalPolicy and its dimension manipulation operations.
+ */
 public class TraversalPolicyTests extends TestSuiteBase {
+	/**
+	 * Tests flatten required with single dimension.
+	 */
 	@Test(timeout = 10000)
 	public void flattenRequired1() {
 		TraversalPolicy shape = shape(10, 2048, 1024)
@@ -31,6 +37,9 @@ public class TraversalPolicyTests extends TestSuiteBase {
 		Assert.assertEquals(expected, shape);
 	}
 
+	/**
+	 * Tests flatten required with multiple dimensions.
+	 */
 	@Test(timeout = 10000)
 	public void flattenRequired2() {
 		TraversalPolicy shape = shape(10, 2048, 1024, 4)
@@ -40,6 +49,9 @@ public class TraversalPolicyTests extends TestSuiteBase {
 		Assert.assertEquals(expected, shape);
 	}
 
+	/**
+	 * Tests permute with 3 dimensions.
+	 */
 	@Test(timeout = 10000)
 	public void permute3() {
 		TraversalPolicy shape = new TraversalPolicy(2, 4, 3);
@@ -74,6 +86,9 @@ public class TraversalPolicyTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests permute with 4 dimensions.
+	 */
 	@Test(timeout = 10000)
 	public void permute4() {
 		TraversalPolicy shape = new TraversalPolicy(2, 4, 3, 8);

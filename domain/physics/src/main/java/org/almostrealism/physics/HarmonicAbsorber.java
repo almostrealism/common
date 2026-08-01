@@ -19,6 +19,7 @@ package org.almostrealism.physics;
 
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.electrostatic.PotentialMap;
+import org.almostrealism.io.ConsoleFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
@@ -30,14 +31,28 @@ import org.almostrealism.collect.PackedCollection;
  * 
  * @author  Michael Murray
  */
-public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
+public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures, ConsoleFeatures {
+	/** Probability threshold below which verbose logging of absorption and emission is printed. */
 	public static double verbose = Math.pow(10.0, -3.0);
-	
+
+	/** The simulation clock used by this absorber. */
 	private Clock clock;
+
+	/**
+	 * Absorbed energy (eV), sphere radius, spring constant (rigidity), quanta threshold,
+	 * and current displacement magnitude respectively.
+	 */
 	private double energy, radius, k, q, d;
+
+	/** Producer yielding the per-axis offset fraction used to compute the displacement vector. */
 	private Producer<PackedCollection> dp;
+
+	/** Current position of the absorber in Cartesian space. */
 	private Vector place;
 
+	/**
+	 * Constructs a {@code HarmonicAbsorber} with the place vector initialized to the zero vector.
+	 */
 	public HarmonicAbsorber() {
 		this.place = new Vector(ZeroVector.getEvaluable().evaluate(), 0);
 	}
@@ -65,17 +80,32 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 		return multiply(p(place), dp);
 	}
 	
+	/**
+	 * Recomputes the displacement magnitude and the per-axis offset producer from the
+	 * current absorbed energy and spring constant.
+	 */
 	protected void updateDisplacement() {
 		this.d = radius * Math.sqrt(energy / k);
 		double off = d / place.length();
 		this.dp = vector(off, off, off);
 	}
 	
+	/**
+	 * Attempts to absorb a photon. Returns {@code false} if the photon position is outside
+	 * the absorber radius. Otherwise adds the photon energy to the running total, shifts the
+	 * place vector in the direction of propagation, and updates the displacement.
+	 *
+	 * @param x       {x, y, z} position of the photon
+	 * @param p       {x, y, z} direction of propagation of the photon
+	 * @param energy  energy of the photon in electron volts
+	 * @return        {@code true} if the photon was absorbed, {@code false} otherwise
+	 */
+	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
 		if (x.length() > this.radius) return false;
 		
 		if (Math.random() < verbose)
-			System.out.println("HarmonicAbsorber: Absorb energy = " + energy);
+			log("Absorb energy = " + energy);
 
 		place = (Vector) add(v(place), v(p)).get().evaluate();
 		this.energy += energy;
@@ -106,7 +136,7 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 		double e = this.energy - this.k * dq * dq;
 		
 		if (Math.random() < verbose)
-			System.out.println("HarmonicAbsorber: Emit energy = " + e);
+			log("Emit energy = " + e);
 		
 		return e;
 	}
@@ -117,7 +147,7 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 	@Override
 	public double getNextEmit() {
 		if (Math.random() < HarmonicAbsorber.verbose)
-			System.out.println("HarmonicAbsorber: D = " + this.d);
+			log("D = " + this.d);
 		
 		if (this.d >= this.q)
 			return 0.0;
@@ -125,6 +155,11 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 			return Integer.MAX_VALUE;
 	}
 	
+	/** @param c  the simulation clock to use */
+	@Override
 	public void setClock(Clock c) { this.clock = c; }
+
+	/** @return  the simulation clock used by this absorber */
+	@Override
 	public Clock getClock() { return this.clock; }
 }

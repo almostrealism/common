@@ -16,7 +16,7 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.lifecycle.Lifecycle;
 import io.almostrealism.relation.Node;
 

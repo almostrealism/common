@@ -62,6 +62,7 @@ import java.util.List;
  * @author Michael Murray
  */
 public class DirectionalAmbientLight extends AmbientLight implements VectorFeatures {
+  /** The direction from which this light originates, pointing toward the scene. */
   private Vector direction;
 
 	/**

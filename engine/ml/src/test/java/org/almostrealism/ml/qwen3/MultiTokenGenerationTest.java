@@ -17,10 +17,13 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -36,6 +39,7 @@ import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 
 /**
  * Multi-token generation test comparing Java implementation with PyTorch reference.
@@ -45,10 +49,13 @@ import java.nio.file.StandardOpenOption;
  */
 public class MultiTokenGenerationTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Directory containing PyTorch reference outputs. */
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference";
 
-	// Position collection - shared between model building and test loop
+	/** Position collection shared between model building and test loop. */
 	private PackedCollection position;
 
 	/**
@@ -79,7 +86,6 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 		// Initialize position - will be updated before each forward pass
 		position = new PackedCollection(1);
-		position.setMem(0, 0.0);
 
 		log("Building transformer model...");
 		Model transformer = buildTransformerWithoutVocabProjection(config, stateDict);
@@ -108,18 +114,17 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		int matches = 0;
 		int total = 0;
 
+		// The position advances on the device before each forward pass, maintaining proper
+		// RoPE rotation, causal masking, and KV cache indexing
+		Runnable advancePosition = a(cp(position), add(cp(position), c(1.0))).get();
+		a(cp(position), c(0.0)).get().run();
+
 		for (int step = 0; step < 5; step++) {
 			log("--- Step " + step + ": Input token " + currentToken + " ---");
 
-			// CRITICAL: Update position before forward pass
-			// This enables proper RoPE rotation, causal masking, and KV cache indexing
-			position.setMem(0, (double) step);
-
 			// Get embedding for current token
 			PackedCollection input = new PackedCollection(shape(1, config.dim));
-			for (int i = 0; i < config.dim; i++) {
-				input.setMem(i, tokenEmbeddings.toDouble(currentToken * config.dim + i));
-			}
+			a(cp(input), cp(tokenEmbeddings.range(shape(config.dim), currentToken * config.dim))).get().run();
 
 			// Forward pass
 			long forwardStart = System.currentTimeMillis();
@@ -168,8 +173,8 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 					log("  [MATCH] Top-5 rankings match PyTorch!");
 				} else {
 					log("  [MISMATCH] Top-5 rankings differ from PyTorch");
-					log("  PyTorch top-5: " + java.util.Arrays.toString(pytorchTop5));
-					log("  Java top-5: " + java.util.Arrays.toString(top5));
+					log("  PyTorch top-5: " + Arrays.toString(pytorchTop5));
+					log("  Java top-5: " + Arrays.toString(top5));
 				}
 			}
 
@@ -179,23 +184,24 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 			if (step < expectedTokens.length) {
 				if (nextToken == expectedTokens[step]) {
-					log("[MATCH] Generated token " + nextToken + " matches expected");
+					log("Generated token " + nextToken + " matches expected");
 					matches++;
 				} else {
-					log("[MISMATCH] Generated " + nextToken + " but expected " + expectedTokens[step]);
+					log("Generated " + nextToken + " but expected " + expectedTokens[step]);
 				}
 				total++;
 			}
 
 			log("");
 			currentToken = nextToken;
+			advancePosition.run();
 		}
 
 		// Summary
 		log("\n=== Generation Summary ===");
-		log("Generated tokens: " + java.util.Arrays.toString(
-				java.util.Arrays.copyOf(generatedTokens, 5)));
-		log("Expected tokens:  " + java.util.Arrays.toString(expectedTokens));
+		log("Generated tokens: " + Arrays.toString(
+				Arrays.copyOf(generatedTokens, 5)));
+		log("Expected tokens:  " + Arrays.toString(expectedTokens));
 		log(String.format("Match rate: %d/%d (%.1f%%)", matches, total, 100.0 * matches / total));
 
 		if (matches == total) {
@@ -209,14 +215,15 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	}
 
 	/**
-	 * Build transformer without vocab projection (same as SimpleTransformerValidationTest).
+	 * Builds transformer without vocab projection.
+	 *
+	 * @param config the model configuration
+	 * @param stateDict the state dictionary containing weights
+	 * @return the built transformer model
 	 */
 	private Model buildTransformerWithoutVocabProjection(Qwen3Config config,
 														 StateDictionary stateDict) {
 		Model transformer = new Model(shape(1, config.dim));
-
-		// Use the instance field (initialized in test method)
-		// Position is updated in the test loop before each forward pass
 
 		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 		PackedCollection freqCis = computeRopeFreqs(config);
@@ -250,7 +257,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 					layerWk, layerWv, layerWq, layerWo,
 					layerBk, layerBv, layerBq,
 					layerQkNormQ, layerQkNormK,
-					freqCis,
+					cp(freqCis),
 					layerRmsFfn,
 					layerW1, layerW2, layerW3,
 					p(position)));
@@ -260,26 +267,28 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return transformer;
 	}
 
+	/**
+	 * Computes RoPE frequencies for the model configuration.
+	 *
+	 * @param config the model configuration
+	 * @return the frequency tensor
+	 */
 	private PackedCollection computeRopeFreqs(Qwen3Config config) {
 		int headSize = config.headSize;
 		int seqLen = 10;
 		double theta = config.ropeTheta;
 
-		int freqDim = headSize / 2;
-		PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
-
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double freq = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
-				double angle = pos * freq;
-				freqCis.setMem((pos * freqDim + i) * 2, Math.cos(angle));
-				freqCis.setMem((pos * freqDim + i) * 2 + 1, Math.sin(angle));
-			}
-		}
-
-		return freqCis;
+		return RotationFeatures.computeRopeFreqs(theta, headSize, seqLen).evaluate();
 	}
 
+	/**
+	 * Computes logits by manually multiplying hidden state with embedding weights.
+	 *
+	 * @param hidden the hidden state output
+	 * @param weights the embedding weights
+	 * @param config the model configuration
+	 * @return the computed logits array
+	 */
 	private double[] computeLogitsManually(PackedCollection hidden,
 										   PackedCollection weights,
 										   Qwen3Config config) {
@@ -296,10 +305,17 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return logits;
 	}
 
+	/**
+	 * Finds the top-k largest values in an array.
+	 *
+	 * @param values the input array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopK(double[] values, int k) {
 		int[] indices = new int[k];
 		double[] topValues = new double[k];
-		java.util.Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			int pos = -1;
@@ -324,10 +340,17 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return indices;
 	}
 
+	/**
+	 * Finds the top-k largest values in a float array.
+	 *
+	 * @param values the input float array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopKFromFloat(float[] values, int k) {
 		int[] indices = new int[k];
 		float[] topValues = new float[k];
-		java.util.Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			int pos = -1;
@@ -352,6 +375,12 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return indices;
 	}
 
+	/**
+	 * Loads reference logits from a binary file.
+	 *
+	 * @param filename the name of the reference file
+	 * @return array of float values, or null if file cannot be loaded
+	 */
 	private float[] loadReferenceLogits(String filename) {
 		String filepath = REFERENCE_DIR + "/" + filename;
 		try (FileChannel channel = FileChannel.open(Paths.get(filepath), StandardOpenOption.READ)) {

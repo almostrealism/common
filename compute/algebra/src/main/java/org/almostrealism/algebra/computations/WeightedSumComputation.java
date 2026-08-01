@@ -76,13 +76,25 @@ import java.util.List;
 public class WeightedSumComputation
 		extends TraversableExpressionComputation {
 
+	/** The shape of the output collection produced by this computation. */
 	private final TraversalPolicy resultShape;
+
+	/** The traversal policy defining which positions in the input to use for each output element. */
 	private final TraversalPolicy inputPositions;
+
+	/** The traversal policy defining which positions in the weight tensor to use for each output element. */
 	private final TraversalPolicy weightPositions;
+
+	/** The group shape that defines the sub-dimensions of the input that are summed over. */
 	private final TraversalPolicy inputGroupShape;
+
+	/** The group shape that defines the sub-dimensions of the weights that are summed over. */
 	private final TraversalPolicy weightGroupShape;
 
+	/** The full shape of the input collection. */
 	private final TraversalPolicy inShape;
+
+	/** The full shape of the weight collection. */
 	private final TraversalPolicy weightShape;
 
 	/**
@@ -123,6 +135,50 @@ public class WeightedSumComputation
 				weightGroupShape.getDimensions() != weightShape.getDimensions()) {
 			throw new IllegalArgumentException();
 		}
+
+		// Refresh the signature captured before the traversal policies were assigned
+		init();
+	}
+
+	/**
+	 * Extends the standard computation signature with the traversal policies
+	 * that determine the generated kernel. The position and group policies are
+	 * not derivable from the input and output shapes alone, so two weighted
+	 * sums over identically shaped operands would otherwise share a signature
+	 * while generating different kernels. Position policies are constructed
+	 * with per-axis rates, which their standard descriptions omit, so the
+	 * rates are rendered explicitly here.
+	 *
+	 * @return The signature string, or null when the base signature is unavailable
+	 */
+	@Override
+	public String signature() {
+		// Superclass construction requests the signature before the traversal
+		// policies are assigned; the constructor refreshes it once they are
+		if (inputPositions == null) return null;
+
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		StringBuilder detail = new StringBuilder(signature);
+
+		TraversalPolicy policies[] = {
+				inputPositions, inputGroupShape,
+				weightPositions, weightGroupShape
+		};
+
+		for (TraversalPolicy policy : policies) {
+			detail.append("{").append(policy.toStringDetail());
+
+			for (int i = 0; i < policy.getDimensions(); i++) {
+				detail.append("|").append(policy.rateNumeratorLong(i))
+						.append(":").append(policy.rateDenominatorLong(i));
+			}
+
+			detail.append("}");
+		}
+
+		return detail.toString();
 	}
 
 	/**

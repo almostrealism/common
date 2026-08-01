@@ -2,10 +2,13 @@
 # Install with: pip install -r tools/mcp/requirements.txt
 #
 # Covers: ar-consultant, ar-memory, ar-test-runner, ar-jmx,
-#          ar-profile-analyzer, ar-github, ar-slack
+#          ar-profile-analyzer, ar-github, ar-messages
 
 # Core MCP framework (all servers)
-mcp>=1.0.0
+# Held below 2.0.0: the 2.x SDK removes mcp.server.fastmcp, which every
+# decorator-based server here imports. Raising this bound requires migrating
+# the servers to the 2.x API first.
+mcp>=1.0.0,<2
 
 # Embeddings and vector search (ar-memory)
 fastembed>=0.2.0

@@ -162,19 +162,34 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	/** Minimum fitness score required for a genome to survive to the next generation (default: 0.0). */
 	public static double lowestHealth = 0.0;
 
+	/** The current population of genomes being evolved. */
 	private Population<G, O> population;
+
+	/** Function that constructs a new population from a list of genomes. */
 	private Function<List<Genome<G>>, Population> children;
 
+	/** Supplier for creating new genome generator instances. */
 	private final Supplier<Supplier<Genome<G>>> generatorSupplier;
+
+	/** The current genome generator; lazily created from {@link #generatorSupplier}. */
 	private Supplier<Genome<G>> generator;
 
+	/** Supplier for creating health computation instances. */
 	private final Supplier<HealthComputation<O, S>> healthSupplier;
+
+	/** The active health computation used for fitness evaluation. */
 	private HealthComputation<O, S> health;
 
+	/** Supplier for creating genome breeder instances used in the breeding phase. */
 	private final Supplier<GenomeBreeder<G>> breeder;
 
+	/** Optional listener called with genome signature and score after each evaluation. */
 	private BiConsumer<String, S> healthListener;
+
+	/** Optional listener called when a fitness evaluation throws an exception. */
 	private Consumer<Exception> errorListener;
+
+	/** Aggregator that collects fitness scores for the current generation's statistics. */
 	private HealthScoring scoring;
 
 	/**
@@ -367,7 +382,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			Genome g2 = sorted.isEmpty() ? null : itr.next();
 
 			w:
-			for (int i = 0; itr.hasNext(); i++) {
+			while (itr.hasNext()) {
 				g1 = g2;
 				g2 = itr.next();
 				if (genomes.size() >= maxChildren) break;
@@ -455,6 +470,16 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		genomes.add(g);
 	}
 
+	/**
+	 * Evaluates the fitness of all genomes in the population and sorts them by score.
+	 * <p>
+	 * Fitness evaluations are submitted to a thread pool of size {@link #THREADS}.
+	 * After all evaluations complete, genomes are sorted in descending order of fitness.
+	 * Genomes with fitness below {@link #lowestHealth} are removed.
+	 * </p>
+	 *
+	 * @param pop the population whose genomes will be evaluated and sorted
+	 */
 	private synchronized void orderByHealth(Population<G, O> pop) {
 		if (THREADS > 1) throw new UnsupportedOperationException();
 
@@ -501,7 +526,8 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 				try {
 					executor.take().get();
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					Thread.currentThread().interrupt();
+					console().warn("Health evaluation interrupted: " + e.getMessage());
 				} catch (ExecutionException e) {
 					if (e.getCause() instanceof RuntimeException) {
 						throw (RuntimeException) e.getCause();

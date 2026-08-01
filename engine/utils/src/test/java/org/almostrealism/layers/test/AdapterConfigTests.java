@@ -39,23 +39,41 @@ import java.util.Set;
  */
 public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, LowRankAdapterSupport {
 
+	/** Tolerance for floating-point comparisons. */
 	private static final double TOLERANCE = 1e-4;
+	/** Random generator for deterministic test data. */
 	private static final Random random = new Random(42);
 
-	// Test implementation of LowRankAdapterSupport
+	/** Test implementation of LowRankAdapterSupport. */
 	private AdapterConfig testConfig;
+	/** List of LoRA layers for testing. */
 	private final List<LoRALinear> testLoraLayers = new ArrayList<>();
 
+	/**
+	 * Returns the test adapter configuration.
+	 *
+	 * @return Test adapter config
+	 */
 	@Override
 	public AdapterConfig getAdapterConfig() {
 		return testConfig;
 	}
 
+	/**
+	 * Returns the list of test LoRA layers.
+	 *
+	 * @return List of LoRA layers
+	 */
 	@Override
 	public List<LoRALinear> getLoraLayers() {
 		return testLoraLayers;
 	}
 
+	/**
+	 * Adds a LoRA layer to the test list.
+	 *
+	 * @param layer Layer to add
+	 */
 	@Override
 	public void addLoraLayer(LoRALinear layer) {
 		testLoraLayers.add(layer);

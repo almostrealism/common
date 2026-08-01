@@ -31,7 +31,7 @@ import java.io.FileOutputStream;
  * <h2>Usage</h2>
  * <pre>{@code
  * try (FilePrintWriter writer = new FilePrintWriter(new File("output.txt"))) {
- *     writer.println("Line 1");
+ *     writer.println("first line");
  *     writer.moreIndent();
  *     writer.println("Indented line");
  *     writer.lessIndent();
@@ -43,7 +43,9 @@ import java.io.FileOutputStream;
  * @see PrintStreamPrintWriter
  */
 public class FilePrintWriter implements PrintWriter {
+	/** The current indentation string, grown and shrunk as tab/moreTab/lessTab are called. */
 	private StringBuffer indent;
+	/** The underlying writer directing output to the target file. */
 	private final java.io.PrintWriter out;
 
 	/**

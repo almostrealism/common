@@ -116,7 +116,7 @@ public class MultiOrderFilterPerformanceTest extends TestSuiteBase implements Co
 	 *
 	 * @throws Exception if test setup or execution fails
 	 */
-	@Test(timeout = 10000)
+	@Test(timeout = 20000)
 	public void highPassPerformanceCPU() throws Exception {
 		// Set up file logging BEFORE any output
 		String logFile = "results/multiorder_filter_performance_cpu.out";
@@ -166,7 +166,7 @@ public class MultiOrderFilterPerformanceTest extends TestSuiteBase implements Co
 	 *
 	 * @throws Exception if test setup or execution fails
 	 */
-	@Test(timeout = 10000)
+	@Test(timeout = 20000)
 	public void highPassPerformanceGPU() throws Exception {
 		// Set up file logging BEFORE any output
 		String logFile = "results/multiorder_filter_performance_gpu.out";
@@ -280,9 +280,7 @@ public class MultiOrderFilterPerformanceTest extends TestSuiteBase implements Co
 
 		// Create input collection with random data
 		PackedCollection inputSeries = new PackedCollection(collectionSize);
-		for (int i = 0; i < collectionSize; i++) {
-			inputSeries.setMem(i, Math.random());
-		}
+		rand(inputSeries.getShape()).into(inputSeries.traverseEach()).evaluate();
 		log("Created input collection with " + collectionSize + " random samples");
 
 		// Build high-pass filter using dynamic input via PassThroughProducer

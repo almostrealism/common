@@ -23,7 +23,24 @@ import io.almostrealism.kernel.KernelStructureContext;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * A mask expression that evaluates to a value when a boolean condition is true,
+ * and to zero otherwise.
+ *
+ * <p>This is a specialised {@link Conditional} where the negative branch is always
+ * {@code 0}. It is generated automatically by {@link Conditional#create} when one
+ * branch is a zero constant, providing a simpler representation for gating patterns.</p>
+ *
+ * @param <T> the numeric type of the masked value
+ */
 public class Mask<T extends Number> extends Conditional<T> {
+	/**
+	 * Constructs a mask expression that returns {@code value} when {@code mask} is true
+	 * and zero otherwise.
+	 *
+	 * @param mask  the boolean guard expression
+	 * @param value the expression returned when the mask is true
+	 */
 	protected Mask(Expression<Boolean> mask, Expression<T> value) {
 		super(value.getType(), mask, (Expression) value, (Expression) new IntegerConstant(0));
 	}
@@ -64,6 +81,17 @@ public class Mask<T extends Number> extends Conditional<T> {
 	@Override
 	public boolean isMasked() { return true; }
 
+	/**
+	 * Creates a mask expression, applying constant-folding and zero-value short-circuits.
+	 *
+	 * <p>If the mask is statically true the value is returned unchanged; if false a zero
+	 * constant is returned. If the value is already zero a zero constant is returned.</p>
+	 *
+	 * @param mask  the boolean guard expression
+	 * @param value the expression returned when the mask is true
+	 * @param <T>   the numeric type of the value
+	 * @return the simplified expression
+	 */
 	public static <T> Expression<T> of(Expression<Boolean> mask, Expression<T> value) {
 		Optional<Boolean> b = mask.booleanValue();
 

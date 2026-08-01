@@ -1,5 +1,11 @@
 # engine/ — Applications & Training
 
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure is externally controlled. If a task requires a new module, **STOP and abandon the task**. Do not create new `pom.xml` files, add `<module>` entries to parent POMs, or create directory structures constituting a new module. Document the requirement in completion notes instead — the project owner handles module creation.
+
+---
+
 Complete application systems, training infrastructure, inference pipelines,
 audio synthesis, and testing framework. This layer assembles domain models
 into working engines — training, rendering, inference, and audio.

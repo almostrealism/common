@@ -16,20 +16,35 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.ArrayIndexSequence;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.OptionalLong;
 
+/**
+ * A constant {@link Double} expression node that holds a literal floating-point value.
+ *
+ * <p>Renders to the language-specific representation of the value via
+ * {@link io.almostrealism.lang.LanguageOperations#getPrecision()}. The value is
+ * also exposed as an {@link java.util.OptionalDouble} and a {@link io.almostrealism.sequence.KernelSeries}
+ * with constant periodicity.</p>
+ */
 public class DoubleConstant extends Constant<Double> {
+	/** The literal double value held by this constant. */
 	private double value;
 
+	/**
+	 * Constructs a constant expression for the given double value.
+	 *
+	 * @param value the literal floating-point value
+	 */
 	public DoubleConstant(Double value) {
 		super(Double.class);
 		this.value = value;
@@ -38,6 +53,38 @@ public class DoubleConstant extends Constant<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) { return lang.getPrecision().stringForDouble(value); }
+
+	/**
+	 * Reports the value as an {@code int} when an {@code int} represents it
+	 * without loss. This is a value accessor, not a type conversion; the
+	 * expression remains {@link Double} typed.
+	 *
+	 * @return the value as an {@code int}, or empty when conversion would lose information
+	 */
+	@Override
+	public OptionalInt intValue() {
+		if ((double) ((int) value) == value) {
+			return OptionalInt.of((int) value);
+		}
+
+		return OptionalInt.empty();
+	}
+
+	/**
+	 * Reports the value as a {@code long} when a {@code long} represents it
+	 * without loss. This is a value accessor, not a type conversion; the
+	 * expression remains {@link Double} typed.
+	 *
+	 * @return the value as a {@code long}, or empty when conversion would lose information
+	 */
+	@Override
+	public OptionalLong longValue() {
+		if ((double) ((long) value) == value) {
+			return OptionalLong.of((long) value);
+		}
+
+		return OptionalLong.empty();
+	}
 
 	@Override
 	public OptionalDouble doubleValue() {
@@ -50,7 +97,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		return value;
 	}
 

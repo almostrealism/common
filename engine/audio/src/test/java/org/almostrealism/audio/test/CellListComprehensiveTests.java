@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio.test;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -1111,11 +1111,21 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 
 	// ========== HELPER CLASSES ==========
 
+	/**
+	 * Test implementation of Temporal that records tick order.
+	 */
 	private static class TestTemporal implements Cell<PackedCollection>, Temporal {
+		/** Name identifier for this temporal */
 		private final String name;
+		/** Shared list that records the order in which temporals tick */
 		private final List<String> tickOrder;
-		private Receptor<PackedCollection> receptor;
 
+		/**
+		 * Creates a test temporal with the given name and shared tick order list.
+		 *
+		 * @param name      Name identifier for this temporal
+		 * @param tickOrder Shared list to record tick order
+		 */
 		public TestTemporal(String name, List<String> tickOrder) {
 			this.name = name;
 			this.tickOrder = tickOrder;
@@ -1132,19 +1142,28 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {}
 	}
 
+	/**
+	 * Test implementation of Temporal that also implements Setup for setup order testing.
+	 */
 	private static class TestSetupTemporal implements Cell<PackedCollection>, Temporal, Setup {
+		/** Name identifier for this temporal */
 		private final String name;
-		private final List<String> setupOrder;
-		private Receptor<PackedCollection> receptor;
 
+		/** Shared list to record setup order */
+		private final List<String> setupOrder;
+
+		/**
+		 * Creates a test setup temporal with the given name and shared setup order list.
+		 *
+		 * @param name        Name identifier for this temporal
+		 * @param setupOrder  Shared list to record setup order
+		 */
 		public TestSetupTemporal(String name, List<String> setupOrder) {
 			this.name = name;
 			this.setupOrder = setupOrder;
@@ -1166,18 +1185,24 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {}
 	}
 
+	/**
+	 * Test implementation of Setup for testing setup invocation counting.
+	 */
 	private static class TestSetupCell implements Cell<PackedCollection>, Setup {
+		/** Counter to track setup invocations */
 		private final AtomicInteger setupCount;
-		private Receptor<PackedCollection> receptor;
 
+		/**
+		 * Creates a test setup cell.
+		 *
+		 * @param setupCount Counter to track setup invocations
+		 */
 		public TestSetupCell(AtomicInteger setupCount) {
 			this.setupCount = setupCount;
 		}
@@ -1193,18 +1218,24 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {}
 	}
 
+	/**
+	 * Test implementation that tracks reset invocations.
+	 */
 	private static class TestResetCell implements Cell<PackedCollection> {
+		/** Counter to track reset invocations */
 		private final AtomicInteger resetCount;
-		private Receptor<PackedCollection> receptor;
 
+		/**
+		 * Creates a test reset cell.
+		 *
+		 * @param resetCount Counter to track reset invocations
+		 */
 		public TestResetCell(AtomicInteger resetCount) {
 			this.resetCount = resetCount;
 		}
@@ -1215,9 +1246,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {
@@ -1225,10 +1254,18 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 	}
 
+	/**
+	 * Test implementation that tracks push invocations.
+	 */
 	private static class TestPushReceptor implements Cell<PackedCollection> {
+		/** Counter to track push invocations */
 		private final AtomicInteger pushCount;
-		private Receptor<PackedCollection> receptor;
 
+		/**
+		 * Creates a test push receptor.
+		 *
+		 * @param pushCount Counter to track push invocations
+		 */
 		public TestPushReceptor(AtomicInteger pushCount) {
 			this.pushCount = pushCount;
 		}
@@ -1239,18 +1276,24 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {}
 	}
 
+	/**
+	 * Test implementation of Temporal that counts tick invocations.
+	 */
 	private static class CountingTemporal implements Cell<PackedCollection>, Temporal {
+		/** Counter to track tick invocations */
 		private final AtomicInteger tickCount;
-		private Receptor<PackedCollection> receptor;
 
+		/**
+		 * Creates a counting temporal.
+		 *
+		 * @param tickCount Counter to track tick invocations
+		 */
 		public CountingTemporal(AtomicInteger tickCount) {
 			this.tickCount = tickCount;
 		}
@@ -1266,19 +1309,28 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {}
 	}
 
+	/**
+	 * Test implementation that tracks both setup and tick invocations.
+	 */
 	private static class SetupCountingTemporal implements Cell<PackedCollection>, Temporal, Setup {
+		/** Counter to track setup invocations */
 		private final AtomicInteger setupCount;
-		private final AtomicInteger tickCount;
-		private Receptor<PackedCollection> receptor;
 
+		/** Counter to track tick invocations */
+		private final AtomicInteger tickCount;
+
+		/**
+		 * Creates a setup counting temporal.
+		 *
+		 * @param setupCount Counter to track setup invocations
+		 * @param tickCount   Counter to track tick invocations
+		 */
 		public SetupCountingTemporal(AtomicInteger setupCount, AtomicInteger tickCount) {
 			this.setupCount = setupCount;
 			this.tickCount = tickCount;
@@ -1300,18 +1352,24 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {}
 	}
 
+	/**
+	 * Test implementation of Cell that does not implement Temporal (non-ticking).
+	 */
 	private static class NonTemporalCell implements Cell<PackedCollection> {
+		/** Counter to track push invocations */
 		private final AtomicInteger pushCount;
-		private Receptor<PackedCollection> receptor;
 
+		/**
+		 * Creates a non-temporal cell.
+		 *
+		 * @param pushCount Counter to track push invocations
+		 */
 		public NonTemporalCell(AtomicInteger pushCount) {
 			this.pushCount = pushCount;
 		}
@@ -1322,19 +1380,28 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {}
 	}
 
+	/**
+	 * Test implementation of Temporal that tracks both tick and reset invocations.
+	 */
 	private static class ResettableCountingTemporal implements Cell<PackedCollection>, Temporal {
+		/** Counter to track tick invocations */
 		private final AtomicInteger tickCount;
-		private final AtomicInteger resetCount;
-		private Receptor<PackedCollection> receptor;
 
+		/** Counter to track reset invocations */
+		private final AtomicInteger resetCount;
+
+		/**
+		 * Creates a resettable counting temporal.
+		 *
+		 * @param tickCount  Counter to track tick invocations
+		 * @param resetCount Counter to track reset invocations
+		 */
 		public ResettableCountingTemporal(AtomicInteger tickCount, AtomicInteger resetCount) {
 			this.tickCount = tickCount;
 			this.resetCount = resetCount;
@@ -1351,9 +1418,7 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 		}
 
 		@Override
-		public void setReceptor(Receptor<PackedCollection> receptor) {
-			this.receptor = receptor;
-		}
+		public void setReceptor(Receptor<PackedCollection> receptor) { }
 
 		@Override
 		public void reset() {

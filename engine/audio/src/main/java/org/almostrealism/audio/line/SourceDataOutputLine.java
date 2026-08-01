@@ -42,9 +42,16 @@ import javax.sound.sampled.SourceDataLine;
  * @see LineUtilities#getLine() for creating instances with default format
  */
 public class SourceDataOutputLine implements OutputLine {
+	/** The underlying Java Sound API line that sends audio to the hardware. */
 	private SourceDataLine line;
+
+	/** Buffer size in bytes used for batching audio data before writing to the line. */
 	private final int bufferSize;
+
+	/** Audio format describing sample rate, bit depth, and channel configuration. */
 	private final AudioFormat format;
+
+	/** When true, the line is in the process of being reset to recover from an error. */
 	private volatile boolean resetting;
 
 	/**

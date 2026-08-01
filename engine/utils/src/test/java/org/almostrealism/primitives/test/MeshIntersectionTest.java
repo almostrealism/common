@@ -37,12 +37,24 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+/**
+ * Tests for mesh intersection operations.
+ */
 public class MeshIntersectionTest extends TestSuiteBase {
+	/** Mesh data under test. */
 	private MeshData data;
+
+	/** Ray producer for intersection tests. */
 	private Producer<Ray> ray;
 
+	/** Width of the test viewport. */
 	private int width, height;
 
+	/**
+	 * Creates a test mesh with sample triangles.
+	 *
+	 * @return Mesh with sample triangle data
+	 */
 	protected Mesh mesh() {
 		DefaultVertexData data = new DefaultVertexData(5, 3);
 		data.getVertices().set(0, new Vector(0.0, 1.0, 0.0));
@@ -57,6 +69,11 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		return new Mesh(data);
 	}
 
+	/**
+	 * Creates a camera for ray generation.
+	 *
+	 * @return Camera producer for ray generation
+	 */
 	protected Producer<Ray> camera() {
 		ThinLensCamera c = new ThinLensCamera();
 		c.setLocation(new Vector(0.0, 0.0, 10.0));
@@ -71,12 +88,18 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		return (Producer) c.rayAt(v(Pair.shape(), 0), pair(width, height));
 	}
 
+	/**
+	 * Initializes test fixtures.
+	 */
 	@Before
 	public void init() {
 		data = mesh().getMeshData();
 		ray = camera();
 	}
 
+	/**
+	 * Tests mesh intersection at origin.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void intersectAt() {
@@ -91,30 +114,33 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		Evaluable<Vector> closestNormal = kernel.getClosestNormal();
 
 		int pos = 0;
-		System.out.println("distance(" + pos + ") = " + distances.valueAt(pos, 0));
+		log("distance(" + pos + ") = " + distances.valueAt(pos, 0));
 		Assert.assertEquals(-1.0, distances.valueAt(pos, 0), Math.pow(10, -10));
 
 		pos = (height / 2) * width + width / 2;
-		System.out.println("distance(" + pos + ") = " + distances.valueAt(pos, 0));
+		log("distance(" + pos + ") = " + distances.valueAt(pos, 0));
 		Assert.assertEquals(1.0, distances.valueAt(pos, 0), Math.pow(10, -10));
 
 		Vector n = closestNormal.evaluate(input.get(pos));
-		System.out.println("normal(" + pos + ") = " + n);
+		log("normal(" + pos + ") = " + n);
 		Assert.assertEquals(0.0, n.toDouble(0), Math.pow(10, -10));
 		Assert.assertEquals(0.0, n.toDouble(1), Math.pow(10, -10));
 		Assert.assertEquals(1.0, n.toDouble(2), Math.pow(10, -10));
 
 		pos = (height / 2) * width + 3 * width / 8;
-		System.out.println("distance(" + pos + ") = " + distances.valueAt(pos, 0));
+		log("distance(" + pos + ") = " + distances.valueAt(pos, 0));
 		Assert.assertEquals(1.042412281036377, distances.valueAt(pos, 0), Math.pow(10, -10));
 
 		n = closestNormal.evaluate(input.get(pos));
-		System.out.println("normal(" + pos + ") = " + n);
+		log("normal(" + pos + ") = " + n);
 		Assert.assertEquals(-0.6666666865348816, n.toDouble(0), Math.pow(10, -10));
 		Assert.assertEquals(0.3333333432674408, n.toDouble(1), Math.pow(10, -10));
 		Assert.assertEquals(0.6666666865348816, n.toDouble(2), Math.pow(10, -10));
 	}
 
+	/**
+	 * Tests triangle intersect at kernel.
+	 */
 	@Test(timeout = 10000)
 	public void triangleIntersectAtKernel() {
 		PackedCollection in = Ray.bank(1);
@@ -122,14 +148,14 @@ public class MeshIntersectionTest extends TestSuiteBase {
 
 		in.set(0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0);
 		Triangle.intersectAt.into(distances).evaluate(in, data);
-		System.out.println("distance = " + distances.valueAt(0, 0));
+		log("distance = " + distances.valueAt(0, 0));
 		Assert.assertEquals(1.0, distances.valueAt(0, 0), Math.pow(10, -10));
 
 		PackedCollection out = Pair.bank(1);
 		PackedCollection conf = Pair.bank(1);
 		conf.set(0, new Pair(1, Intersection.e));
 		RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
-		System.out.println("highest rank: " + out.get(0));
+		log("highest rank: " + out.get(0));
 		Assert.assertEquals(1.0, out.get(0).toDouble(0), Math.pow(10, -10));
 		Assert.assertEquals(0.0, out.get(0).toDouble(1), Math.pow(10, -10));
 	}

@@ -18,7 +18,25 @@ package org.almostrealism.layers;
 
 import org.almostrealism.collect.PackedCollection;
 
+/**
+ * Marker interface for components that hold learnable parameters.
+ *
+ * <p>Any {@link org.almostrealism.graph.Cell} or {@link BackPropagation} implementation
+ * that updates weights during training should implement this interface so that the
+ * owning layer or model can install the appropriate {@link ParameterUpdate} strategy
+ * before the first backward pass.</p>
+ *
+ * @see ParameterUpdate
+ * @see DefaultGradientPropagation
+ * @author Michael Murray
+ */
 public interface Learning {
 
+	/**
+	 * Sets the strategy used to apply gradient updates to this component's learnable parameters.
+	 *
+	 * @param update the parameter update strategy to install; must not be {@code null} when
+	 *               the first backward pass is executed
+	 */
 	void setParameterUpdate(ParameterUpdate<PackedCollection> update);
 }

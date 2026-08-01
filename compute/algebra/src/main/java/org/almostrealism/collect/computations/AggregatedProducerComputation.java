@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
@@ -26,8 +26,9 @@ import io.almostrealism.compute.ParallelProcessContext;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.DefaultIndex;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.expression.StaticReference;
+import io.almostrealism.sequence.DefaultIndex;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
@@ -84,9 +85,11 @@ import java.util.function.BiFunction;
  * </ul>
  *
  * <h2>Loop Replacement Optimization</h2>
- * <p>When {@link #setReplaceLoop(boolean)} is enabled and certain conditions are met,
+ * <p>When loop replacement is enabled at construction and certain conditions are met,
  * the iterative aggregation can be replaced with a direct memory access pattern using
- * unique offset calculation. This significantly improves performance for large reductions.</p>
+ * unique offset calculation. This significantly improves performance for large reductions.
+ * Use {@link #withReplaceLoop(boolean)} to obtain an equivalent aggregation with a
+ * different setting.</p>
  *
  * <h2>Subclass Implementation Pattern</h2>
  * <pre>{@code
@@ -97,8 +100,8 @@ import java.util.function.BiFunction;
  *         super("sum", outputShape, elementCount,
  *             (args, index) -> new DoubleConstant(0.0),  // Initial value
  *             (accumulator, element) -> accumulator.add(element),  // Sum operation
+ *             true,  // Enable loop replacement
  *             input);
- *         setReplaceLoop(true);  // Enable optimization
  *     }
  * }
  * }</pre>
@@ -190,14 +193,26 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	/**
 	 * Flag indicating whether to replace the iterative loop with a direct memory access pattern.
 	 * When true and applicable, uses unique offset calculation for improved performance.
+	 * Fixed at construction because it participates in {@link #signature()}.
 	 */
-	private boolean replaceLoop;
+	private final boolean replaceLoop;
 
+	/** The traversable expression referencing the primary input argument during scope preparation. */
 	private TraversableExpression<Double> inputArg;
-	private DefaultIndex row, ref;
+
+	/** The loop row index used to iterate over input elements during aggregation kernel generation. */
+	private DefaultIndex row;
+
+	/** The reference index used for index cache lookups and offset calculations. */
+	private DefaultIndex ref;
+
+	/** The unique integer offset used when loop replacement is active. */
 	private Expression<Integer> uniqueOffset;
+
+	/** The unique numeric index used when loop replacement is active. */
 	private Expression<? extends Number> uniqueIndex;
 
+	/** Cache mapping variable prefix strings to index expressions for repeated aggregation operations. */
 	private Map<String, Expression<?>> indexCache;
 
 	/**
@@ -226,54 +241,89 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 										 BiFunction<TraversableExpression[], Expression, Expression> initial,
 										 BiFunction<Expression, Expression, Expression> expression,
 										 Producer<PackedCollection>... arguments) {
+		this(name, shape, count, initial, expression, false, arguments);
+	}
+
+	/**
+	 * Constructs an aggregated producer computation with specified aggregation
+	 * parameters and loop replacement setting.
+	 *
+	 * @param name The operation identifier (e.g., "sum", "max", "product")
+	 * @param shape The {@link TraversalPolicy} defining the output shape (typically smaller than input)
+	 * @param count The number of input elements to aggregate per output element
+	 * @param initial Function providing the initial accumulator value (e.g., 0.0 for sum, -infinity for max)
+	 * @param expression Binary function combining accumulator with each element:
+	 *                   {@code (accumulator, element) -> newAccumulator}
+	 * @param replaceLoop {@code true} to replace the iterative aggregation loop with
+	 *                    a direct memory access pattern when applicable
+	 * @param arguments The input {@link Producer}s providing data to aggregate
+	 */
+	public AggregatedProducerComputation(String name, TraversalPolicy shape, int count,
+										 BiFunction<TraversableExpression[], Expression, Expression> initial,
+										 BiFunction<Expression, Expression, Expression> expression,
+										 boolean replaceLoop,
+										 Producer<PackedCollection>... arguments) {
 		super(name, shape, count, initial, null, arguments);
 		this.expression = expression;
 		this.count = count;
+		this.replaceLoop = replaceLoop;
 
 		if (enableIndexCache)
 			indexCache = new HashMap<>();
 
 		if (enableLogging)
 			log("Created AggregatedProducerComputation (" + count + " items)");
+
+		// Refresh the signature captured before the aggregation state was assigned
+		init();
 	}
 
 	/**
 	 * Returns whether loop replacement optimization is enabled for this aggregation.
 	 *
 	 * @return {@code true} if loop replacement is enabled, {@code false} otherwise
-	 * @see #setReplaceLoop(boolean)
+	 * @see #withReplaceLoop(boolean)
 	 */
 	public boolean isReplaceLoop() {
 		return replaceLoop;
 	}
 
 	/**
-	 * Enables or disables loop replacement optimization for this aggregation.
+	 * Returns an aggregation like this one with the given loop replacement setting.
 	 *
 	 * <p>When enabled and applicable (single memory length, fixed count, unique offset available),
 	 * the iterative aggregation loop is replaced with a direct memory access pattern using
 	 * unique offset calculation. This can significantly improve performance for large reductions.</p>
 	 *
-	 * @param replaceLoop {@code true} to enable loop replacement, {@code false} to use standard iteration
-	 * @return This computation instance for method chaining
+	 * <p>The setting participates in {@link #signature()}, so it is fixed at construction;
+	 * changing it produces a new computation rather than mutating this one.</p>
 	 *
-	 * @see #prepareScope(ScopeInputManager, KernelStructureContext)
+	 * @param replaceLoop {@code true} to enable loop replacement, {@code false} to use standard iteration
+	 * @return This computation when the setting already matches, otherwise a new
+	 *         aggregation over the same functions and inputs
+	 *
+	 * @see #prepareScope(ArgumentProvider, KernelStructureContext)
 	 */
-	public AggregatedProducerComputation setReplaceLoop(boolean replaceLoop) {
-		this.replaceLoop = replaceLoop;
-		return this;
+	public AggregatedProducerComputation withReplaceLoop(boolean replaceLoop) {
+		if (this.replaceLoop == replaceLoop) return this;
+
+		return new AggregatedProducerComputation(getName(), getShape(), count,
+				initial, expression, replaceLoop,
+				getInputs().stream().skip(1).toArray(Producer[]::new));
 	}
 
 	/**
 	 * Indicates whether signature generation is supported for this aggregation.
 	 * Signatures are used for caching and deduplication of computations.
 	 *
-	 * <p>Aggregations typically do not support signatures due to their complex
-	 * and dynamic nature.</p>
+	 * <p>The signature produced by {@link #signature()} captures the aggregation
+	 * state that determines the generated kernel: the iteration count, the loop
+	 * replacement setting, and the structure of the initial and combining
+	 * functions (rendered against placeholder references).</p>
 	 *
-	 * @return Always {@code false} for base aggregated computations
+	 * @return Always {@code true} for base aggregated computations
 	 */
-	protected boolean isSignatureSupported() { return false; }
+	protected boolean isSignatureSupported() { return true; }
 
 	@Override
 	public boolean isChainRuleSupported() {
@@ -281,7 +331,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		if (!replaceLoop || getMemLength() > 1 || getIndexLimit().isEmpty())
@@ -295,10 +345,10 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 			inputArg = getCollectionArgumentVariable(1);
 			if (inputArg == null) return;
 
-			row = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g");
+			row = new DefaultIndex(getVariablePrefix() + "_g");
 			row.setLimit(getShape().getCountLong());
 
-			ref = new DefaultIndex(getNameProvider().getVariablePrefix() + "_i");
+			ref = new DefaultIndex(getVariablePrefix() + "_i");
 			getIndexLimit().ifPresent(ref::setLimit);
 
 			Expression index = Index.child(row, ref);
@@ -323,6 +373,15 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		}
 	}
 
+	/**
+	 * Generates the kernel scope for this aggregation computation.
+	 * When loop replacement is active (i.e., a unique index has been identified),
+	 * produces an optimized scope that reads a single element directly instead of
+	 * iterating. Otherwise delegates to the parent implementation.
+	 *
+	 * @param context the kernel structure context for scope generation
+	 * @return the kernel scope implementing the aggregation operation
+	 */
 	@Override
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		if (uniqueIndex == null) return super.getScope(context);
@@ -335,6 +394,13 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return scope;
 	}
 
+	/**
+	 * Looks up a previously computed index expression from the cache.
+	 * Returns null if the cache is disabled or the expression is too large to cache.
+	 *
+	 * @param index the index expression to look up
+	 * @return the cached expression, or null if not found or caching is disabled
+	 */
 	protected Expression<?> checkCache(Expression<?> index) {
 		if (indexCache == null || index.countNodes() > 100) return null;
 
@@ -349,6 +415,14 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 		return null;
 	}
 
+	/**
+	 * Stores a computed index expression result in the cache for future reuse.
+	 * Does nothing if the cache is disabled or the expression is too large to cache.
+	 *
+	 * @param index the index expression used as the cache key
+	 * @param result the computed expression value to store
+	 * @return the result expression, unchanged
+	 */
 	protected Expression<Double> cache(Expression<?> index, Expression<Double> result) {
 		if (indexCache == null || index.countNodes() > 100) return result;
 
@@ -438,8 +512,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 
 			delta = delta.enumerate(1, count).traverse(2);
 			return new AggregatedProducerComputation(getName(), shape(delta).replace(shape(1)),
-						count, initial, expression, delta)
-					.setReplaceLoop(isReplaceLoop())
+						count, initial, expression, replaceLoop, delta)
 					.reshape(getShape().append(shape(target)));
 		} else {
 			delta = super.delta(target);
@@ -457,13 +530,61 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 
 	@Override
 	public AggregatedProducerComputation generate(List<Process<?, ?>> children) {
-		AggregatedProducerComputation c = new AggregatedProducerComputation(getName(), getShape(),
-				count, initial, expression,
+		return new AggregatedProducerComputation(getName(), getShape(),
+				count, initial, expression, replaceLoop,
 				children.stream().skip(1).toArray(Producer[]::new));
-		c.setReplaceLoop(replaceLoop);
-		return c;
 	}
 
+	/**
+	 * Renders the structural identity of the aggregation functions. The
+	 * combining function is applied to opaque placeholder references, and the
+	 * initial function to placeholder argument expressions, so two aggregations
+	 * whose functions build the same expression tree render identically, while
+	 * different combining functions (for example sum and product) render
+	 * differently even when they share a name and shape.
+	 *
+	 * @return The rendered expression structure
+	 */
+	protected String expressionSignature() {
+		Expression left = new StaticReference(Double.class, "signatureLeft");
+		Expression right = new StaticReference(Double.class, "signatureRight");
+		String combined = expression.apply(left, right)
+				.getExpression(Expression.defaultLanguage());
+
+		TraversableExpression args[] = new TraversableExpression[getInputs().size()];
+		for (int i = 0; i < args.length; i++) {
+			String name = "signatureArgument" + i;
+			args[i] = CollectionExpression.create(getShape(),
+					index -> new StaticReference(Double.class, name));
+		}
+
+		String start = initial.apply(args, e(0))
+				.getExpression(Expression.defaultLanguage());
+		return start + ";" + combined;
+	}
+
+	/**
+	 * Extends the standard computation signature with the aggregation state
+	 * that determines the generated kernel: the iteration count, the loop
+	 * replacement setting, and the structural identity of the initial and
+	 * combining functions.
+	 *
+	 * @return The signature string, or null when the base signature is
+	 *         unavailable or the aggregation state has not been assigned yet
+	 */
 	@Override
-	public String signature() { return isSignatureSupported() ? super.signature() : null; }
+	public String signature() {
+		if (!isSignatureSupported()) return null;
+
+		// Superclass construction requests the signature before the functions
+		// are assigned; the constructor refreshes it once they are
+		if (expression == null || initial == null) return null;
+
+		String signature = super.signature();
+		if (signature == null) return null;
+
+		return signature + "{count:" + count +
+				",replaceLoop:" + replaceLoop +
+				",functions:" + expressionSignature() + "}";
+	}
 }

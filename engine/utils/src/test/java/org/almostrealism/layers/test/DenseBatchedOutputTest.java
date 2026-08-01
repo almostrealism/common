@@ -51,7 +51,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testDenseSingleSample() {
-		log("=== Test 1: Dense Single Sample ===");
+		log("Test 1: Dense Single Sample");
 
 		// Simple 2 -> 3 dense layer, batch size = 1
 		int inputSize = 2;
@@ -62,12 +62,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		// W = [[1, 2],    -> output[0] = 1*in[0] + 2*in[1]
 		//      [3, 4],    -> output[1] = 3*in[0] + 4*in[1]
 		//      [5, 6]]    -> output[2] = 5*in[0] + 6*in[1]
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection weights = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Create input: [1, 2] (batch=1, features=2)
-		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2);
+		PackedCollection input = pack(1.0, 2.0).reshape(shape(batchSize, inputSize));
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -113,7 +112,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testDenseBatchedSamples() {
-		log("=== Test 2: Dense Batched Samples (batch=3) ===");
+		log("Test 2: Dense Batched Samples (batch=3)");
 
 		int inputSize = 2;
 		int outputSize = 4;
@@ -124,15 +123,15 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		//      [0, 1],    -> output[1] = 0*in[0] + 1*in[1] = in[1]
 		//      [1, 1],    -> output[2] = 1*in[0] + 1*in[1] = in[0] + in[1]
 		//      [2, 3]]    -> output[3] = 2*in[0] + 3*in[1]
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 1, 1, 1, 2, 3);
+		PackedCollection weights = pack(1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Create batched input: 3 samples, each with 2 features
 		// Sample 0: [1, 2]
 		// Sample 1: [3, 4]
 		// Sample 2: [5, 6]
-		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(batchSize, inputSize));
 
 		log("Weights shape: " + weights.getShape());
 		log("Weights: " + weights.toArrayString());
@@ -229,7 +228,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testMatmulSemantics() {
-		log("=== Test 3: Matmul Semantics Verification ===");
+		log("Test 3: Matmul Semantics Verification");
 
 		// This test verifies the semantics by testing through a dense layer
 		// We've proven in Test 2 that the output is correct, so matmul must
@@ -242,12 +241,11 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		// W = [[1, 0, 0],
 		//      [0, 1, 0]]
 		// This extracts the first two features
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 0, 1, 0);
+		PackedCollection weights = pack(1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Input: single sample [10, 20, 30]
-		PackedCollection input = new PackedCollection(shape(1, inputSize));
-		input.setMem(0, 10, 20, 30);
+		PackedCollection input = pack(10.0, 20.0, 30.0).reshape(shape(1, inputSize));
 
 		log("Weights: " + weights.toArrayString());
 		log("Input: " + input.toArrayString());
@@ -278,16 +276,15 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testReshapeVsPermute() {
-		log("=== Test 4: Reshape vs Permute Comparison ===");
+		log("Test 4: Reshape vs Permute Comparison");
 
 		// Create a (4, 3) matrix where we know exactly what each element is
 		// data[i][j] = i * 10 + j
+		// original[i, j] = i * 10 + j, from the flattened index k = i * 3 + j
 		PackedCollection original = new PackedCollection(shape(4, 3));
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < 3; j++) {
-				original.setMem(i * 3 + j, i * 10 + j);
-			}
-		}
+		int on = 4 * 3;
+		floor(integers(0, on).divide(3)).multiply(10.0).add(integers(0, on).mod(3))
+				.into(original.traverseEach()).evaluate();
 
 		log("Original (4, 3):");
 		log("  Row 0: [0, 1, 2]");
@@ -341,19 +338,19 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testDenseOperatorCorrectness() {
-		log("=== Test 5: Dense Operator Correctness Verification ===");
+		log("Test 5: Dense Operator Correctness Verification");
 
 		int inputSize = 2;
 		int outputSize = 4;
 		int batchSize = 3;
 
 		// Create weights: 4x2 matrix
-		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.setMem(0, 1, 0, 0, 1, 1, 1, 2, 3);
+		PackedCollection weights = pack(1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 3.0)
+				.reshape(shape(outputSize, inputSize));
 
 		// Input: (3, 2) - batched
-		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.setMem(0, 1, 2, 3, 4, 5, 6);
+		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+				.reshape(shape(batchSize, inputSize));
 
 		log("Weights (4x2): " + weights.toArrayString());
 		log("Input (3x2): " + input.toArrayString());
@@ -392,7 +389,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		// The matmul actually produces (batched, nodes) for batched inputs.
 
 		log("");
-		log("CONCLUSION:");
+		log("Conclusion");
 		log("Since Test 2 passed with correct sample-by-sample values,");
 		log("and Test 4 showed reshape does NOT transpose data,");
 		log("the matmul must produce (batch, output_nodes) directly.");

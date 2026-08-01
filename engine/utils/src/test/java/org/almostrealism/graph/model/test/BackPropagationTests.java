@@ -32,10 +32,15 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
 
+/**
+ * Tests for backpropagation and gradient computation in neural network models.
+ */
 public class BackPropagationTests extends TestSuiteBase {
 
+	/**
+	 * Tests dense layer backward pass with known issue.
+	 */
 	@Test(timeout = 120000)
 	@TestProperties(knownIssue = true)
 	public void denseBackwards() {
@@ -51,26 +56,22 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		PackedCollection weights = dense.getWeights().get(0);
 
-		for (int i = 0; i < size; i++) {
-			for (int j = 0; j < nodes; j++) {
-//				weights.setMem(weights.getShape().index(i, j), 1 + (i + j) * 0.1);
-				weights.setMem(weights.getShape().index(i, j), (i + j) * 0.01);
-			}
-		}
+		// weights[i, j] = (i + j) * 0.01, from the flattened index k = i * nodes + j
+		int wn = size * nodes;
+		floor(integers(0, wn).divide(nodes)).add(integers(0, wn).mod(nodes)).multiply(0.01)
+				.into(weights.traverseEach()).evaluate();
 
 		PackedCollection biases = dense.getWeights().get(1);
-		for (int i = 0; i < nodes; i++) {
-			biases.setMem(i, 0.1 + i * 0.01);
-		}
+		integers(0, nodes).multiply(0.01).add(0.1).into(biases.traverseEach()).evaluate();
 
 		PackedCollection input = new PackedCollection(size);
-		IntStream.range(0, size).forEach(i -> input.setMem(i, (double) i));
+		integers(0, size).into(input.traverseEach()).evaluate();
 
 		CompiledModel runner = model.compile();
 
 		verboseLog(() -> {
 			PackedCollection output = runner.forward(input);
-			System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
+			log("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
 			// double expected[] = new double[]{2.29283592e-12, 1.86271326e-09, 1.51327910e-06, 1.22939676e-03, 9.98769088e-01};
 			double[] expected = new double[]{0.034696079790592194, 0.06780441105365753, 0.13250578939914703, 0.2589479088783264, 0.5060457587242126};
@@ -86,7 +87,7 @@ public class BackPropagationTests extends TestSuiteBase {
 
 			return () -> {
 				PackedCollection out = gr.evaluate();
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+				log(Arrays.toString(out.toArray(0, out.getMemLength())));
 
 				out.getMem(0, result, 0, result.length);
 			};
@@ -96,9 +97,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		gradient.setMem(3, 1.0);
 		runner.backward(gradient);
 
-		System.out.println("Weights: " + Arrays.toString(weights.toArray(0, weights.getMemLength())));
-		System.out.println("Biases: " + Arrays.toString(biases.toArray(0, biases.getMemLength())));
-		System.out.println("Output Gradient: " + Arrays.toString(result));
+		log("Weights: " + Arrays.toString(weights.toArray(0, weights.getMemLength())));
+		log("Biases: " + Arrays.toString(biases.toArray(0, biases.getMemLength())));
+		log("Output Gradient: " + Arrays.toString(result));
 
 //		double expected[] = new double[] { -0.00012475, -0.0001249,  -0.00012506, -0.00012521, -0.00012536, -0.00012551,
 //				-0.00012566, -0.00012581, -0.00012596, -0.00012611, -0.00012626, -0.00012642 };
@@ -111,6 +112,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 2D pooling layer backward pass.
+	 */
 	@Test(timeout = 120000)
 	public void pool2dBackwards() {
 		if (skipLongTests || skipKnownIssues) return;
@@ -140,11 +144,11 @@ public class BackPropagationTests extends TestSuiteBase {
 
 			return () -> {
 				PackedCollection out = gr.evaluate();
-				System.out.println("Gradient shape vs input shape: " + out.getShape() + " / " + inputShape);
+				log("Gradient shape vs input shape: " + out.getShape() + " / " + inputShape);
 
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+				log(Arrays.toString(out.toArray(0, out.getMemLength())));
 
-				result.setMem(0, out, 0, out.getMemLength());
+				result.setFrom(0, out, 0, out.getMemLength());
 			};
 		});
 
@@ -154,9 +158,9 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		for (int i = 0; i < h; i++) {
 			for (int j = 0; j < w; j++) {
-				System.out.println("Input = " + input.valueAt(i, j, 0) + ", Output = " + output.valueAt(i / size, j / size, 0));
+				log("Input = " + input.valueAt(i, j, 0) + ", Output = " + output.valueAt(i / size, j / size, 0));
 				if (input.valueAt(i, j, 0) == output.valueAt(i / size, j / size, 0)) {
-					System.out.println("Expected = " + gradient.valueAt(i / size, j / size, 0) + ", Actual = " + result.valueAt(i, j, 0));
+					log("Expected = " + gradient.valueAt(i / size, j / size, 0) + ", Actual = " + result.valueAt(i, j, 0));
 					Assert.assertEquals(gradient.valueAt(i / size, j / size, 0), result.valueAt(i, j, 0), 1e-6);
 				} else {
 					Assert.assertEquals(0, result.valueAt(i, j, 0), 1e-6);
@@ -166,7 +170,10 @@ public class BackPropagationTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 120000)
-	public void convBackwards() {
+	/**
+	 * Tests convolution backward pass.
+	 */
+	private void convBackwards() {
 		int convSize = 3;
 		int w = 10;
 		int h = 10;
@@ -185,7 +192,7 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		TraversalPolicy filterShape = conv.getWeights().get(0).getShape();
 		PackedCollection originalFilter = new PackedCollection(filterShape);
-		originalFilter.setMem(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
+		originalFilter.setFrom(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
 
 		TraversalPolicy gradientShape = model.getOutputShape();
 		PackedCollection gradient = new PackedCollection(gradientShape);
@@ -210,13 +217,16 @@ public class BackPropagationTests extends TestSuiteBase {
 					expected *= 1e-2;
 
 					double actual = originalFilter.toDouble(filterShape.index(f, xf, yf)) - adjustedFilter.toDouble(filterShape.index(f, xf, yf));
-					System.out.println("PropagationTest: " + expected + " vs " + actual);
+					log("PropagationTest: " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 1e-6);
 				}
 			}
 		}
 	}
 
+	/**
+	 * Tests composition backward pass.
+	 */
 	@Test(timeout = 120000)
 	public void compositionBackwards() {
 		SequentialBlock block = new SequentialBlock(shape(3));
@@ -241,14 +251,17 @@ public class BackPropagationTests extends TestSuiteBase {
 		assertEquals(48.0, gradient.toDouble(2));
 	}
 
+	/**
+	 * Tests split backward pass with repeat operation.
+	 */
 	@Test(timeout = 120000)
 	public void splitBackwardsRepeat() {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches = block.split(shape(1, 2));
-		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
-		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+		branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
 
 		block.add(compose("replace", b, (x, y) ->
 				repeat(3, y).reshape(3, 2)));
@@ -283,14 +296,17 @@ public class BackPropagationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests split backward pass with add operation.
+	 */
 	@Test(timeout = 120000)
 	public void splitBackwardsAdd() {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches = block.split(shape(1, 2));
-		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
-		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+		branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
 
 		block.add(compose("add", b, (x, y) -> add(x, y)));
 
@@ -330,14 +346,17 @@ public class BackPropagationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests split backward pass with child index.
+	 */
 	@Test(timeout = 120000)
 	public void splitBackwardsChildIndex() {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
 
 		List<Block> branches = block.split(shape(1, 2), 0);
-		Block a = branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
+		branches.get(0).andThen(layer("scale x2", in -> multiply(in, c(2))));
 		Block b = branches.get(1).andThen(layer("scale x3", in -> multiply(in, c(3))));
-		Block c = branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
+		branches.get(2).andThen(layer("scale x4", in -> multiply(in, c(4))));
 
 		block.add(compose("add", b, (x, y) -> add(x, y)));
 

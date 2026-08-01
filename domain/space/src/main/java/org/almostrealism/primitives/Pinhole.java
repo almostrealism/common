@@ -32,12 +32,18 @@ import org.almostrealism.physics.Fast;
  * @author  Michael Murray
  */
 public class Pinhole extends Plane implements Absorber, Fast {
+	/** Verbosity threshold controlling debug output during absorption (log-scale, very small by default). */
 	public static double verbose = Math.pow(10.0, -7.0);
-	
+
+	/** Radius of the hole through which photons may pass unabsorbed (typically in micrometres). */
 	private double radius;
+
+	/** The physics clock used to track simulation time. */
 	private Clock clock;
 	
 	/**
+	 * Sets the radius of the pinhole.
+	 *
 	 * @param r  The radius of the pinhole (usually measured in micrometers).
 	 */
 	public void setRadius(double r) { this.radius = r; }
@@ -47,6 +53,17 @@ public class Pinhole extends Plane implements Absorber, Fast {
 	 */
 	public double getRadius() { return this.radius; }
 	
+	/**
+	 * Returns {@code true} (absorbs) if the photon is within the plane slab but
+	 * outside the pinhole radius; returns {@code false} (passes through) if the
+	 * photon is inside the hole.
+	 *
+	 * @param x      the position of the photon
+	 * @param p      the direction of the photon
+	 * @param energy the energy of the photon
+	 * @return {@code true} if the photon is absorbed, {@code false} if it passes through
+	 */
+	@Override
 	public boolean absorb(Vector x, Vector p, double energy) {
 		double d = Math.abs(x.dotProduct(new Vector(this.normal.get().evaluate(), 0)));
 		if (d > this.thick) return false;
@@ -61,27 +78,35 @@ public class Pinhole extends Plane implements Absorber, Fast {
 		return Math.sqrt(y * y + z * z) > this.radius;
 	}
 
+	/** No-op: absorption delay is not used by this absorber. */
 	@Override
 	public void setAbsorbDelay(double t) { }
 
+	/** No-op: original position tracking is not used by this absorber. */
 	@Override
 	public void setOrigPosition(double[] x) { }
 
+	/** Returns {@code null}: this absorber does not emit photons. */
 	@Override
 	public Producer<PackedCollection> emit() { return null; }
 
+	/** Sets the physics clock used by this absorber. */
 	@Override
 	public void setClock(Clock c) { this.clock = c; }
 
+	/** Returns the physics clock used by this absorber. */
 	@Override
 	public Clock getClock() { return this.clock; }
 
+	/** Returns {@code 0.0}: this absorber does not emit energy. */
 	@Override
 	public double getEmitEnergy() { return 0.0; }
 
+	/** Returns {@code null}: this absorber has no emission position. */
 	@Override
 	public Producer<PackedCollection> getEmitPosition() { return null; }
 
+	/** Returns {@link Integer#MAX_VALUE}: this absorber never emits. */
 	@Override
 	public double getNextEmit() { return Integer.MAX_VALUE; }
 }

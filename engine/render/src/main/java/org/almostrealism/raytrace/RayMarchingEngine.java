@@ -66,26 +66,20 @@ import java.util.ArrayList;
  * @author Michael Murray
  */
 public class RayMarchingEngine extends ArrayList<Producer<PackedCollection>> implements Engine, ShadableCurve, DiscreteField, RGBFeatures, CodeFeatures {
-	private ShaderContext sparams;
-	private RenderParameters params;
-	private FogParameters fparams;
-
-	private DistanceEstimator estimator;
-	private Iterable<? extends Producer<PackedCollection>> allSurfaces;
-	private Light allLights[];
-
-	private Light lights[];
+	/** The shaders applied at marched intersection points. */
 	private ShaderSet<? extends LightingContext> shaders;
 	
+	/**
+	 * Constructs a {@link RayMarchingEngine} for the given scene geometry and lighting.
+	 *
+	 * @param allSurfaces All surfaces in the scene (used for secondary interactions)
+	 * @param allLights   All lights in the scene
+	 * @param l           The primary light used for the initial shader context
+	 * @param e           The signed distance function (SDF) evaluator for ray marching
+	 * @param shaders     The shaders applied at marched intersection points
+	 */
 	public RayMarchingEngine(Iterable<? extends Producer<PackedCollection>> allSurfaces,
 							 Light allLights[], Light l, DistanceEstimator e, ShaderSet shaders) {
-		this.allSurfaces = allSurfaces;
-		this.allLights = allLights;
-		this.sparams = new ShaderContext(this, l);
-		this.params = new RenderParameters();
-		this.fparams = new FogParameters();
-		this.estimator = e;
-		this.lights = allLights;
 		this.shaders = shaders;
 	}
 

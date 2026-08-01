@@ -43,18 +43,40 @@ import java.util.function.Supplier;
  * @see FilterEnvelopeProcessor
  */
 public class EnvelopeSection implements Supplier<Factor<PackedCollection>>, EnvelopeFeatures {
+	/** When true, uses repeating time-phase logic to wrap the envelope for looping. */
 	public static boolean enableRepeat = false;
 
+	/** Supplier for the time producer used to determine which segment is active. */
 	private Supplier<Producer<PackedCollection>> time;
+
+	/** The start time of this section; sections with earlier times take precedence. */
 	private final Producer<PackedCollection> start;
+
+	/** The preceding envelope section in the chain, evaluated when time is before {@link #start}. */
 	private final Supplier<Factor<PackedCollection>> lastEnvelope;
+
+	/** The factor to apply when the current time is past {@link #start}. */
 	private final Factor<PackedCollection> envelope;
 
+	/**
+	 * Creates a root EnvelopeSection (with no preceding section).
+	 *
+	 * @param time     supplier for the current time producer
+	 * @param envelope the factor to apply unconditionally for this section
+	 */
 	public EnvelopeSection(Supplier<Producer<PackedCollection>> time,
 						   Factor<PackedCollection> envelope) {
 		this(time, null, null, envelope);
 	}
 
+	/**
+	 * Creates an EnvelopeSection that follows a preceding section.
+	 *
+	 * @param time         supplier for the current time producer
+	 * @param start        start time of this section
+	 * @param lastEnvelope the preceding section (applied when time is before start)
+	 * @param envelope     the factor to apply when time is past start
+	 */
 	public EnvelopeSection(Supplier<Producer<PackedCollection>> time,
 						   Producer<PackedCollection> start,
 						   Supplier<Factor<PackedCollection>> lastEnvelope,
@@ -65,24 +87,54 @@ public class EnvelopeSection implements Supplier<Factor<PackedCollection>>, Enve
 		this.envelope = envelope;
 	}
 
+	/** Returns the supplier for the time producer used to determine which section is active. */
 	public Supplier<Producer<PackedCollection>> getTime() {
 		return time;
 	}
 
+	/**
+	 * Replaces the time supplier on this and all chained sections.
+	 *
+	 * @param time the new time supplier
+	 */
 	public void setTime(Supplier<Producer<PackedCollection>> time) {
 		this.time = time;
 	}
 
+	/**
+	 * Creates a new section that follows this one, active when time passes the given start.
+	 *
+	 * @param start    the start time of the next section
+	 * @param envelope the factor to apply in the next section
+	 * @return a new EnvelopeSection chained after this one
+	 */
 	public EnvelopeSection andThen(Producer<PackedCollection> start, Factor<PackedCollection> envelope) {
 		return new EnvelopeSection(time, start, this, envelope);
 	}
 
+	/**
+	 * Chains a decay section that linearly ramps volume from start to endVolume.
+	 *
+	 * @param offset    start time of the decay section
+	 * @param decay     duration of the decay ramp
+	 * @param endVolume target volume at the end of the decay
+	 * @return a new EnvelopeSection for the decay phase
+	 */
 	public EnvelopeSection andThenDecay(Producer<PackedCollection> offset,
 										Producer<PackedCollection> decay,
 										Producer<PackedCollection> endVolume) {
 		return andThen(offset, decay(offset, decay, endVolume));
 	}
 
+	/**
+	 * Chains a release section that linearly ramps volume from startVolume to endVolume.
+	 *
+	 * @param offset       start time of the release section
+	 * @param startVolume  initial volume at the start of the release
+	 * @param release      duration of the release ramp
+	 * @param endVolume    target volume at the end of the release
+	 * @return a new EnvelopeSection for the release phase
+	 */
 	public EnvelopeSection andThenRelease(Producer<PackedCollection> offset,
 										  Producer<PackedCollection> startVolume,
 										  Producer<PackedCollection> release,

@@ -16,18 +16,15 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.NamedFunction;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
-import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
@@ -35,6 +32,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
@@ -42,14 +40,17 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
+import org.almostrealism.io.Describable;
 import org.almostrealism.hardware.instructions.ComputableInstructionSetManager;
 import org.almostrealism.hardware.instructions.ComputationInstructionsManager;
 import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
 import org.almostrealism.hardware.instructions.DefaultExecutionKey;
 import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
+import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
 import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Describable;
 import org.almostrealism.lifecycle.WeakRunnable;
 
@@ -70,11 +71,10 @@ import java.util.function.Supplier;
  * // Create computation
  * Computation<PackedCollection> multiply = c -> c.multiply(2.0);
  *
- * // Wrap for acceleration
+ * // Wrap for acceleration; the Computer selects the context for the computation
  * AcceleratedComputationOperation op = new AcceleratedComputationOperation(
- *     Hardware.getLocalHardware().getComputeContext(),
- *     multiply,
- *     true  // kernel mode
+ *     Hardware.getLocalHardware().getComputer().getContext(multiply),
+ *     multiply
  * );
  *
  * // Compilation happens during prepareScope or first execution
@@ -89,13 +89,13 @@ import java.util.function.Supplier;
  * // First computation with signature "vectorAdd"
  * Computation<PackedCollection> add1 = ...;
  * add1.getMetadata().setSignature("vectorAdd");
- * AcceleratedComputationOperation op1 = new AcceleratedComputationOperation(..., add1, true);
+ * AcceleratedComputationOperation op1 = new AcceleratedComputationOperation(..., add1);
  * op1.prepareScope();  // Compiles and caches under signature "vectorAdd"
  *
  * // Second computation with same signature
  * Computation<PackedCollection> add2 = ...;
  * add2.getMetadata().setSignature("vectorAdd");
- * AcceleratedComputationOperation op2 = new AcceleratedComputationOperation(..., add2, true);
+ * AcceleratedComputationOperation op2 = new AcceleratedComputationOperation(..., add2);
  * op2.prepareScope();  // Reuses cached kernel from "vectorAdd"
  * }</pre>
  *
@@ -146,7 +146,7 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * // Create operation
- * AcceleratedComputationOperation op = new AcceleratedComputationOperation(context, computation, true);
+ * AcceleratedComputationOperation op = new AcceleratedComputationOperation(context, computation);
  *
  * // Prepare scope (triggers compilation if needed)
  * op.prepareScope();
@@ -165,11 +165,10 @@ import java.util.function.Supplier;
  * // Define computation
  * Computation<PackedCollection> normalize = c -> c.divide(c.max());
  *
- * // Wrap for GPU execution
+ * // Wrap for execution; the Computer selects the context for the computation
  * AcceleratedComputationOperation normalizeOp = new AcceleratedComputationOperation(
- *     Hardware.getLocalHardware().getComputeContext(),
- *     normalize,
- *     true
+ *     Hardware.getLocalHardware().getComputer().getContext(normalize),
+ *     normalize
  * );
  * }</pre>
  *
@@ -183,7 +182,7 @@ import java.util.function.Supplier;
  * op.getMetadata().setSignature("myOperation");
  *
  * // All operations with this signature share compiled kernels
- * AcceleratedComputationOperation acc = new AcceleratedComputationOperation(context, op, true);
+ * AcceleratedComputationOperation acc = new AcceleratedComputationOperation(context, op);
  * }</pre>
  *
  * @param <T> The type of data produced by the wrapped {@link Computation}
@@ -205,8 +204,12 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	/** Manages compiled instruction sets and caching for this computation. */
 	private ComputableInstructionSetManager<?> instructions;
 
-	/** Unique key identifying this operation's compiled form for caching purposes. */
-	private ExecutionKey executionKey;
+	/**
+	 * True when {@link #instructions} is a shared, signature-cached manager owned by the
+	 * {@link DefaultComputer}. A privately created manager is this operation's own asset
+	 * and is destroyed with it (see {@link #destroy()}); a shared manager is not.
+	 */
+	private boolean sharedInstructions;
 
 	/**
 	 * Creates an accelerated operation for the specified computation.
@@ -216,10 +219,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * @param context The {@link ComputeContext} to execute on (OpenCL, Metal, JNI, etc.)
 	 * @param c The {@link Computation} to accelerate
-	 * @param kernel true to compile as a hardware kernel, false for operation-level execution
 	 */
-	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
-		super(context, kernel);
+	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c) {
+		super(context);
 		this.computation = c;
 		init();
 	}
@@ -239,22 +241,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
-	 * Returns the {@link NameProvider} for the wrapped computation.
-	 *
-	 * <p>Provides naming services for scope variables and functions during compilation.</p>
-	 *
-	 * @return The name provider for this computation
-	 * @throws UnsupportedOperationException if computation is not a {@link NamedFunction}
-	 */
-	public NameProvider getNameProvider() {
-		if (getComputation() instanceof NamedFunction) {
-			return new DefaultNameProvider((NamedFunction) getComputation());
-		}
-
-		throw new UnsupportedOperationException();
-	}
-
-	/**
 	 * Returns the wrapped {@link Computation} being accelerated.
 	 *
 	 * @return The computation
@@ -271,7 +257,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	public ComputationScopeCompiler<T> getCompiler() {
 		if (compiler == null) {
-			compiler = new ComputationScopeCompiler<>(getComputation(), getNameProvider());
+			compiler = new ComputationScopeCompiler<>(getComputation());
 		}
 
 		return compiler;
@@ -329,6 +315,17 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Defers to the wrapped computation when it is {@link Aggregatable}, so a computation whose
+	 * arguments must not be aggregated (for example a pure memory-to-memory copy) can opt out.</p>
+	 */
+	@Override
+	public boolean isArgumentAggregationSupported() {
+		return Aggregatable.isArgumentAggregationSupported(getComputation());
+	}
+
+	/**
 	 * Returns the human-readable name of this operation.
 	 *
 	 * <p>Delegates to {@link Named#nameOf(Object)} on the wrapped computation.</p>
@@ -377,10 +374,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			if (ScopeSettings.enableInstructionSetReuse && signature != null) {
 				DefaultComputer computer = Hardware.getLocalHardware().getComputer();
 
-				instructions = computer.getScopeInstructionsManager(
+				ScopeInstructionsManager<?> shared = computer.getScopeInstructionsManager(
 						signature, getComputation(), getComputeContext(), this::getScope);
-				((ScopeInstructionsManager) instructions)
-						.addDestroyListener(new WeakRunnable<>(this, AcceleratedComputationOperation::resetInstructions));
+				shared.addDestroyListener(new WeakRunnable<>(this, AcceleratedComputationOperation::resetInstructions));
+				instructions = shared;
+				sharedInstructions = true;
 			} else {
 				instructions = new ComputationInstructionsManager(
 						getComputeContext(), this::getScope);
@@ -406,9 +404,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	@Override
 	public ExecutionKey getExecutionKey() {
-		if (executionKey != null)
-			return executionKey;
-
 		String signature = getMetadata().getSignature();
 
 		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
@@ -432,31 +427,24 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
-	 * Prepares argument mappings for kernel execution.
-	 *
-	 * <p>Delegates to both the superclass and the {@link ComputationScopeCompiler}
-	 * to ensure all arguments (operation-level and computation-level) are properly
-	 * mapped before execution.</p>
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		getCompiler().prepareArguments(map);
-	}
-
-	/**
 	 * Prepares the scope for compilation by registering inputs.
 	 *
 	 * <p>Delegates to the {@link ComputationScopeCompiler} to prepare the scope's
 	 * input variables.</p>
 	 *
+	 * <p>The kernel structure context belongs to the instruction set manager — the
+	 * owner of the compiled instructions and of the kernel structure resources their
+	 * generated code references. Its resources are materialized here, at the start
+	 * of compilation, through the argument provider of this compilation pass.</p>
+	 *
 	 * @param manager The scope input manager
 	 */
 	@Override
-	protected void prepareScope(ScopeInputManager manager) {
-		getCompiler().prepareScope(manager);
+	protected void prepareScope(ArgumentProvider manager) {
+		CompiledKernelStructureContext context =
+				getInstructionSetManager().getKernelStructureContext(getComputation());
+		context.prepareResources(manager);
+		getCompiler().prepareScope(manager, context);
 	}
 
 	/**
@@ -469,7 +457,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * @param context The kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		getCompiler().prepareScope(manager, context);
 	}
@@ -478,12 +466,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * Resets argument mappings to allow recompilation.
 	 *
 	 * <p>Clears argument state in both the operation and the compiler, allowing
-	 * fresh argument preparation for a new compilation pass.</p>
+	 * fresh argument preparation for a new compilation pass. The compiler is
+	 * left alone when it does not exist, rather than being created just to be
+	 * reset.</p>
 	 */
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
-		getCompiler().resetArguments();
+		if (compiler != null) compiler.resetArguments();
 	}
 
 	/**
@@ -513,7 +503,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 				ProcessArgumentMap map = new ProcessArgumentMap(manager.getArgumentMap());
 				map.putSubstitutions((Process<?,?>) getComputation());
+				map.verifySubstitutions(getFunctionName());
 				setEvaluator(map);
+
+				rebindAggregateForReuse(manager, map);
 			} else {
 				warn("Unable to reuse instructions for " + getFunctionName() +
 						" because " + getComputation() + " is not a Process");
@@ -522,6 +515,86 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 
 		return operator;
+	}
+
+	/**
+	 * Rebinds argument aggregation for a reused instruction set so that this operation reads its
+	 * own inputs rather than those of the operation that originally compiled the scope.
+	 *
+	 * <p>A scope compiled with argument aggregation folds small inputs into a single aggregate
+	 * buffer that the kernel reads at fixed offsets. The standard reuse substitution cannot rebind
+	 * that buffer because it is synthesized and has no {@link Process} tree position, so a reused
+	 * operation would otherwise read the originally compiled operation's stale buffer. This method
+	 * replays the fold over this operation's own computation to obtain an equivalently laid-out
+	 * per-operation copy plan and aggregate buffer, installs it as this operation's
+	 * {@link #argumentMap} (so {@link AcceleratedOperation#apply} performs the copy-in/out), and
+	 * binds the shared scope's aggregate argument to the per-operation buffer.</p>
+	 *
+	 * <p>The generated source addresses each folded argument at a fixed position within the single
+	 * aggregate parameter, so the sequence of replacement positions is part of the compiled
+	 * kernel's identity: two computations whose folds produce different position sequences are two
+	 * different kernels, whatever their signatures claim. Per-argument element counts are not part
+	 * of that identity — they are marshaled with every dispatch, which is what lets a deliberately
+	 * size-generic kernel (such as a single-statement assignment dispatched over its count) serve
+	 * computations of different sizes through one signature. The positions obtained by replaying
+	 * the fold over this operation's inputs are therefore compared against the positions recorded
+	 * when the shared scope was compiled, and any difference — including a replay that folds
+	 * nothing while the compiled kernel reads an aggregate — is an instruction cache collision and
+	 * throws {@link HardwareException}. A collision must never be absorbed by recompiling quietly
+	 * or otherwise routing around the cache, because that hides the fact that the cache matched
+	 * two distinct kernels to one signature. Verification is unconditional: when aggregation is
+	 * disabled, or when neither party folds anything, the replay simply confirms that both
+	 * position sequences are empty.</p>
+	 *
+	 * @param manager The shared instruction set manager whose scope is being reused
+	 * @param map     The per-operation argument map for this reused operation
+	 * @throws HardwareException if the replayed aggregate positions differ from the positions the
+	 *         shared scope was compiled against, or if the reference positions were never recorded
+	 */
+	private void rebindAggregateForReuse(ScopeInstructionsManager<?> manager, ProcessArgumentMap map) {
+		ArrayVariable<?> sharedAggregate = null;
+		for (Argument<?> arg : manager.getScopeArguments()) {
+			if (arg.getVariable() instanceof ArrayVariable<?> variable
+					&& MemoryDataArgumentMap.isAggregateArgument(variable)) {
+				if (sharedAggregate != null) {
+					throw new HardwareException("Multiple aggregate arguments in the shared scope for " +
+							getFunctionName() + "; a compiled scope can fold arguments into at most one aggregate");
+				}
+
+				sharedAggregate = variable;
+			}
+		}
+
+		String compiledPositions = manager.getAggregatePositions();
+		if (compiledPositions == null) {
+			throw new HardwareException("No aggregate positions were recorded when the shared scope for " +
+					getFunctionName() + " was compiled; reuse cannot be verified against it");
+		}
+
+		MemoryDataArgumentMap perOperation = MemoryDataArgumentMap.create(getComputeContext(),
+				isArgumentAggregationSupported() ? length -> createAggregatedInput(length, length) : null);
+		getCompiler().prepareScope(perOperation,
+				manager.getKernelStructureContext(getComputation()));
+
+		String replayedPositions = perOperation.describeAggregatePositions();
+		if (!replayedPositions.equals(compiledPositions)) {
+			throw new HardwareException("Instruction cache collision reusing " + getFunctionName() +
+					": the compiled kernel was built against aggregate positions " + compiledPositions +
+					" but this computation produces " + perOperation.describeAggregate() +
+					"; the signature matched two distinct kernels (compiled from " +
+					Describable.describe(manager.getProcess()) + "; reused by " +
+					Describable.describe(getComputation()) + ")");
+		}
+
+		if (sharedAggregate == null) {
+			return;
+		}
+
+		this.argumentMap = perOperation;
+
+		// Bind the shared scope's aggregate argument to this operation's buffer so the reused
+		// kernel reads the data this operation copies in.
+		map.putDirect(sharedAggregate, perOperation.getAggregateSupplier());
 	}
 
 	/**
@@ -553,9 +626,24 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * <p>This method is synchronized to prevent concurrent compilation of the same operation.</p>
 	 *
+	 * <p>The instruction set manager must already exist when this is called: it owns the
+	 * compiled instructions and the kernel structure resources their generated code
+	 * references, so compiling without one would produce results with no owner. The
+	 * normal execution path establishes it ({@link #load()} obtains the operator through
+	 * the manager); a caller compiling eagerly must obtain
+	 * {@link #getInstructionSetManager()} first.</p>
+	 *
 	 * @return The compiled scope
+	 * @throws HardwareException if no instruction set manager has been established
 	 */
 	public synchronized Scope<T> compile() {
+		if (instructions == null) {
+			throw new HardwareException("compile() invoked for " + getFunctionName() +
+					" before an instruction set manager was established; the manager owns" +
+					" the compiled instructions and their kernel structure resources, so" +
+					" it must exist before compilation begins");
+		}
+
 		if (getCompiler().getScope() == null) {
 			if (argumentMap != null) {
 				// The Scope creation was either previously unsuccessful,
@@ -578,32 +666,24 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
-	 * Deprecated compile method for manual instruction set management.
+	 * Resets the instruction set manager.
 	 *
-	 * <p>This method is deprecated and should not be used in new code. It exists
-	 * for backward compatibility only.</p>
+	 * <p>Clears cached instructions, resets all argument state, and destroys
+	 * the compiler, allowing the operation to be recompiled. Called when the
+	 * shared instruction set is destroyed.</p>
 	 *
-	 * @param instructions The instruction set manager to use
-	 * @param executionKey The execution key to use
-	 * @deprecated Manual instruction set management is no longer recommended
-	 */
-	@Deprecated
-	public void compile(ComputableInstructionSetManager<?> instructions, ExecutionKey executionKey) {
-		warn("Use of deprecated compile method");
-		this.instructions = instructions;
-		this.executionKey = executionKey;
-	}
-
-	/**
-	 * Resets the instruction set manager and execution key.
-	 *
-	 * <p>Clears cached instructions and destroys the compiler, allowing
-	 * the operation to be recompiled. Called when the shared instruction
-	 * set is destroyed.</p>
+	 * <p>Resetting the arguments here is essential: they were derived from the
+	 * destroyed manager's compiled {@link Scope}, and a replacement manager may
+	 * compile a scope with a different argument or aggregate layout — retaining
+	 * them would let {@link #load()} skip rebinding and execute the new kernel
+	 * through the old bindings, which silently reads and writes the wrong
+	 * memory.</p>
 	 */
 	protected void resetInstructions() {
 		instructions = null;
-		executionKey = null;
+		sharedInstructions = false;
+
+		resetArguments();
 
 		if (compiler != null) {
 			compiler.destroy();
@@ -618,11 +698,19 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * {@link ComputationScopeCompiler#postCompile()} for additional compiler-specific
 	 * post-processing.</p>
 	 *
+	 * <p>Records the aggregate positions this kernel was compiled against on the
+	 * instruction set manager, so every operation reusing these instructions can be
+	 * verified against them.</p>
+	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
 	 */
 	public synchronized void postCompile() {
 		setupArguments(getCompiler().getScope());
 		getCompiler().postCompile();
+
+		if (instructions != null && argumentMap != null) {
+			getInstructionSetManager().setAggregatePositions(argumentMap.describeAggregatePositions());
+		}
 	}
 
 	/**
@@ -661,7 +749,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
 		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
 
-		if (!getCompiler().isValidKernelSize(process.getKernelSize())) {
+		if (!getInstructionSetManager().getKernelStructureContext(getComputation())
+				.isValidKernelSize(process.getKernelSize())) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -679,18 +768,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public Variable getOutputVariable() {
 		return getComputation().getOutputVariable();
 	}
-
-	/**
-	 * Returns whether this operation uses aggregated input memory.
-	 *
-	 * <p>Aggregated inputs combine multiple separate allocations into a single
-	 * contiguous buffer, improving GPU performance. Always returns true for
-	 * {@link AcceleratedComputationOperation}.</p>
-	 *
-	 * @return true (always uses aggregated inputs)
-	 */
-	@Override
-	public boolean isAggregatedInput() { return true; }
 
 	/**
 	 * Returns the signature for instruction set caching.
@@ -748,7 +825,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *   <li>Destroys superclass resources ({@link AcceleratedOperation#destroy()})</li>
 	 *   <li>Clears input references</li>
 	 *   <li>Destroys the wrapped computation if it's {@link Destroyable}</li>
-	 *   <li>Destroys the {@link ComputationScopeCompiler}</li>
+	 *   <li>Destroys the privately created instruction set manager, when there is one —
+	 *       along with the compiled products it owns; a shared manager belongs to the
+	 *       {@link DefaultComputer} and is left alone</li>
+	 *   <li>Destroys the {@link ComputationScopeCompiler} (its products are owned by
+	 *       the instruction set manager and are not affected)</li>
 	 * </ol>
 	 *
 	 * <p>After calling this method, the operation should not be used again.</p>
@@ -761,6 +842,11 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 
 		if (getComputation() instanceof Destroyable) {
 			((Destroyable) getComputation()).destroy();
+		}
+
+		if (!sharedInstructions && instructions != null) {
+			instructions.destroy();
+			instructions = null;
 		}
 
 		if (compiler != null) {

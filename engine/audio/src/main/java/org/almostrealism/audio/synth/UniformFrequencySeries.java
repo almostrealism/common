@@ -30,8 +30,16 @@ import java.util.Arrays;
  * @see AudioSynthesizer
  */
 public class UniformFrequencySeries implements RelativeFrequencySet {
+	/** Ordered array of frequency ratio multipliers relative to the fundamental. */
 	private final double[] frequencies;
 
+	/**
+	 * Creates a UniformFrequencySeries with evenly spaced frequency ratios.
+	 *
+	 * @param start  starting frequency ratio
+	 * @param length total range of frequency ratios
+	 * @param count  number of evenly spaced ratios to generate
+	 */
 	public UniformFrequencySeries(double start, double length, int count) {
 		frequencies = new double[count];
 		double step = length / count;
@@ -40,6 +48,11 @@ public class UniformFrequencySeries implements RelativeFrequencySet {
 		}
 	}
 
+	/**
+	 * Creates a UniformFrequencySeries from an explicit array of frequency ratios.
+	 *
+	 * @param frequencyRatios the frequency ratio multipliers relative to the fundamental
+	 */
 	public UniformFrequencySeries(double[] frequencyRatios) {
 		this.frequencies = frequencyRatios;
 	}

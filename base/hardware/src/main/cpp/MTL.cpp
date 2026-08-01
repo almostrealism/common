@@ -13,9 +13,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <Foundation/Foundation.hpp>
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
+// The amalgamated metal-cpp single header (committed alongside this file) provides
+// the NS, MTL and CA namespaces, so the build is self-contained and does not depend
+// on an external metal-cpp installation path.
+#include "Metal.hpp"
 
 // Convert single float to bfloat16
 uint16_t float32_to_bfloat16(float src) {
@@ -67,7 +68,18 @@ extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_commandBuffer(JNIEnv* env, jclass cls, jlong queue) {
     MTL::CommandQueue* que = (MTL::CommandQueue*) queue;
     MTL::CommandBuffer* buffer = que->commandBuffer();
+    // The command buffer is returned autoreleased. It must outlive the per-task autorelease pool
+    // the runner drains around each unit of work (it is created in one task and committed/awaited
+    // in a later one), so retain it explicitly; the runner calls releaseCommandBuffer once the
+    // buffer has completed.
+    buffer->retain();
     return (jlong) buffer;
+}
+
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseCommandBuffer(JNIEnv* env, jclass cls, jlong cmdBuffer) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    buf->release();
 }
 
 extern "C"
@@ -82,11 +94,87 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_waitUntilComple
     buf->waitUntilCompleted();
 }
 
+// MTL::CommandBufferStatus ordinal; see MTL.commandBufferStatus javadoc.
+extern "C"
+JNIEXPORT jint JNICALL Java_org_almostrealism_hardware_metal_MTL_commandBufferStatus(JNIEnv* env, jclass cls, jlong cmdBuffer) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    return (jint) buf->status();
+}
+
+// Error description for a failed buffer; see MTL.commandBufferError javadoc.
+extern "C"
+JNIEXPORT jstring JNICALL Java_org_almostrealism_hardware_metal_MTL_commandBufferError(JNIEnv* env, jclass cls, jlong cmdBuffer) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    NS::Error* error = buf->error();
+    if (error == nullptr) return NULL;
+    return env->NewStringUTF(error->localizedDescription()->utf8String());
+}
+
+// Creates an MTLSharedEvent on the device, used to order dispatches across command buffers
+// on the GPU (the analog of an OpenCL cl_event). The caller owns the returned event and must
+// release it with releaseSharedEvent.
+extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createSharedEvent(JNIEnv* env, jclass cls, jlong device) {
+    MTL::Device* dev = (MTL::Device*) device;
+    MTL::SharedEvent* event = dev->newSharedEvent();
+    return (jlong) event;
+}
+
+// Encodes, into the command buffer, a signal of the event to the given value once the buffer's
+// prior work completes. Must be called when no encoder is active on the buffer.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_encodeSignalEvent(JNIEnv* env, jclass cls, jlong cmdBuffer, jlong event, jlong value) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    buf->encodeSignalEvent(ev, (uint64_t) value);
+}
+
+// Encodes, into the command buffer, a wait until the event reaches the given value before the
+// buffer's subsequent work runs. Must be called when no encoder is active on the buffer.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_encodeWaitForEvent(JNIEnv* env, jclass cls, jlong cmdBuffer, jlong event, jlong value) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    buf->encodeWait(ev, (uint64_t) value);
+}
+
+// Signals the event to the given value from the host, releasing any encoded waits for values
+// up to and including it. The signaled value of an event must never decrease, so the caller
+// is responsible for using values that are monotonically non-decreasing per event.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setSignaledValue(JNIEnv* env, jclass cls, jlong event, jlong value) {
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    ev->setSignaledValue((uint64_t) value);
+}
+
+// Releases an event created by createSharedEvent.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseSharedEvent(JNIEnv* env, jclass cls, jlong event) {
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    ev->release();
+}
+
 extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_computeCommandEncoder(JNIEnv* env, jclass cls, jlong cmdBuffer) {
     MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
     MTL::ComputeCommandEncoder* enc = buf->computeCommandEncoder();
     return (jlong) enc;
+}
+
+// Encodes a buffer-to-buffer copy onto the command buffer via a blit command encoder, so the copy is
+// queued alongside the surrounding compute dispatches and ordered against them by Metal's in-buffer
+// hazard tracking. Offsets and size are in bytes.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_blitCopy(JNIEnv* env, jclass cls, jlong cmdBuffer,
+                                                                          jlong sourceBuffer, jlong sourceOffset,
+                                                                          jlong destinationBuffer, jlong destinationOffset,
+                                                                          jlong size) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::BlitCommandEncoder* enc = buf->blitCommandEncoder();
+    enc->copyFromBuffer((MTL::Buffer*) sourceBuffer, (NS::UInteger) sourceOffset,
+                        (MTL::Buffer*) destinationBuffer, (NS::UInteger) destinationOffset,
+                        (NS::UInteger) size);
+    enc->endEncoding();
 }
 
 extern "C"
@@ -391,6 +479,19 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBuffer(JNIEn
     enc->setBuffer(buf, 0, (NS::UInteger) index);
 }
 
+// Binds a small array of ints directly into the kernel's argument table at the given index,
+// without a backing MTL::Buffer. Metal copies the bytes into the command at encode time, so
+// each encoded command captures its own values — unlike a shared, reused buffer, this is safe
+// when many commands are batched into one command buffer and committed together.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBytes(JNIEnv* env, jclass, jlong cmdEnc, jint index, jintArray data) {
+    MTL::ComputeCommandEncoder* enc = (MTL::ComputeCommandEncoder*) cmdEnc;
+    jsize len = env->GetArrayLength(data);
+    jint* elems = env->GetIntArrayElements(data, nullptr);
+    enc->setBytes(elems, (NS::UInteger) (len * sizeof(jint)), (NS::UInteger) index);
+    env->ReleaseIntArrayElements(data, elems, JNI_ABORT);
+}
+
 extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseBuffer(JNIEnv* env, jclass, jlong buffer) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
@@ -413,4 +514,26 @@ extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseDevice(JNIEnv* env, jclass, jlong device) {
     MTL::Device* dev = (MTL::Device*) device;
     dev->release();
+}
+
+// Creates a new Objective-C autorelease pool on the calling thread and returns an
+// opaque handle to it. metal-cpp factory methods such as MTL::CommandQueue::commandBuffer()
+// and MTL::CommandBuffer::computeCommandEncoder() return autoreleased objects; when
+// they are created on a long-lived JNI worker thread with no pool in place they are
+// never reclaimed, accumulating in the Metal driver until it stalls. Wrapping each
+// kernel dispatch between autoreleasePoolPush()/autoreleasePoolPop() drains those
+// per-dispatch command buffers and encoders. The push/pop must occur on the same
+// thread that performs the dispatch.
+extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_autoreleasePoolPush(JNIEnv* env, jclass cls) {
+    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    return (jlong) pool;
+}
+
+// Drains and releases the autorelease pool created by autoreleasePoolPush(), freeing
+// every object autoreleased on this thread since the matching push.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_autoreleasePoolPop(JNIEnv* env, jclass cls, jlong poolPtr) {
+    NS::AutoreleasePool* pool = (NS::AutoreleasePool*) poolPtr;
+    if (pool != nullptr) pool->release();
 }

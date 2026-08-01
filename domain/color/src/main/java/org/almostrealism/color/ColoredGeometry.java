@@ -18,13 +18,30 @@ package org.almostrealism.color;
 
 import org.almostrealism.geometry.BasicGeometry;
 
+/**
+ * Extends {@link BasicGeometry} with a single RGB color property for use in
+ * colored geometric objects that do not require full surface shading.
+ *
+ * @author Michael Murray
+ */
 public class ColoredGeometry extends BasicGeometry {
+	/** The color assigned to this geometry. */
 	private RGB color;
 
+	/**
+	 * Returns the color of this geometry.
+	 *
+	 * @return the {@link RGB} color of this geometry
+	 */
 	public RGB getColor() {
 		return color;
 	}
 
+	/**
+	 * Sets the color of this geometry.
+	 *
+	 * @param color the {@link RGB} color to assign
+	 */
 	public void setColor(RGB color) {
 		this.color = color;
 	}

@@ -96,6 +96,7 @@ import java.util.function.Supplier;
  * @see org.almostrealism.collect.CollectionFeatures#pad(TraversalPolicy, TraversalPolicy, Producer)
  */
 public class PackedCollectionPad extends TraversableExpressionComputation {
+	/** When true, simplifies the boundary condition expression for improved kernel performance. */
 	public static boolean enableConditionSimplify = true;
 
 	/** The shape/dimensions of the input collection being padded */
@@ -220,6 +221,18 @@ public class PackedCollectionPad extends TraversableExpressionComputation {
 	@Override
 	public CollectionProducerComputation generate(List<Process<?, ?>> children) {
 		return pad(getShape(), position, (Producer<?>) children.get(1));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A pad's emitted expression is a {@code Conditional(boundaryCheck, input[srcIdx], 0)}
+	 * whose two ternary branches both materialise in the generated expression tree.
+	 * The expansion width is therefore {@code 2}.</p>
+	 */
+	@Override
+	public long getExpansionWidth() {
+		return 2;
 	}
 
 	/**

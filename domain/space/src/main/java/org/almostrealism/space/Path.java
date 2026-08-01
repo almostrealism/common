@@ -21,6 +21,9 @@ import org.almostrealism.geometry.Intersection;
 import java.util.ArrayList;
 
 /**
+ * An ordered list of {@link Intersection} objects that represents a ray's
+ * path through a scene.
+ *
  * @author  Michael Murray
  */
 public class Path extends ArrayList<Intersection> {

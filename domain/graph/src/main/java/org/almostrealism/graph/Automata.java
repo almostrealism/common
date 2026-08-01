@@ -18,7 +18,24 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Graph;
 
+/**
+ * A computation graph composed of interconnected {@link Cell} nodes.
+ *
+ * <p>{@code Automata} extends the {@link io.almostrealism.relation.Graph} interface
+ * to represent a directed graph where each node is a {@link Cell}. This provides
+ * the structural definition for cellular automaton-style computation networks.</p>
+ *
+ * @param <T> the type of data processed by each cell node
+ * @see Cell
+ * @see io.almostrealism.relation.Graph
+ * @author Michael Murray
+ */
 public interface Automata<T> extends Graph<Cell<T>> {
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @throws UnsupportedOperationException always, as node counting is not supported for Automata
+	 */
 	@Override
 	default int countNodes() {
 		throw new UnsupportedOperationException();

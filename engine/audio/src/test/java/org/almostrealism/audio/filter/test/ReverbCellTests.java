@@ -29,9 +29,17 @@ import org.junit.Test;
 import java.io.File;
 import java.util.function.Supplier;
 
+/**
+ * Tests for reverb and delay network cell configurations.
+ */
 public class ReverbCellTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/** Sample rate for reverb processing. */
 	private final int sampleRate = OutputLine.sampleRate;
 
+	/**
+	 * Tests basic delay network reverb with default settings.
+	 */
 	@Test(timeout = 6 * 60000)
 	public void reverb1() {
 		CellList c = w(0, getTestWavPath())
@@ -41,6 +49,9 @@ public class ReverbCellTests extends TestSuiteBase implements CellFeatures, Audi
 		r.get().run();
 	}
 
+	/**
+	 * Tests reverb with time-based automation for filter modulation.
+	 */
 	@Test(timeout = 6 * 60000)
 	@TestDepth(1)
 	public void reverbAutomation() {
@@ -55,6 +66,9 @@ public class ReverbCellTests extends TestSuiteBase implements CellFeatures, Audi
 		r.get().run();
 	}
 
+	/**
+	 * Tests delay effect followed by reverb processing.
+	 */
 	@Test(timeout = 6 * 60000)
 	@TestDepth(1)
 	public void delayReverb() {

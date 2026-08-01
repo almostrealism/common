@@ -17,12 +17,17 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Producer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for padding and concatenation operations on collections.
+ */
 public class CollectionPadTests extends TestSuiteBase {
 	/**
 	 * Tests padding computation with subset operations.
@@ -287,6 +292,9 @@ public class CollectionPadTests extends TestSuiteBase {
 	}
 
 
+	/**
+	 * Tests padding operation with a small batch of scalars.
+	 */
 	@Test(timeout = 30000)
 	public void padSmallBatch() {
 		// Test padding operation with a batch of scalars
@@ -295,19 +303,19 @@ public class CollectionPadTests extends TestSuiteBase {
 		Producer<PackedCollection> padded = pad(shape(2), input, 0);
 
 		// Create batch of 3 scalars
-		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
-		scalars.setMem(0, 5.0);   // Batch 0
-		scalars.setMem(1, 10.0);  // Batch 1
-		scalars.setMem(2, 15.0);  // Batch 2
+		PackedCollection scalars = pack(
+				5.0,   // Batch 0
+				10.0,   // Batch 1
+				15.0).reshape(shape(3, 1)).traverse(1);   // Batch 2
 
 		// Pad to shape(2) - should give [5.0, 0.0], [10.0, 0.0], [15.0, 0.0]
 		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
 		padded.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Pad batch test:");
-		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 0.0])");
-		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 0.0])");
-		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 0.0])");
+		log("Pad batch test:");
+		log("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 0.0])");
+		log("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 0.0])");
+		log("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 0.0])");
 
 		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
 		Assert.assertEquals(0.0, result.valueAt(0, 1), 0.01);
@@ -317,6 +325,9 @@ public class CollectionPadTests extends TestSuiteBase {
 		Assert.assertEquals(0.0, result.valueAt(2, 1), 0.01);
 	}
 
+	/**
+	 * Tests concatenation operation with a small batch of scalars.
+	 */
 	@Test(timeout = 30000)
 	public void concatSmallBatch() {
 		// Test concat operation with batch of scalars
@@ -327,18 +338,18 @@ public class CollectionPadTests extends TestSuiteBase {
 
 		// Create batch of 3 scalars: [5, 10, 15]
 		// Expected: concat([5, 10], [10, 20], [15, 30])
-		PackedCollection scalars = new PackedCollection(shape(3, 1).traverse(1));
-		scalars.setMem(0, 5.0);   // Batch 0: concat([5], [10]) -> [5, 10]
-		scalars.setMem(1, 10.0);  // Batch 1: concat([10], [20]) -> [10, 20]
-		scalars.setMem(2, 15.0);  // Batch 2: concat([15], [30]) -> [15, 30]
+		PackedCollection scalars = pack(
+				5.0,   // Batch 0: concat([5], [10]) -> [5, 10]
+				10.0,   // Batch 1: concat([10], [20]) -> [10, 20]
+				15.0).reshape(shape(3, 1)).traverse(1);   // Batch 2: concat([15], [30]) -> [15, 30]
 
 		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Concat batch test:");
-		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 10.0])");
-		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 20.0])");
-		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 30.0])");
+		log("Concat batch test:");
+		log("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 10.0])");
+		log("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 20.0])");
+		log("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 30.0])");
 
 		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
 		Assert.assertEquals(10.0, result.valueAt(0, 1), 0.01);
@@ -348,6 +359,9 @@ public class CollectionPadTests extends TestSuiteBase {
 		Assert.assertEquals(30.0, result.valueAt(2, 1), 0.01);
 	}
 
+	/**
+	 * Tests concatenation with exactly 256 elements to check for batch size limits.
+	 */
 	@Test(timeout = 30000)
 	public void concatLargeBatch() {
 		// Test concat with exactly 256 elements to check for batch size limit
@@ -357,18 +371,16 @@ public class CollectionPadTests extends TestSuiteBase {
 
 		int batchSize = 256;
 		PackedCollection scalars = new PackedCollection(shape(batchSize, 1).traverse(1));
-		for (int i = 0; i < batchSize; i++) {
-			scalars.setMem(i, (double) i);
-		}
+		a(cp(scalars), integers(0, batchSize)).get().run();
 
 		PackedCollection result = new PackedCollection(shape(batchSize, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Concat large batch test (size=" + batchSize + "):");
-		System.out.println("  Element 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [0.0, 0.0])");
-		System.out.println("  Element 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [1.0, 2.0])");
-		System.out.println("  Element 100: [" + result.valueAt(100, 0) + ", " + result.valueAt(100, 1) + "] (expected [100.0, 200.0])");
-		System.out.println("  Element 255: [" + result.valueAt(255, 0) + ", " + result.valueAt(255, 1) + "] (expected [255.0, 510.0])");
+		log("Concat large batch test (size=" + batchSize + "):");
+		log("  Element 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [0.0, 0.0])");
+		log("  Element 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [1.0, 2.0])");
+		log("  Element 100: [" + result.valueAt(100, 0) + ", " + result.valueAt(100, 1) + "] (expected [100.0, 200.0])");
+		log("  Element 255: [" + result.valueAt(255, 0) + ", " + result.valueAt(255, 1) + "] (expected [255.0, 510.0])");
 
 		// Check first few
 		Assert.assertEquals(0.0, result.valueAt(0, 0), 0.01);
@@ -385,6 +397,9 @@ public class CollectionPadTests extends TestSuiteBase {
 		Assert.assertEquals(510.0, result.valueAt(255, 1), 0.01);
 	}
 
+	/**
+	 * Tests concat with 2D traversal using a 16x16 grid.
+	 */
 	@Test(timeout = 30000)
 	public void concat2DTraversal() {
 		// Test concat with 2D traversal
@@ -396,20 +411,16 @@ public class CollectionPadTests extends TestSuiteBase {
 		int h = 16;
 		int w = 16;
 		PackedCollection scalars = new PackedCollection(shape(h, w, 1).traverse(2));
-		for (int y = 0; y < h; y++) {
-			for (int x = 0; x < w; x++) {
-				scalars.setMem(scalars.getShape().index(y, x, 0), (double) (y * w + x));
-			}
-		}
+		a(cp(scalars), integers(0, h * w).reshape(scalars.getShape())).get().run();
 
 		PackedCollection result = new PackedCollection(shape(h, w, 2).traverse(2));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Concat 2D traversal test (size=" + (h * w) + "):");
-		System.out.println("  [0,0]: [" + result.valueAt(0, 0, 0) + ", " + result.valueAt(0, 0, 1) + "] (expected [0.0, 0.0])");
-		System.out.println("  [0,1]: [" + result.valueAt(0, 1, 0) + ", " + result.valueAt(0, 1, 1) + "] (expected [1.0, 2.0])");
-		System.out.println("  [8,8]: [" + result.valueAt(8, 8, 0) + ", " + result.valueAt(8, 8, 1) + "] (expected [136.0, 272.0])");
-		System.out.println("  [15,15]: [" + result.valueAt(15, 15, 0) + ", " + result.valueAt(15, 15, 1) + "] (expected [255.0, 510.0])");
+		log("Concat 2D traversal test (size=" + (h * w) + "):");
+		log("  [0,0]: [" + result.valueAt(0, 0, 0) + ", " + result.valueAt(0, 0, 1) + "] (expected [0.0, 0.0])");
+		log("  [0,1]: [" + result.valueAt(0, 1, 0) + ", " + result.valueAt(0, 1, 1) + "] (expected [1.0, 2.0])");
+		log("  [8,8]: [" + result.valueAt(8, 8, 0) + ", " + result.valueAt(8, 8, 1) + "] (expected [136.0, 272.0])");
+		log("  [15,15]: [" + result.valueAt(15, 15, 0) + ", " + result.valueAt(15, 15, 1) + "] (expected [255.0, 510.0])");
 
 		// Check corners
 		Assert.assertEquals(0.0, result.valueAt(0, 0, 0), 0.01);

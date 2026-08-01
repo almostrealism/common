@@ -20,17 +20,20 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,17 +91,37 @@ public class Repeated<T> extends Scope<T> {
 	public static boolean enableLicmDiagnostics =
 			SystemUtils.isEnabled("AR_LICM_DIAGNOSTICS").orElse(false);
 
+	/** The variable incremented on each loop iteration and used as the loop index. */
 	private Variable<Integer, ?> index;
+
+	/** The expression by which the index is incremented each iteration; defaults to 1. */
 	private Expression<Integer> interval;
+
+	/** The boolean guard expression evaluated before each iteration; the loop continues while true. */
 	private Expression<Boolean> condition;
 
+	/**
+	 * Creates an empty {@link Repeated} scope with no index, condition, or interval set.
+	 */
 	public Repeated() { }
 
+	/**
+	 * Creates an empty {@link Repeated} scope with the given name.
+	 *
+	 * @param name the function name for this scope
+	 */
 	public Repeated(String name) {
 		this();
 		setName(name);
 	}
 
+	/**
+	 * Creates a {@link Repeated} scope with the given name and operation metadata.
+	 *
+	 * @param name     the function name for this scope
+	 * @param metadata the operation metadata; must not be {@code null}
+	 * @throws IllegalArgumentException if {@code metadata} is {@code null}
+	 */
 	public Repeated(String name, OperationMetadata metadata) {
 		this(name);
 		if (metadata == null)
@@ -106,10 +129,23 @@ public class Repeated<T> extends Scope<T> {
 		setMetadata(new OperationMetadata(metadata));
 	}
 
+	/**
+	 * Creates a {@link Repeated} scope that increments the index by 1 each iteration.
+	 *
+	 * @param idx       the loop index variable
+	 * @param condition the loop continuation condition
+	 */
 	public Repeated(Variable<Integer, ?> idx, Expression<Boolean> condition) {
 		this(idx, condition, new IntegerConstant(1));
 	}
 
+	/**
+	 * Creates a {@link Repeated} scope with a custom increment interval.
+	 *
+	 * @param idx       the loop index variable
+	 * @param condition the loop continuation condition
+	 * @param interval  the increment applied to the index at the end of each iteration
+	 */
 	public Repeated(Variable<Integer, ?> idx, Expression<Boolean> condition, Expression<Integer> interval) {
 		this();
 		setIndex(idx);
@@ -117,13 +153,46 @@ public class Repeated<T> extends Scope<T> {
 		setCondition(condition);
 	}
 
+	/**
+	 * Returns the loop index variable for this scope.
+	 *
+	 * @return the loop index variable
+	 */
 	public Variable<Integer, ?> getIndex() { return index; }
+
+	/**
+	 * Sets the loop index variable for this scope.
+	 *
+	 * @param index the loop index variable
+	 */
 	public void setIndex(Variable<Integer, ?> index) { this.index = index; }
 
+	/**
+	 * Returns the interval by which the loop index is incremented each iteration.
+	 *
+	 * @return the increment interval expression
+	 */
 	public Expression<Integer> getInterval() { return interval; }
+
+	/**
+	 * Sets the interval by which the loop index is incremented each iteration.
+	 *
+	 * @param interval the increment interval expression
+	 */
 	public void setInterval(Expression<Integer> interval) { this.interval = interval; }
 
+	/**
+	 * Returns the boolean condition expression that controls loop continuation.
+	 *
+	 * @return the loop condition
+	 */
 	public Expression<Boolean> getCondition() { return condition; }
+
+	/**
+	 * Sets the boolean condition expression that controls loop continuation.
+	 *
+	 * @param condition the loop condition
+	 */
 	public void setCondition(Expression<Boolean> condition) { this.condition = condition; }
 
 	@Override
@@ -159,6 +228,10 @@ public class Repeated<T> extends Scope<T> {
 
 		if (enableLoopInvariantHoisting && index != null) {
 			hoistLoopInvariantStatements(scope);
+		}
+
+		if (ScopeSettings.enableAccumulatorPromotion) {
+			return scope.promoteAccumulators();
 		}
 
 		return scope;
@@ -211,7 +284,7 @@ public class Repeated<T> extends Scope<T> {
 		extractInvariantSubExpressions(scope, variantNames, loopIndices, extractedDeclarations);
 
 		if (enableLicmDiagnostics && allDeclarations.size() > 10) {
-			log("[LICM] " + scope.getName() + ": " +
+			log(scope.getName() + ": " +
 					allDeclarations.size() + " decls, " +
 					hoisted.size() + " hoisted, " +
 					extractedDeclarations.size() + " extracted");
@@ -224,6 +297,141 @@ public class Repeated<T> extends Scope<T> {
 		allHoisted.addAll(hoisted);
 		allHoisted.addAll(extractedDeclarations);
 		scope.getStatements().addAll(0, allHoisted);
+	}
+
+	/**
+	 * Returns an equivalent scope in which reduction accumulators in this loop's body
+	 * have been promoted to local variables, or this loop unchanged when no promotion
+	 * applies.
+	 *
+	 * <p>A statement like {@code out[p] = out[p] + in[i]} whose element position
+	 * {@code p} is constant across iterations performs a global-memory read and write
+	 * on every iteration. Promotion rewrites it to accumulate in a local variable,
+	 * seeded before the loop and stored back once after it:</p>
+	 * <pre>
+	 * double acc = out[p];            // declared before the loop
+	 * for (...) { acc = acc + in[i]; }
+	 * out[p] = acc;                   // stored once, after the loop
+	 * </pre>
+	 *
+	 * <p>Rather than special-casing the trailing store, the result is expressed with
+	 * the ordinary scope vocabulary: a plain {@link Scope} whose statements are the
+	 * accumulator declarations, whose first child is this loop with its body rewritten
+	 * to use the accumulators, and whose second child is a {@link Scope} holding the
+	 * final stores. Promotion of an array is abandoned unless every reference to it in
+	 * the loop body addresses one of the promoted elements, and the loop condition and
+	 * interval do not reference it at all.</p>
+	 *
+	 * @return a new scope with accumulators promoted, or this loop if nothing qualifies
+	 */
+	public Scope<T> promoteAccumulators() {
+		if (getIndex() == null || getIndex().getName() == null) return this;
+
+		List<ExpressionAssignment<?>> body = new ArrayList<>();
+		for (Scope<T> child : getChildren()) {
+			List<ExpressionAssignment<?>> childAssignments = child.collectAssignments();
+			if (childAssignments == null) return this;
+			body.addAll(childAssignments);
+		}
+		if (body.isEmpty()) return this;
+
+		// Names whose value changes across iterations (the loop index and every scalar
+		// assigned in the body) and the arrays written non-declaratively in the body.
+		Set<String> loopScalars = new HashSet<>();
+		loopScalars.add(getIndex().getName());
+		Map<String, Variable<?, ?>> storedArrays = new LinkedHashMap<>();
+
+		for (ExpressionAssignment<?> assignment : body) {
+			Expression<?> dest = assignment.getDestination();
+
+			if (dest instanceof StaticReference) {
+				String name = ((StaticReference<?>) dest).getName();
+				if (name != null) loopScalars.add(name);
+			} else if (dest instanceof InstanceReference) {
+				Variable<?, ?> referent = ((InstanceReference<?, ?>) dest).getReferent();
+				if (referent == null || referent.getName() == null) return this;
+				if (!assignment.isDeclaration()) storedArrays.putIfAbsent(referent.getName(), referent);
+			} else if (dest != null) {
+				// An unrecognized destination may mutate anything it references, so
+				// every name it mentions is treated as loop-variant.
+				dest.collectReferencedNames(loopScalars);
+			}
+		}
+
+		if (storedArrays.isEmpty()) return this;
+
+		List<Index> loopIndices = collectLoopIndices(this);
+
+		// Distinct element references stored at a loop-invariant position, per array;
+		// an array with any variant-position store is disqualified outright.
+		Map<String, List<InstanceReference<?, ?>>> elementsByArray = new LinkedHashMap<>();
+		Set<String> disqualified = new HashSet<>();
+
+		for (ExpressionAssignment<?> assignment : body) {
+			if (assignment.isDeclaration() || !(assignment.getDestination() instanceof InstanceReference)) continue;
+
+			InstanceReference<?, ?> element = (InstanceReference<?, ?>) assignment.getDestination();
+			String name = element.getReferent().getName();
+			Expression<?> position = element.getChildren().isEmpty() ? null : element.getChildren().get(0);
+
+			if (position == null || !position.isLoopInvariant(loopScalars, storedArrays.values(), loopIndices)) {
+				disqualified.add(name);
+				continue;
+			}
+
+			List<InstanceReference<?, ?>> elements = elementsByArray.computeIfAbsent(name, k -> new ArrayList<>());
+			if (elements.stream().noneMatch(element::equals)) elements.add(element);
+		}
+
+		// Element references to promote, paired with the accumulators that replace them.
+		List<InstanceReference<?, ?>> promoted = new ArrayList<>();
+		List<StaticReference<?>> accumulators = new ArrayList<>();
+
+		for (Map.Entry<String, List<InstanceReference<?, ?>>> entry : elementsByArray.entrySet()) {
+			if (disqualified.contains(entry.getKey())) continue;
+
+			Variable<?, ?> array = storedArrays.get(entry.getKey());
+			if (getCondition().containsReference(array) || getInterval().containsReference(array)) continue;
+
+			List<InstanceReference<?, ?>> elements = entry.getValue();
+			List<StaticReference<?>> locals = new ArrayList<>();
+			for (InstanceReference<?, ?> element : elements) {
+				Class type = element.getType();
+				if (type == null) break;
+				locals.add(new StaticReference<>(type,
+						getIndex().getName() + "_acc" + (promoted.size() + locals.size())));
+			}
+			if (locals.size() != elements.size()) continue;
+
+			// Substituting every promoted element must leave no remaining reference to
+			// the array; a leftover reference addresses an element we are not promoting.
+			if (body.stream().anyMatch(a -> a.referencesArrayBeyond(array, elements, locals))) continue;
+
+			promoted.addAll(elements);
+			accumulators.addAll(locals);
+		}
+
+		if (promoted.isEmpty()) return this;
+
+		// Rewrite the loop to read and write the accumulators. The condition and interval
+		// are known not to reference the promoted arrays, so they are left untouched.
+		Scope<T> loop = this;
+		for (int i = 0; i < promoted.size(); i++) {
+			loop = loop.replace(promoted.get(i), accumulators.get(i));
+		}
+
+		// Seed the accumulators before the loop and store them back after it closes.
+		Scope<T> result = new Scope<>(getName(), getMetadata());
+		Scope<T> stores = new Scope<>(getName() + "_stores");
+
+		for (int i = 0; i < promoted.size(); i++) {
+			result.getStatements().add(new ExpressionAssignment(true, accumulators.get(i), promoted.get(i)));
+			stores.getStatements().add(new ExpressionAssignment(promoted.get(i), accumulators.get(i)));
+		}
+
+		result.getChildren().add(loop);
+		result.getChildren().add(stores);
+		return result;
 	}
 
 	/**
@@ -453,7 +661,8 @@ public class Repeated<T> extends Scope<T> {
 				if (isSubstantialForExtraction(child, minDepth)) {
 					StaticReference<?> ref = extracted.get(child);
 					if (ref == null) {
-						ref = new StaticReference<>(child.getType(),
+						Class<?> type = child.promoteIfOverflows();
+						ref = new StaticReference<>(type,
 								"f_licm_" + extractIdx[0]++);
 						extracted.put(child, ref);
 						declarations.add(new ExpressionAssignment(true, ref, child));
@@ -705,43 +914,35 @@ public class Repeated<T> extends Scope<T> {
 	 */
 	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables, List<Index> loopIndices) {
 		if (index == null) return false;
-
-		// Check if expression references any loop index (Index objects, not Variables)
-		for (Index idx : loopIndices) {
-			if (expr.containsIndex(idx)) {
-				return false;
-			}
-		}
-
-		// Check all variable dependencies of the expression
-		for (Variable<?, ?> var : expr.getDependencies()) {
-			if (var.getName() != null && loopAssignedVariables.contains(var.getName())) {
-				return false;
-			}
-		}
-
-		// Check all Index objects in the expression by name.
-		// This handles the case where the Repeated scope's index variable is a plain Variable,
-		// but expressions use a separate Index object (like DefaultIndex) with the same name.
-		// The Index objects won't be in loopIndices (since collectLoopIndices only looks at
-		// scope.getIndex()), but we can check their names against loopAssignedVariables.
-		for (Index idx : expr.getIndices()) {
-			if (idx.getName() != null && loopAssignedVariables.contains(idx.getName())) {
-				return false;
-			}
-		}
-
-		// Check for StaticReference nodes that reference loop-assigned variables by name.
-		// StaticReference without a referent returns empty from getDependencies(),
-		// so we must check by name to avoid incorrectly hoisting dependent expressions.
-		return !expr.containsStaticReferenceToAny(loopAssignedVariables);
+		return expr.isLoopInvariant(loopAssignedVariables, Collections.emptyList(), loopIndices);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, and index,
+	 * then populates it with the provided child scopes.</p>
+	 */
 	@Override
 	public Repeated<T> generate(List<Scope<T>> children) {
 		Repeated<T> scope = getMetadata() == null ? new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());
 		scope.setIndex(getIndex());
 		scope.getChildren().addAll(children);
+		return scope;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>In addition to the statements and children rewritten by the superclass, this
+	 * rewrites the loop condition and interval so that substitutions reach the
+	 * expressions a {@link Repeated} scope stores outside its statement list.</p>
+	 */
+	@Override
+	public Repeated<T> replace(Expression<?> target, Expression<?> replacement) {
+		Repeated<T> scope = (Repeated<T>) super.replace(target, replacement);
+		if (getInterval() != null) scope.setInterval((Expression<Integer>) getInterval().replace(target, replacement));
+		if (getCondition() != null) scope.setCondition((Expression<Boolean>) getCondition().replace(target, replacement));
 		return scope;
 	}
 }

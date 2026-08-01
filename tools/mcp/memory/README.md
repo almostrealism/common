@@ -37,10 +37,10 @@ accessed by ar-consultant and ar-manager through the shared
 
 ### Docker (recommended)
 
-ar-memory is defined as a service in `tools/docker-compose.yml`:
+ar-memory is defined as a service in `flowtree/runtime/controller/docker-compose.yml`:
 
 ```bash
-docker compose -f tools/docker-compose.yml up -d ar-memory
+docker compose -f flowtree/runtime/controller/docker-compose.yml up -d ar-memory
 ```
 
 Data persists at `/Users/Shared/flowtree/memory-data/` on the host.
@@ -138,7 +138,7 @@ FAISS: One flat L2 index per namespace. Dimension is 384 for both default backen
 
 ```
 tools/mcp/memory/
-  server.py          # Startup and mode selection (--http-only, --mcp-only)
+  server.py          # HTTP service entrypoint (the only mode)
   store.py           # SQLite metadata + FAISS vector indices + URL normalization
   http_api.py        # Starlette REST endpoints
   embedder.py        # Embedder interface + backend implementations

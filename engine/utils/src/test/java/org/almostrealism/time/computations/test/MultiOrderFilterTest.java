@@ -21,7 +21,13 @@ import org.almostrealism.time.computations.MultiOrderFilter;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for multi-order filter operations.
+ */
 public class MultiOrderFilterTest extends TestSuiteBase {
+	/**
+	 * Tests multi-order filter compilation.
+	 */
 	@Test(timeout = 10000)
 	public void compile() {
 		int order = 30;

@@ -2,26 +2,36 @@ package org.almostrealism.geometry.test;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
+import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
+import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Tests for {@link org.almostrealism.geometry.TransformMatrix} creation, inversion,
+ * Tests for {@link TransformMatrix} creation, inversion,
  * and ray transformation operations.
  */
 public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, TransformMatrixFeatures {
 
+	/**
+	 * Tests transform matrix inverse and ray transformation.
+	 */
 	@Test(timeout = 10000)
 	public void testTransformMatrixInverse() {
 		log("Testing TransformMatrix inverse and ray transformation...");
 
 		// First check what translationMatrix produces
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(2.0, 0.0, 0.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
 		log("TranslationMatrix producer evaluated, result type: " + tmResult.getClass().getName());
 		log("Result count: " + tmResult.getCount() + ", mem length: " + tmResult.getMemLength());
 
@@ -32,8 +42,8 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		}
 
 		// Create a translation matrix for (2, 0, 0)
-		org.almostrealism.geometry.TransformMatrix mat =
-				new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		TransformMatrix mat =
+				new TransformMatrix(tmResult, 0);
 
 		log("Created translation matrix for (2, 0, 0)");
 
@@ -45,7 +55,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		}
 
 		// Get the inverse
-		org.almostrealism.geometry.TransformMatrix inv = mat.getInverse();
+		TransformMatrix inv = mat.getInverse();
 		log("Got inverse matrix");
 
 		// Print the inverse matrix to verify it's correct
@@ -87,12 +97,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Transform matrix inverse test passed!");
 	}
 
+	/**
+	 * Tests sphere intersection with transform matrices.
+	 */
 	@Test(timeout = 25000)
 	public void testSphereIntersectionWithTransform() {
 		log("Testing sphere intersection WITH transforms enabled...");
-
-		// Ensure transforms are enabled
-		org.almostrealism.primitives.Sphere.enableTransform = true;
 
 		// Test 1: Sphere at origin (identity transform)
 		Sphere sphere1 = new Sphere();
@@ -101,7 +111,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere1.calculateTransform();
 
 		Producer<Ray> ray1 = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
-		org.almostrealism.geometry.ShadableIntersection intersection1 = sphere1.intersectAt(ray1);
+		ShadableIntersection intersection1 = sphere1.intersectAt(ray1);
 		double dist1 = intersection1.getDistance().get().evaluate().toDouble(0);
 
 		log("Test 1 - Sphere at origin:");
@@ -139,7 +149,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 					transformedEval.getDirection().toDouble(1) + ", " + transformedEval.getDirection().toDouble(2) + ")");
 		}
 
-		org.almostrealism.geometry.ShadableIntersection intersection2 = sphere2.intersectAt(ray2);
+		ShadableIntersection intersection2 = sphere2.intersectAt(ray2);
 		double dist2 = intersection2.getDistance().get().evaluate().toDouble(0);
 
 		log("  Expected distance: ~9.0");
@@ -149,7 +159,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// Test 3: Ray that should MISS the translated sphere
 		Producer<Ray> ray3 = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);  // Aims at origin
-		org.almostrealism.geometry.ShadableIntersection intersection3 = sphere2.intersectAt(ray3);
+		ShadableIntersection intersection3 = sphere2.intersectAt(ray3);
 		double dist3 = intersection3.getDistance().get().evaluate().toDouble(0);
 
 		log("Test 3 - Ray at origin should MISS sphere at (2, 0, 0):");
@@ -164,7 +174,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere3.calculateTransform();
 
 		Producer<Ray> ray4 = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
-		org.almostrealism.geometry.ShadableIntersection intersection4 = sphere3.intersectAt(ray4);
+		ShadableIntersection intersection4 = sphere3.intersectAt(ray4);
 		double dist4 = intersection4.getDistance().get().evaluate().toDouble(0);
 
 		log("Test 4 - Scaled sphere (radius 2) at origin:");
@@ -177,14 +187,17 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("All transform tests passed!");
 	}
 
+	/**
+	 * Tests ray origin translation with transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayOriginTranslation() {
 		log("Testing ray origin translation...");
 
 		// Create translation matrix for (3, 2, 1)
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(3.0, 2.0, 1.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(3.0, 2.0, 1.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		// Create ray at origin
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -204,14 +217,17 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Ray origin translation test passed!");
 	}
 
+	/**
+	 * Tests ray origin inverse translation with transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayOriginInverseTranslation() {
 		log("Testing ray origin inverse translation...");
 
 		// Create translation matrix for (5, -3, 2)
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(5.0, -3.0, 2.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(5.0, -3.0, 2.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		// Create ray at (5, -3, 2)
 		Producer<Ray> r = (Producer) ray(5.0, -3.0, 2.0, 0.0, 1.0, 0.0);
@@ -231,14 +247,17 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Ray origin inverse translation test passed!");
 	}
 
+	/**
+	 * Tests that ray direction is unaffected by translation.
+	 */
 	@Test(timeout = 10000)
 	public void testRayDirectionUnaffectedByTranslation() {
 		log("Testing ray direction unaffected by translation...");
 
 		// Create translation matrix
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) translationMatrix(vector(10.0, 20.0, 30.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(10.0, 20.0, 30.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		// Create ray with direction (0, 0, -1)
 		Producer<Ray> r = (Producer) ray(1.0, 1.0, 1.0, 0.0, 0.0, -1.0);
@@ -258,12 +277,13 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Direction unaffected by translation test passed!");
 	}
 
+	/**
+	 * Tests scaled sphere intersection distance calculation.
+	 */
 	@Test(timeout = 10000)
 	public void testScaledSphereIntersectionDistance() {
 		log("Testing that scaled sphere intersection returns correct WORLD SPACE distance...");
 		log("Per Sphere.java documentation: directions don't need normalization, math compensates");
-
-		Sphere.enableTransform = true;
 
 		// Create sphere at origin with size 2.0 (radius 2)
 		Sphere sphere = new Sphere();
@@ -276,7 +296,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 		// Intersection should occur at (0,0,2) - the front surface of radius-2 sphere
 		// Distance from (0,0,10) to (0,0,2) is 8.0 in world space
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(r);
+		ShadableIntersection intersection = sphere.intersectAt(r);
 		double dist = intersection.getDistance().get().evaluate().toDouble(0);
 
 		log("  Sphere at origin with radius 2.0");
@@ -298,21 +318,24 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	// This test may have incorrect expectations about how TransformMatrix.transform() works.
 	// Need to investigate the actual transform implementation first.
 
+	/**
+	 * Tests combined transform on ray.
+	 */
 	@Test(timeout = 10000)
 	public void testCombinedTransformOnRay() {
 		log("Testing combined transform (translate + scale) on ray...");
 
 		// Create translation matrix for (1, 2, 3)
-		Producer<org.almostrealism.geometry.TransformMatrix> t1 = (Producer) translationMatrix(vector(1.0, 2.0, 3.0));
-		org.almostrealism.collect.PackedCollection t1Result = t1.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix translateMat =
-				new org.almostrealism.geometry.TransformMatrix(t1Result, 0);
+		Producer<TransformMatrix> t1 = (Producer) translationMatrix(vector(1.0, 2.0, 3.0));
+		PackedCollection t1Result = t1.get().evaluate();
+		TransformMatrix translateMat =
+				new TransformMatrix(t1Result, 0);
 
 		// Create scale matrix (2x in all directions)
-		Producer<org.almostrealism.geometry.TransformMatrix> t2 = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
-		org.almostrealism.collect.PackedCollection t2Result = t2.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix scaleMat =
-				new org.almostrealism.geometry.TransformMatrix(t2Result, 0);
+		Producer<TransformMatrix> t2 = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
+		PackedCollection t2Result = t2.get().evaluate();
+		TransformMatrix scaleMat =
+				new TransformMatrix(t2Result, 0);
 
 		// Create ray at origin
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 0.0, 1.0, 0.0, 0.0);
@@ -334,11 +357,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Combined transform test passed!");
 	}
 
+	/**
+	 * Tests intersection with translated sphere.
+	 */
 	@Test(timeout = 10000)
 	public void testIntersectionWithTranslatedSphere() {
 		log("Testing intersection experiment: translated sphere requires inverse transform...");
-
-		Sphere.enableTransform = true;
 
 		// Create sphere at (0, 0, -5)
 		Sphere sphere = new Sphere();
@@ -350,7 +374,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0);
 
 		// Get intersection
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(r);
+		ShadableIntersection intersection = sphere.intersectAt(r);
 		double dist = intersection.getDistance().get().evaluate().toDouble(0);
 
 		log("  Sphere at (0, 0, -5), radius 1.0");
@@ -364,11 +388,13 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Intersection with translated sphere test passed!");
 	}
 
+	/**
+	 * Verifies that the inverse transform is applied correctly so that
+	 * a ray aimed at a translated sphere actually hits it.
+	 */
 	@Test(timeout = 10000)
-	public void testIntersectionMissWithIncorrectTransform() {
-		log("Testing that ray MUST be inverse-transformed for correct intersection...");
-
-		Sphere.enableTransform = false;  // Disable transform to see what happens
+	public void testIntersectionWithTranslatedSphereHit() {
+		log("Testing that inverse transform allows ray to hit translated sphere...");
 
 		// Create sphere at (3, 0, 0)
 		Sphere sphere = new Sphere();
@@ -376,45 +402,34 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere.setSize(1.0);
 		sphere.calculateTransform();
 
-		// Ray from (3, 0, 5) pointing down -Z should hit if transforms work correctly
+		// Ray from (3, 0, 5) pointing down -Z should hit the translated sphere
 		Producer<Ray> r = (Producer) ray(3.0, 0.0, 5.0, 0.0, 0.0, -1.0);
 
-		// Get intersection with transforms DISABLED
-		org.almostrealism.geometry.ShadableIntersection intersection = sphere.intersectAt(r);
+		ShadableIntersection intersection = sphere.intersectAt(r);
 		double dist = intersection.getDistance().get().evaluate().toDouble(0);
 
-		log("  Sphere at (3, 0, 0), transforms DISABLED");
-		log("  Ray from (3, 0, 5) towards -Z");
-		log("  Distance (transforms disabled): " + dist);
+		log("  Sphere at (3, 0, 0), ray from (3, 0, 5) towards -Z");
+		log("  Distance: " + dist);
 
-		// Should miss because sphere is actually at origin when transforms disabled
-		assertTrue("Should MISS when transforms disabled (dist < 0)", dist < 0);
+		assertTrue("Should HIT translated sphere (dist > 0)", dist > 0);
+		assertTrue("Distance should be ~4.0 (was " + dist + ")", Math.abs(dist - 4.0) < 0.1);
 
-		// Now enable transforms and try again
-		Sphere.enableTransform = true;
-		org.almostrealism.geometry.ShadableIntersection intersection2 = sphere.intersectAt(r);
-		double dist2 = intersection2.getDistance().get().evaluate().toDouble(0);
-
-		log("  Distance (transforms enabled): " + dist2);
-
-		// Should HIT when transforms enabled
-		assertTrue("Should HIT when transforms enabled (dist > 0)", dist2 > 0);
-
-		log("  Inverse transform requirement test passed!");
+		log("  Inverse transform hit test passed!");
 	}
 
+	/**
+	 * Tests how Sphere.calculateTransform() creates the transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testSphereTransformMatrixCreation() {
-		log("========================================");
-		log("COMPONENT TEST 1: How Sphere.calculateTransform() creates the matrix");
-		log("========================================");
+		log("How Sphere.calculateTransform() creates the matrix");
 
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(2.0);
 		sphere.calculateTransform();
 
-		org.almostrealism.geometry.TransformMatrix transform = sphere.getTransform(true);
+		TransformMatrix transform = sphere.getTransform(true);
 		assertNotNull("Transform should exist", transform);
 
 		double[] matData = transform.toArray(0, 16);
@@ -436,19 +451,20 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("M[3,3] should be 1.0", Math.abs(matData[15] - 1.0) < 0.001);
 	}
 
+	/**
+	 * Tests the inverse transform matrix for a scaled sphere.
+	 */
 	@Test(timeout = 10000)
 	public void testSphereInverseTransformMatrix() {
-		log("========================================");
-		log("COMPONENT TEST 2: Inverse transform matrix for scaled sphere");
-		log("========================================");
+		log("Inverse transform matrix for scaled sphere");
 
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(2.0);
 		sphere.calculateTransform();
 
-		org.almostrealism.geometry.TransformMatrix transform = sphere.getTransform(true);
-		org.almostrealism.geometry.TransformMatrix inverse = transform.getInverse();
+		TransformMatrix transform = sphere.getTransform(true);
+		TransformMatrix inverse = transform.getInverse();
 
 		double[] invData = inverse.toArray(0, 16);
 		log("Inverse transform matrix:");
@@ -469,11 +485,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("M[3,3] should be 1.0", Math.abs(invData[15] - 1.0) < 0.001);
 	}
 
+	/**
+	 * Tests ray transformation by an inverse scale matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayTransformationByInverseScale() {
-		log("========================================");
-		log("COMPONENT TEST 3: Ray transformation by inverse scale matrix");
-		log("========================================");
+		log("Ray transformation by inverse scale matrix");
 
 		// Create scale(2,2,2) sphere
 		Sphere sphere = new Sphere();
@@ -482,7 +499,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		sphere.calculateTransform();
 
 		// Get inverse transform
-		org.almostrealism.geometry.TransformMatrix inverse = sphere.getTransform(true).getInverse();
+		TransformMatrix inverse = sphere.getTransform(true).getInverse();
 
 		// Create ray from (0,0,10) towards -Z
 		Producer<Ray> r = (Producer) ray(0.0, 0.0, 10.0, 0.0, 0.0, -1.0);
@@ -517,11 +534,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("Direction length should be 0.5", Math.abs(dirLength - 0.5) < 0.001);
 	}
 
+	/**
+	 * Performs manual intersection calculation step-by-step to verify math.
+	 */
 	@Test(timeout = 10000)
 	public void testManualIntersectionCalculation() {
-		log("========================================");
-		log("COMPONENT TEST 4: Manual intersection calculation step-by-step");
-		log("========================================");
+		log("Manual intersection calculation step-by-step");
 
 		// Manually compute intersection for transformed ray with unit sphere
 		// Ray: origin=(0,0,5), direction=(0,0,-0.5) [from test above]
@@ -576,14 +594,581 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Final t value (should be 8.0 for world space): " + t);
 	}
 
+	/**
+	 * Tests that transformAsLocation works correctly in batch mode.
+	 * This is the core of the rendering pipeline issue: when a constant
+	 * transform matrix is applied to a batch of varying vectors, do
+	 * we get correct results?
+	 */
+	@TestProperties(knownIssue = true)
+	@Test(timeout = 20000)
+	public void testBatchTransformAsLocation() {
+		log("Testing batch mode transform (transformAsLocation)...");
+
+		// Create a translation matrix: translate by (2, 0, 0)
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
+
+		double[] matData = mat.toArray(0, 16);
+		log("Translation matrix:");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + String.format("%6.3f, %6.3f, %6.3f, %6.3f",
+					matData[i * 4], matData[i * 4 + 1], matData[i * 4 + 2], matData[i * 4 + 3]) + "]");
+		}
+
+		// Create a batch of 4 input vectors
+		PackedCollection inputBatch = pack(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0,
+				3.0, 4.0, 5.0).reshape(shape(4, 3));
+
+		log("Input vectors:");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + inputBatch.valueAt(i, 0) + ", " + inputBatch.valueAt(i, 1) + ", " + inputBatch.valueAt(i, 2) + "]");
+		}
+
+		// Create variable input producer for batch mode
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+
+		// Transform as location (includes translation)
+		CollectionProducerComputation transform = transformAsLocation(mat, input);
+
+		// Evaluate in batch mode
+		PackedCollection output = new PackedCollection(shape(4, 3).traverse(1));
+		transform.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output vectors (should have X += 2.0):");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		// Expected: each vector should have 2.0 added to X
+		// (1,0,0) -> (3,0,0)
+		assertTrue("Vector 0 X should be 3.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - 3.0) < 0.01);
+		assertTrue("Vector 0 Y should be 0.0 (was " + output.valueAt(0, 1) + ")",
+				Math.abs(output.valueAt(0, 1) - 0.0) < 0.01);
+		assertTrue("Vector 0 Z should be 0.0 (was " + output.valueAt(0, 2) + ")",
+				Math.abs(output.valueAt(0, 2) - 0.0) < 0.01);
+
+		// (0,1,0) -> (2,1,0)
+		assertTrue("Vector 1 X should be 2.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 2.0) < 0.01);
+		assertTrue("Vector 1 Y should be 1.0 (was " + output.valueAt(1, 1) + ")",
+				Math.abs(output.valueAt(1, 1) - 1.0) < 0.01);
+
+		// (0,0,1) -> (2,0,1)
+		assertTrue("Vector 2 X should be 2.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 2.0) < 0.01);
+		assertTrue("Vector 2 Z should be 1.0 (was " + output.valueAt(2, 2) + ")",
+				Math.abs(output.valueAt(2, 2) - 1.0) < 0.01);
+
+		// (3,4,5) -> (5,4,5)
+		assertTrue("Vector 3 X should be 5.0 (was " + output.valueAt(3, 0) + ")",
+				Math.abs(output.valueAt(3, 0) - 5.0) < 0.01);
+		assertTrue("Vector 3 Y should be 4.0 (was " + output.valueAt(3, 1) + ")",
+				Math.abs(output.valueAt(3, 1) - 4.0) < 0.01);
+		assertTrue("Vector 3 Z should be 5.0 (was " + output.valueAt(3, 2) + ")",
+				Math.abs(output.valueAt(3, 2) - 5.0) < 0.01);
+
+		log("Batch transform test passed!");
+	}
+
+	/**
+	 * Tests that the matmul-based TransformMatrixFeatures.transform()
+	 * produces correct results in batch mode.
+	 */
+	@TestProperties(knownIssue = true)
+	@Test(timeout = 20000)
+	public void testBatchMatmulTransformVector() {
+		log("Testing batch matmul transform on vectors...");
+
+		// Create translation matrix for (-2, 0, 0)
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(-2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
+
+		double[] matData = mat.toArray(0, 16);
+		log("Matrix:");
+		for (int i = 0; i < 4; i++) {
+			log("  [" + matData[i * 4] + ", " + matData[i * 4 + 1] + ", " + matData[i * 4 + 2] + ", " + matData[i * 4 + 3] + "]");
+		}
+
+		// Create batch of 3 input vectors
+		PackedCollection inputBatch = pack(
+				1.0, 0.0, 0.0,
+				4.0, 5.0, 6.0,
+				7.0, 8.0, 9.0).reshape(shape(3, 3));
+
+		// Single eval first
+		log("Single evaluation:");
+		for (int i = 0; i < 3; i++) {
+			Producer<PackedCollection> staticVec = vector(inputBatch.toDouble(i * 3), inputBatch.toDouble(i * 3 + 1), inputBatch.toDouble(i * 3 + 2));
+			PackedCollection result = transformAsLocation(mat, staticVec).get().evaluate();
+			log("  Vec " + i + ": [" + result.toDouble(0) + ", " + result.toDouble(1) + ", " + result.toDouble(2) + "]");
+		}
+
+		// Batch eval
+		log("Batch evaluation:");
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+		CollectionProducerComputation transform = transformAsLocation(mat, input);
+		PackedCollection output = new PackedCollection(shape(3, 3).traverse(1));
+		transform.get().into(output.each()).evaluate(inputBatch);
+
+		for (int i = 0; i < 3; i++) {
+			log("  Vec " + i + ": [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		// Expected: X - 2
+		assertTrue("Vec 0 X should be -1.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - (-1.0)) < 0.01);
+		assertTrue("Vec 1 X should be 2.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 2.0) < 0.01);
+		assertTrue("Vec 2 X should be 5.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 5.0) < 0.01);
+		assertTrue("Vec 2 Y should be 8.0 (was " + output.valueAt(2, 1) + ")",
+				Math.abs(output.valueAt(2, 1) - 8.0) < 0.01);
+
+		log("Batch matmul transform test passed!");
+	}
+
+	/**
+	 * Tests that concat of variable + constant works in batch mode.
+	 * This isolates whether concat(shape(4), variable_3, constant_1) is the issue.
+	 */
+	@Test(timeout = 10000)
+	public void testBatchConcat() {
+		log("Testing batch concat(variable, constant)...");
+
+		PackedCollection inputBatch = pack(
+				1.0, 2.0, 3.0,
+				4.0, 5.0, 6.0,
+				7.0, 8.0, 9.0).reshape(shape(3, 3));
+
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+		CollectionProducer result = concat(shape(4), input, c(1.0));
+
+		PackedCollection output = new PackedCollection(shape(3, 4).traverse(1));
+		result.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output:");
+		for (int i = 0; i < 3; i++) {
+			log("  [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) +
+					", " + output.valueAt(i, 2) + ", " + output.valueAt(i, 3) + "]");
+		}
+
+		// Expected: each vector with 1.0 appended
+		assertTrue("Item 0 should be [1,2,3,1] (X was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - 1.0) < 0.01);
+		assertTrue("Item 1 X should be 4.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 4.0) < 0.01);
+		assertTrue("Item 1 W should be 1.0 (was " + output.valueAt(1, 3) + ")",
+				Math.abs(output.valueAt(1, 3) - 1.0) < 0.01);
+		assertTrue("Item 2 X should be 7.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 7.0) < 0.01);
+
+		log("Batch concat test passed!");
+	}
+
+	/**
+	 * Tests multiply(constant, concat(variable, constant)).sum() in batch mode.
+	 * This is the per-row dot product used by the transform.
+	 */
+	@Test(timeout = 10000)
+	public void testBatchDotProductConstantVariable() {
+		log("Testing batch dot product of constant * concat(variable, constant)...");
+
+		PackedCollection inputBatch = pack(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0).reshape(shape(3, 3));
+
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+		CollectionProducer vec4 = concat(shape(4), input, c(1.0));
+
+		// Constant row: [1, 0, 0, -2] (like first row of translation matrix)
+		c(new PackedCollection(shape(4)));
+		// Need to set the data
+		PackedCollection rowData = pack(1.0, 0.0, 0.0, -2.0);
+
+		CollectionProducer dot = multiply(cp(rowData), vec4).sum();
+
+		PackedCollection output = new PackedCollection(shape(3, 1).traverse(1));
+		dot.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output:");
+		for (int i = 0; i < 3; i++) {
+			log("  Item " + i + ": " + output.valueAt(i, 0));
+		}
+
+		// Expected: dot([1,0,0,-2], [vec, 1]) = vec[0] - 2
+		// Item 0: 1*1 + 0*0 + 0*0 + (-2)*1 = -1
+		// Item 1: 1*0 + 0*1 + 0*0 + (-2)*1 = -2
+		// Item 2: 1*0 + 0*0 + 0*1 + (-2)*1 = -2
+		assertTrue("Item 0 should be -1.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - (-1.0)) < 0.01);
+		assertTrue("Item 1 should be -2.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - (-2.0)) < 0.01);
+		assertTrue("Item 2 should be -2.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - (-2.0)) < 0.01);
+
+		log("Batch dot product constant*variable test passed!");
+	}
+
+	/**
+	 * Tests concat of 3 independent dot products in batch mode.
+	 */
+	@Test(timeout = 10000)
+	public void testBatchConcatThreeDotProducts() {
+		log("Testing batch concat of 3 dot products...");
+
+		PackedCollection inputBatch = pack(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0).reshape(shape(3, 3));
+
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+
+		// Three different constant vectors
+		PackedCollection r0 = pack(1.0, 0.0, 0.0);
+		PackedCollection r1 = pack(0.0, 1.0, 0.0);
+		PackedCollection r2 = pack(0.0, 0.0, 1.0);
+
+		CollectionProducer dot0 = multiply(cp(r0), input).sum();
+		CollectionProducer dot1 = multiply(cp(r1), input).sum();
+		CollectionProducer dot2 = multiply(cp(r2), input).sum();
+
+		CollectionProducer result = concat(shape(3), dot0, dot1, dot2);
+
+		PackedCollection output = new PackedCollection(shape(3, 3).traverse(1));
+		result.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output:");
+		for (int i = 0; i < 3; i++) {
+			log("  [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		// This is identity matrix * input = input
+		assertTrue("Item 0 should be [1,0,0] X=" + output.valueAt(0, 0),
+				Math.abs(output.valueAt(0, 0) - 1.0) < 0.01);
+		assertTrue("Item 1 should be [0,1,0] X=" + output.valueAt(1, 0),
+				Math.abs(output.valueAt(1, 0) - 0.0) < 0.01);
+		assertTrue("Item 1 Y=" + output.valueAt(1, 1),
+				Math.abs(output.valueAt(1, 1) - 1.0) < 0.01);
+		assertTrue("Item 2 should be [0,0,1] Z=" + output.valueAt(2, 2),
+				Math.abs(output.valueAt(2, 2) - 1.0) < 0.01);
+
+		log("Batch concat three dot products test passed!");
+	}
+
+	/**
+	 * Tests 3 dot products of shape(4) vectors (concat(var3, const1)) concatenated
+	 * to shape(3). This is the exact pattern used by TransformMatrixFeatures.transform().
+	 */
+	@Test(timeout = 10000)
+	public void testBatchTransformPattern() {
+		log("Testing batch transform pattern: 3 shape(4) dot products → concat(3)...");
+
+		PackedCollection inputBatch = pack(
+				1.0, 0.0, 0.0,
+				0.0, 1.0, 0.0,
+				0.0, 0.0, 1.0).reshape(shape(3, 3));
+
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+		CollectionProducer vec4 = concat(shape(4), input, c(1.0));
+
+		// Identity-like matrix rows (3x4): row i selects component i
+		PackedCollection r0 = pack(1.0, 0.0, 0.0, 0.0);
+		PackedCollection r1 = pack(0.0, 1.0, 0.0, 0.0);
+		PackedCollection r2 = pack(0.0, 0.0, 1.0, 0.0);
+
+		CollectionProducer dot0 = multiply(cp(r0), vec4).sum();
+		CollectionProducer dot1 = multiply(cp(r1), vec4).sum();
+		CollectionProducer dot2 = multiply(cp(r2), vec4).sum();
+
+		CollectionProducer result = concat(shape(3), dot0, dot1, dot2);
+
+		PackedCollection output = new PackedCollection(shape(3, 3).traverse(1));
+		result.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output (should be identity — same as input):");
+		for (int i = 0; i < 3; i++) {
+			log("  [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		assertTrue("Item 1 X should be 0.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 0.0) < 0.01);
+		assertTrue("Item 1 Y should be 1.0 (was " + output.valueAt(1, 1) + ")",
+				Math.abs(output.valueAt(1, 1) - 1.0) < 0.01);
+		assertTrue("Item 2 Z should be 1.0 (was " + output.valueAt(2, 2) + ")",
+				Math.abs(output.valueAt(2, 2) - 1.0) < 0.01);
+
+		log("Batch transform pattern test passed!");
+	}
+
+	/**
+	 * Tests batch mode ray transformation with a translation matrix.
+	 * This mirrors how LightingEngineAggregator.initRankCache() evaluates
+	 * the intersection distance for multiple pixels at once.
+	 */
+	@TestProperties(knownIssue = true)
+	@Test(timeout = 20000)
+	public void testBatchRayTransform() {
+		log("Testing batch mode ray transformation...");
+
+		// Create a translation matrix: translate by (-2, 0, 0) (like inverse of sphere at (2,0,0))
+		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(-2.0, 0.0, 0.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
+
+		// Create batch of 3 rays (each 6 elements: origin + direction)
+		// Ray 0: from (2,0,10) towards (0,0,-1) - should hit sphere at (2,0,0)
+		// Ray 1: from (5,0,10) towards (0,0,-1) - would miss sphere at (2,0,0)
+		// Ray 2: from (2,3,10) towards (0,0,-1) - would miss sphere at (2,0,0)
+		PackedCollection inputBatch = pack(
+				2.0, 0.0, 10.0, 0.0, 0.0, -1.0,
+				5.0, 0.0, 10.0, 0.0, 0.0, -1.0,
+				2.0, 3.0, 10.0, 0.0, 0.0, -1.0).reshape(shape(3, 6));
+
+		log("Input rays:");
+		for (int i = 0; i < 3; i++) {
+			log("  Ray " + i + ": origin=(" + inputBatch.valueAt(i, 0) + "," +
+					inputBatch.valueAt(i, 1) + "," + inputBatch.valueAt(i, 2) +
+					"), dir=(" + inputBatch.valueAt(i, 3) + "," +
+					inputBatch.valueAt(i, 4) + "," + inputBatch.valueAt(i, 5) + ")");
+		}
+
+		// Create variable ray producer
+		Producer<?> variableRay = v(shape(-1, 6), 0);
+
+		// Transform the ray using the matrix
+		Producer<?> transformedRay = mat.transform(variableRay);
+
+		// Evaluate in batch mode
+		PackedCollection output = new PackedCollection(shape(3, 6).traverse(1));
+		transformedRay.get().into(output.each()).evaluate(inputBatch);
+
+		log("Transformed rays (origin should have X -= 2.0, direction unchanged):");
+		for (int i = 0; i < 3; i++) {
+			log("  Ray " + i + ": origin=(" + output.valueAt(i, 0) + "," +
+					output.valueAt(i, 1) + "," + output.valueAt(i, 2) +
+					"), dir=(" + output.valueAt(i, 3) + "," +
+					output.valueAt(i, 4) + "," + output.valueAt(i, 5) + ")");
+		}
+
+		// Ray 0: origin should become (0, 0, 10)
+		assertTrue("Ray 0 origin X should be 0.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - 0.0) < 0.01);
+		assertTrue("Ray 0 origin Z should be 10.0 (was " + output.valueAt(0, 2) + ")",
+				Math.abs(output.valueAt(0, 2) - 10.0) < 0.01);
+		assertTrue("Ray 0 direction Z should be -1.0 (was " + output.valueAt(0, 5) + ")",
+				Math.abs(output.valueAt(0, 5) - (-1.0)) < 0.01);
+
+		// Ray 1: origin should become (3, 0, 10)
+		assertTrue("Ray 1 origin X should be 3.0 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 3.0) < 0.01);
+
+		// Ray 2: origin should become (0, 3, 10)
+		assertTrue("Ray 2 origin X should be 0.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 0.0) < 0.01);
+		assertTrue("Ray 2 origin Y should be 3.0 (was " + output.valueAt(2, 1) + ")",
+				Math.abs(output.valueAt(2, 1) - 3.0) < 0.01);
+
+		log("Batch ray transform test passed!");
+	}
+
+	/**
+	 * Tests that Sphere intersection works in batch mode with a translated sphere.
+	 * This mimics how LightingEngineAggregator.initRankCache() evaluates.
+	 */
+	@TestProperties(knownIssue = true)
+	@Test(timeout = 20000)
+	public void testBatchSphereIntersection() {
+		log("Testing batch sphere intersection with translated sphere...");
+
+		// Create sphere at (-1.5, 0, 0) with size 1.0
+		Sphere sphere = new Sphere();
+		sphere.setLocation(new Vector(-1.5, 0.0, 0.0));
+		sphere.setSize(1.0);
+		sphere.calculateTransform();
+
+		log("Sphere location: " + sphere.getLocation());
+		log("Sphere transform isIdentity: " + sphere.getTransform(true).isIdentity());
+
+		// Create a batch of rays as a variable input (like camera rays)
+		// Ray 0: from (-1.5, 0, 5) towards (0, 0, -1) — should HIT
+		// Ray 1: from (5, 0, 5) towards (0, 0, -1) — should MISS
+		// Ray 2: from (-1.5, 0.5, 5) towards (0, 0, -1) — should HIT (near edge)
+		PackedCollection rayBatch = pack(
+				-1.5, 0.0, 5.0, 0.0, 0.0, -1.0,
+				5.0, 0.0, 5.0, 0.0, 0.0, -1.0,
+				-1.5, 0.5, 5.0, 0.0, 0.0, -1.0).reshape(shape(3, 6));
+
+		// Test single evaluation first
+		log("\n=== Single evaluation ===");
+		for (int i = 0; i < 3; i++) {
+			PackedCollection singleRay = new PackedCollection(shape(6));
+			singleRay.setFrom(0, rayBatch, i * 6, 6);
+
+			Producer<?> staticRay = ray(
+					singleRay.toDouble(0), singleRay.toDouble(1), singleRay.toDouble(2),
+					singleRay.toDouble(3), singleRay.toDouble(4), singleRay.toDouble(5));
+			ShadableIntersection si = sphere.intersectAt(staticRay);
+			double dist = si.getDistance().get().evaluate().toDouble(0);
+			log("Ray " + i + ": distance = " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		// Test batch evaluation
+		log("\n=== Batch evaluation ===");
+		Producer<?> explicitRay = v(shape(-1, 6), 0);
+		ShadableIntersection intersection = sphere.intersectAt(explicitRay);
+		Producer<?> distanceProducer = intersection.getDistance();
+
+		PackedCollection rankCollection = new PackedCollection(shape(3, 1).traverse(1));
+		distanceProducer.get().into(rankCollection.each()).evaluate(rayBatch);
+
+		for (int i = 0; i < 3; i++) {
+			double dist = rankCollection.valueAt(i, 0);
+			log("Ray " + i + ": distance = " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		// Ray 0 should hit (distance ~4.0)
+		double ray0dist = rankCollection.valueAt(0, 0);
+		assertTrue("Ray 0 should hit translated sphere (dist was " + ray0dist + ")", ray0dist > 0);
+		assertTrue("Ray 0 distance should be ~4.0 (was " + ray0dist + ")", Math.abs(ray0dist - 4.0) < 0.5);
+
+		// Ray 1 should miss
+		double ray1dist = rankCollection.valueAt(1, 0);
+		assertTrue("Ray 1 should miss (dist was " + ray1dist + ")", ray1dist < 0);
+
+		// Ray 2 should hit (near edge, distance ~4.13)
+		double ray2dist = rankCollection.valueAt(2, 0);
+		assertTrue("Ray 2 batch should hit translated sphere (dist was " + ray2dist + ")", ray2dist > 0);
+
+		log("Batch sphere intersection test passed!");
+	}
+
+	/**
+	 * Tests batch sphere intersection WITHOUT transform (identity, sphere at origin).
+	 * If this fails for item 2, the issue is in the intersection computation, not the transform.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchSphereIntersectionNoTransform() {
+		log("Testing batch sphere intersection WITHOUT transform...");
+
+		Sphere sphere = new Sphere();
+		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
+		sphere.setSize(1.0);
+		sphere.calculateTransform();
+		log("Sphere at origin, isIdentity: " + sphere.getTransform(true).isIdentity());
+
+		// Create a batch of 3 rays aimed at the origin sphere
+		// Row 1: straight on, should hit at ~4.0; row 2: far right, should
+		// miss; row 3: near edge, should hit at ~4.13
+		PackedCollection rayBatch = pack(
+				0.0, 0.0, 5.0, 0.0, 0.0, -1.0,
+				5.0, 0.0, 5.0, 0.0, 0.0, -1.0,
+				0.0, 0.5, 5.0, 0.0, 0.0, -1.0).reshape(shape(3, 6));
+
+		log("Single evaluation:");
+		for (int i = 0; i < 3; i++) {
+			Producer<?> staticRay = ray(
+					rayBatch.toDouble(i * 6), rayBatch.toDouble(i * 6 + 1), rayBatch.toDouble(i * 6 + 2),
+					rayBatch.toDouble(i * 6 + 3), rayBatch.toDouble(i * 6 + 4), rayBatch.toDouble(i * 6 + 5));
+			double dist = sphere.intersectAt(staticRay).getDistance().get().evaluate().toDouble(0);
+			log("  Ray " + i + ": " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		log("Batch evaluation:");
+		Producer<?> variableRay = v(shape(-1, 6), 0);
+		ShadableIntersection intersection = sphere.intersectAt(variableRay);
+		PackedCollection rankCollection = new PackedCollection(shape(3, 1).traverse(1));
+		intersection.getDistance().get().into(rankCollection.each()).evaluate(rayBatch);
+
+		for (int i = 0; i < 3; i++) {
+			double dist = rankCollection.valueAt(i, 0);
+			log("  Ray " + i + ": " + dist + (dist > 0 ? " (HIT)" : " (MISS)"));
+		}
+
+		double ray2dist = rankCollection.valueAt(2, 0);
+		assertTrue("Ray 2 batch should hit origin sphere (dist was " + ray2dist + ")", ray2dist > 0);
+		log("Test passed!");
+	}
+
+	/**
+	 * Tests element-wise subtract+divide in batch mode.
+	 * This isolates whether the Sphere element-wise transform works in batch.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchElementWiseSubtractDivide() {
+		log("Testing batch element-wise subtract+divide...");
+
+		// Create a batch of 3 input vectors (3 elements each)
+		PackedCollection inputBatch = pack(
+				1.0, 2.0, 3.0,
+				4.0, 5.0, 6.0,
+				7.0, 8.0, 9.0).reshape(shape(3, 3));
+
+		// Variable input
+		Producer<PackedCollection> input = v(shape(-1, 3), 0);
+
+		// Subtract constant (1, 1, 1) and divide by 2
+		CollectionProducer result = c(input).subtract(vector(1.0, 1.0, 1.0)).divide(c(2.0));
+
+		// Evaluate in batch mode
+		PackedCollection output = new PackedCollection(shape(3, 3).traverse(1));
+		result.get().into(output.each()).evaluate(inputBatch);
+
+		log("Output:");
+		for (int i = 0; i < 3; i++) {
+			log("  [" + output.valueAt(i, 0) + ", " + output.valueAt(i, 1) + ", " + output.valueAt(i, 2) + "]");
+		}
+
+		// Expected: (input - (1,1,1)) / 2
+		// (1,2,3) -> (0,1,2) / 2 = (0, 0.5, 1.0)
+		assertTrue("Item 0 X should be 0.0 (was " + output.valueAt(0, 0) + ")",
+				Math.abs(output.valueAt(0, 0) - 0.0) < 0.01);
+		// (4,5,6) -> (3,4,5) / 2 = (1.5, 2.0, 2.5)
+		assertTrue("Item 1 X should be 1.5 (was " + output.valueAt(1, 0) + ")",
+				Math.abs(output.valueAt(1, 0) - 1.5) < 0.01);
+		// (7,8,9) -> (6,7,8) / 2 = (3.0, 3.5, 4.0)
+		assertTrue("Item 2 X should be 3.0 (was " + output.valueAt(2, 0) + ")",
+				Math.abs(output.valueAt(2, 0) - 3.0) < 0.01);
+		assertTrue("Item 2 Y should be 3.5 (was " + output.valueAt(2, 1) + ")",
+				Math.abs(output.valueAt(2, 1) - 3.5) < 0.01);
+
+		log("Batch element-wise test passed!");
+	}
+
+	/**
+	 * Tests the adjoint matrix computation.
+	 */
+	@Test(timeout = 10000)
+	public void adjoint() {
+		new TransformMatrix().adjoint();
+	}
+
+	/**
+	 * Tests the determinant computation for a transform matrix.
+	 */
+	@Test(timeout = 10000)
+	public void determinant() {
+		new TransformMatrix().determinant();
+	}
+
+	/**
+	 * Tests behavior when a scale transform has zero in one dimension.
+	 */
 	@Test(timeout = 10000)
 	public void testZeroScaleDetection() {
 		log("Testing edge case: zero scale transform...");
 
 		// Create a scale matrix with zero in one dimension
-		Producer<org.almostrealism.geometry.TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(1.0, 0.0, 1.0));
-		org.almostrealism.collect.PackedCollection tmResult = tmProducer.get().evaluate();
-		org.almostrealism.geometry.TransformMatrix mat = new org.almostrealism.geometry.TransformMatrix(tmResult, 0);
+		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(1.0, 0.0, 1.0));
+		PackedCollection tmResult = tmProducer.get().evaluate();
+		TransformMatrix mat = new TransformMatrix(tmResult, 0);
 
 		double[] matData = mat.toArray(0, 16);
 		log("  Scale matrix with Y=0:");

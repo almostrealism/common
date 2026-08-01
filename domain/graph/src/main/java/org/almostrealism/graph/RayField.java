@@ -36,17 +36,39 @@ import java.util.Set;
  * @author Dan Chivers
  */
 public class RayField implements DiscreteField {
+    /** A fast-membership set of all ray collections currently in the field. */
     private final HashSet<PackedCollection> raysSet = new HashSet<>();
+
+    /** KD-tree for spatial nearest-neighbour lookup of rays by their origin coordinates. */
     private final KdTree<PackedCollection> rays = new KdTree.SqrEuclid<>(3, null);
 
+    /**
+     * Returns the closest ray to the given vertex using squared-Euclidean distance.
+     *
+     * @param vertex the query point in 3D space
+     * @return the single nearest {@link KdTree.Entry} wrapping the closest ray
+     */
     public KdTree.Entry<PackedCollection> getClosestRay(Vector vertex) {
         return getClosestRays(vertex, 1, false).get(0);
     }
 
+    /**
+     * Returns the {@code numberOfResults} rays nearest to the given vertex.
+     *
+     * @param vertex          the query point in 3D space
+     * @param numberOfResults the number of nearest results to return
+     * @param sorted          when {@code true}, results are sorted by ascending distance
+     * @return a list of the nearest ray entries
+     */
     public List<KdTree.Entry<PackedCollection>> getClosestRays(Vector vertex, int numberOfResults, boolean sorted) {
         return rays.nearestNeighbor(vertex.getData(), numberOfResults, sorted);
     }
 
+    /**
+     * Returns an unmodifiable view of all ray collections currently in the field.
+     *
+     * @return an unmodifiable {@link Set} of ray {@link PackedCollection} objects
+     */
     public Set<PackedCollection> getRaySet() {
         return Collections.unmodifiableSet(raysSet);
     }

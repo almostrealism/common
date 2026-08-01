@@ -243,6 +243,31 @@ class MemoryClient:
             log.warning("Memory list failed: %s", e)
             return []
 
+    def namespace_stats(
+        self,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
+    ) -> list[dict]:
+        """List every namespace with its entry count and most-recent timestamp.
+
+        Args:
+            repo_url: Optional repository URL filter.
+            branch: Optional branch name filter.
+
+        Returns:
+            List of dicts ``{namespace, count, latest_created_at, latest_id}``
+            ordered newest-namespace-first, or an empty list if ar-memory is
+            unavailable.
+        """
+        client = self._get_client()
+        if client is None:
+            return []
+        try:
+            return client.namespace_stats(repo_url=repo_url, branch=branch)
+        except ConnectionError as e:
+            log.warning("Memory namespace stats failed: %s", e)
+            return []
+
 
 def _detect_git_context_safe() -> tuple[str, str]:
     """Auto-detect repo_url and branch from git, returning empty strings on failure."""

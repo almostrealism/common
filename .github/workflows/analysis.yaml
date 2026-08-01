@@ -11,6 +11,14 @@ on:
         options:
           - 'true'
           - 'false'
+      override_integrity_checks:
+        description: 'Ignore the outcome of the integrity-check jobs (test-integrity-check, checkstyle-integrity-check) so a stuck pipeline can complete. Use only when a block is a known false positive.'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   push:
     branches:
       - master
@@ -19,7 +27,142 @@ on:
       - master
 
 jobs:
+  # ─── Change Detection ─────────────────────────────────────────────
+  # Determines whether code files were changed. If only documentation
+  # files were modified, downstream test jobs are skipped to save CI
+  # compute. workflow_dispatch always runs the full pipeline.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code }}
+      started_at: ${{ steps.timing.outputs.started_at }}
+      base_changed: ${{ steps.filter.outputs.base_changed }}
+      compute_changed: ${{ steps.filter.outputs.compute_changed }}
+      domain_changed: ${{ steps.filter.outputs.domain_changed }}
+      engine_changed: ${{ steps.filter.outputs.engine_changed }}
+      extern_changed: ${{ steps.filter.outputs.extern_changed }}
+      studio_changed: ${{ steps.filter.outputs.studio_changed }}
+      python_changed: ${{ steps.filter.outputs.python_changed }}
+      agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
+    steps:
+      - name: Record pipeline start time
+        id: timing
+        run: echo "started_at=$(date +%s000)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - id: filter
+        run: |
+          set_all_flags_true() {
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            for layer in base compute domain engine extern studio; do
+              echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
+            done
+            echo "python_changed=true" >> "$GITHUB_OUTPUT"
+            echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
+          }
+
+          # workflow_dispatch always runs the full pipeline
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            set_all_flags_true
+            exit 0
+          fi
+
+          # Push to master: ALL tests must run unconditionally.
+          # Layer-based skipping and docs-only skipping apply only to PRs,
+          # where we are evaluating whether a feature branch warrants
+          # running specific test groups. On master, every push (whether a
+          # direct push or a merged PR) must execute the complete test
+          # suite to guarantee full coverage on the default branch.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            set_all_flags_true
+            echo "::notice::Push to master — running full pipeline (no layer skipping)"
+            exit 0
+          fi
+
+          # ── Below here: pull_request events only ──
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+
+          # If BASE is all zeros (initial push / new branch), run full pipeline
+          if echo "$BASE" | grep -qE '^0+$'; then
+            set_all_flags_true
+            echo "::notice::Initial push detected — running full pipeline"
+            exit 0
+          fi
+
+          # Look for non-doc code files (java, xml, yaml, yml, sh, py, groovy,
+          # properties, Dockerfiles). Dockerfiles have no extension but are
+          # build code — a Dockerfile-only change must set code_changed so the
+          # gated jobs (e.g. python-tests, which ANDs code_changed) still run.
+          CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
+            '*/Dockerfile' 'Dockerfile' \
+            | grep -v '^docs/' | grep -v '\.md$' || true)
+          if [ -z "$CODE_FILES" ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docs-only change detected — skipping test pipeline"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Layer change detection for selective test skipping (PR only).
+          # Each layer flag indicates whether files in that directory were
+          # modified. Test jobs use these flags to skip when their layer
+          # (and all layers below it) are unmodified.
+          for layer in base compute domain engine extern studio; do
+            LAYER_FILES=$(git diff --name-only "$BASE" HEAD -- "${layer}/" || true)
+            if [ -n "$LAYER_FILES" ]; then
+              echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::Layer '${layer}' has changes"
+            else
+              echo "${layer}_changed=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+          # Python change detection. The python-tests job runs the unittest
+          # suites under tools/mcp/manager and tools/tests, which exercise
+          # the Python code under tools/. Gate the job on .py changes
+          # (anywhere) and on the pinned dependency file to avoid running
+          # the suite when only Java/CI/docs changed. MCP Dockerfiles are
+          # included too: test_dockerfile_packaging.py verifies the built
+          # image packages every module server.py imports, so a Dockerfile-only
+          # edit (e.g. narrowing a COPY glob) must re-run these tests — a prior
+          # packaging drift broke ar-manager startup with "No module named
+          # 'config'" and slipped through because no .py file changed with it.
+          PY_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '*.py' 'tools/mcp/requirements.txt' 'tools/mcp/*/Dockerfile' || true)
+          if [ -n "$PY_FILES" ]; then
+            echo "python_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Python sources changed — running python-tests"
+          else
+            echo "python_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Agent volume isolation detection. The agent-volume-isolation job
+          # validates the FlowTree agent docker-compose configuration and its
+          # validator. Gate it on the specific inputs it checks so it is
+          # skipped (treated as passing) when none of them change. This is a
+          # path-based flag, not a layer flag — it does not participate in the
+          # Maven layer graph.
+          ISO_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            'flowtree/runtime/agent/docker-compose.yml' \
+            'flowtree/runtime/agent/entrypoint.sh' \
+            'tools/ci/validate_agent_volume_isolation.py' \
+            'tools/ci/test_validate_agent_volume_isolation.py' \
+            '.github/workflows/analysis.yaml' || true)
+          if [ -n "$ISO_FILES" ]; then
+            echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Agent volume isolation inputs changed — running validation"
+          else
+            echo "agent_isolation_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -36,12 +179,7 @@ jobs:
           cache: 'maven'
 
       - name: Build
-        run: mvn install -DskipTests
-
-      - name: Flowtree Tests
-        run: |
-          mvn test -pl flowtree \
-           -DAR_TEST_PROFILE=pipeline
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
@@ -65,15 +203,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Code Policy Enforcement
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -110,16 +248,32 @@ jobs:
       - name: Check for enforcement infrastructure tampering
         id: enforcement
         if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
           # These files are the enforcement infrastructure. Any modification
           # on a PR branch is treated as tampering and fails the build.
           PROTECTED_FILES=(
-            "utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
-            "utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
-            "utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PackedCollectionDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/SetMemLiteralsDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/ProducerPatternDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/NamingConventionDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/DuplicateCodeDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/VersionReferenceDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/PlanningDocumentReferenceDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/LineNumberReferenceDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/ReflectiveInvocationDetector.java"
+            "engine/utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
+            "engine/utils/src/main/resources/org/almostrealism/util/setmem-violation-baseline.tsv"
             "tools/src/test/java/org/almostrealism/util/test/CodePolicyEnforcementTest.java"
-            "tools/ci/detect-test-hiding.sh"
-            "tools/ci/check-quality-gates.sh"
+            "tools/ci/agent-protection/detect-test-hiding.sh"
+            "tools/ci/agent-protection/check-quality-gates.sh"
+            "tools/ci/agent-protection/validate-agent-commit.sh"
+            "tools/ci/agent-protection/deception-audit.sh"
+            "tools/ci/agent-protection/verify-sensitive-bypass.sh"
+            "tools/ci/agent-protection/verify-memory-claim.sh"
           )
 
           TAMPERED=""
@@ -131,29 +285,39 @@ jobs:
 
           if [ -n "$TAMPERED" ]; then
             echo "::error::Enforcement infrastructure was modified — this is not allowed on PR branches"
-            echo -e "## Enforcement Infrastructure Tampering Detected\n" > /tmp/enforcement-report.txt
-            echo -e "The following protected files were modified on this branch:\n" >> /tmp/enforcement-report.txt
-            echo -e "$TAMPERED" >> /tmp/enforcement-report.txt
-            echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> /tmp/enforcement-report.txt
-            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> /tmp/enforcement-report.txt
-            echo -e "production code that violates the policies — not to weaken the policies.\n" >> /tmp/enforcement-report.txt
-            echo -e "If you believe a policy needs to change, open a separate PR with a" >> /tmp/enforcement-report.txt
-            echo -e "justification for human review." >> /tmp/enforcement-report.txt
-            cat /tmp/enforcement-report.txt
-            exit 1
+            echo -e "## Enforcement Infrastructure Tampering Detected\n" > ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "The following protected files were modified on this branch:\n" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "$TAMPERED" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "production code that violates the policies — not to weaken the policies.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
+            cat ${RUNNER_TEMP}/enforcement-report.txt
+            if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+              echo "::warning::Enforcement infrastructure tampering detected but IGNORED via the override_integrity_checks input"
+            else
+              exit 1
+            fi
+          else
+            echo "No enforcement infrastructure modifications detected."
           fi
-
-          echo "No enforcement infrastructure modifications detected."
 
       - name: Check for test-hiding modifications
         id: check
         if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
           chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
-          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master /tmp/test-integrity-report.txt || {
+          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+                echo "::warning::Test integrity violations IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
               exit 1
             fi
             exit "$EXIT_CODE"
@@ -170,9 +334,9 @@ jobs:
             echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
             echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/enforcement-report.txt ]; then
+            if [ -f ${RUNNER_TEMP}/enforcement-report.txt ]; then
               echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat /tmp/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
           elif [ "${{ steps.check.outcome }}" != "success" ]; then
@@ -181,13 +345,94 @@ jobs:
             echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
             echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/test-integrity-report.txt ]; then
+            if [ -f ${RUNNER_TEMP}/test-integrity-report.txt ]; then
               echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat /tmp/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─── Checkstyle Config Integrity Check ──────────────────────────────
+  # Confirms the checkstyle configuration has not been tampered with on a
+  # PR branch. checkstyle.xml is enforcement infrastructure: weakening or
+  # removing rules to make violating code pass is not allowed. Any change
+  # to it relative to master fails the build. If a rule genuinely needs to
+  # change, open a separate PR with justification for human review.
+  checkstyle-integrity-check:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Check for checkstyle config tampering
+        id: check
+        if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
+        run: |
+          # The checkstyle configuration is enforcement infrastructure. Any
+          # modification on a PR branch is treated as tampering and fails the
+          # build.
+          PROTECTED_FILES=(
+            "checkstyle.xml"
+          )
+
+          TAMPERED=""
+          for f in "${PROTECTED_FILES[@]}"; do
+            if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
+              TAMPERED="${TAMPERED}- ${f}\n"
+            fi
+          done
+
+          if [ -n "$TAMPERED" ]; then
+            echo "::error::Checkstyle configuration was modified — this is not allowed on PR branches"
+            echo -e "## Checkstyle Configuration Tampering Detected\n" > ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "The following protected files were modified on this branch:\n" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "$TAMPERED" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "\nThe checkstyle configuration enforces code quality rules. It CANNOT be" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "code that violates the rules — not to weaken the rules.\n" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "If you believe a rule needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "justification for human review." >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            cat ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+              echo "::warning::Checkstyle configuration tampering detected but IGNORED via the override_integrity_checks input"
+            else
+              exit 1
+            fi
+          else
+            echo "No checkstyle configuration modifications detected."
+          fi
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Checkstyle Config Integrity Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" != "success" ]; then
+            echo "**FAILED: The checkstyle configuration was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "checkstyle.xml is protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
+            echo "Fix the code that violates the rules instead." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f ${RUNNER_TEMP}/checkstyle-integrity-report.txt ]; then
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/checkstyle-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "No checkstyle configuration tampering detected." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Deception Audit ─────────────────────────────────────────────
@@ -217,7 +462,7 @@ jobs:
         id: audit
         run: |
           chmod +x ./tools/ci/agent-protection/deception-audit.sh
-          ./tools/ci/agent-protection/deception-audit.sh origin/master /tmp/deception-audit-report.txt || {
+          ./tools/ci/agent-protection/deception-audit.sh origin/master ${RUNNER_TEMP}/deception-audit-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::warning::Deception patterns detected on this branch"
@@ -234,8 +479,8 @@ jobs:
           if [ "${{ steps.audit.outputs.has_findings }}" = "true" ]; then
             echo "**WARNING: ${{ steps.audit.outputs.finding_count }} deception pattern(s) detected.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f /tmp/deception-audit-report.txt ]; then
-              cat /tmp/deception-audit-report.txt >> "$GITHUB_STEP_SUMMARY"
+            if [ -f ${RUNNER_TEMP}/deception-audit-report.txt ]; then
+              cat ${RUNNER_TEMP}/deception-audit-report.txt >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             echo "No deception patterns detected." >> "$GITHUB_STEP_SUMMARY"
@@ -290,47 +535,6 @@ jobs:
             echo "Agent commit validation passed." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  javadoc-check:
-    needs: test-media
-    runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
-    outputs:
-      passed: ${{ steps.check.outcome == 'success' }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
-      - name: Check Javadoc Coverage
-        id: check
-        run: mvn checkstyle:check -Pjavadoc-check
-
-      - name: Summary
-        if: ${{ !cancelled() }}
-        run: |
-          echo "## Javadoc Coverage Check" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.check.outcome }}" = "success" ]; then
-            echo "All non-private classes and methods have Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Some non-private classes or methods are missing Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn checkstyle:check -Pjavadoc-check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
   test-timeout-check:
     needs: build
     runs-on: ubuntu-latest
@@ -352,15 +556,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Check Test Timeouts
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -395,15 +599,15 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Check Duplicate Code
         id: check
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
            -DAR_HARDWARE_DRIVER=native \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Summary
         if: ${{ !cancelled() }}
@@ -417,13 +621,22 @@ jobs:
             echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  test:
-    needs: [build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    runs-on: [self-hosted, linux, ar-ci]
-    strategy:
-      fail-fast: true
-      matrix:
-        group: [0, 1, 2, 3, 4, 5, 6]
+  # ─── Checkstyle Check ──────────────────────────────────────────────
+  # Runs the default checkstyle rules (no var, no @SuppressWarnings)
+  # as a dedicated job for clear violation reporting in the PR summary.
+  checkstyle:
+    needs: [changes, build]
+    # Intentionally NOT gated on checkstyle-integrity-check. Correctness and
+    # integrity are independent concerns: integrity protects the config from
+    # unauthorized *modification* (which can be overridden when a modification
+    # is legitimately intended), but a real checkstyle *violation* must ALWAYS
+    # fail the pipeline. Coupling the two would let an overridden or failed
+    # integrity check suppress the correctness gate, so this job runs against
+    # whatever config exists on the branch regardless of the integrity result.
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -439,17 +652,255 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Check exempt file lengths
+        run: bash scripts/check-exempt-file-lengths.sh
+
+      - name: Check for PDSL code in Java string literals
+        run: python3 scripts/check-pdsl-in-strings.py
+
+      - name: Check for direct System.out/err logging in test sources
+        run: bash scripts/check-direct-logging.sh
+
+      - name: Run Checkstyle
+        id: check
+        run: |
+          # The default GitHub shell does not set pipefail, so `mvn | tee` would
+          # otherwise return tee's exit code (0). exit ${PIPESTATUS[0]} propagates
+          # Maven's real exit code so a violation fails this step — and, with no
+          # continue-on-error, the whole job.
+          mvn checkstyle:check -B 2>&1 | tee ${RUNNER_TEMP}/checkstyle-output.txt
+          exit ${PIPESTATUS[0]}
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Checkstyle" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" = "success" ]; then
+            echo "No checkstyle violations detected." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Checkstyle violations detected.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E '\[ERROR\]' ${RUNNER_TEMP}/checkstyle-output.txt >> "$GITHUB_STEP_SUMMARY" || echo "(no ERROR lines captured)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─── Python Unit Tests ─────────────────────────────────────────────
+  # Runs the unittest suites that live alongside Python code under tools/.
+  # Currently covers:
+  #   - tools/mcp/manager/test_server.py (ar-manager MCP tools)
+  #   - tools/tests/test_migrate_workstreams.py (workstreams migration tool)
+  # These are pure Python — no Maven build needed, so this job only depends
+  # on `changes` and runs in parallel with build/checkstyle. Fails the PR
+  # when any test fails.
+  python-tests:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true' && needs.changes.outputs.python_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: tools/mcp/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          # ar-manager server.py imports mcp.server.fastmcp at module load;
+          # test_migrate_workstreams.py needs pyyaml.
+          python3 -m pip install -r tools/mcp/requirements.txt pyyaml
+
+      - name: Run ar-manager MCP tests
+        run: python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py"
+
+      - name: Run migration tool tests
+        run: python3 -m unittest discover -v -s tools/tests -p "test_*.py"
+
+  # ─── Agent Volume Isolation ────────────────────────────────────────
+  # Enforces the hard invariant that FlowTree agent containers can never
+  # share data through a mounted volume (a shared writable directory is both
+  # a cross-workstream git-collision hazard and a data-exfiltration channel
+  # between unrelated workstreams). Parses the agent docker-compose.yml and
+  # fails if any two agents could share a writable source, or if any writable
+  # mount targets something other than the sanctioned /agent-transcripts sink.
+  #
+  # Validates compose/CI configuration, not the Maven module graph, so it does
+  # not participate in layer-gating. Gated on the specific files it checks
+  # (agent_isolation_changed) so it is skipped — and treated as passing — when
+  # none of them change. Pure Python: depends only on `changes`.
+  agent-volume-isolation:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true' && needs.changes.outputs.agent_isolation_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml pytest
+
+      - name: Unit-test the validator
+        working-directory: tools/ci
+        run: python -m pytest test_validate_agent_volume_isolation.py -q
+
+      - name: Validate agent volume isolation
+        run: python tools/ci/validate_agent_volume_isolation.py
+
+  # ─── Flowtree Tests ────────────────────────────────────────────────
+  # Runs in parallel with the test matrix after the validation gates.
+  # Extracted from `build` so that slow flowtree tests do not block the
+  # rest of the pipeline.
+  test-flowtree:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Flowtree Tests
+        # Every module of the flowtree family, not just runtime. api and python carry no
+        # tests today; they are listed so a test added there runs from the first commit
+        # rather than silently never executing. Maven orders the reactor itself.
+        run: |
+          mvn test -Dcheckstyle.skip=true \
+           -pl flowtree/api,flowtree/base,flowtree/python,flowtree/agents,flowtree/graphpersist,flowtree/runtime \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_TEST_PROFILE=pipeline
+
+      - name: Collect Coverage Data
+        if: always()
+        run: |
+          mkdir -p coverage-data
+          find . -path "*/target/jacoco.exec" -exec cp --parents {} coverage-data/ \;
+
+      - name: Upload Coverage Data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-flowtree
+          path: coverage-data/
+          retention-days: 1
+          if-no-files-found: ignore
+
+  test:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # Layer gate: engine tests only run when engine-or-below layers are modified
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, linux, ar-ci]
+    # Direct ByteBuffers are GC-reclaimed, so a group can spike past the 4 GiB default before reclamation catches up.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
+    strategy:
+      # Let every group in the matrix run to completion even when a peer fails.
+      # A failure in one group must not cancel the others: a simpler group often
+      # reproduces the same problem, and cancelling hides that cheaper signal.
+      # Cross-OS gating (don't run mac when linux fails) is handled by test-mac's
+      # needs/if, not by fail-fast.
+      fail-fast: false
+      # Cap concurrent groups so all eight completing doesn't overrun runner
+      # capacity; the remaining groups queue and run as slots free up.
+      max-parallel: 4
+      matrix:
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+          cache: 'maven'
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           2>&1 | tee "${{ runner.temp }}/mvn-hardware-test.log"
+
+      - name: Upload Hardware Surefire Reports
+        if: always() && matrix.group == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-hardware
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7 \
-           2>&1 | tee /tmp/mvn-utils-test.log
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-utils-test.log"
 
       - name: Upload Surefire Reports
         if: always()
@@ -463,14 +914,16 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=7 \
-           2>&1 | tee /tmp/mvn-ml-test.log
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-ml-test.log"
 
       - name: Upload ML Surefire Reports
         if: always()
@@ -482,17 +935,55 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           2>&1 | tee "${{ runner.temp }}/mvn-render-test.log"
+
+      # base/io and engine/utils-http hold one test class each and had no CI job at all.
+      # Grouped into a single Maven invocation on group 0 (as Render is) so covering them
+      # costs one reactor start rather than two per matrix group.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           2>&1 | tee "${{ runner.temp }}/mvn-io-http-test.log"
+
+      - name: Upload Render Surefire Reports
+        if: always() && matrix.group == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-render
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Extract crash reports
         if: always()
+        env:
+          CRASH_REPORT_DIR: ${{ runner.temp }}/crash-reports
         run: |
-          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+          ./tools/ci/extract-crash-reports.sh "${{ runner.temp }}"/mvn-*.log
 
       - name: Upload Crash Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: crash-reports-group-${{ matrix.group }}
-          path: /tmp/crash-reports/
+          path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -511,8 +1002,44 @@ jobs:
           retention-days: 1
 
   test-media:
-    needs: [test]
+    needs: [changes, build, test, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CPU lane, second stage: runs after `test` so the two heavy Linux self-hosted suites
+    # do not contend for CPU/RAM on the same fleet. Tolerates `test` being skipped (its
+    # narrower layer gate can skip when only studio/extern changed).
+    # Layer gate: studio tests run when any layer is modified.
+    # `!cancelled()` is REQUIRED, not cosmetic: without a status check function in the `if`,
+    # GitHub applies an implicit success() to every job in `needs`, so a skipped `test` skips
+    # this job before the `needs.test.result == 'skipped'` clause below is ever evaluated. That
+    # silently dropped studio tests on exactly the studio-only PRs the clause was written for.
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, linux, ar-ci]
+    # Cap direct memory at 8g: enough for one split group, but below runner RAM so an overshoot is a catchable limit, not an OOM kill.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
+    strategy:
+      # Split the (growing) media test set across eight groups: each group runs an eighth
+      # of every module's tests (AR_TEST_GROUPS=8 on the steps below). Self-hosted runners
+      # run one job at a time, so each group lands on its own runner with an eighth of the
+      # tests, cutting peak memory per runner and shrinking the retry unit — a flaky
+      # failure re-runs only that group, not the whole suite. max-parallel bounds how many
+      # groups run at once on the fleet, so eight groups queue in ceil(8/max-parallel) waves.
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -528,40 +1055,83 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Run Audio Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-audio-test.log
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-audio-test.log"
 
       - name: Run Music Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-music-test.log
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-music-test.log"
 
       - name: Run Compose Tests
         run: |
-          LD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
-           2>&1 | tee /tmp/mvn-compose-test.log
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-compose-test.log"
+
+      - name: Run Spatial Tests
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-spatial-test.log"
+
+      # extern/ml-onnx and studio/experiments had no CI job at all. Both are small, and both
+      # sit under this job's layer gate (extern_changed / studio_changed), so they share one
+      # reactor start. OnnxPrototypeDiscoveryTest carries
+      # @TestProperties(excludeProfiles = PIPELINE) because it asserts on ONNX model assets
+      # and a real sample library that the runners do not carry.
+      - name: Run Extern and Experiments Tests
+        run: |
+          set -o pipefail
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+           -DAR_HARDWARE_DRIVER=native \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8 \
+           2>&1 | tee "${{ runner.temp }}/mvn-extern-experiments-test.log"
 
       - name: Upload Surefire Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-media
+          name: surefire-media-${{ matrix.group }}
           path: |
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
@@ -569,15 +1139,17 @@ jobs:
 
       - name: Extract crash reports
         if: always()
+        env:
+          CRASH_REPORT_DIR: ${{ runner.temp }}/crash-reports
         run: |
-          ./tools/ci/extract-crash-reports.sh /tmp/mvn-*.log
+          ./tools/ci/extract-crash-reports.sh "${{ runner.temp }}"/mvn-*.log
 
       - name: Upload Crash Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: crash-reports-media
-          path: /tmp/crash-reports/
+          name: crash-reports-media-${{ matrix.group }}
+          path: ${{ runner.temp }}/crash-reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -591,22 +1163,39 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-media
+          name: coverage-media-${{ matrix.group }}
           path: coverage-data/
           retention-days: 1
 
   # ─── macOS Test Jobs ────────────────────────────────────────────────
 
   test-mac:
-    needs: [test-media]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, first stage. The GPU lane (test-mac -> test-media-mac -> test-cl ->
+    # test-media-cl) runs in parallel with the CPU lane (test -> test-media): the two use
+    # different runner fleets (macOS vs linux), so there is no reason to serialise across
+    # them. Within the GPU lane the stages are serialised so only one GPU-heavy suite runs
+    # on the macOS fleet at a time. This stage gates on the validation checks directly
+    # (it no longer inherits them by depending on `test`).
+    # Layer gate: engine tests only run when engine-or-below layers are modified.
+    if: >-
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
-    concurrency:
-      group: test-mac-${{ github.ref }}-${{ matrix.group }}
-      cancel-in-progress: true
     strategy:
-      fail-fast: true
+      # Let every group finish even when a peer fails (see the test job above); this only
+      # affects cancellation among the mac groups themselves.
+      fail-fast: false
+      max-parallel: 3
       matrix:
-        group: [0, 1, 2]
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -619,33 +1208,120 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-          cache: 'maven'
+
+      - name: Isolate Maven repository per runner
+        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
+        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
+        # artifacts into a shared repository clobber each other. Give every runner
+        # its own local repository instead. A runner executes one job at a time,
+        # so this is reused across jobs on that runner — the dependency cache is
+        # preserved while cross-worker pollution is eliminated. $HOME and
+        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
+        # not expand $HOME), and spaces in the runner name are sanitized so the
+        # -D argument stays a single token.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/utils \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=8
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/ml \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
            -DAR_TEST_GROUP=${{ matrix.group }} \
-           -DAR_TEST_GROUPS=3
+           -DAR_TEST_GROUPS=8
 
-  test-media-mac:
-    needs: [test-mac]
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      # See the identical step in test for why these two modules share one invocation.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
+      # Metal (mac) surefire reports so auto-resolve can parse Metal-specific test failures
+      # a Linux run would not surface. Named distinctly from the CL jobs, which are not resolved.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-mac-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-cl:
+    needs: [changes, build, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, third stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
+    # (rather than *) so Metal is excluded and GPU-eligible work routes through CL. Runs after
+    # the earlier GPU stages so the lane stays serialised — only one GPU-heavy suite on the
+    # macOS fleet at a time. Gates on ALL earlier GPU stages (test-mac, test-media-mac) with
+    # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
+    # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
+    # `!cancelled()` is required for that tolerance to take effect — see test-media.
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
+      (needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
     runs-on: [self-hosted, macos, ar-ci]
+    # Same as test: native,cl runs the compute tests on direct-ByteBuffer native RAM
+    # (no Metal), so raise the forked test JVM's direct-memory ceiling without changing
+    # heap. See the test-media job for the full rationale.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
+    concurrency:
+      group: test-cl-${{ github.ref }}-${{ matrix.group }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      # Cap concurrency at 3 so the eight groups do not monopolize the self-hosted
+      # runners when several pipelines run at once; remaining groups queue behind.
+      max-parallel: 3
+      matrix:
+        # The CL backend reaches its memory ceiling under large per-group test loads
+        # (AR_HARDWARE_MEMORY_SCALE is already at 7, the highest scale used anywhere),
+        # so spreading the tests across eight JVMs keeps each group's load small.
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -658,40 +1334,315 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-          cache: 'maven'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Run Hardware Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      - name: Run Utils Tests (Group ${{ matrix.group }})
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run ML Tests (Group ${{ matrix.group }})
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Render Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+
+      # See the identical step in test for why these two modules share one invocation.
+      - name: Run IO and HTTP Tests
+        if: matrix.group == 0
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
+
+  test-media-mac:
+    needs: [changes, build, test-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, second stage: runs after test-mac. test-media-mac and test-mac both run heavy
+    # Metal work on the same self-hosted macOS fleet; serialising the GPU lane keeps only one
+    # GPU-bound suite on the fleet at a time, so their benchmark tick tails do not balloon
+    # under GPU contention (the mechanism behind the PDSL benchmark timeouts). test-mac has a
+    # narrower layer gate (no studio/extern), so it can be skipped when this job runs; the
+    # gate below tolerates a skipped test-mac. Gates on the validation checks directly.
+    # Layer gate: studio tests run when any layer is modified.
+    # `!cancelled()` is required for that tolerance to take effect — see test-media.
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, macos, ar-ci]
+    strategy:
+      # Run the media set in four groups, up to two at a time (max-parallel 2): each group runs
+      # a quarter of every module's tests via AR_TEST_GROUPS=4, on its own runner. Gating the
+      # whole job behind test-mac keeps other GPU-heavy Metal stages off the fleet while this
+      # runs; allowing two groups to run concurrently trades some GPU contention for wall-clock
+      # time. This job uses the Metal provider (driver *), so no direct-memory ceiling is needed.
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        group: [0, 1, 2, 3]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
+        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
+        # artifacts into a shared repository clobber each other. Give every runner
+        # its own local repository instead. A runner executes one job at a time,
+        # so this is reused across jobs on that runner — the dependency cache is
+        # preserved while cross-worker pollution is eliminated. $HOME and
+        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
+        # not expand $HOME), and spaces in the runner name are sanitized so the
+        # -D argument stays a single token.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Run Audio Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl engine/audio \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
 
       - name: Run Music Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/music \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
 
       - name: Run Compose Tests
         run: |
-          DYLD_LIBRARY_PATH=Extensions mvn test -pl studio/compose \
-           -DAR_HARDWARE_DRIVER=native \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+           -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS=Extensions \
-           -DAR_TEST_PROFILE=pipeline
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+      - name: Run Spatial Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+      # See the identical step in test-media for why these two modules share one invocation.
+      - name: Run Extern and Experiments Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+           -DAR_HARDWARE_DRIVER=* \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=4
+
+      # Metal (mac) media surefire reports so auto-resolve can parse Metal-specific test
+      # failures a Linux run would not surface. Named distinctly from the CL jobs, which
+      # are not resolved.
+      - name: Upload Surefire Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-media-mac-group-${{ matrix.group }}
+          path: |
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-media-cl:
+    needs: [changes, build, test-mac, test-media-mac, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # GPU lane, fourth (final) stage: the OpenCL duplicate of test-media-mac. Every step runs
+    # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal preferred), so
+    # GPU-eligible work routes through CL. Runs after the earlier GPU stages so the lane stays
+    # serialised. Gates on ALL earlier GPU stages (test-mac, test-media-mac, test-cl) with
+    # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
+    # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
+    # `!cancelled()` is required for that tolerance to take effect — see test-media.
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
+      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
+      (needs.test-cl.result == 'success' || needs.test-cl.result == 'skipped') &&
+      (needs.changes.outputs.studio_changed == 'true' ||
+       needs.changes.outputs.extern_changed == 'true' ||
+       needs.changes.outputs.engine_changed == 'true' ||
+       needs.changes.outputs.domain_changed == 'true' ||
+       needs.changes.outputs.compute_changed == 'true' ||
+       needs.changes.outputs.base_changed == 'true')
+    runs-on: [self-hosted, macos, ar-ci]
+    # native,cl media tests with the native provider on JNI malloc blocks
+    # (AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled, matching the other CL jobs) so the
+    # 8g direct-memory cap is spent on CL's own reservations rather than shared with
+    # the native provider. Split into eight groups (see test-media); the small per-group
+    # load keeps CL within the 8g cap.
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
+    strategy:
+      fail-fast: false
+      # Cap at 2 even with eight groups so the job does not monopolize the runners.
+      max-parallel: 2
+      matrix:
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Isolate Maven repository per runner
+        # See the identical step in test-mac for the rationale.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
+
+      - name: Build (skip tests)
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      - name: Run Audio Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Music Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Compose Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      - name: Run Spatial Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
+
+      # See the identical step in test-media for why these two modules share one invocation.
+      - name: Run Extern and Experiments Tests
+        run: |
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+           -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+           -DAR_HARDWARE_MEMORY_SCALE=7 \
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline \
+           -DAR_TEST_GROUP=${{ matrix.group }} \
+           -DAR_TEST_GROUPS=8
 
   analysis:
-    needs: [test-media]
+    # Coverage jobs (build, test, test-flowtree, test-media) plus the mac test jobs
+    # (test-mac, test-media-mac) that the all-checks gate also waits on. auto-resolve depends
+    # on analysis, so waiting for the mac jobs here means auto-resolve does not proceed until
+    # the same set of jobs that decide all-checks has reported — the input to analysis is not
+    # narrower than the input to all-checks. The mac jobs upload no coverage; they are here for
+    # ordering only, and `if: !cancelled()` keeps analysis running when any of them fail or skip.
+    needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+      checks: write
+      security-events: write
+      actions: read
 
     steps:
       - name: Checkout Code
@@ -708,16 +1659,28 @@ jobs:
           cache: 'maven'
 
       - name: Build for Analysis
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
+      # github-token/repository/run-id route the download through the REST API,
+      # which can fetch artifacts uploaded during a previous attempt of this run.
+      # The default (internal) API path fails with "GetSignedArtifactURL ... (404)
+      # workflow run not found" for cross-attempt artifacts, which breaks analysis
+      # whenever it re-runs as a dependent of a re-run test job.
       - name: Download All Coverage Data
         uses: actions/download-artifact@v4
         with:
           pattern: coverage-*
           path: all-coverage
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Merge Coverage Data
         run: |
+          # Ensure the directory exists even when no coverage artifacts were uploaded
+          # (e.g. when test jobs were skipped on this branch).
+          mkdir -p all-coverage
+
           # Find all jacoco.exec files and create a file list
           find all-coverage -name "jacoco.exec" > exec-files.txt
           echo "Found coverage files:"
@@ -752,73 +1715,81 @@ jobs:
             echo "No coverage files found"
           fi
 
+      # The name must NOT match the coverage-* download pattern above: when this
+      # job re-runs (as a dependent of a re-run test job), the previous attempt's
+      # merged report would otherwise be swept into its own input set. overwrite
+      # lets the re-run replace the earlier attempt's report instead of failing
+      # on the immutable-artifact conflict.
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: merged-coverage-report
           path: .qodana/code-coverage/
           retention-days: 30
+          overwrite: true
 
-  qodana:
-    needs: [analysis]
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      security-events: write
+      # Qodana DISABLED: the Qodana product has been cancelled and the scan was
+      # failing the whole analysis job. Re-enable by uncommenting both steps
+      # below once a replacement (or a renewed Qodana subscription) is in place.
+      #
+      # Qodana runs as part of this job (rather than a separate one) so it
+      # analyzes the same workspace the coverage was just merged into: the
+      # report at .qodana/code-coverage/coverage.xml is picked up directly,
+      # and we avoid a redundant checkout and `mvn install`.
+      # - name: Qodana Scan
+      #   uses: JetBrains/qodana-action@main
+      #   env:
+      #     QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
+      #   with:
+      #     ref: ${{ github.event.pull_request.head.sha }}
+      #     fetch-depth: 0
+      #     args: "-i,.,--linter,jetbrains/qodana-jvm"
+      #     pr-mode: false
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build for Analysis
-        run: mvn install -DskipTests
-
-      - name: Qodana Scan
-        uses: JetBrains/qodana-action@main
-        env:
-          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          args: "-i,.,--linter,jetbrains/qodana-jvm"
-          pr-mode: false
-
-      - name: Github Scan
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
+      # Uploading the Qodana SARIF to GitHub code scanning is best-effort: the
+      # report regularly exceeds code scanning's 25,000-results-per-run limit and
+      # is rejected, and the merge-commit ref it resolves is not always present.
+      # Neither failure should fail the analysis job, so this step is allowed to
+      # fail. Pinned to the CodeQL Action v4 (v3 is deprecated as of Dec 2026).
+      # Disabled alongside the Qodana Scan above — there is no SARIF to upload
+      # without it.
+      # - name: Github Scan
+      #   continue-on-error: true
+      #   uses: github/codeql-action/upload-sarif@v4
+      #   with:
+      #     sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
 
   # ─── Auto-Resolve Job ─────────────────────────────────────────────────
-  # Downloads Surefire reports from all test jobs, parses them for
-  # failures, and submits a FlowTree coding-agent job to attempt a fix.
+  # Downloads Surefire reports from all test jobs, parses them for failures,
+  # decides which prompt to build, and STAGES a FlowTree coding-agent request
+  # as an artifact. The environment-gated controller submission happens in the
+  # separate "Auto-Resolve Submit" workflow
+  # (.github/workflows/auto-resolve-submit.yaml).
+  #
+  # Why the submission is not performed here: it is gated on the `worker`
+  # GitHub Environment (required-reviewers). A job carrying `environment:` in a
+  # pull_request run attaches a deployment status to the PR head commit; an
+  # abandoned/cancelled `worker` deployment then surfaces as a spurious "had a
+  # problem deploying" red X on the PR. Submitting from a workflow_run workflow
+  # keeps that deployment status off the pull request while preserving the
+  # approval gate.
   #
   # Concurrency note: GitHub Actions does not natively support "skip if
   # already running" semantics. The concurrency group below ensures only
-  # one auto-resolve job runs per branch at a time. If a new run is
+  # one auto-resolve prepare job runs per branch at a time. If a new run is
   # triggered while one is pending (queued), the pending one is cancelled
   # in favor of the newer run. A truly running job will block the new one
   # from starting until it completes.
 
   auto-resolve:
-    needs: [build, test, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, analysis]
+    needs: [changes, build, test, test-flowtree, test-media, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: ubuntu-latest
     concurrency:
       group: auto-resolve-${{ github.ref }}
       cancel-in-progress: true
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
 
     steps:
       - name: Checkout Code
@@ -830,11 +1801,17 @@ jobs:
       - name: Check build result
         id: build-check
         run: |
-          if [ "${{ needs.build.result }}" != "success" ]; then
+          if [ "${{ needs.changes.outputs.code_changed }}" = "false" ]; then
+            echo "build_failed=false" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Build skipped — docs-only change"
+          elif [ "${{ needs.build.result }}" != "success" ]; then
             echo "build_failed=true" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Build failed — treating as total test failure"
           else
             echo "build_failed=false" >> "$GITHUB_OUTPUT"
+            echo "docs_only_skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine branch context
@@ -877,30 +1854,32 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Submit agent job (build failure)
-        if: steps.build-check.outputs.build_failed == 'true' && inputs.auto_resolve != 'false'
+      - name: Stage submit request (build failure)
+        if: steps.build-check.outputs.build_failed == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve build failure"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
       # ── Test failure path ───────────────────────────────────────
       # When the build succeeded, download and parse Surefire reports.
-      # Only linux test results are considered — test-mac failures are
-      # not treated as requiring auto-resolution.
+      # Linux (test, test-media) and Metal mac (test-mac, test-media-mac) results are
+      # considered — a Metal-specific failure a Linux run would not surface is still
+      # auto-resolved. The CL jobs (test-cl, test-media-cl) upload no surefire and remain the
+      # only test results NOT treated as requiring auto-resolution.
 
       - name: Clean stale surefire reports
         if: steps.build-check.outputs.build_failed != 'true'
         run: |
-          # On self-hosted runners, previous test-mac runs may leave
-          # surefire reports in the workspace. Remove them so they
-          # cannot contaminate the artifact download directory.
+          # Defensive cleanup so locally-produced surefire reports cannot
+          # contaminate the artifact download directory. On the ephemeral
+          # ubuntu-latest runner the workspace starts clean, so this is
+          # effectively a no-op, but it is kept as a guard.
           find . -path "*/target/surefire-reports" -type d -exec rm -rf {} + 2>/dev/null || true
           rm -rf all-surefire-reports
 
@@ -921,22 +1900,23 @@ jobs:
           path: all-crash-reports
           merge-multiple: true
 
-      - name: Filter to linux-only surefire reports
+      - name: Filter to resolvable surefire reports
         if: steps.build-check.outputs.build_failed != 'true'
         run: |
-          # Only keep artifacts from known linux test jobs:
-          #   surefire-utils-group-*, surefire-ml-group-*, surefire-media
-          # Remove any unexpected directories (e.g., if a mac job ever
-          # starts uploading surefire artifacts).
+          # Keep artifacts from the linux test jobs and the Metal mac jobs:
+          #   surefire-utils-group-*, surefire-ml-group-*, surefire-media,
+          #   surefire-mac-group-*, surefire-media-mac-group-*
+          # Remove anything else. The CL jobs (test-cl, test-media-cl) upload no surefire,
+          # so CL results are never parsed here — CL remains the only ignored case.
           mkdir -p all-surefire-reports
           for dir in all-surefire-reports/*/; do
             base=$(basename "$dir")
             case "$base" in
-              surefire-utils-group-*|surefire-ml-group-*|surefire-media)
-                echo "::notice::Keeping linux surefire artifact: $base"
+              surefire-utils-group-*|surefire-ml-group-*|surefire-media|surefire-mac-group-*|surefire-media-mac-group-*)
+                echo "::notice::Keeping surefire artifact: $base"
                 ;;
               *)
-                echo "::warning::Removing non-linux surefire artifact: $base"
+                echo "::warning::Removing surefire artifact not eligible for auto-resolution: $base"
                 rm -rf "$dir"
                 ;;
             esac
@@ -946,7 +1926,7 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true'
         id: failures
         run: |
-          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports /tmp/test-failures.txt)"
+          eval "$(./tools/ci/parse-surefire-failures.sh all-surefire-reports "${{ runner.temp }}/test-failures.txt")"
           echo "failure_count=$failure_count" >> "$GITHUB_OUTPUT"
           echo "has_failures=$has_failures" >> "$GITHUB_OUTPUT"
           if [ "$has_failures" = "true" ]; then
@@ -977,7 +1957,9 @@ jobs:
 
           TEST_RESULT="${{ needs.test.result }}"
           MEDIA_RESULT="${{ needs.test-media.result }}"
-          echo "::notice::test job result: ${TEST_RESULT}, test-media job result: ${MEDIA_RESULT}"
+          MAC_RESULT="${{ needs.test-mac.result }}"
+          MEDIA_MAC_RESULT="${{ needs.test-media-mac.result }}"
+          echo "::notice::test=${TEST_RESULT} test-media=${MEDIA_RESULT} test-mac=${MAC_RESULT} test-media-mac=${MEDIA_MAC_RESULT}"
 
           # Check for genuine failures (job ran but failed without surefire XML)
           if [ "$TEST_RESULT" = "failure" ]; then
@@ -987,6 +1969,14 @@ jobs:
           if [ "$MEDIA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
             echo "::warning::test-media job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$MAC_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-mac job failed without producing parseable surefire failures — treating as build failure"
+          fi
+          if [ "$MEDIA_MAC_RESULT" = "failure" ]; then
+            HAS_REAL_FAILURE="true"
+            echo "::warning::test-media-mac job failed without producing parseable surefire failures — treating as build failure"
           fi
 
           # If a real failure occurred, route to the build-failure path
@@ -1017,21 +2007,47 @@ jobs:
             VALIDATION_FAILED="true"
           fi
 
+          # Determine whether layer-based filtering explains a skipped test job.
+          # Engine tests (test, test-mac) only run when engine-or-below layers change.
+          ENGINE_LAYERS_CHANGED="false"
+          if [ "${{ needs.changes.outputs.engine_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.domain_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.compute_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.base_changed }}" = "true" ]; then
+            ENGINE_LAYERS_CHANGED="true"
+          fi
+
+          # Studio tests (test-media, test-media-mac) run when any layer changes.
+          ANY_LAYER_CHANGED="false"
+          if [ "$ENGINE_LAYERS_CHANGED" = "true" ] || \
+             [ "${{ needs.changes.outputs.extern_changed }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.studio_changed }}" = "true" ]; then
+            ANY_LAYER_CHANGED="true"
+          fi
+
           # Only flag as incomplete if jobs were cancelled/skipped without
-          # an upstream failure to explain it
+          # an upstream failure or layer-based filtering to explain it
           if [ "$TEST_RESULT" = "cancelled" ] || [ "$TEST_RESULT" = "skipped" ]; then
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test job was ${TEST_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test job was ${TEST_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
               echo "::warning::test job was ${TEST_RESULT} without an upstream failure"
               INCOMPLETE="true"
             fi
           fi
           if [ "$MEDIA_RESULT" = "cancelled" ] || [ "$MEDIA_RESULT" = "skipped" ]; then
-            # test-media cancelled because test failed/skipped is expected, not incomplete
-            if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "skipped" ]; then
+            # test-media cancelled because test failed or was cancelled is expected — the CPU
+            # lane fail-chains. A *skipped* test is NOT an excuse: test-media has the wider
+            # layer gate and is meant to run on studio/extern-only changes precisely when test
+            # skips. Excusing that case here disarmed this detector on exactly the runs where
+            # the lane's skip-propagation bug dropped the studio tests silently.
+            if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "cancelled" ]; then
               if [ "$VALIDATION_FAILED" = "true" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
+              elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+                echo "::notice::test-media job was ${MEDIA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
               else
                 echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
                 INCOMPLETE="true"
@@ -1045,7 +2061,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-failure-summary
-          path: /tmp/test-failures.txt
+          path: ${{ runner.temp }}/test-failures.txt
           retention-days: 7
 
       - name: Build prompt (test failures)
@@ -1056,29 +2072,19 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-resolve-prompt.sh /tmp/test-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-resolve-prompt.sh "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Extract failing test class names
+      - name: Stage submit request (test failures)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
-        id: test-classes
-        run: |
-          # Extract test class names from the failure summary for the escalation tracker
-          CLASSES=$(grep -oP '[\w.]+Test\w*' /tmp/test-failures.txt 2>/dev/null | sort -u | tr '\n' ' ' || true)
-          echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
-
-      - name: Submit agent job (test failures)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
-          FAILING_TEST_CLASSES: ${{ steps.test-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
       # ── Test job failure without surefire XML ──────────────────────
       # When a test job had result "failure" but no surefire failures
@@ -1092,31 +2098,19 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Extract crashed test class names
+      - name: Stage submit request (test job crash)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
-        id: crash-classes
-        run: |
-          CLASSES=""
-          if [ -f all-crash-reports/crash-summary.txt ]; then
-            CLASSES=$(grep -oP 'org\.almostrealism\.\S*Test\S*' all-crash-reports/crash-summary.txt 2>/dev/null | sort -u | tr '\n' ' ' || true)
-          fi
-          echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
-
-      - name: Submit agent job (test job crash)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
-          FAILING_TEST_CLASSES: ${{ steps.crash-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
       # ── Incomplete test execution path ─────────────────────────────
       # When test jobs were cancelled or skipped without any upstream
@@ -1131,18 +2125,17 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Submit agent job (incomplete tests)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true' && inputs.auto_resolve != 'false'
+      - name: Stage submit request (incomplete tests)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
       # ── Quality gate fallback ──────────────────────────────────────
       # When no test failures exist, check quality gates and submit
@@ -1161,18 +2154,17 @@ jobs:
 
         run: |
           chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
-          ./tools/ci/prompts/build-policy-violation-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Submit agent job (code policy violations)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true' && inputs.auto_resolve != 'false'
+      - name: Stage submit request (code policy violations)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
       # ── Other quality gate fallback ──────────────────────────────
       # When no test failures or policy violations exist, check
@@ -1182,7 +2174,6 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true'
         id: quality
         env:
-          JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
           TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
           DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
           TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
@@ -1190,15 +2181,16 @@ jobs:
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
+          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
         run: |
-          ./tools/ci/agent-protection/check-quality-gates.sh /tmp/quality-gate-failures.txt
+          ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 
       - name: Upload quality gate summary
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: quality-gate-summary
-          path: /tmp/quality-gate-failures.txt
+          path: ${{ runner.temp }}/quality-gate-failures.txt
           retention-days: 7
 
       - name: Build prompt (quality gates)
@@ -1209,18 +2201,17 @@ jobs:
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
 
         run: |
-          ./tools/ci/prompts/build-quality-gate-prompt.sh /tmp/quality-gate-failures.txt /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Submit agent job (quality gates)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
+      - name: Stage submit request (quality gates)
+        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
       # ── Docs-only verify path ──────────────────────────────────
       # When all changes are under docs/, skip the general review
@@ -1228,25 +2219,24 @@ jobs:
       # are typically plan documents for a workstream.
 
       - name: Build prompt (docs-only verify)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true'
+        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
         run: |
           chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Submit agent job (docs-only verify)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true' && inputs.auto_resolve != 'false'
+      - name: Stage submit request (docs-only verify)
+        if: (steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Verify docs changes"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
       # ── General review fallback ─────────────────────────────────
       # When all tests and quality gates pass, submit a general
@@ -1254,31 +2244,43 @@ jobs:
       # documentation, and consistency with existing patterns.
 
       - name: Build prompt (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
+        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
         env:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           COMMIT_SHA: ${{ steps.ctx.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-review-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Submit agent job (general review)
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
+      - name: Stage submit request (general review)
+        if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Review branch changes"
         run: |
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
+
+      - name: Upload auto-resolve request
+        if: ${{ !cancelled() && inputs.auto_resolve != 'false' && hashFiles('auto-resolve-request/submit.env') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: auto-resolve-request
+          path: auto-resolve-request/
+          retention-days: 1
 
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
+          echo "_The request below is staged as an artifact; the \`Auto-Resolve Submit\` workflow submits it to the controller after the \`worker\` environment approval._" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.build-check.outputs.docs_only_skip }}" = "true" ]; then
+            echo "**Docs-only change** — test pipeline was skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to verify docs changes." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.build-check.outputs.build_failed }}" = "true" ]; then
             echo "**Build failed** — no tests were able to run." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted to fix the build." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
@@ -1287,7 +2289,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/test-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            cat "${{ runner.temp }}/test-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.build_failed_in_tests }}" = "true" ]; then
             echo "**Test job failed** without producing surefire results (JVM crash, OOM, or build error within test step)." >> "$GITHUB_STEP_SUMMARY"
@@ -1304,7 +2306,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Failing quality gates" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat /tmp/quality-gate-failures.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
+            cat "${{ runner.temp }}/quality-gate-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.docs-check.outputs.docs_only }}" = "true" ]; then
             echo "All changes are under \`docs/\` — docs-only PR detected." >> "$GITHUB_STEP_SUMMARY"
@@ -1313,3 +2315,131 @@ jobs:
             echo "All tests and quality gates passed." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted for general review." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # ─── Merge Gate ───────────────────────────────────────────────────────
+  # Single required branch-protection check. Passes when every job that
+  # ran for this pipeline completed successfully. Skipped jobs (due to
+  # layer filtering or docs-only optimisation) are treated as passing.
+  # auto-resolve is intentionally excluded — it is a background automation
+  # task, not a quality signal.
+  #
+  # Configure this as the ONLY required status check under:
+  #   Settings → Branches → Branch protection rules → Require status checks
+  #   Status check name: "All Checks"
+  all-checks:
+    name: All Checks
+    needs:
+      - changes
+      - build
+      - code-policy-check
+      - test-integrity-check
+      - checkstyle-integrity-check
+      - deception-audit
+      - agent-commit-validation
+      - test-timeout-check
+      - duplicate-code-check
+      - checkstyle
+      - python-tests
+      - agent-volume-isolation
+      - test-flowtree
+      - test
+      - test-media
+      - test-mac
+      - test-media-mac
+      - analysis
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate pipeline results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          CODE_POLICY_RESULT: ${{ needs.code-policy-check.result }}
+          TEST_INTEGRITY_RESULT: ${{ needs.test-integrity-check.result }}
+          CHECKSTYLE_INTEGRITY_RESULT: ${{ needs.checkstyle-integrity-check.result }}
+          DECEPTION_AUDIT_RESULT: ${{ needs.deception-audit.result }}
+          AGENT_COMMIT_RESULT: ${{ needs.agent-commit-validation.result }}
+          TEST_TIMEOUT_RESULT: ${{ needs.test-timeout-check.result }}
+          DUPLICATE_CODE_RESULT: ${{ needs.duplicate-code-check.result }}
+          CHECKSTYLE_RESULT: ${{ needs.checkstyle.result }}
+          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
+          PYTHON_TESTS_RESULT: ${{ needs.python-tests.result }}
+          AGENT_VOLUME_ISOLATION_RESULT: ${{ needs.agent-volume-isolation.result }}
+          TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
+          TEST_MAC_RESULT: ${{ needs.test-mac.result }}
+          TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
+          ANALYSIS_RESULT: ${{ needs.analysis.result }}
+        run: |
+          FAILED=""
+
+          # Checks a single job result.
+          # success or skipped → pass; failure or cancelled → fail.
+          check_job() {
+            local name="$1"
+            local result="$2"
+            case "$result" in
+              success|skipped) : ;;
+              failure|cancelled)
+                FAILED="${FAILED} ${name}"
+                echo "::error::${name} result: ${result}" ;;
+              *)
+                echo "::notice::${name} result: ${result} (unexpected — treating as failure)"
+                FAILED="${FAILED} ${name}" ;;
+            esac
+          }
+
+          check_job "build"                   "$BUILD_RESULT"
+          check_job "changes"                 "$CHANGES_RESULT"
+          check_job "code-policy-check"       "$CODE_POLICY_RESULT"
+          check_job "test-integrity-check"    "$TEST_INTEGRITY_RESULT"
+          check_job "checkstyle-integrity-check" "$CHECKSTYLE_INTEGRITY_RESULT"
+          check_job "deception-audit"         "$DECEPTION_AUDIT_RESULT"
+          check_job "agent-commit-validation" "$AGENT_COMMIT_RESULT"
+          check_job "test-timeout-check"      "$TEST_TIMEOUT_RESULT"
+          check_job "duplicate-code-check"    "$DUPLICATE_CODE_RESULT"
+          check_job "python-tests"            "$PYTHON_TESTS_RESULT"
+          check_job "agent-volume-isolation"  "$AGENT_VOLUME_ISOLATION_RESULT"
+          check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
+          check_job "test"                    "$TEST_RESULT"
+          check_job "test-media"              "$TEST_MEDIA_RESULT"
+          check_job "test-mac"                "$TEST_MAC_RESULT"
+          check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
+          check_job "analysis"                "$ANALYSIS_RESULT"
+
+          # checkstyle now fails hard (no continue-on-error), so its job result
+          # is authoritative — evaluate it like any other job.
+          check_job "checkstyle"              "$CHECKSTYLE_RESULT"
+
+          if [ -n "$FAILED" ]; then
+            echo "::error::The following jobs failed:${FAILED}"
+            exit 1
+          fi
+          echo "All pipeline jobs completed successfully or were intentionally skipped."
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Merge Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Job | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| changes | ${{ needs.changes.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| build | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| checkstyle-integrity-check | ${{ needs.checkstyle-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| deception-audit | ${{ needs.deception-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| agent-commit-validation | ${{ needs.agent-commit-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-timeout-check | ${{ needs.test-timeout-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| duplicate-code-check | ${{ needs.duplicate-code-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| checkstyle | ${{ needs.checkstyle.result }} (passed=${{ needs.checkstyle.outputs.passed }}) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| python-tests | ${{ needs.python-tests.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| agent-volume-isolation | ${{ needs.agent-volume-isolation.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test | ${{ needs.test.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"

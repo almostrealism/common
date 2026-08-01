@@ -78,14 +78,29 @@ import java.util.function.Supplier;
 // TODO  T must extend ShadableIntersection so that distance can be used as the rank
 public class LightingEngine<T extends ContinuousField> extends ProducerWithRankAdapter<PackedCollection>
 				implements DimensionAware, CodeFeatures, RGBFeatures {
+	/** When true, shadow masks are computed for each surface point; disabled by default for performance. */
 	public static boolean enableShadows = false;
 
+	/** The intersection data (position, normal) for the surface point being lit. */
 	private T intersections;
+	/** The primary surface whose shading is being evaluated. */
 	private Curve<PackedCollection> surface;
 
+	/** The computed color contribution (shadow * shade product) for this lighting engine. */
 	private Producer<PackedCollection> color;
+	/** The intersection distance used as the rank for closest-surface selection. */
 	private Producer<PackedCollection> distance;
 
+	/**
+	 * Constructs a {@link LightingEngine} for a specific surface-light pair.
+	 *
+	 * @param intersections  The intersection data providing surface position and normal
+	 * @param surface        The surface being shaded
+	 * @param otherSurfaces  All other surfaces for shadow occlusion testing
+	 * @param light          The light source to evaluate
+	 * @param otherLights    All other lights in the scene
+	 * @param p              Shader context with additional rendering parameters
+	 */
 	public LightingEngine(T intersections,
 						  Curve<PackedCollection> surface,
 						  Collection<Curve<PackedCollection>> otherSurfaces,
@@ -97,6 +112,17 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		this.distance = ((ShadableIntersection) intersections).getDistance();
 	}
 
+	/**
+	 * Computes the combined shadow-and-shade color by multiplying the shadow mask and shade results.
+	 *
+	 * @param intersections  The ray-surface intersection data
+	 * @param surface        The surface being shaded
+	 * @param otherSurfaces  Other scene surfaces for shadow testing
+	 * @param light          The light to evaluate
+	 * @param otherLights    Other lights in the scene
+	 * @param p              Shader context
+	 * @return A producer that computes shadow * shade color
+	 */
 	protected CollectionProducer shadowAndShadeProduct(ContinuousField intersections,
 													   Curve<PackedCollection> surface,
 													   Collection<Curve<PackedCollection>> otherSurfaces,
@@ -105,6 +131,21 @@ public class LightingEngine<T extends ContinuousField> extends ProducerWithRankA
 		return multiply((Producer) shadowAndShade[0], (Producer) shadowAndShade[1]);
 	}
 
+	/**
+	 * Computes separate shadow and shade suppliers for the given surface-light pair.
+	 *
+	 * <p>Returns a two-element array: {@code [shadow, shade]}. The shadow supplier returns
+	 * white (no shadow) when shadows are disabled or the light does not cast shadows. The
+	 * shade supplier is determined by the light type (point, directional, ambient, surface).</p>
+	 *
+	 * @param intersections  The ray-surface intersection data
+	 * @param surface        The surface being shaded
+	 * @param otherSurfaces  Other scene surfaces for shadow testing
+	 * @param light          The light to evaluate
+	 * @param otherLights    Other lights in the scene
+	 * @param p              Shader context
+	 * @return A two-element array {@code [shadowSupplier, shadeSupplier]}
+	 */
 	protected Supplier[] shadowAndShade(ContinuousField intersections,
 											   Curve<PackedCollection> surface,
 											   Collection<Curve<PackedCollection>> otherSurfaces,

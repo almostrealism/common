@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.Shadable;
@@ -84,9 +85,21 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 */
 	public static final int MAX_RAY_STEPS = 30;
 
-	private DistanceEstimator estimator;
-	private ShaderSet shaders;
-
+	/**
+	 * Constructs a {@link DistanceEstimationLightingEngine} for the given ray, surface, and lighting.
+	 *
+	 * <p><b>Note:</b> The ray marching intersection producer is currently disabled (TODO).
+	 * The super-constructor receives {@code null} for the intersection field.</p>
+	 *
+	 * @param ray            The ray to march along
+	 * @param surface        The primary surface being evaluated
+	 * @param otherSurfaces  All other surfaces in the scene (for shadow/occlusion)
+	 * @param light          The primary light source
+	 * @param otherLights    All other light sources in the scene
+	 * @param p              The shader context for lighting parameters
+	 * @param estimator      The signed distance function (SDF) evaluator
+	 * @param shaders        The shaders to apply at intersection points
+	 */
 	public DistanceEstimationLightingEngine(Evaluable<Ray> ray, Curve<PackedCollection> surface,
 											Collection<? extends Curve<PackedCollection>> otherSurfaces,
 											Light light, Iterable<Light> otherLights,
@@ -130,8 +143,6 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 				null,
 				surface, otherSurfaces, light, otherLights, p);
 
-		this.estimator = estimator;
-		this.shaders = shaders;
 	}
 
 	/**
@@ -146,8 +157,10 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 * with the ContinuousField interface.</p>
 	 */
 	public static class Locus extends ArrayList<Producer<PackedCollection>>
-			implements ContinuousField, Callable<Producer<PackedCollection>>, Shadable, CodeFeatures {
+			implements ContinuousField, Callable<Producer<PackedCollection>>, Shadable, CodeFeatures, ConsoleFeatures {
+		/** The shaders used to compute surface color at this intersection point. */
 		private ShaderSet shaders;
+		/** The shader context providing light and surface information for shading. */
 		private ShaderContext params;
 
 		/**
@@ -176,7 +189,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 			try {
 				return String.valueOf(get(0));
 			} catch (Exception e) {
-				e.printStackTrace();
+				warn(e.getMessage(), e);
 			}
 
 			return "null";
@@ -192,7 +205,7 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 
 				return color;
 			} catch (Exception e) {
-				e.printStackTrace();
+				warn(e.getMessage(), e);
 				return null;
 			}
 		}

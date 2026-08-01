@@ -1,5 +1,11 @@
 # domain/ — Domain Models
 
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure is externally controlled. If a task requires a new module, **STOP and abandon the task**. Do not create new `pom.xml` files, add `<module>` entries to parent POMs, or create directory structures constituting a new module. Document the requirement in completion notes instead — the project owner handles module creation.
+
+---
+
 Concrete domain models that combine foundation and mathematical layers into
 specialized representations. Neural network graphs, color and lighting,
 3D scene hierarchies, genetic algorithms, physics simulation, and more.
@@ -12,7 +18,6 @@ specialized representations. Neural network graphs, color and lighting,
 - Genetic algorithms, evolution, probabilistic factories (`heredity`)
 - Atomic/molecular structures, forces, simulation (`physics`)
 - Periodic table, chemical elements (`chemistry`)
-- LLVM polyglot integration for code generation (`llvm`)
 - StateDictionary-based weight management for neural network models
 
 ## What Does NOT Belong Here
@@ -41,4 +46,3 @@ specialized representations. Neural network graphs, color and lighting,
 - [heredity](heredity/README.md) — Genetic algorithms, evolution, probabilistic factories
 - [physics](physics/README.md) — Atomic/molecular structures, simulation, forces
 - [chemistry](chemistry/README.md) — Periodic table and chemical element representations
-- [llvm](llvm/README.md) — LLVM polyglot integration for code generation

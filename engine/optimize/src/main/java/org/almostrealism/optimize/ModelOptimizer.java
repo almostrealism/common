@@ -105,26 +105,52 @@ import java.util.function.Supplier;
  * @author Michael Murray
  */
 public class ModelOptimizer implements CodeFeatures {
+	/** The compiled neural network model being trained. */
 	private final CompiledModel model;
+
+	/** Supplier for the training dataset; called at the start of each training run. */
 	private Supplier<Dataset<?>> dataset;
+
+	/** Supplier for the validation dataset; optional, enables validation loss tracking. */
 	private Supplier<Dataset<?>> validationDataset;
+
+	/** Optional receptor that receives loss values during training for external monitoring. */
 	private Receptor<Double> receptor;
+
+	/** Optional callback invoked at the end of each epoch with training progress. */
 	private Consumer<TrainingProgress> progressCallback;
+
+	/** Number of iterations between logged loss messages; 0 disables logging. */
 	private int logFrequency;
+
+	/** Optional custom log consumer; when null, uses the default console logger. */
 	private Consumer<String> log;
 
+	/** Compiled evaluable for the gradient of the loss with respect to model outputs. */
 	private Evaluable<PackedCollection> dloss;
+
+	/** Function that computes the scalar loss value from model output and target. */
 	private BiFunction<PackedCollection, PackedCollection, Double> loss;
+
+	/** Running average loss from the most recent training iteration. */
 	private double averageLoss;
+
+	/** Loss threshold for early stopping; training halts when loss falls below this value. */
 	private double lossTarget;
+
+	/** Total number of training iterations completed across all calls to optimize. */
 	private int totalIterations;
 
-	// Early stopping on validation loss
+	/** Number of epochs without validation loss improvement before early stopping; 0 disables. */
 	private int earlyStoppingPatience = 0;
+
+	/** Minimum decrease in validation loss that counts as an improvement. */
 	private double earlyStoppingMinDelta = 1e-6;
 
-	// Early stopping on training loss
+	/** Number of epochs without training loss improvement before early stopping; 0 disables. */
 	private int trainingPatience = 0;
+
+	/** Minimum decrease in training loss that counts as an improvement. */
 	private double trainingPatienceMinDelta = 1e-6;
 
 	/**
@@ -616,6 +642,16 @@ public class ModelOptimizer implements CodeFeatures {
 		return count > 0 ? totalLoss / count : Double.NaN;
 	}
 
+	/**
+	 * Returns whether the given iteration should produce a log entry.
+	 * <p>
+	 * Logging occurs when {@link #logFrequency} is positive and the iteration
+	 * index is a multiple of the frequency.
+	 * </p>
+	 *
+	 * @param iteration the current iteration index (0-based)
+	 * @return true if a log entry should be written for this iteration
+	 */
 	protected boolean logIteration(int iteration) {
 		return logFrequency > 0 && iteration % logFrequency == 0;
 	}
@@ -634,7 +670,6 @@ public class ModelOptimizer implements CodeFeatures {
 	public double accuracy(BiPredicate<PackedCollection, PackedCollection> validator) {
 		Dataset<?> data = dataset.get();
 
-		double totalLoss = 0.0;
 		int success = 0;
 		int count = 0;
 
@@ -644,7 +679,6 @@ public class ModelOptimizer implements CodeFeatures {
 			PackedCollection valid = target.getExpectedOutput();
 			PackedCollection out = model.forward(input);
 			double ls = loss.apply(out, valid);
-			totalLoss += ls;
 			count++;
 
 			if (validator.test(target.getExpectedOutput(), out))
@@ -666,6 +700,14 @@ public class ModelOptimizer implements CodeFeatures {
 		}
 	}
 
+	/**
+	 * Returns the console used for training log output.
+	 * <p>
+	 * Delegates to the shared console configured on {@link HealthCallable}.
+	 * </p>
+	 *
+	 * @return the console instance for logging
+	 */
 	@Override
 	public Console console() {
 		return HealthCallable.console;

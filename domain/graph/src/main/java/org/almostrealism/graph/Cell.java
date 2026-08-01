@@ -95,6 +95,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	 *
 	 * @return a supplier of a runnable that performs the setup operations
 	 */
+	@Override
 	default Supplier<Runnable> setup() {
 		return new OperationList();
 	}
@@ -464,6 +465,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	 * @param <T> the type of data being captured
 	 */
 	class CaptureReceptor<T> implements Receptor<T> {
+		/** The most recently captured producer, or {@code null} if nothing has been pushed yet. */
 		private Producer<T> receipt;
 
 		/**

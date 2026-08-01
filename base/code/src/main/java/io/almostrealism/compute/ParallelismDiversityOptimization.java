@@ -29,11 +29,29 @@ import java.util.stream.Stream;
  * children to run independently if it would result in significantly diverse parallelism.
  */
 public class ParallelismDiversityOptimization implements ProcessOptimizationStrategy {
+	/** The minimum number of distinct parallelism values required to trigger isolation. */
 	private final int threshold;
+
+	/**
+	 * The ratio between the parent parallelism and the child average parallelism
+	 * above which isolation is favoured.
+	 */
 	private final double factor;
 
+	/**
+	 * Constructs the optimization with default thresholds (diversity threshold 8,
+	 * parallelism ratio 64.0).
+	 */
 	public ParallelismDiversityOptimization() { this(8, 64.0); }
 
+	/**
+	 * Constructs the optimization with the given thresholds.
+	 *
+	 * @param diversityThreshold the minimum number of distinct parallelism values that
+	 *                           must be present among the children to trigger isolation
+	 * @param parallelismRatio   the minimum ratio between child average parallelism and
+	 *                           parent parallelism to trigger isolation
+	 */
 	public ParallelismDiversityOptimization(int diversityThreshold, double parallelismRatio) {
 		this.threshold = diversityThreshold;
 		this.factor = parallelismRatio;

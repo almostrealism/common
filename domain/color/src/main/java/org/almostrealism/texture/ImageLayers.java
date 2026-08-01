@@ -26,24 +26,48 @@ import java.util.Map;
  * @author  Michael Murray
  */
 public class ImageLayers implements ImageSource, Layered<ImageSource> {
+	/** The named image layers, keyed by layer name. */
 	private final HashMap<String, ImageSource> layers;
-	
+
+	/**
+	 * Constructs an empty {@link ImageLayers} with no layers.
+	 */
 	public ImageLayers() {
 		this.layers = new HashMap<String, ImageSource>();
 	}
-	
+
+	/**
+	 * Adds an image layer with the given name.
+	 *
+	 * @param name  the name to assign to this layer
+	 * @param image the image source to associate with the name
+	 */
 	public void addLayer(String name, ImageSource image) {
 		layers.put(name, image);
 	}
 	
+	/**
+	 * Returns the image layer with the given name, or {@code null} if not found.
+	 *
+	 * @param name the layer name
+	 * @return the corresponding {@link ImageSource}, or {@code null}
+	 */
 	public ImageSource getLayer(String name) { return layers.get(name); }
-	
+
+	/**
+	 * Adds all layers from another {@link ImageLayers} instance to this one.
+	 *
+	 * @param l the source of layers to merge in
+	 */
 	public void addLayers(ImageLayers l) {
 		for (Map.Entry<String, ImageSource> m : l.layers.entrySet()) {
 			layers.put(m.getKey(), m.getValue());
 		}
 	}
 	
+	/**
+	 * Removes all layers from this {@link ImageLayers}.
+	 */
 	public void clear() { layers.clear(); }
 
 	@Override

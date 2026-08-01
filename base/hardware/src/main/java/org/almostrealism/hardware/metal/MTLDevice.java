@@ -107,6 +107,17 @@ public class MTLDevice extends MTLObject {
 	}
 
 	/**
+	 * Creates a new shared event for ordering GPU work across command buffers.
+	 *
+	 * @return New {@link MTLEvent}
+	 * @throws IllegalStateException if device has been released
+	 */
+	public MTLEvent newSharedEvent() {
+		if (isReleased()) throw new IllegalStateException();
+		return new MTLEvent(MTL.createSharedEvent(getNativePointer()));
+	}
+
+	/**
 	 * Creates a compute pipeline state from a Metal function.
 	 *
 	 * @param function The Metal function to create pipeline from

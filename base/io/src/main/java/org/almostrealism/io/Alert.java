@@ -52,7 +52,9 @@ package org.almostrealism.io;
  * @see AlertDeliveryProvider
  */
 public class Alert {
+	/** The severity level of this alert. */
 	private Severity severity;
+	/** The human-readable description of the alert condition. */
 	private String message;
 
 	/**

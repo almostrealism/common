@@ -8,7 +8,14 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Tests for audio resampling operations.
+ */
 public class ResampleTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/**
+	 * Tests loading and resampling a wave file to a specified duration.
+	 */
 	@Test(timeout = 60000)
 	public void resample() throws IOException {
 		w(0, getTestWavPath())

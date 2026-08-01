@@ -63,6 +63,7 @@ import java.util.Random;
  * @see ScaleFactor
  */
 public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V> {
+	/** Random number generator used to sample from the probability distribution over factories. */
 	private Random random;
 
 	/**
@@ -85,8 +86,7 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<PackedCollection> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
 			Evaluable<PackedCollection> ev = probabilities.valueAt(i).getResultant(() -> {
-				PackedCollection s = new PackedCollection(1);
-				s.setMem(1.0);
+				PackedCollection s = PackedCollection.of(1.0);
 				return new Provider(s);
 			}).get();
 			put(factories.get(i), ev.evaluate().toDouble(0));

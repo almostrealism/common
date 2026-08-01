@@ -67,10 +67,14 @@ import java.util.function.Supplier;
  * @see ThreadLocalSuppliedValue
  */
 public class SuppliedValue<T> implements Destroyable {
+	/** The factory used to create or recreate the managed value on demand. */
 	protected Supplier<T> supplier;
+	/** The currently held value, or {@code null} if not yet created or already cleared. */
 	protected T value;
 
+	/** Optional predicate used to determine whether the current value is still usable. */
 	protected Predicate<T> valid;
+	/** Optional callback invoked with the old value when {@link #clear()} is called. */
 	private Consumer<T> clear;
 
 	/**

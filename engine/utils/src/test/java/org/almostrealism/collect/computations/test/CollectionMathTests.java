@@ -25,7 +25,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for collection math operations.
+ */
 public class CollectionMathTests extends TestSuiteBase {
+	/**
+	 * Tests broadcast product with scalar.
+	 */
 	@Test(timeout = 30000)
 	public void broadcastProduct1() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -41,6 +47,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests broadcast product with different shapes.
+	 */
 	@Test(timeout = 30000)
 	public void broadcastProduct2() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -61,6 +70,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests traverse product operation.
+	 */
 	@Test(timeout = 30000)
 	public void traverseProduct() {
 		PackedCollection a = new PackedCollection(shape(10)).randFill();
@@ -68,7 +80,7 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		verboseLog(() -> {
 			PackedCollection result = cp(a).multiply(cp(b.traverse(1))).get().evaluate();
-			System.out.println(result.getShape().toStringDetail());
+			log(result.getShape().toStringDetail());
 			Assert.assertEquals(1, result.getShape().getTraversalAxis());
 
 			for (int i = 0; i < 10; i++) {
@@ -77,6 +89,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests repeat product operation.
+	 */
 	@Test(timeout = 30000)
 	public void repeatProduct() {
 		PackedCollection a = new PackedCollection(shape(2, 5)).randFill();
@@ -84,7 +99,7 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		verboseLog(() -> {
 			PackedCollection result = cp(a).multiply(cp(b)).get().evaluate();
-			System.out.println(result.getShape().toStringDetail());
+			log(result.getShape().toStringDetail());
 
 			for (int i = 0; i < 2; i++) {
 				for (int j = 0; j < 5; j++) {
@@ -94,6 +109,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests double broadcast product.
+	 */
 	@Test(timeout = 30000)
 	public void doubleBroadcastProduct() {
 		int r = 6;
@@ -111,6 +129,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests double broadcast product with arguments.
+	 */
 	@Test(timeout = 30000)
 	public void doubleBroadcastProductArguments() {
 		int r = 3;
@@ -136,6 +157,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests sum operation on collections.
+	 */
 	@Test(timeout = 30000)
 	public void sum() {
 		int size = 768;
@@ -154,6 +178,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests linear collection generation.
+	 */
 	@Test(timeout = 30000)
 	public void linear() {
 		PackedCollection out = linear(0, 5, 10).evaluate();
@@ -163,6 +190,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		assertEquals(5.0, out.valueAt(9));
 	}
 
+	/**
+	 * Tests cumulative product operation.
+	 */
 	@Test(timeout = 30000)
 	public void cumulativeProduct() {
 		int steps = 300;
@@ -185,6 +215,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests squaring operation on collections.
+	 */
 	@Test(timeout = 30000)
 	public void squares() {
 		int size = 768;
@@ -210,6 +243,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests sum of squares operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumOfSquares() {
 		int size = 768;
@@ -243,6 +279,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests sum of squares product operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumOfSquaresProduct() {
 		int size = 768;
@@ -278,6 +317,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests mean calculation across specified axis.
+	 */
 	@Test(timeout = 30000)
 	public void mean() {
 		int c = 5;
@@ -303,6 +345,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests subtract mean operation.
+	 */
 	@Test(timeout = 30000)
 	public void subtractMean() {
 		int c = 5;
@@ -333,6 +378,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests subtract mean squared operation.
+	 */
 	@Test(timeout = 30000)
 	public void subtractMeanSq() {
 		int c = 5;
@@ -363,17 +411,27 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests variance calculation with one component.
+	 */
 	@Test(timeout = 30000)
 	@TestDepth(2)
 	public void variance1() {
 		variance(1);
 	}
 
+	/**
+	 * Tests variance calculation with five components.
+	 */
 	@Test(timeout = 30000)
 	public void variance2() {
 		variance(5);
 	}
 
+	/**
+	 * Helper method to test variance calculation with specified component count.
+	 * @param c the number of components
+	 */
 	public void variance(int c) {
 		int g = 4;
 		int v = 10;
@@ -408,6 +466,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests mean variance quotient operation.
+	 */
 	@Test(timeout = 30000)
 	public void meanVarianceQuotient() {
 		int n = 1;
@@ -455,6 +516,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests in-place addition operation.
+	 */
 	@Test(timeout = 30000)
 	public void addInPlace() {
 		int size = 10;
@@ -476,6 +540,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests lessThan comparison with single scalar values.
+	 */
 	@Test(timeout = 30000)
 	public void lessThanSingleValue() {
 		// Test lessThan with single scalar values
@@ -486,23 +553,26 @@ public class CollectionMathTests extends TestSuiteBase {
 		Producer<PackedCollection> result = lessThan(a, b, a, b);
 
 		try (PackedCollection value = result.get().evaluate()) {
-			System.out.println("lessThan single: " + value.toDouble() + " (expected 5.0)");
+			log("lessThan single: " + value.toDouble() + " (expected 5.0)");
 			Assert.assertEquals(5.0, value.toDouble(), 0.001);
 		}
 	}
 
+	/**
+	 * Tests lessThan comparison with a small batch of elements.
+	 */
 	@Test(timeout = 30000)
 	public void lessThanSmallBatch() {
 		// Test lessThan with a small batch of 3 elements
-		PackedCollection valuesA = new PackedCollection(shape(3, 1).traverse(1));
-		valuesA.setMem(0, 2.0);  // a[0] = 2.0
-		valuesA.setMem(1, 8.0);  // a[1] = 8.0
-		valuesA.setMem(2, 5.0);  // a[2] = 5.0
+		PackedCollection valuesA = pack(
+				2.0,   // a[0] = 2.0
+				8.0,   // a[1] = 8.0
+				5.0).reshape(shape(3, 1)).traverse(1);   // a[2] = 5.0
 
-		PackedCollection valuesB = new PackedCollection(shape(3, 1).traverse(1));
-		valuesB.setMem(0, 7.0);  // b[0] = 7.0
-		valuesB.setMem(1, 3.0);  // b[1] = 3.0
-		valuesB.setMem(2, 5.0);  // b[2] = 5.0
+		PackedCollection valuesB = pack(
+				7.0,   // b[0] = 7.0
+				3.0,   // b[1] = 3.0
+				5.0).reshape(shape(3, 1)).traverse(1);   // b[2] = 5.0
 
 		Producer a = v(shape(-1, 1), 0);
 		Producer b = v(shape(-1, 1), 1);
@@ -514,16 +584,19 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
-		System.out.println("lessThan small batch:");
-		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 2.0, min of 2.0 and 7.0)");
-		System.out.println("  [1]: " + resultData.valueAt(1, 0) + " (expected 3.0, min of 8.0 and 3.0)");
-		System.out.println("  [2]: " + resultData.valueAt(2, 0) + " (expected 5.0, min of 5.0 and 5.0)");
+		log("lessThan small batch:");
+		log("  [0]: " + resultData.valueAt(0, 0) + " (expected 2.0, min of 2.0 and 7.0)");
+		log("  [1]: " + resultData.valueAt(1, 0) + " (expected 3.0, min of 8.0 and 3.0)");
+		log("  [2]: " + resultData.valueAt(2, 0) + " (expected 5.0, min of 5.0 and 5.0)");
 
 		Assert.assertEquals(2.0, resultData.valueAt(0, 0), 0.001);
 		Assert.assertEquals(3.0, resultData.valueAt(1, 0), 0.001);
 		Assert.assertEquals(5.0, resultData.valueAt(2, 0), 0.001);
 	}
 
+	/**
+	 * Tests lessThan comparison with 256 elements to check batch size limits.
+	 */
 	@Test(timeout = 30000)
 	public void lessThanLargeBatch() {
 		// Test lessThan with 256 elements to check for batch size limits
@@ -535,10 +608,8 @@ public class CollectionMathTests extends TestSuiteBase {
 
 		// Fill with test data: a[i] = i, b[i] = 255 - i
 		// Expected: min(i, 255-i)
-		for (int i = 0; i < batchSize; i++) {
-			valuesA.setMem(i, (double) i);
-			valuesB.setMem(i, (double) (255 - i));
-		}
+		integers(0, batchSize).into(valuesA.traverseEach()).evaluate();
+		integers(0, batchSize).multiply(-1.0).add(255.0).into(valuesB.traverseEach()).evaluate();
 
 		Producer a = v(shape(-1, 1), 0);
 		Producer b = v(shape(-1, 1), 1);
@@ -549,13 +620,13 @@ public class CollectionMathTests extends TestSuiteBase {
 		PackedCollection resultData = new PackedCollection(shape(batchSize, 1).traverse(1));
 		result.get().into(resultData.each()).evaluate(valuesA, valuesB);
 
-		System.out.println("lessThan large batch (size=" + batchSize + "):");
-		System.out.println("  [0]: " + resultData.valueAt(0, 0) + " (expected 0.0)");
-		System.out.println("  [100]: " + resultData.valueAt(100, 0) + " (expected 100.0)");
-		System.out.println("  [127]: " + resultData.valueAt(127, 0) + " (expected 127.0)");
-		System.out.println("  [128]: " + resultData.valueAt(128, 0) + " (expected 127.0)");
-		System.out.println("  [200]: " + resultData.valueAt(200, 0) + " (expected 55.0)");
-		System.out.println("  [255]: " + resultData.valueAt(255, 0) + " (expected 0.0)");
+		log("lessThan large batch (size=" + batchSize + "):");
+		log("  [0]: " + resultData.valueAt(0, 0) + " (expected 0.0)");
+		log("  [100]: " + resultData.valueAt(100, 0) + " (expected 100.0)");
+		log("  [127]: " + resultData.valueAt(127, 0) + " (expected 127.0)");
+		log("  [128]: " + resultData.valueAt(128, 0) + " (expected 127.0)");
+		log("  [200]: " + resultData.valueAt(200, 0) + " (expected 55.0)");
+		log("  [255]: " + resultData.valueAt(255, 0) + " (expected 0.0)");
 
 		// Check key values
 		Assert.assertEquals(0.0, resultData.valueAt(0, 0), 0.001);

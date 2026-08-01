@@ -42,7 +42,9 @@ import java.util.stream.IntStream;
  */
 public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 
+	/** Tolerance for floating-point comparisons. */
 	private static final double TOLERANCE = 1e-4;
+	/** Random generator for deterministic test data. */
 	private static final Random random = new Random(42);
 
 	/**

@@ -21,7 +21,13 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for reusable instruction sets and hardware operations.
+ */
 public class ReusableInstructionSetTests extends TestSuiteBase {
+	/**
+	 * Tests reusable instruction set with add operation.
+	 */
 	@Test(timeout = 10000)
 	public void add() {
 		int n = 6;

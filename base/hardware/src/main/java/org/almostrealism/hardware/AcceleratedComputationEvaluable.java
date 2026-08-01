@@ -19,6 +19,8 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.concurrent.CompletionConsumer;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.streams.EvaluableStreamingAdapter;
@@ -88,7 +90,7 @@ import java.util.function.IntFunction;
  * // Set downstream consumer
  * transform.setDownstream(result -> {
  *     // Process each result
- *     System.out.println("Result: " + result);
+ *     log("Result: " + result);
  * });
  *
  * // Evaluate pushes to downstream
@@ -215,7 +217,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * @param c The {@link Computation} to evaluate
 	 */
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
-		super(context, c, true);
+		super(context, c);
 	}
 
 	/**
@@ -418,6 +420,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 
 		try {
 			AcceleratedProcessDetails process = apply(null, args);
+			process.awaitReady();
 			waitFor(process.getSemaphore());
 
 			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
@@ -428,11 +431,24 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	}
 
 	/**
-	 * Requests asynchronous evaluation that pushes results to the downstream consumer.
+	 * Requests asynchronous evaluation that pushes results to the downstream consumer,
+	 * ordering the dispatch after the given completion. The kernel dispatch (and its own
+	 * argument preparation) chains on {@code dependsOn} through the provider, so the
+	 * dependency costs no host wait; delivery is unchanged.
 	 *
 	 * <p>Dispatches the kernel without blocking, registering a callback that extracts the
 	 * result and pushes it to {@link #downstream} upon completion. This enables non-blocking
 	 * streaming pipelines.</p>
+	 *
+	 * <p>When the downstream is a {@link CompletionConsumer}, the result is delivered
+	 * immediately together with the dispatch's completion {@link
+	 * io.almostrealism.streams.Semaphore} instead of waiting for it — safe because
+	 * {@link #postProcessOutput(MemoryData, int)} only shapes the handle to the output
+	 * memory (it never reads its contents), and the consumer takes responsibility for
+	 * ordering via the delivered completion. The plain-{@link java.util.function.Consumer}
+	 * path (and any run with {@code AR_HARDWARE_OUTPUT_MONITORING} enabled, since
+	 * {@link #validate} must read the finished contents) keeps the completing-wait
+	 * behavior.</p>
 	 *
 	 * <p>Example:</p>
 	 * <pre>{@code
@@ -440,21 +456,30 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * evaluable.request(args);  // Non-blocking, result sent to downstream
 	 * }</pre>
 	 *
-	 * @param args The input arguments for the computation
+	 * @param args      The input arguments for the computation
+	 * @param dependsOn completion that must fire before the dispatch (and its
+	 *                  argument preparation) reads memory, or {@code null}
 	 * @throws NullPointerException if {@link #downstream} is not set
 	 */
 	@Override
-	public void request(Object[] args) {
+	public void request(Object[] args, Semaphore dependsOn) {
 		confirmLoad();
 
 		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
 		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
 
-		AcceleratedProcessDetails process = apply(null, args);
-		process.getSemaphore().onComplete(() -> {
+		AcceleratedProcessDetails process = apply(null, args, dependsOn);
+		process.awaitReady();
+
+		if (downstream instanceof CompletionConsumer && !outputMonitoring) {
 			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
-			downstream.accept(validate(result));
-		});
+			((CompletionConsumer<T>) downstream).accept(result, process.getSemaphore());
+		} else {
+			process.getSemaphore().onComplete(() -> {
+				T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
+				downstream.accept(validate(result));
+			});
+		}
 	}
 
 	/**

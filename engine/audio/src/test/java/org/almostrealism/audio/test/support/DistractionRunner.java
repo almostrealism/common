@@ -49,16 +49,31 @@ import java.util.Random;
  * </pre>
  */
 public class DistractionRunner implements Destroyable, CollectionFeatures {
+	/** Size of buffers for operations in elements */
 	private final int bufferSize;
+
+	/** Probability of executing a distraction (0.0 to 1.0) */
 	private final double probability;
+
+	/** Random number generator for selection */
 	private final Random random;
 
+	/** List of registered distraction operations */
 	private final List<DistractionOperation> operations;
+
+	/** Buffer A for operations */
 	private PackedCollection bufferA;
+
+	/** Buffer B for operations */
 	private PackedCollection bufferB;
+
+	/** Result buffer for operations */
 	private PackedCollection resultBuffer;
+
+	/** Scalar result buffer for reduction operations */
 	private PackedCollection scalarResult;
 
+	/** Total number of distraction executions */
 	private long executionCount = 0;
 
 	/**
@@ -306,20 +321,40 @@ public class DistractionRunner implements Destroyable, CollectionFeatures {
 	 * Internal class representing a single distraction operation.
 	 */
 	private static class DistractionOperation {
+		/** Name of this distraction operation */
 		private final String name;
+
+		/** Compiled operation to execute */
 		private final Evaluable<PackedCollection> operation;
+
+		/** Result buffer for this operation */
 		private final PackedCollection result;
 
+		/**
+		 * Creates a distraction operation.
+		 *
+		 * @param name      Name of the distraction
+		 * @param operation Compiled operation to execute
+		 * @param result    Result buffer for the operation
+		 */
 		public DistractionOperation(String name, Evaluable<PackedCollection> operation, PackedCollection result) {
 			this.name = name;
 			this.operation = operation;
 			this.result = result;
 		}
 
+		/**
+		 * Executes this distraction operation.
+		 */
 		public void execute() {
 			operation.into(result).evaluate();
 		}
 
+		/**
+		 * Returns the name of this distraction operation.
+		 *
+		 * @return The operation name
+		 */
 		public String getName() {
 			return name;
 		}

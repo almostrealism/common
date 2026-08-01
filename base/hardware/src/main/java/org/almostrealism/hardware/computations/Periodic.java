@@ -16,10 +16,9 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -105,8 +104,11 @@ import java.util.List;
  */
 public class Periodic extends OperationComputationAdapter<MemoryData>
 		implements ExpressionFeatures {
+	/** The computation to execute once per period. */
 	private final Computation atom;
+	/** Number of invocations between executions of the atom. */
 	private final int period;
+	/** Memory data used to track the invocation count between periodic executions. */
 	private final MemoryData counter;
 
 	/**
@@ -203,14 +205,9 @@ public class Periodic extends OperationComputationAdapter<MemoryData>
 		return op;
 	}
 
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		atom.prepareArguments(map);
-	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		atom.prepareScope(manager, context);
 	}

@@ -156,18 +156,32 @@ public class OperationProfileNode extends OperationProfile
 	 */
 	public static boolean allowMultipleSources = SystemUtils.isEnabled("AR_PROFILE_MULTIPLE_SOURCES").orElse(true);
 
+	/**
+	 * Default function that formats an {@link OperationMetadata} into a short display string
+	 * by appending the context name and output shape to the description or display name.
+	 */
 	private static Function<OperationMetadata, String> metadataDetail =
 			OperationProfile.appendContext(
 					OperationProfile.appendShape(
 							meta -> meta.getShortDescription() == null ?
 									meta.getDisplayName() : meta.getShortDescription()));
 
+	/** Child profile nodes representing nested operations within this node. */
 	private List<OperationProfileNode> children;
+
+	/** Map from operation key to the list of source locations that contributed timing data. */
 	private Map<String, List<OperationSource>> operationSources;
+
+	/** Accumulated wall-clock time for the operations measured at this node. */
 	private TimingMetric measuredTime;
+
+	/** Accumulated time for individual execution stages recorded at this node. */
 	private TimingMetric stageDetailTime;
 
+	/** Cache mapping operation keys to their formatted metadata strings. */
 	private Map<String, String> metadataCache;
+
+	/** Cache of child nodes indexed by operation key for fast lookup. */
 	private Map<String, OperationProfileNode> nodeCache;
 
 	/** Creates a default profile node with no key and the name "default". */

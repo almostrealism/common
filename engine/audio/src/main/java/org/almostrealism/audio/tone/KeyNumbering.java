@@ -36,5 +36,8 @@ package org.almostrealism.audio.tone;
  * @see KeyboardTuning
  */
 public enum KeyNumbering {
-	STANDARD, MIDI
+	/** Standard piano key numbering where A0 is key 0. */
+	STANDARD,
+	/** MIDI note numbering where A0 is note 21, middle C (C4) is note 60. */
+	MIDI
 }

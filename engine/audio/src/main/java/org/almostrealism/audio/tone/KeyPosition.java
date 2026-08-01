@@ -47,10 +47,25 @@ package org.almostrealism.audio.tone;
  * @see KeyboardTuning
  */
 public interface KeyPosition<T extends KeyPosition<T>> {
+	/**
+	 * Returns the numeric position of this note within its scale.
+	 *
+	 * @return the zero-based position index (or -1 for the none position)
+	 */
 	int position();
 
+	/**
+	 * Returns the next note in the chromatic scale after this one.
+	 *
+	 * @return the next KeyPosition
+	 */
 	T next();
 
+	/**
+	 * Returns a sentinel KeyPosition representing no note or an invalid position.
+	 *
+	 * @return a KeyPosition whose position() returns -1 and whose next() returns itself
+	 */
 	static KeyPosition<?> none() {
 		return new KeyPosition() {
 			@Override
@@ -63,6 +78,13 @@ public interface KeyPosition<T extends KeyPosition<T>> {
 		};
 	}
 
+	/**
+	 * Returns the KeyPosition for the given note name using WesternChromatic naming.
+	 *
+	 * @param name the note name (e.g., "C4", "A4", "FS3")
+	 * @return the corresponding WesternChromatic key position
+	 * @throws IllegalArgumentException if the name does not match any known note
+	 */
 	static KeyPosition of(String name) {
 		return WesternChromatic.valueOf(name);
 	}

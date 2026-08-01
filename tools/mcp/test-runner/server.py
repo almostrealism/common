@@ -10,6 +10,7 @@ Provides tools for running and managing test executions with:
 """
 
 import asyncio
+import atexit
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import shutil
 import signal
 import statistics
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -30,12 +32,87 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+# Shared MCP helpers (tools/mcp/common); imported as top-level modules to avoid
+# triggering the package __init__'s heavier dependencies.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
+
+# Preflight seeding of upstream module artifacts. Lives alongside server.py
+# so the import is cheap and unambiguous regardless of where python is launched
+# from. See preflight.py for the full rationale.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import preflight  # noqa: E402
+import fork_discovery  # noqa: E402
+
 # Configuration - derive project root from script location (tools/mcp/test-runner/server.py -> project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 RUNS_DIR = Path(__file__).parent / "runs"
+# The CI workflow definition, which is the single source of truth for the
+# test-matrix group count (AR_TEST_GROUPS). The value is read from this file
+# on demand rather than duplicated in tool descriptions, where it would rot.
+CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "analysis.yaml"
+
+
+def resolve_ci_test_groups(module: str) -> int:
+    """Read the AR_TEST_GROUPS value the CI pipeline currently uses for a module.
+
+    Different CI jobs partition their modules into different group counts
+    (e.g. the media jobs use a different count than the main test jobs), so
+    the value is resolved per module: each AR_TEST_GROUPS declaration in the
+    workflow is associated with the ``-pl`` module of the mvn command it
+    belongs to, and comment lines are ignored. Raises ValueError when the
+    workflow cannot be read, never runs the module with test groups, or
+    declares conflicting counts for it -- in which case the caller must
+    supply test_groups explicitly.
+    """
+    try:
+        lines = CI_WORKFLOW.read_text().splitlines()
+    except OSError as e:
+        raise ValueError(
+            f"Cannot read {CI_WORKFLOW} to determine the CI group count; "
+            f"pass test_groups explicitly ({e})")
+
+    values = set()
+    for i, line in enumerate(lines):
+        if line.strip().startswith("#"):
+            continue
+
+        m = re.search(r"AR_TEST_GROUPS=(\d+)", line)
+        if not m:
+            continue
+
+        # The -pl flag of the mvn command this declaration belongs to appears
+        # on the same or an earlier continuation line of the command.
+        for back in range(i, max(-1, i - 15), -1):
+            pl = re.search(r"-pl\s+([\w/\-]+)", lines[back])
+            if pl:
+                if pl.group(1) == module:
+                    values.add(int(m.group(1)))
+                break
+
+    if len(values) != 1:
+        detail = f"never runs module {module} with AR_TEST_GROUPS" if not values else \
+            f"declares conflicting AR_TEST_GROUPS values {sorted(values)} for module {module}"
+        raise ValueError(
+            f"{CI_WORKFLOW} {detail}; pass test_groups explicitly")
+
+    return values.pop()
+# External watcher process script — spawned in a detached session so it
+# survives the python parent's death and can update metadata even when the
+# in-process daemon thread cannot run (e.g., claude exits cleanly while a run
+# is in progress and reaps its MCP stdio children).
+WATCHER_SCRIPT = Path(__file__).parent / "watcher.py"
 MAX_RUNS = 50
-DEFAULT_MODULE = "utils"
-DEFAULT_TIMEOUT = 30
+DEFAULT_MODULE = "engine/utils"
+# Default test timeout in minutes. The harness inactivity monitor
+# (ClaudeCodeJob.java:146) kills the agent process after 20 minutes of stdout
+# silence, so the test-runner default is set 5 minutes below that ceiling so a
+# legitimately long-running test fires this timer rather than the harness's
+# inactivity kill (which is a confusing failure mode for the agent). Callers
+# may pass a higher value, but values >20 are unsafe under the harness.
+DEFAULT_TIMEOUT = 15
 DEFAULT_OUTPUT_LINES = 200  # Default max lines for get_run_output
 DEFAULT_STACKTRACE_LINES = 30  # Max lines per stacktrace
 MAX_OUTPUT_BYTES = 50000  # ~50KB max response size
@@ -44,6 +121,10 @@ FORK_FAILURE_PATTERNS = [
     "ForkedBooter",
 ]
 EARLY_EXIT_THRESHOLD_SECONDS = 15
+
+# Run statuses that mean a test run has finished (used by the blocking
+# get_run_status mode to decide when to stop waiting).
+TERMINAL_RUN_STATES = frozenset({"completed", "failed", "timeout", "cancelled"})
 
 # Ensure runs directory exists
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -62,6 +143,8 @@ class RunConfig:
     jmx_monitoring: bool = False
     jfr_settings: str = "default"
     repetitions: int = 1
+    test_group: Optional[int] = None
+    test_groups: Optional[int] = None
 
 
 @dataclass
@@ -93,6 +176,130 @@ class TestRunner:
     def generate_run_id(self) -> str:
         """Generate a short unique run ID."""
         return uuid.uuid4().hex[:8]
+
+    def _write_preflight_section(self, output_file: Path, header: str,
+                                  body: str = "") -> None:
+        """Write a clearly-delimited preflight section to the run's output file.
+
+        The banner mirrors the section markers used by ar-build-validator
+        so an agent scrolling through ``output.txt`` can immediately see
+        which steps are preflight vs. test execution.
+        """
+        with open(output_file, "a") as handle:
+            handle.write(f"\n{'=' * 60}\n")
+            handle.write(f"[ar-test-runner] PREFLIGHT: {header}\n")
+            handle.write(f"{'=' * 60}\n")
+            if body:
+                if not body.endswith("\n"):
+                    body = body + "\n"
+                handle.write(body)
+            handle.write("\n")
+
+    def _run_preflight(self, run_id: str, run_dir: Path,
+                       module: str) -> "preflight.PreflightResult":
+        """Run the upstream-artifact preflight and persist its output.
+
+        Returns the :class:`preflight.PreflightResult` produced by
+        :func:`preflight.seed_upstream_artifacts`. Output emitted by
+        Maven during the seed is appended to ``run_dir/output.txt`` so
+        ``get_run_output`` shows it alongside (and before) the test run
+        output.
+
+        Failures inside the preflight helper itself (for example, a
+        ``pom.xml`` that fails to parse for a reason the helper does
+        not already swallow) are reported as a synthetic ``"failed"``
+        result so the caller can short-circuit cleanly without
+        spawning Maven on a broken setup.
+        """
+        output_file = run_dir / "output.txt"
+
+        # Always surface installed-artifact ages first: `mvn test -pl <module>`
+        # recompiles only <module>, so a dependency edited but not reinstalled
+        # runs stale. This banner makes that obvious before the test launches.
+        try:
+            age_report = preflight.format_artifact_age_report(
+                PROJECT_ROOT, module)
+            self._write_preflight_section(
+                output_file, "dependency artifact ages (~/.m2)", age_report)
+        except Exception as exc:  # noqa: BLE001 - a reporting error must never break a run
+            self._write_preflight_section(
+                output_file,
+                "dependency artifact ages (~/.m2)",
+                f"Artifact-age report unavailable: {exc}")
+
+        try:
+            missing = preflight.find_missing_upstream_artifacts(
+                PROJECT_ROOT, module)
+        except Exception as exc:  # noqa: BLE001
+            # Inspection failures short-circuit the run (action="failed"), mirroring seed failures.
+            # find_missing_upstream_artifacts already returns [] on expected filesystem errors, so this
+            # branch should only fire on truly unexpected exceptions.
+            # If that behavior is undesirable, consider letting the test invocation proceed instead.
+            result = preflight.PreflightResult(
+                action="failed",
+                exit_code=1,
+                reason=f"preflight inspection failed: {exc}",
+            )
+            self._write_preflight_section(
+                output_file,
+                "INSPECTION FAILED",
+                f"Could not determine upstream dependencies: {exc}\n"
+                "The test invocation is aborted due to this inspection error.",
+            )
+            return result
+
+        if not missing:
+            self._write_preflight_section(
+                output_file,
+                "skipped (upstream artifacts present)",
+                f"All direct org.almostrealism dependencies of {module}\n"
+                "are already installed in ~/.m2; no seed needed.",
+            )
+            return preflight.PreflightResult(
+                action="skipped",
+                reason="All direct org.almostrealism dependencies already installed",
+            )
+
+        missing_summary = ", ".join(
+            f"{m.artifact_id}:{m.version}" for m in missing[:8])
+        if len(missing) > 8:
+            missing_summary += f", ... (+{len(missing) - 8} more)"
+        self._write_preflight_section(
+            output_file,
+            f"seeding {len(missing)} upstream artifact(s)",
+            f"Missing direct dependencies for {module}: {missing_summary}\n"
+            f"Running: {' '.join(preflight.build_seed_command(module))}\n"
+            "(This makes the FIRST ar-test-runner call in a fresh worktree "
+            "self-sufficient — subsequent calls skip this step.)",
+        )
+
+        def _writer(chunk: str) -> None:
+            try:
+                with open(output_file, "a") as handle:
+                    handle.write(chunk)
+            except OSError:
+                # An output-write failure must never break the preflight.
+                pass
+
+        result = preflight.seed_upstream_artifacts(
+            PROJECT_ROOT, module, output_writer=_writer)
+
+        if result.action == "seeded":
+            self._write_preflight_section(
+                output_file,
+                f"seeded {len(result.missing)} artifact(s) in "
+                f"{result.duration_seconds:.1f}s",
+                "Test invocation will now proceed.",
+            )
+        elif result.action == "failed":
+            self._write_preflight_section(
+                output_file,
+                f"FAILED (mvn install exited {result.exit_code})",
+                "The upstream artifacts could not be installed. The test "
+                "invocation is skipped because Maven would fail with the "
+                "same dependency-resolution error.",
+            )
+        return result
 
     def cleanup_old_runs(self):
         """Remove oldest runs if we exceed MAX_RUNS."""
@@ -129,19 +336,30 @@ class TestRunner:
 
         Args:
             config: Run configuration.
-            run_dir: Run directory, used for JFR output path when jmx_monitoring is enabled.
+            run_dir: Run directory (reserved for per-run output paths).
             run_id: Run identifier, used to isolate instruction set output files.
         """
         cmd = ["mvn", "test", "-pl", config.module]
 
-        # Build JVM args, prepending JMX diagnostics args if enabled
+        # Build JVM args. Deliberately inject NOTHING when jmx_monitoring is on:
+        # jmx_monitoring's only job is to enable forked-PID discovery (below) so
+        # the ar-jmx tools can attach. Every useful ar-jmx diagnostic -- thread
+        # dump, JFR recording, class histogram, GC stats, allocation report --
+        # works by attaching to the already-running JVM via jcmd and needs no
+        # startup flag.
+        #
+        # Two startup flags were tried here and removed because both break the
+        # surefire-forked JVM that this project uses:
+        #   * -XX:StartFlightRecording makes the JVM print "Started recording
+        #     N..." straight to stdout (the C++ JFR initialiser bypasses -Xlog
+        #     filters). Surefire treats any direct stdout write from a forked
+        #     JVM as channel corruption and kills the fork before any test runs.
+        #     Start JFR via the ar-jmx start_jfr_recording tool instead.
+        #   * -XX:NativeMemoryTracking=summary aborts this project's forked JVM
+        #     (SIGABRT, exit 134) when the JNI hardware native library loads.
+        #     A caller that specifically wants NMT and accepts that risk can
+        #     still pass it explicitly through jvm_args.
         jvm_args = list(config.jvm_args)
-        if config.jmx_monitoring and run_dir is not None:
-            jfr_path = run_dir / "jmx" / "jfr_recording.jfr"
-            jvm_args = [
-                f"-XX:StartFlightRecording=filename={jfr_path},settings={config.jfr_settings},dumponexit=true",
-                "-XX:NativeMemoryTracking=summary",
-            ] + jvm_args
 
         # Add JVM args if specified
         if jvm_args:
@@ -151,6 +369,20 @@ class TestRunner:
         # Add test depth
         if config.depth is not None:
             cmd.append(f"-DAR_TEST_DEPTH={config.depth}")
+
+        # Reproduce a CI test-matrix group. The CI `test` job runs the whole module
+        # (no -Dtest filter) in a single surefire JVM with AR_TEST_GROUP/AR_TEST_GROUPS
+        # set; TestDepthRule then skips every class whose name does not hash to the
+        # group (Math.abs(className.hashCode()) % AR_TEST_GROUPS). Because the classes
+        # that DO run share one JVM (surefire reuseForks=true, forkCount=1), static
+        # state (interning tables, kernel/expression caches) accumulates across them
+        # exactly as it does on CI -- which a single -Dtest=Class run can never
+        # reproduce. Set test_group to run a group this way; test_groups defaults
+        # to the AR_TEST_GROUPS value the CI workflow currently declares.
+        if config.test_group is not None:
+            cmd.append(f"-DAR_TEST_GROUP={config.test_group}")
+            if config.test_groups is not None:
+                cmd.append(f"-DAR_TEST_GROUPS={config.test_groups}")
 
         # Add test profile (e.g., "pipeline" to skip comparison tests)
         if config.profile:
@@ -168,17 +400,41 @@ class TestRunner:
                 output_dir = str(PROJECT_ROOT / config.module / "results" / run_id)
                 cmd.append(f"-DAR_INSTRUCTION_SET_OUTPUT_DIR={output_dir}")
 
-        # Add test class/method filters
-        if config.test_classes:
-            cmd.append(f"-Dtest={','.join(config.test_classes)}")
-        elif config.test_methods:
-            tests = [f"{m['class']}#{m['method']}" for m in config.test_methods]
-            cmd.append(f"-Dtest={','.join(tests)}")
+        # Add test class/method filters. A -Dtest filter is mutually exclusive with a
+        # group run: passing -Dtest restricts surefire to the named class(es), which
+        # would defeat the whole point of test_group (running every class that hashes
+        # to the group together in one JVM). When test_group is set, ignore class/method
+        # filters so the full group runs.
+        if config.test_group is None:
+            if config.test_classes:
+                cmd.append(f"-Dtest={','.join(config.test_classes)}")
+            elif config.test_methods:
+                tests = [f"{m['class']}#{m['method']}" for m in config.test_methods]
+                cmd.append(f"-Dtest={','.join(tests)}")
 
         return cmd
 
     def start_run(self, config: RunConfig) -> tuple[str, str]:
-        """Start a new test run. Returns (run_id, command)."""
+        """Start a new test run. Returns (run_id, command).
+
+        The first time this is invoked in a fresh worktree, the
+        upstream ``ar-*`` modules referenced by ``config.module`` may
+        not yet be installed in ``~/.m2/repository/``. To avoid the
+        previous fail→install→retry cycle (which pushes agents toward
+        bash ``mvn``), the run launches a preflight step that seeds
+        any missing upstream artifacts via
+        ``mvn -pl <module> -am install -DskipTests``. The preflight is
+        a no-op when every direct ``org.almostrealism`` dependency is
+        already present, so subsequent calls in the same worktree pay
+        only an inspection cost (a few milliseconds).
+
+        When the preflight install fails the run is short-circuited:
+        the run is marked ``failed`` with the preflight banner left
+        in ``output.txt``, and no Maven test process is launched. The
+        agent sees a clear ``status == "failed"`` with the seed log
+        attached, instead of a duplicate dependency-resolution error
+        from the test invocation.
+        """
         self.cleanup_old_runs()
 
         run_id = self.generate_run_id()
@@ -202,6 +458,33 @@ class TestRunner:
                 iset_output_dir = part[len(iset_prefix):]
                 break
 
+        # Touch the output file so the preflight banner has somewhere to land.
+        output_file = run_dir / "output.txt"
+        output_file.write_text("")
+
+        # Preflight: install missing upstream artifacts. Synchronous because
+        # it must finish before the test process launches against the same
+        # module. Skipped path is a few-millisecond pom scan; only the
+        # genuinely-uninstalled case blocks for the duration of mvn install.
+        preflight_result = self._run_preflight(run_id, run_dir, config.module)
+        if preflight_result.action == "failed":
+            # Short-circuit: mark the run failed and return early. The
+            # preflight banner already explains the failure in output.txt.
+            metadata = RunMetadata(
+                run_id=run_id,
+                config=asdict(config),
+                status="failed",
+                started_at=datetime.now().isoformat(),
+                completed_at=datetime.now().isoformat(),
+                exit_code=preflight_result.exit_code,
+                command=cmd_str,
+                jmx_monitoring=config.jmx_monitoring,
+                instruction_set_output_dir=iset_output_dir,
+                repetitions=config.repetitions,
+            )
+            self._save_metadata(run_id, metadata)
+            return run_id, cmd_str
+
         # Multi-invocation path: delegate to _watch_repetitions thread
         if config.repetitions > 1:
             metadata = RunMetadata(
@@ -217,9 +500,6 @@ class TestRunner:
                 invocations=[]
             )
             self._save_metadata(run_id, metadata)
-
-            # Touch empty output file
-            (run_dir / "output.txt").write_text("")
 
             # Start timeout timer (applies to entire run)
             if config.timeout_minutes:
@@ -242,7 +522,7 @@ class TestRunner:
 
         # Single-invocation path (original behavior)
         env = os.environ.copy()
-        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env.pop("AR_HARDWARE_LIBS", None)  # Auto-detected by the system
 
         # Create metadata
         metadata = RunMetadata(
@@ -255,9 +535,9 @@ class TestRunner:
             instruction_set_output_dir=iset_output_dir
         )
 
-        # Start process
-        output_file = run_dir / "output.txt"
-        with open(output_file, "w") as f:
+        # Start process. The preflight banner is already in output.txt;
+        # open in append mode so mvn output follows it instead of clobbering it.
+        with open(output_file, "a") as f:
             process = subprocess.Popen(
                 cmd,
                 stdout=f,
@@ -272,6 +552,13 @@ class TestRunner:
 
         # Save metadata
         self._save_metadata(run_id, metadata)
+
+        # Spawn detached watcher subprocess. This is the durable backup to
+        # the in-process daemon thread below: when the python parent dies
+        # mid-run (e.g., claude exits cleanly and reaps its MCP children),
+        # the daemon thread cannot run, but the watcher subprocess is in a
+        # separate session and survives to write terminal metadata.
+        self._spawn_watcher_subprocess(run_id, process.pid, config.module, run_dir)
 
         # Start completion watcher
         watcher = threading.Thread(
@@ -301,6 +588,40 @@ class TestRunner:
             self.timeout_timers[run_id] = timer
 
         return run_id, cmd_str
+
+    def _spawn_watcher_subprocess(self, run_id: str, maven_pid: int, module: str,
+                                  run_dir: Path) -> None:
+        """Spawn the external watcher.py as a session-detached subprocess.
+
+        The watcher polls the maven PID via `os.kill(pid, 0)`, then writes
+        terminal metadata if the in-process daemon thread did not get the
+        chance (because the python parent was killed mid-run).
+
+        Failures to spawn the watcher are logged to stderr but do not abort
+        the run: the in-process daemon thread remains the primary path.
+        """
+        if not WATCHER_SCRIPT.exists():
+            sys.stderr.write(
+                f"[ar-test-runner] watcher script not found at {WATCHER_SCRIPT}; "
+                "skipping detached watcher\n")
+            return
+        metadata_path = RUNS_DIR / run_id / "metadata.json"
+        output_path = RUNS_DIR / run_id / "output.txt"
+        reports_dst = RUNS_DIR / run_id / "reports"
+        try:
+            subprocess.Popen(
+                [sys.executable, str(WATCHER_SCRIPT),
+                 str(maven_pid), str(metadata_path), str(output_path),
+                 str(reports_dst), str(PROJECT_ROOT), module],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        except OSError as exc:
+            sys.stderr.write(
+                f"[ar-test-runner] failed to spawn watcher subprocess: {exc}\n")
 
     def _watch_completion(self, run_id: str, process: subprocess.Popen, module: str,
                           config: RunConfig = None, run_dir: Path = None):
@@ -363,6 +684,8 @@ class TestRunner:
             jvm_args=list(config.jvm_args),
             profile=config.profile,
             jmx_monitoring=False,
+            test_group=config.test_group,
+            test_groups=config.test_groups,
         )
         cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
@@ -374,7 +697,7 @@ class TestRunner:
 
         # Start new process (append to output)
         env = os.environ.copy()
-        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env.pop("AR_HARDWARE_LIBS", None)  # Auto-detected by the system
         with open(output_file, "a") as f:
             new_process = subprocess.Popen(
                 cmd, stdout=f, stderr=subprocess.STDOUT,
@@ -390,6 +713,9 @@ class TestRunner:
             metadata["jmx_monitoring_degraded"] = True
             metadata["jmx_retry_reason"] = "Fork failure with JFR/NMT arguments"
             self._save_metadata_dict(run_id, metadata)
+
+        # Spawn detached watcher subprocess for the retry's maven PID.
+        self._spawn_watcher_subprocess(run_id, new_process.pid, module, run_dir)
 
         # New watcher (config=None prevents infinite retry)
         threading.Thread(target=self._watch_completion,
@@ -447,98 +773,30 @@ class TestRunner:
 
         return False
 
-    def _get_ppid(self, pid: int) -> Optional[int]:
-        """Get parent PID. Uses /proc on Linux, ps on macOS."""
-        # Try /proc first (Linux)
-        try:
-            stat_path = Path(f"/proc/{pid}/stat")
-            text = stat_path.read_text()
-            close_paren = text.rfind(")")
-            if close_paren == -1:
-                return None
-            fields = text[close_paren + 2:].split()
-            if len(fields) >= 2:
-                return int(fields[1])
-        except (OSError, PermissionError, ValueError):
-            pass
-
-        # Fallback: ps (macOS / general Unix)
-        try:
-            result = subprocess.run(
-                ["ps", "-o", "ppid=", "-p", str(pid)],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return int(result.stdout.strip())
-        except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
-            pass
-
-        return None
-
-    def _is_descendant_of(self, pid: int, ancestor_pid: int) -> bool:
-        """Check if pid is a descendant of ancestor_pid by walking the parent chain."""
-        current = pid
-        for _ in range(10):  # Max depth to prevent infinite loops
-            ppid = self._get_ppid(current)
-            if ppid is None or ppid <= 1:
-                return False
-            if ppid == ancestor_pid:
-                return True
-            current = ppid
-        return False
-
-    def _discover_forked_pid(self, maven_pid: int, run_id: str) -> Optional[int]:
-        """Poll jps for a ForkedBooter process whose parent is the maven process.
-
-        Polls every 1 second for up to 30 seconds. When found, writes the
-        forked PID to the run metadata.
-
-        Returns:
-            The forked PID, or None if discovery timed out.
-        """
-        for _ in range(30):
-            try:
-                result = subprocess.run(
-                    ["jps", "-l"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode == 0:
-                    for line in result.stdout.strip().split("\n"):
-                        if "ForkedBooter" in line or "surefirebooter" in line:
-                            parts = line.split(None, 1)
-                            if parts:
-                                try:
-                                    candidate_pid = int(parts[0])
-                                    # Verify this is a descendant of our maven process
-                                    if self._is_descendant_of(candidate_pid, maven_pid):
-                                        # Write to metadata
-                                        metadata = self._load_metadata(run_id)
-                                        if metadata:
-                                            metadata["forked_pid"] = candidate_pid
-                                            self._save_metadata_dict(run_id, metadata)
-                                        return candidate_pid
-                                except ValueError:
-                                    pass
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                pass
-
-            time.sleep(1)
-
-        return None
-
     def _discover_forked_pid_background(self, maven_pid: int, run_id: str) -> None:
         """Run forked PID discovery in a daemon thread.
 
-        On timeout, sets forked_pid_discovery_failed in metadata.
+        Polls for as long as the run is active and the maven process is
+        alive (see fork_discovery.discover_forked_pid). Writes forked_pid
+        to the run metadata when found; sets forked_pid_discovery_failed
+        when the run ends without the fork having been discovered.
         """
-        pid = self._discover_forked_pid(maven_pid, run_id)
-        if pid is None:
+        def run_active() -> bool:
             metadata = self._load_metadata(run_id)
-            if metadata:
-                metadata["forked_pid_discovery_failed"] = True
-                self._save_metadata_dict(run_id, metadata)
+            return (metadata is not None
+                    and metadata.get("status") in ("pending", "running")
+                    and fork_discovery.pid_alive(maven_pid))
+
+        pid = fork_discovery.discover_forked_pid(maven_pid, run_active)
+
+        metadata = self._load_metadata(run_id)
+        if not metadata:
+            return
+        if pid is not None:
+            metadata["forked_pid"] = pid
+        else:
+            metadata["forked_pid_discovery_failed"] = True
+        self._save_metadata_dict(run_id, metadata)
 
     def _copy_surefire_reports(self, run_id: str, module: str):
         """Copy surefire reports to run directory, only those modified after run started."""
@@ -569,7 +827,7 @@ class TestRunner:
     def _watch_repetitions(self, run_id: str, config: RunConfig, run_dir: Path):
         """Run the same test N times sequentially, collecting per-invocation results."""
         env = os.environ.copy()
-        env["AR_HARDWARE_LIBS"] = "/tmp/ar_libs/"
+        env.pop("AR_HARDWARE_LIBS", None)  # Auto-detected by the system
 
         cmd = self.build_maven_command(config, run_dir, run_id)
         output_file = run_dir / "output.txt"
@@ -634,7 +892,9 @@ class TestRunner:
                     jvm_args=list(config.jvm_args),
                     profile=config.profile,
                     jmx_monitoring=False,
-                    repetitions=config.repetitions
+                    repetitions=config.repetitions,
+                    test_group=config.test_group,
+                    test_groups=config.test_groups
                 )
                 cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
@@ -1144,6 +1404,50 @@ class TestRunner:
                 result["all_tests"] = all_tests_list
             return result
 
+    def abandon_running_runs(self) -> list[str]:
+        """Mark every active run with ``status="abandoned"`` and return their IDs.
+
+        Used as an atexit safety net: when the python parent (ar-test-runner)
+        is shutting down, any run still in ``status="running"`` is marked
+        ``abandoned`` so that the next inspector can distinguish "actually in
+        progress" from "stranded by parent death". This is a complement to
+        the detached watcher subprocess (which infers terminal status from
+        output.txt); the watcher catches the case where maven completes after
+        the parent dies, while this handler catches the inverse case where
+        maven is still mid-run when the parent dies.
+        """
+        abandoned: list[str] = []
+        if not RUNS_DIR.exists():
+            return abandoned
+        try:
+            run_dirs = list(RUNS_DIR.iterdir())
+        except OSError:
+            return abandoned
+        for run_dir in run_dirs:
+            if not run_dir.is_dir():
+                continue
+            metadata_path = run_dir / "metadata.json"
+            if not metadata_path.exists():
+                continue
+            try:
+                with open(metadata_path) as f:
+                    metadata = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if metadata.get("status") not in ("running", "pending"):
+                continue
+            metadata["status"] = "abandoned"
+            metadata["abandoned_at"] = datetime.now().isoformat()
+            metadata["abandoned_reason"] = (
+                "ar-test-runner process exited while this run was still in progress")
+            try:
+                with open(metadata_path, "w") as f:
+                    json.dump(metadata, f, indent=2)
+                abandoned.append(run_dir.name)
+            except OSError:
+                pass
+        return abandoned
+
     def list_runs(self, limit: int = 10, status_filter: Optional[str] = None) -> list[dict]:
         """List recent runs."""
         runs = []
@@ -1177,6 +1481,28 @@ class TestRunner:
 # Global runner instance
 runner = TestRunner()
 
+
+def _on_shutdown_mark_abandoned():
+    """atexit handler: mark any still-running runs as ``abandoned``.
+
+    SIGKILL bypasses atexit, so this only fires on clean python exit
+    (e.g., the MCP stdio loop ending because the parent claude process
+    closed its end of the pipe). Combined with the detached watcher
+    subprocesses spawned by ``start_run``, this ensures every metadata.json
+    has a defined terminal state by the time a future agent inspects it.
+    """
+    try:
+        abandoned = runner.abandon_running_runs()
+        if abandoned:
+            sys.stderr.write(
+                "[ar-test-runner] atexit: marked "
+                f"{len(abandoned)} run(s) as abandoned: {','.join(abandoned)}\n")
+    except Exception as exc:  # noqa: BLE001
+        sys.stderr.write(f"[ar-test-runner] atexit handler failed: {exc}\n")
+
+
+atexit.register(_on_shutdown_mark_abandoned)
+
 # Create MCP server
 server = Server("ar-test-runner")
 
@@ -1187,7 +1513,32 @@ async def list_tools():
     return [
         Tool(
             name="start_test_run",
-            description="Start a new test run asynchronously. Returns a run_id for tracking.",
+            description=(
+                "Start a new test run asynchronously. Returns a run_id for tracking.\n"
+                "\n"
+                "POLLING IS MANDATORY. This tool is asynchronous: it returns "
+                "immediately with status=\"started\" while maven runs in the "
+                "background. You MUST poll get_run_status(run_id) repeatedly "
+                "until status is one of completed | failed | timeout | cancelled, "
+                "then call get_run_failures(run_id) for the result, BEFORE "
+                "ending your turn.\n"
+                "\n"
+                "If you end your turn while status==\"running\", the ar-test-runner "
+                "subprocess will be killed by the harness — even if maven completes "
+                "successfully — and your test result will be silently abandoned. "
+                "The job will be marked DEGRADED and the next agent session will "
+                "have to redo the work.\n"
+                "\n"
+                "Between polls, emit small productive tool calls (Read, Grep) "
+                "every 30-60 seconds to keep the harness's inactivity clock alive. "
+                "Do NOT use Bash sleep or ScheduleWakeup with delaySeconds>=300 "
+                "to wait — both exceed the harness's 20-minute inactivity ceiling.\n"
+                "\n"
+                f"Default timeout_minutes is {DEFAULT_TIMEOUT}, set 5 minutes under the "
+                "harness's 20-minute inactivity timeout. Values >20 are unsafe — "
+                "the harness will kill the agent (and ar-test-runner) before the "
+                "test-runner's own timer fires."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1221,7 +1572,11 @@ async def list_tools():
                     "timeout_minutes": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": f"Max run time in minutes (default: {DEFAULT_TIMEOUT})"
+                        "description": (
+                            f"Max run time in minutes (default: {DEFAULT_TIMEOUT}). "
+                            "Values >20 are unsafe under the harness's "
+                            "20-minute inactivity timeout."
+                        )
                     },
                     "jvm_args": {
                         "type": "array",
@@ -1234,31 +1589,65 @@ async def list_tools():
                     },
                     "jmx_monitoring": {
                         "type": "boolean",
-                        "description": "Enable JMX monitoring: injects JFR/NMT JVM args and discovers forked JVM PID for use with ar-jmx tools (default: false)"
+                        "description": "Enable JMX monitoring: discovers the forked test JVM PID so ar-jmx tools can attach (default: false). Injects no JVM startup flags -- thread dumps, JFR, class histograms, GC stats and allocation reports all attach via jcmd at runtime. (JFR and NMT are NOT auto-injected: -XX:StartFlightRecording corrupts the surefire fork channel via stdout, and -XX:NativeMemoryTracking aborts this project's JVM when the JNI hardware library loads. Start JFR via ar-jmx start_jfr_recording; pass NMT explicitly through jvm_args only if you accept the crash risk.)"
                     },
                     "jfr_settings": {
                         "type": "string",
                         "enum": ["default", "profile"],
-                        "description": "JFR settings profile: 'default' for allocation profiling, 'profile' for CPU method sampling (~20ms interval). Only used when jmx_monitoring is true (default: 'default')"
+                        "description": "Accepted for backward compatibility but no longer wired to JVM startup; pass the chosen profile to ar-jmx start_jfr_recording when you call it (default: 'default')"
                     },
                     "repetitions": {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 100,
                         "description": "Number of times to run the test (default: 1). When > 1, runs the test N times sequentially under one run_id. Use get_run_timing to get statistical analysis of results."
+                    },
+                    "test_group": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Reproduce a CI test-matrix group: run the WHOLE module in one JVM with AR_TEST_GROUP set, so only classes hashing to this group run but they share JVM state exactly as on CI. Use this to reproduce failures that only appear when a test runs after others in the same JVM (static cache/intern-table pollution) -- a single test_classes run cannot reproduce these. Mutually exclusive with test_classes/test_methods (those are ignored when test_group is set). When test_groups is omitted, the group count is read from the CI workflow (AR_TEST_GROUPS in .github/workflows/analysis.yaml), so the partition always matches what CI actually runs. To fully mirror a CI job, also copy that job's hardware flags (AR_HARDWARE_DRIVER etc.) from the workflow into jvm_args."
+                    },
+                    "test_groups": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Total number of groups for test_group partitioning (AR_TEST_GROUPS). Defaults to the value the CI workflow currently uses, read from .github/workflows/analysis.yaml at request time. Pass explicitly only to explore a partitioning different from CI's. Only used when test_group is set."
                     }
                 }
             }
         ),
         Tool(
             name="get_run_status",
-            description="Get the status of a test run including test counts and duration.",
+            description=(
+                "Get the status of a test run including test counts and duration. "
+                "Returns immediately by default; poll until status is completed, failed, "
+                "timeout, or cancelled.\n\n"
+                "Set block=true to have the server wait until the run reaches a terminal "
+                "state before responding, so you can wait for completion with one call "
+                "instead of polling. The wait is bounded by timeout_seconds; if it elapses "
+                "the latest (still-running) status is returned. Use blocking when you have "
+                "nothing else to do meanwhile; otherwise return and do other work."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "run_id": {
                         "type": "string",
                         "description": "The run identifier"
+                    },
+                    "block": {
+                        "type": "boolean",
+                        "description": (
+                            "When true, wait server-side until the run finishes (or "
+                            "timeout_seconds elapses) before responding. Default: false."
+                        )
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": (
+                            "Maximum seconds to wait when block=true (default: 600, max: 3600). "
+                            "Ignored when block is false."
+                        )
                     }
                 },
                 "required": ["run_id"]
@@ -1376,8 +1765,12 @@ async def call_tool(name: str, arguments: dict):
                 profile=arguments.get("profile"),
                 jmx_monitoring=arguments.get("jmx_monitoring", False),
                 jfr_settings=arguments.get("jfr_settings", "default"),
-                repetitions=arguments.get("repetitions", 1)
+                repetitions=arguments.get("repetitions", 1),
+                test_group=arguments.get("test_group"),
+                test_groups=arguments.get("test_groups")
             )
+            if config.test_group is not None and config.test_groups is None:
+                config.test_groups = resolve_ci_test_groups(config.module)
             run_id, command = runner.start_run(config)
             response = {
                 "run_id": run_id,
@@ -1397,7 +1790,14 @@ async def call_tool(name: str, arguments: dict):
 
         elif name == "get_run_status":
             run_id = arguments["run_id"]
-            status = runner.get_run_status(run_id)
+            if arguments.get("block"):
+                status = await block_until_terminal(
+                    lambda: runner.get_run_status(run_id),
+                    TERMINAL_RUN_STATES,
+                    timeout_seconds=resolve_block_timeout(arguments.get("timeout_seconds")),
+                )
+            else:
+                status = runner.get_run_status(run_id)
             if status is None:
                 return [TextContent(
                     type="text",

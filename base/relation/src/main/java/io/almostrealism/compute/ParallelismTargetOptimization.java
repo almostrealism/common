@@ -142,6 +142,7 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 	 * @param childProcessor a function to process children for analysis
 	 * @return the optimized process with children isolated or not based on analysis
 	 */
+	@Override
 	public <P extends Process<?, ?>, T> Process<P, T> optimize(ProcessContext ctx,
 															   Process<P, T> parent,
 															   Collection<P> children,
@@ -156,9 +157,7 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		long tot = LongStream.of(counts).filter(c -> c > 0).sum();
 		long max = LongStream.of(counts).filter(c -> c > 0).max().orElse(0);
 
-		long memory[] = childProcessor.apply(children).mapToLong(Process::outputSize).filter(i -> i > 0).toArray();
 		long mem = Process.outputSize(parent);
-		long maxMem = LongStream.of(memory).max().orElse(0);
 
 		double currentScore = ParallelismSettings.score(cn, mem);
 		double altScore = ParallelismSettings
@@ -181,12 +180,6 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		} else if (enableContextualCount && max <= context.getCountLong()) {
 			isolate = false;
 		} else if (max > maxCount) {
-			if (cn < minCount && context.getCountLong() < minCount) {
-				System.out.println("WARN: Count " + max + " is too high to isolate, " +
-						"but the resulting process will have a count of only " + cn +
-						" (ctx " + context.getCountLong() + ")");
-			}
-
 			isolate = false;
 		} else if (enableNarrowMax && max > targetCount && context.getCountLong() >= minCount) {
 			isolate = false;
@@ -197,7 +190,6 @@ public class ParallelismTargetOptimization implements ProcessOptimizationStrateg
 		}
 
 		if (isolate && currentScore / altScore > 4 && ParallelProcess.explicitIsolationTargets.isEmpty()) {
-			System.out.println("Isolation is " + (currentScore / altScore) + " times worse - skipping");
 			isolate = false;
 		}
 

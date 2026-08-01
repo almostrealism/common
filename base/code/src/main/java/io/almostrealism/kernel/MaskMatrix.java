@@ -16,6 +16,7 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.Index;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mask;
@@ -23,10 +24,31 @@ import io.almostrealism.expression.Mask;
 import java.util.Optional;
 import java.util.OptionalInt;
 
+/**
+ * An {@link ExpressionMatrix} that applies a boolean mask to another matrix.
+ *
+ * <p>Each entry is the product of a mask value and a data value: when the mask is
+ * {@code true} (or {@code 1}) the data expression is returned; when the mask is
+ * {@code false} (or {@code 0}) the constant {@code 0} is returned; otherwise a
+ * {@link Mask} expression wrapping both operands is produced.</p>
+ *
+ * @param <T> the value type of the data matrix
+ */
 public class MaskMatrix<T> extends ExpressionMatrix<T> {
+	/** The boolean mask matrix applied to each entry. */
 	private ExpressionMatrix<?> mask;
+
+	/** The data matrix whose entries are returned when the mask is true. */
 	private ExpressionMatrix<T> expression;
 
+	/**
+	 * Creates a {@link MaskMatrix} combining the given mask and data matrices.
+	 *
+	 * @param row        the row index
+	 * @param col        the column index
+	 * @param mask       the boolean mask matrix
+	 * @param expression the data matrix
+	 */
 	public MaskMatrix(Index row, Index col,
 					  ExpressionMatrix<?> mask,
 					  ExpressionMatrix<T> expression) {
@@ -35,6 +57,13 @@ public class MaskMatrix<T> extends ExpressionMatrix<T> {
 		this.expression = expression;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns the data entry when the mask is statically {@code true} or {@code 1},
+	 * the constant {@code 0} when the mask is statically {@code false} or {@code 0},
+	 * and a {@link Mask} expression otherwise.</p>
+	 */
 	@Override
 	public Expression<T> valueAt(int i, int j) {
 		Expression m = mask.valueAt(i, j);

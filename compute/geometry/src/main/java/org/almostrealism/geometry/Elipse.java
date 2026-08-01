@@ -19,9 +19,31 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorMath;
 
+/**
+ * Computes an ellipse from a conic section defined by a ray intersecting a cone.
+ * Provides utilities for sampling random points on the resulting ellipse,
+ * which is useful in rendering effects such as area light sampling.
+ *
+ * @author Michael Murray
+ */
 public class Elipse {
-	private static double[] center, major, minor;
-	
+	/** The major semi-axis vector of the computed ellipse. */
+	private static double[] major;
+
+	/** The minor semi-axis vector of the computed ellipse. */
+	private static double[] minor;
+
+	/**
+	 * Computes the ellipse formed by the intersection of a cone (defined by apex
+	 * {@code p}, axis {@code n}, and half-angle {@code theta}) with the plane
+	 * perpendicular to the vector from apex to point {@code x}.
+	 * Stores the resulting ellipse major and minor axes in static fields.
+	 *
+	 * @param x     the point on the geometry surface (cone base reference)
+	 * @param p     the apex of the cone
+	 * @param n     the axis direction of the cone (unit vector)
+	 * @param theta the half-angle of the cone in radians
+	 */
 	public static void loadConicSection(double[] x, double[] p, double[] n, double theta) {
 		double[] l = VectorMath.subtract(x, p);
 		double nl = new Vector(n).dotProduct(new Vector(l));
@@ -36,7 +58,6 @@ public class Elipse {
 		double c1 = lls / Math.sin(0.5 * Math.PI - theta + cnnl);
 		double c2 = lls / Math.sin(0.5 * Math.PI - theta - cnnl);
 		
-		Elipse.center = VectorMath.addMultiple(VectorMath.clone(p), m, c1 - c2);
 		Elipse.major = VectorMath.multiply(m, 0.5 * (c1 + c2));
 		
 		double[] nm = new Vector(n).crossProduct(new Vector(Elipse.major)).toArray();
@@ -47,6 +68,12 @@ public class Elipse {
 		Elipse.minor = VectorMath.multiply(nm, lls / Math.sin(Math.PI - theta - cnml));
 	}
 	
+	/**
+	 * Returns a uniformly distributed random sample point on the ellipse
+	 * previously computed by {@link #loadConicSection}.
+	 *
+	 * @return a point on the ellipse as a 3D coordinate array
+	 */
 	public static double[] getSample() {
 		double x = 1.0;
 		double y = 1.0;

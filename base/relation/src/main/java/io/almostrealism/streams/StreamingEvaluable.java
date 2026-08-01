@@ -68,12 +68,46 @@ public interface StreamingEvaluable<T> extends Computable {
 	 * The actual computation is performed asynchronously, and the result is pushed to
 	 * the downstream consumer set via {@link #setDownstream(Consumer)}.</p>
 	 *
+	 * <p>This is a convenience default equivalent to {@link #request(Object[], Semaphore)}
+	 * with no dependency, so an implementor only ever has to implement the two-argument
+	 * form.</p>
+	 *
 	 * @param args the arguments required for computation, in the same format as
 	 *             would be passed to {@link io.almostrealism.relation.Evaluable#evaluate(Object...)}
 	 *
+	 * @see #request(Object[], Semaphore)
 	 * @see #setDownstream(Consumer)
 	 */
-	void request(Object[] args);
+	default void request(Object[] args) {
+		request(args, null);
+	}
+
+	/**
+	 * Initiates an asynchronous computation request whose dispatch is ordered after the
+	 * given completion, without blocking the requesting thread. The result will be delivered
+	 * to the downstream consumer when available.
+	 *
+	 * <p>Where {@link #request(Object[])} begins its work immediately, this form orders the
+	 * computation's dispatch after {@code dependsOn} by chaining it through the provider &mdash;
+	 * without blocking the requesting thread, since a request must return while its dependency
+	 * may still be outstanding.</p>
+	 *
+	 * <p>This ordering matters most for argument preparation: when an operation is dispatched
+	 * with a {@code dependsOn} completion, an argument whose evaluation is itself a dispatch
+	 * that reads memory written by that prior work must not execute until it has finished.
+	 * Delivery remains asynchronous &mdash; results may still arrive with their own completion.
+	 * An implementation that performs no dispatch (a synchronous adapter, a handle-producing
+	 * host evaluable) may disregard {@code dependsOn}.</p>
+	 *
+	 * @param args      the arguments required for computation, in the same format as
+	 *                  {@link #request(Object[])}
+	 * @param dependsOn completion the dispatch must chain on, or {@code null} when there
+	 *                  is no dependency
+	 *
+	 * @see #request(Object[])
+	 * @see #setDownstream(Consumer)
+	 */
+	void request(Object[] args, Semaphore dependsOn);
 
 	/**
 	 * Sets the downstream consumer that will receive computation results.

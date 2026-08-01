@@ -31,12 +31,21 @@ import org.almostrealism.collect.PackedCollection;
  * @see StatelessFilter
  */
 public class VolumeEnvelopeExtraction implements StatelessFilter, CodeFeatures {
+	/** Pre-filled convolution coefficients (uniform, summing to 1.0) for the moving average. */
 	private final PackedCollection coefficients;
 
+	/**
+	 * Creates a VolumeEnvelopeExtraction with the default aggregation width of 281 samples.
+	 */
 	public VolumeEnvelopeExtraction() {
 		this(281);
 	}
 
+	/**
+	 * Creates a VolumeEnvelopeExtraction with the given aggregation (window) width.
+	 *
+	 * @param aggregationWidth number of samples in the moving average window
+	 */
 	public VolumeEnvelopeExtraction(int aggregationWidth) {
 		coefficients = new PackedCollection(aggregationWidth);
 		coefficients.fill(1.0 / aggregationWidth);

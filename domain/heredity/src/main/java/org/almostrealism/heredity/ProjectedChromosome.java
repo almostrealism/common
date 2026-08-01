@@ -67,10 +67,14 @@ import java.util.function.LongSupplier;
  * @see Chromosome
  */
 public class ProjectedChromosome implements Chromosome<PackedCollection>, CollectionFeatures {
+	/** The shared data source from which all projected genes in this chromosome derive their values. */
 	private final PackedCollection source;
 
+	/** The list of projected genes that derive their values from {@code source}. */
 	private List<ProjectedGene> projections;
+	/** Combined list of all genes in this chromosome (projected and non-projected). */
 	private List<Gene<PackedCollection>> genes;
+	/** Cache of consolidated gene values used during evaluation. */
 	private PackedCollection consolidatedValues;
 
 	/**
@@ -138,9 +142,7 @@ public class ProjectedChromosome implements Chromosome<PackedCollection>, Collec
 			PackedCollection geneValues = gene.getValues();
 
 			// Copy current values to the consolidated buffer
-			for (int i = 0; i < len; i++) {
-				consolidatedValues.setMem(offset + i, geneValues.toDouble(i));
-			}
+			consolidatedValues.setFrom(offset, geneValues);
 
 			// Replace gene's values with a view of the consolidated buffer
 			gene.replaceValues(consolidatedValues.range(shape(len), offset));

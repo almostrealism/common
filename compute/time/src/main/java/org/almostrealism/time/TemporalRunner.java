@@ -16,12 +16,11 @@
 
 package org.almostrealism.time;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.Process;
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
@@ -226,9 +225,12 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 	 */
 	public static boolean enableIsolation = false;
 
+	/** Suppliers for the compiled setup and per-tick execution runnables. */
 	private Supplier<Runnable> setup, run;
+	/** The materialized setup and per-tick runnables produced from their respective suppliers. */
 	private Runnable s, r;
 
+	/** Optional profile for recording per-operation timing of temporal execution. */
 	private OperationProfile profile;
 
 	/**
@@ -356,14 +358,9 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 	@Override
 	public Supplier<Runnable> tick() { return run; }
 
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		ScopeLifecycle.prepareArguments(Stream.of(setup), map);
-		ScopeLifecycle.prepareArguments(Stream.of(run), map);
-	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.prepareScope(Stream.of(setup), manager, context);
 		ScopeLifecycle.prepareScope(Stream.of(run), manager, context);
 	}

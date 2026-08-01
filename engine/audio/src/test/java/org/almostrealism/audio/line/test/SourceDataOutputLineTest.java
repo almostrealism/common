@@ -22,8 +22,8 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.SourceDataOutputLine;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -39,9 +39,8 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 	 * This replaces the old direct write approach with proper Producer-based scheduling.
 	 */
 	@Test(timeout = 30000)
+	@TestProperties(audioDeviceRequired = true)
 	public void playWaveData() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File f = getTestWavFile();
 
 		// Create output line with default format
@@ -53,23 +52,23 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 		// Create BufferedOutputScheduler for scheduled writes
 		BufferedOutputScheduler scheduler = cells.buffer(outputLine);
 
-		System.out.println("Starting scheduled WAV playback...");
+		log("Starting scheduled WAV playback...");
 
 		// Start the buffered, scheduled playback
 		scheduler.start();
 
-		// Let it play
-		Thread.sleep(30000);
+		// Let it play long enough to render frames but well under the 30s test timeout
+		Thread.sleep(5000);
 
 		// Verify playback occurred
 		long renderedFrames = scheduler.getRenderedFrames();
-		System.out.println("Rendered frames: " + renderedFrames);
+		log("Rendered frames: " + renderedFrames);
 
 		// Stop and clean up
 		scheduler.stop();
 		outputLine.destroy();
 
-		System.out.println("WAV playback test completed");
+		log("WAV playback test completed");
 	}
 
 }

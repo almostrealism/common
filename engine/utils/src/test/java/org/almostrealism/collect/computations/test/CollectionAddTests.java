@@ -34,11 +34,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
 
+/**
+ * Tests for collection addition operations.
+ */
 public class CollectionAddTests extends TestSuiteBase {
+	/** Number of iterations for performance testing. */
 	int iter = 1000000;
+	/** Size of collections for testing. */
 	int size = 150000;
+	/** CPU parallelism level. */
 	int parallelism = KernelPreferences.getCpuParallelism();
 
+	/**
+	 * Helper method to test addition performance.
+	 */
 	public void add(ComputeRequirement... req) {
 		log("Native parallelism = " + KernelPreferences.getCpuParallelism());
 
@@ -59,6 +68,9 @@ public class CollectionAddTests extends TestSuiteBase {
 		log("total time = " + (System.currentTimeMillis() - start) + "ms");
 	}
 
+	/**
+	 * Tests CPU addition performance.
+	 */
 	@Test(timeout = 60 * 60000)
 	@TestDepth(10)
 	@TestProperties(longRunning = true)
@@ -67,6 +79,9 @@ public class CollectionAddTests extends TestSuiteBase {
 		add(ComputeRequirement.CPU);
 	}
 
+	/**
+	 * Tests GPU addition performance.
+	 */
 	@Test(timeout = 60 * 60000)
 	@TestDepth(10)
 	@TestProperties(longRunning = true)
@@ -75,6 +90,9 @@ public class CollectionAddTests extends TestSuiteBase {
 		add(ComputeRequirement.GPU);
 	}
 
+	/**
+	 * Tests Java addition performance (baseline comparison).
+	 */
 	@Test(timeout = 60 * 60000)
 	@TestProperties(longRunning = true)
 	public void javaAdd() throws InterruptedException {

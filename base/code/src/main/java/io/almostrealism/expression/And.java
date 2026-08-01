@@ -16,7 +16,7 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -176,7 +176,7 @@ public class And extends BinaryExpression<Integer> {
 	 * @return the result of the bitwise AND operation as an {@link Integer}
 	 */
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		return getChildren().get(0).value(indexValues).intValue() & getChildren().get(1).value(indexValues).intValue();
 	}
 

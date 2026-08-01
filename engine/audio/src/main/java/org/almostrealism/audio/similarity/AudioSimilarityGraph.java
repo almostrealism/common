@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,69 +28,62 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Adapts a collection of {@link WaveDetails} to the {@link IndexedGraph} interface
+ * Adapts a collection of audio similarity data to the {@link IndexedGraph} interface
  * for use with general-purpose graph algorithms.
  *
  * <p>This adapter treats audio samples as graph nodes and their computed similarity
  * scores as edge weights. It enables applying graph algorithms like PageRank,
  * community detection, and path finding to discover relationships between audio samples.</p>
  *
+ * <p>Nodes are stored as lightweight {@link SimilarityNode} instances that carry only
+ * the content identifier and similarity map, not the full {@link WaveDetails} with its
+ * heavy feature vectors. This allows the {@link org.almostrealism.audio.AudioLibrary}
+ * cache to evict feature data while the graph algorithms run.</p>
+ *
  * <h2>Graph Structure</h2>
  * <ul>
- *   <li><b>Nodes</b>: Each {@link WaveDetails} is a node</li>
+ *   <li><b>Nodes</b>: Each {@link SimilarityNode} represents an audio sample</li>
  *   <li><b>Edges</b>: Similarity scores between samples (symmetric)</li>
  *   <li><b>Weights</b>: Higher weight = more similar</li>
  * </ul>
  *
- * <h2>Similarity Threshold</h2>
- * <p>By default, all non-zero similarity scores create edges. Use {@link #withThreshold(double)}
- * to create a filtered graph that only includes edges above a certain similarity threshold.
- * This can improve algorithm performance and focus on stronger relationships.</p>
- *
  * <h2>Usage Example</h2>
  * <pre>{@code
  * public class MyAnalyzer implements GraphFeatures {
- *     public void analyze(Collection<WaveDetails> details) {
- *         // Create graph from details
- *         AudioSimilarityGraph graph = new AudioSimilarityGraph(details);
- *
- *         // Apply graph algorithms
+ *     public void analyze(AudioSimilarityGraph graph) {
  *         double[] ranks = pageRank(graph, 0.85, 50);
  *         int[] communities = louvain(graph, 1.0);
  *
- *         // Get most central sample
  *         int centralIdx = argmax(ranks);
- *         WaveDetails centralSample = graph.nodeAt(centralIdx);
+ *         String identifier = graph.nodeAt(centralIdx).getIdentifier();
  *     }
  * }
  * }</pre>
  *
- * <h2>Weight Interpretation</h2>
- * <p>Similarity scores are used directly as edge weights (higher = more similar).
- * This works naturally with PageRank and community detection algorithms. For
- * shortest-path algorithms that treat weight as distance, transform the weights:</p>
- * <pre>{@code
- * // Option 1: Invert similarity (use for path finding)
- * double distance = 1.0 / similarity;
- *
- * // Option 2: Use dissimilarity
- * double distance = maxSimilarity - similarity;
- * }</pre>
- *
  * @see IndexedGraph
- * @see WaveDetails
+ * @see SimilarityNode
  *
  * @author Michael Murray
  */
-public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
+public class AudioSimilarityGraph implements IndexedGraph<SimilarityNode> {
 
-	private final List<WaveDetails> nodes;
+	/** Ordered list of similarity nodes in the graph (one per audio sample). */
+	private final List<SimilarityNode> nodes;
+
+	/** Mapping from audio identifier to node index for O(1) index lookup. */
 	private final Map<String, Integer> nodeIndex;
-	private final Map<String, WaveDetails> detailsLookup;
+
+	/** Mapping from audio identifier to node for direct node retrieval. */
+	private final Map<String, SimilarityNode> nodeLookup;
+
+	/** Minimum similarity score for an edge to be included in the graph. */
 	private final double threshold;
 
 	/**
 	 * Creates a new AudioSimilarityGraph from the given details with no similarity threshold.
+	 *
+	 * <p>Only the identifier and similarity map are retained from each {@link WaveDetails};
+	 * the heavy feature data is not referenced by the graph.</p>
 	 *
 	 * @param details collection of WaveDetails with pre-computed similarities
 	 */
@@ -101,25 +94,43 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	/**
 	 * Creates a new AudioSimilarityGraph from a collection of WaveDetails with a similarity threshold.
 	 *
-	 * <p>Only edges with similarity above the threshold will be included in the graph.
-	 * Use this to focus on stronger relationships and improve algorithm performance.</p>
-	 *
-	 * @param details collection of WaveDetails with pre-computed similarities
+	 * @param details   collection of WaveDetails with pre-computed similarities
 	 * @param threshold minimum similarity to include as an edge (0.0 = include all)
 	 */
 	public AudioSimilarityGraph(Collection<WaveDetails> details, double threshold) {
 		this.threshold = threshold;
-		this.nodes = new ArrayList<>(details);
+		this.nodes = new ArrayList<>(details.size());
 		this.nodeIndex = new HashMap<>();
-		this.detailsLookup = new HashMap<>();
+		this.nodeLookup = new HashMap<>();
 
-		for (int i = 0; i < nodes.size(); i++) {
-			WaveDetails node = nodes.get(i);
-			if (node.getIdentifier() != null) {
-				nodeIndex.put(node.getIdentifier(), i);
-				detailsLookup.put(node.getIdentifier(), node);
+		for (WaveDetails d : details) {
+			if (d.getIdentifier() != null) {
+				SimilarityNode node = new SimilarityNode(
+						d.getIdentifier(), d.getSimilarities());
+				int idx = nodes.size();
+				nodes.add(node);
+				nodeIndex.put(d.getIdentifier(), idx);
+				nodeLookup.put(d.getIdentifier(), node);
 			}
 		}
+	}
+
+	/**
+	 * Internal constructor for creating a derived graph with pre-built data structures.
+	 *
+	 * @param nodes       ordered list of similarity nodes
+	 * @param nodeIndex   map from identifier to node index
+	 * @param nodeLookup  map from identifier to node
+	 * @param threshold   minimum similarity for edge inclusion
+	 */
+	private AudioSimilarityGraph(List<SimilarityNode> nodes,
+								 Map<String, Integer> nodeIndex,
+								 Map<String, SimilarityNode> nodeLookup,
+								 double threshold) {
+		this.nodes = nodes;
+		this.nodeIndex = nodeIndex;
+		this.nodeLookup = nodeLookup;
+		this.threshold = threshold;
 	}
 
 	/**
@@ -129,7 +140,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	 * @return a new AudioSimilarityGraph with the threshold
 	 */
 	public AudioSimilarityGraph withThreshold(double threshold) {
-		return new AudioSimilarityGraph(nodes, threshold);
+		return new AudioSimilarityGraph(nodes, nodeIndex, nodeLookup, threshold);
 	}
 
 	/**
@@ -142,7 +153,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	}
 
 	@Override
-	public WaveDetails nodeAt(int index) {
+	public SimilarityNode nodeAt(int index) {
 		if (index < 0 || index >= nodes.size()) {
 			return null;
 		}
@@ -150,7 +161,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	}
 
 	@Override
-	public int indexOf(WaveDetails node) {
+	public int indexOf(SimilarityNode node) {
 		if (node == null || node.getIdentifier() == null) {
 			return -1;
 		}
@@ -158,7 +169,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	}
 
 	@Override
-	public Collection<WaveDetails> neighbors(WaveDetails node) {
+	public Collection<SimilarityNode> neighbors(SimilarityNode node) {
 		if (node == null) return List.of();
 
 		Map<String, Double> similarities = node.getSimilarities();
@@ -168,13 +179,9 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 
 		return similarities.entrySet().stream()
 				.filter(e -> e.getValue() > threshold)
-				.map(e -> getDetails(e.getKey()))
-				.filter(d -> d != null)
+				.map(e -> nodeLookup.get(e.getKey()))
+				.filter(n -> n != null)
 				.collect(Collectors.toList());
-	}
-
-	private WaveDetails getDetails(String identifier) {
-		return detailsLookup.get(identifier);
 	}
 
 	@Override
@@ -183,7 +190,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	}
 
 	@Override
-	public double edgeWeight(WaveDetails from, WaveDetails to) {
+	public double edgeWeight(SimilarityNode from, SimilarityNode to) {
 		if (from == null || to == null) return 0.0;
 		if (from.getIdentifier() == null || to.getIdentifier() == null) return 0.0;
 
@@ -198,7 +205,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 	}
 
 	@Override
-	public Stream<WaveDetails> children() {
+	public Stream<SimilarityNode> children() {
 		return nodes.stream();
 	}
 
@@ -208,7 +215,7 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 			return List.of();
 		}
 
-		WaveDetails node = nodes.get(nodeIndex);
+		SimilarityNode node = nodes.get(nodeIndex);
 		Map<String, Double> similarities = node.getSimilarities();
 		if (similarities == null || similarities.isEmpty()) {
 			return List.of();
@@ -231,14 +238,14 @@ public class AudioSimilarityGraph implements IndexedGraph<WaveDetails> {
 		if (fromIndex < 0 || fromIndex >= nodes.size()) return 0.0;
 		if (toIndex < 0 || toIndex >= nodes.size()) return 0.0;
 
-		WaveDetails from = nodes.get(fromIndex);
-		WaveDetails to = nodes.get(toIndex);
+		SimilarityNode from = nodes.get(fromIndex);
+		SimilarityNode to = nodes.get(toIndex);
 
 		return edgeWeight(from, to);
 	}
 
 	@Override
-	public double weightedDegree(WaveDetails node) {
+	public double weightedDegree(SimilarityNode node) {
 		if (node == null) return 0.0;
 
 		Map<String, Double> similarities = node.getSimilarities();

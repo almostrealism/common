@@ -157,7 +157,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 status_code=400,
             )
 
+        # Default is the "default" namespace for backwards compatibility, but
+        # callers can pass ``None`` / ``""`` to get memories across every
+        # namespace sorted by recency.
         namespace = body.get("namespace", "default")
+        if namespace == "":
+            namespace = None
         limit = body.get("limit", 20)
 
         results = store.search_by_branch(
@@ -264,17 +269,41 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             "errors": errors,
         })
 
+    async def namespaces_endpoint(request: Request) -> JSONResponse:
+        """GET /api/memory/namespaces - Per-namespace counts and latest timestamp.
+
+        Optional ``repo_url`` and ``branch`` query params scope the summary.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+
+        repo_url = request.query_params.get("repo_url") or None
+        branch = request.query_params.get("branch") or None
+
+        stats = store.namespace_stats(repo_url=repo_url, branch=branch)
+        return JSONResponse({"namespaces": stats, "count": len(stats)})
+
     routes = [
         Route("/api/health", health, methods=["GET"]),
         Route("/api/memory/store", memory_store_endpoint, methods=["POST"]),
         Route("/api/memory/search", memory_search_endpoint, methods=["POST"]),
         Route("/api/memory/branch", memory_branch_endpoint, methods=["POST"]),
+        Route("/api/memory/namespaces", namespaces_endpoint, methods=["GET"]),
         Route("/api/memory/{entry_id}", memory_delete_endpoint, methods=["DELETE"]),
         Route("/api/memory/list", memory_list_endpoint, methods=["GET"]),
         Route("/api/memory/import", memory_import_endpoint, methods=["POST"]),
     ]
 
-    app = Starlette(routes=routes)
+    async def _value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        # Store-layer validation (e.g. malformed namespace) surfaces as ValueError.
+        # Map to 400 so the caller sees a clean rejection rather than a 500.
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    app = Starlette(
+        routes=routes,
+        exception_handlers={ValueError: _value_error_handler},
+    )
 
     # Add CORS middleware for browser-based clients
     app.add_middleware(

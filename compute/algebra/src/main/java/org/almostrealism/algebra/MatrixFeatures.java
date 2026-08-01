@@ -84,6 +84,11 @@ import java.util.Optional;
  * CollectionProducer scores2 = scaledDotProduct(Q, K, true);
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author  Michael Murray
  * @see AlgebraFeatures
  * @see CollectionProducer
@@ -242,8 +247,6 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		boolean batchedVectors2D = isVectorPath && vShape.getDimensions() == 2 && vShape.length(0) > 1;
 		boolean batchedVectors3D = isVectorPath && onlyColumns && vShape.getDimensions() == 3 && vShape.length(0) > 1;
 		boolean singleVector2D = vShape.getDimensions() == 2 && vShape.length(0) == 1 && vShape.length(1) == mShape.length(1);
-		boolean batchedVectors = batchedVectors2D || batchedVectors3D;
-
 		TraversalPolicy vectorShape;
 		if (batchedVectors2D) {
 			// Batch of column vectors: (batch, n) -> (batch, n, 1)

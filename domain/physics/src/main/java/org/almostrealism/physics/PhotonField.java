@@ -52,7 +52,18 @@ package org.almostrealism.physics;
  */
 public interface PhotonField {
 	
+	/**
+	 * Sets the simulation clock for this photon field.
+	 *
+	 * @param c  the clock to use
+	 */
 	void setClock(Clock c);
+
+	/**
+	 * Returns the simulation clock used by this photon field.
+	 *
+	 * @return the clock
+	 */
 	Clock getClock();
 	
 	/**
@@ -74,28 +85,39 @@ public interface PhotonField {
 	void tick(double d);
 	
 	/**
+	 * Sets the absorber used by this photon field.
+	 *
 	 * @param a  Absorber to use for this photon field.
 	 */
 	void setAbsorber(Absorber a);
-	
+
 	/**
+	 * Returns the absorber used by this photon field.
+	 *
 	 * @return  The absorber used by this photon field.
 	 */
 	Absorber getAbsorber();
-	
+
 	/**
+	 * Sets the granularity, or number of field photons per "real" photon for this photon field.
+	 *
 	 * @param delta  The granularity, or number of field photons per "real" photon
 	 *               for this photon field.
 	 */
 	void setGranularity(long delta);
-	
+
 	/**
+	 * Returns the granularity, or number of field photons per "real" photon for this photon field.
+	 *
 	 * @return  The granularity, or number of field photons per "real" photon
 	 *          for this photon field.
 	 */
 	long getGranularity();
-	
+
 	/**
+	 * Returns the total number of photons maintained by this PhotonField at the time
+	 * the method is called.
+	 *
 	 * @return  The total number of photons maintained by this PhotonField at the time
 	 *          the method is called.
 	 */

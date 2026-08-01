@@ -163,6 +163,35 @@ public interface Algebraic extends Computable {
 	}
 
 	/**
+	 * Checks if this {@link Algebraic} represents a <em>row-monomial</em> transformation:
+	 * a matrix in which every row has exactly one non-zero entry (equivalently, each row
+	 * is a scalar multiple of a standard basis vector).
+	 *
+	 * <p>This generalizes {@link #isIdentity(int)} and {@link #isDiagonal(int)}: a diagonal
+	 * matrix is the row-monomial matrix whose single non-zero per row sits on the diagonal,
+	 * and the identity is the 0/1 diagonal case. A row-monomial matrix relaxes "on the
+	 * diagonal" to "at an arbitrary, computable column," and — unlike diagonal/identity — it
+	 * need not be square: the (output x input) Jacobian of a subset, slice, or gather is a
+	 * row-monomial matrix.</p>
+	 *
+	 * <p>The significance for optimization is that a contraction against a row-monomial
+	 * matrix (summing over the column index) collapses to a direct gather of one element per
+	 * row, eliminating the dense reduction loop. When this method returns {@code true} the
+	 * containing computation can be kept visible (rather than isolated) so that downstream
+	 * reduction machinery can perform that collapse.</p>
+	 *
+	 * <p>No dimension argument is taken: a row-monomial matrix is generally non-square, so a
+	 * single {@code width} (as used by {@link #isIdentity(int)}) does not apply. An
+	 * implementing computation determines the property from its own shape.</p>
+	 *
+	 * @return {@code true} if this transformation has exactly one non-zero entry per row;
+	 *         {@code false} otherwise or if the property cannot be determined
+	 */
+	default boolean isRowMonomial() {
+		return false;
+	}
+
+	/**
 	 * Determines if this {@link Algebraic} transformation is semantically
 	 * equivalent to another. This method provides a way to compare transformations
 	 * that may have different implementations but produce the same results.
@@ -180,6 +209,14 @@ public interface Algebraic extends Computable {
 		return equals(other);
 	}
 
+	/**
+	 * Returns the constant scalar value of this transformation if it uniformly scales
+	 * all components by the same amount, or empty if no such scalar exists.
+	 *
+	 * <p>The default implementation returns {@link OptionalDouble#empty()}.</p>
+	 *
+	 * @return the constant scalar value, or empty if not a scalar transformation
+	 */
 	default OptionalDouble getConstant() {
 		return OptionalDouble.empty();
 	}
@@ -229,6 +266,20 @@ public interface Algebraic extends Computable {
 	}
 
 	/**
+	 * Static utility method to check if an arbitrary value represents a row-monomial
+	 * transformation. This method performs type checking before delegating to
+	 * {@link #isRowMonomial()}.
+	 *
+	 * @param <T> the type of the value to check
+	 * @param value the value to check; may be any type
+	 * @return {@code true} if the value is an {@link Algebraic} and represents a
+	 *         row-monomial transformation; {@code false} otherwise
+	 */
+	static <T> boolean isRowMonomial(T value) {
+		return value instanceof Algebraic && ((Algebraic) value).isRowMonomial();
+	}
+
+	/**
 	 * Static utility method to retrieve the diagonal scalar factor from an
 	 * arbitrary value. This method performs type checking before delegating
 	 * to {@link #getDiagonalScalar(int)}.
@@ -248,6 +299,15 @@ public interface Algebraic extends Computable {
 		return ((Algebraic) value).getDiagonalScalar(width);
 	}
 
+	/**
+	 * Static utility method to retrieve the constant scalar factor from an arbitrary value.
+	 * Performs type checking before delegating to {@link #getConstant()}.
+	 *
+	 * @param <T>   the type of the value to check
+	 * @param value the value to check; may be any type
+	 * @return the constant scalar if the value is {@link Algebraic} and has a uniform scaling;
+	 *         {@link OptionalDouble#empty()} otherwise
+	 */
 	static <T> OptionalDouble getConstant(T value) {
 		if (!(value instanceof Algebraic)) {
 			return OptionalDouble.empty();

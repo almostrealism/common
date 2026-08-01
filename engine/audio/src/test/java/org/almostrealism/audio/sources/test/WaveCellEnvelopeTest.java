@@ -271,7 +271,7 @@ public class WaveCellEnvelopeTest extends TestSuiteBase implements CellFeatures 
 
 		double earlyMax = values.subList(0, earlyEnd).stream()
 				.mapToDouble(Math::abs).max().orElse(0.0);
-		double middleMax = values.subList(middleStart, middleEnd).stream()
+		values.subList(middleStart, middleEnd).stream()
 				.mapToDouble(Math::abs).max().orElse(0.0);
 		double lateMax = values.subList(lateStart, values.size()).stream()
 				.mapToDouble(Math::abs).max().orElse(0.0);

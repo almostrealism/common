@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.junit.Rule;
 
@@ -75,6 +76,12 @@ public abstract class TestSuiteBase implements TestFeatures {
 			SignalWireDeliveryProvider.attachDefault();
 		}
 	}
+
+	/**
+	 * No-op {@link ConsoleFeatures} logger for tests that do not assert on log output.
+	 * Shared by all test subclasses to avoid repeating the anonymous-class declaration.
+	 */
+	protected static final ConsoleFeatures SILENT = new ConsoleFeatures() {};
 
 	/**
 	 * Rule that automatically skips tests based on {@link TestDepth} annotations.

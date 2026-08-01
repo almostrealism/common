@@ -14,11 +14,12 @@ import org.junit.Test;
  */
 public class TransformInversionTest extends TestSuiteBase implements TransformMatrixFeatures {
 
+	/**
+	 * Tests that the inverse of an identity matrix is the identity matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testIdentityMatrixInverse() {
-		log("========================================");
-		log("TEST: Identity Matrix Inversion");
-		log("========================================");
+		log("Identity Matrix Inversion");
 
 		TransformMatrix identity = new TransformMatrix();
 		log("Created identity matrix");
@@ -35,11 +36,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of a translation matrix correctly negates the translation.
+	 */
 	@Test(timeout = 10000)
 	public void testTranslationMatrixInverse() {
-		log("========================================");
-		log("TEST: Translation Matrix Inversion");
-		log("========================================");
+		log("Translation Matrix Inversion");
 
 		// Create translation matrix for (3, 2, 1)
 		Producer<TransformMatrix> tmProducer = (Producer) translationMatrix(vector(3.0, 2.0, 1.0));
@@ -59,11 +61,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of a uniform scale matrix correctly inverts the scale factor.
+	 */
 	@Test(timeout = 10000)
 	public void testUniformScaleMatrixInverse() {
-		log("========================================");
-		log("TEST: Uniform Scale Matrix Inversion");
-		log("========================================");
+		log("Uniform Scale Matrix Inversion");
 
 		// Create scale(2,2,2) matrix
 		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
@@ -90,11 +93,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of a non-uniform scale matrix correctly inverts each scale factor.
+	 */
 	@Test(timeout = 10000)
 	public void testNonUniformScaleMatrixInverse() {
-		log("========================================");
-		log("TEST: Non-uniform Scale Matrix Inversion");
-		log("========================================");
+		log("Non-uniform Scale Matrix Inversion");
 
 		// Create scale(2,3,4) matrix
 		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 3.0, 4.0));
@@ -121,11 +125,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Verifies that a matrix multiplied by its inverse produces the identity matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testMatrixMultiplicationVerification() {
-		log("========================================");
-		log("TEST: Verify M * M^-1 = Identity");
-		log("========================================");
+		log("Verify M * M^-1 = Identity");
 
 		// Create scale(2,2,2) matrix
 		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
@@ -148,11 +153,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of an inverse matrix equals the original matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testInverseOfInverse() {
-		log("========================================");
-		log("TEST: (M^-1)^-1 = M");
-		log("========================================");
+		log("Inverse of inverse equals original");
 
 		// Create scale(2,2,2) matrix
 		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
@@ -175,11 +181,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests inversion of a matrix with scale factors less than 1.
+	 */
 	@Test(timeout = 10000)
 	public void testSmallScaleInverse() {
-		log("========================================");
-		log("TEST: Small Scale Factor Inversion");
-		log("========================================");
+		log("Small Scale Factor Inversion");
 
 		// Create scale(0.5,0.5,0.5) matrix
 		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(0.5, 0.5, 0.5));
@@ -206,11 +213,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Debug test to verify the adjoint matrix calculation for scale matrices.
+	 */
 	@Test(timeout = 10000)
 	public void testDebugAdjointCalculation() {
-		log("========================================");
-		log("TEST: Debug Adjoint Calculation");
-		log("========================================");
+		log("Debug Adjoint Calculation");
 
 		// Create simple scale(2,2,2) matrix
 		Producer<TransformMatrix> tmProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));
@@ -246,6 +254,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 
 	// Helper methods
 
+	/**
+	 * Prints a transform matrix with a label for debugging.
+	 *
+	 * @param label Label for the matrix output
+	 * @param mat Matrix to print
+	 */
 	private void printMatrix(String label, TransformMatrix mat) {
 		double[] data = mat.toArray();
 		log(label + " matrix:");
@@ -255,6 +269,28 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 		}
 	}
 
+	/**
+	 * Asserts that a matrix equals expected values.
+	 *
+	 * @param message Message for the assertion
+	 * @param actual Actual matrix
+	 * @param m00 Matrix element at row 0, col 0
+	 * @param m01 Matrix element at row 0, col 1
+	 * @param m02 Matrix element at row 0, col 2
+	 * @param m03 Matrix element at row 0, col 3
+	 * @param m10 Matrix element at row 1, col 0
+	 * @param m11 Matrix element at row 1, col 1
+	 * @param m12 Matrix element at row 1, col 2
+	 * @param m13 Matrix element at row 1, col 3
+	 * @param m20 Matrix element at row 2, col 0
+	 * @param m21 Matrix element at row 2, col 1
+	 * @param m22 Matrix element at row 2, col 2
+	 * @param m23 Matrix element at row 2, col 3
+	 * @param m30 Matrix element at row 3, col 0
+	 * @param m31 Matrix element at row 3, col 1
+	 * @param m32 Matrix element at row 3, col 2
+	 * @param m33 Matrix element at row 3, col 3
+	 */
 	private void assertMatrixEquals(String message, TransformMatrix actual,
 									double m00, double m01, double m02, double m03,
 									double m10, double m11, double m12, double m13,

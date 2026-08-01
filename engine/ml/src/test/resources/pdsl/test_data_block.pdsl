@@ -1,0 +1,26 @@
+// Test fixture for the PDSL data block + range() feature.
+//
+// Demonstrates that weight slicing can be declared entirely in PDSL,
+// with zero-copy sub-views derived by range() and referenced throughout
+// layer bodies without passing them as explicit parameters.
+
+data sliced_weights {
+    stacked: weight
+    in_dim: int
+    hid_dim: int
+
+    // Two zero-copy sub-views of the stacked weight tensor:
+    //   slice_a covers rows [0, hid_dim)
+    //   slice_b covers rows [hid_dim, 2 * hid_dim)
+    slice_a = range(stacked, [hid_dim, in_dim], 0)
+    slice_b = range(stacked, [hid_dim, in_dim], hid_dim * in_dim)
+}
+
+// Applies slice_a and slice_b (from the data block) to the same input
+// and accumulates their outputs element-wise.
+layer accum_dense() {
+    accum_blocks(
+        { dense(slice_a) },
+        { dense(slice_b) }
+    )
+}

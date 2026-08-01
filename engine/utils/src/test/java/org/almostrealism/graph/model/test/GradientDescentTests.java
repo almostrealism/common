@@ -33,18 +33,30 @@ import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for gradient descent optimization and model training.
+ */
 public class GradientDescentTests extends TestSuiteBase implements ModelTestFeatures {
+
+	/** Coefficients for the linear function. */
 	private final double[] coeff = { 0.24, -0.1, 0.36 };
 
+	/** Function that multiplies input by 1.5. */
 	private final UnaryOperator<PackedCollection> func1 =
 			in -> PackedCollection.of(1.5 * in.valueAt(0));
+	/** Function that computes 2*x + y. */
 	private final UnaryOperator<PackedCollection> func2 =
 			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1));
+	/** Function that computes weighted sum of three inputs. */
 	private final UnaryOperator<PackedCollection> func3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
+	/** Function that applies coefficients to three inputs. */
 	private final UnaryOperator<PackedCollection> func3x3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));
 
+	/**
+	 * Tests linear regression with single input and output.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(1)
 	public void linear1() throws FileNotFoundException {
@@ -68,6 +80,9 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 		train("linear1", model, data, epochs, steps, 0.25, 0.1);
 	}
 
+	/**
+	 * Tests linear regression with two inputs and single output.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(1)
 	public void linear2() throws FileNotFoundException {
@@ -91,6 +106,9 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 		train("linear2", model, data, epochs, steps, 1.0, 0.2);
 	}
 
+	/**
+	 * Tests linear regression with three inputs.
+	 */
 	@Test(timeout = 120000)
 	public void linear3() throws FileNotFoundException {
 		SequentialBlock block = new SequentialBlock(shape(3));
@@ -111,6 +129,9 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 		train("linear3", model, data, epochs, steps, 1.75, 0.775);
 	}
 
+	/**
+	 * Tests linear regression with two-layer network.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(2)
 	public void linear4() throws FileNotFoundException {
@@ -133,6 +154,9 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 		train("linear4", model, data, epochs, steps, 0.8, 0.4);
 	}
 
+	/**
+	 * Tests linear regression with hidden layer.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(2)
 	public void linear5() throws FileNotFoundException {

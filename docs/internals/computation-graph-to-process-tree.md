@@ -68,7 +68,7 @@ Computation<T>                                   (base interface — has getScop
   describing its logic in terms of variables, assignments, and expressions.
 
 - **`ComputationBase`** — Manages the argument list, input preparation, and scope
-  lifecycle. Handles `ArgumentMap` setup and `ScopeInputManager` integration.
+  lifecycle. Handles `ArgumentProvider` setup and integration.
 
 - **`OperationComputationAdapter<T>`** (`base/hardware/src/.../hardware/OperationComputationAdapter.java`)
   — For computations that produce side effects (write to memory) rather than return

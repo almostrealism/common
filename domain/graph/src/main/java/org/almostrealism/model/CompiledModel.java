@@ -96,17 +96,26 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class CompiledModel implements Destroyable, CodeFeatures {
+	/** Shapes of all inputs (primary followed by auxiliary). */
 	private final List<TraversalPolicy> inputShapes;
+	/** Shape of the primary output collection. */
 	private final TraversalPolicy outputShape;
 
+	/** One-time setup/reset operation run before the first forward pass. */
 	private final Runnable setup;
 
+	/** Per-input consumers that stage data before each forward pass. */
 	private final List<? extends Consumer<PackedCollection>> updateInput;
+	/** Retrieves the output collection after the forward pass completes. */
 	private final Supplier<PackedCollection> retrieveOutput;
+	/** Compiled forward-pass operation. */
 	private final Runnable forward;
 
+	/** Stages the incoming gradient before the backward pass. */
 	private final Consumer<PackedCollection> updateGradient;
+	/** Retrieves the input gradient after the backward pass completes; may be {@code null}. */
 	private final Supplier<PackedCollection> retrieveGradient;
+	/** Compiled backward-pass operation; {@code null} when backprop is disabled. */
 	private final Runnable backward;
 
 	/**
@@ -213,6 +222,15 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	/**
 	 * Destroys this compiled model and releases all resources.
 	 * After calling this method, the model should not be used.
+	 *
+	 * <p><strong>Warning:</strong> this also releases memory that is shared with the
+	 * originating {@link Model}. The forward and backward operations capture buffers
+	 * owned by the model's layers (for example, the activation buffer that each layer's
+	 * {@code BackPropagationCell} holds via {@code setForwardInput}). Destroying this
+	 * {@link CompiledModel} frees those buffers, so the source {@link Model} must not be
+	 * reused or recompiled afterward — a later compilation would wire its backward pass
+	 * to released memory and fail with a {@link NullPointerException}. Build a fresh
+	 * {@link Model} if another compilation is needed.</p>
 	 */
 	@Override
 	public void destroy() {
@@ -220,17 +238,41 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		Destroyable.destroy(backward);
 	}
 
+	/**
+	 * Compiles the given model with backpropagation enabled and no operation profile.
+	 *
+	 * @param model the model to compile
+	 * @return a compiled, ready-to-run model
+	 */
 	public static CompiledModel compile(Model model) {
 		return compile(model, true, false, null);
 	}
 
+	/**
+	 * Compiles the given model with backpropagation enabled and the provided operation profile.
+	 *
+	 * @param model   the model to compile
+	 * @param profile the operation profile for timing instrumentation; may be {@code null}
+	 * @return a compiled, ready-to-run model
+	 */
 	public static CompiledModel compile(Model model, OperationProfile profile) {
 		return compile(model, true, false, profile);
 	}
 
+	/**
+	 * Compiles the given model, optionally enabling backpropagation and gradient retrieval.
+	 *
+	 * @param model          the model to compile
+	 * @param backprop       {@code true} to compile the backward pass
+	 * @param returnGradient {@code true} to allocate and return the input gradient after backward
+	 * @param profile        operation profile for timing instrumentation; may be {@code null}
+	 * @return a compiled, ready-to-run model
+	 */
 	public static CompiledModel compile(Model model,
 										boolean backprop, boolean returnGradient,
 										OperationProfile profile) {
+		model.recordCompilation();
+
 		Runnable setup = Process.optimized(model.setup()).get();
 
 		List<InputManager> in = new ArrayList<>();
@@ -241,7 +283,7 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 
 		PackedCollection output = new PackedCollection(model.lastBlock().getOutputShape());
 		Receptor<PackedCollection> outputReceptor = out ->
-				Ops.o().copy("Model Forward Output", out, Ops.o().p(output), output.getMemLength());
+				Ops.o().a("Model Forward Output", Ops.o().p(output), out);
 
 		// Chain with existing receptor if one was set (e.g., via andThen() for cache writes)
 		Cell<PackedCollection> lastForward = model.lastBlock().getForward();
@@ -257,9 +299,14 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		if (returnGradient) {
 			gradOut = new PackedCollection(model.firstBlock().getInputShape());
 			model.firstBlock().getBackward().setReceptor(out ->
-					Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
+					Ops.o().a("Model Backward Output", Ops.o().p(gradOut), out));
 		} else {
 			gradOut = null;
+		}
+
+		// TODO(review): inference compile mutates the shared Model (disables tracking) without restoring it; a later compile(true) on the same instance could leave backward cells wired to a destroyed input buffer.
+		if (!backprop) {
+			model.setInputTracking(false);
 		}
 
 		List<Cell<PackedCollection>> cells = model.forward();
@@ -293,29 +340,59 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		return compiled;
 	}
 
+	/**
+	 * Manages a single kernel input slot: holds the current {@link PackedCollection} and
+	 * exposes it as a {@link DynamicCollectionProducer} that is evaluated lazily at run time.
+	 */
 	protected static class InputManager implements Consumer<PackedCollection>,
 			Supplier<DynamicCollectionProducer>, ConsoleFeatures {
+		/** The expected shape of this input slot. */
 		private final TraversalPolicy shape;
+		/** The most recently provided input collection. */
 		private PackedCollection input;
 
+		/**
+		 * Creates an {@link InputManager} for a slot of the given shape.
+		 *
+		 * @param shape the expected traversal shape of this input
+		 */
 		public InputManager(TraversalPolicy shape) {
 			this.shape = shape;
 		}
 
+		/**
+		 * Returns the expected shape of this input slot.
+		 *
+		 * @return the traversal policy describing this input's shape
+		 */
 		public TraversalPolicy getShape() { return shape; }
 
 		@Override
 		public void accept(PackedCollection input) {
 			if (input == null) {
 				warn("null input");
-			} else if (input.getShape().getTotalSizeLong() != shape.getTotalSizeLong()) {
-				throw new IllegalArgumentException("Provided " + input.getShape() +
-						" input when " + shape + " was expected");
+			} else if (!input.getShape().equalsIgnoreAxis(shape)) {
+				// The compiled graph was built for `shape`. Reject any input whose shape
+				// (including its number of dimensions) differs, rather than silently
+				// reshaping it: a mismatched input means the caller built the wrong
+				// tensor, and conforming it here only hides the defect and produces a
+				// cryptic failure deeper in the graph (e.g. traverse(3) on a rank-2
+				// collection). The caller must supply a correctly-shaped input.
+				throw new IllegalArgumentException(
+						"Model input shape mismatch: expected " + shape +
+						" but received " + input.getShape());
 			}
 
 			this.input = input;
 		}
 
+		/**
+		 * Returns a {@link DynamicCollectionProducer} that supplies the most recently
+		 * accepted input collection at evaluation time.
+		 *
+		 * @return a producer backed by the current input
+		 */
+		@Override
 		public DynamicCollectionProducer get() {
 			return new DynamicCollectionProducer(shape, args -> input);
 		}

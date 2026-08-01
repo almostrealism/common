@@ -21,8 +21,8 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.ExpressionMatrix;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.ConsoleFeatures;
@@ -52,7 +52,6 @@ import org.almostrealism.io.ConsoleFeatures;
  * <ul>
  *   <li>{@link #getValueAt(Expression)} - Access by flat (linear) index</li>
  *   <li>{@link #getValue(Expression...)} - Access by multi-dimensional position</li>
- *   <li>{@link #getValueRelative(Expression)} - Access relative to current context</li>
  * </ul>
  *
  * <h2>Usage Example</h2>
@@ -116,20 +115,6 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	Expression<T> getValueAt(Expression<?> index);
 
 	/**
-	 * Retrieves a value at an index relative to the current context.
-	 *
-	 * <p>The default implementation simply delegates to {@link #getValueAt(Expression)}.
-	 * Subclasses like {@link CollectionExpression} may override this to provide
-	 * kernel-aware relative indexing.
-	 *
-	 * @param index the relative index expression
-	 * @return an {@link Expression} representing the value at the relative index
-	 */
-	default Expression<T> getValueRelative(Expression index) {
-		return getValueAt(index);
-	}
-
-	/**
 	 * Determines if the specified index is contained in this expression's valid index set.
 	 *
 	 * <p>The default implementation throws {@link UnsupportedOperationException}.
@@ -169,6 +154,17 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 	default Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		if (localIndex.getLimit().orElse(-1) == 1)
 			return new IntegerConstant(0);
+
+		// The gather-collapse analysis below materialises one expression per matrix entry (via
+		// ExpressionMatrix.populate -> Expression.withIndex, whose simplification also calls
+		// upperBound etc.). Each is a traversal of the target, so for the deep shared-DAG gradients
+		// produced on this branch the cost (counted over paths) is exponential in depth and explodes
+		// at compile time. Bound it by tree depth (with a node-count backstop) and fall back to the
+		// normal compilation path for pathological targets; legitimate gather targets are shallow.
+		if (targetIndex.treeDepth() > ScopeSettings.maxGatherAnalysisDepth ||
+				targetIndex.countNodes() > ScopeSettings.maxGatherAnalysisNodes) {
+			return null;
+		}
 
 		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
 		if (indices == null) {

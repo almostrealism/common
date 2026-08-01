@@ -22,8 +22,10 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -88,7 +90,7 @@ import java.util.stream.IntStream;
  * <pre>{@code
  * ArithmeticSequenceComputation<PackedCollection> original =
  *     new ArithmeticSequenceComputation<>(shape(4), 1.0);
- * ArithmeticSequenceComputation<PackedCollection> scaled = original.multiply(5.0);
+ * CollectionProducer scaled = original.multiply(5.0);
  * // Original: [1.0, 2.0, 3.0, 4.0]
  * // Scaled:   [5.0, 10.0, 15.0, 20.0]
  * }</pre>
@@ -102,9 +104,9 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <h2>Implementation Notes</h2>
- * <p>The {@link #getExpression(TraversableExpression...)} method uses
- * {@link ArithmeticSequenceExpression} with a fixed rate of 1, as the general rate scaling
- * can be handled through the {@link #multiply(double)} method.</p>
+ * <p>The {@link #getExpression(TraversableExpression...)} method creates an
+ * {@link ArithmeticSequenceExpression} using both the {@code initial} value and
+ * the {@code rate}, correctly generating {@code initial + rate * index} in kernel code.</p>
  *
  * @see TraversableExpressionComputation
  * @see ArithmeticSequenceExpression
@@ -113,6 +115,18 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public class ArithmeticSequenceComputation extends TraversableExpressionComputation {
+	/**
+	 * Controls how {@link #get()} produces the sequence.
+	 *
+	 * <p>When {@code true}, a native kernel is compiled for the sequence, exactly like any other
+	 * {@link TraversableExpressionComputation}. When {@code false} (the default), the sequence is
+	 * generated on the host with a Java stream. Index sequences are pervasive, and each distinct
+	 * {@code (shape, initial, rate)} would otherwise reserve a slot in the finite native operator
+	 * pool; the host path avoids that while still supporting {@link Evaluable#into(Object)} so it
+	 * composes with destination-based evaluation.</p>
+	 */
+	public static boolean enableKernel = false;
+
 	/**
 	 * Whether the sequence length is fixed at construction time (true) or
 	 * can be determined dynamically at runtime (false).
@@ -187,6 +201,7 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 		this.fixedCount = fixedCount;
 		this.initial = initial;
 		this.rate = rate;
+		init();
 	}
 
 	/**
@@ -202,11 +217,21 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	 *             = factor x original[i]
 	 * </pre>
 	 *
+	 * <p>Scaling by zero (or scaling a sequence whose values are all zero) collapses to a
+	 * {@link CollectionZerosComputation} rather than a degenerate sequence, so the result
+	 * is recognized as zero ({@code Algebraic.isZero}) by downstream algebraic
+	 * optimizations — matching the behavior of the general multiplication path.</p>
+	 *
 	 * @param factor The scaling factor to apply
-	 * @return A new {@link ArithmeticSequenceComputation} with scaled values
+	 * @return A producer for the scaled sequence, or a {@link CollectionZerosComputation}
+	 *         when every scaled value is zero
 	 */
 	@Override
-	public ArithmeticSequenceComputation multiply(double factor) {
+	public CollectionProducer multiply(double factor) {
+		if (initial * factor == 0.0 && rate * factor == 0.0) {
+			return new CollectionZerosComputation(getShape());
+		}
+
 		return new ArithmeticSequenceComputation(getShape(), fixedCount, initial * factor, rate * factor);
 	}
 
@@ -223,39 +248,81 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	public boolean isFixedCount() { return fixedCount; }
 
 	/**
+	 * Returns a signature that includes the {@code initial} and {@code rate} constants,
+	 * ensuring that arithmetic sequences with different constants produce different
+	 * compiled kernels rather than sharing a cached kernel from the instruction cache.
+	 *
+	 * <p>Without this override, the instruction cache would key only on operation type
+	 * and shape, causing two sequences with different rates (e.g., from different
+	 * {@code theta} values in RoPE frequency computation) to receive the same cached
+	 * kernel and produce incorrect results.</p>
+	 *
+	 * @return A signature string that includes the constant values, or null if the
+	 *         parent signature is null
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+		return signature + "{" + initial + "," + rate + "}";
+	}
+
+	/**
 	 * Creates the expression for generating arithmetic sequence values.
 	 *
 	 * <p>Returns an {@link ArithmeticSequenceExpression} with the configured initial value
-	 * and a rate of 1. Note that the actual rate scaling is handled through the
-	 * {@link #multiply(double)} method rather than in the expression itself.</p>
+	 * and rate, producing the sequence {@code initial + rate * index} for each kernel index.</p>
 	 *
 	 * @param args Array of {@link TraversableExpression}s (not used for sequence generation)
 	 * @return An {@link ArithmeticSequenceExpression} for kernel code generation
 	 */
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
-		return new ArithmeticSequenceExpression(getShape(), initial, 1);
+		return new ArithmeticSequenceExpression(getShape(), initial, rate);
 	}
 
 	/**
-	 * Returns an {@link Evaluable} that directly computes the arithmetic sequence using Java streams.
+	 * Returns an {@link Evaluable} for the sequence. When {@link #enableKernel} is set the compiled
+	 * kernel path of the superclass is used; otherwise the sequence is produced on the host, which
+	 * avoids reserving a native operator slot per distinct sequence.
 	 *
-	 * <p>This method provides a fallback implementation for direct evaluation outside of
-	 * kernel execution contexts. It generates the sequence using {@link IntStream} with
-	 * the formula {@code value[i] = initial + i * rate}.</p>
+	 * <p>The host evaluable supports {@link Evaluable#into(Object)}: it writes the generated values
+	 * into an existing destination with a {@link MemoryData} copy rather than compiling a kernel, so
+	 * {@code sequence.into(dest).evaluate()} works without native compilation.</p>
 	 *
-	 * <p><strong>Warning:</strong> This method logs a warning when used, as direct evaluation
-	 * bypasses kernel optimization and hardware acceleration. It should primarily be used
-	 * for testing or in contexts where kernel compilation is not available.</p>
-	 *
-	 * @return An {@link Evaluable} that computes the arithmetic sequence directly
+	 * @return an {@link Evaluable} producing the arithmetic sequence
 	 */
+	@Override
 	public Evaluable<PackedCollection> get() {
-		return args -> {
-			warn("Direct evaluation of arithmetic sequence");
-			return pack(IntStream.range(0, getShape().getTotalSize())
-					.mapToDouble(i -> initial + i * rate).toArray());
+		if (enableKernel) {
+			return super.get();
+		}
+
+		return new Evaluable<>() {
+			@Override
+			public PackedCollection evaluate(Object... args) {
+				return pack(values());
+			}
+
+			@Override
+			public Evaluable<PackedCollection> into(Object destination) {
+				return args -> {
+					PackedCollection sequence = pack(values());
+					((MemoryData) destination).setFrom(0, sequence, 0, sequence.getMemLength());
+					return (PackedCollection) destination;
+				};
+			}
 		};
+	}
+
+	/**
+	 * Computes the sequence values on the host as {@code value[i] = initial + i * rate}.
+	 *
+	 * @return the host array of sequence values
+	 */
+	private double[] values() {
+		return IntStream.range(0, getShape().getTotalSize())
+				.mapToDouble(i -> initial + i * rate).toArray();
 	}
 
 	/**

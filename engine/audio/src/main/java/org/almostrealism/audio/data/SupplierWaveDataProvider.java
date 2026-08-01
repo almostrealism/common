@@ -31,10 +31,22 @@ import java.util.function.Supplier;
  * @see WaveData
  */
 public class SupplierWaveDataProvider extends WaveDataProviderAdapter {
+	/** Unique key identifying this provider's audio source. */
 	private final String key;
+
+	/** Supplier invoked on each load to produce the raw audio data. */
 	private final Supplier<PackedCollection> source;
+
+	/** Audio sample rate in Hz. */
 	private final int sampleRate;
 
+	/**
+	 * Creates a SupplierWaveDataProvider with the given key, data supplier, and sample rate.
+	 *
+	 * @param key        unique identifier for this provider
+	 * @param source     supplier that produces the audio data on demand
+	 * @param sampleRate audio sample rate in Hz
+	 */
 	public SupplierWaveDataProvider(String key, Supplier<PackedCollection> source, int sampleRate) {
 		this.key = key;
 		this.source = source;

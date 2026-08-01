@@ -55,8 +55,14 @@ def run_java_cli(command: str, file_path: str, *args) -> dict:
         if result.returncode != 0:
             return {"error": f"Java CLI failed: {result.stderr}"}
 
-        # Parse JSON output
-        return json.loads(result.stdout)
+        # Parse JSON output. The CLI emits through the framework Console, which
+        # decorates the line with a "[HH:MM.SS] " timestamp; every CLI response is
+        # a JSON object, so parse from the first "{" onward.
+        stdout = result.stdout
+        start = stdout.find("{")
+        if start < 0:
+            return {"error": "No JSON found in CLI output", "output": stdout[:500]}
+        return json.loads(stdout[start:])
     except subprocess.TimeoutExpired:
         return {"error": "Java CLI timed out after 120 seconds"}
     except json.JSONDecodeError as e:

@@ -28,13 +28,25 @@ import org.almostrealism.collect.PackedCollection;
  * @see NoteAudioFilter
  */
 public class TremoloAudioFilter implements NoteAudioFilter {
+	/** The modulation waveform type used for tremolo. */
 	private final Type type;
+
+	/** Duration of one tremolo cycle in seconds. */
 	private final double duration;
 
+	/**
+	 * Creates a TremoloAudioFilter with the default GATE type and 0.2 second cycle duration.
+	 */
 	public TremoloAudioFilter() {
 		this(Type.GATE, 0.2);
 	}
 
+	/**
+	 * Creates a TremoloAudioFilter with the specified modulation type and cycle duration.
+	 *
+	 * @param type     the tremolo waveform type
+	 * @param duration cycle duration in seconds
+	 */
 	public TremoloAudioFilter(Type type, double duration) {
 		this.type = type;
 		this.duration = duration;
@@ -52,7 +64,13 @@ public class TremoloAudioFilter implements NoteAudioFilter {
 		return multiply(traverseEach(input), floor(time().divide(duration)).add(1).mod(2));
 	}
 
+	/**
+	 * Tremolo modulation waveform types.
+	 */
 	public enum Type {
-		GATE, SINE
+		/** Square-wave (on/off) gating pattern. */
+		GATE,
+		/** Sinusoidal amplitude modulation (not yet implemented). */
+		SINE
 	}
 }

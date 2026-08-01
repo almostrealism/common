@@ -1,0 +1,2 @@
+# Transcript Analyzer MCP Server
+# No additional dependencies beyond the standard library and FastMCP

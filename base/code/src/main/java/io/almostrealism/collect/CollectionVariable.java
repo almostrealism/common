@@ -18,7 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -104,6 +104,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 *
 	 * @return the shape policy for this collection variable
 	 */
+	@Override
 	public TraversalPolicy getShape() { return shape; }
 
 	/**
@@ -230,18 +231,6 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 			return (Expression) reference(index);
 		}
-	}
-
-	/**
-	 * Returns an expression for accessing a value at a relative index offset.
-	 * Delegates to the superclass implementation.
-	 *
-	 * @param index the relative index expression
-	 * @return an expression representing the value at the relative index
-	 */
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		return super.getValueRelative(index);
 	}
 
 	/**

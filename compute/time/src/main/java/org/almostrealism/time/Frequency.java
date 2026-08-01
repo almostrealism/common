@@ -110,6 +110,7 @@ package org.almostrealism.time;
  * @author Michael Murray
  */
 public class Frequency {
+	/** The frequency value in Hertz (cycles per second). */
 	private final double hertz;
 
 	/**
@@ -215,5 +216,6 @@ public class Frequency {
 	 *
 	 * @return A string like "440.0Hz"
 	 */
+	@Override
 	public String toString() { return asHertz() + "Hz"; }
 }

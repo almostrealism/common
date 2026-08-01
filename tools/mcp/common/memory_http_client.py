@@ -142,7 +142,7 @@ class MemoryHTTPClient:
         self,
         repo_url: str,
         branch: str,
-        namespace: str = "default",
+        namespace: Optional[str] = "default",
         limit: int = 20,
     ) -> list[dict]:
         """Non-semantic lookup of memories by branch.
@@ -150,7 +150,9 @@ class MemoryHTTPClient:
         Args:
             repo_url: Repository URL to match.
             branch: Branch name to match.
-            namespace: Namespace to search within.
+            namespace: Namespace to search within. Pass ``None`` or an empty
+                string to search across every namespace and receive the
+                combined result sorted newest-first.
             limit: Maximum results.
 
         Returns:
@@ -159,7 +161,7 @@ class MemoryHTTPClient:
         payload = {
             "repo_url": repo_url,
             "branch": branch,
-            "namespace": namespace,
+            "namespace": "" if not namespace else namespace,
             "limit": limit,
         }
         result = self._post("/api/memory/branch", payload)
@@ -203,6 +205,32 @@ class MemoryHTTPClient:
             params["tag"] = tag
         result = self._get(f"/api/memory/list?{urlencode(params)}")
         return result.get("entries", result) if isinstance(result, dict) else result
+
+    def namespace_stats(
+        self,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
+    ) -> list[dict]:
+        """List every namespace with its entry count and most-recent timestamp.
+
+        Args:
+            repo_url: Optional repository URL filter.
+            branch: Optional branch name filter.
+
+        Returns:
+            List of dicts ``{namespace, count, latest_created_at, latest_id}``
+            ordered newest-namespace-first.
+        """
+        params: dict = {}
+        if repo_url:
+            params["repo_url"] = repo_url
+        if branch:
+            params["branch"] = branch
+        path = "/api/memory/namespaces"
+        if params:
+            path += f"?{urlencode(params)}"
+        result = self._get(path)
+        return result.get("namespaces", result) if isinstance(result, dict) else result
 
     def health(self) -> dict:
         """Health check for the ar-memory server.

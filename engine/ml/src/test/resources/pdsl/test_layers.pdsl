@@ -1,0 +1,95 @@
+// Producer DSL: Transformer Block from Low-Level Primitives
+//
+// This file defines a complete transformer block (attention + SwiGLU FFN)
+// using only primitive operations. Higher-level constructs like "attention"
+// and "swiglu_ffn" are composed from these primitives within the DSL.
+
+// ----- SwiGLU Feed-Forward Network -----
+// Composed from: rmsnorm, dense, silu, product
+//
+// Architecture:
+//   input -> rmsnorm -> split into two paths:
+//     path A: dense(w1) -> silu()    (gate)
+//     path B: dense(w3)              (up projection)
+//   -> element-wise multiply(A, B)
+//   -> dense(w2)                     (down projection)
+
+layer swiglu_ffn(
+    norm_weights: weight,
+    w1: weight,
+    w2: weight,
+    w3: weight,
+    epsilon: float
+) -> [1, 64] {
+    rmsnorm(norm_weights, epsilon)
+    product(
+        { dense(w1); silu() },
+        { dense(w3) }
+    )
+    dense(w2)
+}
+
+// ----- Transformer Block -----
+// Composed from: attention (built-in) + swiglu_ffn (user-defined)
+// with residual connections (accum).
+//
+// Architecture:
+//   input -> accum(attention(...)) -> accum(swiglu_ffn(...)) -> output
+//
+// The attention built-in maps to AttentionFeatures.attention() which
+// internally composes: rmsnorm, Q/K/V dense projections, RoPE rotation,
+// KV caching, scaled dot-product attention, output projection.
+//
+// The swiglu_ffn is fully defined above from primitives.
+
+layer transformer_block(
+    heads: int,
+    kv_heads: int,
+    rms_att_weight: weight,
+    wq: weight,
+    wk: weight,
+    wv: weight,
+    wo: weight,
+    freq_cis: weight,
+    position: scalar,
+    rms_ffn_weight: weight,
+    w1: weight,
+    w2: weight,
+    w3: weight,
+    epsilon: float
+) -> [1, 64] {
+    // Residual attention: output = input + attention(input)
+    accum {
+        attention(heads, rms_att_weight,
+                  wk, wv, wq, wo,
+                  freq_cis, position)
+    }
+
+    // Residual feed-forward: output = output + ffn(output)
+    accum {
+        swiglu_ffn(rms_ffn_weight, w1, w2, w3, epsilon)
+    }
+}
+
+// ----- Simple Dense + Activation layer -----
+// Demonstrates basic composition of primitives.
+
+layer dense_relu(
+    weights: weight,
+    biases: weight
+) -> [1, out_dim] {
+    dense(weights, biases)
+    relu()
+}
+
+// ----- RMSNorm + Dense layer -----
+// Demonstrates norm -> projection pattern.
+
+layer normed_projection(
+    norm_weights: weight,
+    proj_weights: weight,
+    epsilon: float
+) -> [1, out_dim] {
+    rmsnorm(norm_weights, epsilon)
+    dense(proj_weights)
+}

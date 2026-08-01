@@ -17,9 +17,23 @@
 package org.almostrealism.space;
 
 /**
+ * Represents an object that has a scalar length multiplier, such as a segment in
+ * an L-System or a procedural geometry element.
+ *
  * @author Mike Murray
  */
 public interface Length {
+	/**
+	 * Sets the length multiplier for this object.
+	 *
+	 * @param m the multiplier value
+	 */
 	void setMultiplier(double m);
+
+	/**
+	 * Returns the length multiplier for this object.
+	 *
+	 * @return the multiplier value
+	 */
 	double getMultiplier();
 }

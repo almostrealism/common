@@ -16,10 +16,9 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -67,6 +66,7 @@ import java.util.stream.IntStream;
  * @see Choice
  */
 public class Switch extends OperationComputationAdapter<PackedCollection> implements ExpressionFeatures {
+	/** The list of computation branches, one of which is executed based on the decision value. */
 	private final List<Computation<?>> choices;
 
 	/**
@@ -90,16 +90,6 @@ public class Switch extends OperationComputationAdapter<PackedCollection> implem
 		return choices;
 	}
 
-	/**
-	 * Prepares arguments for this switch and all choice computations.
-	 *
-	 * @param map  the argument map
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		choices.forEach(c -> c.prepareArguments(map));
-	}
 
 	/**
 	 * Prepares the scope for this switch and all choice computations.
@@ -108,7 +98,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection> implem
 	 * @param context  the kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		choices.forEach(c -> c.prepareScope(manager, context));
 	}

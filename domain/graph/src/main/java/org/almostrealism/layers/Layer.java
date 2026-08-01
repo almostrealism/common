@@ -16,7 +16,7 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.SystemUtils;
 

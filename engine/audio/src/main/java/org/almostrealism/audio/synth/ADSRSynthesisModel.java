@@ -45,9 +45,16 @@ import org.almostrealism.collect.PackedCollection;
  */
 public class ADSRSynthesisModel implements AudioSynthesisModel, SamplingFeatures {
 
+	/** Attack time in seconds (time to reach full amplitude from zero). */
 	private double attack;
+
+	/** Decay time in seconds (time to fall from peak to sustain level). */
 	private double decay;
+
+	/** Sustain level (0.0–1.0) held while the note is depressed. */
 	private double sustain;
+
+	/** Release time in seconds (time to fall from sustain level to zero after note-off). */
 	private double release;
 
 	/**

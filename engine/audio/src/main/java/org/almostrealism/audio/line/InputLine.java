@@ -47,6 +47,13 @@ public interface InputLine extends BufferedAudio, Destroyable {
 	 */
 	void read(PackedCollection sample);
 
+	/**
+	 * Creates a compiled operation that evaluates the given {@link Producer} to obtain
+	 * a destination buffer and reads audio data from this input line into it.
+	 *
+	 * @param destination a Producer yielding the buffer into which audio data will be read
+	 * @return a Supplier that, when executed, evaluates the producer and reads audio into the result
+	 */
 	default Supplier<Runnable> read(Producer<PackedCollection> destination) {
 		return () -> {
 			Evaluable<PackedCollection> sample = destination.get();

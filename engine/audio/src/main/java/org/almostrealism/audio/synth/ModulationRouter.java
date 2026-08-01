@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.synth;
 
+import io.almostrealism.lifecycle.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 
@@ -60,8 +61,13 @@ import java.util.function.Supplier;
  */
 public class ModulationRouter implements Temporal {
 
+	/** All registered modulation sources that produce modulation signals. */
 	private final List<ModulationSource> sources;
+
+	/** All active modulation slots connecting sources to destinations. */
 	private final List<ModulationSlot> slots;
+
+	/** Index mapping each destination to the list of slots currently targeting it. */
 	private final Map<ModulationSlot.Destination, List<ModulationSlot>> destinationMap;
 
 	/**
@@ -210,8 +216,8 @@ public class ModulationRouter implements Temporal {
 	 */
 	public void reset() {
 		for (ModulationSource source : sources) {
-			if (source instanceof io.almostrealism.lifecycle.Lifecycle) {
-				((io.almostrealism.lifecycle.Lifecycle) source).reset();
+			if (source instanceof Lifecycle) {
+				((Lifecycle) source).reset();
 			}
 		}
 	}

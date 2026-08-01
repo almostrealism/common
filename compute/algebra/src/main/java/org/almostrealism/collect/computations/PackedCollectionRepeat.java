@@ -21,9 +21,9 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.DefaultIndex;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.DefaultIndex;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -31,7 +31,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.function.Supplier;
 
 /**
@@ -128,13 +127,25 @@ import java.util.function.Supplier;
 public class PackedCollectionRepeat
 		extends IndexProjectionProducerComputation {
 	
+	/** When true, uses unique non-zero offset optimization to reduce redundant index computation. */
 	public static boolean enableUniqueIndexOptimization = true;
+
+	/** When true, isolates the input computation before repeating, improving cache locality. */
 	public static boolean enableInputIsolation = true;
+
+	/** When true, wraps the repeat computation in process isolation for independent evaluation. */
 	public static boolean enableIsolation = true;
+
+	/** When true, permits repeat operations even when the slice exceeds Integer.MAX_VALUE elements. */
 	public static boolean enableLargeSlice = true;
+
+	/** When true, short-circuits simple repetitions by delegating to {@link PackedCollection#repeat(int)}. */
 	public static boolean enableShortCircuit = false;
 
+	/** The shape of the individual unit that is repeated, derived from the input collection's item shape. */
 	private final TraversalPolicy subsetShape;
+
+	/** The full slice shape, equal to subsetShape prepended with the repeat count dimension. */
 	private final TraversalPolicy sliceShape;
 
 	/**
@@ -291,30 +302,6 @@ public class PackedCollectionRepeat
 	}
 
 	/**
-	 * Retrieves a value from the repeated collection at a relative index position.
-	 * 
-	 * <p>This method provides direct access to values in the repeated collection
-	 * by computing the corresponding input position and delegating to the
-	 * underlying collection's value retrieval.</p>
-	 * 
-	 * @deprecated This method is marked for removal in future versions.
-	 *             Use the standard evaluation pipeline instead.
-	 * 
-	 * @param index the relative index in the output collection
-	 * @return the value expression at the computed input position
-	 * @throws UnsupportedOperationException if the index cannot be simplified to a constant
-	 */
-	// TODO  Remove
-	@Override
-	public Expression<Double> getValueRelative(Expression index) {
-		Expression offset = projectIndex(index);
-		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
-		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
-
-		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
-	}
-
-	/**
 	 * Computes a unique non-zero offset expression for optimized index operations.
 	 * 
 	 * <p>This method implements an optimization for cases where the repetition
@@ -354,8 +341,8 @@ public class PackedCollectionRepeat
 		}
 
 		long limit = getShape().getTotalSizeLong() / globalIndex.getLimit().getAsLong();
-		DefaultIndex g = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g", limit);
-		DefaultIndex l = new DefaultIndex(getNameProvider().getVariablePrefix() + "_l", localIndex.getLimit().getAsLong());
+		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
+		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", localIndex.getLimit().getAsLong());
 
 		Expression idx = getCollectionArgumentVariable(1).uniqueNonZeroOffset(g, l, Index.child(g, l));
 		if (idx == null) return idx;

@@ -12,7 +12,15 @@ import java.io.File;
 import java.io.IOException;
 import java.util.function.Supplier;
 
+/**
+ * Tests for multi-cell filter configurations including identity, scale,
+ * and audio filter cells with various delay and feedback arrangements.
+ */
 public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/**
+	 * Tests identity filter cells with two output channels.
+	 */
 	@Test(timeout = 120000)
 	public void identity() {
 		w(0, getTestWavPath())
@@ -22,6 +30,9 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(5).get().run();
 	}
 
+	/**
+	 * Tests identity filter cells with two channels and delay.
+	 */
 	@Test(timeout = 120000)
 	public void identityDelay() {
 		w(0, getTestWavPath())
@@ -32,6 +43,9 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
+	/**
+	 * Tests identity filter with delay and feedback loop.
+	 */
 	@Test(timeout = 120000)
 	public void identityDelayFeedback() {
 		CellList c = w(0, getTestWavPath(), getTestWavPath())
@@ -42,6 +56,9 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 		op.get().run();
 	}
 
+	/**
+	 * Tests scale factor cells with two output channels.
+	 */
 	@Test(timeout = 120000)
 	public void scale() {
 		w(0, getTestWavPath())
@@ -51,6 +68,11 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(5).get().run();
 	}
 
+	/**
+	 * Tests scale factor cells with delay between channels.
+	 *
+	 * @throws IOException If test audio file cannot be read
+	 */
 	@Test(timeout = 120000)
 	public void scaleDelay() throws IOException {
 		w(0, getTestWavPath())
@@ -61,6 +83,9 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
+	/**
+	 * Tests scale factor cells with delay and feedback loop.
+	 */
 	@Test(timeout = 120000)
 	public void scaleDelayFeedback() {
 		w(0, getTestWavPath(), getTestWavPath())
@@ -70,6 +95,9 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
+	/**
+	 * Tests audio filter cells with high-pass filter configuration.
+	 */
 	@Test(timeout = 120000)
 	public void filter() {
 		w(0, getTestWavPath())
@@ -79,6 +107,9 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(5).get().run();
 	}
 
+	/**
+	 * Tests audio filter cells with delay between channels.
+	 */
 	@Test(timeout = 120000)
 	public void filterDelay() {
 		w(0, getTestWavPath())
@@ -89,6 +120,9 @@ public class MultiCellFilterTest extends TestSuiteBase implements CellFeatures, 
 				.sec(8).get().run();
 	}
 
+	/**
+	 * Tests audio filter cells with delay and feedback loop.
+	 */
 	@Test(timeout = 120000)
 	public void filterDelayFeedback() {
 		w(0, getTestWavPath(), getTestWavPath())

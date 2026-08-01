@@ -19,11 +19,17 @@ package org.almostrealism.physics;
 import org.almostrealism.texture.IntensityMap;
 
 /**
- * 
+ * A {@link VolumeAbsorber} that uses separate {@link IntensityMap} instances to
+ * control the spatial distribution of photon absorption and emission.
+ *
  * @author  Mike Murray
  */
 public class IntensityMapAbsorber extends VolumeAbsorber {
-	private IntensityMap emitMap, absorbMap;
+	/** Intensity map controlling the probability distribution of emission positions. */
+	private IntensityMap emitMap;
+
+	/** Intensity map controlling the probability distribution of absorption positions. */
+	private IntensityMap absorbMap;
 	
 	public void setEmitMap(IntensityMap m) { this.emitMap = m; }
 	public IntensityMap getEmitMap() { return this.emitMap; }

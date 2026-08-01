@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,24 +48,35 @@ import java.util.stream.Stream;
  *   <li>Single-line comments ({@code //})</li>
  *   <li>Import statements</li>
  *   <li>Package declarations</li>
- *   <li>Lines containing only braces ({@code &#123;} or {@code &#125;})</li>
+ *   <li>Lines containing only opening or closing braces</li>
  *   <li>Annotation-only lines (e.g. {@code @Override})</li>
  *   <li>License/copyright header blocks</li>
  * </ul>
  *
  * @see CodePolicyViolationDetector
  */
-public class DuplicateCodeDetector {
+public class DuplicateCodeDetector implements ConsoleFeatures {
 
 	/**
 	 * A pair of locations that share an identical block of code.
 	 */
 	public static class Violation {
+		/** The first file containing the duplicate block. */
 		private final Path fileA;
+
+		/** The starting line number (1-based) in the first file. */
 		private final int lineA;
+
+		/** The second file containing the duplicate block. */
 		private final Path fileB;
+
+		/** The starting line number (1-based) in the second file. */
 		private final int lineB;
+
+		/** The number of identical (normalized) lines in the duplicate block. */
 		private final int blockSize;
+
+		/** A short preview of the first few lines of the duplicate block. */
 		private final String preview;
 
 		/**
@@ -178,8 +191,13 @@ public class DuplicateCodeDetector {
 			new String[]{"AudioGenerator.java", "LegacyAudioGenerator.java"}
 	);
 
+	/** Accumulated violations found during the most recent {@link #scan()} call. */
 	private final List<Violation> violations = new ArrayList<>();
+
+	/** Root directory from which Java source files are recursively scanned. */
 	private final Path rootDir;
+
+	/** Minimum number of identical lines required to flag a duplicate block. */
 	private final int threshold;
 
 	/**
@@ -206,10 +224,22 @@ public class DuplicateCodeDetector {
 	 * Represents a block of code at a specific location.
 	 */
 	private static class CodeBlock {
+		/** The file this block was extracted from. */
 		final Path file;
+
+		/** The 1-based line number where this block starts in the source file. */
 		final int originalStartLine;
+
+		/** The trimmed, filtered lines that make up this block's fingerprint. */
 		final List<String> normalizedLines;
 
+		/**
+		 * Creates a code block record.
+		 *
+		 * @param file              the source file
+		 * @param originalStartLine the 1-based start line in the source file
+		 * @param normalizedLines   the normalized lines for fingerprinting
+		 */
 		CodeBlock(Path file, int originalStartLine, List<String> normalizedLines) {
 			this.file = file;
 			this.originalStartLine = originalStartLine;
@@ -291,7 +321,7 @@ public class DuplicateCodeDetector {
 				blocksByFingerprint.computeIfAbsent(fingerprint, k -> new ArrayList<>()).add(block);
 			}
 		} catch (IOException e) {
-			System.err.println("Warning: Could not read file " + file + ": " + e.getMessage());
+			warn("Could not read file " + file + ": " + e.getMessage());
 		}
 	}
 
@@ -372,6 +402,12 @@ public class DuplicateCodeDetector {
 		return sb.toString();
 	}
 
+	/**
+	 * Returns {@code true} if the given path matches any of the exclusion patterns.
+	 *
+	 * @param path  the path to test
+	 * @return      whether the path should be skipped during scanning
+	 */
 	private boolean isExcluded(Path path) {
 		String pathStr = path.toString();
 		for (String excluded : EXCLUDED_PATHS) {

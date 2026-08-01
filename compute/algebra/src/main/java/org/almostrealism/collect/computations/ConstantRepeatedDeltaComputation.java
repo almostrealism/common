@@ -16,13 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
@@ -90,6 +91,8 @@ import java.util.function.Supplier;
 public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerComputation implements TraversableExpression<Double> {
 	/** The shape of the delta (gradient) computation output, before appending target dimensions. */
 	private final TraversalPolicy deltaShape;
+
+	/** The shape of the target producer with respect to which the derivative is computed. */
 	private final TraversalPolicy targetShape;
 
 	/** The expression function that defines the computation at each iteration. */
@@ -172,16 +175,6 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	}
 
 
-	/**
-	 * Prepares the argument map for kernel execution.
-	 * Delegates to the parent implementation to set up all necessary argument mappings.
-	 *
-	 * @param map The argument map for tracking kernel arguments
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-	}
 
 	/**
 	 * Prepares the scope for kernel compilation by setting up the target variable.
@@ -192,9 +185,9 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 * @param context The kernel structure context providing compilation information
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
-		targetVariable = (CollectionVariable<?>) manager.argumentForInput(getNameProvider()).apply((Supplier) target);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput().apply((Supplier) target);
 	}
 
 	/**
@@ -215,7 +208,7 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 *
 	 * <p>The delta computation follows this pattern:</p>
 	 * <pre>
-	 * result = expression(args, row + localIndex).delta(target).getValueRelative(row + localIndex)
+	 * result = expression(args, row + localIndex).delta(target).getValueAt(row + localIndex)
 	 * </pre>
 	 *
 	 * @param args The traversable expressions representing input arguments
@@ -225,9 +218,14 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		return expression.apply(args, row.add(localIndex))
-				.delta(targetVariable)
-				.getValueRelative(row.add(localIndex));
+		CollectionExpression delta = expression.apply(args, row.add(localIndex))
+				.delta(targetVariable);
+
+		// Each kernel instance owns one gradient batch of the delta's size, so the
+		// position within the batch is addressed from the kernel index explicitly
+		return delta.getValueAt(new KernelIndex()
+				.multiply(delta.getShape().getSize())
+				.add(row.add(localIndex).toInt()));
 	}
 
 	/**

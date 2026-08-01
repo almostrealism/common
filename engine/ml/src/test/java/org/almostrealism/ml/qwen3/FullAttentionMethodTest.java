@@ -1,10 +1,13 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
@@ -23,9 +26,15 @@ import java.nio.file.StandardOpenOption;
  */
 public class FullAttentionMethodTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Directory containing PyTorch reference outputs for comparison. */
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference/layer_outputs";
 
+	/**
+	 * Test the attention method for layer 0.
+	 */
 	@Test(timeout = 120000)
 	public void testLayer0AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -40,6 +49,9 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		runAttentionMethodTest(0);
 	}
 
+	/**
+	 * Test the attention method for layer 1.
+	 */
 	@Test(timeout = 120000)
 	public void testLayer1AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -54,6 +66,12 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		runAttentionMethodTest(1);
 	}
 
+	/**
+	 * Runs the attention method test for a specified layer.
+	 *
+	 * @param layerNum the layer number to test
+	 * @throws Exception if test execution fails
+	 */
 	private void runAttentionMethodTest(int layerNum) throws Exception {
 		Qwen3Config config = new Qwen3Config(
 				896, 4864, 24, 14, 2, 151936, 32768, true, 1000000.0
@@ -97,12 +115,11 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		// Create RoPE frequencies
 		PackedCollection freqCis = computeRopeFreqs(config.seqLen, headSize, config.ropeTheta);
 		PackedCollection position = new PackedCollection(shape(1));
-		position.setMem(0, 0.0);
 
 		// Create the attention block using the actual method
 		Model attModel = new Model(shape(1, dim));
 		attModel.add(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				bk, bv, bq, qkNormQ, qkNormK, freqCis, p(position), 1e-6));
+				bk, bv, bq, qkNormQ, qkNormK, cp(freqCis), p(position), 1e-6));
 
 		log("\nCompiling and running attention...");
 		PackedCollection output = attModel.compile().forward(input);
@@ -143,25 +160,25 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		stateDict.destroy();
 	}
 
+	/**
+	 * Computes RoPE frequency tensor for the given sequence length and head size.
+	 *
+	 * @param seqLen the sequence length
+	 * @param headSize the head size
+	 * @param theta the theta parameter for RoPE
+	 * @return the frequency tensor with shape (seqLen, headSize/2, 2)
+	 */
 	private PackedCollection computeRopeFreqs(int seqLen, int headSize, double theta) {
-		int freqDim = headSize / 2;
-		double[] freqs = new double[freqDim];
-		for (int i = 0; i < freqDim; i++) {
-			freqs[i] = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
-		}
-
-		PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double angle = pos * freqs[i];
-				int idx = (pos * freqDim + i) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
-			}
-		}
-		return freqCis;
+		return RotationFeatures.computeRopeFreqs(theta, headSize, seqLen).evaluate();
 	}
 
+	/**
+	 * Formats the first n elements of a collection as a string.
+	 *
+	 * @param c the collection to format
+	 * @param n the number of elements to include
+	 * @return formatted string representation
+	 */
 	private String formatFirst(PackedCollection c, int n) {
 		StringBuilder sb = new StringBuilder("[");
 		for (int i = 0; i < Math.min(n, c.getShape().getTotalSize()); i++) {
@@ -172,6 +189,13 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		return sb.toString();
 	}
 
+	/**
+	 * Loads reference output data from a binary file.
+	 *
+	 * @param filename the name of the reference file
+	 * @return array of float values from the file
+	 * @throws Exception if file reading fails
+	 */
 	private float[] loadReferenceOutput(String filename) throws Exception {
 		try (FileChannel channel = FileChannel.open(
 				Paths.get(REFERENCE_DIR, filename), StandardOpenOption.READ)) {

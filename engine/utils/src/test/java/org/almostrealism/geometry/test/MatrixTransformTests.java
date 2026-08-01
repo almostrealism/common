@@ -23,13 +23,22 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for matrix transformation operations including scale, translate, and transform.
+ */
 public class MatrixTransformTests extends TestSuiteBase {
+	/**
+	 * Tests scale and translate then transform.
+	 */
 	@Test(timeout = 10000)
 	public void scaleTranslateThenTransform() {
 		scaleAndTranslate();
 		transformAsLocation1();
 	}
 
+	/**
+	 * Tests transform as location variant 1.
+	 */
 	@Test(timeout = 10000)
 	public void transformAsLocation1() {
 		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
@@ -40,6 +49,9 @@ public class MatrixTransformTests extends TestSuiteBase {
 		assertEquals(3.0, v.toDouble(2));
 	}
 
+	/**
+	 * Tests transform as location variant 2.
+	 */
 	@Test(timeout = 10000)
 	public void transformAsLocation2() {
 		TransformMatrix matrix = new TransformMatrix(scaleMatrix(vector(2.0, 1.0, 3.0)).evaluate(), 0);
@@ -50,6 +62,9 @@ public class MatrixTransformTests extends TestSuiteBase {
 		assertEquals(9.0, v.toDouble(2));
 	}
 
+	/**
+	 * Tests transform as offset.
+	 */
 	@Test(timeout = 10000)
 	public void transformAsOffset() {
 		TransformMatrix matrix = new TransformMatrix(translationMatrix(vector(0.0, 10.0, 0.0)).evaluate(), 0);
@@ -65,6 +80,9 @@ public class MatrixTransformTests extends TestSuiteBase {
 		assertEquals(9.0, v.toDouble(2));
 	}
 
+	/**
+	 * Tests applying inverse transform.
+	 */
 	@Test(timeout = 10000)
 	public void applyInverse() {
 		TransformMatrix m = new TransformMatrix(translationMatrix(vector(0.0, -10.0, 0.0)).evaluate(), 0);
@@ -81,6 +99,9 @@ public class MatrixTransformTests extends TestSuiteBase {
 		assertEquals(6.0, r.getDirection().toDouble(2));
 	}
 
+	/**
+	 * Tests scale and translate operations.
+	 */
 	@Test(timeout = 10000)
 	public void scaleAndTranslate() {
 		TransformMatrix matrix = new TransformMatrix(new double[][]{

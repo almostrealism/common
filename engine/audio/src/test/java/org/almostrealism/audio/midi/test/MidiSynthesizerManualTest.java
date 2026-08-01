@@ -18,6 +18,10 @@ package org.almostrealism.audio.midi.test;
 
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.sources.SineWaveCell;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferOutputLine;
@@ -29,8 +33,15 @@ import org.almostrealism.audio.midi.MidiInputListener;
 import org.almostrealism.audio.midi.MidiSynthesizerBridge;
 import org.almostrealism.audio.synth.AudioSynthesizer;
 import org.almostrealism.audio.synth.PolyphonicSynthesizer;
+import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.sources.SineWaveCell;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.ReceptorCell;
+
+import java.io.File;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import javax.sound.midi.MidiDevice;
@@ -39,6 +50,7 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.Mixer;
 import javax.sound.sampled.SourceDataLine;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -74,6 +86,8 @@ import java.util.List;
  * @see PolyphonicSynthesizer
  * @see BufferedOutputScheduler
  */
+@Ignore("Manual test class — requires real MIDI controller and audio output hardware. "
+		+ "Run individually with -Dtest=MidiSynthesizerManualTest#<methodName>.")
 public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeatures {
 
 	/**
@@ -188,17 +202,17 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			midiInput.addListener(new MidiInputListener() {
 				@Override
 				public void noteOn(int channel, int note, int velocity) {
-					log("DEBUG MIDI: Note ON  ch=" + channel + " note=" + note + " vel=" + velocity);
+					log("Note ON  ch=" + channel + " note=" + note + " vel=" + velocity);
 				}
 
 				@Override
 				public void noteOff(int channel, int note, int velocity) {
-					log("DEBUG MIDI: Note OFF ch=" + channel + " note=" + note);
+					log("Note OFF ch=" + channel + " note=" + note);
 				}
 
 				@Override
 				public void controlChange(int channel, int controller, int value) {
-					log("DEBUG MIDI: CC ch=" + channel + " cc=" + controller + " val=" + value);
+					log("Control change ch=" + channel + " cc=" + controller + " val=" + value);
 				}
 			});
 
@@ -234,7 +248,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 				double currentPeak = 0.0;
 				int currentNonZero = 0;
 				try {
-					org.almostrealism.collect.PackedCollection buffer =
+					PackedCollection buffer =
 							scheduler.getBuffer().getOutputBuffer();
 					int bufferSize = (int) buffer.getMemLength();
 					for (int i = 0; i < bufferSize; i++) {
@@ -264,11 +278,11 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			log("Total sampled frames: " + totalSampledFrames);
 			log("Non-zero frames: " + nonZeroFrames);
 			if (overallPeak > 0.01) {
-				log("[OK] Audio IS being generated - check speaker/volume settings");
+				log("Audio IS being generated - check speaker/volume settings");
 			} else if (overallPeak > 0.0001) {
-				log("[WARN] Very low audio level detected - may be too quiet to hear");
+				log("Very low audio level detected - may be too quiet to hear");
 			} else {
-				log("[FAIL] NO audio detected - synthesizer output issue");
+				log("NO audio detected - synthesizer output issue");
 			}
 
 			// 10. Cleanup
@@ -279,7 +293,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 
 		} finally {
 			midiInput.close();
-			log("MIDI connection closed.");
+			log("Connection closed.");
 		}
 
 		log("\nTest completed successfully!");
@@ -329,7 +343,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			}
 
 			if (selectedMixer == null) {
-				log("WARNING: No audio device found matching pattern \"" + pattern + "\"");
+				log("No audio device found matching pattern \"" + pattern + "\"");
 				log("Using default audio output instead.");
 			}
 		}
@@ -353,7 +367,6 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			return new SourceDataOutputLine(line, bufferSize);
 		} catch (Exception e) {
 			log("Error creating audio output: " + e.getMessage());
-			e.printStackTrace();
 			return null;
 		}
 	}
@@ -384,7 +397,6 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			return new SourceDataOutputLine(line, bufferSize);
 		} catch (Exception e) {
 			log("Error creating audio output: " + e.getMessage());
-			e.printStackTrace();
 			return null;
 		}
 	}
@@ -418,7 +430,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 				}
 			}
 
-			log("WARNING: No device found matching pattern \"" + pattern + "\"");
+			log("No device found matching pattern \"" + pattern + "\"");
 			return null;
 		}
 
@@ -637,7 +649,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("Rendered frames: " + scheduler.getRenderedFrames());
 
 		if (scheduler.getRenderedCount() == 0) {
-			log("WARNING: Scheduler did not start processing within " + maxWaitMs + "ms!");
+			log("Scheduler did not start processing within " + maxWaitMs + "ms!");
 		}
 
 		// Wait for at least one more tick to ensure audio is written to output
@@ -652,7 +664,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("Rendered frames: " + scheduler.getRenderedFrames());
 
 		// Check the AudioBuffer content
-		org.almostrealism.collect.PackedCollection audioBuffer = scheduler.getBuffer().getOutputBuffer();
+		PackedCollection audioBuffer = scheduler.getBuffer().getOutputBuffer();
 		int audioBufferFrames = scheduler.getBuffer().getDetails().getFrames();
 		int audioBufferNonZero = 0;
 		double audioBufferMax = 0;
@@ -741,7 +753,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		synth.setAmpEnvelopeParams(0.001, 0.05, 1.0, 0.1);  // Very fast attack, full sustain
 
 		// Capture output values
-		java.util.List<Double> capturedValues = new java.util.ArrayList<>();
+		List<Double> capturedValues = new ArrayList<>();
 		synth.setReceptor(protein -> () -> () -> {
 			double value = protein.get().evaluate().toDouble(0);
 			capturedValues.add(value);
@@ -771,7 +783,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("Captured values: " + capturedValues.size());
 
 		if (capturedValues.isEmpty()) {
-			log("ERROR: No values captured! The receptor was never called.");
+			log("No values captured - the receptor was never called");
 		} else {
 			// Find non-zero values
 			long nonZeroCount = capturedValues.stream()
@@ -817,7 +829,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("Testing if CellList + BufferedOutputScheduler works with a basic SineWaveCell\n");
 
 		// Create a simple sine wave cell
-		org.almostrealism.audio.sources.SineWaveCell sineCell = new org.almostrealism.audio.sources.SineWaveCell();
+		SineWaveCell sineCell = new SineWaveCell();
 		sineCell.setFreq(440.0);  // A4
 		sineCell.setAmplitude(0.8);
 		sineCell.setNoteLength(2000);  // 2 second note
@@ -890,13 +902,13 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("=== Direct SineWaveCell Test ===");
 		log("Testing SineWaveCell without scheduler (baseline)\n");
 
-		org.almostrealism.audio.sources.SineWaveCell sineCell = new org.almostrealism.audio.sources.SineWaveCell();
+		SineWaveCell sineCell = new SineWaveCell();
 		sineCell.setFreq(440.0);
 		sineCell.setAmplitude(0.8);
 		sineCell.setNoteLength(2000);
 
 		// Capture output values
-		java.util.List<Double> capturedValues = new java.util.ArrayList<>();
+		List<Double> capturedValues = new ArrayList<>();
 		sineCell.setReceptor(protein -> () -> () -> {
 			double value = protein.get().evaluate().toDouble(0);
 			capturedValues.add(value);
@@ -952,9 +964,9 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("Testing if CellList + BufferedOutputScheduler works with WaveCell (known working pattern)\n");
 
 		// Try to use a test wav file if available, otherwise use a generated tone
-		java.io.File testFile = new java.io.File("Library/Snare Gold 1.wav");
+		File testFile = new File("Library/Snare Gold 1.wav");
 		if (!testFile.exists()) {
-			testFile = new java.io.File("src/test/resources/test.wav");
+			testFile = new File("src/test/resources/test.wav");
 		}
 
 		if (!testFile.exists()) {
@@ -1019,7 +1031,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		synth.setAmpEnvelopeParams(0.001, 0.05, 1.0, 0.1);
 
 		// Set up a capture receptor on the synth
-		java.util.List<Double> capturedFromPush = new java.util.ArrayList<>();
+		List<Double> capturedFromPush = new ArrayList<>();
 		synth.setReceptor(protein -> () -> () -> {
 			double value = protein.get().evaluate().toDouble(0);
 			capturedFromPush.add(value);
@@ -1032,7 +1044,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		synth.noteOn(69, 1.0);
 
 		log("Running 1000 push() calls...");
-		Runnable push = synth.push(null).get();
+		Runnable push = synth.push(c(0.0)).get();
 		for (int i = 0; i < 1000; i++) {
 			push.run();
 		}
@@ -1094,12 +1106,12 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 
 		// Create a destination buffer (like AudioBuffer's output buffer)
 		int frames = 1000;
-		org.almostrealism.collect.PackedCollection destination = new org.almostrealism.collect.PackedCollection(frames);
+		PackedCollection destination = new PackedCollection(frames);
 
 		// Mimic what buffer(destination) does:
 		// cells = map(cells, i -> new WaveOutput(destination).getWriterCell(0));
-		org.almostrealism.audio.WaveOutput waveOutput = new org.almostrealism.audio.WaveOutput(p(destination));
-		org.almostrealism.graph.ReceptorCell<org.almostrealism.collect.PackedCollection> receptorCell = waveOutput.getWriterCell(0);
+		WaveOutput waveOutput = new WaveOutput(p(destination));
+		ReceptorCell<PackedCollection> receptorCell = waveOutput.getWriterCell(0);
 
 		// Set receptor on the synth (like map() does)
 		synth.setReceptor(receptorCell);

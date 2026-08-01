@@ -193,21 +193,26 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	}
 
 	/**
-	 * Isolation is not supported for zero computations.
+	 * A zeros computation must never be isolated, so this always throws.
 	 *
-	 * <p>In practice, constant computations are so trivial that isolation
-	 * would provide no benefit and might actually reduce performance
-	 * by adding unnecessary computation steps while wasting memory.</p>
+	 * <p>Isolation separates a sub-computation so its value is materialised independently
+	 * (as a {@link PackedCollection}) rather than embedded inline in a parent's expression.
+	 * No parent computation benefits from materialising a buffer full of zeros instead of an
+	 * inline constant {@code 0.0}; isolating a zeros only adds overhead and, by keeping the
+	 * zeros embedded as an optimisation participant, can drive expensive kernel analysis of
+	 * the surrounding fused expression.</p>
 	 *
-	 * @return Never returns normally
-	 * @throws UnsupportedOperationException Always thrown as isolation is not
-	 *                                       applicable to zero computations
+	 * <p>Reaching this method therefore signals that some operation accepted a zeros as a child
+	 * without respecting {@link io.almostrealism.collect.Algebraic#isZero(Object)} — the correct
+	 * fix is to make that operation collapse the zero (e.g. {@code multiply(x, 0.0)} returns a
+	 * zeros, a reshaped zeros returns a zeros), not to permit isolation here.</p>
 	 *
+	 * @throws UnsupportedOperationException always
 	 * @see Process#isolate()
 	 */
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
-		throw new UnsupportedOperationException();
+		throw new UnsupportedOperationException("A zeros computation must never be isolated");
 	}
 
 	/**

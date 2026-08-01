@@ -29,7 +29,13 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
+/**
+ * Tests for PackedCollection subset extraction operations including 1D, 2D, 3D, and dynamic subsets.
+ */
 public class PackedCollectionSubsetTests extends TestSuiteBase {
+	/**
+	 * Tests 3D subset extraction with fixed coordinates.
+	 */
 	@Test(timeout = 30000)
 	public void subset3d() {
 		int w = 2;
@@ -47,14 +53,14 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		TraversalPolicy subsetShape = shape(w, h, d);
 
 		int outIndex = 1;
 		int[] pos = subsetShape.position(outIndex);
 		int index = inputShape.index(x0 + pos[0], y0 + pos[1], z0 + pos[2]);
-		System.out.println("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
+		log("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
 		Assert.assertEquals(433, index);
 
 		verboseLog(() -> {
@@ -71,7 +77,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 					for (int k = 0; k < d; k++) {
 						double expected = (x0 + i + y0 + j + z0 + k);
 						double actual = subset.toDouble(subsetShape.index(i, j, k));
-						System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
+						log("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -79,6 +85,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests 1D dynamic subset extraction.
+	 */
 	@Test(timeout = 30000)
 	public void dynamicSubset1d() {
 		int w = 2;
@@ -92,7 +101,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(1).traverseEach();
 		pc.set(0, x0);
@@ -107,12 +116,15 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 			for (int i = 0; i < w; i++) {
 				double expected = x0 + i;
 				double actual = subset.valueAt(i);
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				log("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 			}
 		});
 	}
 
+	/**
+	 * Tests 2D dynamic subset extraction.
+	 */
 	@Test(timeout = 30000)
 	public void dynamicSubset2d() {
 		int w = 2;
@@ -128,7 +140,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(2).traverseEach();
 		pc.set(0, x0);
@@ -146,13 +158,16 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 				for (int j = 0; j < h; j++) {
 					double expected = (x0 + i + y0 + j);
 					double actual = subset.valueAt(i, j);
-					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
+					log("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
 					assertEquals(expected, actual);
 				}
 			}
 		});
 	}
 
+	/**
+	 * Tests 3D dynamic subset extraction.
+	 */
 	@Test(timeout = 30000)
 	public void dynamicSubset3d() {
 		int n = 10;
@@ -170,7 +185,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(3).traverseEach();
 		pc.set(0, x0);
@@ -191,7 +206,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 					for (int k = 0; k < d; k++) {
 						double expected = input.valueAt(x0 + i, y0 + j, z0 + k);
 						double actual = subset.valueAt(i, j, k);
-						System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
+						log("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
@@ -199,12 +214,18 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests subset with transpose operation.
+	 */
 	@Test(timeout = 30000)
 	public void subsetTranspose() {
 		// TODO Transpose a matrix and then take a subset
 		// enumerate(shape(10, 1), p(input)).subset(shape(3, 3, 1), 2, 2, 0)
 	}
 
+	/**
+	 * Tests subset product operation.
+	 */
 	@Test(timeout = 30000)
 	public void subsetProduct() {
 		int size = 3;
@@ -237,7 +258,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 				for (int j = 0; j < size; j++) {
 					double expected = filter.toDouble(filterShape.index(i, j)) * (x0 + i + y0 + j);
 					double actual = result.toDouble(subset.getShape().index(i, j));
-					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
+					log("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -245,7 +266,10 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 30000)
-	public void subsetAssignment() {
+	/**
+	 * Tests subset assignment operation.
+	 */
+	private void subsetAssignment() {
 		PackedCollection originalInput = new PackedCollection(shape(10, 20));
 		originalInput.fill(pos -> Math.random());
 
@@ -270,6 +294,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests subset with halves extraction.
+	 */
 	@Test(timeout = 30000)
 	public void subsetHalves() {
 		int batchSize = 1;
@@ -303,6 +330,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests subset half with 2D padding.
+	 */
 	@Test(timeout = 30000)
 	public void subsetHalfPad2d() {
 		int seqLen = 16;
@@ -341,6 +371,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 	 * @see #subsetHalfPad2dSum2()
 	 * @see #subsetHalfPad2dSum3()
 	 */
+	/**
+	 * Runs all subset half pad 2d sum tests.
+	 */
 	@Test(timeout = 30000)
 	@TestDepth(3)
 	public void subsetHalfPad2dSumAll() {
@@ -349,6 +382,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		subsetHalfPad2dSum3();
 	}
 
+	/**
+	 * Tests subset half pad 2d sum variant 1.
+	 */
 	@Test(timeout = 30000)
 	public void subsetHalfPad2dSum1() {
 		int seqLen = 16;
@@ -379,6 +415,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests subset half pad 2d sum variant 2.
+	 */
 	@Test(timeout = 30000)
 	public void subsetHalfPad2dSum2() {
 		int seqLen = 16;
@@ -409,6 +448,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests subset half pad 2d sum variant 3.
+	 */
 	@Test(timeout = 30000)
 	public void subsetHalfPad2dSum3() {
 		int seqLen = 16;
@@ -435,6 +477,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 1D subset half concatenation.
+	 */
 	@Test(timeout = 30000)
 	public void subsetHalfConcat1d() {
 		int dim = 64;
@@ -460,6 +505,9 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 2D subset half concatenation.
+	 */
 	@Test(timeout = 30000)
 	public void subsetHalfConcat2d() {
 		int seqLen = 16;

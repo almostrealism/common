@@ -29,6 +29,14 @@ import org.almostrealism.collect.PackedCollection;
  * @see BufferDetails
  */
 public interface StatelessSource {
+	/**
+	 * Generates audio data for the given buffer configuration, synthesis parameters, and frequency.
+	 *
+	 * @param buffer    the buffer configuration (sample rate and frame count)
+	 * @param params    synthesis parameter values
+	 * @param frequency a Factor that scales the output based on the desired frequency
+	 * @return a producer yielding the generated audio data
+	 */
 	Producer<PackedCollection> generate(BufferDetails buffer,
 										   Producer<PackedCollection> params,
 										   Factor<PackedCollection> frequency);

@@ -20,7 +20,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.DefaultIndex;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationMetadata;
@@ -271,7 +271,7 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 		Repeated<PackedCollection> scope = new Repeated<>(getFunctionName(), getMetadata());
 		scope.setInterval(e(getMemLength()));
 
-		String i = getNameProvider().getVariablePrefix() + "_i";
+		String i = getVariablePrefix() + "_i";
 		scope.setIndex(new Variable<>(i));
 
 		DefaultIndex ref = new DefaultIndex(i);

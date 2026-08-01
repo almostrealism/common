@@ -16,7 +16,6 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.uml.Function;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Ray;
 
@@ -26,7 +25,13 @@ import org.almostrealism.geometry.Ray;
  * 
  * @author Michael Murray
  */
-@Function
 public interface DistanceEstimator {
+	/**
+	 * Returns an estimated distance along the given {@link Ray} to the nearest potential
+	 * surface intersection.
+	 *
+	 * @param r the ray to estimate against
+	 * @return an estimated distance value (may be an underestimate; negative values indicate no intersection)
+	 */
 	double estimateDistance(Ray r);
 }

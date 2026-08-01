@@ -61,6 +61,22 @@ public class MTLCommandBuffer extends MTLObject {
 	}
 
 	/**
+	 * Encodes a buffer-to-buffer copy onto this command buffer via a blit command encoder, so the copy
+	 * is queued alongside the surrounding compute dispatches and ordered against them by Metal's
+	 * in-buffer hazard tracking.
+	 *
+	 * @param source            the source buffer
+	 * @param sourceOffset      byte offset within the source buffer
+	 * @param destination       the destination buffer
+	 * @param destinationOffset byte offset within the destination buffer
+	 * @param size              number of bytes to copy
+	 */
+	public void blitCopy(MTLBuffer source, long sourceOffset, MTLBuffer destination, long destinationOffset, long size) {
+		MTL.blitCopy(getNativePointer(), source.getNativePointer(), sourceOffset,
+				destination.getNativePointer(), destinationOffset, size);
+	}
+
+	/**
 	 * Commits this command buffer for execution on the GPU.
 	 *
 	 * <p>Once committed, the buffer cannot be modified. Use {@link #waitUntilCompleted()}
@@ -71,11 +87,66 @@ public class MTLCommandBuffer extends MTLObject {
 	}
 
 	/**
+	 * Releases the explicit retain taken when this command buffer was created (see
+	 * {@link MTL#commandBuffer(long)}). Call once the buffer has completed and is no longer
+	 * referenced, so it is freed rather than accumulating in the driver.
+	 */
+	@Override
+	public void release() {
+		MTL.releaseCommandBuffer(getNativePointer());
+		super.release();
+	}
+
+	/**
 	 * Blocks the calling thread until all GPU commands have completed.
 	 *
-	 * <p>Must be called after {@link #commit()}. Synchronizes CPU with GPU execution.</p>
+	 * <p>Must be called after {@link #commit()}. Synchronizes CPU with GPU execution.
+	 * Returns identically whether the buffer executed or was killed by a GPU error or
+	 * watchdog; use {@link #isError()} afterwards to distinguish, since a killed
+	 * buffer's dispatches never ran and their destinations were never written.</p>
 	 */
 	public void waitUntilCompleted() {
 		MTL.waitUntilCompleted(getNativePointer());
+	}
+
+	/**
+	 * Returns true when this buffer finished with the error status, meaning some or all
+	 * of its dispatches never executed (for example after a GPU fault or watchdog kill).
+	 *
+	 * @return true when the buffer's status is error
+	 */
+	public boolean isError() {
+		return MTL.commandBufferStatus(getNativePointer()) == 5;
+	}
+
+	/**
+	 * Returns the localized error description when {@link #isError()} is true.
+	 *
+	 * @return the error description, or {@code null} when there is no error
+	 */
+	public String getError() {
+		return MTL.commandBufferError(getNativePointer());
+	}
+
+	/**
+	 * Encodes a signal of {@code event} to {@code value} once this buffer's prior work
+	 * completes. Must be called when no encoder is active on this buffer.
+	 *
+	 * @param event The {@link MTLEvent} to signal
+	 * @param value The value to signal
+	 */
+	public void encodeSignalEvent(MTLEvent event, long value) {
+		MTL.encodeSignalEvent(getNativePointer(), event.getNativePointer(), value);
+	}
+
+	/**
+	 * Encodes a wait until {@code event} reaches {@code value} before this buffer's subsequent
+	 * work runs. Must be called when no encoder is active on this buffer.
+	 *
+	 * @param event The {@link MTLEvent} to wait on
+	 * @param value The value to wait for
+	 */
+	public void encodeWaitForEvent(MTLEvent event, long value) {
+		MTL.encodeWaitForEvent(getNativePointer(), event.getNativePointer(), value);
 	}
 }

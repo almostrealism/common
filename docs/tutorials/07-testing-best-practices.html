@@ -45,22 +45,22 @@
                 <h2>Step 1: Environment Setup for Tests</h2>
                 <p><strong>CRITICAL:</strong> Always set environment variables before running tests.</p>
 
-                <pre><code class="language-bash"># From command line
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-mvn test -pl algebra
-
-# Or in your IDE run configuration
-AR_HARDWARE_LIBS=/tmp/ar_libs/</code></pre>
+                <pre><code class="language-bash"># Use the MCP test runner for running tests (recommended):
+#   mcp__ar-test-runner__start_test_run
+#
+# Or from the IDE, set environment variables in Run Configurations.
+# AR_HARDWARE_LIBS is auto-detected — do not set manually.</code></pre>
 
                 <h3>Test Class Template</h3>
                 <pre><code class="language-java">import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class MyFeatureTest implements TestFeatures, ConsoleFeatures {
+public class MyFeatureTest extends TestSuiteBase implements TestFeatures, ConsoleFeatures {
     @Test
     public void testBasicOperation() {
         // Setup file logging
@@ -89,7 +89,7 @@ public class MyFeatureTest implements TestFeatures, ConsoleFeatures {
 
                 <pre><code class="language-java">import org.almostrealism.util.TestFeatures;
 
-public class CollectionTest implements TestFeatures {
+public class CollectionTest extends TestSuiteBase implements TestFeatures {
     @Test
     public void testCollectionOperations() {
         // Create test data
@@ -262,7 +262,7 @@ public void compareCPUvsGPU() {
 
                 <pre><code class="language-java">import org.almostrealism.util.ModelTestFeatures;
 
-public class ModelTest implements ModelTestFeatures {
+public class ModelTest extends TestSuiteBase implements ModelTestFeatures {
     @Test
     public void testModelInference() {
         // Create synthetic model
@@ -641,7 +641,7 @@ public void debugComputationGraph() {
 
                 <p><strong>Best Practices Summary:</strong></p>
                 <ul>
-                    <li>Always set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER before tests</li>
+                    <li>Verify the auto-detected library directory is writable before tests</li>
                     <li>Use appropriate tolerance for floating-point comparisons</li>
                     <li>Log test output to files for later review</li>
                     <li>Test edge cases (empty, large, special values)</li>

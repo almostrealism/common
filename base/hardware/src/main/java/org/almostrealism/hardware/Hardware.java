@@ -23,9 +23,11 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.compute.CascadingOptimizationStrategy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.ExpansionWidthTargetOptimization;
 import io.almostrealism.compute.ParallelismDiversityOptimization;
 import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.compute.ProcessContextBase;
+import io.almostrealism.compute.RowMonomialOptimization;
 import io.almostrealism.compute.TraversableDepthTargetOptimization;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelPreferences;
@@ -39,12 +41,13 @@ import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.instructions.ComputationScopeCompiler;
 import org.almostrealism.hardware.jni.NativeDataContext;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
-import org.almostrealism.nio.NativeBufferMemoryProvider;
+import org.almostrealism.nio.NativeMemoryProvider;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -117,10 +120,8 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_LIBS</h3>
  * <p><strong>Purpose:</strong> Directory where generated native libraries are stored.</p>
- * <p><strong>Required:</strong> Yes (system will not function without this)</p>
- * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * </pre>
+ * <p><strong>Default:</strong> Auto-detected via {@link io.almostrealism.io.SystemUtils#getExtensionsPath()}.
+ * Setting this manually is almost always a mistake — the auto-detected path is preferred.</p>
  *
  * <h3>AR_HARDWARE_PRECISION</h3>
  * <p><strong>Purpose:</strong> Floating-point precision for computations.</p>
@@ -132,10 +133,10 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_MEMORY_SCALE</h3>
  * <p><strong>Purpose:</strong> Controls maximum memory allocation size.</p>
- * <p><strong>Formula:</strong> Max reservation = 2^MEMORY_SCALE * 64MB</p>
- * <p><strong>Default:</strong> 4 (i.e., 2^4 * 64MB = 1GB)</p>
+ * <p><strong>Formula:</strong> Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB</p>
+ * <p><strong>Default:</strong> 4 (~4GB with FP32)</p>
  * <pre>
- * # Allow 4GB max reservation (2^6 * 64MB = 4GB)
+ * # Allow ~16GB max (FP32: 4 * 2^6 * 64MB)
  * export AR_HARDWARE_MEMORY_SCALE=6
  * </pre>
  *
@@ -165,7 +166,7 @@ import java.util.function.Consumer;
  *
  * <h3>AR_HARDWARE_OFF_HEAP_SIZE</h3>
  * <p><strong>Purpose:</strong> Off-heap buffer size in bytes.</p>
- * <p><strong>Default:</strong> 1024</p>
+ * <p><strong>Default:</strong> {@value #DEFAULT_OFF_HEAP_SIZE}</p>
  *
  * <h3>AR_HARDWARE_EPSILON_64</h3>
  * <p><strong>Purpose:</strong> Use full FP64 epsilon precision.</p>
@@ -179,13 +180,13 @@ import java.util.function.Consumer;
  *
  * <h3>Development (Fast Compilation, CPU Execution)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_PRECISION=FP64
  * </pre>
  *
  * <h3>Production GPU (Maximum Performance)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/var/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_DRIVER=gpu
  * export AR_HARDWARE_PRECISION=FP32
  * export AR_HARDWARE_MEMORY_SCALE=6
@@ -194,7 +195,7 @@ import java.util.function.Consumer;
  *
  * <h3>Apple Silicon (Unified Memory)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_DRIVER=mtl
  * export AR_HARDWARE_NIO_MEMORY=true
  * export AR_HARDWARE_PRECISION=FP32
@@ -202,7 +203,7 @@ import java.util.function.Consumer;
  *
  * <h3>Multi-Backend (OpenCL + JNI Fallback)</h3>
  * <pre>
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
+ * # AR_HARDWARE_LIBS is auto-detected — do not set manually
  * export AR_HARDWARE_DRIVER=cl,native
  * export AR_HARDWARE_PRECISION=FP32
  * </pre>
@@ -224,10 +225,11 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <h3>ComputeContext</h3>
- * <p>Handles kernel compilation and execution for a specific backend.</p>
- * <p><strong>Usage:</strong></p>
+ * <p>Handles kernel compilation and execution for a specific backend. Obtain one from the
+ * {@link DefaultComputer}, which selects intelligently for a computation — never from the
+ * ambient default, which is frequently a CPU context and may be the worst choice:</p>
  * <pre>{@code
- * ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputeContext();
+ * ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(computation);
  * Runnable compiled = ctx.compileRunnable(...);
  * }</pre>
  *
@@ -410,15 +412,12 @@ import java.util.function.Consumer;
  *
  * <h2>Common Pitfalls</h2>
  *
- * <h3>Forgetting AR_HARDWARE_LIBS</h3>
+ * <h3>AR_HARDWARE_LIBS</h3>
  * <pre>
- * # BAD: Missing required environment variable
- * java -jar myapp.jar
- * # Error: NoClassDefFoundError
- *
- * # GOOD: Set AR_HARDWARE_LIBS before running
- * export AR_HARDWARE_LIBS=/tmp/ar_libs/
- * java -jar myapp.jar
+ * # AR_HARDWARE_LIBS is auto-detected — setting it manually is almost
+ * # always a mistake and can cause permission errors on shared systems.
+ * # If you see NoClassDefFoundError, check that the auto-detected
+ * # directory is writable rather than overriding with a custom path.
  * </pre>
  *
  * <h3>Incompatible Memory Location with NIO</h3>
@@ -461,18 +460,28 @@ import java.util.function.Consumer;
  *
  * @author  Michael Murray
  */
-public final class Hardware {
+public final class Hardware implements ConsoleFeatures {
+	/** If true, log detailed initialization and backend configuration messages. */
 	public static boolean enableVerbose = false;
+	/** If true, new compute contexts default to kernel-friendly mode, enabling GPU dispatch. */
 	public static boolean defaultKernelFriendly = true;
 
+	/** Root console for hardware-layer logging and timing metrics. */
 	public static Console console = Console.root().child()
 			.addFilter(ConsoleFeatures.duplicateFilter(10 * 60 * 1000L));
 
+	/** Default value for {@code AR_HARDWARE_OFF_HEAP_SIZE} (see {@link #getOffHeapSize(ComputeRequirement)}). */
+	public static final int DEFAULT_OFF_HEAP_SIZE = 0;
+
+	/** Memory scale factor: {@code MEMORY_SCALE=N} sets max memory to {@code 2^N * 64MB}. Controlled by {@code AR_HARDWARE_MEMORY_SCALE}. */
 	protected static final int MEMORY_SCALE;
 
+	/** If true, use 64-bit epsilon values for floating-point comparisons. Controlled by {@code AR_HARDWARE_EPSILON_64}. */
 	private static final boolean epsilon64 = SystemUtils.isEnabled("AR_HARDWARE_EPSILON_64").orElse(false);
+	/** If true, kernel operations are dispatched asynchronously to a background executor. Controlled by {@code AR_HARDWARE_ASYNC}. */
 	private static final boolean async = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(true);
 
+	/** Singleton Hardware instance for the current JVM process, initialized once in the static initializer. */
 	private static final Hardware local;
 
 	static {
@@ -503,7 +512,7 @@ public final class Hardware {
 
 		List<ComputeRequirement> requirements = new ArrayList<>();
 
-		boolean nioMem = false;
+		boolean sharedMem = false;
 
 		for (String driver : drivers) {
 			if ("cl".equalsIgnoreCase(driver)) {
@@ -529,16 +538,16 @@ public final class Hardware {
 
 				if (drivers.length <= 1 && requirements.contains(ComputeRequirement.MTL)) {
 					KernelPreferences.enableSharedMemory();
-					nioMem = true;
+					sharedMem = true;
 				}
 			} else {
 				throw new IllegalStateException("Unknown driver " + driver);
 			}
 		}
 
-		nioMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(nioMem);
+		sharedMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(sharedMem);
 
-		if (nioMem) {
+		if (sharedMem) {
 			if (memLocation != null) {
 				if (location == Location.HOST) {
 					console.warn("NIO memory is enabled, location will be set to DELEGATE instead of HOST");
@@ -550,43 +559,93 @@ public final class Hardware {
 			location = Location.DELEGATE;
 		}
 
+		// ExpansionWidthTargetOptimization intentionally left out of the cascade
+		// for now. The switch from MemoryDataCopy to Assignment in
+		// MemoryDataFeatures.copy(...) is being evaluated in isolation first;
+		// once its behaviour is validated in CI, the expansion-width strategy
+		// can be reinstated here without touching its implementation.
 		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
+				new RowMonomialOptimization(),
 				new ParallelismDiversityOptimization(),
 				new TraversableDepthTargetOptimization(),
 				new ParallelismTargetOptimization()
 		));
 
-		local = new Hardware(requirements, location, nioMem);
+		local = new Hardware(requirements, location, sharedMem);
 	}
 
+	/** Display name for this hardware instance, used in log messages. */
 	private final String name;
+	/** True if memory is allocated on the JVM heap (volatile), meaning data may be modified by the GC. */
 	private final boolean memVolatile;
+	/** Reference-counting guard that prevents native kernel memory from being deallocated during dispatch. */
+	private final KernelMemoryGuard kernelMemoryGuard;
+	/** Maximum number of elements (not bytes) that may be allocated across all memory providers. */
 	private long maxReservation;
+	/** Location strategy for CL memory allocation (DEVICE, HEAP, HOST, or DELEGATE). */
 	private Location location;
-	private NativeBufferMemoryProvider nioMemory;
+	/** Optional NIO-based memory provider for Metal/NIO shared memory mode; null if not enabled. */
+	private NativeMemoryProvider nioMemory;
+	/**
+	 * Whether the standalone native (JNI) provider allocates NIO direct buffers rather than JNI malloc
+	 * blocks. Resolved from {@code AR_HARDWARE_NATIVE_DIRECT_BUFFERS}. Distinct from NIO memory, which
+	 * instead shares one host provider across backends rather than choosing an allocation strategy.
+	 */
+	private final boolean nativeDirectBuffers;
+	/** Whether the cross-backend NIO shared-memory bridge was enabled at initialization. */
+	private final boolean nativeSharedMemory;
 
+	/** High-level orchestrator for submitting and sequencing hardware operations. */
 	private DefaultComputer computer;
+	/** All active data contexts (one per backend driver), ordered by priority. */
 	private List<DataContext<MemoryData>> contexts;
+	/** Thread-local override for the active data context; null if no override is in effect. */
 	private ThreadLocal<DataContext<MemoryData>> explicitDataCtx = new ThreadLocal<>();
+	/** Thread-local override for the active compute context; null if no override is in effect. */
 	private ThreadLocal<ComputeContext<MemoryData>> explicitComputeCtx = new ThreadLocal<>();
+	/** Weak references to registered context lifecycle listeners; entries are cleaned up on GC. */
 	private final List<WeakReference<ContextListener>> contextListeners;
 
-	private Hardware(List<ComputeRequirement> type, Location location, boolean nioMemory) {
-		this("local", type, location, nioMemory);
+	/**
+	 * Creates a Hardware instance with the given backend requirements, using a default name.
+	 *
+	 * @param type List of required compute backends (e.g., JNI, MTL, CL)
+	 * @param location CL memory location strategy
+	 * @param sharedMemory If true, NIO-based shared memory between backends is enabled
+	 */
+	private Hardware(List<ComputeRequirement> type, Location location, boolean sharedMemory) {
+		this("local", type, location, sharedMemory);
 	}
 
-	private Hardware(String name, List<ComputeRequirement> reqs, Location location, boolean nioMemory) {
+	/**
+	 * Creates a named Hardware instance and initializes all configured backend data contexts.
+	 *
+	 * @param name Display name for logging
+	 * @param reqs List of required compute backends to initialize
+	 * @param location CL memory location strategy
+	 * @param sharedMemory If true, NIO-based shared memory between backends is enabled
+	 */
+	private Hardware(String name, List<ComputeRequirement> reqs, Location location, boolean sharedMemory) {
 		this.name = name;
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
 		this.memVolatile = location == Location.HEAP;
+		this.kernelMemoryGuard = new KernelMemoryGuard();
 		this.contextListeners = Collections.synchronizedList(new ArrayList<>());
 		this.contexts = new ArrayList<>();
+		this.nativeDirectBuffers = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_DIRECT_BUFFERS").orElse(true);
+		this.nativeSharedMemory = sharedMemory;
+
+		if (sharedMemory && !nativeDirectBuffers) {
+			warn("Shared memory between backends requires direct buffers, so" +
+					" disabling AR_HARDWARE_NATIVE_DIRECT_BUFFERS will be ignored" +
+					" wherever the shared bridge provides memory");
+		}
 
 		int count;
 
-		if (nioMemory) {
-			this.nioMemory = new NativeBufferMemoryProvider(Precision.FP32, Precision.FP32.bytes() * maxReservation);
+		if (sharedMemory) {
+			this.nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32, Precision.FP32.bytes() * maxReservation);
 			count = processRequirements(reqs, Precision.FP32);
 		} else {
 			count = processRequirements(reqs);
@@ -615,6 +674,15 @@ public final class Hardware {
 		cleanup.start();
 	}
 
+	/**
+	 * Resolves the global precision and delegates to {@link #processRequirements(List, Precision)}.
+	 *
+	 * <p>If shared memory or uniform precision is required, the precision is downgraded to the
+	 * most restrictive maximum supported by any of the listed backends.</p>
+	 *
+	 * @param requirements List of compute requirements to process
+	 * @return The number of data contexts successfully initialized
+	 */
 	private int processRequirements(List<ComputeRequirement> requirements) {
 		Precision precision = Precision.valueOf(SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP64"));
 
@@ -629,9 +697,20 @@ public final class Hardware {
 		return processRequirements(requirements, precision);
 	}
 
+	/**
+	 * Processes compute requirements and initializes data contexts for each supported backend.
+	 *
+	 * <p>Iterates over the requirement list, creating and initializing the appropriate
+	 * {@link DataContext} for each recognized compute requirement (JNI, MTL, CL, etc.).
+	 * Returns the number of successfully created contexts.</p>
+	 *
+	 * @param requirements List of compute requirements to process
+	 * @param precision Numeric precision to use for all created contexts
+	 * @return The number of data contexts successfully initialized
+	 */
 	private int processRequirements(List<ComputeRequirement> requirements, Precision precision) {
 		if (enableVerbose) {
-			System.out.println("Hardware[" + getName() + "]: Processing Hardware Requirements...");
+			log("Hardware[" + getName() + "]: Processing Hardware Requirements...");
 		}
 
 		List<ComputeRequirement> done = new ArrayList<>();
@@ -661,22 +740,22 @@ public final class Hardware {
 					ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
 					kernelFriendly = true;
 				} else {
-					ctx = new NativeDataContext("JNI", precision, this.maxReservation);
+					ctx = new NativeDataContext("JNI", precision, this.maxReservation, false, nativeDirectBuffers);
 				}
 
 				if (locationUsed) {
 					if (location == Location.HEAP)
-						System.out.println("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
+						log("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
 					if (location == Location.HOST)
-						System.out.println("Hardware[" + ctx.getName() + "]: Host RAM enabled");
+						log("Hardware[" + ctx.getName() + "]: Host RAM enabled");
 					if (location == Location.DELEGATE)
-						System.out.println("Hardware[" + ctx.getName() + "]: Delegate RAM enabled");
+						log("Hardware[" + ctx.getName() + "]: Delegate RAM enabled");
 				}
 
 				done.add(type);
 				ctx.init();
 
-				System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
+				log("Hardware[" + ctx.getName() + "]: Max RAM is " +
 						ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
 						ctx.getPrecision().name() + ")");
 
@@ -705,13 +784,18 @@ public final class Hardware {
 		}
 
 		if (provider == null && nioMemory != null) {
+			if (!nioMemory.isShared()) {
+				throw new IllegalStateException(
+						"NIO memory bridge must be created via NativeMemoryProvider.sharedBridge");
+			}
+
 			provider = nioMemory;
 		}
 
 		if (provider != null) {
 			for (DataContext<MemoryData> c : contexts) {
 				if (c instanceof NativeDataContext) {
-					System.out.println("Hardware[" + c.getName() +
+					log("Hardware[" + c.getName() +
 							"]: Enabling shared memory via " +
 							provider.getClass().getSimpleName());
 					((NativeDataContext) c).setDelegate(sharedMemoryCtx);
@@ -721,7 +805,7 @@ public final class Hardware {
 		}
 
 		if (!kernelFriendly) {
-			System.out.println("Hardware[" + getName() + "]: Kernels will be avoided");
+			log("Hardware[" + getName() + "]: Kernels will be avoided");
 			KernelPreferences.setPreferKernels(false);
 		}
 
@@ -764,9 +848,27 @@ public final class Hardware {
 	 * <p>The instance is initialized during class loading based on environment variables.
 	 * All Almost Realism code should use this singleton for hardware access.</p>
 	 *
+	 * <p><strong>Do not use this to guess at hardware targeting.</strong> Reaching for the
+	 * ambient/default context (for example via {@link #getComputeContext()}) to decide where
+	 * a workload should run is an anti-pattern: the default is frequently a CPU context and
+	 * may be the worst possible choice for the work at hand. Targeting decisions belong to
+	 * the {@link DefaultComputer} ({@link #getComputer()}), which selects a
+	 * {@link ComputeContext} intelligently from the computation's characteristics and active
+	 * {@link ComputeRequirement}s — or, for operations on already-resolved memory, to the
+	 * context of the {@link DataContext} that actually manages that memory
+	 * ({@link #getComputeContext(Memory)}).</p>
+	 *
 	 * @return The local hardware singleton
 	 */
 	public static Hardware getLocalHardware() { return local; }
+
+	/**
+	 * Returns the {@link KernelMemoryGuard} that tracks active kernel executions
+	 * and prevents native memory deallocation while kernels are in flight.
+	 *
+	 * @return The kernel memory guard instance
+	 */
+	public KernelMemoryGuard getKernelMemoryGuard() { return kernelMemoryGuard; }
 
 	/**
 	 * Returns the {@link DefaultComputer} managing compilation and execution.
@@ -863,6 +965,22 @@ public final class Hardware {
 	}
 
 	/**
+	 * Returns whether a profile is currently assigned, determined from the profiling listeners
+	 * installed by {@link #assignProfile(OperationProfile)} rather than from a retained profile
+	 * reference.
+	 *
+	 * @return true if profiling is currently active
+	 */
+	public boolean isProfileAssigned() {
+		return HardwareOperator.timingListener != null
+				|| AbstractComputeContext.compilationTimingListener != null
+				|| ComputationScopeCompiler.timing != null
+				|| Scope.timing != null
+				|| ScopeSettings.timing != null
+				|| Expression.timing != null;
+	}
+
+	/**
 	 * Registers a {@link ContextListener} to receive context lifecycle events.
 	 *
 	 * <p>Listeners are stored via {@link WeakReference}, so callers must maintain
@@ -941,7 +1059,7 @@ public final class Hardware {
 		} else if (dc instanceof MetalDataContext) {
 			next = new MetalDataContext("MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
 		} else if (dc instanceof NativeDataContext) {
-			next = new NativeDataContext("JNI", getDataContext().getPrecision(), maxReservation);
+			next = new NativeDataContext("JNI", getDataContext().getPrecision(), maxReservation, false, nativeDirectBuffers);
 		} else {
 			return null;
 		}
@@ -952,7 +1070,7 @@ public final class Hardware {
 		}
 
 		try {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: Start " + dcName);
+			if (Hardware.enableVerbose) log("Hardware[" + next.getName() + "]: Start " + dcName);
 			next.init();
 			explicitDataCtx.set(next);
 			forEachContextListener(l -> l.contextStarted(getDataContext()));
@@ -964,9 +1082,9 @@ public final class Hardware {
 		} finally {
 			forEachContextListener(l -> l.contextDestroyed(next));
 			explicitDataCtx.set(current);
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: End " + dcName);
+			if (Hardware.enableVerbose) log("Hardware[" + next.getName() + "]: End " + dcName);
 			next.destroy();
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: Destroyed " + dcName);
+			if (Hardware.enableVerbose) log("Hardware[" + next.getName() + "]: Destroyed " + dcName);
 		}
 	}
 
@@ -1031,9 +1149,20 @@ public final class Hardware {
 	public boolean isMemoryVolatile() { return memVolatile; }
 
 	/**
+	 * Indicates whether the cross-backend NIO shared-memory bridge was enabled
+	 * when this instance was initialized, either by {@code AR_HARDWARE_NIO_MEMORY}
+	 * or by a platform default that requires it. When enabled, the provider
+	 * returned by {@link #getNativeBufferMemoryProvider()} is always the direct
+	 * shared bridge, regardless of {@code AR_HARDWARE_NATIVE_DIRECT_BUFFERS}.
+	 *
+	 * @return True if NIO shared memory between backends is enabled
+	 */
+	public boolean isNativeSharedMemory() { return nativeSharedMemory; }
+
+	/**
 	 * Returns the memory scale exponent for maximum allocation size.
 	 *
-	 * <p>Max reservation = 2^MEMORY_SCALE * 64MB. Default is 4 (1GB).</p>
+	 * <p>Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
 	 *
 	 * @return The memory scale exponent
 	 */
@@ -1042,7 +1171,8 @@ public final class Hardware {
 	/**
 	 * Returns the off-heap buffer size for the specified backend.
 	 *
-	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable (default: 1024 bytes).</p>
+	 * <p>Controlled by {@code AR_HARDWARE_OFF_HEAP_SIZE} environment variable
+	 * (default: {@value #DEFAULT_OFF_HEAP_SIZE} bytes).</p>
 	 *
 	 * @param type The backend type (currently unused)
 	 * @return The off-heap buffer size in bytes
@@ -1051,7 +1181,7 @@ public final class Hardware {
 		try {
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
-			return 1024;
+			return DEFAULT_OFF_HEAP_SIZE;
 		}
 	}
 
@@ -1065,6 +1195,34 @@ public final class Hardware {
 	 */
 	public List<DataContext<MemoryData>> getAllDataContexts() {
 		return Collections.unmodifiableList(contexts);
+	}
+
+	/**
+	 * Returns the {@link ComputeContext} of the {@link DataContext} that manages the given
+	 * {@link Memory} &mdash; the correct target for an operation on already-resolved memory
+	 * (such as a copy), since that backend is the one that can move or process the memory it
+	 * owns. Returns {@code null} when no configured {@link DataContext} exposes the memory's
+	 * {@link MemoryProvider} (for example, plain JVM heap memory).
+	 *
+	 * <p>This is the memory-driven counterpart to
+	 * {@link DefaultComputer#getContext(io.almostrealism.code.Computation)}, which selects a
+	 * context from a computation's characteristics. One of the two should be used for any
+	 * targeting decision; the ambient {@link #getComputeContext()} should not.</p>
+	 *
+	 * @param memory the memory whose managing context is sought
+	 * @return the managing context, or {@code null} if no configured context manages it
+	 */
+	public ComputeContext<MemoryData> getComputeContext(Memory memory) {
+		if (memory == null) return null;
+
+		for (DataContext<MemoryData> dc : contexts) {
+			if (dc.getMemoryProviders().contains(memory.getProvider()) &&
+					!dc.getComputeContexts().isEmpty()) {
+				return dc.getComputeContexts().get(0);
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -1138,7 +1296,7 @@ public final class Hardware {
 			}
 
 			if (!supported) {
-				System.out.println("WARN: Ignoring ComputeRequirement as only one DataContext is available");
+				warn("Ignoring ComputeRequirement as only one DataContext is available");
 			}
 
 			return contexts.get(0);
@@ -1174,6 +1332,24 @@ public final class Hardware {
 		}
 
 		return filtered.get(0);
+	}
+
+	/**
+	 * Returns whether at least one initialized {@link DataContext} satisfies all of the given
+	 * {@link ComputeRequirement}s.
+	 *
+	 * <p>Unlike {@link #getDataContext(boolean, boolean, ComputeRequirement...)}, this never falls back
+	 * to the sole context when only one exists — it filters the contexts built from
+	 * {@code AR_HARDWARE_DRIVER} strictly by the requirements. So
+	 * {@code isAvailable(ComputeRequirement.GPU)} returns false on a CPU-only host (a single
+	 * {@link NativeDataContext}) and true only on a host that built a {@link MetalDataContext} or
+	 * {@link CLDataContext}, making it a reliable presence check for a real accelerator.</p>
+	 *
+	 * @param requirements the requirements every candidate context must satisfy
+	 * @return whether any initialized context satisfies all the requirements
+	 */
+	public boolean isAvailable(ComputeRequirement... requirements) {
+		return !filterContexts(contexts, requirements).isEmpty();
 	}
 
 	/**
@@ -1245,17 +1421,59 @@ public final class Hardware {
 	}
 
 	/**
-	 * Returns the native buffer memory provider if NIO memory is enabled.
+	 * Returns the native buffer memory provider, creating it on first use when
+	 * {@code AR_HARDWARE_NIO_MEMORY} did not already.
 	 *
-	 * <p>Only available when {@code AR_HARDWARE_NIO_MEMORY=true}. Provides direct
-	 * native buffer allocation for shared memory between backends.</p>
+	 * <p>This provider supplies host-side native allocation: shared memory
+	 * between backends when NIO memory is enabled, and the ByteBuffer staging
+	 * area that system-boundary ingest populates before the framework migrates
+	 * the data to a compute device.</p>
 	 *
-	 * @return The NIO memory provider, or null if not enabled
+	 * <p>The lazily created staging provider honors
+	 * {@code AR_HARDWARE_NATIVE_DIRECT_BUFFERS}: when direct buffers are disabled,
+	 * staging allocations come from JNI malloc (calloc mode) rather than NIO direct
+	 * buffers, so they are not subject to the JVM's direct-memory accounting and
+	 * its {@code -XX:MaxDirectMemorySize} limit. In calloc mode, staging shares the
+	 * native data context's own provider when one exists: the runtime-compiled JNI
+	 * operations bind once per class in the JVM, so two calloc providers at
+	 * different precisions would read each other's memory at the wrong element
+	 * width. Sharing the context provider also makes staged data device-resident
+	 * from the start, so no migration is required. The provider created eagerly by
+	 * {@code AR_HARDWARE_NIO_MEMORY} is always direct, because named shared memory
+	 * between backends requires direct buffers.</p>
+	 *
+	 * @return The NIO memory provider
 	 */
-	public MemoryProvider<? extends RAM> getNativeBufferMemoryProvider() {
+	public synchronized MemoryProvider<? extends RAM> getNativeBufferMemoryProvider() {
+		if (nioMemory == null) {
+			if (nativeDirectBuffers) {
+				nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32,
+						Precision.FP32.bytes() * maxReservation);
+			} else {
+				for (DataContext<MemoryData> c : contexts) {
+					for (MemoryProvider<? extends Memory> p : c.getMemoryProviders()) {
+						if (p instanceof NativeMemoryProvider) {
+							nioMemory = (NativeMemoryProvider) p;
+							return nioMemory;
+						}
+					}
+				}
+
+				nioMemory = new NativeMemoryProvider(getPrecision(),
+						getPrecision().bytes() * maxReservation, false, null, false);
+			}
+		}
+
 		return nioMemory;
 	}
 
+	/**
+	 * Filters data contexts to those that satisfy all the given compute requirements.
+	 *
+	 * @param contexts The candidate list of data contexts
+	 * @param requirements Requirements that each context must satisfy to be included
+	 * @return A new list containing only contexts that satisfy all requirements
+	 */
 	private static List<DataContext<MemoryData>> filterContexts(List<DataContext<MemoryData>> contexts, ComputeRequirement... requirements) {
 		List<DataContext<MemoryData>> filtered = new ArrayList<>();
 
@@ -1272,6 +1490,13 @@ public final class Hardware {
 		return filtered;
 	}
 
+	/**
+	 * Checks whether a single {@link DataContext} satisfies a given {@link ComputeRequirement}.
+	 *
+	 * @param context The data context to test
+	 * @param requirement The requirement to check against
+	 * @return True if the context satisfies the requirement
+	 */
 	private static boolean supported(DataContext<MemoryData> context, ComputeRequirement requirement) {
 		switch (requirement) {
 			case CPU:

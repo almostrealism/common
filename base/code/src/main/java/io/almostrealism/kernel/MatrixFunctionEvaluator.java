@@ -16,6 +16,10 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.collect.CollectionExpressionAdapter;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mask;
@@ -27,24 +31,77 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 
+/**
+ * Applies a transformation function to every entry of an {@link ExpressionMatrix} and
+ * produces the resulting matrix, selecting the most compact representation available.
+ *
+ * <p>The evaluator attempts representations in the following order of preference:</p>
+ * <ol>
+ *   <li>{@link MaskMatrix} — when the function produces {@link Mask} expressions and the
+ *       mask portion reduces to a constant or sequence ({@link #getMaskResult()}).</li>
+ *   <li>{@link SequenceMatrix} — when the composed expression can be evaluated as a flat
+ *       {@link IndexSequence} ({@link #attemptSequence()}).</li>
+ *   <li>{@link ExplicitExpressionMatrix} — full expansion of all {@code (row, col)} pairs
+ *       (only when {@link ExpressionMatrix#enableUnsequencedMatrices} is {@code true}).</li>
+ * </ol>
+ *
+ * <p>The specialised subclass {@link SequenceFunctionEvaluator} overrides
+ * {@link #attemptSequence()} to take advantage of the backing sequence when the input
+ * is a {@link SequenceMatrix}.</p>
+ *
+ * @param <I> the input expression type
+ * @param <O> the output expression type
+ */
 public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
+	/** The input matrix to be transformed. */
 	private ExpressionMatrix<I> input;
+
+	/** The transformation function applied to each matrix entry. */
 	private Function<Expression<I>, Expression<O>> function;
 
+	/** Per-row duplicate map for the result matrix, computed during {@link #setupRowDuplicates}. */
 	private int resultRowDuplicates[];
+
+	/**
+	 * {@code true} if the result has at least one distinct row beyond the first,
+	 * i.e. the result depends on the row index.
+	 */
 	protected boolean multiRow;
 
+	/**
+	 * Creates a {@link MatrixFunctionEvaluator} for the given input matrix and function.
+	 *
+	 * @param input    the input matrix
+	 * @param function the transformation to apply
+	 */
 	public MatrixFunctionEvaluator(ExpressionMatrix<I> input, Function<Expression<I>, Expression<O>> function) {
 		this.input = input;
 		this.function = function;
 	}
 
+	/**
+	 * Returns the input matrix.
+	 *
+	 * @return the input matrix
+	 */
 	public ExpressionMatrix<I> getInput() { return input; }
 
+	/**
+	 * Returns the transformation function.
+	 *
+	 * @return the function applied to each matrix entry
+	 */
 	public Function<Expression<I>, Expression<O>> getFunction() {
 		return function;
 	}
 
+	/**
+	 * Attempts to evaluate the composed expression as a flat {@link IndexSequence}.
+	 * Returns the sequence when the function result depends only on the combined (row, col)
+	 * index, or {@code null} if it depends on additional state.
+	 *
+	 * @return the result sequence, or {@code null}
+	 */
 	public IndexSequence attemptSequence() {
 		// Determine if the result is dependent on the row and column,
 		// but no other variable
@@ -63,8 +120,19 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		return null;
 	}
 
+	/**
+	 * Returns {@code true} if the result matrix has distinct rows (depends on the row index).
+	 *
+	 * @return {@code true} if the result is row-dependent
+	 */
 	public boolean isMultiRow() { return true; }
 
+	/**
+	 * Initialises the per-row duplicate map for the result.
+	 *
+	 * @param rowIndependent when {@code true}, copies row-duplicate information from the input;
+	 *                       when {@code false}, marks all rows as distinct
+	 */
 	protected void setupRowDuplicates(boolean rowIndependent) {
 		resultRowDuplicates = new int[input.getRowCount()];
 
@@ -74,12 +142,32 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns the result row-duplicate map, or {@code null} if {@link #setupRowDuplicates}
+	 * has not yet been called.
+	 *
+	 * @return the per-row duplicate map
+	 */
 	public int[] getResultRowDuplicates() { return resultRowDuplicates; }
 
+	/**
+	 * Returns the transformed expression at the given row and column.
+	 *
+	 * @param i the row index
+	 * @param j the column index
+	 * @return the transformed expression at {@code (i, j)}
+	 */
 	public Expression<O> valueAt(int i, int j) {
 		return function.apply(input.valueAt(i, j));
 	}
 
+	/**
+	 * Attempts to produce a {@link MaskMatrix} result when the function outputs {@link Mask}
+	 * expressions. Returns {@code null} when mask optimisation is disabled or the mask
+	 * portion cannot be represented as a matrix.
+	 *
+	 * @return a mask matrix, or {@code null}
+	 */
 	public ExpressionMatrix<O> getMaskResult() {
 		if (!ExpressionMatrix.enableMaskMatrix) return null;
 
@@ -110,6 +198,12 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		return new MaskMatrix<>(input.getRow(), input.getColumn(), mask, value);
 	}
 
+	/**
+	 * Evaluates the transformation and returns the most compact {@link ExpressionMatrix}
+	 * available: mask result, sequence result, or full explicit expansion (if enabled).
+	 *
+	 * @return the transformed matrix, or {@code null} if none can be produced
+	 */
 	public ExpressionMatrix<O> getResult() {
 		ExpressionMatrix<O> maskResult = getMaskResult();
 		if (maskResult != null) return maskResult;
@@ -158,9 +252,20 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		return new ExplicitExpressionMatrix<>(input.getRow(), input.getColumn(), result, rowDuplicates);
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public Console console() { return Scope.console; }
 
+	/**
+	 * Creates the appropriate {@link MatrixFunctionEvaluator} subclass for the given input
+	 * and function, selecting {@link SequenceFunctionEvaluator} for {@link SequenceMatrix} inputs.
+	 *
+	 * @param <I>      the input expression type
+	 * @param <O>      the output expression type
+	 * @param input    the input matrix
+	 * @param function the transformation function
+	 * @return the evaluator
+	 */
 	public static <I, O> MatrixFunctionEvaluator<I, O> create(ExpressionMatrix<I> input,
 															  Function<Expression<I>, Expression<O>> function) {
 		if (input instanceof SequenceMatrix) {
@@ -170,6 +275,15 @@ public class MatrixFunctionEvaluator<I, O> implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Convenience method that creates an evaluator and immediately returns its result.
+	 *
+	 * @param <I>      the input expression type
+	 * @param <O>      the output expression type
+	 * @param input    the input matrix
+	 * @param function the transformation function
+	 * @return the transformed matrix, or {@code null}
+	 */
 	public static <I, O> ExpressionMatrix<O> apply(ExpressionMatrix<I> input, Function<Expression<I>, Expression<O>> function) {
 		return create(input, function).getResult();
 	}

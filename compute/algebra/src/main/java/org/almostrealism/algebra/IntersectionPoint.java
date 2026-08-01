@@ -31,7 +31,10 @@ package org.almostrealism.algebra;
  */
 @Deprecated
 public class IntersectionPoint {
+	/** The 3D position of the ray-surface intersection. */
 	private final Vector intPt = new Vector();
+
+	/** The parametric distance along the ray at which the intersection occurs. */
 	private double t;
 
 	/**

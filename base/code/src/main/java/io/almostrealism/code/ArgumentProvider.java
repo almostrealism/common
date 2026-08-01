@@ -45,26 +45,44 @@ public interface ArgumentProvider {
 	 * Creates an array variable for the given input producer.
 	 *
 	 * @param <T>            the type of value produced
-	 * @param p              the name provider for generating variable names
 	 * @param input          the input producer to create a variable for
 	 * @param delegate       optional delegate variable for memory sharing
 	 * @param delegateOffset offset into the delegate variable, or -1 if not delegating
 	 * @return the array variable representing the input
 	 */
-	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
+	<T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
 
-	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {
+	/**
+	 * Returns a function that maps an input supplier to its argument variable using this provider.
+	 *
+	 * <p>The returned function returns {@code null} for {@code null} inputs and applies
+	 * output variable post-processing when {@link #enableArgumentPostProcessing} is {@code true}.
+	 *
+	 * @param <T> the type of value produced by the inputs
+	 * @return a function from input supplier to array variable
+	 */
+	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput() {
 		return input -> {
 			if (input == null) {
 				return null;
 			} else {
-				ArrayVariable<T> arg = getArgument(p, input, null, -1);
+				ArrayVariable<T> arg = getArgument(input, null, -1);
 				if (enableArgumentPostProcessing) processOutputVariableDelegation(arg);
 				return arg;
 			}
 		};
 	}
 
+	/**
+	 * Configures the given argument variable to delegate to the output variable of its producer computation.
+	 *
+	 * <p>When the producer is a {@link Computation} with an output variable, this method
+	 * either sets up delegation (reusing the producer's output variable directly) or
+	 * renames the argument to match the output variable, depending on
+	 * {@link #enableOutputVariableDelegation}.
+	 *
+	 * @param arg the argument variable to configure
+	 */
 	static void processOutputVariableDelegation(ArrayVariable arg) {
 		if (arg.getProducer() instanceof Computation && ((Computation) arg.getProducer()).getOutputVariable() != null) {
 			Variable<?, ?> output = ((Computation) arg.getProducer()).getOutputVariable();

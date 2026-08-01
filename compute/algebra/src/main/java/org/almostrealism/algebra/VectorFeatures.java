@@ -86,6 +86,11 @@ import java.util.function.IntFunction;
  * CollectionProducer v6 = vector(bank, 5);  // 6th vector
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author  Michael Murray
  * @see Vector
  * @see ScalarFeatures
@@ -347,8 +352,6 @@ public interface VectorFeatures extends ScalarFeatures {
 		// We need to repeat along the innermost axis to get (N, M) for proper broadcasting
 		if (valueShape.getDimensions() >= 2) {
 			int vectorDim = valueShape.length(valueShape.getDimensions() - 1);
-			// repeat adds a dimension: (N, 1) -> (N, 1, M)
-			// We need to reshape back to (N, M) to match the input shape
 			invLen = repeat(vectorDim, invLen).reshape(valueShape);
 		}
 

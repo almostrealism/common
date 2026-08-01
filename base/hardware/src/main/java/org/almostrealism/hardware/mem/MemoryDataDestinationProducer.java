@@ -42,17 +42,35 @@ import java.util.function.IntFunction;
 public class MemoryDataDestinationProducer<T extends MemoryData> extends DynamicProducerForMemoryData<T>
 												implements Delegated<Countable>, DescribableParent<Process<?, ?>> {
 
+	/** The countable process that determines the output size for destination allocation. */
 	private final Countable process;
 
+	/**
+	 * Creates a destination producer that allocates output based on the given process size.
+	 *
+	 * @param process Countable process whose size determines destination allocation
+	 */
 	public MemoryDataDestinationProducer(Countable process) {
 		this(process, (IntFunction<MemoryBank<T>>) null);
 	}
 
+	/**
+	 * Creates a destination producer with an explicit destination bank factory.
+	 *
+	 * @param process     Countable process whose size determines allocation
+	 * @param destination Factory that creates destination banks for a given size
+	 */
 	public MemoryDataDestinationProducer(Countable process, IntFunction<MemoryBank<T>> destination) {
 		super(destination);
 		this.process = process;
 	}
 
+	/**
+	 * Creates a destination producer with a bi-function bank factory receiving the previous bank.
+	 *
+	 * @param process     Countable process whose size determines allocation
+	 * @param destination Bi-function factory receiving the previous bank and requested size
+	 */
 	public MemoryDataDestinationProducer(Countable process, BiFunction<MemoryBank<T>, Integer, MemoryBank<T>> destination) {
 		super((IntFunction<MemoryBank<T>>)  i -> destination.apply(null, i));
 		this.process = process;

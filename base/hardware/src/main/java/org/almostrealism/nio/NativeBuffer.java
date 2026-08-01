@@ -20,7 +20,8 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.mem.RAM;
+import org.almostrealism.hardware.mem.DirectMemory;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 
 import java.io.File;
 import java.nio.Buffer;
@@ -30,14 +31,39 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class NativeBuffer extends RAM implements Destroyable {
-	private final NativeBufferMemoryProvider provider;
+/**
+ * JNI-backed direct memory buffer used as the native RAM representation for CPU-side hardware execution.
+ *
+ * <p>Each {@link NativeBuffer} wraps a Java NIO direct {@link Buffer} allocated either via
+ * {@link ByteBuffer#allocateDirect} or via shared memory ({@link NativeMemoryProvider#mapSharedMemory}).
+ * The raw native pointer to the buffer is exposed for kernel argument passing.</p>
+ *
+ * <p>When the buffer is backed by shared memory, {@link #destroy()} unmaps the region.
+ * Deallocation listeners are called by {@link NativeMemoryProvider} after GC cleanup.</p>
+ *
+ * @see NativeMemoryProvider
+ */
+public class NativeBuffer extends DirectMemory implements Destroyable {
+	/** The memory provider that allocated this buffer. */
+	private final NativeMemoryProvider provider;
+	/** Root byte buffer used for shared memory mapping and capacity queries. */
 	private final ByteBuffer rootBuffer;
+	/** Typed view of the buffer (float, double, or short depending on precision). */
 	private final Buffer buffer;
+	/** Shared memory path, or null if this buffer uses private memory. */
 	private final String sharedLocation;
+	/** Listeners notified when this buffer is deallocated. */
 	private List<Consumer<NativeBuffer>> deallocationListeners;
 
-	protected NativeBuffer(NativeBufferMemoryProvider provider,
+	/**
+	 * Creates a native buffer backed by the given direct buffers.
+	 *
+	 * @param provider       Memory provider that owns this buffer
+	 * @param rootBuffer     Root byte buffer for capacity and mapping operations
+	 * @param buffer         Typed view used for kernel argument passing
+	 * @param sharedLocation Shared memory path, or null for private allocation
+	 */
+	protected NativeBuffer(NativeMemoryProvider provider,
 						   ByteBuffer rootBuffer, Buffer buffer,
 						   String sharedLocation) {
 		if (!rootBuffer.isDirect() || !buffer.isDirect())
@@ -50,23 +76,63 @@ public class NativeBuffer extends RAM implements Destroyable {
 	}
 
 	@Override
-	public MemoryProvider<NativeBuffer> getProvider() { return provider; }
+	public MemoryProvider getProvider() { return provider; }
 
 	@Override
-	public long getContentPointer() { return NIO.pointerForBuffer(buffer); }
+	public long getContentPointer() { return provider.pointerForBuffer(buffer); }
 
 	public Buffer getBuffer() { return buffer; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Returns the root {@link ByteBuffer} backing this buffer; the typed view returned by
+	 * {@link #getBuffer()} shares the same storage.</p>
+	 */
+	@Override
+	public ByteBuffer asByteBuffer() { return rootBuffer; }
+
+	/**
+	 * Returns the root {@link ByteBuffer} backing this native buffer.
+	 *
+	 * <p>Used by {@link NativeBufferRef} to cache the buffer for post-GC
+	 * shared memory unmapping.</p>
+	 *
+	 * @return The root byte buffer
+	 */
+	public ByteBuffer getRootBuffer() { return rootBuffer; }
+
+	/**
+	 * Returns the shared memory location path, if this buffer is backed by shared memory.
+	 *
+	 * <p>Used by {@link NativeBufferRef} to cache the path for post-GC
+	 * shared memory unmapping.</p>
+	 *
+	 * @return The shared location path, or {@code null} if not shared
+	 */
+	public String getSharedLocation() { return sharedLocation; }
+
+	/**
+	 * Synchronizes the shared memory buffer, flushing any pending changes back to the region.
+	 *
+	 * <p>Has no effect if this buffer is not backed by shared memory.</p>
+	 */
 	public void sync() {
 		if (sharedLocation != null) {
-			NIO.syncSharedMemory(rootBuffer, rootBuffer.capacity());
+			provider.syncSharedMemory(rootBuffer, rootBuffer.capacity());
 		}
 	}
 
 	@Override
 	public void destroy() {
+		// Diagnostic: warn if a kernel is still actively using this buffer.
+		// We proceed with unmap regardless — blocking or silently deferring
+		// explicit destroy is as dangerous as complex finalizer logic.
+		KernelMemoryGuard.warnIfActivelyReferenced(
+				getContentPointer(), getAllocationStackTrace(), "NativeBuffer");
+
 		if (sharedLocation != null) {
-			NIO.unmapSharedMemory(rootBuffer, rootBuffer.capacity());
+			provider.unmapSharedMemory(rootBuffer, rootBuffer.capacity());
 		}
 	}
 
@@ -75,17 +141,35 @@ public class NativeBuffer extends RAM implements Destroyable {
 		return provider.getNumberSize() * (long) buffer.capacity();
 	}
 
+	/**
+	 * Registers a listener to be called when this buffer is deallocated.
+	 *
+	 * @param listener Consumer called with null at deallocation time
+	 */
 	public void addDeallocationListener(Consumer<NativeBuffer> listener) {
 		deallocationListeners.add(listener);
 	}
 
+	/**
+	 * Returns the list of deallocation listeners registered for this buffer.
+	 *
+	 * @return List of deallocation listeners
+	 */
 	public List<Consumer<NativeBuffer>> getDeallocationListeners() {
 		return deallocationListeners;
 	}
 
-	protected static ByteBuffer buffer(int bytes, String sharedLocation) {
+	/**
+	 * Allocates or maps a direct {@link ByteBuffer} for the given size.
+	 *
+	 * @param provider       Provider whose shared-memory operations map a named region
+	 * @param bytes          Number of bytes to allocate
+	 * @param sharedLocation Shared memory path, or null for private allocation
+	 * @return Direct byte buffer backed by private or shared memory
+	 */
+	protected static ByteBuffer buffer(NativeMemoryProvider provider, int bytes, String sharedLocation) {
 		if (sharedLocation != null) {
-			ByteBuffer buffer = NIO.mapSharedMemory(sharedLocation, bytes)
+			ByteBuffer buffer = provider.mapSharedMemory(sharedLocation, bytes)
 					.order(ByteOrder.nativeOrder());
 			Runtime.getRuntime().addShutdownHook(
 					new Thread(() -> new File(sharedLocation).delete()));
@@ -95,15 +179,24 @@ public class NativeBuffer extends RAM implements Destroyable {
 		}
 	}
 
-	public static NativeBuffer create(NativeBufferMemoryProvider provider, int len, String sharedLocation) {
+	/**
+	 * Creates a typed native buffer with the precision determined by the given provider.
+	 *
+	 * @param provider       Provider that determines the number precision
+	 * @param len            Number of elements to allocate
+	 * @param sharedLocation Shared memory path, or null for private allocation
+	 * @return New {@link NativeBuffer} wrapping a typed direct buffer
+	 * @throws HardwareException If the provider's precision is not supported
+	 */
+	public static NativeBuffer create(NativeMemoryProvider provider, int len, String sharedLocation) {
 		if (provider.getPrecision() == Precision.FP16) {
-			ByteBuffer bufferByte = buffer(len * 2, sharedLocation);
+			ByteBuffer bufferByte = buffer(provider, len * 2, sharedLocation);
 			return new NativeBuffer(provider, bufferByte, bufferByte.asShortBuffer(), sharedLocation);
 		} else if (provider.getPrecision() == Precision.FP32) {
-			ByteBuffer bufferByte = buffer(len * 4, sharedLocation);
+			ByteBuffer bufferByte = buffer(provider, len * 4, sharedLocation);
 			return new NativeBuffer(provider, bufferByte, bufferByte.asFloatBuffer(), sharedLocation);
 		} else if (provider.getPrecision() == Precision.FP64) {
-			ByteBuffer bufferByte = buffer(len * 8, sharedLocation);
+			ByteBuffer bufferByte = buffer(provider, len * 8, sharedLocation);
 			return new NativeBuffer(provider, bufferByte, bufferByte.asDoubleBuffer(), sharedLocation);
 		} else {
 			throw new HardwareException("Unsupported precision");

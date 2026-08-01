@@ -29,39 +29,54 @@ import org.almostrealism.space.AbstractSurface;
 
 /** A {@link PointLightGrid} stores a grid of {@link PointLight}s. */
 public class PointLightGrid extends AbstractSurface implements Light {
+	/** The total intensity shared across all lights in the grid. */
 	private double intensity;
+
+	/** The colour applied to every light in the grid. */
 	private RGB color;
 
+	/** The flat array of {@link PointLight}s arranged in row-major order. */
 	private PointLight[] lights;
 
 	/**
-	  Constructs a new PointLightGrid object with the specified width, height,
-	  and x and y spacing between lights and uses a default PointLight object
-	  for each light in the grid. After the grid is created the total intensity
-	  will be set to 1.0.
-	*/
-	
+	 * Constructs a new {@link PointLightGrid} with the specified width, height,
+	 * and x/y spacing between lights, using a default {@link PointLight} for each
+	 * cell. The total intensity is set to 1.0.
+	 *
+	 * @param width  number of lights along the X axis
+	 * @param height number of lights along the Y axis
+	 * @param xSpace X spacing between adjacent lights
+	 * @param ySpace Y spacing between adjacent lights
+	 */
 	public PointLightGrid(int width, int height, double xSpace, double ySpace) {
 		this.updateGrid(width, height, xSpace, ySpace, new PointLight());
 		this.setIntensity(1.0);
 	}
 	
 	/**
-	  Constructs a new PointLightGrid object with the specified width, height,
-	  and x and y spacing between lights using the data from the specified
-	  PointLight object for each light in the grid.
-	*/
-	
+	 * Constructs a new {@link PointLightGrid} with the specified width, height, and spacing,
+	 * cloning the provided prototype {@link PointLight} for each cell.
+	 *
+	 * @param width     number of lights along the X axis
+	 * @param height    number of lights along the Y axis
+	 * @param xSpace    X spacing between adjacent lights
+	 * @param ySpace    Y spacing between adjacent lights
+	 * @param prototype the prototype light whose intensity and colour are copied to each cell
+	 */
 	public PointLightGrid(int width, int height, double xSpace, double ySpace, PointLight prototype) {
 		this.updateGrid(width, height, xSpace, ySpace, prototype);
 	}
 	
 	/**
-	  Updates the light grid stored by this PointLightGrid object to have the specified width, height,
-	  and x and y spaceing between lights using the data from the specified Point Light object for
-	  each light in the grid.
-	*/
-	
+	 * Rebuilds the light grid with the specified dimensions and spacing, copying
+	 * intensity and colour from the given prototype {@link PointLight}.
+	 *
+	 * @param width     number of lights along the X axis
+	 * @param height    number of lights along the Y axis
+	 * @param xSpace    X spacing between adjacent lights
+	 * @param ySpace    Y spacing between adjacent lights
+	 * @param prototype the light whose intensity and colour are used for each cell
+	 */
 	public void updateGrid(int width, int height, double xSpace, double ySpace, PointLight prototype) {
 		this.lights = new PointLight[width * height];
 		

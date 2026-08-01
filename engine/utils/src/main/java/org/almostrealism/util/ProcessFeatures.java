@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.Console;
+
 /**
  * Interface providing utilities for executing external system processes.
  *
@@ -34,6 +36,11 @@ package org.almostrealism.util;
  *     }
  * }
  * }</pre>
+ *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
  *
  * @author Michael Murray
  */
@@ -55,7 +62,7 @@ public interface ProcessFeatures {
 			Process process = builder.start();
 			return process.waitFor();
 		} catch (Exception e) {
-			e.printStackTrace();
+			Console.root().warn(e.getMessage(), e);
 			return -1;
 		}
 	}

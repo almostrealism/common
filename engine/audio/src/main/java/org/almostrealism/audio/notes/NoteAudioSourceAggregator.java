@@ -40,10 +40,13 @@ import java.util.stream.Collectors;
  * @see ModularSourceAggregator
  */
 public class NoteAudioSourceAggregator implements CodeFeatures {
+	/** When true, additional aggregator configurations with frequency and volume envelope inputs are included. */
 	public static boolean enableAdvancedAggregation = true;
 
+	/** The list of weighted aggregator configurations available for dynamic selection. */
 	private final List<AggregatorChoice> aggregators;
 
+	/** Creates a NoteAudioSourceAggregator with the default set of aggregator configurations. */
 	public NoteAudioSourceAggregator() {
 		aggregators = new ArrayList<>();
 		aggregators.add(new AggregatorChoice(new ModularSourceAggregator(
@@ -67,10 +70,22 @@ public class NoteAudioSourceAggregator implements CodeFeatures {
 		}
 	}
 
+	/**
+	 * Returns the sum of weights across all aggregator choices.
+	 *
+	 * @return total weight
+	 */
 	protected double getTotalWeight() {
 		return aggregators.stream().mapToDouble(AggregatorChoice::getWeight).sum();
 	}
 
+	/**
+	 * Returns a SourceAggregator that dynamically selects among the registered configurations
+	 * based on the value of the given choice producer.
+	 *
+	 * @param choice producer yielding a value in [0, 1] used to select among weighted aggregators
+	 * @return a SourceAggregator that delegates to the appropriate configuration at evaluation time
+	 */
 	public SourceAggregator getAggregator(Producer<PackedCollection> choice) {
 		return (buffer, params, frequency, sources) -> () -> {
 			Evaluable<PackedCollection> c = choice.get();
@@ -98,16 +113,29 @@ public class NoteAudioSourceAggregator implements CodeFeatures {
 		};
 	}
 
+	/** Pairs a SourceAggregator with a relative selection weight. */
 	protected static class AggregatorChoice {
+		/** The aggregator strategy associated with this choice. */
 		private final SourceAggregator aggregator;
+
+		/** Relative selection weight; higher values increase the probability of selection. */
 		private final double weight;
 
+		/**
+		 * Creates an AggregatorChoice with the given aggregator and weight.
+		 *
+		 * @param aggregator the aggregation strategy
+		 * @param weight     relative selection weight
+		 */
 		public AggregatorChoice(SourceAggregator aggregator, double weight) {
 			this.aggregator = aggregator;
 			this.weight = weight;
 		}
 
+		/** Returns the aggregation strategy for this choice. */
 		public SourceAggregator getAggregator() { return aggregator; }
+
+		/** Returns the relative selection weight for this choice. */
 		public double getWeight() { return weight; }
 	}
 }

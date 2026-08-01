@@ -18,6 +18,21 @@ See [../CLAUDE.md](../CLAUDE.md) for the full policy on why this is mandatory.
 
 ---
 
+## CRITICAL: NEVER CREATE NEW MAVEN MODULES
+
+**THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
+
+- **NEVER** create new `pom.xml` files that define a new module
+- **NEVER** add new `<module>` entries to any parent `pom.xml`
+- **NEVER** create new directory structures that would constitute a Maven module
+- The Maven module structure is **externally controlled** by the project owner
+- If a task requires a new module, **STOP and abandon the task** rather than create one
+- Document the requirement in completion notes and explain why, but **MUST NOT** create the module
+
+See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
+
+---
+
 ## CRITICAL: DO NOT COMMIT CODE
 
 **THIS IS AN ABSOLUTE RULE WITH NO EXCEPTIONS.**
@@ -70,7 +85,7 @@ See [../CLAUDE.md](../CLAUDE.md) for full details on this policy.
 ```
 # Correct way to run ML module tests:
 mcp__ar-test-runner__start_test_run
-  module: "ml"
+  module: "engine/ml"
   profile: "pipeline"  # Skips comparison tests that need external data
   timeout_minutes: 10
 
@@ -80,6 +95,17 @@ mcp__ar-test-runner__get_run_failures  run_id: "<id>"
 ```
 
 See [../CLAUDE.md](../CLAUDE.md) for full MCP test runner documentation.
+
+## CRITICAL: Run Targeted ML Tests Before Declaring Done
+
+Before declaring any ML code change complete, run the tests that directly exercise
+what you changed. Do NOT run the full ML suite — it requires real weights and takes hours.
+
+- For a changed class `FooAttention.java`, run `mcp__ar-test-runner__start_test_run module:"engine/ml" test_classes:["FooAttentionTest"]`
+- For Python changes in `tools/mcp/`, run `python -m pytest tools/mcp/manager/test_server.py`
+- For changes to shared attention/layer methods, run all tests in the same package
+
+See [../CLAUDE.md](../CLAUDE.md) for the full test verification rule and heuristics.
 
 ---
 
@@ -187,12 +213,12 @@ See [../claude.md](../claude.md) for AR_HARDWARE setup instructions. Note that t
 
 ### Memory Configuration for Large Models
 
-Large models (e.g., full Oobleck autoencoder, LLMs) require more memory than the default 8GB:
+Large models (e.g., full Oobleck autoencoder, LLMs) require more memory than the default ~4GB:
 
 ```bash
-# Increase memory for large ML models
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
-export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
+# Increase memory for large ML models (FP32)
+export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB
+export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB
 ```
 
 **If you see `HardwareException: Memory max reached`**, increase `AR_HARDWARE_MEMORY_SCALE`.
@@ -204,25 +230,26 @@ export AR_HARDWARE_MEMORY_SCALE=9   # 32GB
 ```
 # Run all ML tests with pipeline profile (skips comparison tests):
 mcp__ar-test-runner__start_test_run
-  module: "ml"
+  module: "engine/ml"
   profile: "pipeline"
 
 # Run a specific test class:
 mcp__ar-test-runner__start_test_run
-  module: "ml"
+  module: "engine/ml"
   test_classes: ["CausalMaskIsolationTest"]
 
 # Run a specific test method:
 mcp__ar-test-runner__start_test_run
-  module: "ml"
+  module: "engine/ml"
   test_methods: [{"class": "CausalMaskIsolationTest", "method": "testCausalMaskDynamicPositionUpdates"}]
 ```
 
 **Reference only** (what the MCP tool runs internally):
 ```bash
 # DO NOT RUN DIRECTLY - use MCP tool instead
-export AR_HARDWARE_MEMORY_SCALE=8 && \
-export AR_HARDWARE_LIBS=/home/developer/.libs/ && \
+export AR_HARDWARE_MEMORY_SCALE=7 && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
+
 mvn test -pl ml -Dtest=<TestName> -DAR_TEST_PROFILE=pipeline
 ```
 

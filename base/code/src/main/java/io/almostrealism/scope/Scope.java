@@ -18,7 +18,6 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.compute.ComputeRequirement;
@@ -37,7 +36,6 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Sortable;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.uml.Named;
@@ -312,6 +310,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * @return the compute requirements, or null if none specified
 	 */
+	@Override
 	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
 
 	/**
@@ -818,10 +817,6 @@ public class Scope<T> extends ArrayList<Scope<T>>
 					// recursively made into a requirement of itself
 					// Function names are globally unique, making this detection possible
 					// but there is perhaps a better way than string comparison eventually
-					if (getName() != null && computation instanceof NameProvider && getName().equals(((NameProvider) computation).getFunctionName())) {
-						return Collections.singletonList(arg);
-					}
-
 					Scope<?> s = computation.getScope(context);
 					if (s.getName() != null && s.getName().equals(getName())) {
 						return Collections.singletonList(arg);
@@ -1018,6 +1013,76 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		scope.setComputeRequirements(getComputeRequirements());
 		scope.getChildren().addAll(children);
 		return scope;
+	}
+
+	/**
+	 * Returns a copy of this scope and its descendants in which every occurrence of
+	 * {@code target} within a statement or variable expression has been replaced by
+	 * {@code replacement}, mirroring {@link Expression#replace(Expression, Expression)}
+	 * at the scope level.
+	 *
+	 * <p>Each statement rewrites its own expressions through
+	 * {@link Statement#replace(Expression, Expression)}, {@link #getVariables() variables}
+	 * through {@link ExpressionAssignment#replace(Expression, Expression)}, and child scopes
+	 * are rewritten recursively. Methods, metrics, parameters, required scopes and kernel
+	 * children are carried over unchanged. Subclasses that store expressions outside the
+	 * statement list — such as {@link Repeated} loop bounds or {@link Cases} branch
+	 * conditions — override this method to rewrite those as well.</p>
+	 *
+	 * @param target      the expression to find and replace
+	 * @param replacement the expression to substitute for the target
+	 * @return a new scope tree with the substitution applied
+	 */
+	public Scope<T> replace(Expression<?> target, Expression<?> replacement) {
+		Scope<T> scope = (Scope<T>) generate(getChildren().stream()
+				.map(c -> c.replace(target, replacement))
+				.collect(Collectors.toList()));
+
+		scope.getRequiredScopes().addAll(getRequiredScopes());
+		scope.getParameters().addAll(getParameters());
+		scope.getMethods().addAll(getMethods());
+		getStatements().forEach(s -> scope.getStatements().add((Statement<?>) s.replace(target, replacement)));
+		getVariables().forEach(v -> scope.getVariables().add(v.replace(target, replacement)));
+		scope.getMetrics().addAll(getMetrics());
+
+		if (getKernelChildren() != null) scope.setKernelChildren(new HashSet<>(getKernelChildren()));
+
+		return scope;
+	}
+
+	/**
+	 * Returns every {@link ExpressionAssignment} contained in this scope and its
+	 * descendants as a flat list, or {@code null} when the scope tree contains anything
+	 * whose memory behavior cannot be analyzed as a plain sequence of assignments.
+	 *
+	 * <p>Only plain {@link Scope} instances qualify. Subclasses carry expressions outside
+	 * the statement list that read memory invisibly to this analysis ({@link Cases} branch
+	 * conditions, nested {@link Repeated} loop bounds), and methods, metrics, or statements
+	 * that are not {@link ExpressionAssignment}s are equally opaque; any of them yields
+	 * {@code null}.</p>
+	 *
+	 * @return the assignments in traversal order, or {@code null} if the tree is not analyzable
+	 */
+	public List<ExpressionAssignment<?>> collectAssignments() {
+		if (getClass() != Scope.class) return null;
+		if (!getMethods().isEmpty() || !getMetrics().isEmpty()) return null;
+
+		List<ExpressionAssignment<?>> assignments = new ArrayList<>();
+
+		for (Statement<?> stmt : getStatements()) {
+			if (!(stmt instanceof ExpressionAssignment)) return null;
+			assignments.add((ExpressionAssignment<?>) stmt);
+		}
+
+		assignments.addAll(getVariables());
+
+		for (Scope<?> child : getChildren()) {
+			List<ExpressionAssignment<?>> childAssignments = child.collectAssignments();
+			if (childAssignments == null) return null;
+			assignments.addAll(childAssignments);
+		}
+
+		return assignments;
 	}
 
 	/**
@@ -1337,7 +1402,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	public static <T extends Argument<?>> boolean sortArguments(List<T> arguments) {
 		if (arguments != null) {
 			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
-					.map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
+					.map(Argument::getSortHint).orElse(Integer.MAX_VALUE));
 			c = c.thenComparing(v -> v == null || v.getName() == null ? "" : v.getName());
 			arguments.sort(c);
 			return true;

@@ -25,16 +25,9 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-import java.io.DataInputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * Narrow tests for residual block sub-components within Decoder Block 1.
@@ -53,17 +46,18 @@ import java.nio.file.Paths;
  * Snake1 -> Conv1(k=7) -> Snake2 -> Conv2(k=1) -> residual add
  * to identify exactly where the ~2000x error jump occurs.</p>
  */
-public class ResidualBlockSubComponentTest extends TestSuiteBase {
+public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 
-	private static final Path TEST_DATA_DIR = Paths.get("test_data/stable_audio");
-	private static final Path WEIGHTS_DIR = TEST_DATA_DIR.resolve("weights");
-	private static final Path REFERENCE_DIR = TEST_DATA_DIR.resolve("reference");
-
+	/** Tolerance for mean absolute error validation. */
 	private static final double TOLERANCE = 0.01;
 
-	// Common dimensions for Block 1's residual blocks
+	/** Batch size used across all tests. */
 	private static final int BATCH_SIZE = 1;
+
+	/** Channel count for decoder block 1 residual blocks. */
 	private static final int CHANNELS = 1024;
+
+	/** Sequence length for decoder block 1. */
 	private static final int SEQ_LENGTH = 33;
 
 	/**
@@ -227,7 +221,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 */
 	private void runFullResidualBlockTest(String resBlock, String prefix) throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -283,7 +277,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void testComposedRes0ThenRes1() throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -404,7 +398,7 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	private void runSubComponentTest(String resBlock, String component, String prefix,
 									 BlockBuilder blockBuilder) throws IOException {
 		if (!WEIGHTS_DIR.toFile().exists()) {
-			System.out.println("Skipping - weights not found at " + WEIGHTS_DIR);
+			log("Skipping - weights not found at " + WEIGHTS_DIR);
 			return;
 		}
 
@@ -473,6 +467,13 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 	 */
 	@FunctionalInterface
 	private interface BlockBuilder {
+		/**
+		 * Builds a sub-component block using the given weights and layer prefix.
+		 *
+		 * @param weights the StateDictionary containing model weights
+		 * @param prefix the layer prefix within the weights dictionary
+		 * @return the constructed Block
+		 */
 		Block build(StateDictionary weights, String prefix);
 	}
 
@@ -514,28 +515,6 @@ public class ResidualBlockSubComponentTest extends TestSuiteBase {
 		PackedCollection v = weights.get(prefix + ".layers.3.weight_v");
 		PackedCollection b = weights.get(prefix + ".layers.3.bias");
 		return wnConv1d(BATCH_SIZE, CHANNELS, CHANNELS, SEQ_LENGTH, 1, 1, 0, g, v, b);
-	}
-
-	/**
-	 * Loads a reference output file in binary format.
-	 */
-	private float[] loadReferenceOutput(String filename) throws IOException {
-		Path filepath = REFERENCE_DIR.resolve(filename);
-
-		try (DataInputStream dis = new DataInputStream(new FileInputStream(filepath.toFile()))) {
-			byte[] countBytes = new byte[4];
-			dis.readFully(countBytes);
-			int count = ByteBuffer.wrap(countBytes).order(ByteOrder.LITTLE_ENDIAN).getInt();
-
-			float[] values = new float[count];
-			byte[] floatBytes = new byte[4];
-			for (int i = 0; i < count; i++) {
-				dis.readFully(floatBytes);
-				values[i] = ByteBuffer.wrap(floatBytes).order(ByteOrder.LITTLE_ENDIAN).getFloat();
-			}
-
-			return values;
-		}
 	}
 
 	/**

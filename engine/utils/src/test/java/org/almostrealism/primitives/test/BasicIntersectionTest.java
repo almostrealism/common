@@ -21,9 +21,13 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.DiffuseShader;
 import org.almostrealism.color.PointLight;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.Shader;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -32,8 +36,11 @@ import org.junit.Test;
  * Basic intersection tests to verify ray-surface intersection calculation
  * works with current ar-common API.
  */
-public class BasicIntersectionTest extends TestSuiteBase {
+public class BasicIntersectionTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/**
+	 * Tests sphere intersection with ray.
+	 */
 	@Test(timeout = 10000)
 	public void sphereIntersection() {
 		log("Testing sphere intersection...");
@@ -55,6 +62,9 @@ public class BasicIntersectionTest extends TestSuiteBase {
 		assertNotNull("Intersection should not be null", intersection);
 	}
 
+	/**
+	 * Tests sphere intersection distance calculation.
+	 */
 	@Test(timeout = 10000)
 	public void sphereIntersectionDistance() {
 		log("Testing sphere intersection distance...");
@@ -84,6 +94,9 @@ public class BasicIntersectionTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests sphere color computation with shader.
+	 */
 	@Test(timeout = 10000)
 	public void sphereColor() {
 		log("Testing sphere color computation...");
@@ -92,8 +105,8 @@ public class BasicIntersectionTest extends TestSuiteBase {
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
-		sphere.setColor(new org.almostrealism.color.RGB(0.8, 0.2, 0.2)); // Red
-		sphere.setShaders(new org.almostrealism.color.Shader[]{
+		sphere.setColor(new RGB(0.8, 0.2, 0.2)); // Red
+		sphere.setShaders(new Shader[]{
 				DiffuseShader.defaultDiffuseShader
 		});
 
@@ -104,7 +117,7 @@ public class BasicIntersectionTest extends TestSuiteBase {
 
 		// Get color at that point
 		try {
-			org.almostrealism.color.RGB color = new org.almostrealism.color.RGB(sphere.getValueAt(point).get().evaluate(), 0);
+			RGB color = new RGB(sphere.getValueAt(point).get().evaluate(), 0);
 			log("Color at point: " + color);
 
 			// Should get back the red color we set
@@ -113,10 +126,13 @@ public class BasicIntersectionTest extends TestSuiteBase {
 			assertEquals("Blue component should be 0.2", 0.2, color.toDouble(2));
 		} catch (Exception e) {
 			log("Exception getting color: " + e.getMessage());
-			e.printStackTrace();
+			Console.root().alert("BasicIntersectionTest exception getting color", e);
 		}
 	}
 
+	/**
+	 * Tests point light creation and color retrieval.
+	 */
 	@Test(timeout = 10000)
 	public void pointLightCreation() {
 		log("Testing point light creation...");
@@ -134,7 +150,7 @@ public class BasicIntersectionTest extends TestSuiteBase {
 			Producer<PackedCollection> colorProducer = light.getColorAt(point);
 
 			if (colorProducer != null) {
-				org.almostrealism.color.RGB color = new org.almostrealism.color.RGB(colorProducer.get().evaluate(), 0);
+				RGB color = new RGB(colorProducer.get().evaluate(), 0);
 				log("Light color at origin: " + color);
 			}
 		} catch (Exception e) {

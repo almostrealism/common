@@ -22,7 +22,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
@@ -134,7 +134,7 @@ import java.util.stream.IntStream;
  * subRange.setDelegate(fullArray, 100);
  *
  * // Modifications to subRange affect fullArray
- * subRange.setMem(0, 42.0);  // Sets fullArray[100] = 42.0
+ * subRange.setMem(42.0);  // Sets fullArray[100] = 42.0
  * }</pre>
  *
  * <h3>Persistence and Serialization</h3>
@@ -260,25 +260,35 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	/**
+	 * Reads data from a {@link ByteBuffer} into this memory — the primary form
+	 * of the system-boundary ingest surface for serialized values. The buffer
+	 * may be heap- or direct-backed (a mapped file, a payload handed over by a
+	 * driver), and its byte order is respected.
+	 *
+	 * <p>Expects data in double format (8 bytes per element), read from the
+	 * buffer's current position; {@code getMemLength()} elements are consumed.
+	 * All values reach the backing memory in a single transfer.</p>
+	 *
+	 * @param b Buffer containing serialized double values
+	 */
+	default void read(ByteBuffer b) {
+		double values[] = new double[getMemLength()];
+		b.asDoubleBuffer().get(values);
+		getMem().set(getOffset(), values);
+	}
+
+	/**
 	 * Reads data from a byte array into this memory.
 	 *
-	 * <p>Expects data in double format (8 bytes per element). The byte array must contain
-	 * at least {@code getMemLength() * 8} bytes.</p>
+	 * <p>Adapter for callers holding a heap array (e.g. a database driver
+	 * result); the {@link ByteBuffer} form is the primary ingest surface.
+	 * Expects data in double format (8 bytes per element). The byte array must
+	 * contain at least {@code getMemLength() * 8} bytes.</p>
 	 *
 	 * @param b Byte array containing serialized double values
 	 */
 	default void read(byte b[]) {
-		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
-
-		for (int i = 0; i < getMemLength() * 8; i++) {
-			buf.put(b[i]);
-		}
-
-		buf.position(0);
-
-		for (int i = 0; i < getMemLength(); i++) {
-			getMem().set(getOffset() + i, buf.getDouble());
-		}
+		read(ByteBuffer.wrap(b));
 	}
 
 	/**
@@ -291,17 +301,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @throws IOException If reading from the stream fails
 	 */
 	default void read(InputStream in) throws IOException {
-		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
-
-		for (int i = 0; i < getMemLength(); i++) {
-			buf.put(in.readNBytes(8));
-		}
-
-		buf.position(0);
-
-		for (int i = 0; i < getMemLength(); i++) {
-			getMem().set(getOffset() + i, buf.getDouble());
-		}
+		read(ByteBuffer.wrap(in.readNBytes(8 * getMemLength())));
 	}
 
 	/**
@@ -591,10 +591,22 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		return toFloatArray(0, getMemLength());
 	}
 
+	/**
+	 * Returns a string representation of a slice of this memory as a bracketed array.
+	 *
+	 * @param offset Starting element index
+	 * @param length Number of elements to include
+	 * @return String in the format {@code [e0, e1, ..., eN]}
+	 */
 	default String toArrayString(int offset, int length) {
 		return Arrays.toString(toArray(offset, length));
 	}
 
+	/**
+	 * Returns a string representation of all elements in this memory as a bracketed array.
+	 *
+	 * @return String in the format {@code [e0, e1, ..., eN]}
+	 */
 	default String toArrayString() {
 		return Arrays.toString(toArray());
 	}
@@ -637,7 +649,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param values Values to write
 	 */
 	default void setMem(int offset, double... values) {
-		setMem(offset, values, 0, values.length);
+		setMemInternal(offset, values, 0, values.length);
 	}
 
 	/**
@@ -649,7 +661,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param values Values to write
 	 */
 	default void setMem(int offset, float... values) {
-		setMem(offset, values, 0, values.length);
+		setMemInternal(offset, values, 0, values.length);
 	}
 
 	/**
@@ -658,7 +670,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param source Values to write
 	 */
 	default void setMem(float... source) {
-		setMem(0, source, 0, source.length);
+		setMemInternal(0, source, 0, source.length);
 	}
 
 	/**
@@ -667,80 +679,21 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param source Values to write
 	 */
 	default void setMem(double... source) {
-		setMem(0, source, 0, source.length);
-	}
-
-	/**
-	 * Writes a portion of a double array to this memory starting at index 0.
-	 *
-	 * @param source Source array
-	 * @param srcOffset Starting index in source array
-	 */
-	default void setMem(double[] source, int srcOffset) {
-		setMem(0, source, srcOffset, source.length - srcOffset);
-	}
-
-	/**
-	 * Writes a range from a float array to this memory.
-	 *
-	 * @param offset Starting index in this memory
-	 * @param source Source float array
-	 * @param srcOffset Starting index in source array
-	 * @param length Number of elements to copy
-	 * @throws IllegalArgumentException If circular delegate reference detected
-	 */
-	default void setMem(int offset, float[] source, int srcOffset, int length) {
-		if (getDelegate() == null) {
-			setMem(getMem(), getOffset() + offset, source, srcOffset, length);
-		} else if (getDelegate() == this) {
-			throw new IllegalArgumentException("Circular delegate reference");
-		} else {
-			getDelegate().setMem(getDelegateOffset() + offset, source, srcOffset, length);
-		}
-	}
-
-	/**
-	 * Writes a range from a double array to this memory starting at index 0.
-	 *
-	 * @param source Source double array
-	 * @param srcOffset Starting index in source array
-	 * @param length Number of elements to copy
-	 */
-	default void setMem(double[] source, int srcOffset, int length) {
-		setMem(0, source, srcOffset, length);
-	}
-
-	/**
-	 * Writes a range from a double array to this memory.
-	 *
-	 * @param offset Starting index in this memory
-	 * @param source Source double array
-	 * @param srcOffset Starting index in source array
-	 * @param length Number of elements to copy
-	 * @throws IllegalArgumentException If the range extends beyond this data's length or circular delegate reference
-	 */
-	default void setMem(int offset, double[] source, int srcOffset, int length) {
-		if (getDelegate() == null) {
-			if (offset + length > getMemLength()) {
-				throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
-			}
-
-			setMem(getMem(), getOffset() + offset, source, srcOffset, length);
-		} else if (getDelegate() == this) {
-			throw new IllegalArgumentException("Circular delegate reference");
-		} else {
-			getDelegate().setMem(getDelegateOffset() + offset, source, srcOffset, length);
-		}
+		setMemInternal(0, source, 0, source.length);
 	}
 
 	/**
 	 * Copies all data from another {@link MemoryData} to this memory starting at the specified offset.
 	 *
+	 * <p>This performs a {@link MemoryData}-to-{@link MemoryData} copy and is deliberately
+	 * named distinctly from the {@code setMem(...)} array/literal overloads so that the
+	 * copy surface can be told apart from host-array uploads at every call site.</p>
+	 *
 	 * @param offset Starting index in this memory
 	 * @param src Source memory data
 	 */
-	default void setMem(int offset, MemoryData src) {
-		setMem(offset, src, 0, src.getMemLength());
+	default void setFrom(int offset, MemoryData src) {
+		setFrom(offset, src, 0, src.getMemLength());
 	}
 
 	/**
@@ -750,8 +703,8 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param srcOffset Starting index in source
 	 * @param length Number of elements to copy
 	 */
-	default void setMem(MemoryData src, int srcOffset, int length) {
-		setMem(0, src, srcOffset, length);
+	default void setFrom(MemoryData src, int srcOffset, int length) {
+		setFrom(0, src, srcOffset, length);
 	}
 
 	/**
@@ -763,7 +716,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param length Number of elements to copy
 	 * @throws IllegalArgumentException If source or destination ranges are invalid
 	 */
-	default void setMem(int offset, MemoryData src, int srcOffset, int length) {
+	default void setFrom(int offset, MemoryData src, int srcOffset, int length) {
 		if (src.getMemLength() < srcOffset + length) {
 			throw new IllegalArgumentException("Source MemoryData is not long enough to provide the requested data");
 		} else if (offset + length > getMemLength()) {
@@ -771,9 +724,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 
 		if (getDelegate() == null) {
-			setMem(getMem(), getOffset() + offset, src, srcOffset, length);
+			setFrom(getMem(), getOffset() + offset, src, srcOffset, length);
 		} else {
-			getDelegate().setMem(getDelegateOffset() + offset, src, srcOffset, length);
+			getDelegate().setFrom(getDelegateOffset() + offset, src, srcOffset, length);
 		}
 	}
 
@@ -807,6 +760,31 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		} else {
 			getDelegate().getMem(getDelegateOffset() + sOffset, out, oOffset, length);
 		}
+	}
+
+	/**
+	 * Writes double values from a host array into this memory, resolving the
+	 * delegate chain to the root reservation. This is the terminal step of the
+	 * literal varargs surface; bulk host-array ingest instead stages through a
+	 * ByteBuffer (see {@link #read(ByteBuffer)} and the native buffer provider).
+	 */
+	private void setMemInternal(int offset, double[] source, int srcOffset, int length) {
+		MemoryData root = getRootDelegate();
+		if (getOffset() - root.getOffset() + offset + length > root.getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
+		setMem(getMem(), getOffset() + offset, source, srcOffset, length);
+	}
+
+	/**
+	 * Writes float values from a host array into this memory, resolving the
+	 * delegate chain to the root reservation. This is the terminal step of the
+	 * literal varargs surface; bulk host-array ingest instead stages through a
+	 * ByteBuffer (see {@link #read(ByteBuffer)} and the native buffer provider).
+	 */
+	private void setMemInternal(int offset, float[] source, int srcOffset, int length) {
+		setMem(getMem(), getOffset() + offset, source, srcOffset, length);
 	}
 
 	/**
@@ -845,7 +823,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * Low-level method to copy data between {@link Memory} objects.
 	 *
 	 * <p>Delegates to the memory's {@link io.almostrealism.code.MemoryProvider} for the actual copy.
-	 * This is used internally by the default {@link #setMem} methods.</p>
+	 * This is used internally by the default {@link #setFrom} methods.</p>
 	 *
 	 * @param mem Target memory
 	 * @param offset Starting offset in target memory
@@ -853,7 +831,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * @param srcOffset Starting offset in source memory
 	 * @param length Number of elements to copy
 	 */
-	static void setMem(Memory mem, int offset, MemoryData src, int srcOffset, int length) {
+	static void setFrom(Memory mem, int offset, MemoryData src, int srcOffset, int length) {
 		mem.getProvider().setMem(mem, offset, src.getMem(), src.getOffset() + srcOffset, length);
 	}
 

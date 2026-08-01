@@ -16,10 +16,13 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.SystemUtils;
 import org.junit.Assume;
 import org.junit.rules.MethodRule;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.Statement;
+
+import java.util.Objects;
 
 /**
  * A JUnit rule that skips tests based on the {@link TestDepth} annotation
@@ -77,6 +80,7 @@ import org.junit.runners.model.Statement;
  * @see TestUtils#shouldRunInCurrentGroup(String)
  */
 public class TestDepthRule implements MethodRule {
+	/** The depth level against which {@code @TestDepth} annotations are compared. */
 	private final int currentDepth;
 
 	/**
@@ -141,11 +145,25 @@ public class TestDepthRule implements MethodRule {
 			if (properties.knownIssue() && TestUtils.getSkipKnownIssues()) {
 				return skipStatement("Test covers a known issue and known-issue tests are disabled");
 			}
+			if (properties.audioDeviceRequired() && !SystemUtils.isAudioOutputAvailable()) {
+				return skipStatement("Test requires an audio output device that drains samples; none is available on this host");
+			}
+			for (String profile : properties.excludeProfiles()) {
+				if (Objects.equals(profile, TestUtils.getTestProfile())) {
+					return skipStatement("Test is excluded from the '" + profile + "' profile");
+				}
+			}
 		}
 
 		return base;
 	}
 
+	/**
+	 * Returns a {@link Statement} that always skips the test with the specified reason.
+	 *
+	 * @param reason  the human-readable skip reason passed to {@code Assume.assumeTrue}
+	 * @return        a statement that unconditionally calls {@code Assume.assumeTrue(reason, false)}
+	 */
 	private Statement skipStatement(String reason) {
 		return new Statement() {
 			@Override

@@ -7,7 +7,8 @@ Qwen2.5-0.5B-Instruct implementation for the AR framework.
 ### Option 1: Command Line (Qwen3.main)
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
+
 java -cp target/ar-ml-0.72.jar org.almostrealism.ml.qwen3.Qwen3 \
   <checkpoint.bin> <tokenizer.bin> "<prompt>"
 ```
@@ -15,7 +16,8 @@ java -cp target/ar-ml-0.72.jar org.almostrealism.ml.qwen3.Qwen3 \
 ### Option 2: JUnit Test (Qwen3GenerationDemo)
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
+
 mvn test -pl ml -Dtest=Qwen3GenerationDemo
 ```
 
@@ -43,7 +45,8 @@ stateDict.destroy();
 Quick validation without long compilation:
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
+
 mvn test -pl ml -Dtest=SimpleTransformerValidationTest
 ```
 

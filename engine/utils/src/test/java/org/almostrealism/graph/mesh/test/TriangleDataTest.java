@@ -27,7 +27,15 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for triangle data operations.
+ */
 public class TriangleDataTest extends TestSuiteBase {
+	/**
+	 * Creates test vertex data with sample triangles.
+	 *
+	 * @return Vertex data with sample triangles
+	 */
 	protected Mesh.VertexData data() {
 		DefaultVertexData data = new DefaultVertexData(5, 3);
 		data.getVertices().set(0, new Vector(0.0, 1.0, 0.0));
@@ -43,8 +51,16 @@ public class TriangleDataTest extends TestSuiteBase {
 		return data;
 	}
 
+	/**
+	 * Gets mesh point data from test data.
+	 *
+	 * @return Point data from test mesh
+	 */
 	protected PackedCollection points() {return data().getMeshPointData();}
 
+	/**
+	 * Tests edge calculations from triangle vertices.
+	 */
 	@Test(timeout = 10000)
 	public void edges() {
 		PackedCollection points = points();
@@ -70,6 +86,9 @@ public class TriangleDataTest extends TestSuiteBase {
 		Assert.assertEquals(0, value.toDouble(2), Math.pow(10, -10));
 	}
 
+	/**
+	 * Tests triangle data computation.
+	 */
 	@Test(timeout = 10000)
 	public void triangleData() {
 		PackedCollection points = points();
@@ -80,6 +99,9 @@ public class TriangleDataTest extends TestSuiteBase {
 		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));
 	}
 
+	/**
+	 * Tests triangle data kernel computation.
+	 */
 	@Test(timeout = 10000)
 	public void triangleDataKernel() {
 		PackedCollection points = points();
@@ -90,6 +112,11 @@ public class TriangleDataTest extends TestSuiteBase {
 		triangleDataAssertions(output.get(0));
 	}
 
+	/**
+	 * Validates triangle data assertions.
+	 *
+	 * @param value Triangle data to validate
+	 */
 	protected void triangleDataAssertions(PackedCollection value) {
 		Assert.assertEquals(shape(4, 3).traverse(1), value.getShape());
 		value.print();
@@ -111,8 +138,16 @@ public class TriangleDataTest extends TestSuiteBase {
 		Assert.assertEquals(1, value.get(3).toDouble(2), Math.pow(10, -10));
 	}
 
+	/**
+	 * Creates a mesh from test data.
+	 *
+	 * @return Mesh with test data
+	 */
 	protected Mesh mesh() {return new Mesh(data());}
 
+	/**
+	 * Tests triangle data extraction from mesh.
+	 */
 	@Test(timeout = 10000)
 	public void fromMesh() {
 		Mesh m = mesh();

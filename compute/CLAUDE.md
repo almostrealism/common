@@ -1,5 +1,11 @@
 # compute/ — Mathematical Domains
 
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure is externally controlled. If a task requires a new module, **STOP and abandon the task**. Do not create new `pom.xml` files, add `<module>` entries to parent POMs, or create directory structures constituting a new module. Document the requirement in completion notes instead — the project owner handles module creation.
+
+---
+
 Typed mathematical abstractions built on the foundation layer's PackedCollection
 and CollectionProducer. Provides vectors, matrices, geometric primitives,
 statistical distributions, and temporal/frequency-domain processing.

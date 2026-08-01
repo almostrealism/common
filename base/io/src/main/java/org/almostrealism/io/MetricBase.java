@@ -81,7 +81,9 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 */
 	public static long intervalRate = 600;
 
+	/** Identifier for this metric, used in display and summary output. */
 	private final String name;
+	/** The console to which interval summaries are logged. */
 	private Console console;
 
 	/** Map of entry names to their accumulated values. */
@@ -93,10 +95,14 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	/** Map of interval indices to their occurrence counts. */
 	protected Map<Long, Integer> intervalCounts;
 
+	/** Callbacks invoked at the end of each time interval with the interval total and count. */
 	private List<BiConsumer<Double, Integer>> intervalListeners;
+	/** The index of the most recently reported interval, used to detect interval boundaries. */
 	private long lastReportedInterval;
 
+	/** Total number of values recorded across all entries. */
 	private long count = 0;
+	/** Running sum of all recorded values, used to compute the overall mean. */
 	private double total = 0.0;
 
 	/**

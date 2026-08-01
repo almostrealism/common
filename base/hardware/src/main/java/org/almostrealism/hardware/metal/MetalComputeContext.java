@@ -18,11 +18,14 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.streams.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.lang.ScopeEncoder;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -31,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * {@link io.almostrealism.code.ComputeContext} for Apple Metal shader compilation and execution.
@@ -68,6 +72,11 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	public static boolean enableFastQueue = false;
 
+	/** Requester metadata identifying blit copies queued by {@link #copy(MemoryData, MemoryData, Semaphore)}. */
+	private static final OperationMetadata BLIT_COPY =
+			new OperationMetadata("mtlBlitCopy", "Metal blit copy");
+
+	/** Standard Metal Shading Language includes prepended to every compiled kernel. */
 	private static String includes = "#include <metal_stdlib>\n" +
 									"using metal::min;\n" +
 									"using metal::max;\n" +
@@ -80,15 +89,21 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::log;\n" +
 									"using metal::sin;\n" +
 									"using metal::cos;\n" +
+									"using metal::acos;\n" +
 									"using metal::tan;\n" +
 									"using metal::tanh;\n";
 
+	/** The primary Metal device used for kernel compilation and execution. */
 	private MTLDevice mainDevice;
+	/** The main command queue for serialized GPU command submission. */
 	private MTLCommandQueue queue;
+	/** An optional second command queue for parallel ("fast") execution when {@link #enableFastQueue} is true. */
 	private MTLCommandQueue fastQueue;
 
+	/** Runner that serializes Metal command submission and manages pre-allocated argument buffers. */
 	private MetalCommandRunner runner;
 
+	/** Cache of compiled instruction sets, keyed by name and signature, to avoid redundant compilation. */
 	private Map<String, MetalOperatorMap> instructionSets;
 
 	/**
@@ -115,19 +130,19 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 		this.mainDevice = mainDevice;
 
 		if (Hardware.enableVerbose) {
-			System.out.println("Hardware[" + getDataContext().getName() + "]: Max Threadgroup Size (" +
+			log("Hardware[" + getDataContext().getName() + "]: Max Threadgroup Size (" +
 					mainDevice.maxThreadgroupWidth() + ", " +
 					mainDevice.maxThreadgroupHeight() + ", " +
 					mainDevice.maxThreadgroupDepth() + ")");
 		}
 
 		queue = mainDevice.newCommandQueue();
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + getDataContext().getName() + "]: Metal command queue initialized");
+		if (Hardware.enableVerbose) log("Hardware[" + getDataContext().getName() + "]: Metal command queue initialized");
 
 		if (enableFastQueue) {
 			fastQueue = mainDevice.newCommandQueue();
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + getDataContext().getName() + "]: Metal fast command queue initialized");
+				log("Hardware[" + getDataContext().getName() + "]: Metal fast command queue initialized");
 		}
 
 		this.runner = new MetalCommandRunner(queue);
@@ -154,7 +169,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * @return {@link MetalOperatorMap} containing compiled Metal operators
 	 */
 	@Override
-	public InstructionSet deliver(Scope scope) {
+	public synchronized InstructionSet deliver(Scope scope) {
 		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
 			if (ScopeSettings.enableInstructionSetReuse) {
 				warn("Compiling instruction set " + scope.getName() +
@@ -193,6 +208,42 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public boolean isCPU() { return false; }
 
 	/**
+	 * Copies all of {@code source} into {@code destination} by queuing a blit onto the command buffer
+	 * (via the {@link MetalCommandRunner}), so the copy batches with the surrounding kernel dispatches,
+	 * and returns its completion semaphore.
+	 *
+	 * <p>{@code dependsOn} is honored by the {@link MetalCommandRunner}: a dependency produced by
+	 * this context's runner orders the blit after it on the GPU (Metal's in-buffer hazard tracking
+	 * covers a dependency still in the open buffer), and a foreign dependency is bridged through a
+	 * host-signaled event without blocking (see {@link MetalCommandRunner#submit}). When either
+	 * side is not Metal memory there is nothing to queue, so the
+	 * {@link AbstractComputeContext#copy(MemoryData, MemoryData, Semaphore) inherited} direct
+	 * {@code setMem} copy is used.</p>
+	 *
+	 * @param source      the memory region to copy from
+	 * @param destination the memory region to copy into
+	 * @param dependsOn   the completion this copy must be ordered after, or {@code null}
+	 * @return the blit's completion semaphore, or {@code null} for the direct-copy fallback
+	 */
+	@Override
+	public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
+		if (source.getMem() instanceof MetalMemory && destination.getMem() instanceof MetalMemory) {
+			MetalMemory src = (MetalMemory) source.getMem();
+			MetalMemory dst = (MetalMemory) destination.getMem();
+			long elementSize = src.getProvider().getNumberSize();
+			long sourceOffset = source.getOffset() * elementSize;
+			long destinationOffset = destination.getOffset() * elementSize;
+			long size = source.getMemLength() * elementSize;
+
+			return runner.submit(BLIT_COPY,
+					cmdBuf -> cmdBuf.blitCopy(src.getMem(), sourceOffset, dst.getMem(), destinationOffset, size),
+					dependsOn, null);
+		}
+
+		return super.copy(source, destination, dependsOn);
+	}
+
+	/**
 	 * Returns the Metal device for this context.
 	 *
 	 * @return The {@link MTLDevice} instance
@@ -220,7 +271,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * @param signature Scope signature
 	 * @throws IllegalArgumentException if no instruction set found with that key
 	 */
-	protected void destroyed(String name, String signature) {
+	protected synchronized void destroyed(String name, String signature) {
 		if (instructionSets != null) {
 			String key = key(name, signature);
 
@@ -237,7 +288,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * clears internal state. After calling destroy, this context cannot be used.</p>
 	 */
 	@Override
-	public void destroy() {
+	public synchronized void destroy() {
 		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
 		toDestroy.forEach(MetalOperatorMap::destroy);
 
@@ -258,6 +309,17 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	@Override
 	public Console console() { return Hardware.console; }
 
+	/**
+	 * Returns the cache key for an instruction set, using the signature when reuse is enabled.
+	 *
+	 * <p>When {@link ScopeSettings#enableInstructionSetReuse} is true and a signature is available,
+	 * the signature is used as the key so that structurally identical scopes share compiled programs.
+	 * Otherwise the scope name is used.</p>
+	 *
+	 * @param name Scope name used as fallback key
+	 * @param signature Optional structural signature for deduplication
+	 * @return Cache key for the instruction set map
+	 */
 	protected static String key(String name, String signature) {
 		if (ScopeSettings.enableInstructionSetReuse && signature != null) {
 			return signature;

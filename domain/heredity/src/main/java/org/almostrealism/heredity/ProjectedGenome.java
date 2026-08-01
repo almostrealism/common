@@ -98,7 +98,9 @@ public class ProjectedGenome implements Genome<PackedCollection> {
 	 */
 	public static final long initialSeed = 0xDEAD;
 
+	/** The flat parameter vector shared across all chromosomes in this genome. */
 	private PackedCollection parameters;
+	/** The list of chromosomes composing this genome, each projecting from {@code parameters}. */
 	private List<ProjectedChromosome> chromosomes;
 
 	/**
@@ -214,7 +216,7 @@ public class ProjectedGenome implements Genome<PackedCollection> {
 		if (parameters.getShape().getTotalSize() != this.parameters.getShape().getTotalSize())
 			throw new IllegalArgumentException();
 
-		this.parameters.setMem(0, parameters);
+		this.parameters.setFrom(0, parameters);
 
 		initWeights();
 		refreshValues();

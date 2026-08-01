@@ -42,6 +42,10 @@ import java.util.List;
  *   <li>CPU loops with setMem() that defeat GPU parallelism</li>
  *   <li>toDouble()/toArray() patterns that force GPU-CPU round trips</li>
  *   <li>System.arraycopy near PackedCollection usage</li>
+ *   <li>.evaluate() calls inside computation code (engine/ml/, studio/)</li>
+ *   <li>.toDouble() calls inside computation code</li>
+ *   <li>Classes named *Cell that don't implement org.almostrealism.graph.Cell</li>
+ *   <li>Classes named *Block that don't implement org.almostrealism.model.Block</li>
  * </ul>
  *
  * <h2>How to Fix Violations</h2>
@@ -98,24 +102,22 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 			"utils/src/main/java"
 	);
 
+	/**
+	 * Walks up from the Surefire working directory until the project root is found,
+	 * identified by the presence of both the base/ and engine/ directories alongside pom.xml.
+	 *
+	 * @return the resolved project root path, or the current directory if not found
+	 */
 	private static Path findProjectRoot() {
-		// Start from current directory and look for common/ or pom.xml
 		Path current = Path.of("").toAbsolutePath();
 
-		// If we're in a submodule, go up to find common/
 		while (current != null) {
 			if (Files.exists(current.resolve("pom.xml")) &&
-					Files.exists(current.resolve("algebra")) &&
-					Files.exists(current.resolve("ml"))) {
+					Files.exists(current.resolve("base")) &&
+					Files.exists(current.resolve("engine"))) {
 				return current;
 			}
 			current = current.getParent();
-		}
-
-		// Fallback to workspace path
-		Path workspace = Path.of("/workspace/project/common");
-		if (Files.exists(workspace)) {
-			return workspace;
 		}
 
 		return Path.of("").toAbsolutePath();
@@ -129,7 +131,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	 */
 	@Test
 	public void enforceCodePolicies() throws IOException {
-		log("=== Code Policy Enforcement ===");
+		log("Code Policy Enforcement");
 		log("Project root: " + PROJECT_ROOT);
 
 		CodePolicyViolationDetector detector = new CodePolicyViolationDetector(PROJECT_ROOT);
@@ -145,7 +147,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		if (filesScanned == 0) {
-			log("WARNING: No source directories found. Project root may be incorrect.");
+			log("No source directories found. Project root may be incorrect.");
 			log("Attempting to scan from: " + PROJECT_ROOT);
 			detector.scan();
 		}
@@ -153,6 +155,9 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		if (detector.hasViolations()) {
 			String report = detector.generateReport();
 			log("\n" + report);
+
+			// Emit machine-readable violation records for the build validator to parse.
+			log("\n" + detector.generateMachineReport());
 
 			Assert.fail("BUILD FAILED: " + detector.getViolations().size() +
 					" code policy violation(s) detected.\n\n" +
@@ -162,7 +167,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		log("No code policy violations detected.");
-		log("=== Code Policy Enforcement PASSED ===");
+		log("Code Policy Enforcement passed.");
 	}
 
 	/**
@@ -248,6 +253,121 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the detector flags {@code setMem} calls whose arguments are a host array
+	 * or a computed scalar — the shapes that must instead use {@code setFrom}/{@code into} or a
+	 * producer assignment.
+	 */
+	@Test
+	public void testDetectorCatchesNonLiteralSetMem() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-setmem");
+		Path testFile = tempDir.resolve("SetMemViolation.java");
+
+		String violatingCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				public class SetMemViolation {
+				    public void bad(PackedCollection dest, double[] host, double scalar) {
+				        dest.setMem(0, host, 0, host.length);
+				        dest.setMem(0, scalar);
+				        dest.setMem(0, new double[] { 1.0, 2.0 });
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			long count = detector.getViolations().stream()
+					.filter(v -> "SETMEM_NON_LITERAL_ARGUMENT".equals(v.getRule()))
+					.count();
+			Assert.assertEquals("Should flag each non-literal setMem argument shape", 3, count);
+
+			log("Detector correctly identified " + count + " non-literal setMem violation(s).");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector allows literal {@code setMem} writes (at both fixed and variable
+	 * offsets) and does not flag a {@code setFrom} MemoryData copy.
+	 */
+	@Test
+	public void testDetectorAllowsLiteralSetMemAndSetFrom() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-setmem-clean");
+		Path testFile = tempDir.resolve("SetMemClean.java");
+
+		String cleanCode = """
+				package test;
+				import org.almostrealism.collect.PackedCollection;
+				public class SetMemClean {
+				    public void ok(PackedCollection dest, PackedCollection src, int i) {
+				        dest.setMem(1.0, 2.0, 3.0);
+				        dest.setMem(i, 0.0);
+				        dest.setMem(-0.25);
+				        dest.setFrom(0, src);
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean flagged = detector.getViolations().stream()
+					.anyMatch(v -> "SETMEM_NON_LITERAL_ARGUMENT".equals(v.getRule()));
+			Assert.assertFalse("Should not flag literal setMem writes or a setFrom copy", flagged);
+
+			log("Detector correctly allowed literal setMem writes and a setFrom copy.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector catches a source-line reference in a comment.
+	 */
+	@Test
+	public void testDetectorCatchesLineNumberReference() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-linenum");
+		Path testFile = tempDir.resolve("LineRefViolation.java");
+
+		String violatingCode = """
+				package test;
+				public class LineRefViolation {
+					// mirrors the original at MixdownManager.createEfx() line 660-664
+					public void method() { }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			Assert.assertTrue("Detector should flag a line-number reference in a comment",
+					detector.getViolations().stream()
+							.anyMatch(v -> "LINE_NUMBER_REFERENCE_IN_COMMENT".equals(v.getRule())));
+
+			log("Detector correctly identified a line-number reference.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
 	 * Verifies that the detector catches Features interfaces with abstract methods.
 	 */
 	@Test
@@ -263,7 +383,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 
 				    // This default method is fine
 				    default void doSomething() {
-				        System.out.println("OK");
+				        log("OK");
 				    }
 				}
 				""";
@@ -303,7 +423,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 				public interface GoodFeatures {
 				    // All methods are default - this is correct
 				    default void doSomething() {
-				        System.out.println("OK");
+				        log("OK");
 				    }
 
 				    default String computeValue(int x) {
@@ -335,6 +455,193 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the detector catches classes ending in "Cell" that don't implement Cell.
+	 */
+	@Test
+	public void testDetectorCatchesCellNamingViolation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-cell");
+		Path testFile = tempDir.resolve("BadCell.java");
+
+		String violatingCode = """
+				package test;
+				public class BadCell {
+				    public void doSomething() {
+				        log("I am not a real Cell");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean foundCellViolation = detector.getViolations().stream()
+					.anyMatch(v -> v.getRule().equals("CELL_NAMING_VIOLATION"));
+			Assert.assertTrue("Should detect Cell naming violation",
+					foundCellViolation);
+
+			log("Detector correctly identified Cell naming violation.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector allows Cell classes that properly implement Cell.
+	 */
+	@Test
+	public void testDetectorAllowsProperCellImplementation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-cell-clean");
+		Path testFile = tempDir.resolve("GoodCell.java");
+
+		String cleanCode = """
+				package test;
+				import org.almostrealism.graph.CellAdapter;
+				public class GoodCell extends CellAdapter {
+				    public void doSomething() {
+				        log("I implement Cell via CellAdapter");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean foundCellViolation = detector.getViolations().stream()
+					.anyMatch(v -> v.getRule().equals("CELL_NAMING_VIOLATION"));
+			Assert.assertFalse("Should not flag Cell class extending CellAdapter",
+					foundCellViolation);
+
+			log("Detector correctly allowed proper Cell implementation.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector catches classes ending in "Block" that don't implement Block.
+	 */
+	@Test
+	public void testDetectorCatchesBlockNamingViolation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-block");
+		Path testFile = tempDir.resolve("BadBlock.java");
+
+		String violatingCode = """
+				package test;
+				public class BadBlock {
+				    public void doSomething() {
+				        log("I am not a real Block");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean foundBlockViolation = detector.getViolations().stream()
+					.anyMatch(v -> v.getRule().equals("BLOCK_NAMING_VIOLATION"));
+			Assert.assertTrue("Should detect Block naming violation",
+					foundBlockViolation);
+
+			log("Detector correctly identified Block naming violation.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector catches reflective method invocation
+	 * ({@code getDeclaredMethod} + {@code Method.invoke}).
+	 */
+	@Test
+	public void testDetectorCatchesReflectiveInvocation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-reflection");
+		Path testFile = tempDir.resolve("ReflectiveViolation.java");
+
+		String violatingCode = """
+				package test;
+				import java.lang.reflect.Method;
+				public class ReflectiveViolation {
+				    public void badMethod(Object target) throws Exception {
+				        Method m = target.getClass().getDeclaredMethod("secret");
+				        m.setAccessible(true);
+				        m.invoke(target);
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean found = detector.getViolations().stream()
+					.anyMatch(v -> "REFLECTIVE_METHOD_INVOCATION".equals(v.getRule()));
+			Assert.assertTrue("Should detect reflective method invocation", found);
+
+			log("Detector correctly identified reflective method invocation.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector does not flag a {@code getMethod(...)} that merely
+	 * returns a {@link java.lang.reflect.Method} descriptor without invoking it — the
+	 * legitimate factory/plugin registration pattern.
+	 */
+	@Test
+	public void testDetectorAllowsMethodDescriptorWithoutInvoke() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-reflection-clean");
+		Path testFile = tempDir.resolve("MethodDescriptor.java");
+
+		String cleanCode = """
+				package test;
+				import java.lang.reflect.Method;
+				public class MethodDescriptor {
+				    public Method factoryMethod() throws Exception {
+				        return MethodDescriptor.class.getMethod("factoryMethod");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean found = detector.getViolations().stream()
+					.anyMatch(v -> "REFLECTIVE_METHOD_INVOCATION".equals(v.getRule()));
+			Assert.assertFalse("Should not flag a getMethod descriptor that is never invoked",
+					found);
+
+			log("Detector correctly allowed a non-invoking getMethod descriptor.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
 	 * Enforces that every {@code @Test} annotation includes a {@code timeout} parameter.
 	 *
 	 * <p>Tests without timeouts can hang indefinitely, blocking CI runners.
@@ -343,7 +650,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	 */
 	@Test
 	public void enforceTestTimeouts() throws IOException {
-		log("=== Test Timeout Enforcement ===");
+		log("Test Timeout Enforcement");
 		log("Project root: " + PROJECT_ROOT);
 
 		TestTimeoutEnforcementScanner scanner = new TestTimeoutEnforcementScanner(PROJECT_ROOT);
@@ -360,7 +667,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		log("All @Test annotations include a timeout parameter.");
-		log("=== Test Timeout Enforcement PASSED ===");
+		log("Test Timeout Enforcement passed.");
 	}
 
 	/**
@@ -374,7 +681,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	 */
 	@Test
 	public void enforceNoDuplicateCode() throws IOException {
-		log("=== Duplicate Code Detection ===");
+		log("Duplicate Code Detection");
 		log("Project root: " + PROJECT_ROOT);
 
 		DuplicateCodeDetector detector = new DuplicateCodeDetector(PROJECT_ROOT);
@@ -392,6 +699,6 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		log("No duplicate code blocks detected.");
-		log("=== Duplicate Code Detection PASSED ===");
+		log("Duplicate Code Detection passed.");
 	}
 }

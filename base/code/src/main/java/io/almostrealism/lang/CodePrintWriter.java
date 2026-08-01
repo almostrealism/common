@@ -323,7 +323,7 @@ public interface CodePrintWriter {
 	 */
 	default void renderMetadata(OperationMetadata metadata, int indent) {
 		if (metadata != null && enableMetadata) {
-			StringBuffer indentStr = new StringBuffer();
+			StringBuilder indentStr = new StringBuilder();
 			IntStream.range(0, 2 * indent).forEach(i -> indentStr.append(" "));
 
 			if (metadata.getDisplayName() == null || "null".equals(metadata.getDisplayName())) {

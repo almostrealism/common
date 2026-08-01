@@ -146,6 +146,14 @@ Returns the currently active stage. If pushed stages exist, returns the top of t
 
 Allocates `count` memory units from the active stage. Returns a zero-copy `Bytes` view into the stage's backing block.
 
+**Contents are not cleared.** The backing block is zero-initialized when the
+provider first allocates it, but `allocate` never clears the carved region —
+after a stage resets its bump pointer, subsequent allocations reuse the region
+with prior writes intact. Callers that need zeroed memory from a reused stage
+must clear it themselves (this differs from a plain `new PackedCollection`,
+which is zero-initialized by every standard provider; see
+`docs/internals/packed-collection-examples.md`).
+
 **Throws:** `IllegalArgumentException` if insufficient space remains.
 
 ```java

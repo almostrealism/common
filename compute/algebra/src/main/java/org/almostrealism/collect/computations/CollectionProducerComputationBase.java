@@ -16,10 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.ProducerComputationBase;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.IndexSet;
@@ -317,24 +316,11 @@ public abstract class CollectionProducerComputationBase
 	 * @param context The kernel structure context providing compilation information
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		if (dependentLifecycles != null) ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager, context);
 	}
 
-	/**
-	 * Prepares arguments for kernel execution by setting up the argument mapping
-	 * and ensuring dependent lifecycles are properly configured.
-	 * 
-	 * @param map The argument map for tracking kernel arguments
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-
-		if (dependentLifecycles != null)
-			ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
-	}
 
 	/**
 	 * Resets the computation arguments and invalidates cached evaluables.

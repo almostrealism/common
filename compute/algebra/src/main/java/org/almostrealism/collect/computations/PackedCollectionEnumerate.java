@@ -24,9 +24,9 @@ import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.DefaultIndex;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.DefaultIndex;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.relation.Producer;
@@ -278,6 +278,26 @@ public class PackedCollectionEnumerate
 	}
 
 	/**
+	 * Determines if this enumeration preserves a row-monomial structure from its input.
+	 *
+	 * <p>An enumeration is a structural reindexing (it gathers slices of the input into a
+	 * new traversal order) and does not introduce additional non-zero entries into any
+	 * output row. When the enumerated input is row-monomial (exactly one non-zero per row),
+	 * the enumerated output therefore remains row-monomial, so the selection structure that
+	 * enables the downstream gather collapse survives the enumeration. This propagation is
+	 * what allows {@link io.almostrealism.collect.Algebraic#isRowMonomial()} to reach the
+	 * contraction across the {@code enumerate} wrappers that sit between a subset/concat
+	 * projection and its aggregation.</p>
+	 *
+	 * @return true if the enumerated input is row-monomial
+	 * @see Algebraic#isRowMonomial(Object)
+	 */
+	@Override
+	public boolean isRowMonomial() {
+		return Algebraic.isRowMonomial(getInputs().get(1));
+	}
+
+	/**
 	 * Projects an output index to the corresponding input index for enumeration.
 	 * This is the core method that implements the enumeration transformation by
 	 * mapping each position in the output enumerated collection back to the
@@ -409,8 +429,8 @@ public class PackedCollectionEnumerate
 		if (subsetShape.getSizeLong() != localOut.getLimit().getAsLong()) return null;
 
 		long limit = subsetShape.getCountLong();
-		DefaultIndex g = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g", limit);
-		DefaultIndex l = new DefaultIndex(getNameProvider().getVariablePrefix() + "_l", inputShape.getTotalSizeLong() / limit);
+		DefaultIndex g = new DefaultIndex(getVariablePrefix() + "_g", limit);
+		DefaultIndex l = new DefaultIndex(getVariablePrefix() + "_l", inputShape.getTotalSizeLong() / limit);
 
 		Expression<?> idx = getCollectionArgumentVariable(1).uniqueNonZeroOffset(g, l, Index.child(g, l));
 		if (idx != null && !idx.isValue(IndexValues.of(g))) return null;

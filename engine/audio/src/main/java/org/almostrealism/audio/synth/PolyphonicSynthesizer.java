@@ -19,14 +19,16 @@ package org.almostrealism.audio.synth;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.ADSREnvelope;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
+import org.almostrealism.audio.tone.KeyNumbering;
 import org.almostrealism.audio.tone.KeyboardTuning;
+import org.almostrealism.audio.tone.KeyNumbering;
 import org.almostrealism.audio.tone.RelativeFrequencySet;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,23 +75,48 @@ import java.util.function.Supplier;
  */
 public class PolyphonicSynthesizer extends SummationCell implements Setup {
 
+	/** Voice allocator that manages voice assignment and stealing across the voice pool. */
 	private final VoiceAllocator allocator;
+
+	/** Pool of AudioSynthesizer voices; each may be active or idle. */
 	private final List<AudioSynthesizer> voices;
 
 	// Shared configuration
+	/** Keyboard tuning system for MIDI-note-to-frequency conversion, shared across all voices. */
 	private KeyboardTuning tuning;
+
+	/** Relative frequency set defining partials for each oscillator voice. */
 	private RelativeFrequencySet tones;
+
+	/** Waveform type applied to all oscillators in every voice. */
 	private AudioSynthesizer.OscillatorType oscillatorType;
+
+	/** Amplitude envelope parameters (attack, decay, sustain, release) applied to all voices. */
 	private double ampAttack, ampDecay, ampSustain, ampRelease;
+
+	/** Filter cutoff frequency in Hz and resonance Q factor applied to all voices. */
 	private double filterCutoff, filterResonance;
+
+	/** Depth of filter envelope modulation in Hz applied to all voices. */
 	private double filterEnvAmount;
+
+	/** Filter envelope parameters (attack, decay, sustain, release) applied to all voices. */
 	private double filterAttack, filterDecay, filterSustain, filterRelease;
+
+	/** True when the filter is enabled on all voices. */
 	private boolean filterEnabled;
 
 	// Modulation
+	/** LFO for pitch vibrato modulation; null if vibrato is not active. */
 	private LFO vibratoLFO;
+
+	/** Vibrato modulation depth in semitones. */
 	private double vibratoDepth;  // In semitones
+
+	/** LFO for amplitude tremolo modulation; null if tremolo is not active. */
 	private LFO tremoloLFO;
+
+	/** Tremolo modulation depth as a fraction of amplitude (0–1). */
 	private double tremoloDepth;  // 0-1 amplitude modulation
 
 	/**
@@ -402,6 +429,20 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	}
 
 	/**
+	 * Applies pitch bend to all active voices.
+	 *
+	 * @param semitones pitch bend amount in semitones
+	 */
+	public void setPitchBend(double semitones) {
+		for (int i = 0; i < voices.size(); i++) {
+			VoiceState state = allocator.getVoice(i);
+			if (state.isActive()) {
+				voices.get(i).setPitchBend(semitones);
+			}
+		}
+	}
+
+	/**
 	 * Releases all notes (panic/all notes off).
 	 */
 	public void allNotesOff() {
@@ -490,7 +531,7 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 						double semitoneOffset = lfoValue * vibratoDepth;
 						double pitchMultiplier = Math.pow(2.0, semitoneOffset / 12.0);
 						Frequency baseFreq = tuning.getTone(state.getMidiNote(),
-							org.almostrealism.audio.tone.KeyNumbering.MIDI);
+							KeyNumbering.MIDI);
 						voice.setFrequency(new Frequency(baseFreq.asHertz() * pitchMultiplier));
 					}
 				});
@@ -520,6 +561,7 @@ public class PolyphonicSynthesizer extends SummationCell implements Setup {
 	/**
 	 * Resets all voices to initial state.
 	 */
+	@Override
 	public void reset() {
 		allNotesOff();
 		for (AudioSynthesizer voice : voices) {

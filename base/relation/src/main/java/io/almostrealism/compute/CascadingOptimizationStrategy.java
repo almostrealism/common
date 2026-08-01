@@ -69,6 +69,7 @@ import java.util.stream.Stream;
  * @author Michael Murray
  */
 public class CascadingOptimizationStrategy implements ProcessOptimizationStrategy {
+	/** The ordered list of strategies attempted in sequence during optimization. */
 	private List<ProcessOptimizationStrategy> strategies;
 
 	/**

@@ -60,11 +60,25 @@ import java.util.function.Function;
  * @see PolymorphicAudioData
  */
 public class DynamicAudioCell extends AudioCellChoiceAdapter {
+	/**
+	 * Creates a DynamicAudioCell that allocates a shared data bank for all choices.
+	 *
+	 * @param decision the producer that selects the active cell output
+	 * @param choices functions that build a cell adapter from PolymorphicAudioData
+	 */
 	public DynamicAudioCell(CollectionProducer decision,
 							List<Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>> choices) {
 		this(PolymorphicAudioData.bank(choices.size()), decision, choices);
 	}
 
+	/**
+	 * Creates a DynamicAudioCell using a pre-allocated data bank.
+	 * Each choice gets an independent PolymorphicAudioData slice within the bank.
+	 *
+	 * @param data the pre-allocated PackedCollection data bank
+	 * @param decision the producer that selects the active cell output
+	 * @param choices functions that build a cell adapter from PolymorphicAudioData
+	 */
 	public DynamicAudioCell(PackedCollection data, CollectionProducer decision,
 							List<Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>> choices) {
 		super(decision, i -> new PolymorphicAudioData(data, i * PolymorphicAudioData.SIZE * 2), choices, true);

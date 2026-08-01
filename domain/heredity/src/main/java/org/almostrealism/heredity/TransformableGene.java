@@ -55,7 +55,9 @@ import java.util.function.UnaryOperator;
  */
 public abstract class TransformableGene implements Gene<PackedCollection> {
 
+	/** A single global transform applied to every factor's producer (may be {@code null}). */
 	private UnaryOperator<Producer<PackedCollection>> transform;
+	/** Per-factor transforms; if non-null, element {@code i} is applied to factor {@code i}'s producer. */
 	private UnaryOperator<Producer<PackedCollection>> transforms[];
 
 	/**

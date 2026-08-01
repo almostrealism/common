@@ -16,7 +16,7 @@ If ar-memory is unavailable, memory features degrade gracefully.
 
 Environment variables:
     AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
-    AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8083 on host, host.docker.internal:8083 in containers)
+    AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8084 on host, host.docker.internal:8084 in containers)
     AR_CONSULTANT_MODEL        - Ollama model name (default: qwen2.5-coder:32b-instruct-q4_K_M)
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
     AR_CONSULTANT_OLLAMA_URL   - Ollama base URL (default: http://localhost:11434)
@@ -80,24 +80,25 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
     """Build the prompt for a consultation question."""
     parts = []
 
+    # Put the question FIRST so the model knows what to look for in the docs
+    parts.append(f"## Question\n\n{question}")
+
+    if extra_context:
+        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
+
     if doc_context:
-        parts.append(f"## Relevant Documentation\n\n{doc_context}")
+        parts.append(f"## Relevant Documentation\n\nRead these chunks carefully — the answer is in here.\n\n{doc_context}")
     else:
         parts.append("## Relevant Documentation\n\n(No documentation found for this query)")
 
     if memory_context:
         parts.append(f"## Relevant Memories from Prior Sessions\n\n{memory_context}")
 
-    if extra_context:
-        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
-
-    parts.append(f"## Question\n\n{question}")
-
     parts.append(
-        "Answer the question using ONLY the documentation context above. "
-        "If the documentation does not directly answer the question but contains "
-        "related material, summarize what IS covered and cite the relevant sources. "
-        "Only respond with 'Not documented' if the context is completely empty."
+        "## Instructions\n\n"
+        "Answer the question above using the documentation chunks. "
+        "Include a code example if the docs provide one. "
+        "Cite the source file and line number."
     )
 
     return "\n\n".join(parts)
@@ -141,6 +142,44 @@ def _build_reformulate_prompt(raw_note: str, doc_context: str) -> str:
     )
 
     return "\n\n".join(parts)
+
+
+def _keyword_guidance(keywords: Optional[list[str]]) -> str:
+    """Generate guidance about keyword usage when results are poor."""
+    hints = []
+
+    if not keywords:
+        hints.append(
+            "Tip: Provide explicit keywords for better results. "
+            "Example: keywords=[\"StateDictionary\", \"weight loading\"]"
+        )
+    else:
+        # Check if keywords are all single words (common issue)
+        all_single = all(" " not in kw for kw in keywords)
+        has_generic = any(
+            kw.lower() in {
+                "default", "interface", "class", "method", "pattern",
+                "type", "module", "use", "create", "build", "make",
+            }
+            for kw in keywords
+        )
+        if all_single and len(keywords) > 2:
+            hints.append(
+                "Tip: Use multi-word phrases as keywords instead of "
+                "individual words. For example, [\"Features mixin\", "
+                "\"CollectionFeatures\"] works better than "
+                "[\"Features\", \"mixin\", \"CollectionFeatures\", "
+                "\"default\", \"interface\"] because single common words "
+                "match too many documents."
+            )
+        elif has_generic:
+            hints.append(
+                "Tip: Avoid generic keywords like 'default', 'interface', "
+                "'pattern'. Use domain-specific terms or multi-word phrases "
+                "that match documentation headings."
+            )
+
+    return (" " + " ".join(hints)) if hints else ""
 
 
 def _format_memory_context(memories: list[dict], max_entries: int = 3) -> str:
@@ -209,8 +248,9 @@ def consult(
         context: Optional additional context (e.g., code snippet, error message).
         keywords: Optional list of specific search terms. If provided, these are
             used directly for documentation search instead of extracting keywords
-            from the question. Use this to specify domain-specific terms that
-            matter most (e.g., ["AttentionFeatures", "backward", "gradient"]).
+            from the question. Use multi-word phrases for best results — e.g.,
+            ["Features mixin", "CollectionFeatures"] rather than individual
+            common words like ["Features", "mixin", "default", "interface"].
 
     Returns:
         Dictionary with answer, sources, and related memories.
@@ -254,12 +294,16 @@ def consult(
     # a "note" that encourages the caller to explore the listed sources.
     if answer.strip().lower() in ("not documented", "not documented."):
         if sources or html_refs:
-            result["note"] = (
-                "No direct answer was synthesized, but the sources listed "
-                "below may contain related information worth exploring."
+            note = (
+                "No direct answer was synthesized, but the sources and "
+                "html_refs fields contain related documentation worth exploring."
             )
+            note += _keyword_guidance(keywords)
+            result["note"] = note
         else:
-            result["answer"] = answer
+            note = "No documentation found for this query."
+            note += _keyword_guidance(keywords)
+            result["note"] = note
     else:
         result["answer"] = answer
 
@@ -275,6 +319,11 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     relevant documentation. The Consultant highlights which memories are
     still accurate and flags any that may be outdated.
 
+    Results are scoped to the current repository on a best-effort basis.
+    When git context detection succeeds, memories from unrelated projects
+    are filtered out. If detection fails, results may include cross-project
+    memories.
+
     Args:
         query: What to search for.
         namespace: Memory namespace to search.
@@ -283,7 +332,21 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     Returns:
         Dictionary with summary, raw memories, and doc references.
     """
-    memories = memory.search(query=query, namespace=namespace, limit=limit)
+    # Auto-detect repo URL to scope results to the current repository
+    detected_repo_url = None
+    try:
+        _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
+        if _common_dir not in sys.path:
+            sys.path.insert(0, _common_dir)
+        from git_context import detect_git_context
+        detected_repo_url, _ = detect_git_context()
+    except (ValueError, ImportError):
+        pass  # Git detection is best-effort
+
+    memories = memory.search(
+        query=query, namespace=namespace, limit=limit,
+        repo_url=detected_repo_url,
+    )
 
     if not memories:
         return {
@@ -323,6 +386,50 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
         "doc_references": doc_refs,
         "backend": llm.name,
     }
+
+
+@mcp.tool()
+@tracked_tool(history, "recall_namespaces")
+def recall_namespaces(branch: str = "", all_repos: bool = False) -> dict:
+    """List every memory namespace with its entry count and latest-write time.
+
+    Use this to discover where memories live and when each namespace was last
+    written — for example to find which namespace a recent hand-off note landed
+    in, without guessing namespace names and issuing a separate ``recall`` for
+    each. Namespaces are ordered most-recently-written first, so the freshest
+    activity is at the top.
+
+    By default results are scoped to the current repository (best-effort git
+    detection), matching ``recall``'s scoping. This avoids mixing in namespaces
+    from unrelated projects that share the store.
+
+    Args:
+        branch: Optional branch name to further restrict the counts. Empty
+            (default) counts every branch in the repository.
+        all_repos: When true, do not scope to the current repository — report
+            namespaces across every repository in the store.
+
+    Returns:
+        Dictionary with ``namespaces`` (a list of
+        ``{namespace, count, latest_created_at, latest_id}`` dicts, newest
+        first) and ``count`` (the number of namespaces).
+    """
+    detected_repo_url = None
+    if not all_repos:
+        try:
+            _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
+            if _common_dir not in sys.path:
+                sys.path.insert(0, _common_dir)
+            from git_context import detect_git_context
+            detected_repo_url, _ = detect_git_context()
+        except (ValueError, ImportError):
+            pass  # Git detection is best-effort
+
+    stats = memory.namespace_stats(
+        repo_url=detected_repo_url,
+        branch=branch or None,
+    )
+    return {"namespaces": stats, "count": len(stats)}
 
 
 @mcp.tool()
@@ -383,6 +490,21 @@ def remember(
 
     # Strip any wrapping the model might add
     reformulated = reformulated.strip().strip('"').strip("'")
+
+    # When no model is reachable, _generate returns the passthrough banner
+    # plus the raw prompt. Storing that as a memory pollutes recall (a census
+    # found 36 such dumps already in the corpus). Refuse early — before
+    # embedding — with a clear message. The ar-memory store guards this too,
+    # but catching it here avoids a wasted embed and a round trip.
+    if reformulated.lstrip().startswith("[Consultant model not available"):
+        return {
+            "stored": False,
+            "error": "inference backend unavailable; memory not stored. "
+                     "Retry once a model is reachable.",
+            "original": content,
+            "namespace": namespace,
+            "backend": llm.name,
+        }
 
     # Store both versions
     entry = memory.store_dual(
@@ -701,6 +823,7 @@ def branch_catchup(
     # memories that were stored without the repo_url/branch fields
     semantic_memories = memory.search(
         query=f"branch {branch} work progress", namespace=namespace, limit=5,
+        repo_url=repo_url,
     )
     # Deduplicate by ID
     seen_ids = {m["id"] for m in branch_memories}

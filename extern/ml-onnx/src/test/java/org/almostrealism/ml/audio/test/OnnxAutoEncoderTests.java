@@ -20,15 +20,31 @@ import ai.onnxruntime.OrtException;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.audio.AutoEncoder;
 import org.almostrealism.ml.audio.OnnxAutoEncoder;
-import org.almostrealism.persistence.AssetGroup;
-import org.almostrealism.persistence.AssetGroupInfo;
+import org.almostrealism.persist.assets.AssetGroup;
+import org.almostrealism.persist.assets.AssetGroupInfo;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for ONNX autoencoder integration.
+ */
 public class OnnxAutoEncoderTests extends TestSuiteBase {
+
+	/**
+	 * Test encoding audio with the ONNX autoencoder.
+	 *
+	 * <p>Excluded from the {@link TestUtils#PIPELINE} profile: it loads an ONNX model
+	 * from {@code assets/stable-audio}, which the CI runners do not carry, and fails
+	 * with a {@link NullPointerException} from the ONNX runtime when the directory is
+	 * absent. The module itself is in the CI test matrix, so any test added here in
+	 * future runs without further wiring.</p>
+	 */
 	@Test(timeout = 120000)
+	@TestProperties(excludeProfiles = TestUtils.PIPELINE)
 	public void encode() throws OrtException {
 		AssetGroup assets = new AssetGroup(AssetGroupInfo
 				.forDirectory(new File("assets/stable-audio")));

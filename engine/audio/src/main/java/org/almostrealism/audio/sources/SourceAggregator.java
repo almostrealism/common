@@ -32,6 +32,15 @@ import org.almostrealism.collect.PackedCollection;
  * @see ModularSourceAggregator
  */
 public interface SourceAggregator {
+	/**
+	 * Aggregates the given source audio signals into a single output using the provided parameters.
+	 *
+	 * @param buffer    the buffer configuration (sample rate and frame count)
+	 * @param params    synthesis parameter values
+	 * @param frequency producer yielding the fundamental frequency in Hz
+	 * @param sources   one or more source audio producers to aggregate
+	 * @return a producer yielding the aggregated audio output
+	 */
 	Producer<PackedCollection> aggregate(BufferDetails buffer,
 											Producer<PackedCollection> params,
 											Producer<PackedCollection> frequency,

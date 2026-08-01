@@ -166,6 +166,67 @@ public class MTL {
 	public static native long computeCommandEncoder(long commandBuffer);
 
 	/**
+	 * Encodes a buffer-to-buffer copy onto the command buffer via a blit command encoder, so the copy
+	 * is queued alongside the surrounding compute dispatches and ordered against them by Metal's
+	 * in-buffer hazard tracking.
+	 *
+	 * @param commandBuffer      Native command buffer pointer
+	 * @param sourceBuffer       Native source buffer pointer
+	 * @param sourceOffset       Byte offset within the source buffer
+	 * @param destinationBuffer  Native destination buffer pointer
+	 * @param destinationOffset  Byte offset within the destination buffer
+	 * @param size               Number of bytes to copy
+	 */
+	public static native void blitCopy(long commandBuffer, long sourceBuffer, long sourceOffset,
+									   long destinationBuffer, long destinationOffset, long size);
+
+	/**
+	 * Creates an {@code MTLSharedEvent} on the device, used to order dispatches across command
+	 * buffers on the GPU (the analog of an OpenCL {@code cl_event}).
+	 *
+	 * @param device Native device pointer
+	 * @return Native pointer to the shared event
+	 */
+	public static native long createSharedEvent(long device);
+
+	/**
+	 * Encodes a signal of the event to {@code value} once the command buffer's prior work
+	 * completes. Must be called when no encoder is active on the buffer.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @param event Native shared-event pointer
+	 * @param value Value to signal
+	 */
+	public static native void encodeSignalEvent(long commandBuffer, long event, long value);
+
+	/**
+	 * Encodes a wait until the event reaches {@code value} before the command buffer's
+	 * subsequent work runs. Must be called when no encoder is active on the buffer.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @param event Native shared-event pointer
+	 * @param value Value to wait for
+	 */
+	public static native void encodeWaitForEvent(long commandBuffer, long event, long value);
+
+	/**
+	 * Signals the event to {@code value} from the host, releasing any encoded waits for
+	 * values up to and including it. An event's signaled value must never decrease, so
+	 * callers are responsible for signaling monotonically non-decreasing values per event.
+	 *
+	 * @param event Native shared-event pointer
+	 * @param value Value to signal
+	 */
+	public static native void setSignaledValue(long event, long value);
+
+	/**
+	 * Releases a shared event created by {@link #createSharedEvent(long)}.
+	 *
+	 * @param event Native shared-event pointer
+	 */
+	public static native void releaseSharedEvent(long event);
+
+	/**
 	 * Creates an integer buffer (32-bit) from array data.
 	 *
 	 * @param device Native device pointer
@@ -403,6 +464,18 @@ public class MTL {
 	public static native void setBuffer(long commandEncoder, int index, long buffer);
 
 	/**
+	 * Binds a small array of ints directly into the kernel argument table at the given index,
+	 * without a backing buffer. Metal copies the bytes into the command at encode time, so each
+	 * encoded command captures its own values — safe when many commands are batched into one
+	 * command buffer. Subject to Metal's inline-argument size limit (typically 4&nbsp;KB).
+	 *
+	 * @param commandEncoder Native command encoder pointer
+	 * @param index Buffer binding index
+	 * @param data The integer values to bind inline
+	 */
+	public static native void setBytes(long commandEncoder, int index, int[] data);
+
+	/**
 	 * Dispatches compute threads with explicit threadgroup and grid dimensions.
 	 *
 	 * @param commandEncoder Native command encoder pointer
@@ -449,9 +522,31 @@ public class MTL {
 	/**
 	 * Waits until the command buffer completes execution (synchronous).
 	 *
+	 * <p>Returns identically whether the buffer executed successfully or finished with a
+	 * GPU error or watchdog kill; callers must read {@link #commandBufferStatus(long)} to
+	 * distinguish the two, since a killed buffer's dispatches silently never ran.</p>
+	 *
 	 * @param commandBuffer Native command buffer pointer
 	 */
 	public static native void waitUntilCompleted(long commandBuffer);
+
+	/**
+	 * Returns the command buffer's {@code MTLCommandBufferStatus} ordinal: 0 not enqueued,
+	 * 1 enqueued, 2 committed, 3 scheduled, 4 completed, 5 error.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @return the status ordinal
+	 */
+	public static native int commandBufferStatus(long commandBuffer);
+
+	/**
+	 * Returns the localized error description for a command buffer that finished with the
+	 * error status, or {@code null} when the buffer carries no error.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @return the error description, or {@code null}
+	 */
+	public static native String commandBufferError(long commandBuffer);
 
 	/**
 	 * Releases a Metal buffer and frees its resources.
@@ -459,6 +554,15 @@ public class MTL {
 	 * @param buffer Native buffer pointer
 	 */
 	public static native void releaseBuffer(long buffer);
+
+	/**
+	 * Releases a command buffer obtained from {@link #commandBuffer(long)}. The command buffer is
+	 * retained on creation so it survives the runner's per-task autorelease pools; this drops that
+	 * explicit retain once the buffer has completed.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 */
+	public static native void releaseCommandBuffer(long commandBuffer);
 
 	/**
 	 * Releases a compute pipeline state and frees its resources.
@@ -480,4 +584,27 @@ public class MTL {
 	 * @param device Native device pointer
 	 */
 	public static native void releaseDevice(long device);
+
+	/**
+	 * Creates an Objective-C autorelease pool on the calling thread and returns an
+	 * opaque handle to it.
+	 *
+	 * <p>metal-cpp factory methods such as {@code commandBuffer()} and
+	 * {@code computeCommandEncoder()} return autoreleased objects. On a long-lived JNI
+	 * worker thread with no pool in place these are never reclaimed and accumulate in
+	 * the Metal driver until it stalls. Wrap each kernel dispatch between this call and
+	 * {@link #autoreleasePoolPop(long)} (on the same thread) to drain the per-dispatch
+	 * command buffers and encoders.</p>
+	 *
+	 * @return an opaque handle to the new autorelease pool, for {@link #autoreleasePoolPop(long)}
+	 */
+	public static native long autoreleasePoolPush();
+
+	/**
+	 * Drains and releases the autorelease pool created by {@link #autoreleasePoolPush()},
+	 * freeing every object autoreleased on this thread since the matching push.
+	 *
+	 * @param pool the handle returned by {@link #autoreleasePoolPush()}
+	 */
+	public static native void autoreleasePoolPop(long pool);
 }

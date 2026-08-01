@@ -17,7 +17,6 @@
 package org.almostrealism.primitives;
 
 import io.almostrealism.code.Operator;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.ClosestIntersection;
@@ -27,7 +26,6 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.space.AbstractSurface;
 
 import java.util.Arrays;
-import java.util.function.Supplier;
 
 // TODO  Add bounding solid to make intersection calculations faster.
 
@@ -47,11 +45,14 @@ public class CSG extends AbstractSurface {
   /** Integer code for boolean intersection (A & B). */
   public static final int INTERSECTION = 3;
   
+  /** The boolean operation type ({@link #UNION}, {@link #DIFFERENCE}, or {@link #INTERSECTION}). */
   private final int type;
+
+  /** The first (primary) operand surface. */
   private final AbstractSurface sa;
-	private final AbstractSurface sb;
-  
-  private final boolean inverted;
+
+  /** The second (secondary) operand surface. */
+  private final AbstractSurface sb;
 
   	/**
   	 * Constructs a new CSG object using the specified Surface objects.
@@ -68,8 +69,6 @@ public class CSG extends AbstractSurface {
 		this.sb = b;
 		
 		this.type = type;
-		
-		this.inverted = false;
 	}
 	
     /** @return  null. */
@@ -85,8 +84,6 @@ public class CSG extends AbstractSurface {
         Producer<Ray> r = ray;
         if (m != null) r = (Producer) m.getInverse().transform(r);
 
-        final Supplier<Evaluable<? extends Ray>> fr = r;
-        
         if (this.type == CSG.UNION) {
             return new ClosestIntersection(r, Arrays.asList(this.sa, this.sb));
         } else if (this.type == CSG.DIFFERENCE) {
@@ -191,6 +188,12 @@ public class CSG extends AbstractSurface {
         return null;
     }
 
+	/**
+	 * Computes the bounding interval {@code [min, max]} over the given intersection distances.
+	 *
+	 * @param intersect array of intersection distance values
+	 * @return a two-element array {@code {min, max}}, or {@code {0.0, 0.0}} if the array is empty
+	 */
     public double[] interval(double[] intersect) {
         if (intersect.length <= 0) return new double[] {0.0, 0.0};
         
@@ -206,6 +209,13 @@ public class CSG extends AbstractSurface {
         return o;
     }
     
+	/**
+	 * Computes the set difference of two intervals ({@code ia} minus {@code ib}).
+	 *
+	 * @param ia the interval to subtract from
+	 * @param ib the interval to subtract
+	 * @return a two-element array of two-element intervals representing the difference
+	 */
     public double[][] intervalDifference(double[] ia, double[] ib) {
         double[][] o = new double[2][2];
         
@@ -226,6 +236,13 @@ public class CSG extends AbstractSurface {
         return o;
     }
     
+	/**
+	 * Computes the intersection of two intervals.
+	 *
+	 * @param ia the first interval
+	 * @param ib the second interval
+	 * @return a two-element array {@code {max(ia[0], ib[0]), min(ia[1], ib[1])}}
+	 */
     public double[] intervalIntersection(double[] ia, double[] ib) {
         return new double[] {Math.max(ia[0], ib[0]), Math.min(ia[1], ib[1])};
     }

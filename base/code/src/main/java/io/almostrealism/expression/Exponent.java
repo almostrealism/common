@@ -27,8 +27,22 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A power expression that computes {@code base^exponent} using the language-specific
+ * {@code pow()} function.
+ *
+ * <p>Provides algebraic strength-reduction: when the exponent is a small integer constant
+ * and the base computation is cheap, the expression is rewritten as a series of
+ * multiplications to avoid the expensive {@code pow()} library call.</p>
+ */
 public class Exponent extends Expression<Double> {
 
+	/**
+	 * Constructs an exponent expression.
+	 *
+	 * @param base     the base expression
+	 * @param exponent the exponent expression
+	 */
 	protected Exponent(Expression<Double> base, Expression<Double> exponent) {
 		super(Double.class, base, exponent);
 	}
@@ -91,8 +105,19 @@ public class Exponent extends Expression<Double> {
 		return product(ts, self, sum(ts, term1, term2));
 	}
 
+	/**
+	 * Creates and post-processes a power expression for the given base and exponent.
+	 *
+	 * <p>Non-FP operands are widened with {@link Expression#toDouble()} so the emitted
+	 * {@code pow()} call always has floating-point arguments — Metal's {@code pow()}
+	 * overloads are FP-only and an integer operand triggers a compile ambiguity.</p>
+	 *
+	 * @param base     the base expression
+	 * @param exponent the exponent expression
+	 * @return a simplified or constant-folded expression
+	 */
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
-		return Expression.process(create(base, exponent));
+		return Expression.process(create(base.toDouble(), exponent.toDouble()));
 	}
 
 	/**
@@ -105,7 +130,7 @@ public class Exponent extends Expression<Double> {
 	 * is expensive (e.g. contains transcendental functions like {@code sin}),
 	 * the expansion is suppressed to avoid duplicating the expensive computation.</p>
 	 *
-	 * <p>The {@code pow(x, -1.0) &rarr; 1.0 / x} case is always applied since
+	 * <p>The {@code pow(x, -1.0) -> 1.0 / x} case is always applied since
 	 * it does not duplicate the base expression.</p>
 	 *
 	 * @param base     the base expression

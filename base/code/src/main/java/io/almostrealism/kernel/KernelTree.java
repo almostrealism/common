@@ -18,5 +18,14 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.relation.Tree;
 
+/**
+ * A composite interface that combines {@link Tree} and {@link KernelStructure} for types
+ * that form hierarchical computation trees aligned with kernel structure requirements.
+ *
+ * <p>Types implementing {@code KernelTree} can be traversed as a tree and also provide
+ * kernel-structural metadata, enabling both compositional analysis and kernel generation.</p>
+ *
+ * @param <T> the self-referential type of tree nodes
+ */
 public interface KernelTree<T extends KernelTree> extends Tree<T>, KernelStructure<T> {
 }

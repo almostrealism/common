@@ -40,13 +40,22 @@ Already configured in `.mcp.json`:
 
 ## Prerequisites
 
-**For test JVMs**: Start the test with `jmx_monitoring: true` via `ar-test-runner`. This injects:
-- `-XX:StartFlightRecording=...` for JFR allocation profiling
-- `-XX:NativeMemoryTracking=summary` for native memory reports
+**For test JVMs**: Start the test with `jmx_monitoring: true` via `ar-test-runner`. This
+injects no JVM startup flags — `-XX:StartFlightRecording` corrupts the surefire fork
+channel and `-XX:NativeMemoryTracking` aborts this project's forked JVM when the JNI
+hardware library loads. Thread dumps, class histograms, GC stats, and heap dumps all
+attach via `jcmd` at runtime; start JFR with `start_jfr_recording` when needed.
 
-The test runner automatically discovers the forked Surefire `ForkedBooter` PID and writes it to `metadata.json`.
+The test runner discovers the forked Surefire JVM (the `ForkedBooter` main class or a
+`surefirebooter-*.jar`) and writes its PID to `metadata.json`. Discovery polls `jps` for
+as long as the run is active — the fork only appears after maven's resolve and compile
+phases, which can take minutes on large modules — and accepts a candidate only when it
+is a process descendant of the run's maven process, so concurrent maven invocations
+never cross-match (see `fork_discovery.py` in `ar-test-runner`).
 
-If the forked JVM fails to start with JFR/NMT arguments (incompatible JDK, path issues, etc.), the test runner detects the fork failure within 15 seconds, logs a diagnostic message to `output.txt`, and automatically retries without JFR/NMT. The metadata is updated with `jmx_monitoring_degraded: true`. In degraded mode, `jstat`-based tools still work but JFR (`get_allocation_report`) and NMT (`get_native_memory`) are unavailable.
+If the forked JVM fails to start (incompatible JDK, path issues, etc.), the test runner
+detects the fork failure within 15 seconds, logs a diagnostic message to `output.txt`,
+and automatically retries. The metadata is updated with `jmx_monitoring_degraded: true`.
 
 **For standalone JVMs**: Use `attach_to_pid` to connect to any running JVM by PID. This creates a synthetic run entry so all diagnostic tools work without `ar-test-runner`. JFR and NMT are only available if the target JVM was started with those flags manually.
 
@@ -300,6 +309,30 @@ When `jmx_monitoring: true` is set and the forked JVM fails to start (detected b
 2. Retries the Maven command without JFR/NMT arguments
 3. Updates metadata with `jmx_monitoring_degraded: true` and `jmx_retry_reason`
 4. Spawns PID discovery for the new process (jstat monitoring still works)
+
+## Offline Heap Dump Analysis
+
+When a JVM crashes with OOM or a `.hprof` file is captured, `analyze_heap_dump` analyzes it offline — no live process required.
+
+```
+analyze_heap_dump  path:"/var/dumps/java_pid17905.hprof"  mode:"summary"
+```
+
+**Modes:**
+- `histogram` — Top N classes by instance count and shallow size. Tells you *what* is filling the heap (e.g., 4 million `byte[]` arrays).
+- `dominators` — Top N objects by retained size. Tells you *who is holding* the memory (e.g., a single `HashMap` retaining 6 GB).
+- `summary` — Both views plus heap metadata (default).
+
+The tool uses `heap_analyzer.py` in `tools/mcp/jmx/`, which delegates to a Java-based HPROF parser for the heavy binary parsing and graph traversal. The results are returned in the same structured format as `get_class_histogram` and `diff_class_histogram` so existing histogram tooling works without modification.
+
+**Use when:**
+- A JVM crashed with OOM and left a `.hprof` file
+- You have a dump from a previous run and need post-hoc analysis
+- The live JVM is no longer running (so `attach_to_pid` and `attach_to_run` are not available)
+
+**Limitations:**
+- Dominator tree computation is memory-intensive for very large dumps (>4 GB); class histograms are always fast (single-pass)
+- The `.hprof` file must be readable by the same user running the MCP server
 
 ## Limitations
 

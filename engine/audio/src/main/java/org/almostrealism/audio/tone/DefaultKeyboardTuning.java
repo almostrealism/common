@@ -50,10 +50,19 @@ import org.almostrealism.time.Frequency;
  * @see WesternChromatic
  */
 public class DefaultKeyboardTuning implements KeyboardTuning {
+	/** Pre-computed frequency table for all 108 keys, indexed from A0. */
 	private final Frequency[] freq;
 
+	/**
+	 * Creates a DefaultKeyboardTuning with standard concert pitch (A4 = 440 Hz).
+	 */
 	public DefaultKeyboardTuning() { this(440); }
 
+	/**
+	 * Creates a DefaultKeyboardTuning with a custom concert pitch.
+	 *
+	 * @param a the frequency of A4 in Hz (e.g., 440 for standard tuning, 432 for alternative)
+	 */
 	public DefaultKeyboardTuning(double a) {
 		freq = new Frequency[108];
 		for (int x = 0; x < 108; ++x) {

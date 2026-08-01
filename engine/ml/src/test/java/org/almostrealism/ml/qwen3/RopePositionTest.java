@@ -17,6 +17,8 @@
 package org.almostrealism.ml.qwen3;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.ml.RotationFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -32,10 +34,14 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Test to verify RoPE rotation with dynamic position.
+ * Test to verify RoPE rotation with dynamic position updates.
  */
 public class RopePositionTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/**
+	 * Tests that RoPE rotation produces different outputs at different positions.
+	 * This verifies that position is being read dynamically rather than baked in.
+	 */
 	@Test(timeout = 30000)
 	public void testRopeWithDynamicPosition() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/rope_position_test.txt";
@@ -51,16 +57,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		int freqDim = headSize / 2;
 
 		// Create RoPE frequency tensor: (seqLen, freqDim, 2) containing [cos, sin]
-		PackedCollection freqCis = new PackedCollection(shape(seqLen, freqDim, 2));
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double freq = 1.0 / Math.pow(10000.0, (2.0 * i) / headSize);
-				double angle = pos * freq;
-				int idx = (pos * freqDim + i) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
-			}
-		}
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(10000.0, headSize, seqLen).evaluate();
 
 		log("FreqCis at position 0: [" +
 			freqCis.toDouble(0) + ", " + freqCis.toDouble(1) + ", " +
@@ -83,7 +80,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		TraversalPolicy ropeShape = shape(heads, freqDim, 2);
 
 		// Build model with just ropeRotation
-		CellularLayer ropeLayer = ropeRotation(ropeShape, freqCis, dynamicPosition);
+		CellularLayer ropeLayer = ropeRotation(ropeShape, cp(freqCis), dynamicPosition);
 
 		Model model = new Model(ropeShape);
 		model.add(ropeLayer);
@@ -93,20 +90,17 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		// Create input: simple values for debugging
 		// Shape: (heads, freqDim, 2) = (2, 2, 2) = 8 elements
 		PackedCollection input = new PackedCollection(ropeShape);
-		// Set input as [1, 0] for each head (represents (1, 0) complex numbers)
-		for (int h = 0; h < heads; h++) {
-			for (int f = 0; f < freqDim; f++) {
-				input.setMem((h * freqDim + f) * 2, 1.0);  // real
-				input.setMem((h * freqDim + f) * 2 + 1, 0.0);  // imag
-			}
-		}
+		// Set input as [1, 0] for each head (represents (1, 0) complex
+		// numbers): alternating values from one kernel over an index ramp
+		mod(integers(1, heads * freqDim * 2 + 1), c(2.0))
+				.into(input.traverseEach()).evaluate();
 
 		log("\nInput (all 1+0i complex):");
 		log("  [" + input.toDouble(0) + ", " + input.toDouble(1) + ", " +
 			input.toDouble(2) + ", " + input.toDouble(3) + ", ...]");
 
 		// Test at position 0
-		position.setMem(0, 0.0);
+		position.clear();
 		PackedCollection result0 = compiled.forward(input);
 		double[] r0 = new double[8];
 		for (int i = 0; i < 8; i++) r0[i] = result0.toDouble(i);
@@ -115,7 +109,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		log("  Expected (cos(0), sin(0)): [1, 0, 1, 0, ...]");
 
 		// Test at position 3
-		position.setMem(0, 3.0);
+		position.fill(3.0);
 		PackedCollection result3 = compiled.forward(input);
 		double[] r3 = new double[8];
 		for (int i = 0; i < 8; i++) r3[i] = result3.toDouble(i);
@@ -125,7 +119,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		double angle1 = 3.0 * (1.0 / Math.pow(10000.0, 2.0 / headSize));
 		log("  Expected (cos(3*freq), sin(3*freq)): [" +
 			Math.cos(angle0) + ", " + Math.sin(angle0) + ", " +
-			Math.cos(angle1) + ", " + Math.sin(angle1) + ", ...]");
+				Math.cos(angle1) + ", " + Math.sin(angle1) + ", ...]");
 
 		// Check if results are different
 		log("\nComparing position 0 vs position 3:");

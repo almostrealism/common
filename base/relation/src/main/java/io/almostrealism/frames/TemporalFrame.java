@@ -44,6 +44,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class TemporalFrame {
+	/** The earlier predicate {@code a} and later predicate {@code b} of this temporal relation. */
 	private Predicate a, b;
 
 	/**
@@ -63,5 +64,6 @@ public class TemporalFrame {
 	 *
 	 * @return a string in the format "{@code a} is before {@code b}"
 	 */
+	@Override
 	public String toString() { return a + " is before " + b; }
 }

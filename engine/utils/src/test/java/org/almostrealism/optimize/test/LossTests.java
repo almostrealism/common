@@ -23,7 +23,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for loss functions.
+ */
 public class LossTests extends TestSuiteBase {
+	/**
+	 * Tests mean squared error loss computation.
+	 */
 	@Test(timeout = 10000)
 	public void meanSquaredError() {
 		TraversalPolicy outputShape = new TraversalPolicy(1, 1, 28, 28).traverseEach();

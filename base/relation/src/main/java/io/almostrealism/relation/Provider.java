@@ -58,6 +58,7 @@ package io.almostrealism.relation;
  * @author Michael Murray
  */
 public class Provider<T> implements FixedEvaluable<T> {
+	/** The constant value returned by every evaluation of this provider. */
 	private final T value;
 
 	/**

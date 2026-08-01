@@ -19,7 +19,14 @@ import java.io.File;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for {@link CellList} export and mself feedback operations.
+ */
 public class CellListTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/**
+	 * Tests exporting audio data from a CellList through MemoryDataCopy.
+	 */
 	@Test(timeout = 60000)
 	public void export() throws IOException {
 		WaveData data = WaveData.load(getTestWavFile());
@@ -44,6 +51,9 @@ public class CellListTests extends TestSuiteBase implements CellFeatures, AudioT
 		Assert.assertNotEquals(0.0, result.toDouble(30), 0.0);
 	}
 
+	/**
+	 * Tests mself feedback delay with adjustable delay cells.
+	 */
 	@Test(timeout = 60000)
 	public void mselfDelay() {
 		CellList cells = w(0, getTestWavPath());

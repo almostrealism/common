@@ -23,8 +23,14 @@ import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestSuiteBase;
 
+/**
+ * Tests for CellPair bidirectional state synchronization.
+ */
 public class CellPairTest extends TestSuiteBase {
 
+	/**
+	 * Tests scalar cached state pair operation.
+	 */
 	// TODO @Test(timeout = 10000)
 	public void scalarCachedStatePair() {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();
@@ -59,6 +65,9 @@ public class CellPairTest extends TestSuiteBase {
 		assertEquals(0.0, cellB.getCachedValue().toDouble(0));
 	}
 
+	/**
+	 * Tests scalar cached state pair with operation list.
+	 */
 	// TODO @Test(timeout = 10000)
 	public void scalarCachedStatePairOperationList() {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();

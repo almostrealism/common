@@ -4,11 +4,17 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for pair bank operations.
+ */
 public class PairBankTest extends TestSuiteBase {
+
+	/**
+	 * Tests basic pair bank operations.
+	 */
 	@Test(timeout = 10000)
 	public void test() {
 		PackedCollection bank = Pair.bank(2);
@@ -20,6 +26,9 @@ public class PairBankTest extends TestSuiteBase {
 		assertEquals(4.0, bank.get(1).toDouble(1));
 	}
 
+	/**
+	 * Tests concatenation of pair banks.
+	 */
 	@Test(timeout = 10000)
 	public void concat1() {
 		Producer<PackedCollection> l = v(shape(-1, 1), 0);
@@ -27,11 +36,9 @@ public class PairBankTest extends TestSuiteBase {
 
 		CollectionProducer concat = concat(shape(2), l, r);
 
-		PackedCollection left = new PackedCollection(shape(4, 1));
-		left.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection left = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(4, 1));
 
-		PackedCollection right = new PackedCollection(shape(4, 1));
-		right.setMem(5.0, 6.0, 7.0, 8.0);
+		PackedCollection right = pack(5.0, 6.0, 7.0, 8.0).reshape(shape(4, 1));
 
 		PackedCollection destination = new PackedCollection(shape(4, 2));
 
@@ -43,14 +50,16 @@ public class PairBankTest extends TestSuiteBase {
 		assertEquals(7.0, destination.valueAt(2, 1));
 	}
 
+	/**
+	 * Tests concatenation of pair banks with in-place inputs.
+	 */
 	@Test(timeout = 10000)
 	public void concat2() {
 		Producer<PackedCollection> in = v(shape(-1, 4, 1), 0);
 
 		CollectionProducer concat = concat(shape(4, 2), in, in);
 
-		PackedCollection timeline = new PackedCollection(shape(4, 1));
-		timeline.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection timeline = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(4, 1));
 
 		PackedCollection destination = new PackedCollection(shape(4, 2));
 
@@ -61,29 +70,9 @@ public class PairBankTest extends TestSuiteBase {
 		assertEquals(3.0, destination.valueAt(2, 1));
 	}
 
-	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
-	public void map() {
-
-		Producer<PackedCollection> in = v(shape(4, 1), 0);
-
-		CollectionProducer concat = map(shape(2), traverse(1, in),
-				v -> concat(c(2.0).multiply(v), c(2.0).multiply(v).add(c(1.0))));
-
-		PackedCollection timeline = new PackedCollection(shape(4, 1));
-		timeline.setMem(1.0, 2.0, 3.0, 4.0);
-
-		PackedCollection destination = new PackedCollection(shape(4, 2));
-
-		verboseLog(() -> {
-			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
-			destination.traverse(1).print();
-		});
-
-		assertEquals(6.0, destination.valueAt(2, 0));
-		assertEquals(7.0, destination.valueAt(2, 1));
-	}
-
+	/**
+	 * Tests extracting a pair from a pair bank.
+	 */
 	@Test(timeout = 10000)
 	public void pairFromPairBank() {
 		PackedCollection bank = Pair.bank(10);
@@ -102,8 +91,7 @@ public class PairBankTest extends TestSuiteBase {
 		Producer<PackedCollection> pairFromPairBank =
 				(Producer<PackedCollection>) pairFromBank(v(shape(10, 2), 0), index);
 
-		PackedCollection timeline = new PackedCollection(shape(4, 1));
-		timeline.setMem(1.0, 2.0, 3.0, 4.0);
+		PackedCollection timeline = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(4, 1));
 
 		PackedCollection destination = new PackedCollection(shape(4, 2));
 

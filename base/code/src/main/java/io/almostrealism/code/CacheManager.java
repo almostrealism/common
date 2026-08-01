@@ -207,4 +207,27 @@ public class CacheManager<T> {
 			// System.out.println("CacheManager: Cleared " + count + " cached values");
 		};
 	}
+
+	/**
+	 * Drops all entries from the internal access-time map without invoking any
+	 * entry's clear consumer.
+	 *
+	 * <p>{@link #maxCachedEntries(CacheManager, int)} only marks evicted entries
+	 * unavailable; the internal {@code HashMap} keys remain, holding strong
+	 * references to the source {@link Evaluable} instances and through them to
+	 * any objects captured in their closures. This method drops those references
+	 * so the captured graph becomes eligible for garbage collection.</p>
+	 *
+	 * <p>The clear consumer (configured via {@link #setClear(Consumer)}) is
+	 * intentionally <em>not</em> invoked here. The clear consumer is designed
+	 * for active eviction during normal cache use, where the cached value will
+	 * never be requested again. A cache-wide drop, in contrast, may be triggered
+	 * between independent rendering scenes that share underlying memory through
+	 * delegate chains; eagerly destroying every cached value would cascade into
+	 * still-live state. Native memory referenced by the dropped values is
+	 * released by ordinary GC + finalizer paths.</p>
+	 */
+	public void dropAll() {
+		values.clear();
+	}
 }

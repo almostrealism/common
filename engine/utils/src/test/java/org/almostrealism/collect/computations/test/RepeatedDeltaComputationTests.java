@@ -36,7 +36,13 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.function.Supplier;
 
+/**
+ * Tests for repeated delta computations.
+ */
 public class RepeatedDeltaComputationTests extends TestSuiteBase {
+	/**
+	 * Tests repeat product operation.
+	 */
 	@Test(timeout = 60000)
 	public void repeatProduct() {
 		PackedCollection in = pack(2.0, 1.5);
@@ -49,6 +55,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		c.get().evaluate().print();
 	}
 
+	/**
+	 * Tests sum delta operation.
+	 */
 	@Test(timeout = 60000)
 	public void sum() {
 		PackedCollection in = pack(2.0, 1.0, 4.0, 3.0).reshape(2, 2).traverse(1);
@@ -65,6 +74,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
 	}
 
+	/**
+	 * Tests product sum delta operation.
+	 */
 	@Test(timeout = 60000)
 	public void productSum() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
@@ -82,6 +94,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		assertEquals(1.0, out.valueAt(1, 0, 1, 1));
 	}
 
+	/**
+	 * Tests product sum with index projection.
+	 */
 	@Test(timeout = 60000)
 	public void productSumIndex() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
@@ -109,6 +124,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests product sum with index projection variant 2.
+	 */
 	@Test(timeout = 60000)
 	public void productSumIndex2() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2)
@@ -138,6 +156,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		assertEquals(1.0, out.valueAt(3, 1));
 	}
 
+	/**
+	 * Tests product repeat sum operation.
+	 */
 	@Test(timeout = 60000)
 	public void productRepeatSum1() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
@@ -160,6 +181,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests product enumerate operation.
+	 */
 	@Test(timeout = 60000)
 	public void productEnumerate() {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2);
@@ -180,6 +204,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests product enumerate with large dimensions.
+	 */
 	@Test(timeout = 60000)
 	public void productEnumerateLarge() {
 		PackedCollection multiplier = new PackedCollection(10).fill(pos -> pos[0] + 1.0);
@@ -211,16 +238,26 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests product sum enumerate operation.
+	 */
 	@Test(timeout = 60000)
 	public void productSumEnumerate() {
 		productSumEnumerate(false);
 	}
 
+	/**
+	 * Tests product sum enumerate with optimization.
+	 */
 	@Test(timeout = 60000)
 	public void productSumEnumerateOptimized() {
 		productSumEnumerate(true);
 	}
 
+	/**
+	 * Tests product sum enumerate with optimization option.
+	 * @param optimize whether to optimize the operation
+	 */
 	public void productSumEnumerate(boolean optimize) {
 		PackedCollection multiplier = pack(4.0, 3.0, 2.0, 1.0).reshape(2, 2).traverse(1);
 		PackedCollection in = pack(1.0, 1.0, 1.0, 1.0).reshape(2, 2).traverse(1);
@@ -239,6 +276,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		assertEquals(1.0, out.valueAt(3, 1));
 	}
 
+	/**
+	 * Tests small convolution delta operation.
+	 */
 	@Test(timeout = 7 * 60000)
 	@TestDepth(2)
 	public void convDeltaSmall() throws IOException {
@@ -247,6 +287,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		convDelta("convDeltaSmall", l, d, false);
 	}
 
+	/**
+	 * Tests medium convolution delta operation.
+	 */
 	@Test(timeout = 4 * 60000)
 	@TestDepth(3)
 	public void convDeltaMedium() throws IOException {
@@ -255,6 +298,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		convDelta("convDelta", l, d, false);
 	}
 
+	/**
+	 * Tests small convolution delta with gradient.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	@TestProperties(longRunning = true)
@@ -270,6 +316,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests large convolution delta with gradient.
+	 */
 	@Test(timeout = 60000)
 	@TestProperties(knownIssue = true)
 	public void convDeltaGradLarge() throws IOException {
@@ -277,6 +326,13 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		convDelta("convDeltaGradLarge", 14, 28, true);
 	}
 
+	/**
+	 * Helper for convolution delta testing with profiling.
+	 * @param name test name for profiling
+	 * @param l layer size parameter
+	 * @param d dimension parameter
+	 * @param byGradient whether to compute by gradient
+	 */
 	public void convDelta(String name, int l, int d, boolean byGradient) throws IOException {
 		int n = 1;
 		int c = 4 * l;
@@ -292,6 +348,15 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Helper for convolution delta testing.
+	 * @param n batch size
+	 * @param c channel count
+	 * @param h height
+	 * @param w width
+	 * @param f filter count
+	 * @param byGradient whether to compute by gradient
+	 */
 	public void convDelta(int n, int c, int h, int w, int f, boolean byGradient) {
 		int s = 3;
 
@@ -316,6 +381,13 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		log(out.getShape());
 	}
 
+	/**
+	 * Helper for convolution operation.
+	 * @param s stride
+	 * @param input input collection
+	 * @param filters filter collection
+	 * @return convolution result
+	 */
 	protected CollectionProducer conv(int s,
 									  CollectionProducer input,
 									  CollectionProducer filters) {
@@ -354,6 +426,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		return conv.multiply(filter).sum(4);
 	}
 
+	/**
+	 * Tests max delta operation.
+	 */
 	@Test(timeout = 60000)
 	public void max() {
 		PackedCollection in = pack(1.0, 2.0, 4.0, 3.0).reshape(2, 2).traverse(1);
@@ -370,6 +445,9 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		assertEquals(0.0, out.valueAt(1, 0, 1, 1));
 	}
 
+	/**
+	 * Tests 2D pooling operation.
+	 */
 	@Test(timeout = 60000)
 	public void pool2d() {
 		int r = 4;

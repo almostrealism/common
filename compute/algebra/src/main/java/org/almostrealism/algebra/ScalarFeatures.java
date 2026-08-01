@@ -45,6 +45,11 @@ import org.almostrealism.collect.PackedCollection;
  * }
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author  Michael Murray
  * @see CollectionFeatures
  * @see CollectionProducer
@@ -53,7 +58,7 @@ public interface ScalarFeatures extends CollectionFeatures {
 
 	/**
 	 * Creates a {@link CollectionProducer} for a constant scalar value.
-	 * Alias for {@link #c(double)}.
+	 * Alias for {@link #c(double...)}.
 	 *
 	 * @param value  the scalar value
 	 * @return a producer for the constant scalar

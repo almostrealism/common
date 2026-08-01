@@ -48,6 +48,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.time.TemporalFeatures;
 
 import java.util.Arrays;
@@ -83,7 +84,6 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>{@link #dc()} - Get the current data context</li>
  *   <li>{@link #dc(Runnable)} - Execute within a data context</li>
- *   <li>{@link #cc()} - Get the current compute context</li>
  *   <li>{@link #cc(Runnable, ComputeRequirement...)} - Execute with compute requirements</li>
  * </ul>
  *
@@ -109,16 +109,31 @@ import java.util.function.Supplier;
  * CollectionProducer<?> result = o().multiply(a, b);
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @see Ops
  * @see LayerFeatures
  * @see ComputerFeatures
  * @author Michael Murray
  */
-public interface CodeFeatures extends LayerFeatures,
+public interface CodeFeatures extends LayerRoutingFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
 								TemporalFeatures, ComputerFeatures {
+	/** When {@code true}, constant {@link PackedCollection} instances are embedded as fixed data in the expression tree. */
 	boolean enableFixedCollections = true;
 
+	/**
+	 * Returns a {@link Producer} for the given value, dispatching to the appropriate type-specific
+	 * factory (Pair, Vector, Ray, TransformMatrix, PackedCollection) or wrapping the value in a
+	 * {@link io.almostrealism.relation.Provider}.
+	 *
+	 * @param <T> the value type
+	 * @param v   the value to wrap; a {@link TraversalPolicy} triggers a deprecation warning
+	 * @return a producer that evaluates to {@code v}
+	 */
 	default <T> Producer<T> v(T v) {
 		if (v instanceof TraversalPolicy) {
 			warn("TraversalPolicy provided as Producer value");
@@ -128,41 +143,121 @@ public interface CodeFeatures extends LayerFeatures,
 		return value(v);
 	}
 
+	/**
+	 * Returns a {@link Producer} backed by a kernel argument identified by memory-length and index.
+	 *
+	 * @param <T>       the value type
+	 * @param memLength the number of scalars in the argument
+	 * @param argIndex  the zero-based index of the kernel argument
+	 * @return a producer wrapping the specified argument
+	 * @deprecated prefer {@link #v(TraversalPolicy, int)}
+	 */
 	@Deprecated
 	default <T> Producer<T> v(int memLength, int argIndex) {
 		return value(memLength, argIndex);
 	}
 
+	/**
+	 * Returns a {@link Producer} backed by a kernel argument with the specified shape and index.
+	 *
+	 * @param <T>      the value type
+	 * @param shape    the traversal policy describing the argument shape
+	 * @param argIndex the zero-based index of the kernel argument
+	 * @return a producer wrapping the specified argument
+	 */
 	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
 		return value(shape, argIndex);
 	}
 
+	/**
+	 * Returns a collection producer bound to the first kernel argument (the X input), optionally
+	 * reshaped according to the supplied dimension sizes.
+	 *
+	 * @param dims optional explicit dimension sizes; when empty, defaults to a {@code (-1, 1)} shape
+	 * @return a collection producer for argument 0
+	 */
 	default CollectionProducer x(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 0));
 	}
 
+	/**
+	 * Returns a collection producer bound to the second kernel argument (the Y input), optionally
+	 * reshaped according to the supplied dimension sizes.
+	 *
+	 * @param dims optional explicit dimension sizes; when empty, defaults to a {@code (-1, 1)} shape
+	 * @return a collection producer for argument 1
+	 */
 	default CollectionProducer y(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 1));
 	}
 
+	/**
+	 * Returns a collection producer bound to the third kernel argument (the Z input), optionally
+	 * reshaped according to the supplied dimension sizes.
+	 *
+	 * @param dims optional explicit dimension sizes; when empty, defaults to a {@code (-1, 1)} shape
+	 * @return a collection producer for argument 2
+	 */
 	default CollectionProducer z(int... dims) {
 		return c(value(dims.length == 0 ? shape(-1, 1) : shape(dims), 2));
 	}
 
+	/**
+	 * Returns a {@link CollectionProducer} backed by a shaped kernel argument.
+	 *
+	 * @param <T>      the concrete collection type
+	 * @param shape    the traversal policy describing the argument shape
+	 * @param argIndex the zero-based index of the kernel argument
+	 * @return a collection producer for the specified argument
+	 */
 	default <T extends PackedCollection> CollectionProducer cv(TraversalPolicy shape, int argIndex) {
 		return c(value(shape, argIndex));
 	}
 
+	/**
+	 * Returns a {@link Producer} that evaluates a dynamic function over the kernel arguments.
+	 *
+	 * @param <T>      the value type
+	 * @param function the function mapping kernel arguments to a value
+	 * @return a producer backed by the given function
+	 */
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
 	}
 
+	/**
+	 * Returns a producer bound to a {@link io.almostrealism.primitives.Vector}-shaped kernel argument.
+	 *
+	 * @param argIndex the zero-based index of the kernel argument
+	 * @return a producer for the vector argument
+	 */
 	default Producer<PackedCollection> vector(int argIndex) { return value(Vector.shape(), argIndex); }
 
+	/**
+	 * Returns a producer bound to a triangle-shaped (4 &times; 3) kernel argument.
+	 *
+	 * @param argIndex the zero-based index of the kernel argument
+	 * @return a producer for the triangle argument
+	 */
 	default Producer<PackedCollection> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 
+	/**
+	 * Returns a producer bound to a points-shaped (3 &times; 3) kernel argument.
+	 *
+	 * @param argIndex the zero-based index of the kernel argument
+	 * @return a producer for the points argument
+	 */
 	default Producer<PackedCollection> points(int argIndex) { return value(shape(3, 3), argIndex); }
 
+	/**
+	 * Returns a {@link Producer} for the given constant value, dispatching to the appropriate
+	 * type-specific factory (Pair, Vector, Ray, TransformMatrix, PackedCollection) or wrapping
+	 * the value in a {@link io.almostrealism.relation.Provider}.
+	 *
+	 * @param <T> the value type
+	 * @param v   the constant value to wrap; {@code null} returns {@code null}
+	 * @return a producer that evaluates to {@code v}
+	 */
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Pair) {
 			return (ProducerComputation<T>) PairFeatures.getInstance().value((Pair) v);
@@ -181,10 +276,26 @@ public interface CodeFeatures extends LayerFeatures,
 		}
 	}
 
+	/**
+	 * Returns a {@link Producer} backed by a shaped kernel argument.
+	 *
+	 * @param <T>      the value type
+	 * @param shape    the traversal policy describing the argument shape
+	 * @param argIndex the zero-based index of the kernel argument
+	 * @return a producer wrapping the specified argument
+	 */
 	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
 		return Input.value(shape, argIndex);
 	}
 
+	/**
+	 * Returns a {@link Producer} backed by a flat memory-length kernel argument.
+	 *
+	 * @param <T>       the value type
+	 * @param memLength the number of scalars in the argument
+	 * @param argIndex  the zero-based index of the kernel argument
+	 * @return a producer wrapping the specified argument
+	 */
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
 	}
@@ -206,64 +317,164 @@ public interface CodeFeatures extends LayerFeatures,
 			if (targetShape != null) target = traverseEach((Producer<PackedCollection>) target);
 			return new Assignment(1, target, source);
 		} else {
-			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
+			return new MemoryDataCopy(name, source, target, length);
 		}
 	}
 
+	/**
+	 * Creates a {@link Switch} computation that selects among several choices based on
+	 * a scalar decision value.
+	 *
+	 * @param <T>      the computation result type
+	 * @param decision a producer whose integer value selects the active choice
+	 * @param choices  the candidate computations to select from
+	 * @return a switch computation dispatching to the chosen computation at runtime
+	 */
 	default <T> Switch choice(Producer<PackedCollection> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
+	/**
+	 * Returns the current hardware {@link DataContext}.
+	 *
+	 * @return the active data context for the local hardware
+	 */
 	default DataContext dc() {
 		return Hardware.getLocalHardware().getDataContext();
 	}
 
+	/**
+	 * Executes the given {@link Runnable} inside a new {@link DataContext}, then closes it.
+	 *
+	 * @param r the runnable to execute within a data context
+	 */
 	default void dc(Runnable r) {
 		dc(() -> { r.run(); return null; });
 	}
 
+	/**
+	 * Executes the given {@link Callable} inside a new {@link DataContext}, returning its result.
+	 *
+	 * @param <T>  the return type
+	 * @param exec the callable to execute within a data context
+	 * @return the value returned by {@code exec}
+	 */
 	default <T> T dc(Callable<T> exec) {
 		return Hardware.getLocalHardware().dataContext(exec);
 	}
 
-	default ComputeContext cc() {
-		return Hardware.getLocalHardware().getComputeContext();
-	}
-
+	/**
+	 * Executes the given {@link Runnable} inside a {@link ComputeContext} that satisfies
+	 * the specified requirements.
+	 *
+	 * @param r            the runnable to execute within the compute context
+	 * @param expectations the compute requirements the context must satisfy
+	 */
 	default void cc(Runnable r, ComputeRequirement... expectations) {
 		cc(() -> { r.run(); return new Void[0]; }, expectations);
 	}
 
+	/**
+	 * Executes the given {@link Callable} inside a {@link ComputeContext} that satisfies
+	 * the specified requirements, returning its result.
+	 *
+	 * @param <T>          the return type
+	 * @param exec         the callable to execute within the compute context
+	 * @param expectations the compute requirements the context must satisfy
+	 * @return the value returned by {@code exec}
+	 */
 	default <T> T cc(Callable<T> exec, ComputeRequirement... expectations) {
 		return Hardware.getLocalHardware().computeContext(exec, expectations);
 	}
 
+	/**
+	 * Runs the given runnable with the supplied {@link OperationProfile} collecting timing data,
+	 * and returns the profile.
+	 *
+	 * <p>The profile is assigned only when no profile is already active; if one is, this leaves
+	 * it in place (assigning neither the supplied profile nor clearing on exit) and logs that it
+	 * did so, so a profile established by an enclosing scope is never disturbed.</p>
+	 *
+	 * @param <T>     the profile type
+	 * @param profile the operation profile to assign
+	 * @param r       the runnable to profile
+	 * @return the profile, populated with timing data after the runnable completes
+	 */
 	default <T extends OperationProfile> T profile(T profile, Runnable r) {
+		boolean assign = !Hardware.getLocalHardware().isProfileAssigned();
+		if (!assign) log("A profile is already assigned; leaving it in place and not assigning or clearing");
+
 		try {
-			Hardware.getLocalHardware().assignProfile(profile);
+			if (assign) Hardware.getLocalHardware().assignProfile(profile);
 			r.run();
 			return profile;
 		} finally {
-			Hardware.getLocalHardware().clearProfile();
+			if (assign) Hardware.getLocalHardware().clearProfile();
 		}
 	}
 
+	/**
+	 * Profiles the given operation supplier under a named {@link OperationProfileNode},
+	 * collecting timing data and returning the populated node.
+	 *
+	 * @param name the display name for the profile node
+	 * @param op   a supplier producing the runnable to profile
+	 * @return the profile node after the operation completes
+	 */
 	default OperationProfileNode profile(String name, Supplier<Runnable> op) {
 		return profile(new OperationProfileNode(name), op);
 	}
 
+	/**
+	 * Profiles the given operation supplier under the provided {@link OperationProfileNode},
+	 * capturing both timing and generated kernel source.
+	 *
+	 * <p>The profile is assigned as the active profile <em>before</em> the operation is
+	 * compiled (the {@code get} call below triggers compilation). This ordering is
+	 * required for source capture: assigning the profile installs its compilation
+	 * listener (see {@link org.almostrealism.hardware.Hardware#assignProfile}), which
+	 * records the generated kernel source as each scope compiles. Compiling first and
+	 * assigning afterwards — as an earlier version of this method did — captures timing
+	 * but no source, so {@code ar-profile-analyzer get_source} returns nothing for the
+	 * saved profile.</p>
+	 *
+	 * <p>As with {@link #profile(OperationProfile, Runnable)}, the profile is assigned only when
+	 * no profile is already active; otherwise the existing one is left in place (and this logs
+	 * that it did so) so an enclosing profile is never disturbed.</p>
+	 *
+	 * @param profile the profile node to collect timing and source into; may be {@code null}
+	 * @param op      a supplier producing the runnable to profile
+	 * @return the profile node after the operation completes
+	 */
 	default OperationProfileNode profile(OperationProfileNode profile, Supplier<Runnable> op) {
-		Runnable r;
+		boolean assign = !Hardware.getLocalHardware().isProfileAssigned();
+		if (!assign) log("A profile is already assigned; leaving it in place and not assigning or clearing");
 
-		if (op instanceof OperationList && profile != null) {
-			r = ((OperationList) op).get(profile);
-		} else {
-			r = op.get();
+		try {
+			if (assign) Hardware.getLocalHardware().assignProfile(profile);
+
+			Runnable r;
+			if (op instanceof OperationList && profile != null) {
+				r = ((OperationList) op).get(profile);
+			} else {
+				r = op.get();
+			}
+
+			r.run();
+			return profile;
+		} finally {
+			if (assign) Hardware.getLocalHardware().clearProfile();
 		}
-
-		return profile(profile, r);
 	}
 
+	/**
+	 * Profiles the given {@link Runnable} under a named {@link OperationProfileNode},
+	 * collecting timing data and returning the populated node.
+	 *
+	 * @param name the display name for the profile node
+	 * @param r    the runnable to profile
+	 * @return the profile node after the runnable completes
+	 */
 	default OperationProfileNode profile(String name, Runnable r) {
 		return profile(name, () -> r);
 	}

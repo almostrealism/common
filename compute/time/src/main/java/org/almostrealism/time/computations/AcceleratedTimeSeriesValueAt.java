@@ -21,13 +21,16 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -35,7 +38,6 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Hardware-accelerated operation for linearly interpolating values from an {@link AcceleratedTimeSeries}.
@@ -112,59 +114,76 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 
 		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
 
-		Expression i = new StaticReference(Integer.class, "i");
-		Expression left = new StaticReference(Integer.class, getNameProvider().getVariableName(0));
-		Expression right = new StaticReference(Integer.class, getNameProvider().getVariableName(1));
-		String v1 = getNameProvider().getVariableName(2);
-		String v2 = getNameProvider().getVariableName(3);
-		String t1 = getNameProvider().getVariableName(4);
-		String t2 = getNameProvider().getVariableName(5);
+		Expression left = new StaticReference(Integer.class, getVariableName(0));
+		Expression right = new StaticReference(Integer.class, getVariableName(1));
+		Expression v1 = new StaticReference(Double.class, getVariableName(2));
+		Expression v2 = new StaticReference(Double.class, getVariableName(3));
+		Expression t1 = new StaticReference(Double.class, getVariableName(4));
+		Expression t2 = new StaticReference(Double.class, getVariableName(5));
 
 		scope.getVariables().add(new ExpressionAssignment(true, left, new IntegerConstant(-1)));
 		scope.getVariables().add(new ExpressionAssignment(true, right, new IntegerConstant(-1)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v1), new DoubleConstant(0.0)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v2), new DoubleConstant(0.0)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), new DoubleConstant(0.0)));
-		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, v1, new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, v2, new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, t1, new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, t2, new DoubleConstant(0.0)));
 
-		String res = outputVariable.valueAt(0).getSimpleExpression(getLanguage());
-		String bank0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
-		String bank1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
-		String banki = getArgument(1).reference(i.multiply(2)).getSimpleExpression(getLanguage());
-		String bankl0 = getArgument(1).reference(left.multiply(2)).getSimpleExpression(getLanguage());
-		String bankl1 = getArgument(1).reference(left.multiply(2).add(1)).getSimpleExpression(getLanguage());
-		String bankr0 = getArgument(1).reference(right.multiply(2)).getSimpleExpression(getLanguage());
-		String bankr1 = getArgument(1).reference(right.multiply(2).add(1)).getSimpleExpression(getLanguage());
-		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
+		Expression res = outputVariable.reference(e(0));
+		Expression bank0 = getArgument(1).valueAt(0);
+		Expression bank1 = getArgument(1).valueAt(1);
+		Expression cursor0 = getArgument(2).valueAt(0);
 
-		Consumer<String> code = scope.code();
-		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");
-		code.accept("	if (" + banki + " >= " + cursor0 + ") {\n");
-		code.accept("		" + left + " = i > " + bank0 + " ? i - 1 : (" + banki + " == " + cursor0 + " ? i : -1);\n");
-		code.accept("		" + right + " = i;\n");
-		code.accept("		break;\n");
-		code.accept("	}\n");
-		code.accept("}\n");
+		Expression bankl0 = getArgument(1).reference(left.multiply(2));
+		Expression bankl1 = getArgument(1).reference(left.multiply(2).add(1));
+		Expression bankr0 = getArgument(1).reference(right.multiply(2));
+		Expression bankr1 = getArgument(1).reference(right.multiply(2).add(1));
 
-		code.accept("if (" + left + " == -1 || " + right + " == -1) {\n");
-		code.accept("	" + res + " = 0;\n");
-		code.accept("} else if (" + bankl0 + " > " + cursor0 + ") {\n");
-		code.accept("	" + res + " = 0;\n");
-		code.accept("} else {\n");
-		code.accept("	" + v1 + " = " + bankl1 + ";\n");
-		code.accept("	" + v2 + " = " + bankr1 + ";\n");
-		code.accept("	" + t1 + " = " + cursor0 + " - " + bankl0 + ";\n");
-		code.accept("	" + t2 + " = " + bankr0 + " - " + bankl0 + ";\n");
-		code.accept("	if (" + t2 + " == 0) {\n");
-		code.accept("		" + res + " = " + v1 + ";\n");
-		code.accept("	} else {\n");
-		code.accept("		" + res + " = " + v1 + " + (" + t1 + " / " + t2 + ") * (" + v2 + " - " + v1 + ");\n");
-		code.accept("	}\n");
-		code.accept("}\n");
+		// Linear search for the first stored sample whose time is >= the cursor.
+		// The "right == -1" term in the loop condition stops the scan as soon as a
+		// match is found, reproducing the original loop's early break (Repeated has no
+		// break statement). Without it the scan would traverse the full live region on
+		// every call -- O(n) per sample, O(n^2) across a delay line -- which is correct
+		// but pathologically slow.
+		Repeated loop = new Repeated<>();
+		InstanceReference k = Variable.integer("i").ref();
+		loop.setIndex(k.getReferent());
+		Expression i = bank0.toInt().add(k);
+		loop.setCondition(i.lessThan(bank1).and(right.eq(e(-1))));
+		loop.setInterval(e(1));
 
-//		code.accept("if (fabs(" + res + ") > 0.99) {\n");
-//		code.accept("    printf(\"left = %i, right = %i -- value = %f\\n\", " + left + ", " + right + ", " + res + ");\n");
-//		code.accept("}\n");
+		Expression banki = getArgument(1).reference(i.multiply(2));
+		Scope<PackedCollection> match = new Scope<>();
+		match.assign(left, i.greaterThan(bank0).conditional(i.subtract(e(1)),
+				banki.eq(cursor0).conditional(i, e(-1))));
+		match.assign(right, i);
+		loop.addCase(banki.greaterThanOrEqual(cursor0), match);
+
+		scope.add(loop);
+
+		// Default result; overwritten only when a valid surrounding interval is found.
+		// Nested guards replicate the short-circuit of the original
+		// "left == -1 || right == -1 || bankl0 > cursor0" check so the
+		// out-of-range bank reads in the interpolation block never execute.
+		Scope<PackedCollection> body = new Scope<>();
+		body.assign(res, e(0));
+
+		Scope<PackedCollection> interp = new Scope<>();
+		interp.assign(v1, bankl1);
+		interp.assign(v2, bankr1);
+		interp.assign(t1, cursor0.subtract(bankl0));
+		interp.assign(t2, bankr0.subtract(bankl0));
+		interp.assign(res, t2.eq(e(0.0)).conditional(v1,
+				v1.add(t1.divide(t2).multiply(v2.subtract(v1)))));
+
+		Scope<PackedCollection> ifBankl = new Scope<>();
+		ifBankl.addCase(bankl0.lessThanOrEqual(cursor0), interp);
+
+		Scope<PackedCollection> ifRight = new Scope<>();
+		ifRight.addCase(right.eq(e(-1)).not(), ifBankl);
+
+		body.addCase(left.eq(e(-1)).not(), ifRight);
+
+		scope.add(body);
 
 		return scope;
 	}

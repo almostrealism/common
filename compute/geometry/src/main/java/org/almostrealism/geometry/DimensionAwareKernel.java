@@ -33,6 +33,7 @@ import org.almostrealism.hardware.MemoryData;
  * @see DimensionAware
  */
 public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, DimensionAware {
+	/** The wrapped evaluable kernel that implements {@link DimensionAware}. */
 	private final Evaluable<T> k;
 
 	/**

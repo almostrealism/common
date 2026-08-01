@@ -56,15 +56,31 @@ import org.almostrealism.model.SequentialBlock;
  */
 public class OobleckDecoder extends SequentialBlock {
 
+	/** Upsampling strides for each of the five decoder blocks. */
 	private static final int[] STRIDES = {16, 16, 8, 8, 4};
+
+	/** Number of input channels for each decoder block. */
 	private static final int[] IN_CHANNELS = {2048, 1024, 512, 256, 128};
+
+	/** Number of output channels for each decoder block. */
 	private static final int[] OUT_CHANNELS = {1024, 512, 256, 128, 128};
+
+	/** Channel count at the final output stage before the output projection. */
 	private static final int BASE_CHANNELS = 128;
+
+	/** Latent dimension expected at the decoder input. */
 	private static final int LATENT_DIM = 64;
+
+	/** Number of residual blocks within each decoder block. */
 	private static final int NUM_RES_BLOCKS = 3;
 
+	/** Weights loaded from the Stable Audio Open checkpoint format. */
 	private final StateDictionary stateDict;
+
+	/** Batch size this decoder was configured for. */
 	private final int batchSize;
+
+	/** Output audio sequence length after all upsampling strides are applied. */
 	private final int outputLength;
 
 	/**
@@ -83,6 +99,13 @@ public class OobleckDecoder extends SequentialBlock {
 		buildDecoder(batchSize, latentLength);
 	}
 
+	/**
+	 * Computes the output audio sequence length from a given latent sequence length
+	 * by applying each decoder stride in order.
+	 *
+	 * @param latentLength Input latent sequence length
+	 * @return Corresponding output audio sequence length
+	 */
 	private static int computeOutputLength(int latentLength) {
 		int length = latentLength;
 		for (int stride : STRIDES) {
@@ -94,6 +117,13 @@ public class OobleckDecoder extends SequentialBlock {
 		return length;
 	}
 
+	/**
+	 * Assembles the full decoder model from input projection through five decoder blocks
+	 * and final output projection, using weights from {@link #stateDict}.
+	 *
+	 * @param batchSize    Batch size for all layer shapes
+	 * @param latentLength Input latent sequence length
+	 */
 	private void buildDecoder(int batchSize, int latentLength) {
 		String l0 = "decoder.layers.0";
 		PackedCollection l0_g = stateDict.get(l0 + ".weight_g");
@@ -134,6 +164,19 @@ public class OobleckDecoder extends SequentialBlock {
 				l7_g, l7_v, null));
 	}
 
+	/**
+	 * Builds one decoder block: Snake activation, transposed convolution for upsampling,
+	 * then {@value #NUM_RES_BLOCKS} residual blocks.
+	 *
+	 * @param batchSize   Batch size
+	 * @param inChannels  Number of input channels
+	 * @param outChannels Number of output channels after transposed convolution
+	 * @param seqLength   Input sequence length
+	 * @param outLength   Output sequence length after upsampling
+	 * @param stride      Upsampling stride (also the kernel size)
+	 * @param layerIdx    Index into the {@code decoder.layers} naming scheme
+	 * @return Assembled decoder block
+	 */
 	private Block buildDecoderBlock(int batchSize, int inChannels, int outChannels,
 									int seqLength, int outLength, int stride, int layerIdx) {
 		String prefix = String.format("decoder.layers.%d", layerIdx);
@@ -163,6 +206,16 @@ public class OobleckDecoder extends SequentialBlock {
 		return block;
 	}
 
+	/**
+	 * Builds one residual block: two Snake+Conv1d pairs whose output is added to
+	 * the block input (skip connection).
+	 *
+	 * @param batchSize Batch size
+	 * @param channels  Number of channels (constant throughout)
+	 * @param seqLength Sequence length (constant throughout)
+	 * @param prefix    Weight key prefix (e.g., {@code decoder.layers.1.layers.2})
+	 * @return Assembled residual block
+	 */
 	private Block buildResidualBlock(int batchSize, int channels, int seqLength, String prefix) {
 		TraversalPolicy inputShape = shape(batchSize, channels, seqLength);
 		SequentialBlock mainPath = new SequentialBlock(inputShape);

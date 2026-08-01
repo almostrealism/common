@@ -25,7 +25,19 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.stream.Stream;
 
+/**
+ * A maximum expression that returns the larger of two numeric sub-expressions.
+ *
+ * <p>Generates code using the language-specific {@code max()} function.
+ * The derivative is computed by selecting the delta of the branch that is larger.</p>
+ */
 public class Max extends BinaryExpression<Double> {
+	/**
+	 * Constructs a maximum expression for the two given operands.
+	 *
+	 * @param a the first operand
+	 * @param b the second operand
+	 */
 	protected Max(Expression<? extends Number> a, Expression<? extends Number> b) {
 		super(Double.class, a, b);
 	}
@@ -70,6 +82,14 @@ public class Max extends BinaryExpression<Double> {
 		return Max.of((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 
+	/**
+	 * Creates a maximum expression over one or more operands, applying constant-folding
+	 * and {@link Rectify} promotion when one operand is zero.
+	 *
+	 * @param values the operands; must have at least one element
+	 * @return the simplified maximum expression
+	 * @throws IllegalArgumentException if no operands are provided
+	 */
 	public static Expression<Double> of(Expression<Double>... values) {
 		if (values.length == 0) {
 			throw new IllegalArgumentException();

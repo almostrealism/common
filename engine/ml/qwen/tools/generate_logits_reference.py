@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', default='Qwen/Qwen2.5-0.5B-Instruct', help='Model name')
     parser.add_argument('--prompt', default='Hello', help='Prompt text')
-    parser.add_argument('--output', default='/tmp/qwen_logits_reference.txt', help='Output file')
+    parser.add_argument('--output', default='qwen_logits_reference.txt', help='Output file')
     parser.add_argument('--temperature', type=float, default=0.0, help='Temperature (0=greedy)')
     args = parser.parse_args()
 

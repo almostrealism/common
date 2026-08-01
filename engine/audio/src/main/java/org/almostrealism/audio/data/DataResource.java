@@ -27,5 +27,10 @@ package org.almostrealism.audio.data;
  * @see WaveDataProvider
  */
 public interface DataResource {
+	/**
+	 * Returns the unique identifier for this resource (e.g., an MD5 hash or file path).
+	 *
+	 * @return unique identifier string, or {@code null} if not yet assigned
+	 */
 	String getIdentifier();
 }

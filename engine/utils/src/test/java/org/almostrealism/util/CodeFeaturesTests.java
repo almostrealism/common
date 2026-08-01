@@ -23,7 +23,13 @@ import org.junit.Test;
 
 import java.util.function.Supplier;
 
+/**
+ * Tests for CodeFeatures partial computation functionality.
+ */
 public class CodeFeaturesTests extends TestSuiteBase {
+	/**
+	 * Tests partial computation with simple operations.
+	 */
 	@Test(timeout = 10000)
 	public void partialComputation1() {
 		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
@@ -36,6 +42,9 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(7.0, qev.evaluate());
 	}
 
+	/**
+	 * Tests partial computation with same producer used in multiple computations.
+	 */
 	@Test(timeout = 10000)
 	public void partialComputation2() {
 		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
@@ -48,6 +57,9 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(7.0, qev.evaluate());
 	}
 
+	/**
+	 * Tests partial computation with updatable collection.
+	 */
 	@Test(timeout = 10000)
 	public void partialComputation3() {
 		PackedCollection multiplier = pack(1.0);
@@ -60,11 +72,14 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
 
-		multiplier.setMem(0, 2.0);
+		multiplier.fill(2.0);
 		assertEquals(4.0, pev.evaluate());
 		assertEquals(9.0, qev.evaluate());
 	}
 
+	/**
+	 * Tests partial computation with reversed evaluation order.
+	 */
 	@Test(timeout = 10000)
 	public void partialComputation4() {
 		PackedCollection multiplier = pack(1.0);
@@ -78,7 +93,7 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(2.0, pev.evaluate());
 
 		// Make sure the process respects the update to a provided value
-		multiplier.setMem(0, 2.0);
+		multiplier.fill(2.0);
 		assertEquals(4.0, p.get().evaluate());
 		assertEquals(9.0, q.get().evaluate());
 
@@ -87,6 +102,9 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(9.0, qev.evaluate());
 	}
 
+	/**
+	 * Tests partial computation with shared producer in multiple branches.
+	 */
 	@Test(timeout = 10000)
 	public void partialComputation5() {
 		Producer<PackedCollection> p = multiply(c(1.0), c(2.0));
@@ -102,6 +120,9 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(10.0, rev.evaluate());
 	}
 
+	/**
+	 * Tests partial computation with reversed evaluation order in multi-branch scenario.
+	 */
 	@Test(timeout = 10000)
 	public void partialComputation6() {
 		PackedCollection multiplier = pack(1.0);
@@ -114,6 +135,9 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(7.0, q.get().evaluate());
 	}
 
+	/**
+	 * Tests partial computation with functional argument and updates.
+	 */
 	@Test(timeout = 10000)
 	public void partialComputation7() {
 		PackedCollection multiplier = pack(1.0);
@@ -125,61 +149,73 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		assertEquals(2.0, p.get().evaluate());
 		assertEquals(7.0, q.get().evaluate());
 
-		multiplier.setMem(0, 2.0);
+		multiplier.fill(2.0);
 		assertEquals(20.0, r.get().evaluate());
 		assertEquals(9.0, q.get().evaluate());
 		assertEquals(4.0, p.get().evaluate());
 	}
 
+	/**
+	 * Tests adding to provider and evaluating.
+	 */
 	@Test(timeout = 10000)
 	public void addToProvider() {
 		PackedCollection value = pack(1.0);
 		Producer<PackedCollection> s = add(c(1), p(value));
-		value.setMem(0, 2.0);
+		value.fill(2.0);
 
 		Evaluable<PackedCollection> ev = s.get();
 		PackedCollection out = ev.evaluate();
 		assertEquals(3.0, out.toDouble(0));
 
-		value.setMem(0, 3.0);
+		value.fill(3.0);
 		out = ev.evaluate();
 		assertEquals(4.0, out.toDouble(0));
 	}
 
+	/**
+	 * Tests adding to provider and assigning to destination.
+	 */
 	@Test(timeout = 10000)
 	public void addToProviderAndAssign() {
 		PackedCollection value = pack(1.0);
 		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = a(1, p(dest), add(c(1), p(value)).divide(c(2.0)));
-		value.setMem(0, 2.0);
+		value.fill(2.0);
 
 		Runnable r = s.get();
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(1.5, dest.toDouble(0));
 
-		value.setMem(0, 3.0);
+		value.fill(3.0);
 		r.run();
 		assertEquals(2.0, dest.toDouble(0));
 	}
 
+	/**
+	 * Tests loop with single iteration.
+	 */
 	@Test(timeout = 10000)
 	public void loop1() {
 		PackedCollection value = pack(1.0);
 		PackedCollection dest = pack(0.0);
 		Supplier<Runnable> s = lp(a(1, p(dest), add(c(1), p(value)).divide(c(2.0))), 2);
-		value.setMem(0, 2.0);
+		value.fill(2.0);
 
 		Runnable r = s.get();
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(1.5, dest.toDouble(0));
 
-		value.setMem(0, 3.0);
+		value.fill(3.0);
 		r.run();
 		assertEquals(2.0, dest.toDouble(0));
 	}
 
+	/**
+	 * Tests loop with multiple iterations and self-reference.
+	 */
 	@Test(timeout = 10000)
 	public void loop2() {
 		PackedCollection dest = pack(0.0);
@@ -187,11 +223,11 @@ public class CodeFeaturesTests extends TestSuiteBase {
 		Runnable r = s.get();
 
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(3.0, dest);
 
 		r.run();
-		System.out.println(dest.toDouble(0));
+		log(String.valueOf(dest.toDouble(0)));
 		assertEquals(6.0, dest);
 	}
 }

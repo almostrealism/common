@@ -70,11 +70,22 @@ import java.io.IOException;
  * @see ExternalInstructionSet
  */
 public class LocalExternalMemory implements Memory {
+	/** Provider that owns and manages this memory instance. */
 	private LocalExternalMemoryProvider provider;
+	/** File on disk backing this memory. */
 	protected File location;
+	/** In-memory double array; null until lazily loaded from the backing file. */
 	protected double data[];
+	/** Number of elements in this memory block. */
 	private int len;
 
+	/**
+	 * Creates a file-backed memory instance of the given length.
+	 *
+	 * @param provider Provider that owns this instance
+	 * @param location File that backs this memory
+	 * @param len      Number of double elements
+	 */
 	protected LocalExternalMemory(LocalExternalMemoryProvider provider, File location, int len) {
 		this.provider = provider;
 		this.location = location;

@@ -25,6 +25,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.calculus.InputStub;
+import org.almostrealism.collect.CollectionComparisonFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -75,12 +76,17 @@ import java.util.function.Supplier;
  *     "matmul", inputPos, weightPos, groupShape, matrix, vector);
  * }</pre>
  *
+ * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
+ * operations should <em>implement</em> this interface (the methods are stateless
+ * {@code default} methods) rather than accept or hold a {@code Features} instance —
+ * passing one around as an object defeats the purpose of the pattern.</p>
+ *
  * @author  Michael Murray
  * @see CollectionFeatures
  * @see TraversalPolicy
  * @see Producer
  */
-public interface AlgebraFeatures extends CollectionFeatures {
+public interface AlgebraFeatures extends CollectionComparisonFeatures {
 	/** Enable warnings when isolated producers cannot be matched (debugging) */
 	boolean enableIsolationWarnings = false;
 

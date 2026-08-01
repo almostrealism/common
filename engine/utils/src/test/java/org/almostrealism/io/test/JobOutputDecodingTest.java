@@ -23,7 +23,13 @@ import org.junit.Test;
 import java.util.Optional;
 import java.util.stream.Stream;
 
+/**
+ * Tests for JobOutput encoding and decoding.
+ */
 public class JobOutputDecodingTest extends TestSuiteBase {
+	/**
+	 * Tests JobOutput encode/decode round-trip.
+	 */
 	@Test(timeout = 10000)
 	public void decode() {
 		JobOutput output = new JobOutput();

@@ -24,7 +24,14 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for complex number mathematical operations.
+ */
 public class ComplexMathTests extends TestSuiteBase {
+
+	/**
+	 * Tests creating complex numbers from parts with batches.
+	 */
 	@Test(timeout = 30000)
 	public void complexFromPartsBatches1() {
 		PackedCollection values = new PackedCollection(10, 2, 1024).randFill();
@@ -49,6 +56,9 @@ public class ComplexMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests creating complex numbers from parts with batches.
+	 */
 	@Test(timeout = 30000)
 	@TestProperties(knownIssue = true)
 	public void complexFromPartsBatches2() {
@@ -80,6 +90,9 @@ public class ComplexMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests complex number magnitude calculation.
+	 */
 	@Test(timeout = 30000)
 	public void complexFromPartsMagnitude() {
 		Evaluable<PackedCollection> m =
@@ -103,6 +116,9 @@ public class ComplexMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests complex number multiplication.
+	 */
 	@Test(timeout = 30000)
 	public void multiply() {
 		PackedCollection a = new PackedCollection(shape(32, 2)).randFill();
@@ -127,6 +143,9 @@ public class ComplexMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests broadcast multiply with complex numbers.
+	 */
 	@Test(timeout = 30000)
 	public void broadcastMultiply() {
 		int w = 12;
@@ -157,10 +176,16 @@ public class ComplexMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Computes the left-hand complex multiplication result.
+	 */
 	protected double multiplyComplexL(double p, double q, double r, double s) {
 		return p * r - q * s;
 	}
 
+	/**
+	 * Computes the right-hand complex multiplication result.
+	 */
 	protected double multiplyComplexR(double p, double q, double r, double s) {
 		return p * s + q * r;
 	}

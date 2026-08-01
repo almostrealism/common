@@ -17,8 +17,22 @@
 package org.almostrealism.color;
 
 /**
- * @author  Mike Murray
+ * Implemented by objects that have an associated spectral emission or reflectance profile
+ * represented as a {@link ProbabilityDistribution}.
+ *
+ * <p>Materials and light sources that emit or reflect light with a specific spectral
+ * distribution implement this interface to expose their spectral data for physically-based
+ * rendering calculations such as wavelength sampling and color integration.</p>
+ *
+ * @see ProbabilityDistribution
+ * @author Mike Murray
  */
 public interface Spectrum {
+	/**
+	 * Returns the {@link ProbabilityDistribution} describing the spectral emission or
+	 * reflectance of this object.
+	 *
+	 * @return the spectral probability distribution
+	 */
 	ProbabilityDistribution getSpectra();
 }

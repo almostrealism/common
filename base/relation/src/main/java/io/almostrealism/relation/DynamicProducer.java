@@ -58,6 +58,7 @@ import java.util.function.Function;
  * @author Michael Murray
  */
 public class DynamicProducer<T> implements Producer<T> {
+	/** The function applied to the evaluated inputs to produce the output value. */
 	private final Function<Object[], T> function;
 
 	/**

@@ -89,15 +89,15 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 
 		// Create input: channel 0 = [1,2,3,4], channel 1 = [5,6,7,8]
 		TraversalPolicy inputShape = shape(outerCount, inputLength);
-		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1.0, 2.0, 3.0, 4.0);  // Channel 0
-		input.setMem(4, 5.0, 6.0, 7.0, 8.0);  // Channel 1
+		PackedCollection input = pack(
+				1.0, 2.0, 3.0, 4.0,
+				5.0, 6.0, 7.0, 8.0).reshape(inputShape);
 
 		// Create weights: channel 0 = [0.1, 0.2, 0.3], channel 1 = [0.4, 0.5, 0.6]
 		TraversalPolicy weightShape = shape(outerCount, innerCount);
-		PackedCollection weights = new PackedCollection(weightShape);
-		weights.setMem(0, 0.1, 0.2, 0.3);  // Channel 0
-		weights.setMem(3, 0.4, 0.5, 0.6);  // Channel 1
+		PackedCollection weights = pack(
+				0.1, 0.2, 0.3,
+				0.4, 0.5, 0.6).reshape(weightShape);
 
 		// Expected output: [10.6, 12.7]
 		double[] expected = {10.6, 12.7};
@@ -135,7 +135,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		r.run();
 
 		// Verify results
-		log("=== Test 1.1: Hand-Computed Reference ===");
+		log("Test 1.1: Hand-Computed Reference");
 		log("Expected: [" + expected[0] + ", " + expected[1] + "]");
 		log("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
 
@@ -144,7 +144,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			assertEquals("Output[" + i + "] mismatch", expected[i], actual);
 		}
 
-		log("PASSED");
+		log("Test 1.1 passed");
 	}
 
 	/**
@@ -161,14 +161,14 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		int inputLength = outputSize + innerCount - 1;
 
 		TraversalPolicy inputShape = shape(outerCount, inputLength);
-		PackedCollection input = new PackedCollection(inputShape);
-		input.setMem(0, 1.0, 2.0, 3.0, 4.0);
-		input.setMem(4, 5.0, 6.0, 7.0, 8.0);
+		PackedCollection input = pack(
+				1.0, 2.0, 3.0, 4.0,
+				5.0, 6.0, 7.0, 8.0).reshape(inputShape);
 
 		TraversalPolicy weightShape = shape(outerCount, innerCount);
-		PackedCollection weights = new PackedCollection(weightShape);
-		weights.setMem(0, 0.1, 0.2, 0.3);
-		weights.setMem(3, 0.4, 0.5, 0.6);
+		PackedCollection weights = pack(
+				0.1, 0.2, 0.3,
+				0.4, 0.5, 0.6).reshape(weightShape);
 
 		double[] expected = {10.6, 12.7};
 
@@ -203,7 +203,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		Runnable r = optimized.get();
 		r.run();
 
-		log("=== Test 1.1b: Hand-Computed Reference (With Optimization) ===");
+		log("Test 1.1b: Hand-Computed Reference (With Optimization)");
 		log("Expected: [" + expected[0] + ", " + expected[1] + "]");
 		log("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
 
@@ -212,7 +212,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			assertEquals("Output[" + i + "] mismatch (with optimization)", expected[i], actual);
 		}
 
-		log("PASSED");
+		log("Test 1.1b passed");
 	}
 
 	/**
@@ -288,14 +288,14 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			expectedOutput[o] = sum;
 		}
 
-		log("=== Test 1.2: LoopedWeightedSumComputation vs Manual Computation ===");
+		log("Test 1.2: LoopedWeightedSumComputation vs Manual Computation");
 		log("Comparing with outerCount=" + outerCount + ", innerCount=" + innerCount + ", outputSize=" + outputSize);
 
 		for (int i = 0; i < outputSize; i++) {
 			assertEquals("Output[" + i + "] mismatch", expectedOutput[i], loopedOutput.toDouble(i));
 		}
 
-		log("PASSED");
+		log("Test 1.2 passed");
 	}
 
 	/**
@@ -364,7 +364,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			expected[o] = sum;
 		}
 
-		log("=== Test 1.3: Larger Scale (outerCount=" + outerCount + ", innerCount=" + innerCount + ") ===");
+		log("Test 1.3: Larger Scale (outerCount=" + outerCount + ", innerCount=" + innerCount + ")");
 		log("Compile time: " + compileTime + "ms");
 		log("Run time: " + runTime + "ms");
 
@@ -372,6 +372,6 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			assertEquals("Output[" + i + "] mismatch", expected[i], output.toDouble(i));
 		}
 
-		log("PASSED");
+		log("Test 1.3 passed");
 	}
 }

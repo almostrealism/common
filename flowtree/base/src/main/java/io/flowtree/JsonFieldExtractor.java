@@ -1,0 +1,668 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+
+/**
+ * Lightweight JSON field extraction utilities that avoid external library dependencies.
+ *
+ * <p>These methods extract primitive values from JSON strings using simple
+ * string parsing. They are designed for cases where a full JSON parser
+ * is not available or warranted (e.g., parsing CLI output fragments).</p>
+ *
+ * <p>These are intentionally simple and do not handle all JSON edge cases.
+ * For complex JSON processing, use a proper JSON library instead.</p>
+ */
+public final class JsonFieldExtractor {
+
+	/**
+	 * Shared {@link ObjectMapper} instance for JSON parsing operations.
+	 * {@link ObjectMapper} is thread-safe for reading once constructed with
+	 * default configuration; callers must not reconfigure this instance.
+	 */
+	public static final ObjectMapper MAPPER = new ObjectMapper();
+
+	/** Private constructor — all methods are static; this class is not instantiated. */
+	private JsonFieldExtractor() { }
+
+	/**
+	 * Returns the text value of {@code field} on {@code node}, or {@code null}
+	 * when the field is absent or not a textual node.
+	 *
+	 * @param node  the parent JSON object node
+	 * @param field the field name to look up
+	 * @return the string value, or {@code null}
+	 */
+	public static String getTextOrNull(JsonNode node, String field) {
+		if (node == null) return null;
+		JsonNode child = node.get(field);
+		return (child != null && child.isTextual()) ? child.asText() : null;
+	}
+
+	/**
+	 * Returns {@code true} when the JSON object contains the named field at the
+	 * top level, {@code false} when the field is absent or the input cannot be
+	 * parsed as a JSON object.
+	 *
+	 * <p>Unlike {@link #extractBoolean(String, String)}, which returns
+	 * {@code false} for both an absent field and an explicit {@code false} value,
+	 * this method distinguishes between the two cases so callers can decide
+	 * whether to apply a field-absent default vs. an explicit override.</p>
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return {@code true} if and only if the top-level JSON object contains {@code field}
+	 */
+	public static boolean hasField(String json, String field) {
+		if (json == null) return false;
+		try {
+			JsonNode root = MAPPER.readTree(json);
+			return root != null && root.has(field);
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Extracts a string field from a JSON string.
+	 * Handles JSON escape sequences including Unicode escapes.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return the string value, or null if not found
+	 */
+	public static String extractString(String json, String field) {
+		if (json == null) return null;
+
+		int fieldStart = json.indexOf("\"" + field + "\"");
+		if (fieldStart < 0) return null;
+
+		int colonPos = json.indexOf(":", fieldStart);
+		if (colonPos < 0) return null;
+
+		int afterColon = colonPos + 1;
+		while (afterColon < json.length() && json.charAt(afterColon) == ' ') {
+			afterColon++;
+		}
+
+		if (afterColon + 4 <= json.length() &&
+				json.substring(afterColon, afterColon + 4).equals("null")) {
+			return null;
+		}
+
+		int valueStart = json.indexOf("\"", colonPos) + 1;
+		if (valueStart <= 0) return null;
+
+		StringBuilder sb = new StringBuilder();
+		for (int i = valueStart; i < json.length(); i++) {
+			char c = json.charAt(i);
+			if (c == '\\' && i + 1 < json.length()) {
+				char next = json.charAt(i + 1);
+				if (next == '"') { sb.append('"'); i++; }
+				else if (next == '\\') { sb.append('\\'); i++; }
+				else if (next == 'n') { sb.append('\n'); i++; }
+				else if (next == 'r') { sb.append('\r'); i++; }
+				else if (next == 't') { sb.append('\t'); i++; }
+				else if (next == 'b') { sb.append('\b'); i++; }
+				else if (next == 'f') { sb.append('\f'); i++; }
+				else if (next == '/') { sb.append('/'); i++; }
+				else if (next == 'u' && i + 5 < json.length()) {
+					String hex = json.substring(i + 2, i + 6);
+					try {
+						sb.append((char) Integer.parseInt(hex, 16));
+						i += 5;
+					} catch (NumberFormatException e) {
+						sb.append(c);
+					}
+				} else {
+					sb.append(c);
+				}
+			} else if (c == '"') {
+				break;
+			} else {
+				sb.append(c);
+			}
+		}
+
+		return sb.toString();
+	}
+
+	/**
+	 * Extracts a boolean field from a JSON string.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return the boolean value, or false if not found
+	 */
+	public static boolean extractBoolean(String json, String field) {
+		if (json == null) return false;
+
+		int fieldStart = json.indexOf("\"" + field + "\"");
+		if (fieldStart < 0) return false;
+
+		int colonPos = json.indexOf(":", fieldStart);
+		if (colonPos < 0) return false;
+
+		String rest = json.substring(colonPos + 1).trim();
+		return rest.startsWith("true");
+	}
+
+	/**
+	 * Extracts an integer field from a JSON string.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return the integer value, or 0 if not found
+	 */
+	public static int extractInt(String json, String field) {
+		if (json == null) return 0;
+
+		int fieldStart = json.indexOf("\"" + field + "\"");
+		if (fieldStart < 0) return 0;
+
+		int colonPos = json.indexOf(":", fieldStart);
+		if (colonPos < 0) return 0;
+
+		String numString = extractNumericString(json.substring(colonPos + 1).trim(), false);
+		try {
+			return Integer.parseInt(numString);
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+	/**
+	 * Extracts a long field from a JSON string.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return the long value, or 0 if not found
+	 */
+	public static long extractLong(String json, String field) {
+		if (json == null) return 0;
+
+		int fieldStart = json.indexOf("\"" + field + "\"");
+		if (fieldStart < 0) return 0;
+
+		int colonPos = json.indexOf(":", fieldStart);
+		if (colonPos < 0) return 0;
+
+		String numString = extractNumericString(json.substring(colonPos + 1).trim(), false);
+		try {
+			return Long.parseLong(numString);
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+	/**
+	 * Extracts a double field from a JSON string.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return the double value, or 0.0 if not found
+	 */
+	public static double extractDouble(String json, String field) {
+		if (json == null) return 0.0;
+
+		int fieldStart = json.indexOf("\"" + field + "\"");
+		if (fieldStart < 0) return 0.0;
+
+		int colonPos = json.indexOf(":", fieldStart);
+		if (colonPos < 0) return 0.0;
+
+		String numString = extractNumericString(json.substring(colonPos + 1).trim(), true);
+		try {
+			return Double.parseDouble(numString);
+		} catch (NumberFormatException e) {
+			return 0.0;
+		}
+	}
+
+	/**
+	 * Extracts a JSON array of strings from a JSON string.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return list of string values from the array
+	 */
+	public static List<String> extractStringArray(String json, String field) {
+		List<String> result = new ArrayList<>();
+		if (json == null) return result;
+
+		int fieldStart = json.indexOf("\"" + field + "\"");
+		if (fieldStart < 0) return result;
+
+		int colonPos = json.indexOf(":", fieldStart);
+		if (colonPos < 0) return result;
+
+		int arrayStart = json.indexOf("[", colonPos);
+		if (arrayStart < 0) return result;
+
+		int arrayEnd = json.indexOf("]", arrayStart);
+		if (arrayEnd < 0) return result;
+
+		String arrayContent = json.substring(arrayStart + 1, arrayEnd);
+		if (arrayContent.trim().isEmpty()) return result;
+
+		int i = 0;
+		while (i < arrayContent.length()) {
+			int quoteStart = arrayContent.indexOf("\"", i);
+			if (quoteStart < 0) break;
+
+			StringBuilder value = new StringBuilder();
+			int j = quoteStart + 1;
+			while (j < arrayContent.length()) {
+				char c = arrayContent.charAt(j);
+				if (c == '\\' && j + 1 < arrayContent.length()) {
+					char next = arrayContent.charAt(j + 1);
+					if (next == '"') { value.append('"'); j += 2; }
+					else if (next == '\\') { value.append('\\'); j += 2; }
+					else if (next == 'n') { value.append('\n'); j += 2; }
+					else if (next == 'r') { value.append('\r'); j += 2; }
+					else if (next == 't') { value.append('\t'); j += 2; }
+					else if (next == 'u' && j + 5 < arrayContent.length()) {
+						String hex = arrayContent.substring(j + 2, j + 6);
+						try {
+							value.append((char) Integer.parseInt(hex, 16));
+							j += 6;
+						} catch (NumberFormatException e) {
+							value.append(c);
+							j++;
+						}
+					} else {
+						value.append(c);
+						j++;
+					}
+				} else if (c == '"') {
+					break;
+				} else {
+					value.append(c);
+					j++;
+				}
+			}
+
+			result.add(value.toString());
+			i = j + 1;
+		}
+
+		return result;
+	}
+
+	/**
+	 * Counts the number of object entries in a JSON array field.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return the number of top-level objects in the array, or 0 if not found
+	 */
+	public static int countArrayEntries(String json, String field) {
+		if (json == null) return 0;
+
+		int fieldIdx = json.indexOf("\"" + field + "\"");
+		if (fieldIdx < 0) return 0;
+
+		int colonIdx = json.indexOf(":", fieldIdx);
+		if (colonIdx < 0) return 0;
+
+		int arrStart = json.indexOf("[", colonIdx);
+		if (arrStart < 0) return 0;
+
+		int arrEnd = -1;
+		int depth = 1;
+		for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
+			char c = json.charAt(i);
+			if (c == '[') depth++;
+			else if (c == ']') {
+				depth--;
+				if (depth == 0) arrEnd = i;
+			}
+		}
+
+		if (arrEnd < 0) return 0;
+
+		String arrContent = json.substring(arrStart + 1, arrEnd).trim();
+		if (arrContent.isEmpty()) return 0;
+
+		int count = 0;
+		int braceDepth = 0;
+		for (int i = 0; i < arrContent.length(); i++) {
+			char c = arrContent.charAt(i);
+			if (c == '{' && braceDepth == 0) count++;
+			if (c == '{') braceDepth++;
+			else if (c == '}') braceDepth--;
+		}
+
+		return count;
+	}
+
+	/**
+	 * Extracts values of a specific string field from each object in a JSON array.
+	 *
+	 * <p>For example, given JSON containing {@code "items": [{"name": "a"}, {"name": "b"}]}
+	 * and parameters {@code arrayField="items", objectField="name"}, returns
+	 * {@code ["a", "b"]}.</p>
+	 *
+	 * @param json        the JSON string
+	 * @param arrayField  the name of the array field
+	 * @param objectField the name of the string field within each array object
+	 * @return list of extracted string values, empty if not found
+	 */
+	public static List<String> extractFieldFromArrayObjects(String json, String arrayField,
+															String objectField) {
+		List<String> result = new ArrayList<>();
+		if (json == null) return result;
+
+		int fieldIdx = json.indexOf("\"" + arrayField + "\"");
+		if (fieldIdx < 0) return result;
+
+		int colonIdx = json.indexOf(":", fieldIdx);
+		if (colonIdx < 0) return result;
+
+		int arrStart = json.indexOf("[", colonIdx);
+		if (arrStart < 0) return result;
+
+		// Find matching closing bracket
+		int arrEnd = -1;
+		int depth = 1;
+		for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
+			char c = json.charAt(i);
+			if (c == '[') depth++;
+			else if (c == ']') {
+				depth--;
+				if (depth == 0) arrEnd = i;
+			}
+		}
+
+		if (arrEnd < 0) return result;
+
+		// Walk through each object in the array and extract the target field
+		String arrContent = json.substring(arrStart + 1, arrEnd);
+		int pos = 0;
+		while (pos < arrContent.length()) {
+			int objStart = arrContent.indexOf("{", pos);
+			if (objStart < 0) break;
+
+			int objDepth = 1;
+			int objEnd = objStart + 1;
+			while (objEnd < arrContent.length() && objDepth > 0) {
+				char c = arrContent.charAt(objEnd);
+				if (c == '{') objDepth++;
+				else if (c == '}') objDepth--;
+				objEnd++;
+			}
+
+			String objBody = arrContent.substring(objStart, objEnd);
+			String value = extractString(objBody, objectField);
+			if (value != null) {
+				result.add(value);
+			}
+
+			pos = objEnd;
+		}
+
+		return result;
+	}
+
+	/**
+	 * Extracts a flat JSON object of string key-value pairs from a field.
+	 *
+	 * <p>For example, given JSON containing {@code "requiredLabels": {"platform": "macos", "gpu": "true"}},
+	 * calling {@code extractStringObject(json, "requiredLabels")} returns a map
+	 * with entries {@code platform→macos} and {@code gpu→true}.</p>
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return a map of string key-value pairs, empty if not found
+	 */
+	public static Map<String, String> extractStringObject(String json, String field) {
+		return extractObject(json, field, value -> value.isTextual() ? value.asText() : null);
+	}
+
+	/**
+	 * Extracts a flat JSON object whose values are numbers, returning them as
+	 * a map of string key to {@link Double}. Both numeric values
+	 * ({@code {"claude": 0.42}}) and numeric strings ({@code {"claude": "0.42"}})
+	 * are accepted; values that are neither are skipped.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name whose value is the object to extract
+	 * @return a map of key to numeric value, empty if not found or unparseable
+	 */
+	public static Map<String, Double> extractDoubleObject(String json, String field) {
+		return extractObject(json, field, JsonFieldExtractor::numericValue);
+	}
+
+	/**
+	 * Interprets a JSON node as a {@link Double}, accepting both numeric nodes
+	 * ({@code 0.42}) and numeric string nodes ({@code "0.42"}). Returns
+	 * {@code null} for any other node so the caller skips it.
+	 *
+	 * @param value the JSON node to interpret
+	 * @return the numeric value, or {@code null} when the node is neither a
+	 *         number nor a numeric string
+	 */
+	private static Double numericValue(JsonNode value) {
+		if (value.isNumber()) {
+			return value.asDouble();
+		}
+		if (value.isTextual()) {
+			try {
+				return Double.parseDouble(value.asText());
+			} catch (NumberFormatException ignored) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Extracts a flat JSON object into a map, applying {@code valueMapper} to
+	 * each member value. Members for which the mapper returns {@code null} are
+	 * skipped, so the mapper doubles as a filter. Shared scaffolding behind
+	 * {@link #extractStringObject(String, String)},
+	 * {@link #extractDoubleObject(String, String)}, and
+	 * {@link #parseStringObject(String)}.
+	 *
+	 * @param json        the JSON string
+	 * @param field       the field name whose value is the object to extract;
+	 *                    {@code null} uses the root of {@code json} directly
+	 * @param valueMapper converts a member's value node to the map value, or
+	 *                    returns {@code null} to omit the member
+	 * @param <T>         the map value type
+	 * @return a map of key to mapped value, preserving member order; empty when
+	 *         the field is absent, not an object, or the JSON is unparseable
+	 */
+	private static <T> Map<String, T> extractObject(String json, String field,
+			Function<JsonNode, T> valueMapper) {
+		Map<String, T> result = new LinkedHashMap<>();
+		if (json == null) return result;
+
+		try {
+			JsonNode root = MAPPER.readTree(json);
+			JsonNode obj = (field == null) ? root : root.get(field);
+			if (obj == null || !obj.isObject()) return result;
+
+			Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
+			while (fields.hasNext()) {
+				Map.Entry<String, JsonNode> entry = fields.next();
+				T value = valueMapper.apply(entry.getValue());
+				if (value != null) {
+					result.put(entry.getKey(), value);
+				}
+			}
+		} catch (Exception e) {
+			// Return whatever parsed before the failure
+		}
+
+		return result;
+	}
+
+	/**
+	 * Parses a flat JSON object of string key-value pairs from the root of the
+	 * given JSON. This is the root-level counterpart to
+	 * {@link #extractStringObject(String, String)}, which navigates to a named
+	 * field first.
+	 *
+	 * @param json a JSON object string such as {@code {"A":"1","B":"2"}}
+	 * @return a map of string key-value pairs, empty if {@code json} is null,
+	 *         not an object, or fails to parse
+	 */
+	public static Map<String, String> parseStringObject(String json) {
+		return extractObject(json, null, value -> value.isTextual() ? value.asText() : null);
+	}
+
+	/**
+	 * Serializes a flat map of string key-value pairs to a JSON object string.
+	 * The inverse of {@link #parseStringObject(String)}.
+	 *
+	 * @param map the map to serialize; null or empty yields {@code "{}"}
+	 * @return a JSON object string such as {@code {"A":"1","B":"2"}}
+	 */
+	public static String toJsonObject(Map<String, String> map) {
+		if (map == null || map.isEmpty()) return "{}";
+
+		try {
+			return new ObjectMapper().writeValueAsString(map);
+		} catch (Exception e) {
+			return "{}";
+		}
+	}
+
+	/**
+	 * Extracts the last JSON object line from newline-delimited JSON output
+	 * that matches the specified {@code "type"} value.
+	 *
+	 * <p>Claude Code with {@code --output-format json} emits one JSON object
+	 * per line (NDJSON). Per-turn objects appear early in the output with
+	 * partial metrics, while the final {@code "type":"result"} line contains
+	 * session-level totals. This method scans backward to find that result
+	 * line, avoiding the first-occurrence problem that afflicts forward
+	 * searches on the full output.</p>
+	 *
+	 * @param ndjson    the full NDJSON output (newline-delimited JSON objects)
+	 * @param typeValue the value of the {@code "type"} field to match
+	 *                  (e.g., {@code "result"}), or {@code null} to return
+	 *                  the last JSON object regardless of type
+	 * @return the matched JSON object line, or {@code null} if not found
+	 */
+	public static String extractLastJsonObject(String ndjson, String typeValue) {
+		if (ndjson == null || ndjson.isEmpty()) return null;
+
+		String fallback = null;
+		int end = ndjson.length();
+
+		while (end > 0) {
+			int lineEnd = end;
+			int lineStart = ndjson.lastIndexOf('\n', end - 1);
+			lineStart = (lineStart < 0) ? 0 : lineStart + 1;
+
+			// Skip blank lines
+			String line = ndjson.substring(lineStart, lineEnd).trim();
+			end = lineStart > 0 ? lineStart - 1 : 0;
+
+			if (!line.startsWith("{")) continue;
+
+			if (typeValue == null) {
+				return line;
+			}
+
+			if (line.contains("\"type\"") && line.contains("\"" + typeValue + "\"")) {
+				return line;
+			}
+
+			if (fallback == null) {
+				fallback = line;
+			}
+		}
+
+		return fallback;
+	}
+
+	/**
+	 * Escapes a string for safe inclusion in a JSON string literal,
+	 * replacing backslash, double-quote, and common whitespace control
+	 * characters.
+	 *
+	 * @param s the string to escape, or {@code null}
+	 * @return  the escaped string, or an empty string if {@code s} is {@code null}
+	 */
+	public static String escapeJson(String s) {
+		if (s == null) return "";
+		return s.replace("\\", "\\\\")
+				.replace("\"", "\\\"")
+				.replace("\n", "\\n")
+				.replace("\r", "\\r")
+				.replace("\t", "\\t");
+	}
+
+	/**
+	 * Appends a {@link Map} of {@code String} to {@code Double} as a JSON object
+	 * to the given {@link StringBuilder}, using proper JSON key escaping.
+	 * Shared implementation for serializing cost breakdowns in stats reporting.
+	 *
+	 * <p>Output format: {@code {"key1":1.0,"key2":2.0}}</p>
+	 *
+	 * @param sb     the builder to append to (caller adds any surrounding fields)
+	 * @param keyName the JSON key name for this object
+	 * @param map    the map to serialize; {@code null} or empty produces an empty object
+	 */
+	public static void appendDoubleMapJson(StringBuilder sb, String keyName, Map<String, Double> map) {
+		sb.append(",\"").append(keyName).append("\":{");
+		boolean first = true;
+		if (map != null) {
+			for (Map.Entry<String, Double> e : map.entrySet()) {
+				if (!first) sb.append(",");
+				first = false;
+				sb.append("\"")
+					.append(escapeJson(e.getKey()))
+					.append("\":")
+					.append(e.getValue() != null ? e.getValue() : 0.0);
+			}
+		}
+		sb.append("}");
+	}
+
+	/**
+	 * Extracts a numeric string from the beginning of the input.
+	 *
+	 * @param rest         the string to extract from (already trimmed after the colon)
+	 * @param allowDecimal whether to include decimal point characters
+	 * @return the extracted numeric string
+	 */
+	private static String extractNumericString(String rest, boolean allowDecimal) {
+		StringBuilder numStr = new StringBuilder();
+		for (int i = 0; i < rest.length(); i++) {
+			char c = rest.charAt(i);
+			if (c == '-' || (c >= '0' && c <= '9') || (allowDecimal && c == '.')) {
+				numStr.append(c);
+			} else if (numStr.length() > 0) {
+				break;
+			}
+		}
+		return numStr.toString();
+	}
+}
