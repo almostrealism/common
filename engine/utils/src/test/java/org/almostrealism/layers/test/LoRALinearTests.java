@@ -59,10 +59,10 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		int rank = 8;
 
 		PackedCollection baseWeights = new PackedCollection(shape(outputSize, inputSize));
-		baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(baseWeights.getShape(), random).multiply(0.1).into(baseWeights.traverseEach()).evaluate();
 
 		PackedCollection baseBias = new PackedCollection(shape(outputSize));
-		baseBias.fill(pos -> random.nextGaussian() * 0.01);
+		randn(baseBias.getShape(), random).multiply(0.01).into(baseBias.traverseEach()).evaluate();
 
 		LoRALinear loraLayer = new LoRALinear(
 				shape(batchSize, inputSize),
@@ -73,7 +73,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		CellularLayer baseLayer = dense(shape(batchSize, inputSize), baseWeights, baseBias, false);
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.fill(pos -> random.nextGaussian());
+		input.randnFill(random);
 
 		Model loraModel = new Model(shape(batchSize, inputSize));
 		loraModel.add(loraLayer);
@@ -106,7 +106,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		int rank = 8;
 
 		PackedCollection baseWeights = new PackedCollection(shape(outputSize, inputSize));
-		baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(baseWeights.getShape(), random).multiply(0.1).into(baseWeights.traverseEach()).evaluate();
 
 		LoRALinear loraLayer = new LoRALinear(
 				shape(batchSize, inputSize),
@@ -119,7 +119,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		CellularLayer baseLayer = dense(shape(batchSize, inputSize), baseWeights, null, false);
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.fill(pos -> random.nextGaussian());
+		input.randnFill(random);
 
 		Model loraModel = new Model(shape(batchSize, inputSize));
 		loraModel.add(loraLayer);
@@ -157,10 +157,10 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		int rank = 8;
 
 		PackedCollection baseWeights = new PackedCollection(shape(outputSize, inputSize));
-		baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(baseWeights.getShape(), random).multiply(0.1).into(baseWeights.traverseEach()).evaluate();
 
 		PackedCollection baseBias = new PackedCollection(shape(outputSize));
-		baseBias.fill(pos -> random.nextGaussian() * 0.01);
+		randn(baseBias.getShape(), random).multiply(0.01).into(baseBias.traverseEach()).evaluate();
 
 		LoRALinear loraLayer = new LoRALinear(
 				shape(batchSize, inputSize),
@@ -176,7 +176,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		CellularLayer mergedLayer = dense(shape(batchSize, inputSize), mergedWeights, baseBias, false);
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.fill(pos -> random.nextGaussian());
+		input.randnFill(random);
 
 		Model loraModel = new Model(shape(batchSize, inputSize));
 		loraModel.add(loraLayer);
@@ -268,10 +268,10 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		int outputSize = 16;
 
 		PackedCollection weights1 = new PackedCollection(shape(hiddenSize, inputSize));
-		weights1.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights1.getShape(), random).multiply(0.1).into(weights1.traverseEach()).evaluate();
 
 		PackedCollection weights2 = new PackedCollection(shape(outputSize, hiddenSize));
-		weights2.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights2.getShape(), random).multiply(0.1).into(weights2.traverseEach()).evaluate();
 
 		LoRALinear lora1 = new LoRALinear(shape(batchSize, inputSize), weights1, null, 4, 8.0);
 		LoRALinear lora2 = new LoRALinear(shape(batchSize, hiddenSize), weights2, null, 4, 8.0);
@@ -284,7 +284,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		CompiledModel compiled = model.compile();
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.fill(pos -> random.nextGaussian());
+		input.randnFill(random);
 
 		PackedCollection output = compiled.forward(input);
 
@@ -304,13 +304,13 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		int rank = 8;
 
 		PackedCollection baseWeights = new PackedCollection(shape(outputSize, inputSize));
-		baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(baseWeights.getShape(), random).multiply(0.1).into(baseWeights.traverseEach()).evaluate();
 
 		PackedCollection savedLoraA = new PackedCollection(shape(inputSize, rank));
-		savedLoraA.fill(pos -> random.nextGaussian() * 0.1);
+		randn(savedLoraA.getShape(), random).multiply(0.1).into(savedLoraA.traverseEach()).evaluate();
 
 		PackedCollection savedLoraB = new PackedCollection(shape(rank, outputSize));
-		savedLoraB.fill(pos -> random.nextGaussian() * 0.1);
+		randn(savedLoraB.getShape(), random).multiply(0.1).into(savedLoraB.traverseEach()).evaluate();
 
 		LoRALinear loadedLayer = new LoRALinear(
 				shape(1, inputSize),
@@ -342,10 +342,10 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		int rank = 8;
 
 		PackedCollection baseWeights = new PackedCollection(shape(outputSize, inputSize));
-		baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(baseWeights.getShape(), random).multiply(0.1).into(baseWeights.traverseEach()).evaluate();
 
 		PackedCollection baseBias = new PackedCollection(shape(outputSize));
-		baseBias.fill(pos -> random.nextGaussian() * 0.01);
+		randn(baseBias.getShape(), random).multiply(0.01).into(baseBias.traverseEach()).evaluate();
 
 		LoRALinear loraLayer = new LoRALinear(
 				shape(batchSize, inputSize),
@@ -359,7 +359,7 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 		CellularLayer mergedLayer = loraLayer.toMergedLayer();
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.fill(pos -> random.nextGaussian());
+		input.randnFill(random);
 
 		Model loraModel = new Model(shape(batchSize, inputSize));
 		loraModel.add(loraLayer);

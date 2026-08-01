@@ -65,7 +65,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 
 		// Create base weights (random initialization)
 		PackedCollection baseWeights = new PackedCollection(shape(outputSize, inputSize));
-		baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(baseWeights.getShape(), random).multiply(0.1).into(baseWeights.traverseEach()).evaluate();
 
 		// Create a LoRA layer
 		LoRALinear loraLayer = new LoRALinear(
@@ -94,7 +94,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		List<ValueTarget<PackedCollection>> trainingSamples = new ArrayList<>();
 		for (int i = 0; i < 20; i++) {
 			PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-			input.fill(pos -> random.nextGaussian());
+			input.randnFill(random);
 
 			PackedCollection target = new PackedCollection(shape(batchSize, outputSize));
 			matmul(cp(targetMatrix), cp(input).reshape(shape(inputSize)))
@@ -147,7 +147,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 
 		// Create base weights
 		PackedCollection baseWeights = new PackedCollection(shape(outputSize, inputSize));
-		baseWeights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(baseWeights.getShape(), random).multiply(0.1).into(baseWeights.traverseEach()).evaluate();
 
 		// Create LoRA layer
 		LoRALinear loraLayer = new LoRALinear(
@@ -174,10 +174,10 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		List<ValueTarget<PackedCollection>> trainingSamples = new ArrayList<>();
 		for (int i = 0; i < 10; i++) {
 			PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-			input.fill(pos -> random.nextGaussian());
+			input.randnFill(random);
 
 			PackedCollection target = new PackedCollection(shape(batchSize, outputSize));
-			target.fill(pos -> random.nextGaussian() * 0.5);
+			randn(target.getShape(), random).multiply(0.5).into(target.traverseEach()).evaluate();
 			trainingSamples.add(ValueTarget.of(input, target));
 		}
 
@@ -217,7 +217,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 
 		// Create a simple dense layer (no LoRA for this test)
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights.getShape(), random).multiply(0.1).into(weights.traverseEach()).evaluate();
 
 		Model model = new Model(shape(batchSize, inputSize), 1e-3);
 		model.add(dense(shape(batchSize, inputSize), weights, null, false));
@@ -229,10 +229,10 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 
 		for (int i = 0; i < 15; i++) {
 			PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-			input.fill(pos -> random.nextGaussian());
+			input.randnFill(random);
 
 			PackedCollection target = new PackedCollection(shape(batchSize, outputSize));
-			target.fill(pos -> random.nextGaussian() * 0.2);
+			randn(target.getShape(), random).multiply(0.2).into(target.traverseEach()).evaluate();
 
 			if (i < 10) {
 				trainSamples.add(ValueTarget.of(input, target));
@@ -277,7 +277,7 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		int outputSize = 4;
 
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights.getShape(), random).multiply(0.1).into(weights.traverseEach()).evaluate();
 
 		Model model = new Model(shape(batchSize, inputSize), 1e-3);
 		model.add(dense(shape(batchSize, inputSize), weights, null, false));
@@ -287,10 +287,10 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		List<ValueTarget<PackedCollection>> samples = new ArrayList<>();
 		for (int i = 0; i < 10; i++) {
 			PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-			input.fill(pos -> random.nextGaussian());
+			input.randnFill(random);
 
 			PackedCollection target = new PackedCollection(shape(batchSize, outputSize));
-			target.fill(pos -> random.nextGaussian() * 0.2);
+			randn(target.getShape(), random).multiply(0.2).into(target.traverseEach()).evaluate();
 
 			samples.add(ValueTarget.of(input, target));
 		}

@@ -153,7 +153,7 @@ public class BackPropagationTests extends TestSuiteBase {
 		});
 
 		PackedCollection gradient = new PackedCollection(outputShape);
-		gradient.fill(pos -> Math.random());
+		gradient.randFill();
 		model.compile().backward(gradient);
 
 		for (int i = 0; i < h; i++) {
@@ -196,7 +196,7 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		TraversalPolicy gradientShape = model.getOutputShape();
 		PackedCollection gradient = new PackedCollection(gradientShape);
-		gradient.fill(pos -> Math.random());
+		gradient.randFill();
 		runner.backward(gradient);
 
 		PackedCollection adjustedFilter = conv.getWeights().get(0);

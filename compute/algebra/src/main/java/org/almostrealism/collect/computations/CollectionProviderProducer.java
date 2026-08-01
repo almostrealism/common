@@ -83,7 +83,7 @@ import java.util.List;
  * <p><strong>Providing model weights:</strong></p>
  * <pre>{@code
  * PackedCollection weights = new PackedCollection(shape(128, 64));
- * weights.fill(pos -> Math.random() * 0.1);
+ * weights.randFill();  // then scale via a producer
  *
  * CollectionProviderProducer<PackedCollection> weightsProducer =
  *     new CollectionProviderProducer<>(weights);

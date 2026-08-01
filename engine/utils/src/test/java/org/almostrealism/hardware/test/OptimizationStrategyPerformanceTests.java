@@ -265,9 +265,9 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 		PackedCollection medium = new PackedCollection(shape(1024));
 		PackedCollection large = new PackedCollection(shape(16384));
 
-		small.fill(pos -> Math.random());
-		medium.fill(pos -> Math.random());
-		large.fill(pos -> Math.random());
+		small.randFill();
+		medium.randFill();
+		large.randFill();
 
 		// Combine them in a way that creates diversity
 		CollectionProducer smallOp = c(p(small)).multiply(2.0);
@@ -404,9 +404,9 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 		PackedCollection k = new PackedCollection(shape(seqLen, heads, headSize));
 		PackedCollection v = new PackedCollection(shape(seqLen, heads, headSize));
 
-		q.fill(pos -> Math.random());
-		k.fill(pos -> Math.random());
-		v.fill(pos -> Math.random());
+		q.randFill();
+		k.randFill();
+		v.randFill();
 
 		// Simplified attention pattern: reshape, matmul, reshape
 		TimingResult result = measureOperation(
@@ -453,7 +453,7 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 	private TimingResult measureDeepChain(int depth, int size, boolean optimize) {
 		PackedCollection input = new PackedCollection(shape(size));
 		PackedCollection output = new PackedCollection(shape(size));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		return measureOperation(
 				() -> {
@@ -473,7 +473,7 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 		PackedCollection[] inputs = new PackedCollection[numInputs];
 		for (int i = 0; i < numInputs; i++) {
 			inputs[i] = new PackedCollection(shape(size));
-			inputs[i].fill(pos -> Math.random());
+			inputs[i].randFill();
 		}
 
 		PackedCollection output = new PackedCollection(shape(numInputs * size));

@@ -583,7 +583,7 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 		/** Key-normalization bias. */
 		private final PackedCollection kNormBias = new PackedCollection(shape(DIM_HEAD));
 		/** RoPE inverse frequencies. */
-		private final PackedCollection invFreq = new PackedCollection(shape(DIM_HEAD / 4)).fill(pos -> 0.01);
+		private final PackedCollection invFreq = new PackedCollection(shape(DIM_HEAD / 4)).fill(0.01);
 
 		/** Feed-forward pre-normalization scale. */
 		private final PackedCollection ffnNormWeight = new PackedCollection(shape(DIM)).fill(1.0);

@@ -88,7 +88,7 @@ public class PoolTests extends TestSuiteBase implements KernelAssertions {
 		int w = 2;
 
 		PackedCollection input = tensor(shape(r, c, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		Supplier<Producer<PackedCollection>> pool =
 				() -> (Producer) Process.optimized(cp(input)

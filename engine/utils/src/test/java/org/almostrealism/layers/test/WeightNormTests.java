@@ -41,10 +41,10 @@ public class WeightNormTests extends TestSuiteBase implements ConvolutionLayerFe
 		int kernel = 5;
 
 		PackedCollection weightG = new PackedCollection(shape(channels, 1, 1));
-		weightG.fill(pos -> 0.5 + Math.random());
+		rand(weightG.getShape()).add(0.5).into(weightG.traverseEach()).evaluate();
 
 		PackedCollection weightV = new PackedCollection(shape(channels, other, kernel));
-		weightV.fill(pos -> 2.0 * Math.random() - 1.0);
+		rand(weightV.getShape()).multiply(2.0).add(-1.0).into(weightV.traverseEach()).evaluate();
 
 		PackedCollection standard = computeWeightNormWeights(weightG, weightV, channels, other, kernel);
 		PackedCollection transposed = computeWeightNormWeightsTransposed(weightG, weightV, channels, other, kernel);
@@ -79,7 +79,7 @@ public class WeightNormTests extends TestSuiteBase implements ConvolutionLayerFe
 		int seqLen = 7;
 
 		PackedCollection alpha = new PackedCollection(shape(channels));
-		alpha.fill(pos -> Math.random());
+		alpha.randFill();
 
 		PackedCollection expanded = new PackedCollection(shape(batch, channels, seqLen));
 		CollectionProducer channelIndex = mod(

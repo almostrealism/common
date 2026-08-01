@@ -54,9 +54,9 @@ public class LayerTrackingTest extends TestSuiteBase {
 		PackedCollection b2 = dense2.getWeights().get(1);
 
 		w1.fill(pos -> 0.01 * (pos[0] + 1));
-		b1.fill(pos -> 0.1);
+		b1.fill(0.1);
 		w2.fill(pos -> 0.02 * (pos[0] + 1));
-		b2.fill(pos -> 0.05);
+		b2.fill(0.05);
 
 		model.add(dense1);
 		model.add(dense2);

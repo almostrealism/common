@@ -60,8 +60,8 @@ public class ProcessDetailsFactoryRecoveryTest extends TestSuiteBase implements 
 	public void recoversAfterFailedArgumentPreparation() {
 		PackedCollection a = new PackedCollection(shape(8));
 		PackedCollection b = new PackedCollection(shape(8));
-		a.fill(pos -> 2.0);
-		b.fill(pos -> 3.0);
+		a.fill(2.0);
+		b.fill(3.0);
 
 		CollectionProducer sum = add(traverseEach(p(a)), traverseEach(p(b)));
 		Evaluable<PackedCollection> ev = sum.get();

@@ -356,7 +356,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 
 		PackedCollection in = new PackedCollection(inShape);
 
-		in.fill(pos -> Math.random());
+		in.randFill();
 
 		CollectionProducer o =
 				c(p(in))

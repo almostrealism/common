@@ -181,7 +181,7 @@ public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 			@Override
 			protected PackedCollection createWeight(String key, TraversalPolicy expectedShape) {
 				PackedCollection weight = new PackedCollection(expectedShape);
-				weight.fill(pos -> Math.random() * 0.02 - 0.01);
+				rand(weight.getShape()).multiply(0.02).add(-0.01).into(weight.traverseEach()).evaluate();
 				return weight;
 			}
 		};
@@ -195,11 +195,11 @@ public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 		// composer/autoencoder representation), reproducing the data shape that triggered
 		// the original failure.
 		PackedCollection features = new PackedCollection(ioChannels, audioSeqLen);
-		features.fill(pos -> Math.random());
+		features.randFill();
 		generator.addFeatures(features);
 
 		PackedCollection position = new PackedCollection(composerDim);
-		position.fill(pos -> Math.random());
+		position.randFill();
 
 		log("Running from-samples generateAudio...");
 		WaveData audio = generator.generateAudio(position, "a test sound", 1234L);

@@ -100,7 +100,7 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 
 		// Run forward pass
 		PackedCollection input = new PackedCollection(shape(batchSize, seqLen, dim));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		log("Running forward pass...");
 		PackedCollection output = compiled.forward(input);
@@ -151,10 +151,10 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 		// Create test inputs with appropriate shapes
 		int batchSize = DiffusionTransformer.batchSize;
 		PackedCollection input = new PackedCollection(shape(batchSize, ioChannels, audioSeqLen));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
-		timestep.fill(pos -> Math.random());
+		timestep.randFill();
 
 		log("Running forward pass...");
 		PackedCollection output = transformer.forward(input, timestep, null, null);
@@ -200,14 +200,14 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 
 		int batchSize = DiffusionTransformer.batchSize;
 		PackedCollection input = new PackedCollection(shape(batchSize, ioChannels, audioSeqLen));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
-		timestep.fill(pos -> Math.random());
+		timestep.randFill();
 
 		// Cross-attention conditioning expects [condSeqLen, condTokenDim] shape
 		PackedCollection crossAttnCond = new PackedCollection(shape(batchSize, condSeqLen, condTokenDim));
-		crossAttnCond.fill(pos -> Math.random());
+		crossAttnCond.randFill();
 
 		log("Running forward pass with cross-attention...");
 		PackedCollection output = transformer.forward(input, timestep, crossAttnCond, null);
@@ -250,14 +250,14 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 
 		int batchSize = DiffusionTransformer.batchSize;
 		PackedCollection input = new PackedCollection(shape(batchSize, ioChannels, audioSeqLen));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
-		timestep.fill(pos -> Math.random());
+		timestep.randFill();
 
 		// Global conditioning expects [globalCondDim] shape
 		PackedCollection globalCond = new PackedCollection(shape(batchSize, globalCondDim));
-		globalCond.fill(pos -> Math.random());
+		globalCond.randFill();
 
 		log("Running forward pass with global conditioning...");
 		PackedCollection output = transformer.forward(input, timestep, null, globalCond);
@@ -303,16 +303,16 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 
 		int batchSize = DiffusionTransformer.batchSize;
 		PackedCollection input = new PackedCollection(shape(batchSize, ioChannels, audioSeqLen));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
-		timestep.fill(pos -> Math.random());
+		timestep.randFill();
 
 		PackedCollection crossAttnCond = new PackedCollection(shape(batchSize, condSeqLen, condTokenDim));
-		crossAttnCond.fill(pos -> Math.random());
+		crossAttnCond.randFill();
 
 		PackedCollection globalCond = new PackedCollection(shape(batchSize, globalCondDim));
-		globalCond.fill(pos -> Math.random());
+		globalCond.randFill();
 
 		log("Running forward pass with cross-attention and global conditioning...");
 		PackedCollection output = transformer.forward(input, timestep, crossAttnCond, globalCond);
@@ -369,16 +369,16 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 		//   cross    (batch, condSeqLen, condTokenDim)   <- real ONNX conditioner rank
 		//   global   (batch, globalCondDim)              <- real ONNX conditioner rank
 		PackedCollection input = new PackedCollection(shape(batchSize, 64, audioSeqLen));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
-		timestep.fill(pos -> Math.random());
+		timestep.randFill();
 
 		PackedCollection crossAttnCond = new PackedCollection(shape(batchSize, condSeqLen, 768));
-		crossAttnCond.fill(pos -> Math.random());
+		crossAttnCond.randFill();
 
 		PackedCollection globalCond = new PackedCollection(shape(batchSize, 768));
-		globalCond.fill(pos -> Math.random());
+		globalCond.randFill();
 
 		log("Running forward pass with real DiT weights...");
 		PackedCollection output = transformer.forward(input, timestep, crossAttnCond, globalCond);
@@ -416,10 +416,10 @@ public class DiffusionTransformerTests extends TestSuiteBase implements Diffusio
 		// Model declares its primary input as (batchSize, ioChannels, audioSeqLen);
 		// supply a rank-2 tensor of the same total size to exercise the validation.
 		PackedCollection wrongShaped = new PackedCollection(shape(ioChannels, audioSeqLen));
-		wrongShaped.fill(pos -> Math.random());
+		wrongShaped.randFill();
 
 		PackedCollection timestep = new PackedCollection(shape(batchSize, 1));
-		timestep.fill(pos -> Math.random());
+		timestep.randFill();
 
 		try {
 			transformer.forward(wrongShaped, timestep, null, null);

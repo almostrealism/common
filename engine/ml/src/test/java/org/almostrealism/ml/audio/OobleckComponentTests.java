@@ -74,7 +74,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 		// Forward pass
 		log("Running forward...");
 		PackedCollection input = new PackedCollection(BATCH_SIZE, channels, seqLen);
-		input.fill(pos -> Math.random() * 0.1);
+		rand(input.getShape()).multiply(0.1).into(input.traverseEach()).evaluate();
 
 		long forwardStart = System.currentTimeMillis();
 		PackedCollection output = compiled.forward(input);
@@ -93,7 +93,7 @@ public class OobleckComponentTests extends TestSuiteBase {
 	 */
 	private PackedCollection randomWeights(int... dims) {
 		PackedCollection w = new PackedCollection(dims);
-		w.fill(pos -> (Math.random() - 0.5) * 0.1);
+		rand(w.getShape()).add(-0.5).multiply(0.1).into(w.traverseEach()).evaluate();
 		return w;
 	}
 

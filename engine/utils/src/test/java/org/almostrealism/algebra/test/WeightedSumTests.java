@@ -293,9 +293,9 @@ public class WeightedSumTests extends TestSuiteBase {
 		// a: (batch, heads, seqLenA, dim)
 		// b: (batch, heads, dim, seqLenB)
 		PackedCollection a = new PackedCollection(shape(batchSize, heads, seqLenA, dim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection b = new PackedCollection(shape(batchSize, heads, dim, seqLenB))
-				.fill(pos -> Math.random());
+				.randFill();
 
 		// Compute expected result manually
 		// Result should have shape (batch, heads, seqLenA, seqLenB)
@@ -347,9 +347,9 @@ public class WeightedSumTests extends TestSuiteBase {
 		// k: (batch, heads, seqLen, dim)
 		// Result after k transpose: (batch, heads, seqLen, seqLen)
 		PackedCollection q = new PackedCollection(shape(batchSize, heads, seqLen, dim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection k = new PackedCollection(shape(batchSize, heads, seqLen, dim))
-				.fill(pos -> Math.random());
+				.randFill();
 
 		// Compute expected result for Q @ K^T
 		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, seqLen));
@@ -403,9 +403,9 @@ public class WeightedSumTests extends TestSuiteBase {
 		// k: (batch, heads, seqLen, dim)
 		// Result after k transpose: (batch, heads, seqLen, seqLen)
 		PackedCollection q = new PackedCollection(shape(batchSize, heads, seqLen, dim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection k = new PackedCollection(shape(batchSize, heads, seqLen, dim))
-				.fill(pos -> Math.random());
+				.randFill();
 
 		// Compute expected result for Q @ K^T
 		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, seqLen));

@@ -77,7 +77,7 @@ public class TraversableExpressionComputationTest extends TestSuiteBase {
 		int c = 2;
 
 		PackedCollection input = new PackedCollection(shape(r, c));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		DefaultTraversableExpressionComputation sum = pairSum(p(input.traverse(1)));
 		PackedCollection out = sum.get().evaluate();

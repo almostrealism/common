@@ -100,7 +100,7 @@ public class CommitCauseMeasurementTest extends TestSuiteBase implements ModelTe
 
 		try {
 			PackedCollection input = new PackedCollection(shape(FEATURES));
-			input.fill(pos -> Math.random());
+			input.randFill();
 
 			PackedCollection gradient = pack(1.0);
 

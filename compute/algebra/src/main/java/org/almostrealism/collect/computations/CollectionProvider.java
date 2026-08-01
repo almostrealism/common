@@ -54,7 +54,7 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  * <p><strong>Providing constant data to a computation:</strong></p>
  * <pre>{@code
  * PackedCollection weights = new PackedCollection(shape(10, 5));
- * weights.fill(pos -> Math.random());
+ * weights.randFill();
  *
  * CollectionProvider<PackedCollection> weightsProvider = new CollectionProvider<>(weights);
  *

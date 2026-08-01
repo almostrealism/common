@@ -91,7 +91,7 @@ public class ArgumentPreparationChainTest extends TestSuiteBase implements TestF
 		PackedCollection weights = new PackedCollection(shape(n));
 		PackedCollection out = new PackedCollection(shape(1));
 
-		weights.fill(pos -> 1.0);
+		weights.fill(1.0);
 
 		// Member 1 (Metal): written = source
 		Assignment<MemoryData> write = new Assignment<>(n,

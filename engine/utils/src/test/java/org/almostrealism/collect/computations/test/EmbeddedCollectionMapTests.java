@@ -49,7 +49,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		PackedCollection input = tensor(shape(8, n)).pack();
 		PackedCollection filter = tensor(shape(n)).pack();
-		filter.fill(pos -> Math.random());
+		filter.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer product = traverse(1, p(input)).multiply(p(filter));
@@ -78,7 +78,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int w = 2;
 
 		PackedCollection input = tensor(shape(c / w, w, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer pool =
@@ -138,7 +138,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		PackedCollection input = tensor(shape(1, c, d)).pack();
 
 		for (int i = 0; i < 10; i++) {
-			input.fill(pos -> Math.random());
+			input.randFill();
 
 			CollectionProducer pool =
 					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
@@ -174,7 +174,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int w = 2;
 
 		PackedCollection input = tensor(shape(c, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer pool =
@@ -213,7 +213,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int w = 1;
 
 		PackedCollection input = tensor(shape(c / w, w, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer pool =
@@ -243,7 +243,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int d = 2;
 
 		PackedCollection input = tensor(shape(c, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer repeat =
@@ -277,8 +277,8 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		PackedCollection filter = tensor(shape(n, d)).pack();
 		PackedCollection input = tensor(shape(d)).pack();
-		filter.fill(pos -> Math.random());
-		input.fill(pos -> Math.random());
+		filter.randFill();
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer repeat = c(p(input)).repeat(2).each().multiply(p(filter));
@@ -308,8 +308,8 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		PackedCollection filter = tensor(shape(n, d)).pack();
 		PackedCollection input = tensor(shape(c, d)).pack();
-		filter.fill(pos -> Math.random());
-		input.fill(pos -> Math.random());
+		filter.randFill();
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer repeat =
@@ -340,7 +340,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int w = 2;
 
 		PackedCollection input = tensor(shape(n, w)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer pool =
@@ -369,7 +369,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int d = 3;
 
 		PackedCollection input = tensor(shape(n, w, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		log(Arrays.toString(input.toArray(0, 8)));
 
@@ -405,7 +405,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int w = 2;
 
 		PackedCollection input = tensor(shape(n, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer en = enumerate(shape(n, w), c(p(input)));
@@ -437,8 +437,8 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		PackedCollection a = tensor(shape(n, d)).pack();
 		PackedCollection b = tensor(shape(n, d)).pack();
-		a.fill(pos -> Math.random());
-		b.fill(pos -> Math.random());
+		a.randFill();
+		b.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer product =
@@ -470,7 +470,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int d = 1;
 
 		PackedCollection input = tensor(shape(n, w, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		verboseLog(() -> {
 			CollectionProducer pool =
@@ -501,7 +501,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		int w = 2;
 
 		PackedCollection input = tensor(shape(c, d)).pack();
-		input.fill(pos -> Math.random());
+		input.randFill();
 		CollectionProducer pool =
 				cp(input)
 						.enumerate(1, 1)

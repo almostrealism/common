@@ -124,15 +124,15 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Create input
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		// Create weights: [out_ch, in_ch, kernel_size]
 		PackedCollection weights = new PackedCollection(shape(outputChannels, inputChannels, 1));
-		weights.fill(pos -> 0.5); // All weights = 0.5
+		weights.fill(0.5); // All weights = 0.5
 
 		// Create bias
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
-		bias.fill(pos -> 0.1);
+		bias.fill(0.1);
 
 		// Create Conv1d block
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
@@ -178,13 +178,13 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		int padding = 1; // Same padding to preserve length
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		PackedCollection weights = new PackedCollection(shape(outputChannels, inputChannels, kernelSize));
-		weights.fill(pos -> 0.1);
+		weights.fill(0.1);
 
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
-		bias.fill(pos -> 0.0);
+		bias.fill(0.0);
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, bias);
@@ -227,7 +227,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		weights.fill(pos -> 1.0 / (inputChannels * kernelSize));
 
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
-		bias.fill(pos -> 0.0);
+		bias.fill(0.0);
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, bias);
@@ -263,14 +263,14 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		int padding = 1; // stride / 2
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		// Weights for transposed conv: [in_ch, out_ch, kernel_size]
 		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
-		weights.fill(pos -> 0.25);
+		weights.fill(0.25);
 
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
-		bias.fill(pos -> 0.0);
+		bias.fill(0.0);
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, bias);
@@ -313,14 +313,14 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		assertEquals(16, outLength);
 
 		PackedCollection input = new PackedCollection(shape(batchSize, channels, seqLength));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		// Create weights
 		PackedCollection convWeights = new PackedCollection(shape(channels, channels, kernelSize));
-		convWeights.fill(pos -> 0.1);
+		convWeights.fill(0.1);
 
 		PackedCollection convTWeights = new PackedCollection(shape(channels, channels, kernelSize));
-		convTWeights.fill(pos -> 0.1);
+		convTWeights.fill(0.1);
 
 		// Build model
 		SequentialBlock model = new SequentialBlock(shape(batchSize, channels, seqLength));
@@ -350,10 +350,10 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		int seqLength = 8;
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		PackedCollection weights = new PackedCollection(shape(outputChannels, inputChannels, 1));
-		weights.fill(pos -> 0.5);
+		weights.fill(0.5);
 
 		// No bias
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
@@ -396,10 +396,10 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		int padding = 2; // stride / 2
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
-		weights.fill(pos -> 0.125);
+		weights.fill(0.125);
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, null);
@@ -434,10 +434,10 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		int padding = 4; // stride / 2
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
-		weights.fill(pos -> 0.0625);
+		weights.fill(0.0625);
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, null);
@@ -482,7 +482,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Create simple input: all 1s
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		// Create simple weights: all same value so output is predictable
 		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
@@ -555,11 +555,11 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Create input
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		// Create weights
 		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
-		weights.fill(pos -> 0.0001);
+		weights.fill(0.0001);
 
 		warn("\nBuilding convTranspose1d block...");
 		long buildStart = System.currentTimeMillis();

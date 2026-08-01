@@ -67,7 +67,7 @@ public class OperationSemaphoreTests extends TestSuiteBase {
 		for (int i = 0; i < ops; i++) {
 			PackedCollection vectors = new PackedCollection(count, dim);
 			PackedCollection result = new PackedCollection(count);
-			vectors.fill(pos -> Math.random());
+			vectors.randFill();
 
 			op.add(a("sum " + dim, traverseEach(p(result)), sum(traverse(1, p(vectors)))));
 			allVectors.add(vectors);
