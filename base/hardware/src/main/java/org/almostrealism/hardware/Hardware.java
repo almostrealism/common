@@ -592,6 +592,8 @@ public final class Hardware implements ConsoleFeatures {
 	 * instead shares one host provider across backends rather than choosing an allocation strategy.
 	 */
 	private final boolean nativeDirectBuffers;
+	/** Whether the cross-backend NIO shared-memory bridge was enabled at initialization. */
+	private final boolean nativeSharedMemory;
 
 	/** High-level orchestrator for submitting and sequencing hardware operations. */
 	private DefaultComputer computer;
@@ -632,6 +634,7 @@ public final class Hardware implements ConsoleFeatures {
 		this.contextListeners = Collections.synchronizedList(new ArrayList<>());
 		this.contexts = new ArrayList<>();
 		this.nativeDirectBuffers = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_DIRECT_BUFFERS").orElse(true);
+		this.nativeSharedMemory = nioMemory;
 
 		int count;
 
@@ -1140,6 +1143,17 @@ public final class Hardware implements ConsoleFeatures {
 	public boolean isMemoryVolatile() { return memVolatile; }
 
 	/**
+	 * Indicates whether the cross-backend NIO shared-memory bridge was enabled
+	 * when this instance was initialized, either by {@code AR_HARDWARE_NIO_MEMORY}
+	 * or by a platform default that requires it. When enabled, the provider
+	 * returned by {@link #getNativeBufferMemoryProvider()} is always the direct
+	 * shared bridge, regardless of {@code AR_HARDWARE_NATIVE_DIRECT_BUFFERS}.
+	 *
+	 * @return True if NIO shared memory between backends is enabled
+	 */
+	public boolean isNativeSharedMemory() { return nativeSharedMemory; }
+
+	/**
 	 * Returns the memory scale exponent for maximum allocation size.
 	 *
 	 * <p>Max bytes = precision.bytes() * 2^MEMORY_SCALE * 64MB. Default is 4 (~4GB with FP32).</p>
@@ -1404,17 +1418,30 @@ public final class Hardware implements ConsoleFeatures {
 	 * Returns the native buffer memory provider, creating it on first use when
 	 * {@code AR_HARDWARE_NIO_MEMORY} did not already.
 	 *
-	 * <p>This provider supplies direct native buffer allocation: shared memory
+	 * <p>This provider supplies host-side native allocation: shared memory
 	 * between backends when NIO memory is enabled, and the ByteBuffer staging
 	 * area that system-boundary ingest populates before the framework migrates
 	 * the data to a compute device.</p>
+	 *
+	 * <p>The lazily created staging provider honors
+	 * {@code AR_HARDWARE_NATIVE_DIRECT_BUFFERS}: when direct buffers are disabled,
+	 * staging allocations come from JNI malloc (calloc mode) rather than NIO direct
+	 * buffers, so they are not subject to the JVM's direct-memory accounting and
+	 * its {@code -XX:MaxDirectMemorySize} limit. The provider created eagerly by
+	 * {@code AR_HARDWARE_NIO_MEMORY} is always direct, because named shared memory
+	 * between backends requires direct buffers.</p>
 	 *
 	 * @return The NIO memory provider
 	 */
 	public synchronized MemoryProvider<? extends RAM> getNativeBufferMemoryProvider() {
 		if (nioMemory == null) {
-			nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32,
-					Precision.FP32.bytes() * maxReservation);
+			if (nativeDirectBuffers) {
+				nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32,
+						Precision.FP32.bytes() * maxReservation);
+			} else {
+				nioMemory = new NativeMemoryProvider(Precision.FP32,
+						Precision.FP32.bytes() * maxReservation, false, null, false);
+			}
 		}
 
 		return nioMemory;
