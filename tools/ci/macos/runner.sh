@@ -16,16 +16,19 @@ set -euo pipefail
 #
 # Usage:
 #   chmod +x runner.sh
-#   ./runner.sh [/path/to/runner-dir]
+#   ./runner.sh [env-file] [runner-dir]
+#
+# Examples:
+#   ./runner.sh                          # uses tools/ci/macos/.env
+#   ./runner.sh ~/.runner-2.env          # uses a custom env file
+#   ./runner.sh ~/.runner-2.env ~/r2     # custom env + custom runner dir
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-RUNNER_DIR="${1:-${HOME}/actions-runner}"
-
 # ---------- Load configuration ----------
 
-ENV_FILE="${SCRIPT_DIR}/.env"
+ENV_FILE="${1:-${SCRIPT_DIR}/.env}"
 if [ ! -f "${ENV_FILE}" ]; then
-    if [ -f "${SCRIPT_DIR}/.env.example" ]; then
+    if [ -z "${1:-}" ] && [ -f "${SCRIPT_DIR}/.env.example" ]; then
         cp "${SCRIPT_DIR}/.env.example" "${SCRIPT_DIR}/.env"
         echo "Created .env from template. Edit it before running:"
         echo "  ${ENV_FILE}"
@@ -38,6 +41,8 @@ fi
 
 # shellcheck source=/dev/null
 source "${ENV_FILE}"
+
+RUNNER_DIR="${2:-${RUNNER_DIR:-${HOME}/actions-runner}}"
 
 for var in GITHUB_PAT GITHUB_OWNER GITHUB_REPO; do
     if [ -z "${!var:-}" ]; then
