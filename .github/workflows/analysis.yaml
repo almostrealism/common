@@ -266,7 +266,6 @@ jobs:
             "engine/utils/src/main/java/org/almostrealism/util/LineNumberReferenceDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/ReflectiveInvocationDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/TestTimeoutEnforcementScanner.java"
-            "engine/utils/src/main/resources/org/almostrealism/util/setmem-violation-baseline.tsv"
             "tools/src/test/java/org/almostrealism/util/test/CodePolicyEnforcementTest.java"
             "tools/ci/agent-protection/detect-test-hiding.sh"
             "tools/ci/agent-protection/check-quality-gates.sh"
@@ -276,10 +275,29 @@ jobs:
             "tools/ci/agent-protection/verify-memory-claim.sh"
           )
 
+          # The grandfathered violation baseline is a burn-down ledger rather
+          # than a policy: removing an entry is the goal of the migration, so a
+          # deletion-only change is progress. Adding or altering an entry
+          # grandfathers a new violation, and remains tampering.
+          BURN_DOWN_FILES=(
+            "engine/utils/src/main/resources/org/almostrealism/util/setmem-violation-baseline.tsv"
+          )
+
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
               TAMPERED="${TAMPERED}- ${f}\n"
+            fi
+          done
+
+          for f in "${BURN_DOWN_FILES[@]}"; do
+            DIFF=$(git diff --unified=0 origin/master...HEAD -- "$f")
+            ADDED=$(printf '%s\n' "$DIFF" | grep -c '^+[^+]') || true
+            REMOVED=$(printf '%s\n' "$DIFF" | grep -c '^-[^-]') || true
+            if [ "$ADDED" -gt 0 ]; then
+              TAMPERED="${TAMPERED}- ${f} (${ADDED} entries added or altered)\n"
+            elif [ "$REMOVED" -gt 0 ]; then
+              echo "${f}: ${REMOVED} grandfathered violations removed and none added — burn-down progress, not tampering."
             fi
           done
 
@@ -291,6 +309,10 @@ jobs:
             echo -e "\nThese files enforce code policies and test integrity. They CANNOT be" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "modified on PR branches. The only way to pass the build is to fix the" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "production code that violates the policies — not to weaken the policies.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "The grandfathered violation baseline is the one exception: entries may be" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "REMOVED as the violations they record are eliminated. Only adding or" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "altering an entry is treated as tampering, because that grandfathers a" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "new violation.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
             cat ${RUNNER_TEMP}/enforcement-report.txt
