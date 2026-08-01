@@ -243,7 +243,7 @@ import java.util.stream.Stream;
  *     deepList.get().run();
  *
  *     // To abort mid-execution, set flag value to non-zero
- *     abortFlag.setMem(1.0);  // Triggers abort on next check
+ *     abortFlag.fill(1.0);  // Triggers abort on next check
  * } finally {
  *     OperationList.removeAbortFlag();
  * }

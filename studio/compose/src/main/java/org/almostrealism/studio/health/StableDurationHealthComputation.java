@@ -213,7 +213,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 				if (!endTimeoutTrigger && isTimeout()) {
 					if (enableVerbose) log("Trigger timeout");
 
-					abortFlag.setMem(1.0);
+					abortFlag.fill(1.0);
 
 					if (enableVerbose) {
 						log("Timeout flag set");

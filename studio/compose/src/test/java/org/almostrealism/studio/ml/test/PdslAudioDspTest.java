@@ -675,7 +675,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		}
 
 		// Mutate the slot between forward calls — the second pass must reflect it.
-		volumeSlot.setMem(0.75);
+		volumeSlot.fill(0.75);
 
 		PackedCollection output2 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
@@ -731,7 +731,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		double output1FirstSample = output1.toDouble(0);
 
 		// Advance the "clock" — counter = 0.4, expected scale = 0.2
-		counter.setMem(0.4);
+		counter.fill(0.4);
 		PackedCollection output2 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		double expected2 = 0.4 * 0.5;
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
@@ -823,7 +823,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Mutate the slot to swap channels 0 and 1; the next forward pass must
 		// reflect the new routing without rebuilding the layer.
-		identitySlot.setMem(
+		identitySlot.fill(
 				0.0, 1.0, 0.0, 0.0,
 				1.0, 0.0, 0.0, 0.0,
 				0.0, 0.0, 1.0, 0.0,

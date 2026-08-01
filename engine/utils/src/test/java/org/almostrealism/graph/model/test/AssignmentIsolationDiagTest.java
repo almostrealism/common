@@ -214,15 +214,15 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		Runnable assign = a("standalone isolated", p(out), dense).get();
 		log("standaloneIsolatedSourceAssignment runnable=" + assign.getClass().getSimpleName());
 
-		in.setMem(2.0, 3.0);
+		in.fill(2.0, 3.0);
 		assign.run();
 		log("standaloneIsolatedSourceAssignment pass=1 result=" + out.toDouble(0) + " expected=0.35");
 
-		in.setMem(4.0, 6.0);
+		in.fill(4.0, 6.0);
 		assign.run();
 		log("standaloneIsolatedSourceAssignment pass=2 result=" + out.toDouble(0) + " expected=0.6");
 
-		in.setMem(8.0, 12.0);
+		in.fill(8.0, 12.0);
 		assign.run();
 		log("standaloneIsolatedSourceAssignment pass=3 result=" + out.toDouble(0) + " expected=1.1");
 	}
@@ -556,11 +556,11 @@ public class AssignmentIsolationDiagTest extends TestSuiteBase implements ModelT
 		Runnable assign = a("standalone inline", p(out), dense).get();
 		log("standaloneInlineSourceAssignment runnable=" + assign.getClass().getSimpleName());
 
-		in.setMem(2.0, 3.0);
+		in.fill(2.0, 3.0);
 		assign.run();
 		log("standaloneInlineSourceAssignment pass=1 result=" + out.toDouble(0) + " expected=0.35");
 
-		in.setMem(4.0, 6.0);
+		in.fill(4.0, 6.0);
 		assign.run();
 		log("standaloneInlineSourceAssignment pass=2 result=" + out.toDouble(0) + " expected=0.6");
 	}

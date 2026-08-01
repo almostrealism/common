@@ -102,8 +102,8 @@ public class RampScaleBehaviorTest extends TestSuiteBase implements MultiChannel
 				2.0, frame1[signalSize - 1], EPS);
 
 		// The per-buffer refresh: prev takes the value the last ramp ended on.
-		prev.setMem(2.0);
-		curr.setMem(4.0);
+		prev.fill(2.0);
+		curr.fill(4.0);
 		double[] frame2 = compiled.forward(input).toArray(0, signalSize);
 
 		double increment = (4.0 - 2.0) / signalSize;

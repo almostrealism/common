@@ -821,7 +821,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		input.fill(1.0);
 
 		double first = compiled.forward(input).toArray(0, sig)[0];
-		gain.setMem(3.0);
+		gain.fill(3.0);
 		double second = compiled.forward(input).toArray(0, sig)[0];
 		log(String.format("live-arg probe: first=%.4f (expect 2) second=%.4f (expect 3)",
 				first, second));
