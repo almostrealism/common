@@ -1433,7 +1433,12 @@ public final class Hardware implements ConsoleFeatures {
 	 * {@code AR_HARDWARE_NATIVE_DIRECT_BUFFERS}: when direct buffers are disabled,
 	 * staging allocations come from JNI malloc (calloc mode) rather than NIO direct
 	 * buffers, so they are not subject to the JVM's direct-memory accounting and
-	 * its {@code -XX:MaxDirectMemorySize} limit. The provider created eagerly by
+	 * its {@code -XX:MaxDirectMemorySize} limit. In calloc mode, staging shares the
+	 * native data context's own provider when one exists: the runtime-compiled JNI
+	 * operations bind once per class in the JVM, so two calloc providers at
+	 * different precisions would read each other's memory at the wrong element
+	 * width. Sharing the context provider also makes staged data device-resident
+	 * from the start, so no migration is required. The provider created eagerly by
 	 * {@code AR_HARDWARE_NIO_MEMORY} is always direct, because named shared memory
 	 * between backends requires direct buffers.</p>
 	 *
@@ -1445,8 +1450,17 @@ public final class Hardware implements ConsoleFeatures {
 				nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32,
 						Precision.FP32.bytes() * maxReservation);
 			} else {
-				nioMemory = new NativeMemoryProvider(Precision.FP32,
-						Precision.FP32.bytes() * maxReservation, false, null, false);
+				for (DataContext<MemoryData> c : contexts) {
+					for (MemoryProvider<? extends Memory> p : c.getMemoryProviders()) {
+						if (p instanceof NativeMemoryProvider) {
+							nioMemory = (NativeMemoryProvider) p;
+							return nioMemory;
+						}
+					}
+				}
+
+				nioMemory = new NativeMemoryProvider(getPrecision(),
+						getPrecision().bytes() * maxReservation, false, null, false);
 			}
 		}
 
