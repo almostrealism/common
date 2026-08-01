@@ -511,8 +511,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * }</pre>
 	 */
 	default CollectionProducer sqrt(Producer<PackedCollection> value) {
-		PackedCollection half = new PackedCollection(1);
-		half.setMem(0.5);
+		PackedCollection half = pack(0.5);
 		return pow(value, c(half));
 	}
 

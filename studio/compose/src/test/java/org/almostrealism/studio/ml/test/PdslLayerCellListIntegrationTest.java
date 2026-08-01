@@ -87,8 +87,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 	public void testStatePersistsAcrossTemporalTick() {
 		int delaySamples = 2;
 		PackedCollection buffer = new PackedCollection(2 * BUFFER_SIZE);
-		PackedCollection head = new PackedCollection(1);
-		head.setMem(0.0);
+		PackedCollection head = pack(0.0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");

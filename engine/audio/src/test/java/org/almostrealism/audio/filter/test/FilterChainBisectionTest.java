@@ -330,9 +330,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 30000)
 	public void apf07_iirStyleSelfReferenceInCompiledLoop() {
-		PackedCollection x = new PackedCollection(1);
+		PackedCollection x = pack(1.0);
 		PackedCollection y = new PackedCollection(1);
-		x.setMem(1.0);
 
 		double a1 = 0.5;
 		double b1 = -0.3;
@@ -462,8 +461,7 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	@Test(timeout = 60000)
 	public void chain04_mapFcHpWithMultipliedCutoff() {
 		PackedCollection sourceVal = pack(0.7);
-		PackedCollection geneVal = new PackedCollection(1);
-		geneVal.setMem(0.005);  // gene * 20000 = 100 Hz cutoff
+		PackedCollection geneVal = pack(0.005);  // gene * 20000 = 100 Hz cutoff
 
 		ProbeCell src = new ProbeCell(p(sourceVal));
 		CellList sources = new CellList();

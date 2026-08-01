@@ -83,8 +83,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 	 * @return an OperationList containing the push and tick operations
 	 */
 	public OperationList computation(AdjustableDelayCell delay) {
-		PackedCollection multiplier = new PackedCollection(1);
-		multiplier.setMem(0.1);
+		PackedCollection multiplier = pack(0.1);
 		CollectionProducer product = c(1.0).multiply(p(multiplier));
 
 		OperationList ops = new OperationList("Delay Push and Tick");

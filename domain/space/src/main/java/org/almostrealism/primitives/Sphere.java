@@ -245,9 +245,8 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 				double discriminant = (b * b) - (g) * (c - 1);
 
-				PackedCollection result = new PackedCollection(1);
+				PackedCollection result = pack(-1.0);
 				if (discriminant < 0) {
-					result.setMem(-1.0);
 					return result;
 				}
 
