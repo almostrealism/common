@@ -212,8 +212,12 @@ token-by-token generation. It is generic in the token type — `Integer` for tex
 and structured token types (e.g. `MidiCompoundToken`) for MIDI — and wraps a compiled
 transformer model with the position bookkeeping, prompt handling, and sampling
 infrastructure that generation needs. The class is bound to the device: the sequence
-position is maintained on the device by compiled operations, and the logits are read
-back in one bulk transfer at the step boundary.
+position is maintained on the device by compiled operations, and only the data that
+the host actually needs to make the next sampling decision is read back. Greedy
+decoding pulls a single `argmax` index off the device (`indexOfMax.evaluate(logits)
+.toDouble(0)`), while temperature sampling reads the full vocabulary array via
+`sampleToken`'s `toArray(0, vocabSize)` so it can renormalize and pick from the
+distribution.
 
 ### Components
 
@@ -226,7 +230,7 @@ public class AutoregressiveModel<T> {
     private final Consumer<T> token;              // Loads the current token into the input buffer
     private final Supplier<PackedCollection> forward;  // Runs the compiled model
     private final Function<PackedCollection, T> sample; // Maps logits to the next token
-    private final PackedCollection temperature;   // Single-element, host-writable
+    private PackedCollection temperature;            // Single-element, host-writable
 
     private int currentStep;                      // Host-side mirror of `position`
     private T currentToken;
