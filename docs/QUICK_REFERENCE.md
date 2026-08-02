@@ -47,17 +47,29 @@ shape.getTotalSize()                 // Total size
 
 ### Memory Copy Operations
 
-PackedCollection extends MemoryData, providing efficient memory transfer operations:
+PackedCollection extends MemoryData. The interface exposes two distinct
+write surfaces, deliberately named so the call site tells them apart:
+
+- **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`,
+  a `Bytes` view, a device-backed tensor) into this one.
+- **`setMem(...)`** takes literal varargs only — bulk host-array uploads
+  are not exposed here. System-boundary ingest goes through
+  `MemoryData.read(ByteBuffer)` into a native staging allocation, and
+  the framework migrates the staging area to the compute device on
+  first kernel use.
 
 ```java
-// Copy entire collection to another (same size)
-target.setFrom(0, source);                    // Copy all of source to target at offset 0
+// Copy all of source into target at offset 0
+target.setFrom(0, source);
 
 // Copy with offsets and length
 target.setFrom(targetOffset, source, srcOffset, length);
 
-// Copy a range
-target.setFrom(source, srcOffset, length);    // Copy to target starting at 0
+// Copy a range starting at target offset 0
+target.setFrom(source, srcOffset, length);
+
+// Write a small literal vector (varargs only)
+target.setMem(0, 1.0, 2.0, 3.0, 4.0);
 ```
 
 **Using CodeFeatures.copy()** (via interface - preferred for producer pattern):
@@ -76,8 +88,9 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Note**: `setFrom(MemoryData)` is more efficient than element-by-element loops.
-> Both PackedCollection and other MemoryData implementations support these operations.
+> **Note**: `setFrom(MemoryData)` is more efficient than element-by-element
+> loops. Both PackedCollection and other MemoryData implementations support
+> these operations. Reserve `setMem(...)` for literal varargs.
 
 ---
 
@@ -386,17 +399,24 @@ data.destroy();  // Release
 PackedCollection implements `MemoryData`. Key operations:
 
 ```java
-// Direct memory copy (efficient, hardware-accelerated)
-destination.setFrom(0, source);                         // Copy all
+// Region-to-region copy (efficient, hardware-accelerated)
+destination.setFrom(0, source);                          // Copy all
 destination.setFrom(destOffset, source, srcOffset, len); // Copy range
 
 // Read/write individual values
 double val = data.toDouble(index);
 data.setMem(index, value);
 
-// Read from a ByteBuffer (the primary serialized ingest surface)
-data.read(byteBuffer);                                  // From ByteBuffer
-data.getMem(floatArray, offset, length);                // To float[]
+// Literal varargs writes (no host-array overloads)
+data.setMem(0, 1.0, 2.0, 3.0);    // FP64
+data.setMem(0, 1.0f, 2.0f, 3.0f); // FP32
+
+// Bulk ingest from a ByteBuffer (the primary system-boundary ingest)
+data.read(byteBuffer);  // values land in a native staging allocation
+
+// Read back to a host array
+data.getMem(0, doubleArray, 0, length);                 // To double[]
+data.getMem(0, floatArray, 0, length);                  // To float[]
 ```
 
 > `MemoryData` previously exposed bulk `setMem(double[])`/`setMem(float[])` overloads.
