@@ -85,7 +85,10 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Guidance appended to every violation, naming the sanctioned idioms. */
 	private static final String GUIDANCE =
-			"setMem writes device memory only from numeric literals (e.g. setMem(0, 1.0, 2.0)). "
+			"setMem writes device memory only from numeric literals — the whole contents from "
+					+ "index 0 (e.g. setMem(1.0, 2.0)), or one value at an index (e.g. setMem(i, 1.0)). "
+					+ "An index followed by several values is no longer an indexed write: it binds to "
+					+ "the whole-content form and writes the index as data. "
 					+ "To copy from another MemoryData use setFrom(...) or cp(src).into(dest).evaluate(); "
 					+ "to materialise computed values use a Producer with fill(value) / fill(pos -> ...) "
 					+ "or a producer assignment. A host double[]/float[] must never be uploaded via setMem.";
@@ -180,14 +183,16 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
-			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().setMem(entrySize * index, data);"},
+			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().get(index).setMem(data);"},
+			new String[] {"/hardware/mem/MemoryBankAdapter.java", "get(index).setMem(values);"},
 			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
 			new String[] {"/space/CachedMeshIntersectionKernel.java",
 					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
-			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset, f);"},
-			new String[] {"/assets/CollectionEncoder.java", "destination.setMem(destinationOffset,"},
+			new String[] {"/assets/CollectionEncoder.java", "decoded.setMem(f);"},
+			new String[] {"/assets/CollectionEncoder.java",
+					"decoded.setMem(data.getDataList().stream().mapToDouble(d -> d).toArray());"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},
@@ -570,10 +575,17 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	}
 
 	/**
-	 * Determines whether a {@code setMem} argument list is one of the two sanctioned shapes:
-	 * a single numeric literal, or an (optional) leading offset followed exclusively by
-	 * numeric-literal value arguments. Any array syntax, or an array-typed leading argument,
-	 * makes the call a violation.
+	 * Determines whether a {@code setMem} argument list is one of the sanctioned shapes:
+	 * numeric literals written from index 0 ({@code setMem(double...)}), or an index
+	 * expression followed by exactly one numeric literal ({@code setMem(int, double)}).
+	 * Any array syntax, or an array-typed leading argument, makes the call a violation.
+	 *
+	 * <p>An index expression followed by several values is rejected because that overload
+	 * no longer exists. Such a call is not a compile error — it binds to the whole-content
+	 * varargs form, which writes the index itself as data at offset 0 — so the shape has to
+	 * be caught here, where it can be reported, rather than resolving differently than it
+	 * reads. A leading numeric literal is indistinguishable from a first value, so an
+	 * all-literal list is accepted whichever of the two shapes the author intended.</p>
 	 *
 	 * @param argString  the raw text between the call's parentheses (comment/string masked)
 	 * @param masked     the whole masked file, used to resolve a leading identifier's type
@@ -597,6 +609,10 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		// setMem(double[] source, int srcOffset) shape — which is a forbidden array upload.
 		String first = args.get(0).trim();
 		if (IDENTIFIER.matcher(first).matches() && isDeclaredArray(masked, first)) {
+			return false;
+		}
+
+		if (!isNumericLiteral(first) && args.size() > 2) {
 			return false;
 		}
 

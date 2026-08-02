@@ -70,15 +70,26 @@ public class MemoryDataViewWriteTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A write extending past the root reservation is rejected.
+	 * A write extending past the root reservation is rejected, whether it is an
+	 * indexed write beyond the last element or a whole-content write longer than
+	 * the reservation.
 	 */
 	@Test(timeout = 60000)
 	public void writePastRootRejected() {
 		PackedCollection root = new PackedCollection(shape(SIZE));
 
 		try {
-			root.setMem(SIZE - 1, 1.0, 2.0);
-			Assert.fail("Write extending past the root should be rejected");
+			root.setMem(SIZE, 1.0);
+			Assert.fail("Indexed write past the root should be rejected");
+		} catch (IllegalArgumentException e) {
+			// Expected
+		}
+
+		PackedCollection view = root.range(new TraversalPolicy(2), SIZE - 2);
+
+		try {
+			view.setMem(1.0, 2.0, 3.0);
+			Assert.fail("Whole-content write past the root should be rejected");
 		} catch (IllegalArgumentException e) {
 			// Expected
 		}

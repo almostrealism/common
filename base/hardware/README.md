@@ -211,7 +211,6 @@ call site tells them apart:
 ```java
 PackedCollection<?> source = new PackedCollection<>(1000);
 PackedCollection<?> target = new PackedCollection<>(1000);
-
 // Copy all of source into target at offset 0
 target.setFrom(0, source);
 

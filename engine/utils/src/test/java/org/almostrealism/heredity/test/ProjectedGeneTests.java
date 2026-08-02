@@ -46,10 +46,10 @@ public class ProjectedGeneTests extends TestSuiteBase {
 		double[] max = { 1.0, 1.0, 7.0, 2.0 };
 
 		PackedCollection source = new PackedCollection(shape(sourceLength));
-		source.fill(pos -> 2.0 * Math.random() - 1.0);
+		rand(source.getShape()).multiply(2.0).add(-1.0).into(source.traverseEach()).evaluate();
 
 		PackedCollection weights = new PackedCollection(shape(factors, sourceLength)).traverse(1);
-		weights.fill(pos -> 2.0 * Math.random() - 1.0);
+		rand(weights.getShape()).multiply(2.0).add(-1.0).into(weights.traverseEach()).evaluate();
 
 		ProjectedGene gene = new ProjectedGene(source, weights);
 		for (int pos = 0; pos < factors; pos++) {
@@ -112,10 +112,10 @@ public class ProjectedGeneTests extends TestSuiteBase {
 		int sourceLength = 8;
 
 		PackedCollection source = new PackedCollection(shape(sourceLength));
-		source.fill(pos -> 2.0 * Math.random() - 1.0);
+		rand(source.getShape()).multiply(2.0).add(-1.0).into(source.traverseEach()).evaluate();
 
 		PackedCollection weights = new PackedCollection(shape(factors, sourceLength)).traverse(1);
-		weights.fill(pos -> 2.0 * Math.random() - 1.0);
+		rand(weights.getShape()).multiply(2.0).add(-1.0).into(weights.traverseEach()).evaluate();
 
 		ProjectedGene gene = new ProjectedGene(source, weights);
 		gene.refreshValues();

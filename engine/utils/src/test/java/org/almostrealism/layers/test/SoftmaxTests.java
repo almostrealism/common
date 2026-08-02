@@ -396,7 +396,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		int seqLength = 20;
 
 		PackedCollection originalInput = new PackedCollection(shape(1, seqLength));
-		originalInput.fill(pos -> Math.random());
+		originalInput.randFill();
 		PackedCollection input = copy(originalInput);
 
 		Producer<PackedCollection> p = softmax(input.getShape(), true).apply(cp(input));
@@ -419,7 +419,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		int h = 0;
 
 		PackedCollection originalInput = new PackedCollection(shape(heads, seqLength));
-		originalInput.fill(pos -> Math.random());
+		originalInput.randFill();
 		PackedCollection input = copy(originalInput);
 
 		verboseLog(() -> {

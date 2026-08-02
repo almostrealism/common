@@ -162,7 +162,7 @@ public class MemoryDataCacheManager implements Destroyable, ExpressionFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		getData().setMem(entrySize * index, data);
+		getData().get(index).setMem(data);
 	}
 
 	/**

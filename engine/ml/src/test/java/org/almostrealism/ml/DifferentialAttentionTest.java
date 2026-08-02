@@ -257,7 +257,7 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 		/** Key-normalization bias, shared by {@code K1} and {@code K2}. */
 		private final PackedCollection kNormBias = new PackedCollection(shape(DIM_HEAD)).randnFill();
 		/** RoPE inverse frequencies, shape {@code [dimHead/4]}. */
-		private final PackedCollection invFreq = new PackedCollection(shape(DIM_HEAD / 4)).fill(pos -> 0.01);
+		private final PackedCollection invFreq = new PackedCollection(shape(DIM_HEAD / 4)).fill(0.01);
 
 		/**
 		 * Builds a fused {@code [3*dim, dim]} standard {@code to_qkv} weight whose {@code Q}, {@code K}

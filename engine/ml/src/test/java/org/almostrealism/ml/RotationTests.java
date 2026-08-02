@@ -95,9 +95,9 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		int rotaryDim = 16;
 
 		PackedCollection input = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 
 		// Expand freqs from (seqLen, rotaryDim) to (batchSize, heads, seqLen, rotaryDim)
 		CollectionProducer expandedFreqs = cp(freqs)
@@ -137,11 +137,11 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		int rotaryDim = 16;
 
 		PackedCollection leftIn = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection rightIn = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 
 		CollectionProducer expandedFreqs = cp(freqs)
 				.repeat(0, batchSize)    // (batchSize, seqLen, rotaryDim)
@@ -263,7 +263,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		int rotaryDim = 16;
 
 		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection input = new PackedCollection(
 				shape(batchSize, heads, seqLen, rotaryDim)).randFill();
 
@@ -332,9 +332,9 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		// Create random input and frequency tensors
 		PackedCollection input = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 		PackedCollection freqs = new PackedCollection(shape(seqLen, rotaryDim))
-				.fill(pos -> Math.random());
+				.randFill();
 
 		// Apply the rotary transform using the method under test
 		CollectionProducer transform = applyRotaryTransform(

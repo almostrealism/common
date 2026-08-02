@@ -63,8 +63,8 @@ public class AltComputeContextsTest extends TestSuiteBase {
 		PackedCollection vector = new PackedCollection(width);
 		PackedCollection result = new PackedCollection(dim);
 
-		matrix.fill(pos -> Math.random());
-		vector.fill(pos -> Math.random());
+		matrix.randFill();
+		vector.randFill();
 
 		OperationProfile profiles = new OperationProfile();
 

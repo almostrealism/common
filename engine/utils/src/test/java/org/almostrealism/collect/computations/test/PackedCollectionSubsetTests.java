@@ -271,13 +271,13 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 	 */
 	private void subsetAssignment() {
 		PackedCollection originalInput = new PackedCollection(shape(10, 20));
-		originalInput.fill(pos -> Math.random());
+		originalInput.randFill();
 
 		PackedCollection input = new PackedCollection(shape(10, 20));
 		input.fill(pos -> originalInput.valueAt(pos));
 
 		PackedCollection filter = new PackedCollection(shape(1, 20));
-		filter.fill(pos -> Math.random());
+		filter.randFill();
 
 		CollectionProducer in = c(p(input));
 		CollectionProducer subset = subset(shape(1, 20), in, 4, 0).traverseEach();

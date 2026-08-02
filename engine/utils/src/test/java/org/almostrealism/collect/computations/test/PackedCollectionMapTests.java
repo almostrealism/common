@@ -403,8 +403,8 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		PackedCollection x = new PackedCollection(xShape);
 		PackedCollection in = new PackedCollection(inShape);
 
-		x.fill(pos -> Math.random());
-		in.fill(pos -> Math.random());
+		x.randFill();
+		in.randFill();
 
 		Producer<PackedCollection> o =
 				c(p(in)).traverse(1)
@@ -445,7 +445,7 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		PackedCollection filter = tensor(shape(w, w)).pack();
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
-		filter.fill(pos -> 1.0);
+		filter.fill(1.0);
 
 		verboseLog(() -> {
 			CollectionProducer conv = c(p(input))

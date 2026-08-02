@@ -266,10 +266,11 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 				package test;
 				import org.almostrealism.collect.PackedCollection;
 				public class SetMemViolation {
-				    public void bad(PackedCollection dest, double[] host, double scalar) {
+				    public void bad(PackedCollection dest, double[] host, double scalar, int i) {
 				        dest.setMem(0, host, 0, host.length);
 				        dest.setMem(0, scalar);
 				        dest.setMem(0, new double[] { 1.0, 2.0 });
+				        dest.setMem(i, 1.0, 2.0);
 				    }
 				}
 				""";
@@ -283,7 +284,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 			long count = detector.getViolations().stream()
 					.filter(v -> "SETMEM_NON_LITERAL_ARGUMENT".equals(v.getRule()))
 					.count();
-			Assert.assertEquals("Should flag each non-literal setMem argument shape", 3, count);
+			Assert.assertEquals("Should flag each non-literal setMem argument shape", 4, count);
 
 			log("Detector correctly identified " + count + " non-literal setMem violation(s).");
 

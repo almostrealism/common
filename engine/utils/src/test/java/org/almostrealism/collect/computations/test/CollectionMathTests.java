@@ -35,7 +35,7 @@ public class CollectionMathTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void broadcastProduct1() {
 		PackedCollection a = new PackedCollection(shape(10));
-		a.fill(pos -> Math.random());
+		a.randFill();
 
 		verboseLog(() -> {
 			PackedCollection result = cp(a).multiply(c(2.0)).get().evaluate();
@@ -53,7 +53,7 @@ public class CollectionMathTests extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void broadcastProduct2() {
 		PackedCollection a = new PackedCollection(shape(10));
-		a.fill(pos -> Math.random());
+		a.randFill();
 
 		verboseLog(() -> {
 			PackedCollection result = new PackedCollection(shape(10));
@@ -223,13 +223,13 @@ public class CollectionMathTests extends TestSuiteBase {
 		int size = 768;
 
 		PackedCollection o = new PackedCollection(shape(size));
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		PackedCollection x = new PackedCollection(shape(size));
-		x.fill(pos -> Math.random());
+		x.randFill();
 
 		PackedCollection weight = new PackedCollection(shape(size));
-		weight.fill(pos -> Math.random());
+		weight.randFill();
 
 
 		kernelTest(() -> {
@@ -251,13 +251,13 @@ public class CollectionMathTests extends TestSuiteBase {
 		int size = 768;
 
 		PackedCollection o = new PackedCollection(shape(size));
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		PackedCollection x = new PackedCollection(shape(size));
-		x.fill(pos -> Math.random());
+		x.randFill();
 
 		PackedCollection weight = new PackedCollection(shape(size));
-		weight.fill(pos -> Math.random());
+		weight.randFill();
 
 
 		kernelTest(() -> {
@@ -287,13 +287,13 @@ public class CollectionMathTests extends TestSuiteBase {
 		int size = 768;
 
 		PackedCollection o = new PackedCollection(shape(size));
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		PackedCollection x = new PackedCollection(shape(size));
-		x.fill(pos -> Math.random());
+		x.randFill();
 
 		PackedCollection weight = new PackedCollection(shape(size));
-		weight.fill(pos -> Math.random());
+		weight.randFill();
 
 
 		kernelTest(() -> {
@@ -329,7 +329,7 @@ public class CollectionMathTests extends TestSuiteBase {
 		TraversalPolicy shape = shape(c, g, v);
 
 		PackedCollection o = new PackedCollection(shape);
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		kernelTest(() -> cp(o).mean(2),
 				output -> {
@@ -357,7 +357,7 @@ public class CollectionMathTests extends TestSuiteBase {
 		TraversalPolicy shape = shape(c, g, v);
 
 		PackedCollection o = new PackedCollection(shape);
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		kernelTest(() -> cp(o).subtractMean(2),
 				output -> {
@@ -390,7 +390,7 @@ public class CollectionMathTests extends TestSuiteBase {
 		TraversalPolicy shape = shape(c, g, v);
 
 		PackedCollection o = new PackedCollection(shape);
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		kernelTest(() -> sq(cp(o).subtractMean(2)),
 				output -> {
@@ -439,7 +439,7 @@ public class CollectionMathTests extends TestSuiteBase {
 		TraversalPolicy shape = shape(c, g, v);
 
 		PackedCollection o = new PackedCollection(shape);
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		kernelTest(() -> cp(o).variance(2),
 				output -> {
@@ -478,7 +478,7 @@ public class CollectionMathTests extends TestSuiteBase {
 		TraversalPolicy shape = shape(n, g, v);
 
 		PackedCollection o = new PackedCollection(shape.getTotalSize());
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		kernelTest(() -> {
 					CollectionProducer input = cp(o).reshape(-1, g, v);
@@ -524,13 +524,13 @@ public class CollectionMathTests extends TestSuiteBase {
 		int size = 10;
 
 		PackedCollection aOrig = new PackedCollection(shape(size));
-		aOrig.fill(pos -> Math.random());
+		aOrig.randFill();
 
 		PackedCollection a = new PackedCollection(shape(size));
 		a.fill(pos -> aOrig.valueAt(pos));
 
 		PackedCollection b = new PackedCollection(shape(size));
-		b.fill(pos -> Math.random());
+		b.randFill();
 
 		Runnable op = (Runnable) a(traverseEach(p(a)), add(traverseEach(p(a)), traverseEach(p(b)))).optimize().get();
 		op.run();

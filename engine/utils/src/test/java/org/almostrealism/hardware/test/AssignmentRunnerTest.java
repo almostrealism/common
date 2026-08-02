@@ -42,7 +42,7 @@ public class AssignmentRunnerTest extends TestSuiteBase {
 
 		PackedCollection src = new PackedCollection(n);
 		PackedCollection dst = new PackedCollection(n);
-		src.fill(pos -> Math.random() + 1.0);
+		rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 		Runnable op = a(cp(dst), cp(src)).get();
 
@@ -72,7 +72,7 @@ public class AssignmentRunnerTest extends TestSuiteBase {
 		for (int n : sizes) {
 			PackedCollection src = new PackedCollection(n);
 			PackedCollection dst = new PackedCollection(n);
-			src.fill(pos -> Math.random() + 1.0);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 			Runnable op = a(cp(dst), cp(src)).get();
 			Assert.assertTrue("expected Assignment.Runner, got " + op.getClass().getName(),

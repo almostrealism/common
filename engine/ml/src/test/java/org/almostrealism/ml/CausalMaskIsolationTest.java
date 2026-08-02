@@ -141,7 +141,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Create input (all ones for easy verification)
 		PackedCollection input = new PackedCollection(shape(heads, seqLen));
-		input.fill(pos -> 1.0);
+		input.fill(1.0);
 
 		// Test at different positions
 		Runnable advancePosition = a(cp(position), add(cp(position), c(1.0))).get();

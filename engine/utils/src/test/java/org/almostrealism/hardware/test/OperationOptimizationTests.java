@@ -49,7 +49,7 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		PackedCollection values = new PackedCollection(valueShape);
 		PackedCollection out = new PackedCollection(shape(heads, headSize, seqLength));
 
-		values.fill(pos -> Math.random());
+		values.randFill();
 
 		CollectionProducer v =
 				c(p(values)).reshape(shape(seqLength, dim))
@@ -83,8 +83,8 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		PackedCollection matrix = new PackedCollection(shape(dim, dim));
 		PackedCollection out = new PackedCollection(shape(dim));
 
-		in.fill(pos -> Math.random());
-		matrix.fill(pos -> Math.random());
+		in.randFill();
+		matrix.randFill();
 
 		Supplier<Runnable> loop = lp(a(each(p(out)), matmul(p(matrix), p(in))), 10);
 		log(String.valueOf(Countable.count(loop)));
@@ -103,8 +103,8 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		PackedCollection in = new PackedCollection(shape(dim));
 		PackedCollection matrix = new PackedCollection(shape(dim, dim));
 
-		in.fill(pos -> Math.random());
-		matrix.fill(pos -> Math.random());
+		in.randFill();
+		matrix.randFill();
 
 		log("Running native loop...");
 		profile(lp(a(p(in), matmul(p(matrix), p(in))), itr));

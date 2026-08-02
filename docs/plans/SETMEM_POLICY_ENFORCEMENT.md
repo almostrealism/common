@@ -14,8 +14,14 @@ host into device memory.** Every other value that ends up in device memory must 
    The per-element host-compute overloads (`fill(DoubleSupplier)`,
    `fill(Function<int[], Double>)`) are removed.
 4. `setMem(index, value)` — a **new single-value** form; the value must be a
-   literal.
+   literal. *(Landed in phase 20.)*
 5. `setMem(index, value...)` — the multi-value indexed form is **removed**.
+   *(Landed in phase 20.)* Note that removing the overload does not make the old
+   shape a compile error: `setMem(i, 1.0, 2.0)` now binds to the whole-content
+   varargs form and writes the index itself as data at offset 0. The detector
+   rejects an index expression followed by more than one value for that reason.
+   An all-literal argument list is textually identical to a legal whole-content
+   write, so that case is accepted either way.
 6. `setMem(values...)` — literal varargs only (unchanged).
 7. **The system-boundary ingest API** — a named surface for data entering the JVM
    from outside the system: disk (protobuf weights, WAV, resource files), external
@@ -159,6 +165,35 @@ sites illegal. Measured 2026-07-30 (textual scan, so counts are approximate):
 Sequenced correctly (migrate first, flip the rules second), the enforcement flip
 adds zero new baseline rows; flipped early it would add ~195.
 
+### Opportunity: let a Random producer participate in InstructionSet sharing
+
+Nothing containing a `Random` producer appears to be cached for instruction-set
+sharing today. It probably could be. `rand(shape).multiply(2.0)` has the same
+*structure* as `placeholder(shape).multiply(2.0)` — the random values are
+**data**, not structure, and they reach the device the same way any other
+argument does. If `Random` contributed a placeholder to the signature rather
+than anything value-dependent, every graph built over it would become
+signature-stable and the compiled kernel would be reused.
+
+The payoff is concrete and was measured during the fill-lambda migration: a
+statement like
+
+```java
+rand(input.getShape()).multiply(0.5).add(0.5).into(input.traverseEach()).evaluate();
+```
+
+is fine at setup (a handful of iterations) but is the wrong shape inside a hot
+training loop running `epochCount * 1000` times, because the graph is rebuilt
+per iteration. Two sites — `TrainModelTest.train` and
+`MyNativeEnabledApplication` — were left on `fill(pos -> ...)` for exactly this
+reason and are still carried in the baseline. With sharing in place they become
+ordinary migrations, and the same applies to every remaining loop-resident
+random fill.
+
+This is a large win for something not especially complicated, and it is
+independent of the device-RNG work below — it makes the *enclosing* kernel
+cacheable regardless of how the random values themselves are produced.
+
 ### Use cases that do not fit the contract, and their resolutions
 
 - **Host-computed reference data in tests** (FIR reference coefficients, host
@@ -232,6 +267,17 @@ closes out the last three migrated sites. From there:
    flip the detector to the target semantics, add the single-value
    `setMem(index, value)`, and physically remove `setMem(int, double...)` and the
    two `fill` lambda overloads. In this order the flip adds zero baseline rows.
+
+   Phase 19 completed the migrations; phase 20 removed `setMem(int, double...)`
+   and `setMem(int, float...)`, added the single-value forms, and flipped the
+   detector — the baseline held at 435 entries with no row added or removed, as
+   predicted. Four rows had their recorded source text updated because the
+   removal forced those exact lines to change (`setMem(0, array)` became
+   `setMem(array)`, an identical write).
+
+   The `fill` lambda overloads were deliberately **left in place**: they have
+   ~334 live call sites and `PackedCollection.identityFill` uses one internally,
+   so removing them is bucket 4a below rather than part of the flip.
 4. **Burn down the baseline by bucket, not by module**: (a) the ~356
    `fill(pos -> ...)` sites → whole-buffer producers and `rand`/`randn`
    (mechanical; concentrated in engine/utils and engine/ml tests); (b)
@@ -240,6 +286,22 @@ closes out the last three migrated sites. From there:
    tables in engine/audio → producers or resource files through the ingest API;
    (d) the residue decides whether the signature-stable broadcast-scalar idiom
    earns a named home in the framework.
+
+   Bucket (a) is largely done. Of 334 live `fill(lambda)` sites, 238 migrated:
+   49 constants to `fill(literal)`, 143 bare draws to `randFill`/`randnFill`
+   (which already had 459 call sites — this is consolidation onto the existing
+   surface, not a new idiom), and 46 affine cases to
+   `rand(x.getShape())…into(x.traverseEach()).evaluate()`. That took the ledger
+   from 587 occurrences across 435 entries to 349 across 302. The 96 that remain
+   are the ones needing judgment rather than an idiom: index-derived fills,
+   multi-line lambda blocks, random draws in expression position inside
+   `.map(...)` pipelines, multi-draw expressions, and `(int)` truncation.
+
+   Consolidating onto `randFill`/`randnFill` does not itself remove a
+   host→device transfer — `Random` still generates on the host and uploads
+   through the one exclusion it owns. That is the point: it collects the
+   transfer into a single place, so replacing it later is a one-file change
+   rather than a 200-site migration.
 5. **Endgame**: the baseline reaches zero, the ledger machinery is deleted, and
    the detector remains as a pure regression gate on the narrowed surface.
 
