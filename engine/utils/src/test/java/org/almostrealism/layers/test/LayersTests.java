@@ -168,7 +168,10 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
-				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(2.0).add(1.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, input))
 				.collect(Collectors.toList()));
 		ModelOptimizer train = new ModelOptimizer(model, profile, data);
@@ -198,7 +201,10 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
-				.map(input -> input.fill(pos -> 1 + 2 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(2.0).add(1.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, input))
 				.collect(Collectors.toList()));
 

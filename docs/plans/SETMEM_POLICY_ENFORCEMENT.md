@@ -165,34 +165,45 @@ sites illegal. Measured 2026-07-30 (textual scan, so counts are approximate):
 Sequenced correctly (migrate first, flip the rules second), the enforcement flip
 adds zero new baseline rows; flipped early it would add ~195.
 
-### Opportunity: let a Random producer participate in InstructionSet sharing
+### A Random producer participates in InstructionSet sharing
 
-Nothing containing a `Random` producer appears to be cached for instruction-set
-sharing today. It probably could be. `rand(shape).multiply(2.0)` has the same
-*structure* as `placeholder(shape).multiply(2.0)` — the random values are
-**data**, not structure, and they reach the device the same way any other
-argument does. If `Random` contributed a placeholder to the signature rather
-than anything value-dependent, every graph built over it would become
-signature-stable and the compiled kernel would be reused.
+Nothing containing a `Random` producer was cached for instruction-set sharing.
+The mechanism was total rather than partial: `ProducerComputationBase.signature()`
+collects `Signature.of(input)` for every input and returns null if *any* of them
+is null, and `Signature.of` returns null for anything not implementing
+`Signature`. `Random` implemented no signature, so every computation anywhere
+above a `rand()` or `randn()` had a null signature and was recompiled on each
+construction.
 
-The payoff is concrete and was measured during the fill-lambda migration: a
-statement like
+`Random` now carries a structural signature — shape and distribution, and
+deliberately neither the generated values nor the `java.util.Random` source.
+Excluding them is what makes the signature *correct* rather than a concession:
+the values are data that reach the device as an argument, so
+`rand(shape).multiply(2.0)` compiles to the same kernel body as
+`placeholder(shape).multiply(2.0)` whatever they are.
+`PassThroughProducer.signature()` is the precedent for this shape of answer.
+
+This does not merge generators that must stay apart. Sharing one instance
+(`a.multiply(a)`, which squares) stays distinguishable from two separate ones
+(`rand(s).multiply(rand(s))`, which multiplies independent series), because
+`Random` does not override `equals`/`hashCode` and the distinct-child count is
+identity-based.
+
+Measured on `TrainModelTest`, whose training loop runs `epochCount * 1000`
+iterations of
 
 ```java
 rand(input.getShape()).multiply(0.5).add(0.5).into(input.traverseEach()).evaluate();
 ```
 
-is fine at setup (a handful of iterations) but is the wrong shape inside a hot
-training loop running `epochCount * 1000` times, because the graph is rebuilt
-per iteration. Two sites — `TrainModelTest.train` and
-`MyNativeEnabledApplication` — were left on `fill(pos -> ...)` for exactly this
-reason and are still carried in the baseline. With sharing in place they become
-ordinary migrations, and the same applies to every remaining loop-resident
-random fill.
+the statement went from timing out at 240s per method to passing in 94s. The
+host `fill` it replaced took 63s, so the compile storm is gone while roughly
+0.3ms per iteration of graph *construction* remains — enough that a genuinely
+hot loop still deserves a hoisted evaluable, and the reason a
+loop-resident-producer check is worth keeping in review.
 
-This is a large win for something not especially complicated, and it is
-independent of the device-RNG work below — it makes the *enclosing* kernel
-cacheable regardless of how the random values themselves are produced.
+This is independent of the device-RNG work below: it makes the *enclosing*
+kernel cacheable regardless of how the random values themselves are produced.
 
 ### Use cases that do not fit the contract, and their resolutions
 

@@ -22,6 +22,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Multiple;
+import io.almostrealism.uml.Signature;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryBank;
@@ -71,7 +72,7 @@ import java.util.stream.IntStream;
  * @see PackedCollection
  * @since 0.52
  */
-public class Random implements CollectionProducer, OperationInfo {
+public class Random implements CollectionProducer, OperationInfo, Signature {
 	/** Static seed used by the xorshift random number generator in {@link #nextInt()} and {@link #nextFloat()} */
 	private static long seed;
 
@@ -162,11 +163,40 @@ public class Random implements CollectionProducer, OperationInfo {
 
 	/**
 	 * Returns the metadata describing this random generation operation.
-	 * 
+	 *
 	 * @return the {@link OperationMetadata} containing operation details
 	 */
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
+
+	/**
+	 * Returns a signature covering the shape and distribution, but deliberately
+	 * not the generated values.
+	 *
+	 * <p>The values are <em>data</em>, not structure. They reach the device the
+	 * way any other argument does, so a kernel built over this producer has the
+	 * same body whatever the values happen to be — {@code rand(shape).multiply(2.0)}
+	 * compiles identically to {@code placeholder(shape).multiply(2.0)}. Excluding
+	 * the values is therefore what makes the signature correct, not a concession:
+	 * two generators of the same shape and distribution really do produce the same
+	 * program.</p>
+	 *
+	 * <p>Without a signature here every enclosing computation was uncacheable,
+	 * because {@code ProducerComputationBase.signature()} returns null as soon as
+	 * any input signature is null. That cost a fresh compilation each time a graph
+	 * over a random producer was constructed, which is ruinous in a loop.</p>
+	 *
+	 * <p>This does not merge distinct generators. Sharing a single instance
+	 * ({@code a.multiply(a)}, which squares) stays distinguishable from two
+	 * separate ones ({@code rand(s).multiply(rand(s))}, which multiplies
+	 * independent series) because distinct children are counted by identity.</p>
+	 *
+	 * @return the structural signature of this generator
+	 */
+	@Override
+	public String signature() {
+		return "rand(" + (normal ? "normal" : "uniform") + "{" + shape.toStringDetail() + "})";
+	}
 
 	/**
 	 * Initializes the random values array if it hasn't been created yet.

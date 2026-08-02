@@ -114,7 +114,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		// Generate dataset using same pattern as GradientDescentTests
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -157,7 +160,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		// Generate dataset
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
-				.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(4.0).add(5.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, weightedSumFunc.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -291,7 +297,10 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 		// Generate batched dataset
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(batchSize, size)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, batchFunc.apply(input)))
 				.collect(Collectors.toList()));
 

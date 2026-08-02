@@ -141,7 +141,10 @@ public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTe
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
 				.collect(Collectors.toList()));
 
