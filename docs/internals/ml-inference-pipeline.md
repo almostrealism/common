@@ -207,88 +207,113 @@ Both views share the same underlying memory — reshape is zero-copy.
 
 ## Autoregressive Generation Loop
 
-<!-- TODO(review): this section (Components + Factory Method snippets below) is stale
-     against the current AutoregressiveModel<T> — class is now generic, fields and the
-     of() factory signature no longer match (e.g. `position`/`resetPosition`/
-     `advancePosition`/`forward`/`sample` replace `step`/`token`/`logits`/`vocabSize`),
-     and the cited line numbers (86-101, 264-272) no longer point at these members.
-     Needs a full rewrite against the current source, not a one-line patch. -->
-
-`AutoregressiveModel` (`engine/ml/src/.../ml/AutoregressiveModel.java`) orchestrates
-token-by-token generation. It wraps a compiled transformer model and manages the
-two-phase generation process.
+`AutoregressiveModel<T>` (`engine/ml/src/.../ml/AutoregressiveModel.java`) orchestrates
+token-by-token generation. It is generic in the token type — `Integer` for text models
+and structured token types (e.g. `MidiCompoundToken`) for MIDI — and wraps a compiled
+transformer model with the position bookkeeping, prompt handling, and sampling
+infrastructure that generation needs. The class is bound to the device: the sequence
+position is maintained on the device by compiled operations, and only the data that
+the host actually needs to make the next sampling decision is read back. Greedy
+decoding pulls a single `argmax` index off the device (`indexOfMax.evaluate(logits)
+.toDouble(0)`), while temperature sampling reads the full vocabulary array via
+`sampleToken`'s `toArray(0, vocabSize)` so it can renormalize and pick from the
+distribution.
 
 ### Components
 
-<!-- TODO(review): This snippet (and the Factory Method / Two-Phase Operation
-     snippets below it) still show the pre-refactor AutoregressiveModel API
-     (IntConsumer step, token, logits, vocabSize, currentToken, prompt,
-     promptTokens, cachedLogits). The current class is generic
-     (AutoregressiveModel<T>) and uses position, resetPosition,
-     advancePosition, token, forward, sample, currentStep, temperature,
-     promptLength, cachedOutput instead — see AutoregressiveModel.java.
-     Needs a full rewrite against current source; out of scope for a
-     surgical fix. -->
 ```java
-// AutoregressiveModel.java:86-101
-public class AutoregressiveModel {
-    private final IntConsumer step;           // Updates position for RoPE + cache indexing
-    private final IntConsumer token;          // Copies token embedding into model input
-    private final Supplier<PackedCollection> logits;  // Executes forward pass, returns logits
-    private final int vocabSize;
+// AutoregressiveModel.java:104-156
+public class AutoregressiveModel<T> {
+    private final PackedCollection position;       // Shared device-resident step counter
+    private final Runnable resetPosition;         // Compiled once: position = 0
+    private final Runnable advancePosition;       // Compiled once: position += 1
+    private final Consumer<T> token;              // Loads the current token into the input buffer
+    private final Supplier<PackedCollection> forward;  // Runs the compiled model
+    private final Function<PackedCollection, T> sample; // Maps logits to the next token
+    private PackedCollection temperature;            // Single-element, host-writable
 
-    private int currentStep;                  // Current position in sequence
-    private int currentToken;                 // Most recent token ID
-    private int[] prompt;                     // Prompt token IDs
-    private int promptTokens;                 // Number of prompt tokens
-    private PackedCollection cachedLogits;    // Logits from previous step
-    private PackedCollection temperature;     // Sampling temperature
+    private int currentStep;                      // Host-side mirror of `position`
+    private T currentToken;
+    private T[] prompt;
+    private int promptLength;
+    private PackedCollection cachedOutput;        // Logits from the previous forward pass
 }
 ```
+
+The position is a single-element `PackedCollection` shared with the model's computation
+graph — attention reads it as `p(position)` to index the KV cache and apply RoPE. It is
+never written from the host: `resetPosition` and `advancePosition` are compiled once
+over constants and reused for every token of every sequence. Writing the position per
+step from the host (e.g. by assigning a constant built from the step index) would
+compile a distinct operation for every position in the sequence.
 
 ### Factory Method
 
-The `of()` factory method connects the autoregressive wrapper to a compiled model:
+The `of()` factory wraps a compiled text model and constructs the sampling function
+inline:
 
 ```java
-// AutoregressiveModel.java:264-272
-public static AutoregressiveModel of(CompiledModel model,
-                                     IntConsumer step,
-                                     IntFunction<PackedCollection> tokenEmbed) {
+// AutoregressiveModel.java:405-434
+public static AutoregressiveModel<Integer> of(CompiledModel model,
+                                             PackedCollection position,
+                                             IntFunction<PackedCollection> tokenEmbed) {
     PackedCollection in = new PackedCollection(model.getInputShape());
-    return new AutoregressiveModel(
-        step,
-        t -> in.setFrom(0, tokenEmbed.apply(t), 0,
-                       model.getInputShape().getTotalSize()),
-        () -> model.forward(in),
-        model.getOutputShape().getTotalSize());
+    int vocabSize = model.getOutputShape().getTotalSize();
+
+    PackedCollection temperature = new PackedCollection(1);
+
+    Evaluable<PackedCollection> indexOfMax = Ops.o().indexOfMax(Ops.o().x(vocabSize)).get();
+    Evaluable<PackedCollection> rescale = Ops.o().x(vocabSize).divide(Ops.o().cp(temperature)).get();
+    Evaluable<? extends PackedCollection> softmax =
+            Process.optimized(DIST.softmax(Ops.o().x(vocabSize))).get();
+
+    Random random = new Random();
+    Function<PackedCollection, Integer> sample = logits -> {
+        if (temperature.toDouble(0) == 0.0) {
+            return (int) indexOfMax.evaluate(logits).toDouble(0);
+        } else {
+            rescale.into(logits).evaluate(logits);
+            softmax.into(logits).evaluate(logits);
+            return sampleToken(logits, vocabSize, 1.0, 1.0, random);
+        }
+    };
+
+    return new AutoregressiveModel<>(
+            position,
+            t -> in.setFrom(0, tokenEmbed.apply(t), 0,
+                            model.getInputShape().getTotalSize()),
+            () -> model.forward(in),
+            sample,
+            temperature);
 }
 ```
+
+Note the use of `setFrom` for the token-embedding copy — the recent
+`setmem-policy-phases` work retired the `setMem(int, double[], int, int)` bulk-host-array
+overload from `MemoryData`, and the consumer created here is the sanctioned way to
+move one device buffer into another.
 
 In Qwen3, this is wired as:
 
 ```java
 // Qwen3.java:411-414
-AutoregressiveModel.of(
-    compiledModel,
-    position,                                                // The position collection
-    t -> tokenEmbeddings.range(shape(1, dim), t * dim)       // Look up embedding row
-);
+return AutoregressiveModel.of(
+        compiledModel,
+        position,                                                       // shared device-resident step
+        t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 ```
 
-The position is no longer advanced from the host. `AutoregressiveModel`
-performs the increment device-side via `advance()`, so the position
-collection always holds the current step index — see the commit
-`Maintain the autoregressive sequence position on the device` for the
-reasoning.
+`position` is created earlier in the same method (`Qwen3.java:338`) as a single-element
+`PackedCollection` and passed to attention as `p(position)` so the model reads the
+current step from the device.
 
 ### Two-Phase Operation
 
-The `next()` method (`AutoregressiveModel.java:209-234`) implements two distinct phases:
+The `next()` method (`AutoregressiveModel.java:295-308`) implements two distinct phases:
 
 ```
-Phase 1: PROMPT (currentStep < promptTokens)
-──────────────────────────────────────────────
+Phase 1: PROMPT (currentStep < promptLength)
+─────────────────────────────────────────────
 Step 0: Feed prompt[0] at position 0 → get logits → cache logits
 Step 1: Feed prompt[1] at position 1 → get logits → cache logits
 Step 2: Feed prompt[2] at position 2 → get logits → cache logits
@@ -298,8 +323,8 @@ Step N-1: Feed prompt[N-1] at position N-1 → get logits → cache logits
 Returns: prompt token at each step (NOT sampled from logits)
 Purpose: Build KV cache for prompt context
 
-Phase 2: GENERATION (currentStep >= promptTokens)
-──────────────────────────────────────────────────
+Phase 2: GENERATION (currentStep >= promptLength)
+─────────────────────────────────────────────────
 Step N:   Sample from cached logits → feed sampled token at position N → cache new logits
 Step N+1: Sample from cached logits → feed sampled token at position N+1 → cache new logits
   ...
@@ -309,88 +334,83 @@ Purpose: Generate new tokens autoregressively
 ```
 
 **Key detail:** In the generation phase, the token is sampled from the *previous*
-step's cached logits before the current forward pass. This is because the model's
+step's cached output before the current forward pass. This is because the model's
 output at step `t` predicts the token at position `t+1`:
 
 ```java
-// AutoregressiveModel.java:212-233
-if (currentStep < promptTokens) {
-    // Prompt phase: feed prompt token, cache logits for next step
-    step.accept(currentStep);
-    token.accept(prompt[currentStep]);
-    logit = logits.get();
-    cachedLogits = logit;
-    currentToken = prompt[currentStep];
-} else {
-    // Generation phase: sample FIRST, then feed and get new logits
-    currentToken = sampleFromLogits(cachedLogits);
-    step.accept(currentStep);
-    token.accept(currentToken);
-    logit = logits.get();
-    cachedLogits = logit;
+// AutoregressiveModel.java:295-308
+public T next() {
+    if (currentStep < promptLength) {
+        token.accept(prompt[currentStep]);
+        cachedOutput = forward.get();
+        currentToken = prompt[currentStep];
+    } else {
+        currentToken = sample.apply(cachedOutput);
+        token.accept(currentToken);
+        cachedOutput = forward.get();
+    }
+
+    advance();
+    return currentToken;
 }
 ```
 
+`advance()` (`AutoregressiveModel.java:217-220`) runs the compiled `advancePosition`
+operation and increments the host-side `currentStep`, keeping the two in lock-step.
+`reset()` (`AutoregressiveModel.java:203-207`) zeros the device position, the host
+step index, and discards the cached output before a new sequence.
+
 ### Position Tracking
 
-<!-- TODO(review): The paragraph below ("The position is no longer advanced
-     from the host...") duplicates the paragraph already given under
-     "Factory Method" above (lines ~263-267) verbatim. Pick one location and
-     remove the other. -->
-The `position` collection is a single-element `PackedCollection` scalar that
-is read by:
+The shared `position` collection is read by the model's computation graph at three sites:
+
 1. **RoPE computation** — to look up the correct rotation frequencies for this position
 2. **Cache indexing** — to write K/V projections to the correct cache slot
 3. **Causal mask** — to block attention to positions beyond the current one
 
-```java
-// In Qwen3.java:411-414 — the position collection is passed directly
-AutoregressiveModel.of(
-    compiledModel,
-    position,                                                // The position collection
-    t -> tokenEmbeddings.range(shape(1, dim), t * dim)       // Look up embedding row
-);
-```
-
-The position is no longer advanced from the host. `AutoregressiveModel`
-performs the increment device-side via `advance()`, so the position
-collection always holds the current step index — see the commit
-`Maintain the autoregressive sequence position on the device` for the
-reasoning.
-
-This `position` collection is referenced in the attention method as `p(position)`,
-which creates a `Producer` that reads the current value at inference time.
+Because `position` is a `PackedCollection` passed to attention as `p(position)`, the
+attention operation reads its current value from the device at dispatch time. The host
+never assigns it; `resetPosition` and `advancePosition` are the only writers.
 
 ### Token Embedding
 
-The `token` callback copies the embedding vector for the current token into the
-model's input buffer:
+The `token` consumer loads the current token's representation into the model's input
+buffer. For Qwen3 the representation is a `(1, dim)` slice of the embedding matrix
+extracted at the token ID:
 
 ```java
-// In Qwen3.java:379
-t -> tokenEmbeddings.range(shape(1, dim), t * dim)
+// Qwen3.java:414
+t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim)
 ```
 
-This extracts a slice of the embedding matrix at row `t` (the token ID), returning
-a `(1, dim)` vector that becomes the model input.
+The factory's consumer wraps this in a `setFrom` so the slice is copied into the
+fixed input buffer that the compiled model reads.
 
 ### Temperature Sampling
 
-Token selection supports two modes (`AutoregressiveModel.java:239-247`):
+The `sample` function constructed inside `of()` (`AutoregressiveModel.java:418-426`)
+handles both greedy and sampling modes. `temperature` is a host-writable single-element
+collection updated by `setTemperature` (`AutoregressiveModel.java:258-260`):
 
 ```java
-private int sampleFromLogits(PackedCollection logit) {
-    if (temperature.toDouble(0) == 0.0) {
-        // Greedy: return argmax
-        return (int) indexOfMax.evaluate(logit).toDouble(0);
-    } else {
-        // Sampling: scale by temperature, softmax, then sample
-        rescale.into(logit).evaluate(logit);     // logits / temperature
-        softmax.into(logit).evaluate(logit);     // softmax(scaled_logits)
-        return sample(logit, vocabSize);          // multinomial sample
-    }
+// Reading (greedy path)
+if (temperature.toDouble(0) == 0.0) {
+    return (int) indexOfMax.evaluate(logits).toDouble(0);
 }
+
+// Sampling path
+rescale.into(logits).evaluate(logits);   // logits / temperature
+softmax.into(logits).evaluate(logits);   // softmax(scaled_logits)
+return sampleToken(logits, vocabSize, 1.0, 1.0, random);
 ```
+
+`sampleToken` (`AutoregressiveModel.java:323-386`) is the static, host-side sampling
+helper. It reads the logits once with `toArray(0, vocabSize)` — a single
+sanctioned device-to-host transfer at the step boundary — and operates on the
+resulting host array. The recent `setmem-policy-phases` work changed sampling from
+per-element `toDouble(i)` calls to this single bulk read after the same per-element
+pattern produced ~17 million native readbacks during
+`MoonbeamValueDistributionTest.testSoftmaxAndSampling` (10.3s → 0.14s).
 
 - **Temperature = 0:** Greedy decoding — always picks the highest-probability token
 - **Temperature > 0:** Divides logits by temperature before softmax, then samples
