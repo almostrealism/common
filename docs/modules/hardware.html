@@ -145,17 +145,17 @@
                 <p><a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> supports efficient bulk copy operations that are significantly faster than element-by-element loops:</p>
 
                 <div class="code-example">
-                    <h4>Using setMem() for Direct Copy</h4>
+                    <h4>Using setFrom() for Direct Copy</h4>
                     <pre><code class="language-java">// Copy entire collection to another (same size)
 PackedCollection<?> source = new PackedCollection<>(1000);
 PackedCollection<?> target = new PackedCollection<>(1000);
-target.setMem(0, source);  // Copy all of source to target
+target.setFrom(0, source);  // Copy all of source to target
 
 // Copy with offsets and length
-target.setMem(targetOffset, source, srcOffset, length);
+target.setFrom(targetOffset, source, srcOffset, length);
 
 // Copy a range starting at target offset 0
-target.setMem(source, srcOffset, length);</code></pre>
+target.setFrom(source, srcOffset, length);</code></pre>
                 </div>
 
                 <div class="code-example">
@@ -195,7 +195,7 @@ normalize(cp(vector)).into(vector).evaluate();</code></pre>
                 </div>
 
                 <div class="success">
-                    <strong>Performance Tip:</strong> <code>setMem(MemoryData)</code> is significantly more efficient than element-by-element loops. Always use bulk operations when copying between collections.
+                    <strong>Performance Tip:</strong> <code>setFrom(MemoryData)</code> is significantly more efficient than element-by-element loops. Always use bulk operations when copying between collections.
                 </div>
 
                 <h3>Context Management</h3>

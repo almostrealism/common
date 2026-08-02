@@ -51,13 +51,13 @@ PackedCollection extends MemoryData, providing efficient memory transfer operati
 
 ```java
 // Copy entire collection to another (same size)
-target.setMem(0, source);                    // Copy all of source to target at offset 0
+target.setFrom(0, source);                    // Copy all of source to target at offset 0
 
 // Copy with offsets and length
-target.setMem(targetOffset, source, srcOffset, length);
+target.setFrom(targetOffset, source, srcOffset, length);
 
 // Copy a range
-target.setMem(source, srcOffset, length);    // Copy to target starting at 0
+target.setFrom(source, srcOffset, length);    // Copy to target starting at 0
 ```
 
 **Using CodeFeatures.copy()** (via interface - preferred for producer pattern):
@@ -76,7 +76,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Note**: `setMem(MemoryData)` is more efficient than element-by-element loops.
+> **Note**: `setFrom(MemoryData)` is more efficient than element-by-element loops.
 > Both PackedCollection and other MemoryData implementations support these operations.
 
 ---
@@ -387,17 +387,23 @@ PackedCollection implements `MemoryData`. Key operations:
 
 ```java
 // Direct memory copy (efficient, hardware-accelerated)
-destination.setMem(0, source);                         // Copy all
-destination.setMem(destOffset, source, srcOffset, len); // Copy range
+destination.setFrom(0, source);                         // Copy all
+destination.setFrom(destOffset, source, srcOffset, len); // Copy range
 
 // Read/write individual values
 double val = data.toDouble(index);
 data.setMem(index, value);
 
-// Bulk operations
-data.setMem(index, doubleArray, arrayOffset, length);  // From double[]
-data.getMem(floatArray, offset, length);               // To float[]
+// Read from a ByteBuffer (the primary serialized ingest surface)
+data.read(byteBuffer);                                  // From ByteBuffer
+data.getMem(floatArray, offset, length);                // To float[]
 ```
+
+> `MemoryData` previously exposed bulk `setMem(double[])`/`setMem(float[])` overloads.
+> Those have been removed from the public surface — bulk host-array ingest now
+> stages through a `ByteBuffer` (see `MemoryData.read(ByteBuffer)` and the
+> native buffer provider). The literal varargs `setMem(double...)` / `setMem(int, double...)`
+> forms remain for compile-time literal values.
 
 ### MemoryDataCopy (Low-level)
 

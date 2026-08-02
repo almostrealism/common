@@ -202,13 +202,13 @@ p.get().evaluate();  // Data transferred to GPU, computation executed
 // Copy entire collection to another (same size)
 PackedCollection<?> source = new PackedCollection<>(1000);
 PackedCollection<?> target = new PackedCollection<>(1000);
-target.setMem(0, source);  // Copy all of source to target at offset 0
+target.setFrom(0, source);  // Copy all of source to target at offset 0
 
 // Copy with offsets and length
-target.setMem(targetOffset, source, srcOffset, length);
+target.setFrom(targetOffset, source, srcOffset, length);
 
 // Copy a range starting at target offset 0
-target.setMem(source, srcOffset, length);
+target.setFrom(source, srcOffset, length);
 ```
 
 **Using `MemoryDataCopy` for Explicit Control:**
@@ -253,7 +253,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Performance Note:** `setMem(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk operations whenever possible.
+> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk operations whenever possible.
 
 ### OperationList: Composing Operations
 
@@ -580,7 +580,7 @@ MemoryData subset = original.range(start, length);
 
 // AVOID: Copying data
 MemoryData subset = new Bytes(length);
-subset.setMem(0, original, start, length);
+subset.setFrom(0, original, start, length);
 ```
 
 **Use Heap for Temporaries:**

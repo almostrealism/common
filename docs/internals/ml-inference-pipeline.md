@@ -213,6 +213,15 @@ two-phase generation process.
 
 ### Components
 
+<!-- TODO(review): This snippet (and the Factory Method / Two-Phase Operation
+     snippets below it) still show the pre-refactor AutoregressiveModel API
+     (IntConsumer step, token, logits, vocabSize, currentToken, prompt,
+     promptTokens, cachedLogits). The current class is generic
+     (AutoregressiveModel<T>) and uses position, resetPosition,
+     advancePosition, token, forward, sample, currentStep, temperature,
+     promptLength, cachedOutput instead — see AutoregressiveModel.java.
+     Needs a full rewrite against current source; out of scope for a
+     surgical fix. -->
 ```java
 // AutoregressiveModel.java:86-101
 public class AutoregressiveModel {
@@ -242,7 +251,7 @@ public static AutoregressiveModel of(CompiledModel model,
     PackedCollection in = new PackedCollection(model.getInputShape());
     return new AutoregressiveModel(
         step,
-        t -> in.setMem(0, tokenEmbed.apply(t), 0,
+        t -> in.setFrom(0, tokenEmbed.apply(t), 0,
                        model.getInputShape().getTotalSize()),
         () -> model.forward(in),
         model.getOutputShape().getTotalSize());
@@ -252,13 +261,19 @@ public static AutoregressiveModel of(CompiledModel model,
 In Qwen3, this is wired as:
 
 ```java
-// Qwen3.java:376-379
+// Qwen3.java:411-414
 AutoregressiveModel.of(
     compiledModel,
-    step -> position.setMem((double) step),       // Update position scalar
-    t -> tokenEmbeddings.range(shape(1, dim), t * dim)  // Look up embedding row
+    position,                                                // The position collection
+    t -> tokenEmbeddings.range(shape(1, dim), t * dim)       // Look up embedding row
 );
 ```
+
+The position is no longer advanced from the host. `AutoregressiveModel`
+performs the increment device-side via `advance()`, so the position
+collection always holds the current step index — see the commit
+`Maintain the autoregressive sequence position on the device` for the
+reasoning.
 
 ### Two-Phase Operation
 
@@ -311,15 +326,30 @@ if (currentStep < promptTokens) {
 
 ### Position Tracking
 
-The `step` callback updates a shared `PackedCollection` scalar that is read by:
+<!-- TODO(review): The paragraph below ("The position is no longer advanced
+     from the host...") duplicates the paragraph already given under
+     "Factory Method" above (lines ~263-267) verbatim. Pick one location and
+     remove the other. -->
+The `position` collection is a single-element `PackedCollection` scalar that
+is read by:
 1. **RoPE computation** — to look up the correct rotation frequencies for this position
 2. **Cache indexing** — to write K/V projections to the correct cache slot
 3. **Causal mask** — to block attention to positions beyond the current one
 
 ```java
-// In Qwen3.java:378 — the step callback
-step -> position.setMem((double) step)
+// In Qwen3.java:411-414 — the position collection is passed directly
+AutoregressiveModel.of(
+    compiledModel,
+    position,                                                // The position collection
+    t -> tokenEmbeddings.range(shape(1, dim), t * dim)       // Look up embedding row
+);
 ```
+
+The position is no longer advanced from the host. `AutoregressiveModel`
+performs the increment device-side via `advance()`, so the position
+collection always holds the current step index — see the commit
+`Maintain the autoregressive sequence position on the device` for the
+reasoning.
 
 This `position` collection is referenced in the attention method as `p(position)`,
 which creates a `Producer` that reads the current value at inference time.
