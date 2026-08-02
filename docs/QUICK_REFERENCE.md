@@ -419,6 +419,12 @@ data.getMem(0, doubleArray, 0, length);                 // To double[]
 data.getMem(0, floatArray, 0, length);                  // To float[]
 ```
 
+> `MemoryData` previously exposed bulk `setMem(double[])`/`setMem(float[])` overloads.
+> Those have been removed from the public surface — bulk host-array ingest now
+> stages through a `ByteBuffer` (see `MemoryData.read(ByteBuffer)` and the
+> native buffer provider). The literal varargs `setMem(double...)` / `setMem(int, double...)`
+> forms remain for compile-time literal values.
+
 ### MemoryDataCopy (Low-level)
 
 For explicit control over memory copy operations:
