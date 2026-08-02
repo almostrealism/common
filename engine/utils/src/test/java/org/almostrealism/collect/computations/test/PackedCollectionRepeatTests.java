@@ -44,7 +44,7 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		int h = 3;
 
 		PackedCollection v = new PackedCollection(shape(w, h));
-		v.fill(pos -> Math.random());
+		v.randFill();
 
 		PackedCollection out = cp(v).repeat(d).get().evaluate();
 
@@ -73,7 +73,7 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		int d = 4;
 
 		PackedCollection v = new PackedCollection(shape(w, h));
-		v.fill(pos -> Math.random());
+		v.randFill();
 
 		PackedCollection out = cp(v).traverse().repeat(d).get().evaluate();
 
@@ -100,7 +100,7 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		int d = 4;
 
 		PackedCollection v = new PackedCollection(shape(w, h));
-		v.fill(pos -> Math.random());
+		v.randFill();
 
 		verboseLog(() -> {
 			PackedCollection out = c(p(v)).traverseEach().repeat(d).get().evaluate();
@@ -129,7 +129,7 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		PackedCollection input = t.pack();
 
 		PackedCollection weights = new PackedCollection(shape(size, nodes));
-		weights.fill(pos -> Math.random());
+		weights.randFill();
 
 		Supplier<Producer<PackedCollection>> dense =
 				() -> cp(input).repeat(nodes).each().traverse(1).sum();
@@ -162,7 +162,7 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		PackedCollection input = t.pack();
 
 		PackedCollection weights = new PackedCollection(shape(size, nodes));
-		weights.fill(pos -> Math.random());
+		weights.randFill();
 
 		Supplier<Producer<PackedCollection>> dense =
 				() -> c(p(input)).repeat(nodes).traverseEach()
@@ -199,10 +199,10 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		PackedCollection input = t.pack();
 
 		PackedCollection weights = new PackedCollection(shape(size, nodes));
-		weights.fill(pos -> Math.random());
+		weights.randFill();
 
 		PackedCollection biases = new PackedCollection(shape(nodes));
-		biases.fill(pos -> Math.random());
+		biases.randFill();
 
 		Supplier<Producer<PackedCollection>> dense =
 				() -> c(p(input)).repeat(nodes).traverseEach()

@@ -211,8 +211,8 @@ public class MatrixMathTests extends TestSuiteBase {
 			result = new PackedCollection(dim);
 		}
 
-		matrix.fill(pos -> Math.random());
-		vector.fill(pos -> Math.random());
+		matrix.randFill();
+		vector.randFill();
 
 		OperationProfile profiles = new OperationProfile();
 
@@ -277,7 +277,7 @@ public class MatrixMathTests extends TestSuiteBase {
 		PackedCollection vectors = new PackedCollection(count, dim);
 		PackedCollection result = new PackedCollection(count);
 
-		vectors.fill(pos -> Math.random());
+		vectors.randFill();
 
 		OperationProfile profiles = new OperationProfile();
 

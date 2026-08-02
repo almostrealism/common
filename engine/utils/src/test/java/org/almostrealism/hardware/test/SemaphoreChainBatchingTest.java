@@ -78,7 +78,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 			PackedCollection src = new PackedCollection(n);
 			PackedCollection mid = new PackedCollection(n);
 			PackedCollection dst = new PackedCollection(n);
-			src.fill(pos -> Math.random() + 1.0);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 			Submittable op1 = copyKernel(src, mid, n, ComputeRequirement.MTL);
 			Submittable op2 = copyKernel(mid, dst, n, ComputeRequirement.MTL);
@@ -132,7 +132,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 
 			PackedCollection src = new PackedCollection(n);
 			PackedCollection dst = new PackedCollection(n);
-			src.fill(pos -> Math.random() + 1.0);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 			Submittable op = copyKernel(src, dst, n, ComputeRequirement.MTL);
 
@@ -181,7 +181,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 
 			PackedCollection src = new PackedCollection(n);
 			PackedCollection dst = new PackedCollection(n);
-			src.fill(pos -> Math.random() + 1.0);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 			Submittable op = copyKernel(src, dst, n, ComputeRequirement.MTL);
 
@@ -224,7 +224,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 		int n = 16;
 
 		PackedCollection a = new PackedCollection(n);
-		a.fill(pos -> Math.random() + 1.0);
+		rand(a.getShape()).add(1.0).into(a.traverseEach()).evaluate();
 
 		Evaluable<PackedCollection> ev;
 		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(ComputeRequirement.MTL));
@@ -292,7 +292,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 		PackedCollection src = new PackedCollection(n);
 		PackedCollection temp = new PackedCollection(n);
 		PackedCollection dst = new PackedCollection(n);
-		src.fill(pos -> Math.random() + 1.0);
+		rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 		Runnable op1 = (Runnable) copyKernel(src, temp, n, ComputeRequirement.MTL);
 		Runnable op2 = (Runnable) copyKernel(temp, dst, n, ComputeRequirement.CPU);

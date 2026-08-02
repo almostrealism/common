@@ -72,7 +72,7 @@ public class AssignmentSemaphoreChainTest extends TestSuiteBase {
 			PackedCollection dst = new PackedCollection(n);
 
 			// Nonzero source so that a stale (zero) read anywhere in the chain is detectable.
-			src.fill(pos -> Math.random() + 1.0);
+			rand(src.getShape()).add(1.0).into(src.traverseEach()).evaluate();
 
 			// Three pure-copy kernels forming a read-after-write chain:
 			//   mid1 = src ; mid2 = mid1 ; dst = mid2

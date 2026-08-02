@@ -65,10 +65,10 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 	@Test(timeout = 30000)
 	public void exponent() {
 		PackedCollection in = new PackedCollection(SIZE).traverseEach();
-		in.fill(pos -> Math.random());
+		in.randFill();
 
 		PackedCollection weights = new PackedCollection(SIZE).traverseEach();
-		weights.fill(pos -> Math.random());
+		weights.randFill();
 
 		PackedCollection cpuOut = new PackedCollection(SIZE);
 		PackedCollection gpuOut = new PackedCollection(SIZE);
@@ -105,10 +105,10 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 	@Test(timeout = 30000)
 	public void rmsnorm() {
 		PackedCollection in = new PackedCollection(shape(SIZE));
-		in.fill(pos -> Math.random());
+		in.randFill();
 
 		PackedCollection weights = new PackedCollection(shape(SIZE));
-		weights.fill(pos -> Math.random());
+		weights.randFill();
 
 		SequentialBlock cpuModel = new SequentialBlock(shape(SIZE));
 		cpuModel.add(rmsnorm(weights));
@@ -223,7 +223,7 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		
 		// Create random input values in range [-2, 2] for numerical stability
 		PackedCollection input = new PackedCollection(shape(size));
-		input.fill(pos -> (Math.random() - 0.5) * 4.0);
+		rand(input.getShape()).add(-0.5).multiply(4.0).into(input.traverseEach()).evaluate();
 		
 		// Create SILU layer
 		SequentialBlock model = new SequentialBlock(shape(size));

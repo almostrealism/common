@@ -254,7 +254,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 		int outputSize = 2;
 
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> 1.0);
+		weights.fill(1.0);
 
 		TraversalPolicy inputShape = shape(1, inputSize);
 		CellularLayer layer = dense(inputShape, weights, false, false);
@@ -266,7 +266,7 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
 		// Create test input
 		PackedCollection testInput = new PackedCollection(inputShape);
-		testInput.fill(pos -> 1.0);
+		testInput.fill(1.0);
 
 		// Run through model
 		SequentialBlock block = new SequentialBlock(inputShape);

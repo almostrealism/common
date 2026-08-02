@@ -166,7 +166,7 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		TraversalPolicy shape = shape(c, v);
 
 		PackedCollection o = new PackedCollection(shape.getTotalSize());
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		kernelTest(() -> {
 					CollectionProducer input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
@@ -206,7 +206,7 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		TraversalPolicy shape = shape(c, v);
 
 		PackedCollection o = new PackedCollection(shape.getTotalSize());
-		o.fill(pos -> Math.random());
+		o.randFill();
 
 		kernelTest(() -> {
 					CollectionProducer input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);

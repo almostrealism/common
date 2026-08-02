@@ -120,7 +120,7 @@ public class OperationDispatchBatchingTests extends TestSuiteBase {
 		for (int i = 0; i < ops; i++) {
 			PackedCollection input = new PackedCollection(count, dim);
 			PackedCollection output = new PackedCollection(count, dim);
-			input.fill(pos -> Math.random());
+			input.randFill();
 
 			op.add(a("doubling " + i, traverseEach(p(output)),
 					add(traverseEach(p(input)), traverseEach(p(input)))));

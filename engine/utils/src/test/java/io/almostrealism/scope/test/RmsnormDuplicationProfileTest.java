@@ -123,10 +123,10 @@ public class RmsnormDuplicationProfileTest extends TestSuiteBase implements Laye
 	 */
 	private Report runOnce(String label, int size) {
 		PackedCollection in = new PackedCollection(shape(size));
-		in.fill(pos -> Math.random());
+		in.randFill();
 
 		PackedCollection weights = new PackedCollection(shape(size));
-		weights.fill(pos -> Math.random());
+		weights.randFill();
 
 		SequentialBlock model = new SequentialBlock(shape(size));
 		model.add(rmsnorm(weights));

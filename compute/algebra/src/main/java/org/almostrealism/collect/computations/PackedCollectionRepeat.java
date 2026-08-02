@@ -54,7 +54,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * // Create a 2x3 collection
  * PackedCollection input = new PackedCollection(shape(2, 3));
- * input.fill(pos -> Math.random());
+ * input.randFill();
  * 
  * // Repeat the collection 4 times along a new first dimension
  * PackedCollection repeated = cp(input).repeat(4).get().evaluate();

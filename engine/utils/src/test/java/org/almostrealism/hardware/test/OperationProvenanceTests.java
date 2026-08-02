@@ -69,7 +69,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
 
-		a.fill(pos -> Math.random());
+		a.randFill();
 
 		// Create an inner OperationList with a description
 		OperationList inner = new OperationList("layer gradient");
@@ -107,7 +107,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
 
-		a.fill(pos -> Math.random());
+		a.randFill();
 
 		// Create an inner OperationList with ComputeRequirements (should not be unwrapped)
 		OperationList inner = new OperationList("layer with requirements");
@@ -132,7 +132,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
 
-		a.fill(pos -> Math.random());
+		a.randFill();
 
 		// Create an inner OperationList WITHOUT a description
 		OperationList inner = new OperationList();
@@ -161,7 +161,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
 
-		a.fill(pos -> Math.random());
+		a.randFill();
 
 		// Create a deeply nested structure
 		OperationList level3 = new OperationList("level 3");
@@ -204,7 +204,7 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		PackedCollection a = new PackedCollection(shape(10));
 		PackedCollection b = new PackedCollection(shape(10));
 
-		a.fill(pos -> Math.random());
+		a.randFill();
 
 		OperationList inner = new OperationList("layer gradient");
 		inner.add(a("inner add", traverseEach(p(b)), add(p(a), c(1.0))));

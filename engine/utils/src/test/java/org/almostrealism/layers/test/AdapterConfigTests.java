@@ -200,7 +200,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 		int outputSize = 32;
 
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights.getShape(), random).multiply(0.1).into(weights.traverseEach()).evaluate();
 
 		// This should create a LoRA layer
 		CellularLayer layer = loraOrDense(
@@ -228,7 +228,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 		int outputSize = 32;
 
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights.getShape(), random).multiply(0.1).into(weights.traverseEach()).evaluate();
 
 		// This should create a dense layer (not LoRA)
 		CellularLayer layer = loraOrDense(
@@ -255,7 +255,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 		int outputSize = 32;
 
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights.getShape(), random).multiply(0.1).into(weights.traverseEach()).evaluate();
 
 		CellularLayer layer = loraOrDense(
 				shape(2, inputSize),
@@ -280,9 +280,9 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 		int outputSize = 32;
 
 		PackedCollection weights1 = new PackedCollection(shape(outputSize, inputSize));
-		weights1.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights1.getShape(), random).multiply(0.1).into(weights1.traverseEach()).evaluate();
 		PackedCollection weights2 = new PackedCollection(shape(outputSize, inputSize));
-		weights2.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights2.getShape(), random).multiply(0.1).into(weights2.traverseEach()).evaluate();
 
 		loraOrDense(shape(2, inputSize), weights1, TargetLayer.SELF_ATTENTION_QKV);
 		loraOrDense(shape(2, inputSize), weights2, TargetLayer.SELF_ATTENTION_OUT);
@@ -308,7 +308,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 		int rank = 4;
 
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights.getShape(), random).multiply(0.1).into(weights.traverseEach()).evaluate();
 
 		loraOrDense(shape(2, inputSize), weights, TargetLayer.SELF_ATTENTION_QKV);
 
@@ -334,7 +334,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 		int outputSize = 32;
 
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> random.nextGaussian() * 0.1);
+		randn(weights.getShape(), random).multiply(0.1).into(weights.traverseEach()).evaluate();
 
 		// Create LoRA layer
 		CellularLayer loraLayer = loraOrDense(
@@ -348,7 +348,7 @@ public class AdapterConfigTests extends TestSuiteBase implements LayerFeatures, 
 
 		// Create input
 		PackedCollection input = new PackedCollection(shape(batchSize, inputSize));
-		input.fill(pos -> random.nextGaussian());
+		input.randnFill(random);
 
 		// Compile and run both models
 		Model loraModel = new Model(shape(batchSize, inputSize));

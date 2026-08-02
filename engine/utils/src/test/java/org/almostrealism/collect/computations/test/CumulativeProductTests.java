@@ -38,7 +38,7 @@ public class CumulativeProductTests extends TestSuiteBase {
 		int n = 25;
 
 		PackedCollection input = new PackedCollection(shape(n));
-		input.fill(pos -> 0.5 + Math.random());
+		rand(input.getShape()).add(0.5).into(input.traverseEach()).evaluate();
 
 		PackedCollection result = cumulativeProduct(cp(input), false).get().evaluate();
 		Assert.assertEquals(n, result.getShape().getTotalSize());
@@ -59,7 +59,7 @@ public class CumulativeProductTests extends TestSuiteBase {
 		int n = 25;
 
 		PackedCollection input = new PackedCollection(shape(n));
-		input.fill(pos -> 0.5 + Math.random());
+		rand(input.getShape()).add(0.5).into(input.traverseEach()).evaluate();
 
 		PackedCollection result = cumulativeProduct(cp(input), true).get().evaluate();
 		Assert.assertEquals(n, result.getShape().getTotalSize());

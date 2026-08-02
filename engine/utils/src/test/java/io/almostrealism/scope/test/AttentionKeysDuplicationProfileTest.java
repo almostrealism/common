@@ -127,8 +127,8 @@ public class AttentionKeysDuplicationProfileTest extends TestSuiteBase implement
 		PackedCollection q = new PackedCollection(inputShape);
 		PackedCollection keyCache = new PackedCollection(keyShape);
 
-		q.fill(pos -> Math.random());
-		keyCache.fill(pos -> Math.random());
+		q.randFill();
+		keyCache.randFill();
 
 		Producer<PackedCollection> o = c(p(keyCache))
 				.traverse(1).multiply(p(q))

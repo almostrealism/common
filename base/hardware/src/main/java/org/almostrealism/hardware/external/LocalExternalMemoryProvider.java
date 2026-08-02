@@ -267,9 +267,9 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 		if (enableLazyReading) {
 			mem.getRootDelegate().reassign(local.allocate(src, mem.getRootDelegate().getMemLength()));
 		} else {
-			double data[] = new double[mem.getMemLength()];
-			readBinary(src, data);
-			mem.setMem(0, data);
+			try (InputStream in = new FileInputStream(src)) {
+				mem.read(in);
+			}
 		}
 	}
 

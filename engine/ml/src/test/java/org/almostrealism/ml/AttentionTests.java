@@ -61,8 +61,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		PackedCollection q = new PackedCollection(inputShape); // (heads, headSize)
 		PackedCollection keyCache = new PackedCollection(keyShape); // (seqLength, heads, headSize)
 
-		q.fill(pos -> Math.random());
-		keyCache.fill(pos -> Math.random());
+		q.randFill();
+		keyCache.randFill();
 
 		Producer<PackedCollection> o = c(p(keyCache)).traverse(1).multiply(p(q))
 				.traverse(2).sum()
@@ -115,8 +115,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		PackedCollection values = new PackedCollection(valueShape); // (seqLength, heads, headSize)
 		PackedCollection out = new PackedCollection(finalShape); // (heads, headSize)
 
-		att.fill(pos -> Math.random());
-		values.fill(pos -> Math.random());
+		att.randFill();
+		values.randFill();
 
 //		int p = (int) (0.8 * seqLength);
 		int p = seqLength - 1;
@@ -392,13 +392,13 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		toOut.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
 
 		// Identity norms
-		PackedCollection qNormWeight = new PackedCollection(shape(dimHead)).fill(pos -> 1.0);
-		PackedCollection qNormBias = new PackedCollection(shape(dimHead)).fill(pos -> 0.0);
-		PackedCollection kNormWeight = new PackedCollection(shape(dimHead)).fill(pos -> 1.0);
-		PackedCollection kNormBias = new PackedCollection(shape(dimHead)).fill(pos -> 0.0);
+		PackedCollection qNormWeight = new PackedCollection(shape(dimHead)).fill(1.0);
+		PackedCollection qNormBias = new PackedCollection(shape(dimHead)).fill(0.0);
+		PackedCollection kNormWeight = new PackedCollection(shape(dimHead)).fill(1.0);
+		PackedCollection kNormBias = new PackedCollection(shape(dimHead)).fill(0.0);
 
 		// Simple inv_freq for rotary
-		PackedCollection invFreq = new PackedCollection(shape(dimHead / 4)).fill(pos -> 0.01);
+		PackedCollection invFreq = new PackedCollection(shape(dimHead / 4)).fill(0.01);
 
 		// Run through attention
 		Block attention = sequenceAttention(

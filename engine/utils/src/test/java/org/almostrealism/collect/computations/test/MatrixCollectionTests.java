@@ -34,10 +34,10 @@ public class MatrixCollectionTests extends TestSuiteBase {
 		int d = size;
 
 		PackedCollection x = new PackedCollection(shape(n));
-		x.fill(pos -> Math.random());
+		x.randFill();
 
 		PackedCollection weight = new PackedCollection(shape(d, n));
-		weight.fill(pos -> Math.random());
+		weight.randFill();
 
 		kernelTest(() -> multiply(traverseEach(p(weight)), traverseEach(repeat(d, p(x)))).traverse(1).sum(),
 				output -> {

@@ -87,8 +87,8 @@ public class BottleneckInterfaceTest extends TestSuiteBase implements LayerFeatu
 		assertEquals(VAE_OUTPUT_DIM, vae.getOutputDim());
 
 		int dim = 8;
-		PackedCollection scale = new PackedCollection(shape(dim)).fill(pos -> 1.0);
-		PackedCollection bias = new PackedCollection(shape(dim)).fill(pos -> 0.0);
+		PackedCollection scale = new PackedCollection(shape(dim)).fill(1.0);
+		PackedCollection bias = new PackedCollection(shape(dim)).fill(0.0);
 		Bottleneck softNorm = new SoftNormBottleneck(dim, scale, bias);
 		assertEquals(dim, softNorm.getInputDim());
 		assertEquals(dim, softNorm.getOutputDim());

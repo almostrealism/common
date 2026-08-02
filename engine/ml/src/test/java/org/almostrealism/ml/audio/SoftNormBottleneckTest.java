@@ -71,7 +71,7 @@ public class SoftNormBottleneckTest extends TestSuiteBase implements LayerFeatur
 
 		PackedCollection scale = new PackedCollection(shape(dim)).randnFill();
 		PackedCollection bias = new PackedCollection(shape(dim)).randnFill();
-		PackedCollection runningStd = new PackedCollection(shape(1)).fill(pos -> 2.5);
+		PackedCollection runningStd = new PackedCollection(shape(1)).fill(2.5);
 
 		verifySoftNorm(batch, dim, length, scale, bias, runningStd);
 	}
@@ -86,8 +86,8 @@ public class SoftNormBottleneckTest extends TestSuiteBase implements LayerFeatur
 		int dim = 4;
 		int length = 3;
 
-		PackedCollection scale = new PackedCollection(shape(dim)).fill(pos -> 1.0);
-		PackedCollection bias = new PackedCollection(shape(dim)).fill(pos -> 0.0);
+		PackedCollection scale = new PackedCollection(shape(dim)).fill(1.0);
+		PackedCollection bias = new PackedCollection(shape(dim)).fill(0.0);
 
 		verifySoftNorm(batch, dim, length, scale, bias, null);
 	}

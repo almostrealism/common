@@ -287,7 +287,7 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 
 		// Test forward pass
 		PackedCollection input = new PackedCollection(shape(batchSize, rows, cols));
-		input.fill(pos -> Math.random());
+		input.randFill();
 
 		// Supply the input in the model's declared (batched, channeled) shape.
 		PackedCollection output = compiled.forward(input.reshape(compiled.getInputShape()));
