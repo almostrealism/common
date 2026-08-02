@@ -98,7 +98,12 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		// Generate dataset with varied input magnitudes to test normalization
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
-				.map(input -> input.fill(pos -> (1 + 10 * Math.random()) * (Math.random() - 0.5)))
+				.map(input -> {
+					rand(input.getShape()).multiply(10.0).add(1.0)
+							.multiply(rand(input.getShape()).add(-0.5))
+							.into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -142,7 +147,12 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		// Generate dataset with varied input magnitudes
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
-				.map(input -> input.fill(pos -> (1 + 10 * Math.random()) * (Math.random() - 0.5)))
+				.map(input -> {
+					rand(input.getShape()).multiply(10.0).add(1.0)
+							.multiply(rand(input.getShape()).add(-0.5))
+							.into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, linearFunc.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -188,7 +198,10 @@ public class SyntheticNormTrainingTest extends TestSuiteBase implements ModelTes
 		// Generate dataset
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(inputSize)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> {
 					PackedCollection out = new PackedCollection(shape(outputSize));
 					cp(extCoeff).multiply(cp(input).valueAt(integers(0, outputSize).mod(inputSize)))

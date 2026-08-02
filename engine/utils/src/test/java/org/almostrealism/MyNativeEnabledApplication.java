@@ -367,7 +367,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		int count = 100 * epochSize;
 
 		for (int i = 0; i < count; i++) {
-			input.fill(pos -> 0.5 + 0.5 * Math.random());
+			rand(input.getShape()).multiply(0.5).add(0.5).into(input.traverseEach()).evaluate();
 
 			compiled.forward(input);
 

@@ -375,7 +375,7 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 			long start = 0;
 
 			for (int i = 0; i < count; i++) {
-				input.fill(pos -> 0.5 + 0.5 * Math.random());
+				rand(input.getShape()).multiply(0.5).add(0.5).into(input.traverseEach()).evaluate();
 
 				// Supply the input in the model's declared shape (e.g. batched/channeled).
 				compiled.forward(input.reshape(compiled.getInputShape()));

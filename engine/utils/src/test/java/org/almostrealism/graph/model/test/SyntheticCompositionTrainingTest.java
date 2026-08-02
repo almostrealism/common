@@ -107,7 +107,10 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 		// Generate dataset - identity-like function benefits from residual
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, identityLikeFunc.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -147,7 +150,10 @@ public class SyntheticCompositionTrainingTest extends TestSuiteBase implements M
 		// Generate dataset
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, scaleFunc.apply(input)))
 				.collect(Collectors.toList()));
 

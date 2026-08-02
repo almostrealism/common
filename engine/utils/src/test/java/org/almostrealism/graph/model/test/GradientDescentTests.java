@@ -73,7 +73,10 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(1)))
-				.map(input -> input.fill(pos -> 2.0 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(2.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, func1.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -99,7 +102,10 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(2)))
-				.map(input -> input.fill(pos -> 5 + 2 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(2.0).add(5.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, func2.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -122,7 +128,10 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(3)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, func3x3.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -147,7 +156,10 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(3)))
-				.map(input -> input.fill(pos -> 4 + 3 * Math.random()))
+				.map(input -> {
+					rand(input.getShape()).multiply(3.0).add(4.0).into(input.traverseEach()).evaluate();
+					return input;
+				})
 				.map(input -> ValueTarget.of(input, func3.apply(input)))
 				.collect(Collectors.toList()));
 
@@ -179,7 +191,10 @@ public class GradientDescentTests extends TestSuiteBase implements ModelTestFeat
 
 			Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 					.mapToObj(i -> new PackedCollection(shape(inChannels)))
-					.map(input -> input.fill(pos -> 5 + 4 * Math.random()))
+					.map(input -> {
+						rand(input.getShape()).multiply(4.0).add(5.0).into(input.traverseEach()).evaluate();
+						return input;
+					})
 					.map(input -> ValueTarget.of(input, func3.apply(input)))
 					.collect(Collectors.toList()));
 
