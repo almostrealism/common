@@ -194,22 +194,44 @@ p.get().evaluate();  // Data transferred to GPU, computation executed
 - Automatic hardware transfer
 - Traversal policies for complex layouts
 
-### Bulk Memory Copy Operations
+### Memory Copy Between MemoryData Regions
 
-`MemoryData` supports efficient bulk copy operations between memory regions:
+`MemoryData` provides two distinct write surfaces, deliberately named so the
+call site tells them apart:
+
+- **`setFrom(...)`** copies the contents of another `MemoryData` (a
+  `PackedCollection`, a `Bytes` view, a device-backed tensor, …) into this one.
+  Use it for region-to-region moves that never touch a host array.
+- **`setMem(...)`** takes literal varargs only — write a small set of
+  constants into a region. Bulk host-array uploads are no longer exposed
+  here; system-boundary ingest goes through `read(ByteBuffer)` into a native
+  staging allocation, and the framework migrates that staging area to the
+  compute device on first kernel use.
 
 ```java
-// Copy entire collection to another (same size)
 PackedCollection<?> source = new PackedCollection<>(1000);
 PackedCollection<?> target = new PackedCollection<>(1000);
-target.setMem(0, source);  // Copy all of source to target at offset 0
+
+// Copy all of source into target at offset 0
+target.setFrom(0, source);
 
 // Copy with offsets and length
-target.setMem(targetOffset, source, srcOffset, length);
+target.setFrom(targetOffset, source, srcOffset, length);
 
 // Copy a range starting at target offset 0
-target.setMem(source, srcOffset, length);
+target.setFrom(source, srcOffset, length);
+
+// Write a small literal vector (varargs only — no host-array overloads)
+target.setMem(0, 1.0, 2.0, 3.0, 4.0);
 ```
+
+> **Why the split:** the recent `setmem-policy-phases` work collapsed the old
+> `setMem(int, double[])` and `setMem(double[], int, int)` overloads into a
+> single literal-varargs surface, and routed everything that actually moves
+> serialized data through `MemoryData.read(ByteBuffer)` so values reach the
+> backing memory in one transfer instead of being funnelled through a host
+> array. `setFrom` is the only sanctioned way to copy one `MemoryData` into
+> another.
 
 **Using `MemoryDataCopy` for Explicit Control:**
 
@@ -253,7 +275,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Performance Note:** `setMem(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk operations whenever possible.
+> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk region copies whenever possible; reserve `setMem(...)` for literal varargs.
 
 ### OperationList: Composing Operations
 
@@ -580,7 +602,7 @@ MemoryData subset = original.range(start, length);
 
 // AVOID: Copying data
 MemoryData subset = new Bytes(length);
-subset.setMem(0, original, start, length);
+subset.setFrom(0, original, start, length);
 ```
 
 **Use Heap for Temporaries:**
@@ -888,6 +910,17 @@ export AR_HARDWARE_NIO_MEMORY=true
 # JNI now shares memory with Metal GPU
 # Zero-copy data sharing between CPU and GPU operations
 ```
+
+`Hardware.getNativeBufferMemoryProvider()` returns the provider that backs
+this bridge. When `AR_HARDWARE_NIO_MEMORY` is set, the provider is created
+up front and is always a direct-buffer (named shared memory) provider. When
+it is not set, the provider is created lazily on first use and honors
+`AR_HARDWARE_NATIVE_DIRECT_BUFFERS` (the default is direct; set it to
+`disabled` to use JNI malloc for staging allocations). The system warns at
+startup if shared memory is requested but `AR_HARDWARE_NATIVE_DIRECT_BUFFERS`
+is disabled, because named shared memory between backends requires direct
+buffers and the disable will be ignored wherever the shared bridge provides
+memory.
 
 ### Profiling
 

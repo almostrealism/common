@@ -107,7 +107,8 @@ Java is orchestration, NOT execution. All computation must be expressed as
 
 - `.evaluate()` in test methods, `main()`, data loaders, sampling loop step boundaries
 - CPU loops in `/heredity/`, `/optimize/`, one-time init methods (`init*`, `setup*`, `build*`)
-- `setMem(offset, source, srcOffset, length)` bulk copy patterns
+- `setFrom(offset, source, srcOffset, length)` bulk MemoryData-to-MemoryData copy patterns
+  (and the matching varargs-only `setMem(...)` writes for literal constants)
 
 ## Process
 

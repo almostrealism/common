@@ -207,6 +207,13 @@ Both views share the same underlying memory — reshape is zero-copy.
 
 ## Autoregressive Generation Loop
 
+<!-- TODO(review): this section (Components + Factory Method snippets below) is stale
+     against the current AutoregressiveModel<T> — class is now generic, fields and the
+     of() factory signature no longer match (e.g. `position`/`resetPosition`/
+     `advancePosition`/`forward`/`sample` replace `step`/`token`/`logits`/`vocabSize`),
+     and the cited line numbers (86-101, 264-272) no longer point at these members.
+     Needs a full rewrite against the current source, not a one-line patch. -->
+
 `AutoregressiveModel` (`engine/ml/src/.../ml/AutoregressiveModel.java`) orchestrates
 token-by-token generation. It wraps a compiled transformer model and manages the
 two-phase generation process.
@@ -242,7 +249,7 @@ public static AutoregressiveModel of(CompiledModel model,
     PackedCollection in = new PackedCollection(model.getInputShape());
     return new AutoregressiveModel(
         step,
-        t -> in.setMem(0, tokenEmbed.apply(t), 0,
+        t -> in.setFrom(0, tokenEmbed.apply(t), 0,
                        model.getInputShape().getTotalSize()),
         () -> model.forward(in),
         model.getOutputShape().getTotalSize());

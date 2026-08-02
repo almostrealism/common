@@ -117,22 +117,38 @@ PackedCollection subset = largeBuffer
     .range(shape(100, 100), 0);    // View into view
 ```
 
-#### Bulk Memory Copy Operations
+#### Memory Copy Between Collections
 
-PackedCollection extends `MemoryData`, providing efficient bulk copy operations between collections. These are significantly faster than element-by-element loops.
+PackedCollection extends `MemoryData`. The interface exposes two distinct
+write surfaces, deliberately named so the call site tells them apart:
+
+- **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`, a
+  `Bytes` view, a device-backed tensor) into this one — the only
+  sanctioned way to copy one collection's contents into another.
+- **`setMem(...)`** takes literal varargs only. Bulk host-array uploads are
+  not exposed here; system-boundary ingest goes through
+  `MemoryData.read(ByteBuffer)` into a native staging allocation, and the
+  framework migrates that staging area to the compute device on first
+  kernel use.
 
 ```java
 // Copy entire collection to another (same size)
 PackedCollection source = new PackedCollection<>(1000);
 PackedCollection target = new PackedCollection<>(1000);
-target.setMem(0, source);  // Copy all of source to target at offset 0
+target.setFrom(0, source);  // Copy all of source to target at offset 0
 
 // Copy with offsets and length
-target.setMem(targetOffset, source, srcOffset, length);
+target.setFrom(targetOffset, source, srcOffset, length);
 
 // Copy a range starting at target offset 0
-target.setMem(source, srcOffset, length);
+target.setFrom(source, srcOffset, length);
+
+// Write a small literal vector (varargs only)
+target.setMem(0, 1.0, 2.0, 3.0, 4.0);
 ```
+
+> These are significantly faster than element-by-element loops. Use bulk
+> region copies whenever possible; reserve `setMem(...)` for literal varargs.
 
 **Using `CodeFeatures.copy()` (Producer Pattern):**
 
@@ -158,7 +174,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Performance Note:** `setMem(MemoryData)` is significantly more efficient than element-by-element loops. Always use bulk operations when copying between collections.
+> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve `setMem(...)` for literal varargs.
 
 #### Shape and Traversal
 
