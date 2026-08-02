@@ -379,7 +379,8 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 		int hd = dim / 2;
 		double scale = Math.log(10000) / (hd - 1);
 
-		PackedCollection values = new PackedCollection(hd).fill(pos -> pos[0] * -scale);
+		PackedCollection values = new PackedCollection(hd);
+		integers(0, hd).multiply(-scale).into(values.traverseEach()).evaluate();
 
 		return layer("sinEmbed", shape(batchSize, 1), shape(batchSize, dim), (in) -> {
 			CollectionProducer embeddings =

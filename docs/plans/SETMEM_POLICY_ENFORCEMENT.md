@@ -313,6 +313,27 @@ closes out the last three migrated sites. From there:
    through the one exclusion it owns. That is the point: it collects the
    transfer into a single place, so replacing it later is a one-file change
    rather than a 200-site migration.
+
+   **An index-derived fill cannot be read from its body alone.** `pos[0]` is the
+   outermost axis, not the flat index, so converting one to `integers(0, N)`
+   requires checking the receiver's declared shape at that site. Two cases show
+   what a careless substitution costs: `NormLayerShapeInvestigationTest` fills
+   `pos -> 1.0 + pos[0]` on `shape(1, size)`, where `pos[0]` is always 0 and the
+   result is uniformly 1.0 — a ramp would silently change the data; and
+   `DenseLayerShapeInvestigationTest` fills `pos -> (pos[0] + 1) * 0.1` on
+   `shape(4, 3)`, which is a per-row constant and wants a 4-element ramp
+   repeated along the last axis, not a 12-element ramp. Only genuinely 1-D
+   receivers convert directly. Multi-axis decomposition additionally needs a
+   `floor` on `CollectionProducer`, which does not exist yet (`mod` does), so
+   those sites are blocked on that primitive.
+
+   **`GradientTestFeatures` is deliberately last.** Its two element-wise fills
+   have the producer form written and commented out directly above them; it was
+   reverted because the producer version made the test time out. Now that a
+   random producer participates in instruction-set sharing that cause may be
+   gone, but it is unconfirmed — reintroduce it only with a timing measurement,
+   and keep in mind the file is a host-side reference implementation, so some of
+   it is *supposed* to stay off the device.
 5. **Endgame**: the baseline reaches zero, the ledger machinery is deleted, and
    the detector remains as a pure regression gate on the narrowed surface.
 

@@ -149,7 +149,7 @@ public class LayerTrackingTest extends TestSuiteBase {
 		CompiledModel trainingCompiled = trainingModel.compile(true, trainingProfile);
 
 		PackedCollection input = new PackedCollection(shape(inputSize));
-		input.fill(pos -> 0.01 * pos[0]);
+		integers(0, inputSize).multiply(0.01).into(input.traverseEach()).evaluate();
 
 		for (int i = 0; i < warmup; i++) {
 			trainingCompiled.forward(input);

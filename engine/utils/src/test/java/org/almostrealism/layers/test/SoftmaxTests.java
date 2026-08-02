@@ -371,7 +371,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		int seqLen = 20;
 
 		PackedCollection originalInput = new PackedCollection(shape(1, seqLen)).randFill();
-		CollectionProducer input = cp(copy(originalInput));
+		CollectionProducer input = cp(originalInput.clone());
 
 		double[] values = originalInput.toArray();
 		softmax(values, 0, seqLen);
@@ -397,7 +397,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 		PackedCollection originalInput = new PackedCollection(shape(1, seqLength));
 		originalInput.randFill();
-		PackedCollection input = copy(originalInput);
+		PackedCollection input = originalInput.clone();
 
 		Producer<PackedCollection> p = softmax(input.getShape(), true).apply(cp(input));
 		PackedCollection destination = p.get().evaluate();
@@ -420,7 +420,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 		PackedCollection originalInput = new PackedCollection(shape(heads, seqLength));
 		originalInput.randFill();
-		PackedCollection input = copy(originalInput);
+		PackedCollection input = originalInput.clone();
 
 		verboseLog(() -> {
 			Producer<PackedCollection> in = traverseEach(p(input));
@@ -493,15 +493,4 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
-	/**
-	 * Creates a copy of the input collection.
-	 *
-	 * @param input Collection to copy
-	 * @return Copy of the input collection
-	 */
-	private PackedCollection copy(PackedCollection input) {
-		PackedCollection output = new PackedCollection(input.getShape());
-		output.fill(pos -> input.valueAt(pos));
-		return output;
-	}
 }

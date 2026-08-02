@@ -333,7 +333,8 @@ public class CollectionComputationTests extends TestSuiteBase {
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection va = new PackedCollection(hd).fill(pos -> 1.0 + pos[0]);
+		PackedCollection va = new PackedCollection(hd);
+		integers(1, hd + 1).into(va.traverseEach()).evaluate();
 		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
 		CollectionProducer product =
@@ -368,7 +369,8 @@ public class CollectionComputationTests extends TestSuiteBase {
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection va = new PackedCollection(hd).fill(pos -> 1.0 + pos[0]);
+		PackedCollection va = new PackedCollection(hd);
+		integers(1, hd + 1).into(va.traverseEach()).evaluate();
 		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
 		CollectionProducer product =
