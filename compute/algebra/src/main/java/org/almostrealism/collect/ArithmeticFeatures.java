@@ -511,8 +511,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * }</pre>
 	 */
 	default CollectionProducer sqrt(Producer<PackedCollection> value) {
-		PackedCollection half = pack(0.5);
-		return pow(value, c(half));
+		return pow(value, c(0.5));
 	}
 
 	/**

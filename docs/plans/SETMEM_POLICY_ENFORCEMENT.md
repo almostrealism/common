@@ -94,7 +94,11 @@ rules — `SETMEM_NON_LITERAL_ARGUMENT`, `FILL_PACK_BEYOND_SCALAR_ALLOWANCE`, an
   violations that existed when full-tree enforcement was turned on. Entries match on
   exact source text, so editing a grandfathered line re-triggers enforcement for it.
   Module-level gating (`UNMIGRATED_MODULES`) is retired; the baseline is the only
-  burn-down ledger.
+  burn-down ledger. The `test-integrity-check` CI job treats the baseline as a
+  burn-down ledger rather than as protected enforcement infrastructure: a branch
+  that only *removes* entries passes, since that is the migration working as
+  intended, while adding or altering an entry fails the job because it
+  grandfathers a new violation.
 - **`KNOWN_EXCLUSIONS`**: individually-acknowledged sites in enforced modules —
   framework-internal writes below the producer API, the randomness ingest primitive,
   genuine I/O ingest awaiting the narrowed API, and reference-data test ingest.

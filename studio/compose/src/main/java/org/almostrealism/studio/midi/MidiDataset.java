@@ -17,6 +17,8 @@
 package org.almostrealism.studio.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.ValueTarget;
@@ -74,7 +76,7 @@ import org.almostrealism.ml.midi.GRUDecoder;
  * @see MidiTrainingConfig
  * @see MoonbeamConfig
  */
-public class MidiDataset implements Dataset<PackedCollection> {
+public class MidiDataset implements Dataset<PackedCollection>, CodeFeatures {
 
 	/** Configuration for the Moonbeam model (vocab sizes, sequence lengths, etc.). */
 	private final MoonbeamConfig modelConfig;
@@ -217,20 +219,31 @@ public class MidiDataset implements Dataset<PackedCollection> {
 		PackedCollection oneHot = new PackedCollection(new TraversalPolicy(vocabSize));
 
 		if (token.isSpecial()) {
-			oneHot.setMem(1.0);
+			// Special tokens light only the SOS position
+			a(cp(oneHot), lessThan(integers(0, vocabSize), c(0.5), c(1.0), c(0.0))
+					.reshape(oneHot.getShape())).get().run();
 			return oneHot;
 		}
 
 		double[] attrValues = token.toDoubleArray();
-		double[] values = new double[vocabSize];
+		CollectionProducer result = null;
+
 		for (int attr = 0; attr < MoonbeamConfig.NUM_ATTRIBUTES; attr++) {
 			int index = vocabOffsets[attr + 1] + (int) attrValues[attr];
-			if (index >= 0 && index < vocabSize) {
-				values[index] = 1.0;
-			}
+
+			// Each attribute position enters as provider data, and an
+			// out-of-range attribute uses a sentinel no index can match, so
+			// the producer structure is identical for every token and one
+			// compiled kernel serves the whole dataset
+			double target = index >= 0 && index < vocabSize ? index : -1.0;
+			PackedCollection position = pack(target);
+			CollectionProducer match = lessThan(
+					integers(0, vocabSize).subtract(cp(position)).abs(),
+					c(0.5), c(1.0), c(0.0));
+			result = result == null ? match : result.add(match);
 		}
 
-		oneHot.setMem(0, values);
+		a(cp(oneHot), result.reshape(oneHot.getShape())).get().run();
 		return oneHot;
 	}
 
