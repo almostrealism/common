@@ -277,12 +277,41 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	/** GCC pragma directive prepended to large generated source files to use {@code -O1} instead of {@code -O3}. */
 private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pragma GCC optimize(\"O1\")\n#endif\n";
 
-	/** Counter used to generate unique class names for compiled runnable operations. */
+	/**
+	 * Counter used to generate unique class names for compiled runnable operations.
+	 *
+	 * <p>Every counter below names something on the filesystem, and every instance of
+	 * this class shares them, so each is reserved through a {@code static synchronized}
+	 * method. Guarding a reservation on the instance instead would allow two compilers
+	 * to hand out the same name, and two operations compiling to one path is a compiler
+	 * failure rather than a wrong answer.</p>
+	 */
 	private static int runnableCount;
 	/** Counter used to assign unique directory names for kernel data files. */
 	private static int dataCount;
 	/** Counter tracking how many instruction set monitoring files have been written. */
 	private static int monitorOutputCount;
+
+	/**
+	 * Reserves the next operation target index.
+	 *
+	 * @return the reserved index, unique across every {@link NativeCompiler} in the JVM
+	 */
+	private static synchronized int reserveTargetIndex() { return runnableCount++; }
+
+	/**
+	 * Reserves the next kernel data directory index.
+	 *
+	 * @return the reserved index, unique across every {@link NativeCompiler} in the JVM
+	 */
+	private static synchronized int reserveDataIndex() { return dataCount++; }
+
+	/**
+	 * Reserves the next instruction set monitoring file index.
+	 *
+	 * @return the reserved index, unique across every {@link NativeCompiler} in the JVM
+	 */
+	private static synchronized int reserveMonitorIndex() { return monitorOutputCount++; }
 
 	/** Numeric precision used for type name and PI constant declaration in generated code. */
 	private Precision precision;
@@ -346,7 +375,7 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	 * @return New {@link File} for the reserved subdirectory
 	 */
 	public File reserveDataDirectory() {
-		File data = new File(getDataDirectory() + "/" + dataCount++);
+		File data = new File(getDataDirectory() + "/" + reserveDataIndex());
 		if (!data.exists()) {
 			data.mkdir();
 		}
@@ -386,13 +415,20 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	 * via reflection. These classes are generated at build time and act as empty stubs that native
 	 * code is compiled into.</p>
 	 *
+	 * <p>Uniqueness comes from {@link #reserveTargetIndex()} rather than from a lock on this
+	 * method. Marking the method {@code synchronized} would guard only the receiver, and a JVM
+	 * holds several {@link NativeCompiler} instances — one per data context, plus one for any
+	 * {@code NativeMemoryProvider} constructed without a compiler — so two of them could reserve
+	 * the same N. The reserved name becomes both the generated source path and the compiled
+	 * library path, which makes that collision a compiler failure rather than a wrong result.</p>
+	 *
 	 * @return A {@link BaseGeneratedOperation} instance acting as the compilation target slot
 	 * @throws HardwareException if the class cannot be found or instantiated
 	 */
-	public synchronized BaseGeneratedOperation reserveLibraryTarget() {
+	public BaseGeneratedOperation reserveLibraryTarget() {
 		try {
 			BaseGeneratedOperation gen = (BaseGeneratedOperation)
-					Class.forName("org.almostrealism.generated.GeneratedOperation" + runnableCount++)
+					Class.forName("org.almostrealism.generated.GeneratedOperation" + reserveTargetIndex())
 							.getConstructor(Computation.class).newInstance(new Object[] { null });
 			return gen;
 		} catch (ClassNotFoundException e) {
@@ -479,7 +515,7 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	public void compileAndLoad(Class target, String code) {
 		if (HardwareOperator.enableInstructionSetMonitoring ||
 				(HardwareOperator.enableLargeInstructionSetMonitoring && code.length() > 50000)) {
-			String name = "jni_instruction_set_" + (monitorOutputCount++) + ".c";
+			String name = "jni_instruction_set_" + reserveMonitorIndex() + ".c";
 
 			try {
 				Path outputDir = Path.of(HardwareOperator.instructionSetOutputDir);
@@ -600,6 +636,9 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	/**
 	 * The total number of {@link NativeInstructionSet}s that have been compiled
 	 * by instances of {@link NativeCompiler}.
+	 *
+	 * <p>Synchronized on the same monitor as the reservation, so a caller on another
+	 * thread observes every target handed out rather than a stale count.</p>
 	 */
-	public static long getTotalInstructionSets() { return runnableCount; }
+	public static synchronized long getTotalInstructionSets() { return runnableCount; }
 }
