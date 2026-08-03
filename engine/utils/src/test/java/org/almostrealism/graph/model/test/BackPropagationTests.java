@@ -133,7 +133,7 @@ public class BackPropagationTests extends TestSuiteBase {
 		model.add(pool);
 
 		PackedCollection input = new PackedCollection(inputShape);
-		input.fill(pos -> (double) (int) (100 * Math.random()));
+		floor(rand(input.getShape()).multiply(100.0)).into(input.traverseEach()).evaluate();
 
 		PackedCollection output = model.compile().forward(input);
 

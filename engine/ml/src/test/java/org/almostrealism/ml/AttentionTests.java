@@ -187,7 +187,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
 		// Create a simple input that's easy to verify
 		PackedCollection input = new PackedCollection(shape(batchSize, seqLen, embedDim * 3));
-		input.fill(pos -> (double) pos[0] * seqLen * embedDim * 3 + pos[1] * embedDim * 3 + pos[2]);
+		integers(0, batchSize * seqLen * embedDim * 3).into(input.traverseEach()).evaluate();
 
 		// Create a model that simulates the QKV split
 		Model model = new Model(shape(batchSize, seqLen, 3 * embedDim));
@@ -377,19 +377,19 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
 		// QKV weight that keeps values mostly unchanged (near-identity)
 		PackedCollection toQKV = new PackedCollection(shape(embedDim * 3, embedDim));
-		toQKV.fill(pos -> {
-			int outIdx = pos[0];
-			int inIdx = pos[1];
-			// Create a block diagonal structure
-			if (outIdx < embedDim && inIdx == outIdx) return 1.0;
-			else if (outIdx >= embedDim && outIdx < 2 * embedDim && inIdx == (outIdx - embedDim)) return 1.0;
-			else if (outIdx >= 2 * embedDim && inIdx == (outIdx - 2 * embedDim)) return 1.0;
-			else return 0.0;
-		});
+		// Block diagonal: each of the three blocks is the identity, so a column matches
+		// whenever it equals the row index taken modulo the block width.
+		equals(integers(0, embedDim * 3 * embedDim).mod(embedDim),
+					floor(integers(0, embedDim * 3 * embedDim).divide(embedDim)).mod(embedDim),
+					c(1.0), c(0.0))
+				.into(toQKV.traverseEach()).evaluate();
 
 		// Identity output projection
 		PackedCollection toOut = new PackedCollection(shape(embedDim, embedDim));
-		toOut.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
+		equals(integers(0, embedDim * embedDim).mod(embedDim),
+					floor(integers(0, embedDim * embedDim).divide(embedDim)),
+					c(1.0), c(0.0))
+				.into(toOut.traverseEach()).evaluate();
 
 		// Identity norms
 		PackedCollection qNormWeight = new PackedCollection(shape(dimHead)).fill(1.0);

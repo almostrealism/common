@@ -677,7 +677,7 @@ public class PackedCollection extends MemoryDataAdapter
 	 * <pre>{@code
 	 * // Create a 2x3 collection
 	 * PackedCollection original = new PackedCollection(shape(2, 3));
-	 * original.fill(pos -> pos);  // [0, 1, 2, 3, 4, 5]
+	 * integers(0, 6).into(original.traverseEach()).evaluate();  // [0, 1, 2, 3, 4, 5]
 	 * 
 	 * // Repeat it 4 times
 	 * PackedCollection repeated = original.repeat(4);

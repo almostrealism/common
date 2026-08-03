@@ -18,22 +18,14 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/a
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcA = new PackedCollection(a.length).fill(a);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcB = new PackedCollection(b.length).fill(b);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	return new PackedCollection(data.length).fill(data);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	2	input.fill(pos -> {
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/AdaLNConditioningTest.java	1	ssg.fill(pos -> components[pos[0]]);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/AttentionTests.java	1	input.fill(pos -> (double) pos[0] * seqLen * embedDim * 3 + pos[1] * embedDim * 3 + pos[2]);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/AttentionTests.java	1	toOut.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/AttentionTests.java	1	toQKV.fill(pos -> {
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/CausalMaskIsolationTest.java	1	input0.fill(Math::random); // Random input
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/CausalMaskIsolationTest.java	1	input2.fill(Math::random);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/DifferentialAttentionTest.java	1	qkv.fill(pos -> {
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/LearnedTokensTest.java	1	memoryTokens.fill(pos -> pos[0] + pos[1] * 0.01);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/MultiTokenGenerationTest.java	1	Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/MultiTokenGenerationTest.java	1	Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/Qwen3DirectGenerationTest.java	1	Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/Qwen3DirectGenerationTest.java	1	Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/unet/test/UNetTest.java	1	.fill(() -> (int) (Math.random() * timesteps));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/DiskStoreTestSupport.java	1	return new PackedCollection(values.length).fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/HnswSearchTest.java	1	index.insert("n-" + i, new PackedCollection(dimension).fill(values));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/HnswSearchTest.java	1	return new PackedCollection(dimension).fill(values);
@@ -65,13 +57,7 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/c
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/TraversableDeltaComputationTests_Polynomial.java	2	PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/TraversableDeltaComputationTests_Polynomial.java	2	PackedCollection v = pack(IntStream.range(0, dim).boxed()
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/collect/computations/test/TraversableDeltaComputationTests_Polynomial.java	2	pack(IntStream.range(0, count * dim).boxed()
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/BackPropagationTests.java	1	input.fill(pos -> (double) (int) (100 * Math.random()));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	1	data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	2	input.fill(pos -> {
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	1	new PackedCollection(outShape).fill(pos -> pos[0] % 2 == v ? 1.0 : 0.0)));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/LayerTrackingTest.java	1	w1.fill(pos -> 0.01 * (pos[0] + 1));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/LayerTrackingTest.java	1	w2.fill(pos -> 0.02 * (pos[0] + 1));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/SyntheticDenseTrainingTest.java	1	.fill(Math::random);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/hardware/test/KernelOperationTests.java	1	PackedCollection a = new PackedCollection(shape(2048)).fill(Math::random);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/hardware/test/KernelOperationTests.java	1	PackedCollection b = new PackedCollection(shape(2048)).fill(Math::random);
@@ -86,7 +72,6 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	flowtree/runtime/src/test/java/io/flowtree/job
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	flowtree/runtime/src/test/java/io/flowtree/jobs/FileStagerTest.java	1	Arrays.fill(largeContent, (byte) 'A');
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	Arrays.fill(values, -1e9);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/main/java/org/almostrealism/studio/ml/AudioModulator.java	1	return pack(stereoAudio).reshape(2, finalSamples);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/generate/test/AudioSynthesizerTests.java	1	levelData.fill(pos -> {
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java	1	Arrays.fill(values, Double.NEGATIVE_INFINITY);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayRateModulationTest.java	1	new PackedCollection(new TraversalPolicy(1, signalSize)).fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayRateModulationTest.java	1	new TraversalPolicy(channels, signalSize)).fill(values);

@@ -705,8 +705,8 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 
 			randn.refresh();
 			PackedCollection noise = randn.evaluate();
-			PackedCollection t = new PackedCollection(batchSize, 1)
-					.fill(() -> (int) (Math.random() * timesteps));
+			PackedCollection t = new PackedCollection(batchSize, 1);
+			floor(rand(t.getShape()).multiply(timesteps)).into(t.traverseEach()).evaluate();
 			PackedCollection xNoisy = qSample.evaluate(xStart.each(), t, noise.each());
 			List<ValueTarget<PackedCollection>> result = new ArrayList<>();
 			result.add(ValueTarget.of(xNoisy, noise).withArguments(t));

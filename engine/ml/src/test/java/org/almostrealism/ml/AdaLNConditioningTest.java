@@ -524,10 +524,11 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 	 */
 	private PackedCollection scaleShiftGate(double scaleSelf, double shiftSelf, double gateSelf,
 											double scaleFf, double shiftFf, double gateFf) {
-		double[] components = { scaleSelf, shiftSelf, gateSelf, scaleFf, shiftFf, gateFf };
 		PackedCollection ssg =
 				new PackedCollection(shape(AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, DIM));
-		ssg.fill(pos -> components[pos[0]]);
+		cp(pack(scaleSelf, shiftSelf, gateSelf, scaleFf, shiftFf, gateFf))
+				.reshape(shape(AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, 1)).repeat(1, DIM)
+				.into(ssg.traverseEach()).evaluate();
 		return ssg;
 	}
 

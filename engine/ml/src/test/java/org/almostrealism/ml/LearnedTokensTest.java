@@ -192,7 +192,9 @@ public class LearnedTokensTest extends TestSuiteBase implements LearnedTokenFeat
 
 		// Distinctive, easily-checked pattern for the memory-token parameter.
 		PackedCollection memoryTokens = new PackedCollection(shape(numMemoryTokens, DIT_EMBED_DIM));
-		memoryTokens.fill(pos -> pos[0] + pos[1] * 0.01);
+		floor(integers(0, numMemoryTokens * DIT_EMBED_DIM).divide(DIT_EMBED_DIM))
+				.add(integers(0, numMemoryTokens * DIT_EMBED_DIM).mod(DIT_EMBED_DIM).multiply(0.01))
+				.into(memoryTokens.traverseEach()).evaluate();
 		weights.put("model.model.transformer.memory_tokens", memoryTokens);
 
 		DiffusionTransformer transformer =
