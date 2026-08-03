@@ -246,9 +246,22 @@ The relationship between `Process.optimize()` and `Process.get()` is fundamental
    called, the tree should already be optimized. `get()` triggers scope generation,
    native code compilation, and returns the compiled result.
 
-**Always call `optimize()` before `get()`.** Calling `get()` on an unoptimized tree
-works but may produce inefficient code — large inlined expression trees, missed
-parallelism opportunities, and excessive memory usage.
+**Always call `optimize()` before `get()`.** Isolation is only consulted during
+optimization, so an unoptimized tree is not merely slower — it embeds every child
+expression inline. Beyond missed parallelism and excessive memory use, this can fail
+outright:
+
+```
+org.almostrealism.hardware.HardwareException: Cannot compile <operation>
+Caused by: io.almostrealism.expression.ExpressionException: Expression too deep
+        at io.almostrealism.expression.Expression.init(Expression.java:...)
+```
+
+`Expression.init` rejects any expression deeper than `ScopeSettings.maxDepth`. The
+depth of an embedded child grows with its input size, so a graph that compiles for a
+small collection can stop compiling once the data is realistic. **A compile failure
+that appears only at larger sizes is the signature of a missing `optimize()`, not of
+a graph that needs to be split by hand.**
 
 ```java
 // Correct pattern
@@ -258,6 +271,31 @@ Runnable compiled = optimized.get();
 
 // The OperationList.get() method handles this internally
 ```
+
+### Which entry points optimize
+
+`Process` is not the only way a graph reaches `get()`. The convenience methods on
+`Producer` are the common route, and most of them do **not** optimize:
+
+| Call | Optimizes? |
+|---|---|
+| `producer.get()` | No |
+| `producer.evaluate(args)` | No — `get().evaluate(args)` |
+| `producer.into(destination)` | No — `get().into(destination)` |
+| `producer.evaluateOptimized(args)` | **Yes** — `Process.optimized(this).get().evaluate(args)` |
+| `Process.optimized(producer).get()` | **Yes** |
+| `operationList.optimize().get()` | **Yes** |
+
+To write into a pre-allocated destination *and* optimize, there is no single
+convenience method — combine the two:
+
+```java
+Evaluable scale = Process.optimized(producer).get();
+scale.into(destination).evaluate();
+```
+
+Reaching `get()` directly remains valid when the caller knows the tree needs no
+isolation, but it is a deliberate choice, not the default.
 
 ## Related Files
 
