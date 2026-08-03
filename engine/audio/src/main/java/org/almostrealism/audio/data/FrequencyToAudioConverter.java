@@ -203,7 +203,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	private PackedCollection applyIfft(double[] complexSpectrum, int fftSize) {
 		// Create input collection
 		PackedCollection input = new PackedCollection(fftSize * 2);
-		input.setMem(complexSpectrum);
+		input.fill(complexSpectrum);
 
 		// Apply IFFT
 		FourierTransform ifft = new FourierTransform(1, fftSize, true, c(input));

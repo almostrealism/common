@@ -111,7 +111,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 			Assert.assertEquals(channels * signalSize, flatInput.length);
 			PackedCollection input = new PackedCollection(
 					new TraversalPolicy(channels, signalSize));
-			input.setMem(flatInput);
+			input.setFrom(0, PackedCollection.of(flatInput));
 			PackedCollection out = model.forward(input);
 			return out.toArray(0, channels * signalSize);
 		}
@@ -173,10 +173,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				channels * channels, feedbackMatrixRowMajor.length);
 
 		PackedCollection delays = new PackedCollection(channels);
-		delays.setMem(tapDelays);
+		delays.setFrom(0, PackedCollection.of(tapDelays));
 		PackedCollection feedback = new PackedCollection(
 				new TraversalPolicy(channels, channels));
-		feedback.setMem(feedbackMatrixRowMajor);
+		feedback.setFrom(0, PackedCollection.of(feedbackMatrixRowMajor));
 		PackedCollection buffer = new PackedCollection(channels * bufSize);
 		PackedCollection heads = new PackedCollection(channels);
 
@@ -186,7 +186,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 					channels * channels, passthroughMatrixRowMajor.length);
 			PackedCollection pass = new PackedCollection(
 					new TraversalPolicy(channels, channels));
-			pass.setMem(passthroughMatrixRowMajor);
+			pass.setFrom(0, PackedCollection.of(passthroughMatrixRowMajor));
 			passthrough = cp(pass);
 		}
 

@@ -2,10 +2,12 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	PackedCollection sequence = pack(values());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	return pack(values());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/heredity/src/main/java/org/almostrealism/heredity/ProjectedGenome.java	1	variation.fill(pos -> {
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	input.fill(complexSpectrum);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/main/java/org/almostrealism/audio/notes/ReversePlaybackAudioFilter.java	1	.evaluate(audioData.traverse(1), pack(audioData.getShape().getTotalSize()));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(0).fill((double) (TOTAL_FRAMES + 1));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(0).fill((double) (timelineFrames - 100));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(1).fill((double) (TOTAL_FRAMES + 1));
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/ml/midi/MoonbeamMidi.java	1	attributePositions.fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcA = new PackedCollection(a.length).fill(a);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcB = new PackedCollection(b.length).fill(b);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	return new PackedCollection(data.length).fill(data);
@@ -34,7 +36,25 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/u
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/main/java/org/almostrealism/studio/ml/AudioModulator.java	1	return pack(stereoAudio).reshape(2, finalSamples);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayRateModulationTest.java	1	new PackedCollection(new TraversalPolicy(1, signalSize)).fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayRateModulationTest.java	1	new TraversalPolicy(channels, signalSize)).fill(values);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	dest.fill(values);
+PACKED_COLLECTION_OF_NON_LITERAL	compute/algebra/src/main/java/org/almostrealism/collect/computations/Random.java	1	((PackedCollection) destination).setFrom(0, PackedCollection.of(values));
 PACKED_COLLECTION_OF_NON_LITERAL	domain/graph/src/main/java/org/almostrealism/layers/ParameterUpdate.java	1	return scaled(CollectionFeatures.getInstance().cp(PackedCollection.of(learningRate)));
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	waveform.setFrom(0, PackedCollection.of(data[chan]));
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedEnvelopeTest.java	3	PackedCollection.of(attackV), PackedCollection.of(decayV), PackedCollection.of(sustainV),
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedEnvelopeTest.java	8	PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3))
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedEnvelopeTest.java	2	PackedCollection.of(releaseV), PackedCollection.of(durationV))
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	1	PackedCollection destOffsets = PackedCollection.of(destOffsetValues);
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	8	PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3)
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	5	PackedCollection[] filterAdsr = { PackedCollection.of(fAtt), PackedCollection.of(fDec), PackedCollection.of(fSus), PackedCollection.of(fRel), PackedCollection.of(fDur) };
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	5	PackedCollection[] volumeAdsr = { PackedCollection.of(vAtt), PackedCollection.of(vDec), PackedCollection.of(vSus), PackedCollection.of(vRel), PackedCollection.of(vDur) };
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	1	ratios[l] = PackedCollection.of(ratioData);
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	PackedCollection destOffsets = PackedCollection.of(destOffsetValues);
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	PackedCollection mergedN = PackedCollection.of(merged);
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	5	PackedCollection.of(fAtt), PackedCollection.of(fDec), PackedCollection.of(fSus), PackedCollection.of(fRel), PackedCollection.of(fDur))
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	8	PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3))
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	5	PackedCollection.of(vAtt), PackedCollection.of(vDec), PackedCollection.of(vSus), PackedCollection.of(vRel), PackedCollection.of(vDur))
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	ratios[l] = PackedCollection.of(ratioData);
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	return PackedCollection.of(data);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.automationLevel);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.filterAttack);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.filterDecay);
@@ -46,24 +66,32 @@ PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/au
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.volDecay);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.volRelease);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.volSustain);
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	audioBuf.setFrom(0, PackedCollection.of(audioData));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(1.5 * in.valueAt(0));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/main/java/org/almostrealism/studio/arrange/DefaultChannelSectionFactory.java	1	PackedCollection repeat = PackedCollection.of(
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/main/java/org/almostrealism/studio/arrange/EfxManager.java	1	PackedCollection c = PackedCollection.of(choices);
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	PackedCollection topKLogits = PackedCollection.of(filtered);
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	delays.setFrom(0, PackedCollection.of(tapDelays));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	feedback.setFrom(0, PackedCollection.of(feedbackMatrixRowMajor));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	input.setFrom(0, PackedCollection.of(flatInput));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	pass.setFrom(0, PackedCollection.of(passthroughMatrixRowMajor));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	PackedCollection.of(referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER)));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	delaySamples.setFrom(0, PackedCollection.of(delaysData));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	feedback.setFrom(0, PackedCollection.of(matrixData));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	delaySamples.setFrom(0, PackedCollection.of(delaySamplesData));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	3	input.setFrom(0, PackedCollection.of(inData));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	passthrough.setFrom(0, PackedCollection.of(passthroughRowMajor));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	signal.setFrom(0, PackedCollection.of(s));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	transmission.setFrom(0, PackedCollection.of(transmissionRowMajor));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/PdslAudioDspTest.java	1	filterCoeffs.setFrom(0, PackedCollection.of(coeffs));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/spatial/src/main/java/org/almostrealism/spatial/GenomicTimeseries.java	1	this.genome = new ProjectedGenome(PackedCollection.of(params));
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	resets.setMem(index, (double) value);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	time.setMem(0, newLeft);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	waveform.setMem(data[chan]);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	input.setMem(complexSpectrum);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/line/SharedMemoryAudioLine.java	1	controls.setMem(PASSTHROUGH_LEVEL, level);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/BatchedEnvelopeTest.java	1	c.setMem(values);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/BatchedEnvelopeTest.java	2	ones.setMem(onesData);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	1	c.setMem(values);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	c.setMem(values);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	audioBuf.setMem(audioData);
 SETMEM_NON_LITERAL_ARGUMENT	engine/ml/src/main/java/org/almostrealism/ml/audio/DiffusionSampler.java	1	tTensor.setMem(0, t);
-SETMEM_NON_LITERAL_ARGUMENT	engine/ml/src/main/java/org/almostrealism/ml/midi/MoonbeamMidi.java	1	attributePositions.setMem(values);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	clProvider.setMem(dest, 0, sentinel, 0, n);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	clProvider.setMem(dest, 16, source, 8, 32);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	clProvider.setMem(device, 0, original, 0, n);
@@ -73,20 +101,4 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardwar
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	nativeProvider.setMem(original, 0, values, 0, n);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	nativeProvider.setMem(returned, 0, device, 0, n);
 SETMEM_NON_LITERAL_ARGUMENT	engine/utils/src/test/java/org/almostrealism/hardware/test/CrossProviderMemoryCopyTest.java	1	nativeProvider.setMem(source, 0, values, 0, n);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/arrange/DefaultChannelSectionFactory.java	1	repeat.setMem(Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray());
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/arrange/EfxManager.java	1	c.setMem(choices);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	topKLogits.setMem(filtered);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/optimize/AudioSceneOptimizer.java	1	combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	delays.setMem(tapDelays);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	feedback.setMem(feedbackMatrixRowMajor);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	input.setMem(flatInput);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	pass.setMem(passthroughMatrixRowMajor);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	delaySamples.setMem(delaysData);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	feedback.setMem(matrixData);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	delaySamples.setMem(delaySamplesData);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	3	input.setMem(inData);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	passthrough.setMem(passthroughRowMajor);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	signal.setMem(s);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	transmission.setMem(transmissionRowMajor);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/PdslAudioDspTest.java	1	filterCoeffs.setMem(coeffs);
-SETMEM_NON_LITERAL_ARGUMENT	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	dest.setMem(values);

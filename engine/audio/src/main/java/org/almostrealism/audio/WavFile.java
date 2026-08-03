@@ -322,7 +322,7 @@ public class WavFile implements AutoCloseable {
 	 */
 	public static PackedCollection channel(double[][] data, int chan, int padFrames) {
 		PackedCollection waveform = new PackedCollection(data[chan].length + padFrames);
-		waveform.setMem(data[chan]);
+		waveform.setFrom(0, PackedCollection.of(data[chan]));
 		return waveform.traverse(1);
 	}
 

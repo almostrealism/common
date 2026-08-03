@@ -59,14 +59,6 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 	/** Filter order used when constructing the multi-order filter processor. */
 	private static final int FILTER_ORDER = 40;
 
-	/**
-	 * Creates a {@link PackedCollection} populated with the given double values.
-	 */
-	private PackedCollection col(double[] values) {
-		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
-		return c;
-	}
 
 	/**
 	 * Verifies that the fused scalar-driven path produces output identical
@@ -108,9 +100,9 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 				v3[nn] = 0.0;
 			}
 			sources[l] = batch;
-			ratios[l] = col(ratioData);
+			ratios[l] = PackedCollection.of(ratioData);
 			layerEnvParams[l] = new PackedCollection[] {
-					col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3)
+					PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3)
 			};
 			layerCurves[l] = renderer.buildLayerEnvelopeCurve(
 					layerEnvParams[l][0], layerEnvParams[l][1], layerEnvParams[l][2], layerEnvParams[l][3],
@@ -140,8 +132,8 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 			vSus[nn] = 0.45 + 0.05 * nn;
 			vRel[nn] = 0.003 + 0.0005 * nn;
 		}
-		PackedCollection[] filterAdsr = { col(fAtt), col(fDec), col(fSus), col(fRel), col(fDur) };
-		PackedCollection[] volumeAdsr = { col(vAtt), col(vDec), col(vSus), col(vRel), col(vDur) };
+		PackedCollection[] filterAdsr = { PackedCollection.of(fAtt), PackedCollection.of(fDec), PackedCollection.of(fSus), PackedCollection.of(fRel), PackedCollection.of(fDur) };
+		PackedCollection[] volumeAdsr = { PackedCollection.of(vAtt), PackedCollection.of(vDec), PackedCollection.of(vSus), PackedCollection.of(vRel), PackedCollection.of(vDur) };
 
 		PackedCollection filterCutoffs = renderer.buildVolumeEnvelopeCurve(
 				filterAdsr[0], filterAdsr[1], filterAdsr[2], filterAdsr[3], filterAdsr[4])
@@ -152,7 +144,7 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 				.get().evaluate();
 
 		double[] destOffsetValues = { 0, 200, 512, 700 };
-		PackedCollection destOffsets = col(destOffsetValues);
+		PackedCollection destOffsets = PackedCollection.of(destOffsetValues);
 
 		// Materialized-curve path (already verified against the per-note reference).
 		PackedCollection materialized = renderer.buildBatchedSssChainPlaced(

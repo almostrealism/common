@@ -251,7 +251,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		filterCoeffs.setMem(coeffs);
+		filterCoeffs.setFrom(0, PackedCollection.of(coeffs));
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");

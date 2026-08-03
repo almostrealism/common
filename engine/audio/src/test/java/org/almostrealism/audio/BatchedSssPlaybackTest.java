@@ -64,12 +64,6 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 	/** FIR filter order matching production {@code EfxManager.filterOrder}. */
 	private static final int FILTER_ORDER = 40;
 
-	/** Creates a flat {@link PackedCollection} pre-loaded with the given values. */
-	private PackedCollection col(double[] values) {
-		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
-		return c;
-	}
 
 	/** Extracts row {@code n} of a flat {@code [N, TARGET_LENGTH]} collection. */
 	private PackedCollection row(PackedCollection flat, int n) {
@@ -77,7 +71,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 		for (int i = 0; i < TARGET_LENGTH; i++) {
 			data[i] = flat.toDouble(n * TARGET_LENGTH + i);
 		}
-		return col(data);
+		return PackedCollection.of(data);
 	}
 
 	/**
@@ -126,9 +120,9 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 				v3[n] = 0.0;
 			}
 			sources[l] = batch;
-			ratios[l] = col(ratioData);
+			ratios[l] = PackedCollection.of(ratioData);
 			layerCurves[l] = renderer.buildLayerEnvelopeCurve(
-					col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3))
+					PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3))
 					.get().evaluate();
 		}
 
@@ -158,16 +152,16 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 			vRel[n] = 0.003 + 0.0005 * n;
 		}
 		PackedCollection filterCutoffs = renderer.buildVolumeEnvelopeCurve(
-				col(fAtt), col(fDec), col(fSus), col(fRel), col(fDur))
+				PackedCollection.of(fAtt), PackedCollection.of(fDec), PackedCollection.of(fSus), PackedCollection.of(fRel), PackedCollection.of(fDur))
 				.multiply(c(MultiOrderFilterEnvelopeProcessor.filterPeak))
 				.get().evaluate();
 		PackedCollection volumeEnvelopes = renderer.buildVolumeEnvelopeCurve(
-				col(vAtt), col(vDec), col(vSus), col(vRel), col(vDur))
+				PackedCollection.of(vAtt), PackedCollection.of(vDec), PackedCollection.of(vSus), PackedCollection.of(vRel), PackedCollection.of(vDur))
 				.get().evaluate();
 
 		// ── Per-note destination offsets (one starts mid-window). ──
 		double[] destOffsetValues = { 0, 200, 512, 700 };
-		PackedCollection destOffsets = col(destOffsetValues);
+		PackedCollection destOffsets = PackedCollection.of(destOffsetValues);
 
 		// ── Single batched dispatch: 3 layers → placed, summed window. ──
 		PackedCollection out = renderer.buildBatchedSssChainPlaced(
@@ -188,7 +182,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 				}
 			}
 
-			PackedCollection mergedN = col(merged);
+			PackedCollection mergedN = PackedCollection.of(merged);
 			PackedCollection cutoffN = row(filterCutoffs, n);
 			PackedCollection volN = row(volumeEnvelopes, n);
 

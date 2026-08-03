@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware.test;
+package org.almostrealism.hardware.mem;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
@@ -23,10 +23,14 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Tests for the literal varargs {@code setMem} surface on
- * {@link org.almostrealism.hardware.MemoryData}: writes resolve the delegate
- * chain to the root reservation, land at the correct positions through views,
- * and reject writes extending past the root.
+ * Tests the write surface on {@link MemoryDataAdapter}: writes resolve the delegate
+ * chain to the root reservation, land at the correct positions through views, and
+ * reject writes extending past the root.
+ *
+ * <p>Declared in the package that owns the write surface because the whole-content
+ * write is protected. That is the point of the arrangement — exercising it requires
+ * being inside it — so the test lives where the thing it tests lives rather than
+ * reaching for an accessor that would reopen what the visibility closes.</p>
  */
 public class MemoryDataViewWriteTest extends TestSuiteBase {
 

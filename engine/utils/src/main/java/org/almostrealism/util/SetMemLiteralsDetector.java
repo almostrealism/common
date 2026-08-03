@@ -85,12 +85,13 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Guidance appended to every violation, naming the sanctioned idioms. */
 	private static final String GUIDANCE =
-			"setMem writes device memory only from numeric literals — the whole contents from "
-					+ "index 0 (e.g. setMem(new double[] { 1.0, 2.0 })), or one value at an index "
-					+ "(e.g. setMem(i, 1.0)). The whole-content form takes an array rather than "
-					+ "varargs so that an indexed write cannot silently bind to it, and the indexed "
-					+ "form is declared on MemoryDataAdapter rather than MemoryData so that it is "
-					+ "reachable only through a concrete implementation. "
+			"setMem writes device memory only from numeric literals, one value at an index "
+					+ "(e.g. setMem(i, 1.0)), and that form is declared on MemoryDataAdapter rather "
+					+ "than MemoryData so it is reachable only through a concrete implementation. "
+					+ "The whole-content form is protected and reachable only from the write surface "
+					+ "itself: build a collection from values with PackedCollection.of(...), populate "
+					+ "one with fill(...), or load data from outside the system through "
+					+ "read(ByteBuffer) / read(InputStream). "
 					+ "To copy from another MemoryData use setFrom(...) or cp(src).into(dest).evaluate(); "
 					+ "to materialise computed values use a Producer with fill(value) / fill(pos -> ...) "
 					+ "or a producer assignment. A host double[]/float[] must never be uploaded via setMem.";
@@ -186,13 +187,8 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().get(index).setMem(data);"},
-			new String[] {"/hardware/mem/MemoryBankAdapter.java", "get(index).setMem(values);"},
-			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
-			new String[] {"/assets/CollectionEncoder.java", "decoded.setMem(f);"},
-			new String[] {"/assets/CollectionEncoder.java",
-					"decoded.setMem(data.getDataList().stream().mapToDouble(d -> d).toArray());"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},
