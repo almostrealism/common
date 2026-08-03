@@ -84,19 +84,16 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	protected interface Data extends MemoryData {
 		/**
-		 * Writes the channel at index {@code offset} directly.
+		 * Sets the channel at index {@code i} to the given value.
 		 *
-		 * <p>The indexed write is declared here rather than inherited from
-		 * {@link MemoryData}, which does not offer one. A channel of a colour is
-		 * addressed individually by definition, so this abstraction opts into the
-		 * write explicitly; implementations extend
-		 * {@link org.almostrealism.hardware.mem.MemoryDataAdapter}, which provides
-		 * it.</p>
+		 * <p>Declared alongside {@link #add(int, double)} and {@link #scale(int, double)}
+		 * so that the storage abstraction is expressed in terms of channels rather than
+		 * exposing the underlying memory write to callers.</p>
 		 *
-		 * @param offset the channel index (0=red, 1=green, 2=blue)
-		 * @param value the value to write
+		 * @param i the channel index (0=red, 1=green, 2=blue)
+		 * @param value the value to store
 		 */
-		void setMem(int offset, double value);
+		void set(int i, double value);
 
 		/**
 		 * Adds the given value to the channel at index {@code i}.
@@ -222,7 +219,11 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	private RGB(int model, double r, double g, double b, boolean init) {
 		super(RGB.shape());
 		this.initColorModule(model);
-		if (init) this.data.setMem(new double[] { r, g, b });
+		if (init) {
+			this.data.set(0, r);
+			this.data.set(1, g);
+			this.data.set(2, b);
+		}
 	}
 	
 	/**
@@ -386,11 +387,11 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	public void setRed(double r) {
 		if (r < 0.0) {
-			this.data.setMem(0, 0.0);
+			this.data.set(0, 0.0);
 		} else if (r > 1.0) {
-			this.data.setMem(0, 1.0);
+			this.data.set(0, 1.0);
 		} else {
-			this.data.setMem(0, r);
+			this.data.set(0, r);
 		}
 	}
 	
@@ -401,11 +402,11 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	public void setGreen(double g) {
 		if (g < 0.0) {
-			this.data.setMem(1, 0.0);
+			this.data.set(1, 0.0);
 		} else if (g > 1.0) {
-			this.data.setMem(1, 1.0);
+			this.data.set(1, 1.0);
 		} else {
-			this.data.setMem(1, g);
+			this.data.set(1, g);
 		}
 	}
 	
@@ -416,11 +417,11 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	public void setBlue(double b) {
 		if (b < 0.0) {
-			this.data.setMem(2, 0.0);
+			this.data.set(2, 0.0);
 		} else if (b > 1.0) {
-			this.data.setMem(2, 1.0);
+			this.data.set(2, 1.0);
 		} else {
-			this.data.setMem(2, b);
+			this.data.set(2, b);
 		}
 	}
 	

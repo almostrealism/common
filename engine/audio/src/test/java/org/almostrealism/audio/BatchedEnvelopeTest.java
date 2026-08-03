@@ -45,11 +45,6 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 	/** Audio sample rate. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
-	/** Returns a single-element {@link PackedCollection} holding the given value. */
-	private PackedCollection single(double value) {
-		return pack(value);
-	}
-
 	/** Returns a {@link PackedCollection} populated with the given array of values. */
 	private PackedCollection col(double[] values) {
 		PackedCollection c = new PackedCollection(values.length);
@@ -89,10 +84,11 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
 			ones.setMem(onesData);
+			double dur = durationV[n], atk = attackV[n], dec = decayV[n];
+			double sus = sustainV[n], rel = releaseV[n];
 			PackedCollection ref = AudioProcessingUtils.getVolumeEnv().evaluate(
 					ones.traverse(1),
-					single(durationV[n]), single(attackV[n]), single(decayV[n]),
-					single(sustainV[n]), single(releaseV[n]));
+					pack(dur), pack(atk), pack(dec), pack(sus), pack(rel));
 			for (int i = 0; i < TARGET_LENGTH; i++) {
 				reference[n * TARGET_LENGTH + i] = ref.toDouble(i);
 			}
@@ -144,10 +140,12 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
 			ones.setMem(onesData);
+			double mdN = md[n], f0N = f0[n], f1N = f1[n], f2N = f2[n];
+			double v0N = v0[n], v1N = v1[n], v2N = v2[n], v3N = v3[n];
 			PackedCollection ref = AudioProcessingUtils.getLayerEnv().evaluate(
 					ones.traverse(1),
-					single(md[n]), single(f0[n]), single(f1[n]), single(f2[n]),
-					single(v0[n]), single(v1[n]), single(v2[n]), single(v3[n]));
+					pack(mdN), pack(f0N), pack(f1N), pack(f2N),
+					pack(v0N), pack(v1N), pack(v2N), pack(v3N));
 			for (int i = 0; i < TARGET_LENGTH; i++) {
 				reference[n * TARGET_LENGTH + i] = ref.toDouble(i);
 			}

@@ -660,7 +660,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * <pre>{@code
 	 * PackedCollection vectors = Vector.bank(100);
-	 * vectors.get(0).setMem(new double[] { 1.0, 2.0, 3.0 });
+	 * vectors.get(0).fill(1.0, 2.0, 3.0);
 	 * }</pre>
 	 *
 	 * @param count  the number of vectors to allocate

@@ -62,6 +62,14 @@ public class RGBData192 extends PackedCollection implements RGB.Data {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 */
+	@Override
+	public void set(int i, double value) {
+		setMem(i, value);
+	}
+
+	/**
 	 * Adds {@code r} to the channel at index {@code i} (0=red, 1=green, 2=blue).
 	 *
 	 * @param i the channel index (0, 1, or 2)

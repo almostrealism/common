@@ -21,7 +21,7 @@ import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.filter.AudioPassFilter;
 import org.almostrealism.audio.line.OutputLine;
-import org.almostrealism.audio.test.support.TestAudioData;
+import org.almostrealism.audio.test.support.TestAudioDataFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.data.AudioFilterData;
 import org.almostrealism.audio.data.PolymorphicAudioData;
@@ -101,7 +101,8 @@ import java.util.function.IntFunction;
  * individual effect flags). Those tests catch regressions that escape every
  * layer above.
  */
-public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatures {
+public class FilterChainBisectionTest extends TestSuiteBase
+		implements CellFeatures, TestAudioDataFeatures {
 
 	/** Sample rate for audio tests, derived from OutputLine defaults. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;

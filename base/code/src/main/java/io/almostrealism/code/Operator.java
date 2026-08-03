@@ -68,6 +68,10 @@ public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends 
 	 * @return an {@link Operator} that delegates to the producer
 	 */
 	static <T> Operator<T> of(Producer<T> producer) {
+		if (producer instanceof Operator) {
+			return (Operator<T>) producer;
+		}
+
 		return new Operator<>() {
 			@Override
 			public Evaluable<T> get() { return (Evaluable<T>) producer.get(); }

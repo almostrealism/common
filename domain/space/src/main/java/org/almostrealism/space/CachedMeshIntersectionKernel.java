@@ -141,10 +141,11 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 			for (int i = 0; i < cache.getCountLong(); i++) {
 				PackedCollection entry = (PackedCollection) ((MemoryBank) destination).get(i);
 
-				// The distance is already in device memory, so it is copied rather than
-				// read back and rewritten; only the certainty is a literal.
+				// The certainty is a literal and the distance already lives in device
+				// memory, so the entry is filled and then copied into rather than read
+				// back and rewritten.
+				entry.fill(0.0, 1.0);
 				entry.setFrom(0, cache, i * 2, 1);
-				entry.setMem(1, 1.0);
 			}
 
 			return destination;

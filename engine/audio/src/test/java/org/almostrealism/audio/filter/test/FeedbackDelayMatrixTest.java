@@ -20,7 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.filter.DelayNetwork;
 import org.almostrealism.audio.line.OutputLine;
-import org.almostrealism.audio.test.support.TestAudioData;
+import org.almostrealism.audio.test.support.TestAudioDataFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -30,7 +30,8 @@ import org.junit.Test;
  * Tests for {@link DelayNetwork} feedback delay matrix functionality.
  * Uses synthetic test data instead of external audio files.
  */
-public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatures {
+public class FeedbackDelayMatrixTest extends TestSuiteBase
+		implements CellFeatures, TestAudioDataFeatures {
 
 	/** Sample rate for audio tests, derived from OutputLine defaults. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
@@ -61,7 +62,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 		DelayNetwork verb = new DelayNetwork(0.5, 2, 1.0 / 44100.0, SAMPLE_RATE, false);
 
 		// Apply a short tone
-		PackedCollection tone = TestAudioData.sineWave(440.0, 0.1, SAMPLE_RATE);
+		PackedCollection tone = sineWave(440.0, 0.1, SAMPLE_RATE);
 		PackedCollection output = applyDelayNetwork(verb, tone);
 
 		// Should produce output of same length
@@ -78,7 +79,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 		DelayNetwork verb = new DelayNetwork(SAMPLE_RATE, false);
 
 		// Use a sine wave signal
-		PackedCollection signal = TestAudioData.sineWave(440.0, 0.1, SAMPLE_RATE);
+		PackedCollection signal = sineWave(440.0, 0.1, SAMPLE_RATE);
 		PackedCollection output = applyDelayNetwork(verb, signal);
 
 		// Output should be correct length
@@ -93,11 +94,11 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 	@Test(timeout = 120000)
 	public void silenceRemainsSilent() {
 		DelayNetwork verb = new DelayNetwork(SAMPLE_RATE, false);
-		PackedCollection silence = TestAudioData.silence(SAMPLE_RATE / 10);
+		PackedCollection silence = silence(SAMPLE_RATE / 10);
 		PackedCollection output = applyDelayNetwork(verb, silence);
 
 		Assert.assertTrue("Silence through delay network should remain silent",
-				TestAudioData.isSilent(output, 0.001));
+				isSilent(output, 0.001));
 	}
 
 	/**

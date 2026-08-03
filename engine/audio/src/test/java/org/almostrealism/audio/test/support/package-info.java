@@ -17,6 +17,6 @@
 /**
  * Test support utilities for audio testing including
  * {@link org.almostrealism.audio.test.support.DistractionRunner} and
- * {@link org.almostrealism.audio.test.support.TestAudioData}.
+ * {@link org.almostrealism.audio.test.support.TestAudioDataFeatures}.
  */
 package org.almostrealism.audio.test.support;
