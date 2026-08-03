@@ -308,6 +308,7 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 			int windowSize = Math.max(1, totalFrames / FEATURE_FRAMES);
 
 			PackedCollection features = new PackedCollection(FEATURE_FRAMES, FEATURE_BINS);
+			double[] featureValues = new double[FEATURE_FRAMES * FEATURE_BINS];
 			PackedCollection data = waveData.getChannelData(0);
 
 			for (int f = 0; f < FEATURE_FRAMES; f++) {
@@ -321,10 +322,11 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 							energy += sample * Math.cos(angle);
 						}
 					}
-					features.setMem(f * FEATURE_BINS + b, Math.abs(energy) / windowSize);
+					featureValues[f * FEATURE_BINS + b] = Math.abs(energy) / windowSize;
 				}
 			}
 
+			features.setMem(featureValues);
 			return features;
 		}
 

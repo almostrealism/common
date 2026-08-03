@@ -995,19 +995,27 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	}
 
 	/**
+	 * A single channel of sine tone at the given frequency, starting at the given
+	 * sample offset so phase stays continuous across buffer boundaries.
+	 *
+	 * @param freqHz       tone frequency in Hz
+	 * @param sampleOffset first sample index of this buffer
+	 * @return the tone, of length {@link #SIGNAL_SIZE}
+	 */
+	private PackedCollection tone(double freqHz, int sampleOffset) {
+		return sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE)
+				.multiply(2.0 * Math.PI * freqHz / SAMPLE_RATE)).evaluate();
+	}
+
+	/**
 	 * Input of shape {@code [channels, signalSize]} with a sine tone on one channel
 	 * and zeros on the rest.
 	 */
 	private PackedCollection sparseChannelInput(int activeChannel, double freqHz) {
-		double[] data = new double[CHANNELS * SIGNAL_SIZE];
-		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			double t = (double) i / SAMPLE_RATE;
-			data[activeChannel * SIGNAL_SIZE + i] =
-					Math.sin(2.0 * Math.PI * freqHz * t);
-		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		input.setMem(data);
+		input.fill(0.0);
+		input.setFrom(activeChannel * SIGNAL_SIZE, tone(freqHz, 0));
 		return input;
 	}
 
@@ -1016,16 +1024,14 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * every channel (uniform multi-channel signal).
 	 */
 	private PackedCollection multiChannelTone(double freqHz) {
-		double[] data = new double[CHANNELS * SIGNAL_SIZE];
-		for (int c = 0; c < CHANNELS; c++) {
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				double t = (double) i / SAMPLE_RATE;
-				data[c * SIGNAL_SIZE + i] = Math.sin(2.0 * Math.PI * freqHz * t);
-			}
-		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		input.setMem(data);
+		PackedCollection channel = tone(freqHz, 0);
+
+		for (int c = 0; c < CHANNELS; c++) {
+			input.setFrom(c * SIGNAL_SIZE, channel);
+		}
+
 		return input;
 	}
 
@@ -1035,18 +1041,14 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * playback across buffer boundaries.
 	 */
 	private PackedCollection multiChannelCarrier(double[] freqs, int sampleOffset) {
-		double[] data = new double[CHANNELS * SIGNAL_SIZE];
-		for (int c = 0; c < CHANNELS; c++) {
-			double freq = freqs[c];
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
-				data[c * SIGNAL_SIZE + i] =
-						(1.0 / CHANNELS) * Math.sin(2.0 * Math.PI * freq * t);
-			}
-		}
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		input.setMem(data);
+
+		for (int c = 0; c < CHANNELS; c++) {
+			input.setFrom(c * SIGNAL_SIZE,
+					cp(tone(freqs[c], sampleOffset)).multiply(1.0 / CHANNELS).evaluate());
+		}
+
 		return input;
 	}
 
@@ -1160,13 +1162,14 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	private PackedCollection perChannelWetCoeffs() {
 		int perChannel = FILTER_ORDER + 1;
-		double[] coeffs = referenceLowPassCoefficients(WET_LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
-		double[] data = new double[CHANNELS * perChannel];
-		for (int c = 0; c < CHANNELS; c++) {
-			System.arraycopy(coeffs, 0, data, c * perChannel, perChannel);
-		}
+		PackedCollection coeffs =
+				lowPassCoefficients(c(WET_LP_CUTOFF), SAMPLE_RATE, FILTER_ORDER).evaluate();
 		PackedCollection all = new PackedCollection(CHANNELS * perChannel);
-		all.setMem(data);
+
+		for (int c = 0; c < CHANNELS; c++) {
+			all.setFrom(c * perChannel, coeffs);
+		}
+
 		return all;
 	}
 

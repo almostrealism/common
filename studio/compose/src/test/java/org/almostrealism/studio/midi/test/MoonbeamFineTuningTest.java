@@ -251,12 +251,10 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		// input = (1, hiddenSize), target = (1, hiddenSize)
 		List<ValueTarget<PackedCollection>> trainingSamples = new ArrayList<>();
 		for (int i = 0; i < 10; i++) {
-			PackedCollection input = new PackedCollection(new TraversalPolicy(1, dim));
-			PackedCollection target = new PackedCollection(new TraversalPolicy(1, dim));
-			for (int j = 0; j < dim; j++) {
-				input.setMem(j, Math.sin(j * 0.1 + i * 0.5));
-				target.setMem(j, Math.cos(j * 0.1 + i * 0.3));
-			}
+			PackedCollection input = sin(integers(0, dim).multiply(0.1).add(i * 0.5))
+					.evaluate().reshape(new TraversalPolicy(1, dim));
+			PackedCollection target = cos(integers(0, dim).multiply(0.1).add(i * 0.3))
+					.evaluate().reshape(new TraversalPolicy(1, dim));
 			trainingSamples.add(ValueTarget.of(input, target));
 		}
 

@@ -19,6 +19,7 @@ package org.almostrealism.space;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.Ops;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
@@ -157,15 +158,15 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	 */
 	@Override
 	public PackedCollection evaluate(Object[] args) {
-		PackedCollection result = new PackedCollection(1);
 		if (cache == null) {
-			result.setMem(0, data.evaluateIntersection(ray, args).getA());
-		} else {
-			Pair pos = (Pair) args[0];
-			int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-			result.setMem(0, cache.toDouble(n * 2));
+			double distance = data.evaluateIntersection(ray, args).getA();
+			return Ops.o().pack(distance);
 		}
-		return result;
+
+		Pair pos = (Pair) args[0];
+		int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
+		double cached = cache.toDouble(n * 2);
+		return Ops.o().pack(cached);
 	}
 
 	/**

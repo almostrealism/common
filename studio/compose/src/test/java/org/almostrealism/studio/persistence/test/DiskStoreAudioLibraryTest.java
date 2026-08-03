@@ -426,6 +426,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 			}
 
 			PackedCollection features = new PackedCollection(FEATURE_FRAMES, FEATURE_BINS, 1);
+			double[] featureValues = new double[FEATURE_FRAMES * FEATURE_BINS];
 
 			double minFreq = 20.0;
 			double maxFreq = SAMPLE_RATE / 2.0;
@@ -449,11 +450,12 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 						imag += samples[start + i] * Math.sin(angle);
 					}
 
-					double magnitude = Math.sqrt(real * real + imag * imag) / len;
-					features.setMem(f * FEATURE_BINS + b, magnitude);
+					featureValues[f * FEATURE_BINS + b] =
+							Math.sqrt(real * real + imag * imag) / len;
 				}
 			}
 
+			features.setMem(featureValues);
 			return features;
 		}
 

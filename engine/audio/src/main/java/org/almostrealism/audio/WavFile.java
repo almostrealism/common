@@ -10,6 +10,7 @@ package org.almostrealism.audio;
 
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.stream.IntStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -334,9 +335,7 @@ public class WavFile implements AutoCloseable {
 	 */
 	public static PackedCollection channel(int[][] data, int chan) {
 		PackedCollection waveform = new PackedCollection(data[chan].length);
-
-		int index = 0;
-		for (double frame : data[chan]) waveform.setMem(index++, frame);
+		waveform.setMem(IntStream.of(data[chan]).asDoubleStream().toArray());
 		return waveform;
 	}
 
@@ -351,9 +350,7 @@ public class WavFile implements AutoCloseable {
 	@Deprecated
 	public static PackedCollection channelScalar(int[][] data, int chan) {
 		PackedCollection waveform = new PackedCollection(data[chan].length).traverse(1);
-
-		int index = 0;
-		for (int frame : data[chan]) waveform.setMem(index++, frame);
+		waveform.setMem(IntStream.of(data[chan]).asDoubleStream().toArray());
 		return waveform;
 	}
 

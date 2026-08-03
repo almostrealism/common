@@ -18,6 +18,7 @@ package org.almostrealism.audio;
 
 import org.almostrealism.audio.benchmark.PatternRenderingFloorBenchmark;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestDepth;
@@ -83,67 +84,58 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 
 		double[][] ratioValues = new double[LAYERS][N];
 		PackedCollection[][] sourceByLayerNote = new PackedCollection[LAYERS][N];
-		double[][] layerEnvData = new double[LAYERS][N * TARGET_LENGTH];
 
 		for (int l = 0; l < LAYERS; l++) {
-			double[] batchData = new double[N * SOURCE_LENGTH];
-			double[] ratioData = new double[N];
+			w.sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
+			w.layerEnvelopes[l] = new PackedCollection(shape(N, TARGET_LENGTH));
+
 			for (int n = 0; n < N; n++) {
-				double[] data = new double[SOURCE_LENGTH];
-				for (int i = 0; i < SOURCE_LENGTH; i++) {
-					data[i] = rng.nextDouble() * 2.0 - 1.0;
-					batchData[n * SOURCE_LENGTH + i] = data[i];
-				}
-				sourceByLayerNote[l][n] = new PackedCollection(SOURCE_LENGTH);
-				sourceByLayerNote[l][n].setMem(data);
+				sourceByLayerNote[l][n] =
+						rand(shape(SOURCE_LENGTH), rng).multiply(2.0).add(-1.0).evaluate();
+				w.sources[l].setFrom(n * SOURCE_LENGTH, sourceByLayerNote[l][n]);
+
 				// Ratios in [1.0, 1.45] — max source index < SOURCE_LENGTH.
 				ratioValues[l][n] = 1.0 + 0.1 * l + 0.05 * n;
-				ratioData[n] = ratioValues[l][n];
 
 				double sustain = 0.5 + 0.1 * l + 0.02 * n;
-				PatternRenderingFloorBenchmark.fillAdsrShape(layerEnvData[l], n * TARGET_LENGTH, TARGET_LENGTH,
-						0.0, 1.0, sustain, 0.0,
-						0.04 + 0.01 * l, 0.09 + 0.01 * l, 0.13 + 0.01 * l);
+				w.layerEnvelopes[l].setFrom(n * TARGET_LENGTH,
+						PatternRenderingFloorBenchmark.adsrShape(TARGET_LENGTH,
+								0.0, 1.0, sustain, 0.0,
+								0.04 + 0.01 * l, 0.09 + 0.01 * l, 0.13 + 0.01 * l));
 			}
-			w.sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
-			w.sources[l].setMem(batchData);
-			w.ratios[l] = new PackedCollection(N);
-			w.ratios[l].setMem(ratioData);
-			w.layerEnvelopes[l] = new PackedCollection(shape(N, TARGET_LENGTH));
-			w.layerEnvelopes[l].setMem(layerEnvData[l]);
+
+			w.ratios[l] = integers(0, N).multiply(0.05).add(1.0 + 0.1 * l).evaluate();
 		}
 
-		double[] filterCutoffData = new double[N * TARGET_LENGTH];
-		double[] volumeEnvData = new double[N * TARGET_LENGTH];
-		for (int n = 0; n < N; n++) {
-			PatternRenderingFloorBenchmark.fillAdsrShape(filterCutoffData, n * TARGET_LENGTH, TARGET_LENGTH,
-					150.0 + n * 50.0, 4000.0 + n * 600.0, 800.0 + n * 200.0, 150.0 + n * 50.0,
-					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
-			PatternRenderingFloorBenchmark.fillAdsrShape(volumeEnvData, n * TARGET_LENGTH, TARGET_LENGTH,
-					0.0, 1.0, 0.4 + n * 0.05, 0.0,
-					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
-		}
 		w.filterCutoffs = new PackedCollection(shape(N, TARGET_LENGTH));
-		w.filterCutoffs.setMem(filterCutoffData);
 		w.volumeEnvelopes = new PackedCollection(shape(N, TARGET_LENGTH));
-		w.volumeEnvelopes.setMem(volumeEnvData);
+
+		for (int n = 0; n < N; n++) {
+			w.filterCutoffs.setFrom(n * TARGET_LENGTH,
+					PatternRenderingFloorBenchmark.adsrShape(TARGET_LENGTH,
+							150.0 + n * 50.0, 4000.0 + n * 600.0, 800.0 + n * 200.0, 150.0 + n * 50.0,
+							0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005));
+			w.volumeEnvelopes.setFrom(n * TARGET_LENGTH,
+					PatternRenderingFloorBenchmark.adsrShape(TARGET_LENGTH,
+							0.0, 1.0, 0.4 + n * 0.05, 0.0,
+							0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005));
+		}
 
 		// Per-note reference: Σ_layer resample × perLayerEnv → lowPass → × volume.
 		for (int n = 0; n < N; n++) {
-			double[] merged = new double[TARGET_LENGTH];
+			CollectionProducer merged = null;
 			for (int l = 0; l < LAYERS; l++) {
 				PackedCollection resampled =
 						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
 								.get().evaluate();
-				for (int i = 0; i < TARGET_LENGTH; i++) {
-					merged[i] += resampled.toDouble(i) * layerEnvData[l][n * TARGET_LENGTH + i];
-				}
+				CollectionProducer layer = cp(resampled)
+						.multiply(cp(row(w.layerEnvelopes[l], n)));
+				merged = merged == null ? layer : merged.add(layer);
 			}
 
-			PackedCollection mergedN = new PackedCollection(TARGET_LENGTH);
-			mergedN.setMem(merged);
-			PackedCollection cutoffN = row(filterCutoffData, n);
-			PackedCollection volN = row(volumeEnvData, n);
+			PackedCollection mergedN = merged.evaluate();
+			PackedCollection cutoffN = row(w.filterCutoffs, n);
+			PackedCollection volN = row(w.volumeEnvelopes, n);
 
 			PackedCollection filtered =
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))
@@ -158,13 +150,9 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 		return w;
 	}
 
-	/** Extracts row {@code n} of a flat {@code [N, TARGET_LENGTH]} array into a collection. */
-	private PackedCollection row(double[] flat, int n) {
-		double[] data = new double[TARGET_LENGTH];
-		System.arraycopy(flat, n * TARGET_LENGTH, data, 0, TARGET_LENGTH);
-		PackedCollection c = new PackedCollection(TARGET_LENGTH);
-		c.setMem(data);
-		return c;
+	/** Returns row {@code n} of an {@code [N, TARGET_LENGTH]} collection as a view. */
+	private PackedCollection row(PackedCollection rows, int n) {
+		return rows.range(shape(TARGET_LENGTH), n * TARGET_LENGTH);
 	}
 
 	/** Asserts the RMS difference between {@code expected} and {@code actual} is below {@code 1e-4}. */
@@ -227,8 +215,7 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 
 		int windowWidth = 1536;
 		double[] destOffsetValues = { 0, 256, 512, 700 };
-		PackedCollection destOffsets = new PackedCollection(N);
-		destOffsets.setMem(destOffsetValues);
+		PackedCollection destOffsets = pack(0.0, 256.0, 512.0, 700.0);
 
 		double[] expected = new double[windowWidth];
 		for (int n = 0; n < N; n++) {

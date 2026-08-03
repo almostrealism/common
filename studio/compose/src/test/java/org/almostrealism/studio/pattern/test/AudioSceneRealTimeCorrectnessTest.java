@@ -398,12 +398,12 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			Supplier<Runnable> renderOp = patterns.sum(bufferCtx, channel, () -> frame, BUFFER_SIZE);
 			renderOp.get().run();
 
-			// Copy to concatenated result
+			// Copy to concatenated result without routing the samples through the host
+			concatenatedResult.setFrom(startFrame, tempBuffer);
+
 			double bufferMax = 0;
 			for (int i = 0; i < BUFFER_SIZE; i++) {
-				double val = tempBuffer.valueAt(i);
-				concatenatedResult.setMem(startFrame + i, val);
-				if (Math.abs(val) > bufferMax) bufferMax = Math.abs(val);
+				bufferMax = Math.max(bufferMax, Math.abs(tempBuffer.valueAt(i)));
 			}
 
 			if (bufferMax > 0.001) buffersWithAudio++;

@@ -277,18 +277,22 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 	/** Creates distinct 2D feature data (frames × bins) so HNSW can build a meaningful index. */
 	private PackedCollection createFeatureData(int seed) {
 		PackedCollection features = new PackedCollection(16, 32, 1);
-		for (int i = 0; i < features.getMemLength(); i++) {
-			features.setMem(i, Math.sin(seed * 0.1 + i * 0.01) * 0.5 + 0.5);
+		double[] values = new double[features.getMemLength()];
+		for (int i = 0; i < values.length; i++) {
+			values[i] = Math.sin(seed * 0.1 + i * 0.01) * 0.5 + 0.5;
 		}
+		features.setMem(values);
 		return features;
 	}
 
 	/** Creates a mean-pooled embedding vector from feature data. */
 	private PackedCollection createEmbedding(int seed) {
 		PackedCollection embedding = new PackedCollection(32);
+		double[] values = new double[32];
 		for (int i = 0; i < 32; i++) {
-			embedding.setMem(i, Math.sin(seed * 0.1 + i * 0.3) * 0.5 + 0.5);
+			values[i] = Math.sin(seed * 0.1 + i * 0.3) * 0.5 + 0.5;
 		}
+		embedding.setMem(values);
 		return embedding;
 	}
 

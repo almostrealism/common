@@ -193,6 +193,97 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/assets/CollectionEncoder.java", "decoded.setMem(f);"},
 			new String[] {"/assets/CollectionEncoder.java",
 					"decoded.setMem(data.getDataList().stream().mapToDouble(d -> d).toArray());"},
+			// Per-seed synthetic fixtures. The producer form was measured: it bakes the
+			// seed as a constant, so every distinct seed compiles a fresh kernel and
+			// storeBackedLibraryNeverCallsLoadSingleDetail timed out at 30s. Reverted to
+			// a host computation with a single transfer per fixture.
+			new String[] {"AudioLibraryStartupTest.java", "features.setMem(values);"},
+			new String[] {"AudioLibraryStartupTest.java", "embedding.setMem(values);"},
+			// Synthetic feature fixtures: a log-spaced magnitude spectrum computed on
+			// the host so the persistence and index tests have distinct, deterministic
+			// features. Now one transfer rather than one per bin. The real answer is an
+			// STFT producer, which would change the values these tests were written
+			// against, so it is a deliberate follow-up rather than a substitution.
+			new String[] {"PrototypeDiscoveryPersistenceTest.java", "features.setMem(featureValues);"},
+			new String[] {"DiskStoreAudioLibraryTest.java", "features.setMem(featureValues);"},
+			new String[] {"DrawingFeaturePipelineTest.java", "features.setMem(featureValues);"},
+			// Breeding perturbation. For a positive magnitude this is
+			// a + clamp(b - a, -m, m), which is expressible, but m is drawn afresh for
+			// every breeding operation, so baking it into the graph would compile a
+			// kernel per operation.
+			new String[] {"AudioSceneOptimizer.java",
+					"combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));"},
+			// Test fixtures that supply host arrays as the input to the thing under
+			// test. The array is the test's parameter, not a computation: converting
+			// them relocates the same transfer to the call sites that compose it.
+			new String[] {"DelayNetworkBehaviorTest.java", "input.setMem(flatInput);"},
+			new String[] {"DelayNetworkBehaviorTest.java", "delays.setMem(tapDelays);"},
+			new String[] {"DelayNetworkBehaviorTest.java", "feedback.setMem(feedbackMatrixRowMajor);"},
+			new String[] {"DelayNetworkBehaviorTest.java", "pass.setMem(passthroughMatrixRowMajor);"},
+			new String[] {"MixdownManagerPdslVerificationTest.java", "input.setMem(inData);"},
+			new String[] {"MixdownManagerPdslVerificationTest.java", "signal.setMem(s);"},
+			new String[] {"MixdownManagerPdslVerificationTest.java", "delaySamples.setMem(delaySamplesData);"},
+			new String[] {"MixdownManagerPdslVerificationTest.java", "transmission.setMem(transmissionRowMajor);"},
+			new String[] {"MixdownManagerPdslVerificationTest.java", "passthrough.setMem(passthroughRowMajor);"},
+			new String[] {"MixdownManagerPdslTest.java", "delaySamples.setMem(delaysData);"},
+			new String[] {"MixdownManagerPdslTest.java", "feedback.setMem(matrixData);"},
+			new String[] {"BatchedEnvelopeTest.java", "c.setMem(values);"},
+			new String[] {"BatchedSssFromScalarsTest.java", "c.setMem(values);"},
+			new String[] {"BatchedSssPlaybackTest.java", "c.setMem(values);"},
+			new String[] {"BatchedEnvelopeTest.java", "ones.setMem(onesData);"},
+			// The coefficients here are also convolved on the host to form the expected
+			// result, so both sides of the comparison must read the same array.
+			new String[] {"PdslAudioDspTest.java", "filterCoeffs.setMem(coeffs);"},
+			// Streaming filter tests: each sample is fed, evaluated and then tick()ed,
+			// because what they verify is the filter's state between samples. Batching
+			// them would remove the behaviour under test.
+			new String[] {"AudioPassFilterTest.java", "current.setMem(input.toDouble(i));"},
+			new String[] {"AudioPassFilterTest.java", "output.setMem(i, ev.evaluate().toDouble(0));"},
+			new String[] {"FeedbackDelayMatrixTest.java", "current.setMem(input.toDouble(i));"},
+			new String[] {"FeedbackDelayMatrixTest.java", "output.setMem(i, ev.evaluate().toDouble(0));"},
+			// Marshalling a per-note scalar column into a bound kernel input, which the
+			// method's own javadoc already identifies as a bulk copy rather than
+			// element-wise host computation.
+			new String[] {"BatchedPatternLayerRenderer.java", "dest.setMem(values);"},
+			// A per-token top-k threshold obtained from a host sort. Baking it into the
+			// graph would compile a kernel per generated token.
+			new String[] {"/midi/SkyTntMidi.java", "topKLogits.setMem(filtered);"},
+			// One timestep broadcast across the batch dimension of the sampler input.
+			new String[] {"/audio/DiffusionSampler.java", "tTensor.setMem(0, t);"},
+			// Attribute positions for a compound token, read from the token itself.
+			new String[] {"/midi/MoonbeamMidi.java", "attributePositions.setMem(values);"},
+			// Single-slot scalar writes into a longer buffer. There is no sanctioned
+			// form for these yet: fill would write every element, and fill on a range
+			// view is rejected outright by FILL_ON_RANGE_VIEW, which exists precisely
+			// so a narrowed destination cannot be used to launder a wider write.
+			new String[] {"/graph/TimeCell.java", "resets.setMem(index, (double) value);"},
+			new String[] {"/graph/TimeCell.java", "time.setMem(0, newLeft);"},
+			new String[] {"/line/SharedMemoryAudioLine.java", "controls.setMem(PASSTHROUGH_LEVEL, level);"},
+			// Genuine system-boundary ingest and host-computed init tables, named as
+			// such in the enforcement plan: WAV decode, the choice tables that
+			// parameterize arrangement, and the interleaved spectrum assembled on the
+			// host from magnitude and random phase before the inverse transform.
+			new String[] {"/audio/WavFile.java", "waveform.setMem(IntStream.of(data[chan]).asDoubleStream().toArray());"},
+			new String[] {"/audio/WavFile.java", "waveform.setMem(data[chan]);"},
+			new String[] {"/audio/data/FrequencyToAudioConverter.java", "input.setMem(complexSpectrum);"},
+			new String[] {"/arrange/EfxManager.java", "c.setMem(choices);"},
+			new String[] {"DefaultChannelSectionFactory.java",
+					"repeat.setMem(Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray());"},
+			// The provider copy surface under test: these call MemoryProvider.setMem
+			// directly in order to exercise it, so they are the subject rather than an
+			// unmigrated caller.
+			new String[] {"CrossProviderMemoryCopyTest.java", "nativeProvider.setMem(source, 0, values, 0, n);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "nativeProvider.setMem(dest, 0, sentinel, 0, n);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "nativeProvider.setMem(dest, 16, source, 8, 32);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "nativeProvider.setMem(original, 0, values, 0, n);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "nativeProvider.setMem(returned, 0, device, 0, n);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "clProvider.setMem(source, 0, values, 0, n);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "clProvider.setMem(dest, 0, sentinel, 0, n);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "clProvider.setMem(dest, 16, source, 8, 32);"},
+			new String[] {"CrossProviderMemoryCopyTest.java", "clProvider.setMem(device, 0, original, 0, n);"},
+			// benchmarkJavaSideGatherCostB1 exists to measure the cost of the host-side
+			// gather and upload it performs; migrating it would remove what it measures.
+			new String[] {"PatternRenderingFloorBenchmarkAdditional.java", "audioBuf.setMem(audioData);"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},

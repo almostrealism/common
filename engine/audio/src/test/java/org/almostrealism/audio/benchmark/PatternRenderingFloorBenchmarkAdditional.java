@@ -442,15 +442,15 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * Each row gets a different sinusoidal content driven by row index.
 	 */
 	private PackedCollection buildPerRowAudio(int batchSize) {
-		double[] data = new double[batchSize * NOTE_SIZE];
+		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
+
 		for (int n = 0; n < batchSize; n++) {
 			double freq = 220.0 + (n % 64) * 30.0;
-			for (int i = 0; i < NOTE_SIZE; i++) {
-				data[n * NOTE_SIZE + i] = Math.sin(2.0 * Math.PI * freq * i / SAMPLE_RATE);
-			}
+			out.setFrom(n * NOTE_SIZE,
+					sin(integers(0, NOTE_SIZE).multiply(2.0 * Math.PI * freq / SAMPLE_RATE))
+							.evaluate());
 		}
-		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
-		out.setMem(data);
+
 		return out;
 	}
 
@@ -460,18 +460,18 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * sustain level varying deterministically with row index.
 	 */
 	private PackedCollection buildPerRowVolumeEnvelopes(int batchSize) {
-		double[] data = new double[batchSize * NOTE_SIZE];
+		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
+
 		for (int n = 0; n < batchSize; n++) {
 			double sustainLevel = 0.4 + (n % 16) * (0.5 / 16.0);
 			double attackFrac = 0.02 + (n % 8) * 0.01;
 			double decayFrac = 0.05 + (n % 8) * 0.01;
 			double releaseFrac = 0.10 + (n % 8) * 0.02;
-			fillAdsrShape(data, n * NOTE_SIZE, NOTE_SIZE,
+			out.setFrom(n * NOTE_SIZE, adsrShape(NOTE_SIZE,
 					0.0, 1.0, sustainLevel, 0.0,
-					attackFrac, decayFrac, releaseFrac);
+					attackFrac, decayFrac, releaseFrac));
 		}
-		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
-		out.setMem(data);
+
 		return out;
 	}
 
@@ -481,11 +481,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * a peak of 8000 Hz then back down to 400 Hz.
 	 */
 	private PackedCollection buildAdsrCutoff(int size) {
-		double[] data = new double[size];
-		fillAdsrShape(data, 0, size, 200.0, 8000.0, 1500.0, 400.0, 0.05, 0.10, 0.15);
-		PackedCollection out = new PackedCollection(size);
-		out.setMem(data);
-		return out;
+		return adsrShape(size, 200.0, 8000.0, 1500.0, 400.0, 0.05, 0.10, 0.15);
 	}
 
 	/**
@@ -497,7 +493,8 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * unpadded variant used by E2/E3.
 	 */
 	private PackedCollection buildPerRowFilterCutoffs(int batchSize, int padHalf, int paddedNoteSize) {
-		double[] data = new double[batchSize * paddedNoteSize];
+		PackedCollection out = new PackedCollection(shape(batchSize, paddedNoteSize));
+
 		for (int n = 0; n < batchSize; n++) {
 			double peak = 4000.0 + (n % 16) * 600.0;
 			double sustain = 800.0 + (n % 8) * 200.0;
@@ -505,12 +502,11 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 			double attackFrac = 0.03 + (n % 8) * 0.005;
 			double decayFrac = 0.08 + (n % 8) * 0.005;
 			double releaseFrac = 0.12 + (n % 8) * 0.005;
-			fillAdsrShape(data, n * paddedNoteSize + padHalf, NOTE_SIZE,
+			out.setFrom(n * paddedNoteSize + padHalf, adsrShape(NOTE_SIZE,
 					base, peak, sustain, base,
-					attackFrac, decayFrac, releaseFrac);
+					attackFrac, decayFrac, releaseFrac));
 		}
-		PackedCollection out = new PackedCollection(shape(batchSize, paddedNoteSize));
-		out.setMem(data);
+
 		return out;
 	}
 

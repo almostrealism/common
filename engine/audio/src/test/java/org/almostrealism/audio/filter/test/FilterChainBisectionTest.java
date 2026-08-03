@@ -1198,7 +1198,8 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 		double maxCapture = 0;
 		for (int i = 0; i < 100; i++) {
 			// Vary the source signal each iteration (simulated oscillation)
-			sourceVal.setMem(0, Math.sin(i * 0.1) * 0.5);
+			double source = Math.sin(i * 0.1) * 0.5;
+			sourceVal.fill(source);
 			tick.run();
 			double v = Math.abs(captured.toDouble(0));
 			if (v > maxCapture) maxCapture = v;

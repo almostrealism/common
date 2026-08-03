@@ -180,14 +180,20 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 			@Override
 			public Evaluable<PackedCollection> get() {
 				return args -> {
-					PackedCollection result = new PackedCollection(1);
-					if (type == Plane.XY)
-						result.setMem(0, getInput().get().evaluate(args).getZ());
-					else if (type == Plane.XZ)
-						result.setMem(0, getInput().get().evaluate(args).getY());
-					else if (type == Plane.YZ)
-						result.setMem(0, getInput().get().evaluate(args).getX());
-					return result;
+					Vector in = getInput().get().evaluate(args);
+
+					if (type == Plane.XY) {
+						double z = in.getZ();
+						return pack(z);
+					} else if (type == Plane.XZ) {
+						double y = in.getY();
+						return pack(y);
+					} else if (type == Plane.YZ) {
+						double x = in.getX();
+						return pack(x);
+					}
+
+					return new PackedCollection(1);
 				};
 			}
 

@@ -104,7 +104,7 @@ public interface ADSREnvelopeData extends CodeFeatures {
 	default void setPhase(int p) { phase().fill(p); }
 	default void setPosition(double pos) { position().fill(pos); }
 	default void setCurrentLevel(double level) { currentLevel().fill(level); }
-	default void setGateOpen(boolean open) { gateOpen().setMem(0, open ? 1.0 : 0.0); }
+	default void setGateOpen(boolean open) { gateOpen().fill(open ? 1.0 : 0.0); }
 	default void setReleaseLevel(double level) { releaseLevel().fill(level); }
 
 	/**

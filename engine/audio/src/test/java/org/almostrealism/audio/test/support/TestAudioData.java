@@ -16,8 +16,10 @@
 
 package org.almostrealism.audio.test.support;
 
+import org.almostrealism.Ops;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Random;
@@ -65,14 +67,10 @@ public class TestAudioData {
 	 */
 	public static PackedCollection sineWave(double frequency, double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double angularFrequency = 2 * Math.PI * frequency / sampleRate;
 
-		for (int i = 0; i < samples; i++) {
-			data.setMem(i, amplitude * Math.sin(angularFrequency * i));
-		}
-
-		return data;
+		return Ops.o().sin(Ops.o().integers(0, samples).multiply(angularFrequency))
+				.multiply(amplitude).evaluate();
 	}
 
 	/**
@@ -117,13 +115,9 @@ public class TestAudioData {
 	 */
 	public static PackedCollection whiteNoise(double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 
-		for (int i = 0; i < samples; i++) {
-			data.setMem(i, amplitude * (2 * random.nextDouble() - 1));
-		}
-
-		return data;
+		return Ops.o().rand(Ops.o().shape(samples), random)
+				.multiply(2.0).add(-1.0).multiply(amplitude).evaluate();
 	}
 
 	/**
@@ -169,11 +163,7 @@ public class TestAudioData {
 	 * @return PackedCollection containing the ramp
 	 */
 	public static PackedCollection ramp(int length) {
-		PackedCollection data = new PackedCollection(length);
-		for (int i = 0; i < length; i++) {
-			data.setMem(i, (double) i / (length - 1));
-		}
-		return data;
+		return Ops.o().integers(0, length).divide(length - 1.0).evaluate();
 	}
 
 	/**
@@ -185,12 +175,8 @@ public class TestAudioData {
 	 * @return PackedCollection containing the ramp
 	 */
 	public static PackedCollection ramp(int length, double start, double end) {
-		PackedCollection data = new PackedCollection(length);
 		double step = (end - start) / (length - 1);
-		for (int i = 0; i < length; i++) {
-			data.setMem(i, start + step * i);
-		}
-		return data;
+		return Ops.o().integers(0, length).multiply(step).add(start).evaluate();
 	}
 
 	/**
@@ -222,11 +208,7 @@ public class TestAudioData {
 	 * @return PackedCollection containing the DC signal
 	 */
 	public static PackedCollection dc(int length, double value) {
-		PackedCollection data = new PackedCollection(length);
-		for (int i = 0; i < length; i++) {
-			data.setMem(i, value);
-		}
-		return data;
+		return new PackedCollection(length).fill(value);
 	}
 
 	/**
@@ -240,15 +222,12 @@ public class TestAudioData {
 	 */
 	public static PackedCollection squareWave(double frequency, double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double period = sampleRate / frequency;
 
-		for (int i = 0; i < samples; i++) {
-			double phase = (i % period) / period;
-			data.setMem(i, phase < 0.5 ? amplitude : -amplitude);
-		}
-
-		return data;
+		CollectionProducer phase = Ops.o().integers(0, samples).mod(period).divide(period);
+		return Ops.o().greaterThan(Ops.o().c(0.5), phase,
+					Ops.o().c(amplitude), Ops.o().c(-amplitude))
+				.evaluate();
 	}
 
 	/**
@@ -262,15 +241,10 @@ public class TestAudioData {
 	 */
 	public static PackedCollection sawtoothWave(double frequency, double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double period = sampleRate / frequency;
 
-		for (int i = 0; i < samples; i++) {
-			double phase = (i % period) / period;
-			data.setMem(i, amplitude * (2 * phase - 1));
-		}
-
-		return data;
+		return Ops.o().integers(0, samples).mod(period).divide(period)
+				.multiply(2.0).add(-1.0).multiply(amplitude).evaluate();
 	}
 
 	/**
@@ -284,16 +258,20 @@ public class TestAudioData {
 	 */
 	public static PackedCollection chirp(double startFreq, double endFreq, double duration, int sampleRate) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double freqSlope = (endFreq - startFreq) / duration;
 
-		double phase = 0;
-		for (int i = 0; i < samples; i++) {
-			double t = (double) i / sampleRate;
-			double instantFreq = startFreq + freqSlope * t;
-			phase += 2 * Math.PI * instantFreq / sampleRate;
-			data.setMem(i, DEFAULT_AMPLITUDE * Math.sin(phase));
-		}
+		// Accumulated phase in closed form: summing the per-sample increment
+		// 2*pi*(startFreq + freqSlope*i/sampleRate)/sampleRate over 0..i gives
+		// a term linear in (i + 1) and a term in i*(i + 1).
+		double linear = 2 * Math.PI * startFreq / sampleRate;
+		double quadratic = Math.PI * freqSlope / (sampleRate * (double) sampleRate);
+
+		CollectionProducer index = Ops.o().integers(0, samples);
+		CollectionProducer next = index.add(1.0);
+		CollectionProducer phase = next.multiply(linear)
+				.add(index.multiply(next).multiply(quadratic));
+
+		PackedCollection data = Ops.o().sin(phase).multiply(DEFAULT_AMPLITUDE).evaluate();
 
 		return data;
 	}
@@ -309,18 +287,19 @@ public class TestAudioData {
 	 */
 	public static PackedCollection harmonics(double fundamental, int harmonicCount, double duration, int sampleRate) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 
-		for (int i = 0; i < samples; i++) {
-			double value = 0;
-			for (int h = 1; h <= harmonicCount; h++) {
-				double freq = fundamental * h;
-				double amplitude = 1.0 / h; // Natural harmonic decay
-				value += amplitude * Math.sin(2 * Math.PI * freq * i / sampleRate);
-			}
-			// Normalize
-			data.setMem(i, value * DEFAULT_AMPLITUDE / harmonicCount);
+		CollectionProducer index = Ops.o().integers(0, samples);
+		CollectionProducer sum = null;
+
+		for (int h = 1; h <= harmonicCount; h++) {
+			double angularFrequency = 2 * Math.PI * fundamental * h / sampleRate;
+			// Natural harmonic decay
+			CollectionProducer harmonic =
+					Ops.o().sin(index.multiply(angularFrequency)).multiply(1.0 / h);
+			sum = sum == null ? harmonic : sum.add(harmonic);
 		}
+
+		PackedCollection data = sum.multiply(DEFAULT_AMPLITUDE / harmonicCount).evaluate();
 
 		return data;
 	}

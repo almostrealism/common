@@ -84,49 +84,39 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 		// Build N distinct random source buffers of shape [SOURCE_LENGTH].
 		PackedCollection[] sources = new PackedCollection[N];
 		for (int n = 0; n < N; n++) {
-			double[] data = new double[SOURCE_LENGTH];
-			for (int i = 0; i < SOURCE_LENGTH; i++) {
-				data[i] = rng.nextDouble() * 2.0 - 1.0;
-			}
-			sources[n] = new PackedCollection(SOURCE_LENGTH);
-			sources[n].setMem(data);
+			sources[n] = rand(shape(SOURCE_LENGTH), rng).multiply(2.0).add(-1.0).evaluate();
 		}
 
 		// Per-note pitch ratios: 1.0, 1.1, ..., 1.7.
 		// Max source index = floor(1023 × 1.7) + 1 = 1740 < SOURCE_LENGTH — in bounds.
 		double[] ratioValues = new double[N];
-		double[] ratioData = new double[N];
 		for (int n = 0; n < N; n++) {
 			ratioValues[n] = 1.0 + n * 0.1;
-			ratioData[n] = ratioValues[n];
 		}
-		PackedCollection ratios = new PackedCollection(N);
-		ratios.setMem(ratioData);
+		PackedCollection ratios = integers(0, N).multiply(0.1).add(1.0).evaluate();
 
 		// Per-row filter cutoff envelopes: shape [N, TARGET_LENGTH].
 		// Each row is an ADSR-shaped Hz curve with distinct peak, sustain, and base values.
-		double[] filterCutoffData = new double[N * TARGET_LENGTH];
+		PackedCollection filterCutoffs = new PackedCollection(shape(N, TARGET_LENGTH));
 		for (int n = 0; n < N; n++) {
 			double peak = 4000.0 + n * 600.0;
 			double sustain = 800.0 + n * 200.0;
 			double base = 150.0 + n * 50.0;
-			PatternRenderingFloorBenchmark.fillAdsrShape(filterCutoffData, n * TARGET_LENGTH, TARGET_LENGTH,
-					base, peak, sustain, base,
-					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
+			filterCutoffs.setFrom(n * TARGET_LENGTH,
+					PatternRenderingFloorBenchmark.adsrShape(TARGET_LENGTH,
+							base, peak, sustain, base,
+							0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005));
 		}
-		PackedCollection filterCutoffs = new PackedCollection(shape(N, TARGET_LENGTH));
-		filterCutoffs.setMem(filterCutoffData);
 
 		// Per-row volume envelopes: shape [N, TARGET_LENGTH].
-		double[] volumeEnvData = new double[N * TARGET_LENGTH];
+		PackedCollection volumeEnvelopes = new PackedCollection(shape(N, TARGET_LENGTH));
 		for (int n = 0; n < N; n++) {
 			double sustain = 0.4 + n * 0.05;
-			PatternRenderingFloorBenchmark.fillAdsrShape(volumeEnvData, n * TARGET_LENGTH, TARGET_LENGTH,
-					0.0, 1.0, sustain, 0.0,
-					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
+			volumeEnvelopes.setFrom(n * TARGET_LENGTH,
+					PatternRenderingFloorBenchmark.adsrShape(TARGET_LENGTH,
+							0.0, 1.0, sustain, 0.0,
+							0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005));
 		}
-		PackedCollection volumeEnvelopes = new PackedCollection(shape(N, TARGET_LENGTH));
-		volumeEnvelopes.setMem(volumeEnvData);
 
 		// ── Per-note sequential reference path ────────────────────────────────
 		// For each note: resample → lowPass(cutoff) → × volume → accumulate.
@@ -137,11 +127,9 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 					renderer.buildResampleProducer(sources[n], ratioValues[n])
 							.get().evaluate();
 
-			// Extract per-note filter cutoff from row n of filterCutoffs.
-			double[] cutoffNData = new double[TARGET_LENGTH];
-			System.arraycopy(filterCutoffData, n * TARGET_LENGTH, cutoffNData, 0, TARGET_LENGTH);
-			PackedCollection cutoffN = new PackedCollection(TARGET_LENGTH);
-			cutoffN.setMem(cutoffNData);
+			// Row n of filterCutoffs, as a view rather than a copy back through the host.
+			PackedCollection cutoffN =
+					filterCutoffs.range(shape(TARGET_LENGTH), n * TARGET_LENGTH);
 
 			// Apply filter envelope: lowPass with per-sample Hz cutoff from cutoffN.
 			PackedCollection filtered =
@@ -149,11 +137,9 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 							.reshape(shape(TARGET_LENGTH))
 							.get().evaluate();
 
-			// Extract per-note volume envelope from row n of volumeEnvelopes.
-			double[] volNData = new double[TARGET_LENGTH];
-			System.arraycopy(volumeEnvData, n * TARGET_LENGTH, volNData, 0, TARGET_LENGTH);
-			PackedCollection volN = new PackedCollection(TARGET_LENGTH);
-			volN.setMem(volNData);
+			// Row n of volumeEnvelopes, as a view rather than a copy back through the host.
+			PackedCollection volN =
+					volumeEnvelopes.range(shape(TARGET_LENGTH), n * TARGET_LENGTH);
 
 			// Apply volume envelope: elementwise multiply.
 			PackedCollection voiced = cp(filtered).multiply(cp(volN)).get().evaluate();
@@ -167,14 +153,10 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 		// ── Batched 4-kernel chain path ───────────────────────────────────────
 		// Pack raw source buffers into batchedSource [N, SOURCE_LENGTH], then
 		// evaluate the full resample → filter → volume → reduce chain in one shot.
-		double[] batchData = new double[N * SOURCE_LENGTH];
-		for (int n = 0; n < N; n++) {
-			for (int i = 0; i < SOURCE_LENGTH; i++) {
-				batchData[n * SOURCE_LENGTH + i] = sources[n].toDouble(i);
-			}
-		}
 		PackedCollection batchedSource = new PackedCollection(shape(N, SOURCE_LENGTH));
-		batchedSource.setMem(batchData);
+		for (int n = 0; n < N; n++) {
+			batchedSource.setFrom(n * SOURCE_LENGTH, sources[n]);
+		}
 
 		PackedCollection batchedOutput =
 				renderer.buildBatchedChain(batchedSource, ratios, filterCutoffs, volumeEnvelopes)
@@ -237,13 +219,10 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 	}
 
 	/** Fills every element of each buffer with distinct non-zero values. */
-	private static void fillNonZero(PackedCollection[] buffers) {
+	private void fillNonZero(PackedCollection[] buffers) {
 		for (PackedCollection buffer : buffers) {
-			double[] data = new double[buffer.getMemLength()];
-			for (int i = 0; i < data.length; i++) {
-				data[i] = 1.0 + (i % 7);
-			}
-			buffer.setMem(data);
+			integers(0, buffer.getMemLength()).mod(7.0).add(1.0)
+					.into(buffer.traverseEach()).evaluate();
 		}
 	}
 
