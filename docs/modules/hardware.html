@@ -147,6 +147,10 @@
                     <li><code>setFrom(...)</code> copies another <code>MemoryData</code> into this one — the only sanctioned way to move data region-to-region.</li>
                     <li><code>setMem(...)</code> takes literal varargs only — bulk host-array uploads are no longer exposed here; system-boundary ingest goes through <code>MemoryData.read(ByteBuffer)</code> into a native staging allocation.</li>
                 </ul>
+                <!-- TODO(review): "literal varargs only" omits the single-value indexed
+                     overloads (setMem(int, double) / setMem(int, float)) that the fixed
+                     code example below documents separately; reconcile the wording. See
+                     memory tag review-followup. -->
 
                 <div class="code-example">
                     <h4>Using setFrom() for Direct Copy</h4>
@@ -161,8 +165,8 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (varargs only)
-target.setMem(0, 1.0, 2.0, 3.0, 4.0);</code></pre>
+// Write a small literal vector (whole buffer, starting at index 0)
+target.setMem(1.0, 2.0, 3.0, 4.0);</code></pre>
                 </div>
 
                 <div class="code-example">

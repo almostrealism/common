@@ -130,6 +130,10 @@ write surfaces, deliberately named so the call site tells them apart:
   `MemoryData.read(ByteBuffer)` into a native staging allocation, and the
   framework migrates that staging area to the compute device on first
   kernel use.
+  <!-- TODO(review): "literal varargs only" omits the single-value indexed
+       overloads (setMem(int, double) / setMem(int, float)) documented a few
+       lines below in the fixed example; reconcile the wording. See memory
+       tag review-followup. -->
 
 ```java
 // Copy entire collection to another (same size)
@@ -143,12 +147,14 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (varargs only)
-target.setMem(0, 1.0, 2.0, 3.0, 4.0);
+// Write a small literal vector (whole buffer, starting at index 0)
+target.setMem(1.0, 2.0, 3.0, 4.0);
 ```
 
 > These are significantly faster than element-by-element loops. Use bulk
-> region copies whenever possible; reserve `setMem(...)` for literal varargs.
+> region copies whenever possible; `setMem` is now a literals-only surface
+> (single-value indexed writes and whole-buffer varargs) — host arrays
+> belong in `setFrom` or `read(ByteBuffer)`.
 
 **Using `CodeFeatures.copy()` (Producer Pattern):**
 

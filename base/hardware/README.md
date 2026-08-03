@@ -207,6 +207,10 @@ call site tells them apart:
   here; system-boundary ingest goes through `read(ByteBuffer)` into a native
   staging allocation, and the framework migrates that staging area to the
   compute device on first kernel use.
+  <!-- TODO(review): this summary bullet says "literal varargs only" but the
+       detailed explanation below it also documents the single-value indexed
+       overloads (setMem(int, double) / setMem(int, float)), which are not
+       varargs. Reconcile the wording. See memory tag review-followup. -->
 
 ```java
 PackedCollection<?> source = new PackedCollection<>(1000);
@@ -220,17 +224,19 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (varargs only — no host-array overloads)
-target.setMem(0, 1.0, 2.0, 3.0, 4.0);
+// Write a small literal vector (whole buffer, no host-array overloads)
+target.setMem(1.0, 2.0, 3.0, 4.0);
 ```
 
 > **Why the split:** the recent `setmem-policy-phases` work collapsed the old
-> `setMem(int, double[])` and `setMem(double[], int, int)` overloads into a
-> single literal-varargs surface, and routed everything that actually moves
-> serialized data through `MemoryData.read(ByteBuffer)` so values reach the
-> backing memory in one transfer instead of being funnelled through a host
-> array. `setFrom` is the only sanctioned way to copy one `MemoryData` into
-> another.
+> `setMem(int, double[])`, `setMem(double[], int, int)`, and the varargs
+> `setMem(int, double...)` / `setMem(int, float...)` overloads into a literal-only
+> surface — single-value indexed writes (`setMem(int, double)` / `setMem(int, float)`)
+> and whole-buffer literal varargs (`setMem(double...)` / `setMem(float...)`) —
+> and routed everything that actually moves serialized data through
+> `MemoryData.read(ByteBuffer)` so values reach the backing memory in one transfer
+> instead of being funnelled through a host array. `setFrom` is the only sanctioned
+> way to copy one `MemoryData` into another.
 
 **Using `MemoryDataCopy` for Explicit Control:**
 

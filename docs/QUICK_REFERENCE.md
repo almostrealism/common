@@ -52,11 +52,13 @@ write surfaces, deliberately named so the call site tells them apart:
 
 - **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`,
   a `Bytes` view, a device-backed tensor) into this one.
-- **`setMem(...)`** takes literal varargs only — bulk host-array uploads
-  are not exposed here. System-boundary ingest goes through
-  `MemoryData.read(ByteBuffer)` into a native staging allocation, and
-  the framework migrates the staging area to the compute device on
-  first kernel use.
+- **`setMem(...)`** takes only numeric literals — single values at an
+  index (`setMem(int, double)` / `setMem(int, float)`) or whole-buffer
+  varargs (`setMem(double...)` / `setMem(float...)`, starting at index 0).
+  Host arrays and computed values are not accepted. System-boundary
+  ingest goes through `MemoryData.read(ByteBuffer)` into a native staging
+  allocation, and the framework migrates the staging area to the compute
+  device on first kernel use.
 
 ```java
 // Copy all of source into target at offset 0
@@ -68,8 +70,8 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (varargs only)
-target.setMem(0, 1.0, 2.0, 3.0, 4.0);
+// Write a small literal vector (whole buffer, starting at index 0)
+target.setMem(1.0, 2.0, 3.0, 4.0);
 ```
 
 **Using CodeFeatures.copy()** (via interface - preferred for producer pattern):
@@ -405,25 +407,27 @@ destination.setFrom(destOffset, source, srcOffset, len); // Copy range
 
 // Read/write individual values
 double val = data.toDouble(index);
-data.setMem(index, value);
+data.setMem(index, value);  // single value at index
 
-// Literal varargs writes (no host-array overloads)
-data.setMem(0, 1.0, 2.0, 3.0);    // FP64
-data.setMem(0, 1.0f, 2.0f, 3.0f); // FP32
+// Literal varargs writes (whole buffer, starting at index 0)
+data.setMem(1.0, 2.0, 3.0);    // FP64
+data.setMem(1.0f, 2.0f, 3.0f); // FP32
 
 // Bulk ingest from a ByteBuffer (the primary system-boundary ingest)
 data.read(byteBuffer);  // values land in a native staging allocation
 
 // Read back to a host array
-data.getMem(0, doubleArray, 0, length);                 // To double[]
-data.getMem(0, floatArray, 0, length);                  // To float[]
+data.getMem(0, doubleArray, 0, length);                 // To double[] (sOffset, out, oOffset, length)
+data.getMem(0, floatArray, 0, length);                  // To float[] (sOffset, out, oOffset, length)
 ```
 
 > `MemoryData` previously exposed bulk `setMem(double[])`/`setMem(float[])` overloads.
 > Those have been removed from the public surface — bulk host-array ingest now
 > stages through a `ByteBuffer` (see `MemoryData.read(ByteBuffer)` and the
-> native buffer provider). The literal varargs `setMem(double...)` / `setMem(int, double...)`
-> forms remain for compile-time literal values.
+> native buffer provider). The remaining `setMem` surface is single-value indexed
+> writes (`setMem(int, double)` / `setMem(int, float)`) and whole-buffer literal
+> varargs (`setMem(double...)` / `setMem(float...)`) — both must be numeric
+> literals, never a host array or computed value.
 
 ### MemoryDataCopy (Low-level)
 
