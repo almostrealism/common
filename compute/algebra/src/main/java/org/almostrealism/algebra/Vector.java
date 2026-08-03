@@ -187,12 +187,11 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 		this();
 
 		if (coordSys == Vector.CARTESIAN_COORDINATES) {
-			setMem(new double[] { x, y, z });
+			fill(x, y, z);
 		} else if (coordSys == Vector.SPHERICAL_COORDINATES) {
-			setMem(new double[] {
-					x * Math.sin(y) * Math.cos(z),
+			fill(x * Math.sin(y) * Math.cos(z),
 					x * Math.sin(y) * Math.sin(z),
-					x * Math.cos(y) });
+					x * Math.cos(y));
 		} else {
 			throw new IllegalArgumentException(coordSys + " is not a valid coordinate system type code");
 		}
@@ -383,7 +382,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	public void addTo(Vector vector) {
 		double[] a = toArray();
 		double[] b = vector.toArray();
-		setMem(new double[] { a[0] + b[0], a[1] + b[1], a[2] + b[2] });
+		fill(a[0] + b[0], a[1] + b[1], a[2] + b[2]);
 	}
 
 	/**
@@ -411,7 +410,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	public synchronized void subtractFrom(Vector vector) {
 		double[] a = toArray();
 		double[] b = vector.toArray();
-		setMem(new double[] { a[0] - b[0], a[1] - b[1], a[2] - b[2] });
+		fill(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 	}
 
 	/**
@@ -437,7 +436,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 */
 	public synchronized void multiplyBy(double value) {
 		double[] a = toArray();
-		setMem(new double[] { a[0] * value, a[1] * value, a[2] * value });
+		fill(a[0] * value, a[1] * value, a[2] * value);
 	}
 
 	/**
@@ -462,7 +461,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 */
 	public synchronized Vector divideBy(double value) {
 		double[] a = toArray();
-		setMem(new double[] { a[0] / value, a[1] / value, a[2] / value });
+		fill(a[0] / value, a[1] / value, a[2] / value);
 		return this;
 	}
 

@@ -228,9 +228,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 * Initializes all factor ranges to the default [0.0, 1.0].
 	 */
 	protected void initRanges() {
-		for (int i = 0; i < length(); i++) {
-			ranges.get(i).setMem(new double[] { 0.0, 1.0 });
-		}
+		ranges.fill(0.0, 1.0);
 	}
 
 	/**

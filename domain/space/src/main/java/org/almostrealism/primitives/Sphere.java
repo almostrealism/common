@@ -288,30 +288,8 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 	@Override
 	public Operator<PackedCollection> get() {
-		return new Operator<>() {
-
-			@Override
-			public Evaluable<PackedCollection> get() {
-				return args -> {
-					double lengthSq = getInput().get().evaluate(args).lengthSq();
-					return pack(lengthSq);
-				};
-			}
-
-			@Override
-			public Scope<PackedCollection> getScope(KernelStructureContext context) {
-				Scope<PackedCollection> s = new Scope();
-
-				// TODO  This is not correct
-				// s.getVariables().add(assign("scalar", get().evaluate()));
-				return s;
-			}
-
-			@Override
-			public Collection<Process<?, ?>> getChildren() {
-				return Collections.emptyList();
-			}
-		};
+		Producer input = getInput();
+		return Operator.of(lengthSq(input));
 	}
 
 	@Override

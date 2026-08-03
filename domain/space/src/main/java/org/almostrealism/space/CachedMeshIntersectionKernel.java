@@ -139,7 +139,12 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 			cache = Pair.bank(((MemoryBank) destination).getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			for (int i = 0; i < cache.getCountLong(); i++) {
-				((MemoryData) ((MemoryBank) destination).get(i)).setMem(new double[] { cache.toDouble(i * 2), 1.0 });
+				PackedCollection entry = (PackedCollection) ((MemoryBank) destination).get(i);
+
+				// The distance is already in device memory, so it is copied rather than
+				// read back and rewritten; only the certainty is a literal.
+				entry.setFrom(0, cache, i * 2, 1);
+				entry.setMem(1, 1.0);
 			}
 
 			return destination;
