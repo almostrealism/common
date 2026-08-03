@@ -1014,7 +1014,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	private PackedCollection sparseChannelInput(int activeChannel, double freqHz) {
 		PackedCollection input = new PackedCollection(
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		input.fill(0.0);
 		input.setFrom(activeChannel * SIGNAL_SIZE, tone(freqHz, 0));
 		return input;
 	}
@@ -1024,15 +1023,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * every channel (uniform multi-channel signal).
 	 */
 	private PackedCollection multiChannelTone(double freqHz) {
-		PackedCollection input = new PackedCollection(
-				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
-		PackedCollection channel = tone(freqHz, 0);
-
-		for (int c = 0; c < CHANNELS; c++) {
-			input.setFrom(c * SIGNAL_SIZE, channel);
-		}
-
-		return input;
+		return cp(tone(freqHz, 0)).repeat(CHANNELS)
+				.evaluate().reshape(CHANNELS, SIGNAL_SIZE);
 	}
 
 	/**
@@ -1045,10 +1037,10 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
 
 		for (int c = 0; c < CHANNELS; c++) {
-			input.setFrom(c * SIGNAL_SIZE,
-					cp(tone(freqs[c], sampleOffset)).multiply(1.0 / CHANNELS).evaluate());
+			input.setFrom(c * SIGNAL_SIZE, tone(freqs[c], sampleOffset));
 		}
 
+		cp(input).multiply(1.0 / CHANNELS).into(input).evaluate();
 		return input;
 	}
 

@@ -23,6 +23,7 @@ import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.studio.discovery.PrototypeDiscovery;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -114,7 +115,7 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir),
 				SAMPLE_RATE, store);
-		library.getWaveDetailsFactory().setFeatureProvider(new SimpleFeatureProvider());
+		library.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, 0.25));
 
 		long startRefresh = System.currentTimeMillis();
 		log("Starting library refresh...");
@@ -157,68 +158,4 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 		log("Run this test again — second run should be significantly faster.");
 	}
 
-	/**
-	 * Simple feature provider that computes spectral features from audio
-	 * data using a basic DFT at logarithmically spaced frequency bands.
-	 *
-	 * <p>For production use with large libraries, replace this with
-	 * {@code AutoEncoderFeatureProvider} backed by {@code OnnxAutoEncoder}
-	 * for higher-quality embeddings.</p>
-	 */
-	static class SimpleFeatureProvider implements WaveDataFeatureProvider {
-		@Override
-		public PackedCollection computeFeatures(WaveData waveData) {
-			int totalFrames = waveData.getFrameCount();
-			int windowSize = Math.max(1, totalFrames / FEATURE_FRAMES);
-
-			double[] samples = new double[totalFrames];
-			PackedCollection data = waveData.getChannelData(0);
-			for (int i = 0; i < totalFrames && i < data.getMemLength(); i++) {
-				samples[i] = data.toDouble(i);
-			}
-
-			PackedCollection features = new PackedCollection(FEATURE_FRAMES, FEATURE_BINS, 1);
-			double[] featureValues = new double[FEATURE_FRAMES * FEATURE_BINS];
-
-			double minFreq = 20.0;
-			double maxFreq = SAMPLE_RATE / 2.0;
-			double logMin = Math.log(minFreq);
-			double logMax = Math.log(maxFreq);
-
-			for (int f = 0; f < FEATURE_FRAMES; f++) {
-				int start = f * windowSize;
-				int end = Math.min(start + windowSize, totalFrames);
-				int len = end - start;
-
-				for (int b = 0; b < FEATURE_BINS; b++) {
-					double bt = (double) b / (FEATURE_BINS - 1);
-					double freq = Math.exp(logMin + bt * (logMax - logMin));
-
-					double real = 0;
-					double imag = 0;
-					for (int i = 0; i < len; i++) {
-						double angle = 2.0 * Math.PI * freq * i / SAMPLE_RATE;
-						real += samples[start + i] * Math.cos(angle);
-						imag += samples[start + i] * Math.sin(angle);
-					}
-
-					featureValues[f * FEATURE_BINS + b] =
-							Math.sqrt(real * real + imag * imag) / len;
-				}
-			}
-
-			features.setMem(featureValues);
-			return features;
-		}
-
-		@Override
-		public int getAudioSampleRate() {
-			return SAMPLE_RATE;
-		}
-
-		@Override
-		public double getFeatureSampleRate() {
-			return FEATURE_FRAMES / 0.25;
-		}
-	}
 }

@@ -361,12 +361,14 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	@Test(timeout = 300000)
 	public void testGruCellComputation() {
 		// W_ih = [W_ir; W_iz; W_in], shape (3*2, 2) = (6, 2)
-		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(6, 2));
-		// Set W_ir (rows 0-1) to identity; W_iz (rows 2-3) and
-		// W_in (rows 4-5) are left as zero
-		weightIh.setMem(new double[] {
+		// W_ir (rows 0-1) is the identity; W_iz (rows 2-3) and W_in (rows 4-5) are zero
+		PackedCollection weightIh = pack(
 				1.0, 0.0,
-				0.0, 1.0 });
+				0.0, 1.0,
+				0.0, 0.0,
+				0.0, 0.0,
+				0.0, 0.0,
+				0.0, 0.0).reshape(6, 2);
 
 		// W_hh = [W_hr; W_hz; W_hn], shape (6, 2)
 		PackedCollection weightHh = new PackedCollection(new TraversalPolicy(6, 2));

@@ -129,13 +129,13 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
 								.get().evaluate();
 				CollectionProducer layer = cp(resampled)
-						.multiply(cp(row(w.layerEnvelopes[l], n)));
+						.multiply(cp(w.layerEnvelopes[l].get(n)));
 				merged = merged == null ? layer : merged.add(layer);
 			}
 
 			PackedCollection mergedN = merged.evaluate();
-			PackedCollection cutoffN = row(w.filterCutoffs, n);
-			PackedCollection volN = row(w.volumeEnvelopes, n);
+			PackedCollection cutoffN = w.filterCutoffs.get(n);
+			PackedCollection volN = w.volumeEnvelopes.get(n);
 
 			PackedCollection filtered =
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))
@@ -148,11 +148,6 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 		}
 
 		return w;
-	}
-
-	/** Returns row {@code n} of an {@code [N, TARGET_LENGTH]} collection as a view. */
-	private PackedCollection row(PackedCollection rows, int n) {
-		return rows.range(shape(TARGET_LENGTH), n * TARGET_LENGTH);
 	}
 
 	/** Asserts the RMS difference between {@code expected} and {@code actual} is below {@code 1e-4}. */

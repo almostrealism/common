@@ -24,6 +24,7 @@ import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider;
 import org.almostrealism.studio.persistence.AudioLayerGroupLibrary;
 import org.almostrealism.studio.persistence.ProtobufLayerGroupStore;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
@@ -343,7 +344,9 @@ public class AudioLayerGroupLibraryTest extends TestSuiteBase {
 			this.library = new AudioLibrary(
 					new FileWaveDataProviderNode(libraryRoot.toFile()), SAMPLE_RATE, store);
 			this.library.getWaveDetailsFactory()
-					.setFeatureProvider(new DiskStoreAudioLibraryTest.SimpleFeatureProvider());
+					.setFeatureProvider(new LogSpectrumFeatureProvider(
+						DiskStoreAudioLibraryTest.FEATURE_FRAMES,
+						DiskStoreAudioLibraryTest.FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION));
 			this.groupStore = new ProtobufLayerGroupStore(groupDir.toFile());
 			this.coordinator = new AudioLayerGroupLibrary(library, groupStore, libraryRoot.toFile());
 		}
