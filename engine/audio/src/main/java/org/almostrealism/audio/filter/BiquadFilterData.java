@@ -74,15 +74,15 @@ public interface BiquadFilterData extends CodeFeatures {
 	default Producer<PackedCollection> getY1() { return p(y1().range(shape(1))); }
 	default Producer<PackedCollection> getY2() { return p(y2().range(shape(1))); }
 
-	default void setB0(double v) { b0().setMem(0, v); }
-	default void setB1(double v) { b1().setMem(0, v); }
-	default void setB2(double v) { b2().setMem(0, v); }
-	default void setA1(double v) { a1().setMem(0, v); }
-	default void setA2(double v) { a2().setMem(0, v); }
-	default void setX1(double v) { x1().setMem(0, v); }
-	default void setX2(double v) { x2().setMem(0, v); }
-	default void setY1(double v) { y1().setMem(0, v); }
-	default void setY2(double v) { y2().setMem(0, v); }
+	default void setB0(double v) { b0().fill(v); }
+	default void setB1(double v) { b1().fill(v); }
+	default void setB2(double v) { b2().fill(v); }
+	default void setA1(double v) { a1().fill(v); }
+	default void setA2(double v) { a2().fill(v); }
+	default void setX1(double v) { x1().fill(v); }
+	default void setX2(double v) { x2().fill(v); }
+	default void setY1(double v) { y1().fill(v); }
+	default void setY2(double v) { y2().fill(v); }
 
 	/**
 	 * Sets all filter coefficients at once.

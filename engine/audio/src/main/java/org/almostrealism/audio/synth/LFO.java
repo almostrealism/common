@@ -219,7 +219,7 @@ public class LFO implements ModulationSource, Lifecycle, CodeFeatures {
 			}
 
 			// Update output
-			output.setMem(0, currentValue);
+			output.fill(currentValue);
 		});
 
 		return tick;

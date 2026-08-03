@@ -87,7 +87,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param wavePosition the position within the waveform
 	 */
 	default void setWavePosition(double wavePosition) {
-		wavePosition().setMem(0, wavePosition);
+		wavePosition().fill(wavePosition);
 	}
 
 	/**
@@ -105,7 +105,7 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param waveLength the duration or size of the waveform
 	 */
 	default void setWaveLength(double waveLength) {
-		waveLength().setMem(0, waveLength);
+		waveLength().fill(waveLength);
 	}
 
 	/**
@@ -123,6 +123,6 @@ public interface BaseAudioData extends CodeFeatures {
 	 * @param amplitude the volume/intensity multiplier (1.0 = original level)
 	 */
 	default void setAmplitude(double amplitude) {
-		amplitude().setMem(0, amplitude);
+		amplitude().fill(amplitude);
 	}
 }

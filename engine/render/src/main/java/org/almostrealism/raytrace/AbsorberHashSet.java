@@ -1141,7 +1141,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 			if (dist < Double.MAX_VALUE - 2 && dist > 0 && AbsorberHashSet.this.closest != null) {
 				di = new PackedCollection(1);
-				di.setMem(0, dist);
+				di.fill(dist);
 			}
 
 			AbsorberHashSet.this.rclosest = AbsorberHashSet.this.closest;

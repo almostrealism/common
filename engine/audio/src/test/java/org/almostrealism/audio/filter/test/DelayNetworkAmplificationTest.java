@@ -101,7 +101,7 @@ public class DelayNetworkAmplificationTest extends TestSuiteBase implements Cell
 	 */
 	private double measureDcSteadyState(DelayNetwork network, double dcLevel, int samples) {
 		PackedCollection input = new PackedCollection(1);
-		input.setMem(0, dcLevel);
+		input.fill(dcLevel);
 
 		Evaluable<PackedCollection> ev = network.getResultant(p(input)).get();
 		Runnable tick = network.tick().get();

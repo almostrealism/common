@@ -96,16 +96,16 @@ public interface ADSREnvelopeData extends CodeFeatures {
 	default Producer<PackedCollection> getGateOpen() { return p(gateOpen().range(shape(1))); }
 	default Producer<PackedCollection> getReleaseLevel() { return p(releaseLevel().range(shape(1))); }
 
-	default void setAttackTime(double seconds) { attackTime().setMem(0, seconds); }
-	default void setDecayTime(double seconds) { decayTime().setMem(0, seconds); }
-	default void setSustainLevel(double level) { sustainLevel().setMem(0, level); }
-	default void setReleaseTime(double seconds) { releaseTime().setMem(0, seconds); }
-	default void setSampleRate(double rate) { sampleRate().setMem(0, rate); }
-	default void setPhase(int p) { phase().setMem(0, p); }
-	default void setPosition(double pos) { position().setMem(0, pos); }
-	default void setCurrentLevel(double level) { currentLevel().setMem(0, level); }
+	default void setAttackTime(double seconds) { attackTime().fill(seconds); }
+	default void setDecayTime(double seconds) { decayTime().fill(seconds); }
+	default void setSustainLevel(double level) { sustainLevel().fill(level); }
+	default void setReleaseTime(double seconds) { releaseTime().fill(seconds); }
+	default void setSampleRate(double rate) { sampleRate().fill(rate); }
+	default void setPhase(int p) { phase().fill(p); }
+	default void setPosition(double pos) { position().fill(pos); }
+	default void setCurrentLevel(double level) { currentLevel().fill(level); }
 	default void setGateOpen(boolean open) { gateOpen().setMem(0, open ? 1.0 : 0.0); }
-	default void setReleaseLevel(double level) { releaseLevel().setMem(0, level); }
+	default void setReleaseLevel(double level) { releaseLevel().fill(level); }
 
 	/**
 	 * Sets all ADSR parameters at once.

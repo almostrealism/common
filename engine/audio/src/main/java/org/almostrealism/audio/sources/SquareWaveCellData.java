@@ -55,6 +55,6 @@ public interface SquareWaveCellData extends SineWaveCellData {
 	 * @param dutyCycle the duty cycle (0.0 to 1.0, default 0.5)
 	 */
 	default void setDutyCycle(double dutyCycle) {
-		dutyCycle().setMem(0, dutyCycle);
+		dutyCycle().fill(dutyCycle);
 	}
 }

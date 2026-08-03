@@ -65,7 +65,7 @@ public class ScaleFactor implements Factor<PackedCollection>, ScalarFeatures, Co
 	 */
 	public ScaleFactor(double scale) {
 		this.scale = new PackedCollection(1);
-		this.scale.setMem(0, scale);
+		this.scale.fill(scale);
 	}
 
 	/**
