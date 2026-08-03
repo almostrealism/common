@@ -428,9 +428,8 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("delay_samples", delaySamples);
 
 		// Pre-compute LP coefficients for the wet EFX filter (simulates FixedFilterChromosome)
-		double[] coeffs = referenceLowPassCoefficients(WET_LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
-		PackedCollection wetCoeffs = new PackedCollection(coeffs.length);
-		wetCoeffs.setMem(coeffs);
+		PackedCollection wetCoeffs =
+				lowPassCoefficients(c(WET_LP_CUTOFF), SAMPLE_RATE, FILTER_ORDER).evaluate();
 		args.put("wet_filter_coeffs", wetCoeffs);
 
 		// Delay state: buffer size must exactly match SIGNAL_SIZE (the reshape

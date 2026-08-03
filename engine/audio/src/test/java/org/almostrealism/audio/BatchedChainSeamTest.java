@@ -57,23 +57,10 @@ public class BatchedChainSeamTest extends TestSuiteBase implements TemporalFeatu
 	/** Number of SSS layers rendered in the batched chain. */
 	private static final int LAYERS = 3;
 
-	/**
-	 * Creates a single-element {@link PackedCollection} holding the given scalar value.
-	 */
-	private PackedCollection single(double value) {
-		PackedCollection c = new PackedCollection(1);
-		c.setMem(new double[] { value });
-		return c;
-	}
-
 	/** A sine source so the FIR operates on real spectral content. */
 	private PackedCollection sineSource(double cyclesPerSample) {
-		double[] data = new double[SOURCE_LENGTH];
-		for (int i = 0; i < SOURCE_LENGTH; i++) {
-			data[i] = Math.sin(2.0 * Math.PI * cyclesPerSample * i);
-		}
-		PackedCollection c = new PackedCollection(SOURCE_LENGTH);
-		c.setMem(data);
+		PackedCollection c = sin(integers(0, SOURCE_LENGTH)
+				.multiply(2.0 * Math.PI * cyclesPerSample)).evaluate();
 		return c;
 	}
 
@@ -89,34 +76,35 @@ public class BatchedChainSeamTest extends TestSuiteBase implements TemporalFeatu
 
 		PackedCollection[] sources = {
 				sineSource(0.02), sineSource(0.031), sineSource(0.043) };
-		PackedCollection[] ratios = { single(1.0), single(1.0), single(1.0) };
+		PackedCollection[] ratios = { pack(1.0), pack(1.0), pack(1.0) };
 
 		// Flat-ish layer envelopes (~1 throughout) so the note sounds across the
 		// whole span and the seam lands on active audio rather than a silent tail.
 		PackedCollection[][] layerEnvParams = new PackedCollection[LAYERS][8];
 		for (int l = 0; l < LAYERS; l++) {
-			double[] p = { duration, 0.3, 0.6, 1.0, 1.0, 1.0, 1.0, 1.0 };
-			for (int i = 0; i < 8; i++) layerEnvParams[l][i] = single(p[i]);
+			layerEnvParams[l] = new PackedCollection[] {
+					pack(duration), pack(0.3), pack(0.6), pack(1.0),
+					pack(1.0), pack(1.0), pack(1.0), pack(1.0) };
 		}
 
 		// High, sustained cutoff and volume so the note is active across the boundary.
 		PackedCollection[] filterAdsr = {
-				single(0.0005), single(0.0005), single(0.9), single(0.02), single(duration) };
+				pack(0.0005), pack(0.0005), pack(0.9), pack(0.02), pack(duration) };
 		PackedCollection[] volumeAdsr = {
-				single(0.0005), single(0.0005), single(0.9), single(0.02), single(duration) };
+				pack(0.0005), pack(0.0005), pack(0.9), pack(0.02), pack(duration) };
 
 		BatchedPatternRenderer full = new BatchedPatternRenderer(1, SOURCE_LENGTH, 2 * W, SAMPLE_RATE, FILTER_ORDER);
 		BatchedPatternRenderer win = new BatchedPatternRenderer(1, SOURCE_LENGTH, W, SAMPLE_RATE, FILTER_ORDER);
 
 		PackedCollection reference = full.buildBatchedSssChainPlacedFromScalars(
 				sources, ratios, layerEnvParams, filterAdsr, volumeAdsr,
-				single(0), single(0), 2 * W).get().evaluate();
+				pack(0), pack(0), 2 * W).get().evaluate();
 		PackedCollection window0 = win.buildBatchedSssChainPlacedFromScalars(
 				sources, ratios, layerEnvParams, filterAdsr, volumeAdsr,
-				single(0), single(0), W).get().evaluate();
+				pack(0), pack(0), W).get().evaluate();
 		PackedCollection window1 = win.buildBatchedSssChainPlacedFromScalars(
 				sources, ratios, layerEnvParams, filterAdsr, volumeAdsr,
-				single(0), single(W), W).get().evaluate();
+				pack(0), pack(W), W).get().evaluate();
 
 		int padHalf = FILTER_ORDER / 2;
 		double energy = 0.0;

@@ -126,15 +126,17 @@ import java.util.stream.IntStream;
  * <pre>{@code
  * MemoryData fullArray = ...;  // 1000 elements
  *
- * // Create a view of elements 100-199 (zero-copy)
- * MemoryData subRange = new MemoryDataAdapter() {
+ * // Create a view of elements 100-199 (zero-copy). The indexed write below is
+ * // declared on MemoryDataAdapter, not on this interface, so the view is held
+ * // as the concrete type.
+ * MemoryDataAdapter subRange = new MemoryDataAdapter() {
  *     @Override
  *     public int getMemLength() { return 100; }
  * };
  * subRange.setDelegate(fullArray, 100);
  *
  * // Modifications to subRange affect fullArray
- * subRange.setMem(42.0);  // Sets fullArray[100] = 42.0
+ * subRange.setMem(0, 42.0);  // Sets fullArray[100] = 42.0
  * }</pre>
  *
  * <h3>Persistence and Serialization</h3>
@@ -643,50 +645,30 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	/**
-	 * Writes one double value to this memory at the specified offset.
-	 *
-	 * <p>This is the only indexed write. The multi-value form it replaces
-	 * ({@code setMem(int, double...)}) was the shape a host-computed array
-	 * arrived in, so a call that needs to place more than one value writes
-	 * the whole buffer with {@link #setMem(double...)} at index 0, or is a
-	 * computation and belongs in a Producer rather than at a write site.</p>
-	 *
-	 * @param offset Index in this memory
-	 * @param value Value to write
-	 */
-	default void setMem(int offset, double value) {
-		setMemInternal(offset, new double[] { value }, 0, 1);
-	}
-
-	/**
-	 * Writes one float value to this memory at the specified offset.
-	 *
-	 * <p>The value is converted from float to double precision. See
-	 * {@link #setMem(int, double)} for why only a single value may be
-	 * written at an offset.</p>
-	 *
-	 * @param offset Index in this memory
-	 * @param value Value to write
-	 */
-	default void setMem(int offset, float value) {
-		setMemInternal(offset, new float[] { value }, 0, 1);
-	}
-
-	/**
 	 * Writes float values to this memory starting at index 0.
+	 *
+	 * <p>Declared over an array rather than varargs deliberately. A varargs form
+	 * accepts any sequence of numeric literals, which means an indexed write
+	 * ({@code setMem(offset, value)}) issued against a {@link MemoryData}
+	 * reference resolves to it silently and writes the offset as data at index 0
+	 * instead of writing the value at the offset. Requiring an explicit array
+	 * makes that call shape a compile error rather than a wrong answer.</p>
 	 *
 	 * @param source Values to write
 	 */
-	default void setMem(float... source) {
+	default void setMem(float[] source) {
 		setMemInternal(0, source, 0, source.length);
 	}
 
 	/**
 	 * Writes double values to this memory starting at index 0.
 	 *
+	 * <p>See {@link #setMem(float[])} for why this is declared over an array
+	 * rather than varargs.</p>
+	 *
 	 * @param source Values to write
 	 */
-	default void setMem(double... source) {
+	default void setMem(double[] source) {
 		setMemInternal(0, source, 0, source.length);
 	}
 

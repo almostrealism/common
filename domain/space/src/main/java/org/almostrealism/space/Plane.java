@@ -25,6 +25,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.ParticleGroup;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.ContinuousField;
@@ -176,34 +177,27 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 
 	@Override
 	public Operator<PackedCollection> get() {
-		return new Operator<>() {
-			@Override
-			public Evaluable<PackedCollection> get() {
-				return args -> {
-					PackedCollection result = new PackedCollection(1);
-					if (type == Plane.XY)
-						result.setMem(0, getInput().get().evaluate(args).getZ());
-					else if (type == Plane.XZ)
-						result.setMem(0, getInput().get().evaluate(args).getY());
-					else if (type == Plane.YZ)
-						result.setMem(0, getInput().get().evaluate(args).getX());
-					return result;
-				};
-			}
+		return Operator.of(surfaceCoordinate());
+	}
 
-			@Override
-			public Scope<PackedCollection> getScope(KernelStructureContext context) {
-				Scope<PackedCollection> s = new Scope<>();
-				// TODO  This is not correct
-				// s.getVariables().add(new Variable("scalar", get().evaluate()));
-				return s;
-			}
+	/**
+	 * The component of the input position measured along this plane's normal, which is
+	 * zero on the plane itself.
+	 *
+	 * @return a producer for the signed distance component
+	 */
+	private CollectionProducer surfaceCoordinate() {
+		Producer input = getInput();
 
-			@Override
-			public Collection<Process<?, ?>> getChildren() {
-				return Collections.emptyList();
-			}
-		};
+		if (type == Plane.XY) {
+			return z(input);
+		} else if (type == Plane.XZ) {
+			return y(input);
+		} else if (type == Plane.YZ) {
+			return x(input);
+		}
+
+		return c(0.0);
 	}
 
 	/** @see ParticleGroup#getParticleVertices() */

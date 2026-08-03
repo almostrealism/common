@@ -20,7 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.filter.AudioPassFilter;
 import org.almostrealism.audio.line.OutputLine;
-import org.almostrealism.audio.test.support.TestAudioData;
+import org.almostrealism.audio.test.support.TestAudioDataFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -30,7 +30,8 @@ import org.junit.Test;
  * Tests for {@link AudioPassFilter} covering high-pass and low-pass
  * filtering with synthetic test signals.
  */
-public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
+public class AudioPassFilterTest extends TestSuiteBase
+		implements CellFeatures, TestAudioDataFeatures {
 
 	/** Audio sample rate from {@link OutputLine}. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
@@ -49,8 +50,8 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 		Runnable tick = filter.tick().get();
 
 		for (int i = 0; i < input.getMemLength(); i++) {
-			current.setMem(input.toDouble(i));
-			output.setMem(i, ev.evaluate().toDouble(0));
+			current.setFrom(0, input, i, 1);
+			output.setFrom(i, ev.evaluate(), 0, 1);
 			tick.run();
 		}
 
@@ -63,15 +64,15 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	@Test(timeout = 3 * 60000)
 	public void highPassAttenuatesLowFrequencies() {
 		// Create a low-frequency signal (100 Hz) below the cutoff
-		PackedCollection lowFreqSignal = TestAudioData.sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
+		PackedCollection lowFreqSignal = sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
 
 		// High-pass filter with 500 Hz cutoff
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(500), scalar(0.1), true);
 
 		PackedCollection filtered = applyFilter(filter, lowFreqSignal);
 
-		double inputRms = TestAudioData.rms(lowFreqSignal);
-		double outputRms = TestAudioData.rms(filtered);
+		double inputRms = rms(lowFreqSignal);
+		double outputRms = rms(filtered);
 
 		// Output should be significantly attenuated (at least 50% reduction)
 		Assert.assertTrue("High-pass should attenuate 100 Hz signal with 500 Hz cutoff",
@@ -84,15 +85,15 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	@Test(timeout = 120000)
 	public void highPassPassesHighFrequencies() {
 		// Create a high-frequency signal (2000 Hz) above the cutoff
-		PackedCollection highFreqSignal = TestAudioData.sineWave(2000.0, DURATION, SAMPLE_RATE, 1.0);
+		PackedCollection highFreqSignal = sineWave(2000.0, DURATION, SAMPLE_RATE, 1.0);
 
 		// High-pass filter with 500 Hz cutoff
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(500), scalar(0.1), true);
 
 		PackedCollection filtered = applyFilter(filter, highFreqSignal);
 
-		double inputRms = TestAudioData.rms(highFreqSignal);
-		double outputRms = TestAudioData.rms(filtered);
+		double inputRms = rms(highFreqSignal);
+		double outputRms = rms(filtered);
 
 		// Output should retain most of the signal (at least 50%)
 		Assert.assertTrue("High-pass should pass 2000 Hz signal with 500 Hz cutoff",
@@ -105,15 +106,15 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	@Test(timeout = 120000)
 	public void lowPassAttenuatesHighFrequencies() {
 		// Create a high-frequency signal (5000 Hz) above the cutoff
-		PackedCollection highFreqSignal = TestAudioData.sineWave(5000.0, DURATION, SAMPLE_RATE, 1.0);
+		PackedCollection highFreqSignal = sineWave(5000.0, DURATION, SAMPLE_RATE, 1.0);
 
 		// Low-pass filter with 1000 Hz cutoff
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(1000), scalar(0.1), false);
 
 		PackedCollection filtered = applyFilter(filter, highFreqSignal);
 
-		double inputRms = TestAudioData.rms(highFreqSignal);
-		double outputRms = TestAudioData.rms(filtered);
+		double inputRms = rms(highFreqSignal);
+		double outputRms = rms(filtered);
 
 		// Output should be significantly attenuated (at least 50% reduction)
 		Assert.assertTrue("Low-pass should attenuate 5000 Hz signal with 1000 Hz cutoff",
@@ -126,15 +127,15 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	@Test(timeout = 60000)
 	public void lowPassPassesLowFrequencies() {
 		// Create a low-frequency signal (100 Hz) below the cutoff
-		PackedCollection lowFreqSignal = TestAudioData.sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
+		PackedCollection lowFreqSignal = sineWave(100.0, DURATION, SAMPLE_RATE, 1.0);
 
 		// Low-pass filter with 1000 Hz cutoff
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(1000), scalar(0.1), false);
 
 		PackedCollection filtered = applyFilter(filter, lowFreqSignal);
 
-		double inputRms = TestAudioData.rms(lowFreqSignal);
-		double outputRms = TestAudioData.rms(filtered);
+		double inputRms = rms(lowFreqSignal);
+		double outputRms = rms(filtered);
 
 		// Output should retain most of the signal (at least 50%)
 		Assert.assertTrue("Low-pass should pass 100 Hz signal with 1000 Hz cutoff",
@@ -146,7 +147,7 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	 */
 	@Test(timeout = 60000)
 	public void filterProcessesData() {
-		PackedCollection signal = TestAudioData.sineWave(440.0, 0.1, SAMPLE_RATE, 0.5);
+		PackedCollection signal = sineWave(440.0, 0.1, SAMPLE_RATE, 0.5);
 
 		AudioPassFilter lowPass = new AudioPassFilter(SAMPLE_RATE, c(1000), scalar(0.1), false);
 
@@ -195,10 +196,10 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 		filter.reset();
 
 		// Filter should still work after reset on fresh filter
-		PackedCollection signal = TestAudioData.sineWave(500.0, 0.1, SAMPLE_RATE);
+		PackedCollection signal = sineWave(500.0, 0.1, SAMPLE_RATE);
 		PackedCollection output = applyFilter(filter, signal);
 		Assert.assertFalse("Filter should produce output",
-				TestAudioData.isSilent(output, 0.001));
+				isSilent(output, 0.001));
 	}
 
 	/**
@@ -207,15 +208,15 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	@Test(timeout = 60000)
 	public void highPassVeryLowCutoff() {
 		// Any audio signal at 440 Hz
-		PackedCollection signal = TestAudioData.sineWave(440.0, DURATION, SAMPLE_RATE, 1.0);
+		PackedCollection signal = sineWave(440.0, DURATION, SAMPLE_RATE, 1.0);
 
 		// High-pass with very low cutoff (20 Hz - subsonic)
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(20), scalar(0.1), true);
 
 		PackedCollection filtered = applyFilter(filter, signal);
 
-		double inputRms = TestAudioData.rms(signal);
-		double outputRms = TestAudioData.rms(filtered);
+		double inputRms = rms(signal);
+		double outputRms = rms(filtered);
 
 		// Signal should pass through mostly unchanged
 		Assert.assertTrue("High-pass with 20 Hz cutoff should pass 440 Hz signal",
@@ -228,15 +229,15 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	@Test(timeout = 120000)
 	public void lowPassVeryHighCutoff() {
 		// Any audio signal at 440 Hz
-		PackedCollection signal = TestAudioData.sineWave(440.0, DURATION, SAMPLE_RATE, 1.0);
+		PackedCollection signal = sineWave(440.0, DURATION, SAMPLE_RATE, 1.0);
 
 		// Low-pass with very high cutoff (15000 Hz)
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(15000), scalar(0.1), false);
 
 		PackedCollection filtered = applyFilter(filter, signal);
 
-		double inputRms = TestAudioData.rms(signal);
-		double outputRms = TestAudioData.rms(filtered);
+		double inputRms = rms(signal);
+		double outputRms = rms(filtered);
 
 		// Signal should pass through mostly unchanged
 		Assert.assertTrue("Low-pass with 15000 Hz cutoff should pass 440 Hz signal",
@@ -248,13 +249,13 @@ public class AudioPassFilterTest extends TestSuiteBase implements CellFeatures {
 	 */
 	@Test(timeout = 60000)
 	public void outputWithinBounds() {
-		PackedCollection signal = TestAudioData.sineWave(1000.0, DURATION, SAMPLE_RATE, 1.0);
+		PackedCollection signal = sineWave(1000.0, DURATION, SAMPLE_RATE, 1.0);
 
 		AudioPassFilter filter = new AudioPassFilter(SAMPLE_RATE, c(500), scalar(0.5), true);
 		PackedCollection filtered = applyFilter(filter, signal);
 
 		// Output should not exceed input amplitude significantly (with some tolerance for resonance)
-		double outputPeak = TestAudioData.peak(filtered);
+		double outputPeak = peak(filtered);
 		Assert.assertTrue("Filter output should not exceed 2x input amplitude",
 				outputPeak <= 2.0);
 	}

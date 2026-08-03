@@ -38,13 +38,6 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 		return new BatchedPatternRenderer(noteCount, rowLength, rowLength, OutputLine.sampleRate, 2);
 	}
 
-	/** Creates a {@link PackedCollection} pre-populated with the given values. */
-	private PackedCollection collection(double... values) {
-		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
-		return c;
-	}
-
 	/**
 	 * Distinct per-note rows placed at distinct offsets, with one row truncated at
 	 * the window edge. Offsets {0, 2, 5}, rowLength 4, windowWidth 8:
@@ -62,13 +55,11 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 		int rowLength = 4;
 		int windowWidth = 8;
 
-		PackedCollection rows = new PackedCollection(shape(noteCount, rowLength));
-		rows.setMem(new double[] {
+		PackedCollection rows = pack(
 				1, 2, 3, 4,
 				10, 20, 30, 40,
-				100, 200, 300, 400
-		});
-		PackedCollection destOffsets = collection(0, 2, 5);
+				100, 200, 300, 400).reshape(shape(noteCount, rowLength));
+		PackedCollection destOffsets = pack(0, 2, 5);
 
 		PackedCollection out = renderer(noteCount, rowLength)
 				.buildScatterAdd(rows, destOffsets, noteCount, rowLength, windowWidth)
@@ -93,12 +84,10 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 		int rowLength = 4;
 		int windowWidth = 4;
 
-		PackedCollection rows = new PackedCollection(shape(noteCount, rowLength));
-		rows.setMem(new double[] {
+		PackedCollection rows = pack(
 				1, 2, 3, 4,
-				5, 6, 7, 8
-		});
-		PackedCollection destOffsets = collection(0, 0);
+				5, 6, 7, 8).reshape(shape(noteCount, rowLength));
+		PackedCollection destOffsets = pack(0, 0);
 
 		PackedCollection out = renderer(noteCount, rowLength)
 				.buildScatterAdd(rows, destOffsets, noteCount, rowLength, windowWidth)

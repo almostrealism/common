@@ -16,31 +16,35 @@
 
 package org.almostrealism.audio.test.support;
 
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Random;
 import java.util.stream.IntStream;
 
 /**
- * Utility class for generating synthetic audio test data.
- * Provides methods to create various audio signals for testing without
- * requiring external audio files.
+ * Generates synthetic audio test data, so tests do not require external audio files.
+ *
+ * <p>Implemented as a features mixin rather than a holder of static methods: a test
+ * implements this interface and calls the generators directly, which also gives the
+ * generators access to the {@link CodeFeatures} operations they are built from.</p>
  */
-public class TestAudioData {
+public interface TestAudioDataFeatures extends CodeFeatures {
 
 	/** Default sample rate matching OutputLine.sampleRate (44100 Hz) */
-	public static final int DEFAULT_SAMPLE_RATE = OutputLine.sampleRate;
+	int DEFAULT_SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** Standard test frequency for A4 (440 Hz) */
-	public static final double A4_FREQUENCY = 440.0;
+	double A4_FREQUENCY = 440.0;
 
 	/** Standard test amplitude (0.5 to avoid clipping) */
-	public static final double DEFAULT_AMPLITUDE = 0.5;
+	double DEFAULT_AMPLITUDE = 0.5;
 
-	/** Random number generator with fixed seed for reproducible test data */
-	private static final Random random = new Random(42);
+	/** Random number generator with fixed seed for reproducible test data. */
+	Random NOISE_SOURCE = new Random(42);
 
 	/**
 	 * Generates a sine wave at the specified frequency.
@@ -50,7 +54,7 @@ public class TestAudioData {
 	 * @param sampleRate  Sample rate in Hz
 	 * @return PackedCollection containing the sine wave samples
 	 */
-	public static PackedCollection sineWave(double frequency, double duration, int sampleRate) {
+	default PackedCollection sineWave(double frequency, double duration, int sampleRate) {
 		return sineWave(frequency, duration, sampleRate, DEFAULT_AMPLITUDE);
 	}
 
@@ -63,16 +67,12 @@ public class TestAudioData {
 	 * @param amplitude   Amplitude (0.0 to 1.0)
 	 * @return PackedCollection containing the sine wave samples
 	 */
-	public static PackedCollection sineWave(double frequency, double duration, int sampleRate, double amplitude) {
+	default PackedCollection sineWave(double frequency, double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double angularFrequency = 2 * Math.PI * frequency / sampleRate;
 
-		for (int i = 0; i < samples; i++) {
-			data.setMem(i, amplitude * Math.sin(angularFrequency * i));
-		}
-
-		return data;
+		return sin(integers(0, samples).multiply(angularFrequency))
+				.multiply(amplitude).evaluate();
 	}
 
 	/**
@@ -82,7 +82,7 @@ public class TestAudioData {
 	 * @param duration  Duration in seconds
 	 * @return PackedCollection containing the sine wave samples
 	 */
-	public static PackedCollection sineWave(double frequency, double duration) {
+	default PackedCollection sineWave(double frequency, double duration) {
 		return sineWave(frequency, duration, DEFAULT_SAMPLE_RATE);
 	}
 
@@ -92,7 +92,7 @@ public class TestAudioData {
 	 * @param duration Duration in seconds
 	 * @return PackedCollection containing the sine wave samples
 	 */
-	public static PackedCollection a440(double duration) {
+	default PackedCollection a440(double duration) {
 		return sineWave(A4_FREQUENCY, duration);
 	}
 
@@ -103,7 +103,7 @@ public class TestAudioData {
 	 * @param sampleRate Sample rate in Hz
 	 * @return PackedCollection containing white noise samples
 	 */
-	public static PackedCollection whiteNoise(double duration, int sampleRate) {
+	default PackedCollection whiteNoise(double duration, int sampleRate) {
 		return whiteNoise(duration, sampleRate, DEFAULT_AMPLITUDE);
 	}
 
@@ -115,15 +115,11 @@ public class TestAudioData {
 	 * @param amplitude  Maximum amplitude
 	 * @return PackedCollection containing white noise samples
 	 */
-	public static PackedCollection whiteNoise(double duration, int sampleRate, double amplitude) {
+	default PackedCollection whiteNoise(double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 
-		for (int i = 0; i < samples; i++) {
-			data.setMem(i, amplitude * (2 * random.nextDouble() - 1));
-		}
-
-		return data;
+		return rand(shape(samples), NOISE_SOURCE)
+				.multiply(2.0).add(-1.0).multiply(amplitude).evaluate();
 	}
 
 	/**
@@ -132,7 +128,7 @@ public class TestAudioData {
 	 * @param duration Duration in seconds
 	 * @return PackedCollection containing white noise samples
 	 */
-	public static PackedCollection whiteNoise(double duration) {
+	default PackedCollection whiteNoise(double duration) {
 		return whiteNoise(duration, DEFAULT_SAMPLE_RATE);
 	}
 
@@ -142,7 +138,7 @@ public class TestAudioData {
 	 * @param length Total length in samples
 	 * @return PackedCollection containing the impulse
 	 */
-	public static PackedCollection impulse(int length) {
+	default PackedCollection impulse(int length) {
 		return impulse(length, 0);
 	}
 
@@ -153,7 +149,7 @@ public class TestAudioData {
 	 * @param position Position of the impulse (0-indexed)
 	 * @return PackedCollection containing the impulse
 	 */
-	public static PackedCollection impulse(int length, int position) {
+	default PackedCollection impulse(int length, int position) {
 		PackedCollection data = new PackedCollection(length);
 		// All zeros by default, set impulse at position
 		if (position >= 0 && position < length) {
@@ -168,12 +164,8 @@ public class TestAudioData {
 	 * @param length Length in samples
 	 * @return PackedCollection containing the ramp
 	 */
-	public static PackedCollection ramp(int length) {
-		PackedCollection data = new PackedCollection(length);
-		for (int i = 0; i < length; i++) {
-			data.setMem(i, (double) i / (length - 1));
-		}
-		return data;
+	default PackedCollection ramp(int length) {
+		return integers(0, length).divide(length - 1.0).evaluate();
 	}
 
 	/**
@@ -184,13 +176,9 @@ public class TestAudioData {
 	 * @param end    Ending value
 	 * @return PackedCollection containing the ramp
 	 */
-	public static PackedCollection ramp(int length, double start, double end) {
-		PackedCollection data = new PackedCollection(length);
+	default PackedCollection ramp(int length, double start, double end) {
 		double step = (end - start) / (length - 1);
-		for (int i = 0; i < length; i++) {
-			data.setMem(i, start + step * i);
-		}
-		return data;
+		return integers(0, length).multiply(step).add(start).evaluate();
 	}
 
 	/**
@@ -199,7 +187,7 @@ public class TestAudioData {
 	 * @param length Length in samples
 	 * @return PackedCollection containing silence
 	 */
-	public static PackedCollection silence(int length) {
+	default PackedCollection silence(int length) {
 		return new PackedCollection(length);
 	}
 
@@ -210,7 +198,7 @@ public class TestAudioData {
 	 * @param sampleRate Sample rate in Hz
 	 * @return PackedCollection containing silence
 	 */
-	public static PackedCollection silence(double duration, int sampleRate) {
+	default PackedCollection silence(double duration, int sampleRate) {
 		return silence((int) (duration * sampleRate));
 	}
 
@@ -221,12 +209,8 @@ public class TestAudioData {
 	 * @param value  The constant value
 	 * @return PackedCollection containing the DC signal
 	 */
-	public static PackedCollection dc(int length, double value) {
-		PackedCollection data = new PackedCollection(length);
-		for (int i = 0; i < length; i++) {
-			data.setMem(i, value);
-		}
-		return data;
+	default PackedCollection dc(int length, double value) {
+		return new PackedCollection(length).fill(value);
 	}
 
 	/**
@@ -238,17 +222,14 @@ public class TestAudioData {
 	 * @param amplitude  Amplitude
 	 * @return PackedCollection containing the square wave
 	 */
-	public static PackedCollection squareWave(double frequency, double duration, int sampleRate, double amplitude) {
+	default PackedCollection squareWave(double frequency, double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double period = sampleRate / frequency;
 
-		for (int i = 0; i < samples; i++) {
-			double phase = (i % period) / period;
-			data.setMem(i, phase < 0.5 ? amplitude : -amplitude);
-		}
-
-		return data;
+		CollectionProducer phase = integers(0, samples).mod(period).divide(period);
+		return greaterThan(c(0.5), phase,
+					c(amplitude), c(-amplitude))
+				.evaluate();
 	}
 
 	/**
@@ -260,17 +241,12 @@ public class TestAudioData {
 	 * @param amplitude  Amplitude
 	 * @return PackedCollection containing the sawtooth wave
 	 */
-	public static PackedCollection sawtoothWave(double frequency, double duration, int sampleRate, double amplitude) {
+	default PackedCollection sawtoothWave(double frequency, double duration, int sampleRate, double amplitude) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double period = sampleRate / frequency;
 
-		for (int i = 0; i < samples; i++) {
-			double phase = (i % period) / period;
-			data.setMem(i, amplitude * (2 * phase - 1));
-		}
-
-		return data;
+		return integers(0, samples).mod(period).divide(period)
+				.multiply(2.0).add(-1.0).multiply(amplitude).evaluate();
 	}
 
 	/**
@@ -282,18 +258,22 @@ public class TestAudioData {
 	 * @param sampleRate Sample rate in Hz
 	 * @return PackedCollection containing the chirp
 	 */
-	public static PackedCollection chirp(double startFreq, double endFreq, double duration, int sampleRate) {
+	default PackedCollection chirp(double startFreq, double endFreq, double duration, int sampleRate) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 		double freqSlope = (endFreq - startFreq) / duration;
 
-		double phase = 0;
-		for (int i = 0; i < samples; i++) {
-			double t = (double) i / sampleRate;
-			double instantFreq = startFreq + freqSlope * t;
-			phase += 2 * Math.PI * instantFreq / sampleRate;
-			data.setMem(i, DEFAULT_AMPLITUDE * Math.sin(phase));
-		}
+		// Accumulated phase in closed form: summing the per-sample increment
+		// 2*pi*(startFreq + freqSlope*i/sampleRate)/sampleRate over 0..i gives
+		// a term linear in (i + 1) and a term in i*(i + 1).
+		double linear = 2 * Math.PI * startFreq / sampleRate;
+		double quadratic = Math.PI * freqSlope / (sampleRate * (double) sampleRate);
+
+		CollectionProducer index = integers(0, samples);
+		CollectionProducer next = index.add(1.0);
+		CollectionProducer phase = next.multiply(linear)
+				.add(index.multiply(next).multiply(quadratic));
+
+		PackedCollection data = sin(phase).multiply(DEFAULT_AMPLITUDE).evaluate();
 
 		return data;
 	}
@@ -307,20 +287,21 @@ public class TestAudioData {
 	 * @param sampleRate     Sample rate in Hz
 	 * @return PackedCollection containing the harmonic signal
 	 */
-	public static PackedCollection harmonics(double fundamental, int harmonicCount, double duration, int sampleRate) {
+	default PackedCollection harmonics(double fundamental, int harmonicCount, double duration, int sampleRate) {
 		int samples = (int) (duration * sampleRate);
-		PackedCollection data = new PackedCollection(samples);
 
-		for (int i = 0; i < samples; i++) {
-			double value = 0;
-			for (int h = 1; h <= harmonicCount; h++) {
-				double freq = fundamental * h;
-				double amplitude = 1.0 / h; // Natural harmonic decay
-				value += amplitude * Math.sin(2 * Math.PI * freq * i / sampleRate);
-			}
-			// Normalize
-			data.setMem(i, value * DEFAULT_AMPLITUDE / harmonicCount);
+		CollectionProducer index = integers(0, samples);
+		CollectionProducer sum = null;
+
+		for (int h = 1; h <= harmonicCount; h++) {
+			double angularFrequency = 2 * Math.PI * fundamental * h / sampleRate;
+			// Natural harmonic decay
+			CollectionProducer harmonic =
+					sin(index.multiply(angularFrequency)).multiply(1.0 / h);
+			sum = sum == null ? harmonic : sum.add(harmonic);
 		}
+
+		PackedCollection data = sum.multiply(DEFAULT_AMPLITUDE / harmonicCount).evaluate();
 
 		return data;
 	}
@@ -332,7 +313,7 @@ public class TestAudioData {
 	 * @param sampleRate The sample rate
 	 * @return WaveData wrapping the samples
 	 */
-	public static WaveData toWaveData(PackedCollection samples, int sampleRate) {
+	default WaveData toWaveData(PackedCollection samples, int sampleRate) {
 		return new WaveData(samples, sampleRate);
 	}
 
@@ -342,7 +323,7 @@ public class TestAudioData {
 	 * @param samples The audio samples
 	 * @return WaveData wrapping the samples
 	 */
-	public static WaveData toWaveData(PackedCollection samples) {
+	default WaveData toWaveData(PackedCollection samples) {
 		return toWaveData(samples, DEFAULT_SAMPLE_RATE);
 	}
 
@@ -352,7 +333,7 @@ public class TestAudioData {
 	 * @param data The audio data
 	 * @return RMS value
 	 */
-	public static double rms(PackedCollection data) {
+	default double rms(PackedCollection data) {
 		double sum = 0;
 		int length = data.getMemLength();
 		for (int i = 0; i < length; i++) {
@@ -368,7 +349,7 @@ public class TestAudioData {
 	 * @param data The audio data
 	 * @return Peak amplitude (absolute value)
 	 */
-	public static double peak(PackedCollection data) {
+	default double peak(PackedCollection data) {
 		double max = 0;
 		int length = data.getMemLength();
 		for (int i = 0; i < length; i++) {
@@ -386,7 +367,7 @@ public class TestAudioData {
 	 * @param sampleRate The sample rate
 	 * @return Estimated frequency in Hz
 	 */
-	public static double estimateFrequency(PackedCollection data, int sampleRate) {
+	default double estimateFrequency(PackedCollection data, int sampleRate) {
 		int zeroCrossings = 0;
 		int length = data.getMemLength();
 		double prev = data.toDouble(0);
@@ -410,7 +391,7 @@ public class TestAudioData {
 	 * @param maxAmplitude Maximum expected amplitude
 	 * @return true if all samples are within bounds
 	 */
-	public static boolean isWithinBounds(PackedCollection data, double maxAmplitude) {
+	default boolean isWithinBounds(PackedCollection data, double maxAmplitude) {
 		int length = data.getMemLength();
 		for (int i = 0; i < length; i++) {
 			if (Math.abs(data.toDouble(i)) > maxAmplitude) {
@@ -427,7 +408,7 @@ public class TestAudioData {
 	 * @param threshold Threshold for considering a sample as silence
 	 * @return true if the signal is essentially silent
 	 */
-	public static boolean isSilent(PackedCollection data, double threshold) {
+	default boolean isSilent(PackedCollection data, double threshold) {
 		return peak(data) < threshold;
 	}
 
@@ -437,7 +418,7 @@ public class TestAudioData {
 	 * @param data The audio data
 	 * @return true if the signal is essentially silent
 	 */
-	public static boolean isSilent(PackedCollection data) {
+	default boolean isSilent(PackedCollection data) {
 		return isSilent(data, 0.0001);
 	}
 }

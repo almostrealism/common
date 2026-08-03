@@ -19,6 +19,7 @@ package org.almostrealism.space;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.Ops;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
@@ -138,7 +139,13 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 			cache = Pair.bank(((MemoryBank) destination).getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			for (int i = 0; i < cache.getCountLong(); i++) {
-				((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);
+				PackedCollection entry = (PackedCollection) ((MemoryBank) destination).get(i);
+
+				// The certainty is a literal and the distance already lives in device
+				// memory, so the entry is filled and then copied into rather than read
+				// back and rewritten.
+				entry.fill(0.0, 1.0);
+				entry.setFrom(0, cache, i * 2, 1);
 			}
 
 			return destination;
@@ -157,15 +164,15 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	 */
 	@Override
 	public PackedCollection evaluate(Object[] args) {
-		PackedCollection result = new PackedCollection(1);
 		if (cache == null) {
-			result.setMem(0, data.evaluateIntersection(ray, args).getA());
-		} else {
-			Pair pos = (Pair) args[0];
-			int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-			result.setMem(0, cache.toDouble(n * 2));
+			double distance = data.evaluateIntersection(ray, args).getA();
+			return Ops.o().pack(distance);
 		}
-		return result;
+
+		Pair pos = (Pair) args[0];
+		int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
+		double cached = cache.toDouble(n * 2);
+		return Ops.o().pack(cached);
 	}
 
 	/**

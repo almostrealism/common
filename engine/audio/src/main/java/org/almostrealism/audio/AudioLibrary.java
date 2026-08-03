@@ -28,6 +28,8 @@ import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.audio.data.WaveDetailsJob;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.IncrementalSimilarityComputation;
+import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
@@ -940,24 +942,21 @@ public class AudioLibrary implements ConsoleFeatures {
 		int bins = featureData.getShape().length(1);
 		if (frames == 0 || bins == 0) return null;
 
-		double[] raw = featureData.doubleStream().toArray();
-		double[] embedding = new double[bins];
+		// Mean over frames: accumulate the rows and scale, rather than reading every
+		// element back to add it on the host.
+		CollectionProducer sum = null;
 
 		for (int f = 0; f < frames; f++) {
-			for (int b = 0; b < bins; b++) {
-				int idx = f * bins + b;
-				if (idx < raw.length) {
-					embedding[b] += raw[idx];
-				}
-			}
+			if ((f + 1) * bins > featureData.getMemLength()) break;
+
+			CollectionProducer row = Ops.o().cp(
+					featureData.range(Ops.o().shape(bins), f * bins));
+			sum = sum == null ? row : sum.add(row);
 		}
 
-		double invFrames = 1.0 / frames;
-		PackedCollection result = new PackedCollection(bins);
-		for (int b = 0; b < bins; b++) {
-			result.setMem(b, embedding[b] * invFrames);
-		}
-		return result;
+		if (sum == null) return null;
+
+		return sum.multiply(1.0 / frames).evaluate();
 	}
 
 	/**

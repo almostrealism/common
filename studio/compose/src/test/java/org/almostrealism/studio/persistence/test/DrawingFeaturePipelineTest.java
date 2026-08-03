@@ -24,6 +24,7 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.studio.persistence.test.support.HarmonicEnergyFeatureProvider;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -97,7 +98,7 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("drawing-pipeline-test");
 		library = new AudioLibrary(tempDir.toFile(), SAMPLE_RATE);
-		library.getWaveDetailsFactory().setFeatureProvider(new TestFeatureProvider());
+		library.getWaveDetailsFactory().setFeatureProvider(new HarmonicEnergyFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, 1.0));
 	}
 
 	/**
@@ -165,7 +166,7 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
 		AudioLibrary storeLibrary = new AudioLibrary(
 				new FileWaveDataProviderNode(tempDir.toFile()), SAMPLE_RATE, store);
-		storeLibrary.getWaveDetailsFactory().setFeatureProvider(new TestFeatureProvider());
+		storeLibrary.getWaveDetailsFactory().setFeatureProvider(new HarmonicEnergyFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, 1.0));
 
 		try {
 			WaveDetails drawing = createDrawingDetails("store-draw-id");
@@ -196,7 +197,7 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 	@TestDepth(2)
 	public void forExistingSynthesizesAudioFromFreqData() {
 		WaveDetailsFactory factory = new WaveDetailsFactory(SAMPLE_RATE);
-		factory.setFeatureProvider(new TestFeatureProvider());
+		factory.setFeatureProvider(new HarmonicEnergyFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, 1.0));
 
 		WaveDetails drawing = createDrawingDetails("factory-test-id");
 		Assert.assertNull("data should be null before forExisting", drawing.getData());
@@ -296,42 +297,4 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 		return details;
 	}
 
-	/**
-	 * Minimal feature provider for testing. Produces 2D features of shape
-	 * ({@link #FEATURE_FRAMES}, {@link #FEATURE_BINS}) from any audio
-	 * input by computing simple spectral energy in windowed segments.
-	 */
-	static class TestFeatureProvider implements WaveDataFeatureProvider {
-		@Override
-		public PackedCollection computeFeatures(WaveData waveData) {
-			int totalFrames = waveData.getFrameCount();
-			int windowSize = Math.max(1, totalFrames / FEATURE_FRAMES);
-
-			PackedCollection features = new PackedCollection(FEATURE_FRAMES, FEATURE_BINS);
-			PackedCollection data = waveData.getChannelData(0);
-
-			for (int f = 0; f < FEATURE_FRAMES; f++) {
-				int start = f * windowSize;
-				for (int b = 0; b < FEATURE_BINS; b++) {
-					double energy = 0;
-					for (int i = start; i < Math.min(start + windowSize, totalFrames); i++) {
-						if (i < data.getMemLength()) {
-							double sample = data.toDouble(i);
-							double angle = 2.0 * Math.PI * (b + 1) * i / SAMPLE_RATE;
-							energy += sample * Math.cos(angle);
-						}
-					}
-					features.setMem(f * FEATURE_BINS + b, Math.abs(energy) / windowSize);
-				}
-			}
-
-			return features;
-		}
-
-		@Override
-		public int getAudioSampleRate() { return SAMPLE_RATE; }
-
-		@Override
-		public double getFeatureSampleRate() { return FEATURE_FRAMES / 1.0; }
-	}
 }

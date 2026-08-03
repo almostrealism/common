@@ -44,7 +44,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * // Create control flag
  * MemoryData control = new Bytes(1);
- * control.setMem(0.0);  // 0 = continue, >0 = abort
+ * control.setMem(0, 0.0);  // 0 = continue, >0 = abort
  *
  * // Create abort operation
  * Abort abort = new Abort(control);
@@ -73,11 +73,11 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * // Continue execution
- * control.setMem(0.0);
+ * control.setMem(0, 0.0);
  * abort.get().run();  // Kernel continues
  *
  * // Abort execution
- * control.setMem(1.0);
+ * control.setMem(0, 1.0);
  * abort.get().run();  // Kernel returns early
  * }</pre>
  *
@@ -98,10 +98,10 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * // Fallback: Never aborts
- * private static MemoryData abortFallback;
+ * private static Bytes abortFallback;
  * static {
  *     abortFallback = new Bytes(1);
- *     abortFallback.setMem(0.0);
+ *     abortFallback.setMem(0, 0.0);
  * }
  * }</pre>
  *
@@ -137,11 +137,11 @@ import java.util.function.Supplier;
  */
 public class Abort extends OperationComputationAdapter<MemoryData> implements ExpressionFeatures {
 	/** Fallback memory data with value 0.0, used when the control supplier returns null (never aborts). */
-	private static MemoryData abortFallback;
+	private static Bytes abortFallback;
 
 	static {
 		abortFallback = new Bytes(1);
-		abortFallback.setMem(0.0);
+		abortFallback.setMem(0, 0.0);
 	}
 
 	/**

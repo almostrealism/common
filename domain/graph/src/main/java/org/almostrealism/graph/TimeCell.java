@@ -239,7 +239,7 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	 */
 	public void setFrame(double frame) {
 		double f = Math.floor(frame);
-		time.setMem(f, f);
+		time.fill(f);
 	}
 
 	/**

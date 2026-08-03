@@ -29,6 +29,7 @@ import org.almostrealism.studio.discovery.PrototypeDiscovery;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -78,10 +79,10 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 	private static final double SAMPLE_DURATION = 0.25;
 
 	/** Number of frames in feature data. */
-	private static final int FEATURE_FRAMES = 16;
+	static final int FEATURE_FRAMES = 16;
 
 	/** Number of bins in feature data. */
-	private static final int FEATURE_BINS = 32;
+	static final int FEATURE_BINS = 32;
 
 	/** Temporary directory for test files. */
 	private Path tempDir;
@@ -133,7 +134,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir.toFile()),
 				SAMPLE_RATE, store);
-		library.getWaveDetailsFactory().setFeatureProvider(new SimpleFeatureProvider());
+		library.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION));
 
 		Set<String> originalIdentifiers = new HashSet<>();
 		for (File wav : wavFiles) {
@@ -193,7 +194,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir.toFile()),
 				SAMPLE_RATE, store);
-		library.getWaveDetailsFactory().setFeatureProvider(new SimpleFeatureProvider());
+		library.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION));
 
 		for (File wav : wavFiles) {
 			FileWaveDataProvider provider = new FileWaveDataProvider(wav.getAbsolutePath());
@@ -237,7 +238,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir.toFile()),
 				SAMPLE_RATE, store);
-		library.getWaveDetailsFactory().setFeatureProvider(new SimpleFeatureProvider());
+		library.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION));
 
 		List<WaveDetails> allDetails = new ArrayList<>();
 		for (File wav : wavFiles) {
@@ -290,7 +291,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir.toFile()),
 				SAMPLE_RATE, store);
-		library.getWaveDetailsFactory().setFeatureProvider(new SimpleFeatureProvider());
+		library.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION));
 
 		for (File wav : wavFiles) {
 			FileWaveDataProvider provider = new FileWaveDataProvider(wav.getAbsolutePath());
@@ -331,7 +332,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(samplesDir.toFile()),
 				SAMPLE_RATE, store);
-		library.getWaveDetailsFactory().setFeatureProvider(new SimpleFeatureProvider());
+		library.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION));
 
 		for (File wav : wavFiles) {
 			FileWaveDataProvider provider = new FileWaveDataProvider(wav.getAbsolutePath());
@@ -408,63 +409,4 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 	public static final int DEFAULT_TARGET_BATCH_SIZE =
 			ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
 
-	/**
-	 * Simple feature provider that computes spectral features from audio
-	 * data using a basic DFT at logarithmically spaced frequency bands.
-	 * Produces features of shape ({@link #FEATURE_FRAMES}, {@link #FEATURE_BINS}, 1).
-	 */
-	static class SimpleFeatureProvider implements WaveDataFeatureProvider {
-		@Override
-		public PackedCollection computeFeatures(WaveData waveData) {
-			int totalFrames = waveData.getFrameCount();
-			int windowSize = Math.max(1, totalFrames / FEATURE_FRAMES);
-
-			double[] samples = new double[totalFrames];
-			PackedCollection data = waveData.getChannelData(0);
-			for (int i = 0; i < totalFrames && i < data.getMemLength(); i++) {
-				samples[i] = data.toDouble(i);
-			}
-
-			PackedCollection features = new PackedCollection(FEATURE_FRAMES, FEATURE_BINS, 1);
-
-			double minFreq = 20.0;
-			double maxFreq = SAMPLE_RATE / 2.0;
-			double logMin = Math.log(minFreq);
-			double logMax = Math.log(maxFreq);
-
-			for (int f = 0; f < FEATURE_FRAMES; f++) {
-				int start = f * windowSize;
-				int end = Math.min(start + windowSize, totalFrames);
-				int len = end - start;
-
-				for (int b = 0; b < FEATURE_BINS; b++) {
-					double bt = (double) b / (FEATURE_BINS - 1);
-					double freq = Math.exp(logMin + bt * (logMax - logMin));
-
-					double real = 0;
-					double imag = 0;
-					for (int i = 0; i < len; i++) {
-						double angle = 2.0 * Math.PI * freq * i / SAMPLE_RATE;
-						real += samples[start + i] * Math.cos(angle);
-						imag += samples[start + i] * Math.sin(angle);
-					}
-
-					double magnitude = Math.sqrt(real * real + imag * imag) / len;
-					features.setMem(f * FEATURE_BINS + b, magnitude);
-				}
-			}
-
-			return features;
-		}
-
-		@Override
-		public int getAudioSampleRate() {
-			return SAMPLE_RATE;
-		}
-
-		@Override
-		public double getFeatureSampleRate() {
-			return FEATURE_FRAMES / SAMPLE_DURATION;
-		}
-	}
 }

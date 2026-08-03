@@ -29,6 +29,7 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider;
 import org.almostrealism.studio.persistence.AudioLayerGroupLibrary;
 import org.almostrealism.studio.persistence.AudioLayerPitch;
 import org.almostrealism.studio.persistence.NoteAudioGroupBuilder;
@@ -148,7 +149,9 @@ public class NoteAudioGroupBuilderTest extends TestSuiteBase {
 		AudioLibrary library = new AudioLibrary(
 				new FileWaveDataProviderNode(libraryRoot.toFile()), SAMPLE_RATE, store);
 		library.getWaveDetailsFactory()
-				.setFeatureProvider(new DiskStoreAudioLibraryTest.SimpleFeatureProvider());
+				.setFeatureProvider(new LogSpectrumFeatureProvider(
+						DiskStoreAudioLibraryTest.FEATURE_FRAMES,
+						DiskStoreAudioLibraryTest.FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION));
 		ProtobufLayerGroupStore groupStore = new ProtobufLayerGroupStore(groupDir.toFile());
 		AudioLayerGroupLibrary coordinator =
 				new AudioLayerGroupLibrary(library, groupStore, libraryRoot.toFile());

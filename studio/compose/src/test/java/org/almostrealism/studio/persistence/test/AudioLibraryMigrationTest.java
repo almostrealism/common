@@ -254,13 +254,9 @@ public class AudioLibraryMigrationTest extends TestSuiteBase {
 		WaveDetails details = new WaveDetails(identifier, 44100);
 		details.setFreqData(new PackedCollection(bins));
 
-		PackedCollection featureData = new PackedCollection(frames, bins, 1);
-		for (int f = 0; f < frames; f++) {
-			for (int b = 0; b < bins; b++) {
-				featureData.setMem(f * bins + b,
-						(identifier.hashCode() + f * bins + b) * 0.001);
-			}
-		}
+		PackedCollection featureData =
+				integers(0, frames * bins).add(identifier.hashCode()).multiply(0.001)
+						.evaluate().reshape(frames, bins, 1);
 		details.setFeatureData(featureData);
 		details.setFeatureSampleRate(16.0);
 		details.setFeatureChannelCount(1);

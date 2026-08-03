@@ -86,9 +86,11 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	/** Guidance appended to every violation, naming the sanctioned idioms. */
 	private static final String GUIDANCE =
 			"setMem writes device memory only from numeric literals — the whole contents from "
-					+ "index 0 (e.g. setMem(1.0, 2.0)), or one value at an index (e.g. setMem(i, 1.0)). "
-					+ "An index followed by several values is no longer an indexed write: it binds to "
-					+ "the whole-content form and writes the index as data. "
+					+ "index 0 (e.g. setMem(new double[] { 1.0, 2.0 })), or one value at an index "
+					+ "(e.g. setMem(i, 1.0)). The whole-content form takes an array rather than "
+					+ "varargs so that an indexed write cannot silently bind to it, and the indexed "
+					+ "form is declared on MemoryDataAdapter rather than MemoryData so that it is "
+					+ "reachable only through a concrete implementation. "
 					+ "To copy from another MemoryData use setFrom(...) or cp(src).into(dest).evaluate(); "
 					+ "to materialise computed values use a Producer with fill(value) / fill(pos -> ...) "
 					+ "or a producer assignment. A host double[]/float[] must never be uploaded via setMem.";
@@ -186,8 +188,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().get(index).setMem(data);"},
 			new String[] {"/hardware/mem/MemoryBankAdapter.java", "get(index).setMem(values);"},
 			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
-			new String[] {"/space/CachedMeshIntersectionKernel.java",
-					"((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
 			new String[] {"/assets/CollectionEncoder.java", "decoded.setMem(f);"},
@@ -206,6 +206,14 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	/** A single numeric literal token: decimal, hex, or float/long-suffixed, with optional sign. */
 	private static final Pattern NUMERIC_LITERAL = Pattern.compile(
 			"[-+]?(?:0[xX][0-9a-fA-F_]+|(?:\\d[\\d_]*)?\\.?\\d[\\d_]*(?:[eE][-+]?\\d+)?)[fFdDlL]?");
+
+	/**
+	 * A {@code new double[] { ... }} or {@code new float[] { ... }} initializer, capturing the
+	 * element list. The whole-content write takes an array rather than varargs, so this is the
+	 * shape a literal write now arrives in.
+	 */
+	private static final Pattern LITERAL_ARRAY = Pattern.compile(
+			"new\\s+(?:double|float)\\s*\\[\\s*\\]\\s*\\{(.*)\\}", Pattern.DOTALL);
 
 	/** Locates the start of each {@code .setMem(} call. */
 	private static final Pattern SETMEM_CALL = Pattern.compile("\\.setMem\\s*\\(");
@@ -595,7 +603,11 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		List<String> args = splitTopLevel(argString);
 		if (args.isEmpty()) return false;
 
-		// Any array construction, indexing, or device->host read anywhere is forbidden.
+		if (args.size() == 1 && isLiteralArrayInitializer(args.get(0))) {
+			return true;
+		}
+
+		// Any other array construction, indexing, or device->host read is forbidden.
 		for (String arg : args) {
 			if (isArrayish(arg)) return false;
 		}
@@ -630,6 +642,33 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 */
 	private boolean isNumericLiteral(String arg) {
 		return NUMERIC_LITERAL.matcher(arg.trim()).matches();
+	}
+
+	/**
+	 * Returns {@code true} if the argument is an array initializer whose every element is a
+	 * numeric literal — {@code new double[] { 1.0, 2.0 }}.
+	 *
+	 * <p>The whole-content write is declared over an array rather than varargs, because a
+	 * varargs form silently swallows an indexed write issued against a {@code MemoryData}
+	 * reference. A literal write therefore arrives as an initializer, and is held to the same
+	 * standard the varargs list was: every element a literal, no computed values, no host
+	 * array reaching the device under another name.</p>
+	 *
+	 * @param arg  the argument text
+	 * @return     whether it is an all-literal array initializer
+	 */
+	private boolean isLiteralArrayInitializer(String arg) {
+		Matcher matcher = LITERAL_ARRAY.matcher(arg.trim());
+		if (!matcher.matches()) return false;
+
+		String body = matcher.group(1).trim();
+		if (body.isEmpty()) return false;
+
+		for (String element : splitTopLevel(body)) {
+			if (!isNumericLiteral(element)) return false;
+		}
+
+		return true;
 	}
 
 	/**

@@ -753,14 +753,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @return masked logits collection, shape [vocabSize]
 	 */
 	private PackedCollection applyMask(PackedCollection logits, int[] validIds) {
-		double[] source = logits.toArray(0, config.vocabSize);
-		double[] values = new double[config.vocabSize];
-		Arrays.fill(values, -1e9);
-		for (int id : validIds) {
-			values[id] = source[id];
-		}
 		PackedCollection masked = new PackedCollection(config.vocabSize);
-		masked.setMem(values);
+		masked.fill(-1e9);
+
+		// Copy the permitted logits across without reading any of them back
+		for (int id : validIds) {
+			masked.setFrom(id, logits.range(shape(1), id));
+		}
+
 		return masked;
 	}
 

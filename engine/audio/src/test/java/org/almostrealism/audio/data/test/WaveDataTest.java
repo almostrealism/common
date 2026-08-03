@@ -19,7 +19,7 @@ package org.almostrealism.audio.data.test;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.sources.BufferDetails;
-import org.almostrealism.audio.test.support.TestAudioData;
+import org.almostrealism.audio.test.support.TestAudioDataFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -33,7 +33,7 @@ import java.nio.file.Files;
  * Tests for {@link WaveData} covering construction, data access,
  * duration calculations, channel handling, and save/load operations.
  */
-public class WaveDataTest extends TestSuiteBase {
+public class WaveDataTest extends TestSuiteBase implements TestAudioDataFeatures {
 
 	/** Test sample rate derived from {@link OutputLine}. */
 	private static final int TEST_SAMPLE_RATE = OutputLine.sampleRate;
@@ -60,7 +60,7 @@ public class WaveDataTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void constructFromPackedCollection() {
-		PackedCollection samples = TestAudioData.sineWave(440.0, 1.0);
+		PackedCollection samples = sineWave(440.0, 1.0);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 
 		Assert.assertEquals("Should have 1 channel", 1, data.getChannelCount());
@@ -74,13 +74,13 @@ public class WaveDataTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void durationCalculation() {
 		// 1 second at 44100 Hz
-		PackedCollection samples = TestAudioData.silence(TEST_SAMPLE_RATE);
+		PackedCollection samples = silence(TEST_SAMPLE_RATE);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 
 		Assert.assertEquals("Duration should be 1.0 second", 1.0, data.getDuration(), EPSILON);
 
 		// 0.5 seconds
-		PackedCollection halfSecond = TestAudioData.silence(TEST_SAMPLE_RATE / 2);
+		PackedCollection halfSecond = silence(TEST_SAMPLE_RATE / 2);
 		WaveData halfData = new WaveData(halfSecond, TEST_SAMPLE_RATE);
 
 		Assert.assertEquals("Duration should be 0.5 seconds", 0.5, halfData.getDuration(), EPSILON);
@@ -91,7 +91,7 @@ public class WaveDataTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void getChannelDataMono() {
-		PackedCollection samples = TestAudioData.sineWave(440.0, 0.1);
+		PackedCollection samples = sineWave(440.0, 0.1);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 
 		PackedCollection channel0 = data.getChannelData(0);
@@ -109,7 +109,7 @@ public class WaveDataTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5000, expected = IndexOutOfBoundsException.class)
 	public void getChannelDataInvalidNegative() {
-		PackedCollection samples = TestAudioData.silence(1000);
+		PackedCollection samples = silence(1000);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 		data.getChannelData(-1);
 	}
@@ -120,7 +120,7 @@ public class WaveDataTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void rangeExtractionTime() {
 		// Create 2 seconds of audio
-		PackedCollection samples = TestAudioData.sineWave(440.0, 2.0);
+		PackedCollection samples = sineWave(440.0, 2.0);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 
 		// Extract 0.5 seconds starting at 0.5 seconds
@@ -136,7 +136,7 @@ public class WaveDataTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void rangeExtractionSamples() {
-		PackedCollection samples = TestAudioData.ramp(10000);
+		PackedCollection samples = ramp(10000);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 
 		// Extract samples 1000-2000
@@ -155,7 +155,7 @@ public class WaveDataTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void bufferDetails() {
-		PackedCollection samples = TestAudioData.silence(TEST_SAMPLE_RATE * 2); // 2 seconds
+		PackedCollection samples = silence(TEST_SAMPLE_RATE * 2); // 2 seconds
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 
 		BufferDetails details = data.getBufferDetails();
@@ -170,7 +170,7 @@ public class WaveDataTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void setSampleRate() {
-		PackedCollection samples = TestAudioData.silence(44100);
+		PackedCollection samples = silence(44100);
 		WaveData data = new WaveData(samples, 44100);
 
 		Assert.assertEquals("Initial duration at 44100 Hz", 1.0, data.getDuration(), EPSILON);
@@ -189,7 +189,7 @@ public class WaveDataTest extends TestSuiteBase {
 	public void saveAndLoadRoundtripMono() throws IOException {
 		// Create mono test data - 1 second of sine wave
 		int frames = TEST_SAMPLE_RATE;
-		PackedCollection monoData = TestAudioData.sineWave(440.0, 1.0);
+		PackedCollection monoData = sineWave(440.0, 1.0);
 
 		WaveData original = new WaveData(monoData, TEST_SAMPLE_RATE);
 
@@ -240,7 +240,7 @@ public class WaveDataTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void destroyReleasesResources() {
-		PackedCollection samples = TestAudioData.sineWave(440.0, 1.0);
+		PackedCollection samples = sineWave(440.0, 1.0);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 
 		Assert.assertNotNull("Data should exist before destroy", data.getData());
@@ -275,7 +275,7 @@ public class WaveDataTest extends TestSuiteBase {
 	public void fftReturnsCorrectShape() {
 		// Create at least FFT_BINS worth of samples
 		int frames = WaveData.FFT_BINS * 4;
-		PackedCollection samples = TestAudioData.sineWave(440.0,
+		PackedCollection samples = sineWave(440.0,
 				(double) frames / TEST_SAMPLE_RATE, TEST_SAMPLE_RATE);
 		WaveData data = new WaveData(samples, TEST_SAMPLE_RATE);
 

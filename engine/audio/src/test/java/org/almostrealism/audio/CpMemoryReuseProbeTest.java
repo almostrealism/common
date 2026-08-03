@@ -56,7 +56,7 @@ public class CpMemoryReuseProbeTest extends TestSuiteBase implements CollectionF
 				+ first.toDouble(2) + "," + first.toDouble(3));
 
 		// Mutate the same buffer's memory and re-run the SAME compiled evaluable.
-		buf.setMem(10.0, 20.0, 30.0, 40.0);
+		buf.fill(10.0, 20.0, 30.0, 40.0);
 		PackedCollection second = evaluable.evaluate();
 		log("second: " + second.toDouble(0) + "," + second.toDouble(1) + ","
 				+ second.toDouble(2) + "," + second.toDouble(3));

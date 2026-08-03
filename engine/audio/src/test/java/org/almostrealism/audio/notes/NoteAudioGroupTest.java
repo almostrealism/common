@@ -49,14 +49,8 @@ public class NoteAudioGroupTest extends TestSuiteBase {
 	 * Creates a reproducible random source buffer in [-1, 1] for the given seed.
 	 */
 	private PackedCollection randomSource(long seed) {
-		Random rng = new Random(seed);
-		double[] data = new double[SOURCE_LENGTH];
-		for (int i = 0; i < SOURCE_LENGTH; i++) {
-			data[i] = rng.nextDouble() * 2.0 - 1.0;
-		}
-		PackedCollection c = new PackedCollection(SOURCE_LENGTH);
-		c.setMem(data);
-		return c;
+		return rand(shape(SOURCE_LENGTH), new Random(seed))
+				.multiply(2.0).add(-1.0).evaluate();
 	}
 
 	/**

@@ -85,7 +85,8 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 		PackedCollection[] layerCurves = new PackedCollection[LAYERS];
 
 		for (int l = 0; l < LAYERS; l++) {
-			double[] batchData = new double[N * SOURCE_LENGTH];
+			PackedCollection batch =
+					rand(shape(N, SOURCE_LENGTH), rng).multiply(2.0).add(-1.0).evaluate();
 			double[] ratioData = new double[N];
 			double[] md = new double[N];
 			double[] f0 = new double[N];
@@ -96,9 +97,6 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 			double[] v2 = new double[N];
 			double[] v3 = new double[N];
 			for (int nn = 0; nn < N; nn++) {
-				for (int i = 0; i < SOURCE_LENGTH; i++) {
-					batchData[nn * SOURCE_LENGTH + i] = rng.nextDouble() * 2.0 - 1.0;
-				}
 				ratioData[nn] = 1.0 + 0.1 * l + 0.05 * nn;
 				md[nn] = 0.012 + 0.002 * nn;
 				f0[nn] = 0.3;
@@ -109,8 +107,7 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 				v2[nn] = 0.5 + 0.03 * nn;
 				v3[nn] = 0.0;
 			}
-			sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
-			sources[l].setMem(batchData);
+			sources[l] = batch;
 			ratios[l] = col(ratioData);
 			layerEnvParams[l] = new PackedCollection[] {
 					col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3)

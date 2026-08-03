@@ -241,7 +241,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * CollectionProducer goodRead = c(p(cache)).traverse(0).sum();
 	 * // or equivalently: cp(cache).traverse(0).sum();
 	 *
-	 * cache.setMem(1, 2, 3, ...);  // Modify cache
+	 * cache.fill(1, 2, 3, ...);  // Modify cache
 	 * // badRead still returns 0 (captured empty cache)
 	 * // goodRead returns sum of current cache contents
 	 * }</pre>
@@ -520,7 +520,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * CollectionProducer cacheReader = cp(cache).traverse(0).sum();
 	 *
 	 * // Modify cache
-	 * cache.setMem(1, 2, 3, ...);
+	 * cache.fill(1, 2, 3, ...);
 	 *
 	 * // cacheReader will see the new values
 	 * }</pre>

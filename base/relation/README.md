@@ -237,6 +237,30 @@ Runnable compiled = op.get();  // May cause timeouts/failures!
 2. Set `OperationList.enableAutomaticOptimization = true`, OR
 3. Use `CompiledModel` which calls `optimize()` internally
 
+This applies just as much when the graph is a `Producer` rather than an
+`OperationList`. The convenience methods on `Producer` reach `get()` implicitly, and
+most of them do not optimize on the way:
+
+| Call | Optimizes? |
+|---|---|
+| `producer.get()` | No |
+| `producer.evaluate(args)` | No — `get().evaluate(args)` |
+| `producer.into(destination)` | No — `get().into(destination)` |
+| `producer.evaluateOptimized(args)` | **Yes** — `Process.optimized(this).get().evaluate(args)` |
+| `Process.optimized(producer).get()` | **Yes** |
+
+`into(...)` has no optimizing counterpart, so writing into a pre-allocated
+destination with optimization means combining the two:
+
+```java
+// CORRECT: isolation is consulted, then the result is written to the destination
+Evaluable scale = Process.optimized(producer).get();
+scale.into(destination).evaluate();
+
+// INCORRECT: nothing on this path optimizes
+producer.into(destination).evaluate();
+```
+
 ### Optimization Strategies
 
 ```java
@@ -262,11 +286,28 @@ If you see these symptoms:
 - Test timeouts (60+ seconds for simple operations)
 - Massive expression trees in stack traces
 - OutOfMemoryError during compilation
+- `HardwareException: Cannot compile <operation>`, caused by
+  `io.almostrealism.expression.ExpressionException: Expression too deep`
+- A graph that compiles for a small collection but stops compiling once the
+  input is realistically sized
+
+The last two are the clearest signal. `Expression.init` rejects anything deeper
+than `ScopeSettings.maxDepth`, and the depth of an inlined child grows with its
+input size — so a size-dependent *compile* failure means a child that should have
+been isolated was embedded instead.
 
 Check:
-1. Is `optimize()` being called before `get()`?
+1. Is `optimize()` being called before `get()`? Note that `Producer.evaluate(...)`
+   and `Producer.into(...)` reach `get()` without optimizing — see the table under
+   [When optimize() MUST Be Called](#when-optimize-must-be-called).
 2. Does the problematic computation override `isIsolationTarget()` correctly?
 3. Is the parent process calling `optimize(ctx, child)` on its children?
+
+Reach for `optimize()` before restructuring the graph. Materialising an
+intermediate by hand (an extra `evaluate()` into a collection that is then fed
+back in via `cp(...)`) will also make it compile, but it moves a kernel-boundary
+decision out of the process tree and into application code, where the next site
+with the same shape will not have it.
 
 ```java
 // Debug: Log when isolation happens

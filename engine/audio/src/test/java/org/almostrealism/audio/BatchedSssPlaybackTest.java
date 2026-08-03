@@ -100,7 +100,8 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 		double[][] ratioValues = new double[LAYERS][N];
 
 		for (int l = 0; l < LAYERS; l++) {
-			double[] batchData = new double[N * SOURCE_LENGTH];
+			PackedCollection batch =
+					rand(shape(N, SOURCE_LENGTH), rng).multiply(2.0).add(-1.0).evaluate();
 			double[] ratioData = new double[N];
 			double[] md = new double[N];
 			double[] f0 = new double[N];
@@ -111,12 +112,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 			double[] v2 = new double[N];
 			double[] v3 = new double[N];
 			for (int n = 0; n < N; n++) {
-				double[] data = new double[SOURCE_LENGTH];
-				for (int i = 0; i < SOURCE_LENGTH; i++) {
-					data[i] = rng.nextDouble() * 2.0 - 1.0;
-					batchData[n * SOURCE_LENGTH + i] = data[i];
-				}
-				sourceByLayerNote[l][n] = col(data);
+				sourceByLayerNote[l][n] = batch.range(shape(SOURCE_LENGTH), n * SOURCE_LENGTH);
 				ratioValues[l][n] = 1.0 + 0.1 * l + 0.05 * n;
 				ratioData[n] = ratioValues[l][n];
 
@@ -129,8 +125,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 				v2[n] = 0.5 + 0.03 * n;
 				v3[n] = 0.0;
 			}
-			sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
-			sources[l].setMem(batchData);
+			sources[l] = batch;
 			ratios[l] = col(ratioData);
 			layerCurves[l] = renderer.buildLayerEnvelopeCurve(
 					col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3))

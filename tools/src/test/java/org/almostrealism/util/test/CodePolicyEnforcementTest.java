@@ -308,9 +308,9 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 				import org.almostrealism.collect.PackedCollection;
 				public class SetMemClean {
 				    public void ok(PackedCollection dest, PackedCollection src, int i) {
-				        dest.setMem(1.0, 2.0, 3.0);
+				        dest.setMem(new double[] { 1.0, 2.0, 3.0 });
 				        dest.setMem(i, 0.0);
-				        dest.setMem(-0.25);
+				        dest.setMem(new double[] { -0.25 });
 				        dest.setFrom(0, src);
 				    }
 				}

@@ -16,6 +16,9 @@
 
 package org.almostrealism.audio.benchmark;
 
+import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionProducer;
+
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.BatchedPatternRenderer;
@@ -116,10 +119,7 @@ public abstract class PatternRenderingFloorBenchmarkBase extends TestSuiteBase
 	 * sample rate {@link #SAMPLE_RATE} Hz.
 	 */
 	protected PackedCollection buildLpCoeffs() {
-		double[] data = referenceLowPassCoefficients(LP_CUTOFF_HZ, SAMPLE_RATE, FILTER_ORDER);
-		PackedCollection lpCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		lpCoeffs.setMem(data);
-		return lpCoeffs;
+		return lowPassCoefficients(c(LP_CUTOFF_HZ), SAMPLE_RATE, FILTER_ORDER).evaluate();
 	}
 
 	/**
@@ -139,11 +139,7 @@ public abstract class PatternRenderingFloorBenchmarkBase extends TestSuiteBase
 	 * 70% sustain level, 15% release.
 	 */
 	protected PackedCollection buildAdsrEnvelope() {
-		double[] data = new double[NOTE_SIZE];
-		fillAdsrShape(data, 0, NOTE_SIZE, 0.0, 1.0, 0.7, 0.0, 0.05, 0.10, 0.15);
-		PackedCollection env = new PackedCollection(NOTE_SIZE);
-		env.setMem(data);
-		return env;
+		return adsrShape(NOTE_SIZE, 0.0, 1.0, 0.7, 0.0, 0.05, 0.10, 0.15);
 	}
 
 	/**
@@ -174,6 +170,54 @@ public abstract class PatternRenderingFloorBenchmarkBase extends TestSuiteBase
 		for (int i = 0; i < releaseSamples; i++) {
 			data[idx++] = sustain - (sustain - end) * i / releaseSamples;
 		}
+	}
+
+	/**
+	 * Builds the same piecewise-linear ADSR shape as
+	 * {@link #fillAdsrShape(double[], int, int, double, double, double, double, double, double, double)}
+	 * as a collection, computed from the sample index rather than written a sample
+	 * at a time.
+	 *
+	 * <p>The four segments are selected by index: attack ramps from {@code base} to
+	 * {@code peak}, decay from {@code peak} to {@code sustain}, the sustain section
+	 * holds, and release ramps from {@code sustain} to {@code end}. A segment of
+	 * zero length is never selected, so the quotient its ramp would divide by is
+	 * computed and discarded rather than reached.</p>
+	 *
+	 * @param size         total length in samples
+	 * @param base         level at the start of the attack
+	 * @param peak         level at the end of the attack
+	 * @param sustain      level held through the sustain section
+	 * @param end          level at the end of the release
+	 * @param attackFrac   attack length as a fraction of {@code size}
+	 * @param decayFrac    decay length as a fraction of {@code size}
+	 * @param releaseFrac  release length as a fraction of {@code size}
+	 * @return the ADSR shape
+	 */
+	public static PackedCollection adsrShape(int size,
+											 double base, double peak, double sustain, double end,
+											 double attackFrac, double decayFrac, double releaseFrac) {
+		int attackSamples = (int) (size * attackFrac);
+		int decaySamples = (int) (size * decayFrac);
+		int releaseSamples = (int) (size * releaseFrac);
+		int sustainSamples = size - attackSamples - decaySamples - releaseSamples;
+
+		Ops o = Ops.o();
+		CollectionProducer index = o.integers(0, size);
+
+		CollectionProducer attack = index
+				.multiply((peak - base) / attackSamples).add(base);
+		CollectionProducer decay = index.add(-attackSamples)
+				.multiply(-(peak - sustain) / decaySamples).add(peak);
+		CollectionProducer release = index.add(-(attackSamples + decaySamples + sustainSamples))
+				.multiply(-(sustain - end) / releaseSamples).add(sustain);
+
+		CollectionProducer shape = o.greaterThan(index,
+				o.c(attackSamples + decaySamples + sustainSamples - 1.0), release, o.c(sustain));
+		shape = o.greaterThan(index, o.c(attackSamples + decaySamples - 1.0), shape, decay);
+		shape = o.greaterThan(index, o.c(attackSamples - 1.0), shape, attack);
+
+		return shape.evaluate();
 	}
 
 	/**

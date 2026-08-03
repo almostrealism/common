@@ -187,9 +187,9 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 		this();
 
 		if (coordSys == Vector.CARTESIAN_COORDINATES) {
-			setMem(x, y, z);
+			fill(x, y, z);
 		} else if (coordSys == Vector.SPHERICAL_COORDINATES) {
-			setMem(x * Math.sin(y) * Math.cos(z),
+			fill(x * Math.sin(y) * Math.cos(z),
 					x * Math.sin(y) * Math.sin(z),
 					x * Math.cos(y));
 		} else {
@@ -256,7 +256,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * @param x  the new X coordinate
 	 */
 	public void setX(double x) {
-		this.setMem(x);
+		this.setMem(0, x);
 	}
 
 	/**
@@ -382,7 +382,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	public void addTo(Vector vector) {
 		double[] a = toArray();
 		double[] b = vector.toArray();
-		setMem(a[0] + b[0], a[1] + b[1], a[2] + b[2]);
+		fill(a[0] + b[0], a[1] + b[1], a[2] + b[2]);
 	}
 
 	/**
@@ -410,7 +410,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	public synchronized void subtractFrom(Vector vector) {
 		double[] a = toArray();
 		double[] b = vector.toArray();
-		setMem(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+		fill(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 	}
 
 	/**
@@ -436,7 +436,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 */
 	public synchronized void multiplyBy(double value) {
 		double[] a = toArray();
-		setMem(a[0] * value, a[1] * value, a[2] * value);
+		fill(a[0] * value, a[1] * value, a[2] * value);
 	}
 
 	/**
@@ -461,7 +461,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 */
 	public synchronized Vector divideBy(double value) {
 		double[] a = toArray();
-		setMem(a[0] / value, a[1] / value, a[2] / value);
+		fill(a[0] / value, a[1] / value, a[2] / value);
 		return this;
 	}
 
@@ -660,7 +660,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * <pre>{@code
 	 * PackedCollection vectors = Vector.bank(100);
-	 * vectors.get(0).setMem(1.0, 2.0, 3.0);
+	 * vectors.get(0).fill(1.0, 2.0, 3.0);
 	 * }</pre>
 	 *
 	 * @param count  the number of vectors to allocate

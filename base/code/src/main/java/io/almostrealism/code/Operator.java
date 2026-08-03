@@ -18,10 +18,13 @@ package io.almostrealism.code;
 
 import io.almostrealism.compute.Isolated;
 import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * A {@link ProducerComputation} that also implements the {@link io.almostrealism.compute.Process}
@@ -48,6 +51,45 @@ public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends 
 	@Override
 	default Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
 		return new IsolatedProcess<>(this);
+	}
+
+	/**
+	 * Presents an existing {@link ProducerComputation} as an {@link Operator}.
+	 *
+	 * <p>For a value that is already computed by the graph, this is the way to satisfy an
+	 * {@link Operator} return type without leaving the graph. The alternative — returning an
+	 * {@link Evaluable} that evaluates the inputs and combines them in Java — produces a
+	 * correct number, but the operator then reports no children and an empty
+	 * {@link io.almostrealism.scope.Scope}, so the computation it performs is invisible to
+	 * the compiler and to differentiation.</p>
+	 *
+	 * @param producer     the producer to present as an operator
+	 * @param <T>          the type of value produced
+	 * @return an {@link Operator} that delegates to the producer
+	 */
+	static <T> Operator<T> of(Producer<T> producer) {
+		if (producer instanceof Operator) {
+			return (Operator<T>) producer;
+		}
+
+		return new Operator<>() {
+			@Override
+			public Evaluable<T> get() { return (Evaluable<T>) producer.get(); }
+
+			@Override
+			public Scope<T> getScope(KernelStructureContext context) {
+				return producer instanceof ProducerComputation ?
+						(Scope<T>) ((ProducerComputation) producer).getScope(context) :
+						new Scope<>();
+			}
+
+			@Override
+			public Collection<Process<?, ?>> getChildren() {
+				return producer instanceof Process ?
+						((Process<Process<?, ?>, ?>) producer).getChildren() :
+						List.of();
+			}
+		};
 	}
 
 	/**

@@ -45,13 +45,6 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 	/** Audio sample rate. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
-	/** Returns a single-element {@link PackedCollection} containing the given value. */
-	private PackedCollection single(double value) {
-		PackedCollection c = new PackedCollection(1);
-		c.setMem(new double[] { value });
-		return c;
-	}
-
 	/**
 	 * The volume envelope rendered over {@code [0, 2W)} equals the concatenation of
 	 * two {@code W}-frame renders at sampling offsets {@code 0} and {@code W}.
@@ -61,11 +54,11 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 	public void volumeEnvelopeSplitsAcrossWindows() {
 		// Phases chosen so attack, decay, sustain, release and the post-release zero
 		// all occur within [0, 2W) and straddle the W boundary.
-		PackedCollection attack = single(0.002);
-		PackedCollection decay = single(0.001);
-		PackedCollection sustain = single(0.5);
-		PackedCollection release = single(0.004);
-		PackedCollection duration = single(0.015);
+		PackedCollection attack = pack(0.002);
+		PackedCollection decay = pack(0.001);
+		PackedCollection sustain = pack(0.5);
+		PackedCollection release = pack(0.004);
+		PackedCollection duration = pack(0.015);
 
 		BatchedPatternRenderer full = new BatchedPatternRenderer(1, 4096, 2 * WINDOW, SAMPLE_RATE, 2);
 		BatchedPatternRenderer win = new BatchedPatternRenderer(1, 4096, WINDOW, SAMPLE_RATE, 2);
@@ -73,9 +66,9 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 		PackedCollection reference = full.buildVolumeEnvelopeCurve(
 				attack, decay, sustain, release, duration).get().evaluate();
 		PackedCollection window0 = win.buildVolumeEnvelopeCurve(
-				attack, decay, sustain, release, duration, single(0)).get().evaluate();
+				attack, decay, sustain, release, duration, pack(0)).get().evaluate();
 		PackedCollection window1 = win.buildVolumeEnvelopeCurve(
-				attack, decay, sustain, release, duration, single(WINDOW)).get().evaluate();
+				attack, decay, sustain, release, duration, pack(WINDOW)).get().evaluate();
 
 		assertSplitMatches("volume envelope", reference, window0, window1);
 	}
@@ -88,14 +81,14 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 	@TestDepth(2)
 	public void layerEnvelopeSplitsAcrossWindows() {
 		// Segment ends d0=0.3*md, d1=0.6*md, d2=md straddle the W boundary.
-		PackedCollection md = single(0.020);
-		PackedCollection f0 = single(0.3);
-		PackedCollection f1 = single(0.6);
-		PackedCollection f2 = single(1.0);
-		PackedCollection v0 = single(0.0);
-		PackedCollection v1 = single(0.9);
-		PackedCollection v2 = single(0.5);
-		PackedCollection v3 = single(0.0);
+		PackedCollection md = pack(0.020);
+		PackedCollection f0 = pack(0.3);
+		PackedCollection f1 = pack(0.6);
+		PackedCollection f2 = pack(1.0);
+		PackedCollection v0 = pack(0.0);
+		PackedCollection v1 = pack(0.9);
+		PackedCollection v2 = pack(0.5);
+		PackedCollection v3 = pack(0.0);
 
 		BatchedPatternRenderer full = new BatchedPatternRenderer(1, 4096, 2 * WINDOW, SAMPLE_RATE, 2);
 		BatchedPatternRenderer win = new BatchedPatternRenderer(1, 4096, WINDOW, SAMPLE_RATE, 2);
@@ -103,9 +96,9 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 		PackedCollection reference = full.buildLayerEnvelopeCurve(
 				md, f0, f1, f2, v0, v1, v2, v3).get().evaluate();
 		PackedCollection window0 = win.buildLayerEnvelopeCurve(
-				md, f0, f1, f2, v0, v1, v2, v3, single(0)).get().evaluate();
+				md, f0, f1, f2, v0, v1, v2, v3, pack(0)).get().evaluate();
 		PackedCollection window1 = win.buildLayerEnvelopeCurve(
-				md, f0, f1, f2, v0, v1, v2, v3, single(WINDOW)).get().evaluate();
+				md, f0, f1, f2, v0, v1, v2, v3, pack(WINDOW)).get().evaluate();
 
 		assertSplitMatches("layer envelope", reference, window0, window1);
 	}

@@ -17,6 +17,7 @@
 package org.almostrealism.audio.line;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.ConsoleFeatures;

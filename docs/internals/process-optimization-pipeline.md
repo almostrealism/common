@@ -287,15 +287,48 @@ is consulted. They override the strategy's decision.
 method handles this internally, but if you are working with raw `Process` trees, you
 must call `optimize()` explicitly.
 
+This includes the case where the graph is a `Producer` rather than an `OperationList`
+or a hand-built `Process` tree. `Producer.evaluate(...)` and `Producer.into(...)` are
+convenience methods that call `get()` for you, and neither optimizes on the way:
+
+```java
+// Neither of these optimizes
+producer.evaluate();
+producer.into(destination).evaluate();
+
+// These do
+producer.evaluateOptimized();
+Evaluable e = Process.optimized(producer).get();
+e.into(destination).evaluate();
+```
+
+There is no optimizing counterpart to `into(...)`, so the destination case has to be
+written as the two steps above.
+
 ## Common Pitfalls
 
-**Do not skip optimization to "save time."** Unoptimized trees produce correct but
-potentially very slow code. A 4096x replication of a trigonometric expression can turn
-a 10μs kernel into a 100ms kernel.
+**Do not skip optimization to "save time."** Unoptimized trees are usually slow rather
+than broken — a 4096x replication of a trigonometric expression can turn a 10μs kernel
+into a 100ms kernel — but they are not always merely slow. Isolation is only consulted
+during optimization, so an unoptimized tree inlines every child, and `Expression.init`
+rejects anything deeper than `ScopeSettings.maxDepth`:
+
+```
+HardwareException: Cannot compile <operation>
+Caused by: ExpressionException: Expression too deep
+```
+
+Because an inlined child's depth grows with its input size, this appears as a graph
+that compiles at small sizes and stops compiling at realistic ones. **A size-dependent
+compile failure is the signature of a missing `optimize()`.**
 
 **Do not manually isolate processes.** Let the optimization strategies decide. Manual
 isolation bypasses the scoring function and can produce worse results than no isolation
-at all.
+at all. This applies to informal hand-splitting too: materialising an intermediate with
+an extra `evaluate()` and feeding it back in via `cp(...)` will also get a too-deep
+expression to compile, and is the same mistake in a less obvious form — it relocates a
+kernel-boundary decision from the process tree into application code, where the next
+site with the same shape will not have it.
 
 **Do not modify thresholds without benchmarking.** The default thresholds are tuned for
 typical workloads. Changing them affects all process trees globally.

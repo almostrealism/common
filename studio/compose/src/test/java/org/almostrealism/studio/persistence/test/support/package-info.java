@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,10 @@
  */
 
 /**
- * Test support utilities for audio testing including
- * {@link org.almostrealism.audio.test.support.DistractionRunner} and
- * {@link org.almostrealism.audio.test.support.TestAudioDataFeatures}.
+ * Shared fixtures for the persistence and discovery tests, principally the feature
+ * providers that turn audio into the multi-dimensional features those tests store,
+ * index and compare.
+ *
+ * @see org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider
  */
-package org.almostrealism.audio.test.support;
+package org.almostrealism.studio.persistence.test.support;
