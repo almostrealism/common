@@ -5,6 +5,8 @@
 
 package org.almostrealism.audio.data;
 
+import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
@@ -241,20 +243,20 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	/**
 	 * Normalizes audio to prevent clipping.
 	 *
-	 * <p>The peak is reduced in its own kernel rather than left as a {@link
-	 * io.almostrealism.relation.Producer} inside the scale. A whole-collection
-	 * reduction embedded in an elementwise expression is inlined at every
-	 * element, so the expression depth grows with the length of the buffer and
-	 * compilation fails once the audio is long enough. Reducing first costs one
-	 * additional kernel and keeps the scale a constant-depth expression.</p>
+	 * <p>The scale is evaluated through {@link Process#optimized(java.util.function.Supplier)}
+	 * rather than by calling {@link io.almostrealism.relation.Producer#into(Object)}
+	 * directly. Isolation is only consulted during optimization, so an unoptimized
+	 * consumer embeds the whole-collection peak reduction at every element and the
+	 * expression depth grows with the length of the buffer, exceeding
+	 * {@code ScopeSettings.maxDepth} once the audio is long enough. Deciding where
+	 * to split belongs to the process tree, not to this method.</p>
 	 */
 	private void normalizeAudio(PackedCollection audio) {
-		try (PackedCollection peak = max(cp(audio).abs()).evaluate()) {
-			// Scale to 0.9 to leave headroom, or leave silence untouched. The
-			// guard selects rather than branches, so the unused quotient is
-			// computed and discarded instead of dividing by zero on the host.
-			cp(audio).multiply(greaterThan(cp(peak), c(1e-6), c(0.9).divide(cp(peak)), c(1.0)))
-					.into(audio.traverseEach()).evaluate();
-		}
+		CollectionProducer peak = max(cp(audio).abs());
+		CollectionProducer scaled = cp(audio)
+				.multiply(greaterThan(peak, c(1e-6), c(0.9).divide(peak), c(1.0)));
+
+		Evaluable scale = Process.optimized(scaled).get();
+		scale.into(audio.traverseEach()).evaluate();
 	}
 }
