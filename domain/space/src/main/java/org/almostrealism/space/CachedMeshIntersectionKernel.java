@@ -139,7 +139,7 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 			cache = Pair.bank(((MemoryBank) destination).getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			for (int i = 0; i < cache.getCountLong(); i++) {
-				((MemoryData) ((MemoryBank) destination).get(i)).setMem(cache.toDouble(i * 2), 1.0);
+				((MemoryData) ((MemoryBank) destination).get(i)).setMem(new double[] { cache.toDouble(i * 2), 1.0 });
 			}
 
 			return destination;

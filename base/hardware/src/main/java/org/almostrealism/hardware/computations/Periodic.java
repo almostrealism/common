@@ -109,7 +109,7 @@ public class Periodic extends OperationComputationAdapter<MemoryData>
 	/** Number of invocations between executions of the atom. */
 	private final int period;
 	/** Memory data used to track the invocation count between periodic executions. */
-	private final MemoryData counter;
+	private final Bytes counter;
 
 	/**
 	 * Creates a new {@link Periodic} with a fresh counter.
@@ -131,7 +131,7 @@ public class Periodic extends OperationComputationAdapter<MemoryData>
 	 * @param period  the number of invocations between executions
 	 * @param counter the persistent counter memory (size 1)
 	 */
-	private Periodic(Computation<Void> atom, int period, MemoryData counter) {
+	private Periodic(Computation<Void> atom, int period, Bytes counter) {
 		super(() -> new Provider(counter));
 		this.atom = atom;
 		this.period = period;

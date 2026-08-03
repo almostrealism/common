@@ -154,8 +154,8 @@ public class AudioMeter implements Receptor<PackedCollection>, Lifecycle, Scalar
 	@Override
 	public void reset() {
 		Lifecycle.super.reset();
-		silenceDuration.setMem(0.0);
-		silenceValue.setMem(0.0);
-		clipCount.setMem(0.0);
+		silenceDuration.setMem(0, 0.0);
+		silenceValue.setMem(0, 0.0);
+		clipCount.setMem(0, 0.0);
 	}
 }

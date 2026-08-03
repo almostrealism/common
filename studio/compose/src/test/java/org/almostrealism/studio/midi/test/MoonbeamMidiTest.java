@@ -364,9 +364,9 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(6, 2));
 		// Set W_ir (rows 0-1) to identity; W_iz (rows 2-3) and
 		// W_in (rows 4-5) are left as zero
-		weightIh.setMem(
+		weightIh.setMem(new double[] {
 				1.0, 0.0,
-				0.0, 1.0);
+				0.0, 1.0 });
 
 		// W_hh = [W_hr; W_hz; W_hn], shape (6, 2)
 		PackedCollection weightHh = new PackedCollection(new TraversalPolicy(6, 2));

@@ -217,7 +217,7 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 	 */
 	default Supplier<Runnable> periodic(Computation<Void> c, int period) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
-			MemoryData counter = new Bytes(1);
+			Bytes counter = new Bytes(1);
 			return () -> {
 				Runnable r = ((OperationList) c).get();
 				return () -> {

@@ -84,6 +84,21 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	protected interface Data extends MemoryData {
 		/**
+		 * Writes the channel at index {@code offset} directly.
+		 *
+		 * <p>The indexed write is declared here rather than inherited from
+		 * {@link MemoryData}, which does not offer one. A channel of a colour is
+		 * addressed individually by definition, so this abstraction opts into the
+		 * write explicitly; implementations extend
+		 * {@link org.almostrealism.hardware.mem.MemoryDataAdapter}, which provides
+		 * it.</p>
+		 *
+		 * @param offset the channel index (0=red, 1=green, 2=blue)
+		 * @param value the value to write
+		 */
+		void setMem(int offset, double value);
+
+		/**
 		 * Adds the given value to the channel at index {@code i}.
 		 *
 		 * @param i the channel index (0=red, 1=green, 2=blue)
@@ -371,9 +386,9 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 */
 	public void setRed(double r) {
 		if (r < 0.0) {
-			this.data.setMem(0.0);
+			this.data.setMem(0, 0.0);
 		} else if (r > 1.0) {
-			this.data.setMem(1.0);
+			this.data.setMem(0, 1.0);
 		} else {
 			this.data.setMem(0, r);
 		}

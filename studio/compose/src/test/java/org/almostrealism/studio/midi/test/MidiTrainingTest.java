@@ -441,7 +441,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 		int vocabSize = 10;
 		PackedCollection logits = new PackedCollection(new TraversalPolicy(vocabSize));
 		logits.fill(-10.0);
-		logits.setMem(10.0, 5.0, 1.0);
+		logits.setMem(new double[] { 10.0, 5.0, 1.0 });
 
 		Set<Integer> sampledTokens = new HashSet<>();
 		Random random = new Random(42);

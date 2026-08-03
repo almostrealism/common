@@ -847,7 +847,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		CompiledModel firCompiled = firModel.compile();
 
 		double firFirst = firCompiled.forward(input).toArray(0, sig)[sig - 1];
-		coeffs.setMem(0.5, 0.0, 0.0);
+		coeffs.setMem(new double[] { 0.5, 0.0, 0.0 });
 		double firSecond = firCompiled.forward(input).toArray(0, sig)[sig - 1];
 		log(String.format("live-fir probe: first=%.4f (expect 1) second=%.4f (expect 0.5)",
 				firFirst, firSecond));

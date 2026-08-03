@@ -115,7 +115,7 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 		Runnable tick = network.tick().get();
 
 		for (int i = 0; i < input.getMemLength(); i++) {
-			current.setMem(input.toDouble(i));
+			current.setMem(0, input.toDouble(i));
 			output.setMem(i, ev.evaluate().toDouble(0));
 			tick.run();
 		}

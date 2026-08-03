@@ -492,7 +492,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		int delaySamples = 4;
 
 		PackedCollection coeffs = new PackedCollection(firTaps);
-		coeffs.setMem(1.0); // pass-through FIR (impulse) — keeps the test filter-shape agnostic
+		coeffs.setMem(0, 1.0); // pass-through FIR (impulse) — keeps the test filter-shape agnostic
 		PackedCollection wetLevel = pack(0.5);
 		PackedCollection automation = pack(1.0);
 		PackedCollection delaySlot = new PackedCollection(1);

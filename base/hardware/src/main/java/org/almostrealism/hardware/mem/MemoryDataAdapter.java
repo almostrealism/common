@@ -240,6 +240,45 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		this.delegateMemOffset = offset;
 	}
 
+	/**
+	 * Writes one double value to this memory at the specified offset.
+	 *
+	 * <p>This is the only indexed write, and it is declared here rather than on
+	 * {@link MemoryData} so that it is reachable only through a concrete
+	 * implementation. An indexed scalar write is the shape a host-side loop takes
+	 * when it computes values one at a time, and offering it on the interface put
+	 * it within reach of every consumer of a {@link MemoryData} reference. A call
+	 * that needs to place more than one value writes the whole buffer with
+	 * {@link MemoryData#setMem(double...)} at index 0, or is a computation and
+	 * belongs in a {@link io.almostrealism.relation.Producer} rather than at a
+	 * write site.</p>
+	 *
+	 * @param offset Index in this memory
+	 * @param value Value to write
+	 */
+	public void setMem(int offset, double value) {
+		MemoryData root = getRootDelegate();
+
+		if (getOffset() - root.getOffset() + offset + 1 > root.getMemLength()) {
+			throw new IllegalArgumentException("Offset is beyond the length of this MemoryData");
+		}
+
+		MemoryData.setMem(getMem(), getOffset() + offset, new double[] { value }, 0, 1);
+	}
+
+	/**
+	 * Writes one float value to this memory at the specified offset.
+	 *
+	 * <p>See {@link #setMem(int, double)} for why only a single value may be
+	 * written at an offset, and why this is not declared on {@link MemoryData}.</p>
+	 *
+	 * @param offset Index in this memory
+	 * @param value Value to write
+	 */
+	public void setMem(int offset, float value) {
+		MemoryData.setMem(getMem(), getOffset() + offset, new float[] { value }, 0, 1);
+	}
+
 	public Heap getDefaultDelegate() { return null; }
 
 	@Override

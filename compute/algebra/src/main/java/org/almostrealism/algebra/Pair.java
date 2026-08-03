@@ -131,7 +131,7 @@ public class Pair extends PackedCollection {
 	 */
 	public Pair(double x, double y) {
 		this();
-		this.setMem(x, y);
+		this.setMem(new double[] { x, y });
 	}
 	
 	/**

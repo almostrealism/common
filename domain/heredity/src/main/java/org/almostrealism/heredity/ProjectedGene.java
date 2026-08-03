@@ -229,7 +229,7 @@ public class ProjectedGene extends TransformableGene implements VectorFeatures {
 	 */
 	protected void initRanges() {
 		for (int i = 0; i < length(); i++) {
-			ranges.get(i).setMem(0.0, 1.0);
+			ranges.get(i).setMem(new double[] { 0.0, 1.0 });
 		}
 	}
 
