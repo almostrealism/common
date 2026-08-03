@@ -214,6 +214,20 @@ kernel cacheable regardless of how the random values themselves are produced.
   host `double[]`, read the device result back with `toArray()` (readback is
   sanctioned), and compare on the host. Reference *inputs* that must reach the
   device ship as resource files through the ingest API.
+
+  `TestFeatures` now carries this shape directly: `reference(shape, pos -> ...)`
+  materializes a function over every position of a shape into a host array, and
+  `compare(double[], PackedCollection)` checks it against the device result. The
+  old `compare(PackedCollection, PackedCollection)` delegates to it, since it
+  began by calling `toArray()` on both sides — a reference built as a collection
+  was uploaded only to be read straight back, so the transfer bought nothing.
+  Migrating a site is therefore a change of destination, not of logic: the
+  lambda body is untouched. `RotationTests` moved its five comparisons this way.
+
+  `reference` is deliberately on `TestFeatures` rather than on `TraversalPolicy`,
+  which it iterates. A general "materialize values over a shape on the host"
+  method in the core collection API is the exact entry point this policy exists
+  to remove, and it would be found and used well outside test assertions.
 - **Call-varying host-parameterized data** (seed- or hash-derived tables,
   per-sample synthetic training pairs): cannot be a producer without baking the
   varying value as a `c()` constant — one compiled kernel per distinct value (F1

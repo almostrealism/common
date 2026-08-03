@@ -17,6 +17,7 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -43,6 +44,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -284,11 +286,48 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @return the average absolute difference between corresponding elements
 	 */
 	default double compare(PackedCollection expected, PackedCollection actual) {
-		double exp[] = expected.toArray();
+		return compare(expected.toArray(), actual);
+	}
+
+	/**
+	 * Computes the average absolute difference between host reference values and a
+	 * device-computed {@link PackedCollection}.
+	 *
+	 * <p>Reference values for an assertion exist to be derived independently of the
+	 * device, so they belong in a host array rather than device memory. Comparing
+	 * against one directly means the reference is never uploaded — the earlier
+	 * {@link #compare(PackedCollection, PackedCollection)} form read it straight
+	 * back out again, so the transfer bought nothing.</p>
+	 *
+	 * @param expected the host reference values, in flat index order
+	 * @param actual   the device-computed collection to check
+	 * @return the average absolute difference between corresponding elements
+	 */
+	default double compare(double expected[], PackedCollection actual) {
 		double act[] = actual.toArray();
-		return IntStream.range(0, exp.length)
-				.mapToDouble(i -> Math.abs(exp[i] - act[i]))
+		return IntStream.range(0, expected.length)
+				.mapToDouble(i -> Math.abs(expected[i] - act[i]))
 				.average().orElseThrow();
+	}
+
+	/**
+	 * Materializes a function over every position of the given shape into a host array,
+	 * for use as reference values in an assertion.
+	 *
+	 * <p>This is deliberately host-side and deliberately not a {@link PackedCollection}.
+	 * A reference that becomes a Producer stops being an independent check of what the
+	 * device computed, and one that becomes a collection is uploaded only to be read
+	 * back for the comparison. Values are stored in flat index order, matching
+	 * {@link PackedCollection#toArray()}.</p>
+	 *
+	 * @param shape the shape whose positions are visited
+	 * @param f     the function supplying the value at each position
+	 * @return the reference values in flat index order
+	 */
+	default double[] reference(TraversalPolicy shape, Function<int[], Double> f) {
+		double values[] = new double[shape.getTotalSize()];
+		shape.stream().forEach(pos -> values[shape.index(pos)] = f.apply(pos));
+		return values;
 	}
 
 	/**

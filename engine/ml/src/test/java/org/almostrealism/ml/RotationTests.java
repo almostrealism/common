@@ -109,9 +109,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		PackedCollection cosValues = product.evaluate();
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim));
-
-		expected.fill(pos -> {
+		double expected[] = reference(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 			int b = pos[0];
 			int h = pos[1];
 			int s = pos[2];
@@ -154,8 +152,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		CollectionProducer sum = cp(leftIn).multiply(cosFreqs).add(cp(rightIn).multiply(sinFreqs));
 		PackedCollection result = sum.evaluate();
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double expected[] = reference(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
@@ -229,8 +226,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double expected[] = reference(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
@@ -285,8 +281,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double expected[] = reference(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
@@ -343,8 +338,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double expected[] = reference(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
