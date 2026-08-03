@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
@@ -305,7 +306,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		float[] masterMono = new float[totalSamples];
 
 		// Per-channel carrier frequencies: one tone per channel
-		double[] channelFreqs = {220.0, 440.0, 880.0, 1760.0};
+		PackedCollection channelFreqs = pack(220.0, 440.0, 880.0, 1760.0);
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
@@ -629,7 +630,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		int totalSamples = SAMPLE_RATE / 2;
 		int numPasses = totalSamples / SIGNAL_SIZE;
 		float[] mono = new float[numPasses * SIGNAL_SIZE];
-		double[] channelFreqs = {220.0, 440.0, 880.0, 1760.0};
+		PackedCollection channelFreqs = pack(220.0, 440.0, 880.0, 1760.0);
 		double busEnergy = 0.0;
 		for (int pass = 0; pass < numPasses; pass++) {
 			int sampleOffset = pass * SIGNAL_SIZE;
@@ -1032,16 +1033,14 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * per channel, starting at the given sample offset for continuous-phase
 	 * playback across buffer boundaries.
 	 */
-	private PackedCollection multiChannelCarrier(double[] freqs, int sampleOffset) {
-		PackedCollection input = new PackedCollection(
-				new TraversalPolicy(CHANNELS, SIGNAL_SIZE));
+	private PackedCollection multiChannelCarrier(PackedCollection freqs, int sampleOffset) {
+		CollectionProducer position = repeat(0, CHANNELS,
+				integers(sampleOffset, sampleOffset + SIGNAL_SIZE).reshape(1, SIGNAL_SIZE));
+		CollectionProducer frequency = repeat(1, SIGNAL_SIZE, cp(freqs).reshape(CHANNELS, 1));
 
-		for (int c = 0; c < CHANNELS; c++) {
-			input.setFrom(c * SIGNAL_SIZE, tone(freqs[c], sampleOffset));
-		}
-
-		cp(input).multiply(1.0 / CHANNELS).into(input).evaluate();
-		return input;
+		return sin(position.multiply(frequency).multiply(2.0 * Math.PI / SAMPLE_RATE))
+				.multiply(1.0 / CHANNELS)
+				.evaluate().reshape(CHANNELS, SIGNAL_SIZE);
 	}
 
 	/** Argument map for {@code mixdown_main_bus}. */
@@ -1156,13 +1155,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		int perChannel = FILTER_ORDER + 1;
 		PackedCollection coeffs =
 				lowPassCoefficients(c(WET_LP_CUTOFF), SAMPLE_RATE, FILTER_ORDER).evaluate();
-		PackedCollection all = new PackedCollection(CHANNELS * perChannel);
-
-		for (int c = 0; c < CHANNELS; c++) {
-			all.setFrom(c * perChannel, coeffs);
-		}
-
-		return all;
+		return cp(coeffs).repeat(CHANNELS)
+				.evaluate().reshape(CHANNELS * perChannel);
 	}
 
 	/**
@@ -1252,7 +1246,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		float[] producerMono = new float[totalSamples];
 		float[] constMono = new float[totalSamples];
 
-		double[] channelFreqs = {220.0, 440.0, 880.0, 1760.0};
+		PackedCollection channelFreqs = pack(220.0, 440.0, 880.0, 1760.0);
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int sampleOffset = pass * SIGNAL_SIZE;
