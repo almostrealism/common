@@ -107,5 +107,4 @@ SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studi
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	signal.setMem(s);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	transmission.setMem(transmissionRowMajor);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/ml/test/PdslAudioDspTest.java	1	filterCoeffs.setMem(coeffs);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/test/java/org/almostrealism/studio/persistence/test/DrawingFeaturePipelineTest.java	1	features.setMem(featureValues);
 SETMEM_NON_LITERAL_ARGUMENT	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	dest.setMem(values);
