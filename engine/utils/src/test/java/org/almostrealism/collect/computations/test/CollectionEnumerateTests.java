@@ -695,7 +695,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		PackedCollection input =
 				new PackedCollection(shape(n, c, h, w))
 //							.fill(pos -> pos[2] + 0.1 * pos[3])
-						.fill(Math::random);
+						.randFill();
 		log(input.getShape());
 
 		CollectionProducer conv =
@@ -751,7 +751,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 
 		PackedCollection input =
 				new PackedCollection(shape(n, c, h, w))
-						.fill(Math::random);
+						.randFill();
 
 		CollectionProducer conv =
 				c(p(input))

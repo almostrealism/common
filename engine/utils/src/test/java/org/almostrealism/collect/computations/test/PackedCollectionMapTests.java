@@ -50,8 +50,8 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		int n = 5;
 		int m = 2;
 
-		PackedCollection c = empty(shape(n)).fill(Math::random);
-		PackedCollection d = empty(shape(m)).fill(Math::random);
+		PackedCollection c = empty(shape(n)).randFill();
+		PackedCollection d = empty(shape(m)).randFill();
 		Supplier<CollectionProducer> product =
 				() -> cp(c).each().repeat(m).mul(cp(d))
 						.reshape(shape(n, m)).traverse(1);

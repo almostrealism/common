@@ -35,8 +35,14 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 	/** Frequency bins per analysis frame. */
 	private static final int BINS = 16;
 
-	/** Number of analysis frames in the synthetic input. */
-	private static final int FRAMES = 8;
+	/**
+	 * Number of analysis frames in the synthetic input.
+	 *
+	 * <p>Chosen so the reconstruction is long enough to exercise normalization at a
+	 * realistic length. A short buffer will compile a peak reduction that has been
+	 * inlined per element, and so would not detect that regression.</p>
+	 */
+	private static final int FRAMES = 256;
 
 	/** Sample rate of the reconstructed audio. */
 	private static final int SAMPLE_RATE = 8000;

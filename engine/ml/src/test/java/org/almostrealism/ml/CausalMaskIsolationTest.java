@@ -61,7 +61,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		position.clear();
 
 		PackedCollection input0 = new PackedCollection(shape(heads, seqLen));
-		input0.fill(Math::random); // Random input
+		input0.randFill(); // Random input
 
 		PackedCollection output0 = compiled.forward(input0);
 
@@ -86,7 +86,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		position.fill(2.0);
 
 		PackedCollection input2 = new PackedCollection(shape(heads, seqLen));
-		input2.fill(Math::random);
+		input2.randFill();
 
 		PackedCollection output2 = compiled.forward(input2);
 

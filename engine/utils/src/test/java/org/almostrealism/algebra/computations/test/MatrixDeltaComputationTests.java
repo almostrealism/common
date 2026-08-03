@@ -232,9 +232,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		int size = 8;
 		int nodes = 3;
 
-		PackedCollection v = new PackedCollection(shape(size)).fill(Math::random);
-		PackedCollection w = new PackedCollection(shape(nodes, size)).fill(Math::random);
-		PackedCollection b = new PackedCollection(shape(nodes)).fill(Math::random);
+		PackedCollection v = new PackedCollection(shape(size)).randFill();
+		PackedCollection w = new PackedCollection(shape(nodes, size)).randFill();
+		PackedCollection b = new PackedCollection(shape(nodes)).randFill();
 		PackedCollection out;
 
 		CollectionProducer c = matmul(cp(w), cp(v).traverseAll()).add(traverse(1, p(b)));
@@ -323,9 +323,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		try {
 			initKernelMetrics(profile);
 
-			PackedCollection v = new PackedCollection(shape(size)).fill(Math::random);
-			PackedCollection w = new PackedCollection(shape(nodes, size)).fill(Math::random);
-			PackedCollection b = new PackedCollection(shape(nodes)).fill(Math::random);
+			PackedCollection v = new PackedCollection(shape(size)).randFill();
+			PackedCollection w = new PackedCollection(shape(nodes, size)).randFill();
+			PackedCollection b = new PackedCollection(shape(nodes)).randFill();
 			CollectionProducer c = matmul(cp(w), cp(v).traverseAll()).add(traverse(1, p(b)));
 			Supplier<Evaluable<? extends PackedCollection>> d = Process.optimized(dIn ? c.delta(cp(v)) : c.delta(cp(w)));
 
@@ -511,9 +511,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 	 * @throws IOException If profiling fails
 	 */
 	public void denseWeights(String name, int size, int nodes) throws IOException {
-		PackedCollection v = new PackedCollection(shape(size)).fill(Math::random);
-		PackedCollection g = new PackedCollection(shape(nodes)).fill(Math::random);
-		PackedCollection w = new PackedCollection(shape(nodes, size)).fill(Math::random);
+		PackedCollection v = new PackedCollection(shape(size)).randFill();
+		PackedCollection g = new PackedCollection(shape(nodes)).randFill();
+		PackedCollection w = new PackedCollection(shape(nodes, size)).randFill();
 		CollectionProducer c = matmul(cp(w), cp(v).traverseAll());
 
 		int weightSize = size * nodes;

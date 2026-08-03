@@ -141,21 +141,28 @@
                     </div>
                 </div>
 
-                <h3>Bulk Memory Copy Operations</h3>
-                <p><a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> supports efficient bulk copy operations that are significantly faster than element-by-element loops:</p>
+<h3>Memory Copy Between MemoryData Regions</h3>
+                <p><a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> exposes two distinct write surfaces, deliberately named so the call site tells them apart:</p>
+                <ul>
+                    <li><code>setFrom(...)</code> copies another <code>MemoryData</code> into this one — the only sanctioned way to move data region-to-region.</li>
+                    <li><code>setMem(...)</code> takes literal varargs only — bulk host-array uploads are no longer exposed here; system-boundary ingest goes through <code>MemoryData.read(ByteBuffer)</code> into a native staging allocation.</li>
+                </ul>
 
                 <div class="code-example">
-                    <h4>Using setMem() for Direct Copy</h4>
+                    <h4>Using setFrom() for Direct Copy</h4>
                     <pre><code class="language-java">// Copy entire collection to another (same size)
-PackedCollection<?> source = new PackedCollection<>(1000);
-PackedCollection<?> target = new PackedCollection<>(1000);
-target.setMem(0, source);  // Copy all of source to target
+PackedCollection&lt;?&gt; source = new PackedCollection&lt;&gt;(1000);
+PackedCollection&lt;?&gt; target = new PackedCollection&lt;&gt;(1000);
+target.setFrom(0, source);  // Copy all of source to target
 
 // Copy with offsets and length
-target.setMem(targetOffset, source, srcOffset, length);
+target.setFrom(targetOffset, source, srcOffset, length);
 
 // Copy a range starting at target offset 0
-target.setMem(source, srcOffset, length);</code></pre>
+target.setFrom(source, srcOffset, length);
+
+// Write a small literal vector (varargs only)
+target.setMem(0, 1.0, 2.0, 3.0, 4.0);</code></pre>
                 </div>
 
                 <div class="code-example">
@@ -195,7 +202,7 @@ normalize(cp(vector)).into(vector).evaluate();</code></pre>
                 </div>
 
                 <div class="success">
-                    <strong>Performance Tip:</strong> <code>setMem(MemoryData)</code> is significantly more efficient than element-by-element loops. Always use bulk operations when copying between collections.
+                    <strong>Performance Tip:</strong> <code>setFrom(MemoryData)</code> is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve <code>setMem(...)</code> for literal varargs.
                 </div>
 
                 <h3>Context Management</h3>

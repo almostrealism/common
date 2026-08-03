@@ -143,8 +143,8 @@ public class MatrixMathTests extends TestSuiteBase {
 		int m = 3;
 		int p = 4;
 
-		PackedCollection a = new PackedCollection(shape(n, m)).fill(Math::random);
-		PackedCollection b = new PackedCollection(shape(m, p)).fill(Math::random);
+		PackedCollection a = new PackedCollection(shape(n, m)).randFill();
+		PackedCollection b = new PackedCollection(shape(m, p)).randFill();
 
 		CollectionProducer product =
 				cp(b).enumerate(1, 1)
