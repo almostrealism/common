@@ -210,7 +210,9 @@ public class DenseLayerShapeInvestigationTest extends TestSuiteBase {
 
 		// Weights: (4, 3)
 		PackedCollection weights = new PackedCollection(shape(outputSize, inputSize));
-		weights.fill(pos -> (pos[0] + 1) * 0.1);
+		integers(0, outputSize).add(1.0).multiply(0.1)
+				.reshape(shape(outputSize, 1)).repeat(1, inputSize)
+				.into(weights.traverseEach()).evaluate();
 
 		log("Weights shape: " + weights.getShape());
 

@@ -322,7 +322,7 @@ import java.util.function.Consumer;
  *     // This code runs in a fresh DataContext
  *     // Allocated memory is automatically cleaned up
  *     PackedCollection temp = new PackedCollection(1000);
- *     temp.fill(Math::random);
+ *     temp.randFill();
  *     return temp.copy();  // Return must be copied out
  * });
  * // Temporary context destroyed here
@@ -1039,7 +1039,7 @@ public final class Hardware implements ConsoleFeatures {
 	 * <pre>{@code
 	 * PackedCollection result = Hardware.getLocalHardware().dataContext(() -> {
 	 *     PackedCollection temp = new PackedCollection(1000);
-	 *     temp.fill(Math::random);
+	 *     temp.randFill();
 	 *     return temp.copy();  // Must copy before returning
 	 * });
 	 * }</pre>

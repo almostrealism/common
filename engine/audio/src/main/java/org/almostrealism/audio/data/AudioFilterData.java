@@ -60,13 +60,13 @@ public interface AudioFilterData extends BaseAudioData {
 	default PackedCollection outputHistory2() { return get(14); }
 
 	default Producer<PackedCollection> getFrequency() { return p(frequency()); }
-	default void setFrequency(double frequency) { frequency().setMem(0, frequency); }
+	default void setFrequency(double frequency) { frequency().fill(frequency); }
 
 	default Producer<PackedCollection> getResonance() { return p(resonance()); }
-	default void setResonance(double resonance) { resonance().setMem(0, resonance); }
+	default void setResonance(double resonance) { resonance().fill(resonance); }
 
 	default Producer<PackedCollection> getSampleRate() { return p(sampleRate()); }
-	default void setSampleRate(double sampleRate) { sampleRate().setMem(0, sampleRate); }
+	default void setSampleRate(double sampleRate) { sampleRate().fill(sampleRate); }
 
 	default Producer<PackedCollection> getC() { return p(c()); }
 	default Producer<PackedCollection> getA1() { return p(a1()); }

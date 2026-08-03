@@ -33,6 +33,7 @@ import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.audio.tone.WesternChromatic;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
@@ -60,12 +61,13 @@ public class AudioSynthesizerTests extends TestSuiteBase {
 		double lfo1 = 0.5;
 		double lfo2 = 1.1;
 		PackedCollection levelData = new PackedCollection(shape(2, 10 * OutputLine.sampleRate));
-		levelData.fill(pos -> {
-			int i = pos[0];
-			double j = pos[1];
-			double t = (j / OutputLine.sampleRate) + (i == 0 ? 0 : 0.3);
-			return Math.sin(2 * Math.PI * (i == 0 ? lfo1 : lfo2) * t);
-		});
+		int frames = 10 * OutputLine.sampleRate;
+		CollectionProducer offset = cp(pack(0.0, 0.3)).reshape(shape(2, 1)).repeat(1, frames);
+		CollectionProducer rate = cp(pack(lfo1, lfo2)).reshape(shape(2, 1)).repeat(1, frames);
+		CollectionProducer time = integers(0, 2 * frames).mod(frames)
+				.divide(OutputLine.sampleRate).add(offset);
+		sin(time.multiply(rate).multiply(2 * Math.PI))
+				.into(levelData.traverseEach()).evaluate();
 
 		String key = "test-synth";
 		GeneratedSourceLibrary models = new GeneratedSourceLibrary(library);

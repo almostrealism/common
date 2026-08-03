@@ -109,8 +109,8 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 	@Test(timeout = 30000)
 	public void doubleAssignmentReduceCount() {
 		PackedCollection x = new PackedCollection(shape(1)).traverse();
-		PackedCollection a = new PackedCollection(shape(2048)).fill(Math::random);
-		PackedCollection b = new PackedCollection(shape(2048)).fill(Math::random);
+		PackedCollection a = new PackedCollection(shape(2048)).randFill();
+		PackedCollection b = new PackedCollection(shape(2048)).randFill();
 
 		OperationList op = new OperationList();
 		op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));

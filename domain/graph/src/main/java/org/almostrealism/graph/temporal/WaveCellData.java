@@ -75,7 +75,7 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @param count the starting index within the wave data
 	 */
-	default void setWaveIndex(int count) { waveIndex().setMem(0, count); }
+	default void setWaveIndex(int count) { waveIndex().fill(count); }
 
 	/**
 	 * Returns a producer for the wave sample count.
@@ -89,6 +89,6 @@ public interface WaveCellData extends BaseAudioData {
 	 *
 	 * @param count the number of samples in the wave data
 	 */
-	default void setWaveCount(int count) { waveCount().setMem(0, count); }
+	default void setWaveCount(int count) { waveCount().fill(count); }
 }
 

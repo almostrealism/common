@@ -47,7 +47,7 @@ public class ConvolutionDeltaComputationTests extends TestSuiteBase implements G
 		TraversalPolicy outputShape = shape(dim - pad, dim - pad, filterCount);
 
 		PackedCollection input = integers(1, 1 + dim * dim).evaluate().reshape(dim, dim);
-		PackedCollection filters = new PackedCollection(shape(size, size, filterCount)).fill(Math::random);
+		PackedCollection filters = new PackedCollection(shape(size, size, filterCount)).randFill();
 
 		CollectionProducer c = cp(input)
 				.enumerate(1, size, 1)

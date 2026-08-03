@@ -526,8 +526,7 @@ public class CollectionMathTests extends TestSuiteBase {
 		PackedCollection aOrig = new PackedCollection(shape(size));
 		aOrig.randFill();
 
-		PackedCollection a = new PackedCollection(shape(size));
-		a.fill(pos -> aOrig.valueAt(pos));
+		PackedCollection a = aOrig.clone();
 
 		PackedCollection b = new PackedCollection(shape(size));
 		b.randFill();

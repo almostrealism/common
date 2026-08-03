@@ -93,8 +93,8 @@ public interface ModelTestFeatures extends TestFeatures {
 
 		log("Generating data...");
 		for (int i = 0; i < datasetSize; i++) {
-			PackedCollection input = new PackedCollection(inShape).fill(Math::random);
-			data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(Math::random)));
+			PackedCollection input = new PackedCollection(inShape).randFill();
+			data.add(ValueTarget.of(input, new PackedCollection(outShape).randFill()));
 		}
 
 		return data;

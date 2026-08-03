@@ -109,18 +109,14 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		PackedCollection cosValues = product.evaluate();
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim));
-
-		expected.fill(pos -> {
+		double diff = compare(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 			int b = pos[0];
 			int h = pos[1];
 			int s = pos[2];
 			int d = pos[3];
 			double freqValue = freqs.valueAt(s, d);
 			return input.valueAt(b, h, s, d) * Math.cos(freqValue);
-		});
-
-		double diff = compare(expected, cosValues);
+		}, cosValues);
 		log("Diff = " + diff);
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
@@ -154,8 +150,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		CollectionProducer sum = cp(leftIn).multiply(cosFreqs).add(cp(rightIn).multiply(sinFreqs));
 		PackedCollection result = sum.evaluate();
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double diff = compare(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
@@ -166,9 +161,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 					double sinFreq = Math.sin(freqValue);
 					return leftIn.valueAt(b, h, s, d) * cosFreq +
 							rightIn.valueAt(b, h, s, d) * sinFreq;
-				});
-
-		double diff = compare(expected, result);
+				}, result);
 		log("Diff = " + diff);
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
@@ -229,8 +222,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double diff = compare(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
@@ -244,9 +236,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 						// Second half should be input[..., :halfDim] (first half of input)
 						return orig + input.valueAt(b, h, s, d - halfDim);
 					}
-				});
-
-		double diff = compare(expected, result);
+				}, result);
 		log("Diff = " + diff);
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
@@ -285,8 +275,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double diff = compare(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
@@ -312,9 +301,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 					// input * cos(freq) + rotate_half(input) * sin(freq)
 					return inputValue * cosFreq + rotateHalfValue * sinFreq;
-				});
-
-		double diff = compare(expected, result);
+				}, result);
 		log("Diff = " + diff);
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
@@ -343,8 +330,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		int halfDim = rotaryDim / 2;
 
-		PackedCollection expected = new PackedCollection(shape(batchSize, heads, seqLen, rotaryDim))
-				.fill(pos -> {
+		double diff = compare(shape(batchSize, heads, seqLen, rotaryDim), pos -> {
 					int b = pos[0];
 					int h = pos[1];
 					int s = pos[2];
@@ -370,9 +356,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 					// input * cos(freq) + rotate_half(input) * sin(freq)
 					return inputValue * cosFreq + rotateHalfValue * sinFreq;
-				});
-
-		double diff = compare(expected, result);
+				}, result);
 		log("Diff = " + diff);
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}

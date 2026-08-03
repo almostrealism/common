@@ -88,7 +88,7 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 			if (outShape.getTotalSize() == 2) {
 				data.add(ValueTarget.of(input, PackedCollection.of(1.0, 0.0)));
 			} else {
-				data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 1.0 : 0.0)));
+				data.add(ValueTarget.of(input, alternating(outShape, 0)));
 			}
 		}
 
@@ -107,7 +107,7 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 			if (outShape.getTotalSize() == 2) {
 				data.add(ValueTarget.of(input, PackedCollection.of(0.0, 1.0)));
 			} else {
-				data.add(ValueTarget.of(input, new PackedCollection(outShape).fill(pos -> pos[0] % 2 == 0 ? 0.0 : 1.0)));
+				data.add(ValueTarget.of(input, alternating(outShape, 1)));
 			}
 		}
 
@@ -314,4 +314,20 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 
 		log("Test 2.3 completed successfully");
 	}
+
+	/**
+	 * Builds a classification target whose value alternates with the index along the
+	 * outermost axis of the given shape.
+	 *
+	 * @param outShape the target shape
+	 * @param v the parity that receives 1.0; the other parity receives 0.0
+	 * @return the target collection
+	 */
+	private PackedCollection alternating(TraversalPolicy outShape, int v) {
+		int stride = outShape.getTotalSize() / outShape.length(0);
+		return equals(floor(integers(0, outShape.getTotalSize()).divide(stride)).mod(2.0),
+					c(v), c(1.0), c(0.0))
+				.evaluate().reshape(outShape);
+	}
+
 }

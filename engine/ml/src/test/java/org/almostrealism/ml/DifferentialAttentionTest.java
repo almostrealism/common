@@ -209,7 +209,7 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	 * @return a producer of the constant {@code [heads]} lambda collection
 	 */
 	private Producer<PackedCollection> lambda(double value) {
-		return cp(new PackedCollection(shape(HEADS)).fill(pos -> value));
+		return cp(new PackedCollection(shape(HEADS)).fill(value));
 	}
 
 	/**

@@ -273,8 +273,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 		PackedCollection originalInput = new PackedCollection(shape(10, 20));
 		originalInput.randFill();
 
-		PackedCollection input = new PackedCollection(shape(10, 20));
-		input.fill(pos -> originalInput.valueAt(pos));
+		PackedCollection input = originalInput.clone();
 
 		PackedCollection filter = new PackedCollection(shape(1, 20));
 		filter.randFill();

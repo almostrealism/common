@@ -214,6 +214,20 @@ kernel cacheable regardless of how the random values themselves are produced.
   host `double[]`, read the device result back with `toArray()` (readback is
   sanctioned), and compare on the host. Reference *inputs* that must reach the
   device ship as resource files through the ingest API.
+
+  `TestFeatures` now carries this shape directly: `reference(shape, pos -> ...)`
+  materializes a function over every position of a shape into a host array, and
+  `compare(double[], PackedCollection)` checks it against the device result. The
+  old `compare(PackedCollection, PackedCollection)` delegates to it, since it
+  began by calling `toArray()` on both sides — a reference built as a collection
+  was uploaded only to be read straight back, so the transfer bought nothing.
+  Migrating a site is therefore a change of destination, not of logic: the
+  lambda body is untouched. `RotationTests` moved its five comparisons this way.
+
+  `reference` is deliberately on `TestFeatures` rather than on `TraversalPolicy`,
+  which it iterates. A general "materialize values over a shape on the host"
+  method in the core collection API is the exact entry point this policy exists
+  to remove, and it would be found and used well outside test assertions.
 - **Call-varying host-parameterized data** (seed- or hash-derived tables,
   per-sample synthetic training pairs): cannot be a producer without baking the
   varying value as a `c()` constant — one compiled kernel per distinct value (F1
@@ -313,6 +327,78 @@ closes out the last three migrated sites. From there:
    through the one exclusion it owns. That is the point: it collects the
    transfer into a single place, so replacing it later is a one-file change
    rather than a 200-site migration.
+
+   **An index-derived fill cannot be read from its body alone.** `pos[0]` is the
+   outermost axis, not the flat index, so converting one to `integers(0, N)`
+   requires checking the receiver's declared shape at that site. Two cases show
+   what a careless substitution costs: `NormLayerShapeInvestigationTest` fills
+   `pos -> 1.0 + pos[0]` on `shape(1, size)`, where `pos[0]` is always 0 and the
+   result is uniformly 1.0 — a ramp would silently change the data; and
+   `DenseLayerShapeInvestigationTest` fills `pos -> (pos[0] + 1) * 0.1` on
+   `shape(4, 3)`, which is a per-row constant. Only genuinely 1-D receivers
+   convert to a flat ramp directly.
+
+   Everything else these sites need already exists, and none of them are blocked
+   on a new primitive:
+
+   - a value that varies along one axis and repeats along another is
+     `repeat(...)` over the ramp for that axis (`CollectionProducer.repeat(int)`
+     and `repeat(int axis, int repeat)`, plus the `SlicingFeatures` forms);
+   - a value derived from a *position* within a shape is `index(...)`
+     (`CollectionFeatures.index`, backed by `IndexOfPositionComputation`), which
+     computes the index corresponding to a position and is the general answer
+     when no shape-specific operation fits;
+   - `floor` is available on `ArithmeticFeatures` (and `Expression.floor()`) for
+     the cases that genuinely want truncation.
+
+   The constraint on this bucket is therefore reading each site's shape
+   correctly, not a missing capability.
+
+## Do not reach a multi-element write through `range`
+
+`fill` is the right answer for a scalar setter — `frequency().fill(f)` moves one
+number and there is nothing else it could have been. `fill` is honest there
+*because* it cannot express anything more: a scalar has no interior, so there is
+no computation for it to be concealing. (Filling a longer buffer with one
+repeated value is a mild extension of that, and one we are being generous about
+for now.)
+
+It is tempting to extend the same move to a multi-element write by narrowing the
+destination first — `x.range(shape(1), i).fill(v)` in place of `x.setMem(i, v)`.
+**Do not.** The detector would fall silent and nothing would have improved,
+because at a multi-element site the write is rarely the point. It is the last
+statement of a computation whose body is the surrounding host loop, and that
+loop is what the violation is really pointing at.
+
+`FrequencyToAudioConverter.normalizeAudio` is the example worth remembering:
+
+```java
+for (int i = 0; i < length; i++) maxAbs = Math.max(maxAbs, Math.abs(audio.toDouble(i)));
+if (maxAbs > 1e-6) {
+    double scale = 0.9 / maxAbs;
+    for (int i = 0; i < length; i++) audio.setMem(i, audio.toDouble(i) * scale);
+}
+```
+
+One flagged line, and behind it a whole-buffer max reduction and an elementwise
+scale — `2 * length` reads and `length` writes across JNI to express
+`cp(audio).multiply(c(0.9).divide(max(abs(cp(audio)))))`. Rewriting the write as
+a `range` view would clear the entry and leave the reduction and the scale
+exactly where they are. The ledger would improve and not one transfer would be
+removed.
+
+So the rule for the remaining indexed sites is that they are **not** a sweep.
+Each one is read individually, and the question asked is not "how do I spell this
+write" but "what is the loop around it computing". Expect a good number to be
+like this one: a real kernel with its head cut off.
+
+   **`GradientTestFeatures` is deliberately last.** Its two element-wise fills
+   have the producer form written and commented out directly above them; it was
+   reverted because the producer version made the test time out. Now that a
+   random producer participates in instruction-set sharing that cause may be
+   gone, but it is unconfirmed — reintroduce it only with a timing measurement,
+   and keep in mind the file is a host-side reference implementation, so some of
+   it is *supposed* to stay off the device.
 5. **Endgame**: the baseline reaches zero, the ledger machinery is deleted, and
    the detector remains as a pure regression gate on the narrowed surface.
 

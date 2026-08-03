@@ -50,7 +50,7 @@ public interface SineWaveCellData extends BaseAudioData {
 	 * @param notePosition note position value in seconds
 	 */
 	default void setNotePosition(double notePosition) {
-		notePosition().setMem(0, notePosition);
+		notePosition().fill(notePosition);
 	}
 
 	/**
@@ -68,7 +68,7 @@ public interface SineWaveCellData extends BaseAudioData {
 	 * @param noteLength note length in seconds
 	 */
 	default void setNoteLength(double noteLength) {
-		noteLength().setMem(0, noteLength);
+		noteLength().fill(noteLength);
 	}
 
 	/**
@@ -86,7 +86,7 @@ public interface SineWaveCellData extends BaseAudioData {
 	 * @param phase phase value in radians
 	 */
 	default void setPhase(double phase) {
-		phase().setMem(0, phase);
+		phase().fill(phase);
 	}
 
 	/**
@@ -103,5 +103,5 @@ public interface SineWaveCellData extends BaseAudioData {
 	 *
 	 * @param depth depth value (0.0–1.0)
 	 */
-	default void setDepth(double depth) { depth().setMem(0, depth); }
+	default void setDepth(double depth) { depth().fill(depth); }
 }

@@ -273,7 +273,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 					return result;
 				}
 
-				result.setMem(0, st);
+				result.fill(st);
 				return result;
 			};
 

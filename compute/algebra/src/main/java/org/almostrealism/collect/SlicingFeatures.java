@@ -61,7 +61,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <pre>{@code
 	 * // Extract a 5x5 patch from a 256x256 image starting at (100, 150)
 	 * PackedCollection image = new PackedCollection(shape(256, 256));
-	 * image.fill(Math::random);
+	 * image.randFill();
 	 * 
 	 * CollectionProducer patch =
 	 *     subset(shape(5, 5), p(image), 100, 150);
@@ -74,7 +74,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <pre>{@code
 	 * // Extract a 10x10x5 sub-volume from a 100x100x50 volume
 	 * PackedCollection volume = new PackedCollection(shape(100, 100, 50));
-	 * volume.fill(pos -> pos[0] + pos[1] + pos[2]); // example fill
+	 * integers(0, 100 * 100 * 50).into(volume.traverseEach()).evaluate(); // example fill
 	 * 
 	 * CollectionProducer subVolume =
 	 *     subset(shape(10, 10, 5), p(volume), 20, 30, 15);
@@ -106,7 +106,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <p><strong>Example - Computed position subset:</strong></p>
 	 * <pre>{@code
 	 * PackedCollection data = new PackedCollection(shape(50, 50));
-	 * data.fill(Math::random);
+	 * data.randFill();
 	 * 
 	 * // Calculate positions using expressions
 	 * Expression centerX = e(25);
@@ -149,7 +149,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <p><strong>Example - Dynamic sliding window:</strong></p>
 	 * <pre>{@code
 	 * PackedCollection timeSeries = new PackedCollection(shape(1000));
-	 * timeSeries.fill(pos -> Math.sin(pos[0] * 0.1)); // example signal
+	 * sin(integers(0, 1000).multiply(0.1)).into(timeSeries.traverseEach()).evaluate(); // example signal
 	 * 
 	 * // Position determined at runtime
 	 * PackedCollection windowStart = new PackedCollection(1);
@@ -169,7 +169,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <p><strong>Example - 2D dynamic region extraction:</strong></p>
 	 * <pre>{@code
 	 * PackedCollection image = new PackedCollection(shape(640, 480));
-	 * image.fill(Math::random);
+	 * image.randFill();
 	 * 
 	 * // Dynamic position based on some computed region of interest
 	 * PackedCollection roiPosition = new PackedCollection(2);

@@ -262,7 +262,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		int z0 = 2;
 
 		PackedCollection a = new PackedCollection(shape(10, 10, 10));
-		a.fill(Math::random);
+		a.randFill();
 
 		CollectionProducer producer = subset(shape(w, h, d), c(a), x0, y0, z0);
 		Evaluable<PackedCollection> ev = producer.get();

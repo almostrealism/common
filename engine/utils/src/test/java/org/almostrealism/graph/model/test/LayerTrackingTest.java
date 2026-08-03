@@ -53,9 +53,11 @@ public class LayerTrackingTest extends TestSuiteBase {
 		PackedCollection w2 = dense2.getWeights().get(0);
 		PackedCollection b2 = dense2.getWeights().get(1);
 
-		w1.fill(pos -> 0.01 * (pos[0] + 1));
+		floor(integers(0, w1.getMemLength()).divide(w1.getShape().length(1)))
+				.add(1.0).multiply(0.01).into(w1.traverseEach()).evaluate();
 		b1.fill(0.1);
-		w2.fill(pos -> 0.02 * (pos[0] + 1));
+		floor(integers(0, w2.getMemLength()).divide(w2.getShape().length(1)))
+				.add(1.0).multiply(0.02).into(w2.traverseEach()).evaluate();
 		b2.fill(0.05);
 
 		model.add(dense1);
@@ -149,7 +151,7 @@ public class LayerTrackingTest extends TestSuiteBase {
 		CompiledModel trainingCompiled = trainingModel.compile(true, trainingProfile);
 
 		PackedCollection input = new PackedCollection(shape(inputSize));
-		input.fill(pos -> 0.01 * pos[0]);
+		integers(0, inputSize).multiply(0.01).into(input.traverseEach()).evaluate();
 
 		for (int i = 0; i < warmup; i++) {
 			trainingCompiled.forward(input);

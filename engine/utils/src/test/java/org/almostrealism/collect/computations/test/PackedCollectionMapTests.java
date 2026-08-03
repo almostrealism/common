@@ -50,8 +50,8 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		int n = 5;
 		int m = 2;
 
-		PackedCollection c = empty(shape(n)).fill(Math::random);
-		PackedCollection d = empty(shape(m)).fill(Math::random);
+		PackedCollection c = empty(shape(n)).randFill();
+		PackedCollection d = empty(shape(m)).randFill();
 		Supplier<CollectionProducer> product =
 				() -> cp(c).each().repeat(m).mul(cp(d))
 						.reshape(shape(n, m)).traverse(1);
@@ -444,7 +444,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		PackedCollection input = tensor(shape(r, c)).pack();
 		PackedCollection filter = tensor(shape(w, w)).pack();
 
-		input.fill(pos -> pos[0] + pos[1] * 0.1);
+		floor(integers(0, r * c).divide(c))
+				.add(integers(0, r * c).mod(c).multiply(0.1))
+				.into(input.traverseEach()).evaluate();
 		filter.fill(1.0);
 
 		verboseLog(() -> {
@@ -591,7 +593,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		PackedCollection input = tensor(shape(r, c)).pack();
 		PackedCollection filter = tensor(shape(2, w, w)).pack();
 
-		input.fill(pos -> pos[0] + pos[1] * 0.1);
+		floor(integers(0, r * c).divide(c))
+				.add(integers(0, r * c).mod(c).multiply(0.1))
+				.into(input.traverseEach()).evaluate();
 
 		IntStream.range(0, 5).forEach(n -> {
 			verboseLog(() -> {
@@ -892,7 +896,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		int w = 2;
 
 		PackedCollection input = tensor(shape(r, c, d)).pack();
-		input.fill(pos -> (3 + (pos[0] % 3) * 0.75) - (3 + (pos[1] % 5) * 1.25));
+		floor(integers(0, r * c * d).divide(c * d)).mod(3.0).multiply(0.75)
+				.subtract(floor(integers(0, r * c * d).divide(d)).mod(c).mod(5.0).multiply(1.25))
+				.into(input.traverseEach()).evaluate();
 
 		verboseLog(() -> {
 			CollectionProducer pool =

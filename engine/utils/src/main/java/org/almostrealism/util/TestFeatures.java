@@ -17,6 +17,7 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -43,6 +44,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -288,6 +290,34 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		double act[] = actual.toArray();
 		return IntStream.range(0, exp.length)
 				.mapToDouble(i -> Math.abs(exp[i] - act[i]))
+				.average().orElseThrow();
+	}
+
+	/**
+	 * Computes the average absolute difference between a device-computed
+	 * {@link PackedCollection} and expected values derived, position by position,
+	 * from a function.
+	 *
+	 * <p>This is for the case where the expectation is a formula rather than
+	 * another collection — a reference that exists to be worked out independently
+	 * of the device, so that agreement means something. The expected values are
+	 * evaluated here and compared directly; they never become a collection, and so
+	 * are never uploaded only to be read back for the comparison.</p>
+	 *
+	 * <p>When the expectation is itself a collection — the same computation on
+	 * another device, an earlier result, a stored fixture — use
+	 * {@link #compare(PackedCollection, PackedCollection)} instead.</p>
+	 *
+	 * @param shape    the shape whose positions are visited
+	 * @param expected the function supplying the expected value at each position
+	 * @param actual   the device-computed collection to check
+	 * @return the average absolute difference between corresponding elements
+	 */
+	default double compare(TraversalPolicy shape, Function<int[], Double> expected,
+						   PackedCollection actual) {
+		double act[] = actual.toArray();
+		return shape.stream()
+				.mapToDouble(pos -> Math.abs(expected.apply(pos) - act[shape.index(pos)]))
 				.average().orElseThrow();
 	}
 
