@@ -107,9 +107,7 @@ SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/A
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	for (double frame : data[chan]) waveform.setMem(index++, frame);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	for (int frame : data[chan]) waveform.setMem(index++, frame);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	waveform.setMem(data[chan]);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	audio.setMem(i, audio.toDouble(i) * scale);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	input.setMem(i, complexSpectrum[i]);
-SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	output.setMem(outIdx, existing + windowed);
+SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	input.setMem(complexSpectrum);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/filter/ADSREnvelopeData.java	1	default void setGateOpen(boolean open) { gateOpen().setMem(0, open ? 1.0 : 0.0); }
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/line/SharedMemoryAudioLine.java	1	controls.setMem(PASSTHROUGH_LEVEL, level);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/test/java/org/almostrealism/audio/BatchedChainSeamTest.java	1	c.setMem(data);

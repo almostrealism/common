@@ -5,6 +5,7 @@
 
 package org.almostrealism.audio.data;
 
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.TemporalFeatures;
@@ -101,7 +102,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		PackedCollection output = new PackedCollection(outputLength);
 
 		// Precompute Hann window
-		double[] window = createHannWindow(fftSize);
+		PackedCollection window = createHannWindow(fftSize);
 
 		// Process each frame
 		for (int frame = 0; frame < freqFrames; frame++) {
@@ -112,7 +113,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 			double[] complexSpectrum = createComplexSpectrum(magnitude, fftSize);
 
 			// Apply IFFT
-			double[] timeDomain = applyIfft(complexSpectrum, fftSize);
+			PackedCollection timeDomain = applyIfft(complexSpectrum, fftSize);
 
 			// Apply window and overlap-add to output
 			int startSample = frame * hopSize;
@@ -197,22 +198,19 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * @param fftSize         number of frequency bins
 	 * @return time-domain samples (real part only)
 	 */
-	private double[] applyIfft(double[] complexSpectrum, int fftSize) {
+	private PackedCollection applyIfft(double[] complexSpectrum, int fftSize) {
 		// Create input collection
 		PackedCollection input = new PackedCollection(fftSize * 2);
-		for (int i = 0; i < complexSpectrum.length; i++) {
-			input.setMem(i, complexSpectrum[i]);
-		}
+		input.setMem(complexSpectrum);
 
 		// Apply IFFT
 		FourierTransform ifft = new FourierTransform(1, fftSize, true, c(input));
 		PackedCollection result = ifft.get().evaluate();
 
-		// Extract real part
-		double[] output = new double[fftSize];
-		for (int i = 0; i < fftSize; i++) {
-			output[i] = result.toDouble(i * 2); // Real part only
-		}
+		// Extract real part -- column 0 of the interleaved (real, imaginary) pairs
+		PackedCollection output = new PackedCollection(fftSize);
+		subset(shape(fftSize, 1), cp(result.reshape(shape(fftSize, 2))), 0, 0)
+				.into(output.traverseEach()).evaluate();
 
 		return output;
 	}
@@ -220,47 +218,41 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	/**
 	 * Creates a Hann window of the specified size.
 	 */
-	private double[] createHannWindow(int size) {
-		double[] window = new double[size];
-		for (int i = 0; i < size; i++) {
-			window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / size));
-		}
+	private PackedCollection createHannWindow(int size) {
+		PackedCollection window = new PackedCollection(size);
+		c(1.0).subtract(cos(integers(0, size).multiply(2 * Math.PI / size)))
+				.multiply(0.5).into(window.traverseEach()).evaluate();
 		return window;
 	}
 
 	/**
 	 * Applies window and overlap-adds time-domain frame to output.
 	 */
-	private void overlapAdd(PackedCollection output, double[] frame,
-							double[] window, int startSample, int outputLength) {
-		for (int i = 0; i < frame.length; i++) {
-			int outIdx = startSample + i;
-			if (outIdx >= 0 && outIdx < outputLength) {
-				double existing = output.toDouble(outIdx);
-				double windowed = frame[i] * window[i];
-				output.setMem(outIdx, existing + windowed);
-			}
-		}
+	private void overlapAdd(PackedCollection output, PackedCollection frame,
+							PackedCollection window, int startSample, int outputLength) {
+		int begin = Math.max(0, -startSample);
+		int end = Math.min(frame.getMemLength(), outputLength - startSample);
+		if (end <= begin) return;
+
+		int count = end - begin;
+		PackedCollection destination = output.range(shape(count), startSample + begin);
+
+		cp(destination)
+				.add(cp(frame.range(shape(count), begin))
+						.multiply(cp(window.range(shape(count), begin))))
+				.into(destination.traverseEach()).evaluate();
 	}
 
 	/**
 	 * Normalizes audio to prevent clipping.
 	 */
 	private void normalizeAudio(PackedCollection audio) {
-		double maxAbs = 0.0;
-		int length = audio.getMemLength();
+		CollectionProducer peak = max(cp(audio).abs());
 
-		// Find maximum absolute value
-		for (int i = 0; i < length; i++) {
-			maxAbs = Math.max(maxAbs, Math.abs(audio.toDouble(i)));
-		}
-
-		// Normalize if needed
-		if (maxAbs > 1e-6) {
-			double scale = 0.9 / maxAbs; // Leave some headroom
-			for (int i = 0; i < length; i++) {
-				audio.setMem(i, audio.toDouble(i) * scale);
-			}
-		}
+		// Scale to 0.9 to leave headroom, or leave silence untouched. The
+		// guard selects rather than branches, so the unused quotient is
+		// computed and discarded instead of dividing by zero on the host.
+		cp(audio).multiply(greaterThan(peak, c(1e-6), c(0.9).divide(peak), c(1.0)))
+				.into(audio.traverseEach()).evaluate();
 	}
 }

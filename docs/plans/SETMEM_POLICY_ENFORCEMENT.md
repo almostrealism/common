@@ -354,6 +354,44 @@ closes out the last three migrated sites. From there:
    The constraint on this bucket is therefore reading each site's shape
    correctly, not a missing capability.
 
+## Do not reach a multi-element write through `range`
+
+`fill` is the right answer for a scalar setter — `frequency().fill(f)` moves one
+number and there is nothing else it could have been. `fill` is honest there
+*because* it cannot express anything more: a scalar has no interior, so there is
+no computation for it to be concealing. (Filling a longer buffer with one
+repeated value is a mild extension of that, and one we are being generous about
+for now.)
+
+It is tempting to extend the same move to a multi-element write by narrowing the
+destination first — `x.range(shape(1), i).fill(v)` in place of `x.setMem(i, v)`.
+**Do not.** The detector would fall silent and nothing would have improved,
+because at a multi-element site the write is rarely the point. It is the last
+statement of a computation whose body is the surrounding host loop, and that
+loop is what the violation is really pointing at.
+
+`FrequencyToAudioConverter.normalizeAudio` is the example worth remembering:
+
+```java
+for (int i = 0; i < length; i++) maxAbs = Math.max(maxAbs, Math.abs(audio.toDouble(i)));
+if (maxAbs > 1e-6) {
+    double scale = 0.9 / maxAbs;
+    for (int i = 0; i < length; i++) audio.setMem(i, audio.toDouble(i) * scale);
+}
+```
+
+One flagged line, and behind it a whole-buffer max reduction and an elementwise
+scale — `2 * length` reads and `length` writes across JNI to express
+`cp(audio).multiply(c(0.9).divide(max(abs(cp(audio)))))`. Rewriting the write as
+a `range` view would clear the entry and leave the reduction and the scale
+exactly where they are. The ledger would improve and not one transfer would be
+removed.
+
+So the rule for the remaining indexed sites is that they are **not** a sweep.
+Each one is read individually, and the question asked is not "how do I spell this
+write" but "what is the loop around it computing". Expect a good number to be
+like this one: a real kernel with its head cut off.
+
    **`GradientTestFeatures` is deliberately last.** Its two element-wise fills
    have the producer form written and commented out directly above them; it was
    reverted because the producer version made the test time out. Now that a
