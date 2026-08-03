@@ -221,8 +221,20 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	/** Locates the start of each {@code PackedCollection.of(} call. */
 	private static final Pattern OF_CALL = Pattern.compile("PackedCollection\\s*\\.\\s*of\\s*\\(");
 
-	/** Locates the start of each {@code .fill(} call. */
-	private static final Pattern FILL_CALL = Pattern.compile("\\.fill\\s*\\(");
+	/**
+	 * Locates the start of each {@code .fill(} call, excluding {@link java.util.Arrays}
+	 * and {@link java.util.Collections}.
+	 *
+	 * <p>This rule is about writes into device memory. {@code Arrays.fill} and
+	 * {@code Collections.fill} operate on a host array or list and never reach a
+	 * {@link org.almostrealism.hardware.MemoryData}, so matching them only fills the
+	 * inventory with entries that no migration will ever remove. They are excluded by
+	 * name, which would also skip a collection variable whose name ended in
+	 * {@code Arrays} or {@code Collections}; no such name exists, and one would be a
+	 * poor name for a collection.</p>
+	 */
+	private static final Pattern FILL_CALL =
+			Pattern.compile("(?<!Arrays)(?<!Collections)\\.fill\\s*\\(");
 
 	/**
 	 * Locates each {@code fill} call invoked directly on a {@code range(...)} view. A

@@ -1,17 +1,8 @@
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/hardware/computations/Assignment.java	1	return JVMMemory.fill(d, len, s.getAsDouble());
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/hardware/jvm/JVMMemory.java	1	return () -> Arrays.fill(((JVMMemory) dest.getMem()).data,
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	PackedCollection sequence = pack(values());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	return pack(values());
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/graph/algorithm/CentralityFeatures.java	1	Arrays.fill(dist, -1);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/graph/algorithm/CentralityFeatures.java	1	Arrays.fill(newRanks, teleport);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/graph/algorithm/CentralityFeatures.java	1	Arrays.fill(ranks, initialRank);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/graph/algorithm/TraversalFeatures.java	1	Arrays.fill(dist, Double.POSITIVE_INFINITY);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/graph/algorithm/TraversalFeatures.java	1	Arrays.fill(prev, -1);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/graph/src/main/java/org/almostrealism/layers/DefaultGradientPropagation.java	2	Arrays.fill(updates, update);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	domain/heredity/src/main/java/org/almostrealism/heredity/ProjectedGenome.java	1	variation.fill(pos -> {
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/main/java/org/almostrealism/audio/data/WaveDetailsFactory.java	1	Arrays.fill(results, -Double.MAX_VALUE);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/main/java/org/almostrealism/audio/notes/ReversePlaybackAudioFilter.java	1	.evaluate(audioData.traverse(1), pack(audioData.getShape().getTotalSize()));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/BatchedEnvelopeTest.java	2	Arrays.fill(onesData, 1.0);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(0).fill((double) (TOTAL_FRAMES + 1));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(0).fill((double) (timelineFrames - 100));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/test/java/org/almostrealism/audio/test/WaveOutputWriteTest.java	1	out.getCursor(1).fill((double) (TOTAL_FRAMES + 1));
@@ -20,10 +11,6 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/pers
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	return new PackedCollection(data.length).fill(data);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/graph/model/test/SyntheticConvolutionTrainingTest.java	2	input.fill(pos -> {
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/DifferentialAttentionTest.java	1	qkv.fill(pos -> {
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/MultiTokenGenerationTest.java	1	Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/MultiTokenGenerationTest.java	1	Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/Qwen3DirectGenerationTest.java	1	Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/ml/qwen3/Qwen3DirectGenerationTest.java	1	Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/DiskStoreTestSupport.java	1	return new PackedCollection(values.length).fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/HnswSearchTest.java	1	index.insert("n-" + i, new PackedCollection(dimension).fill(values));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/HnswSearchTest.java	1	return new PackedCollection(dimension).fill(values);
@@ -44,14 +31,9 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/m
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/math/bool/test/AcceleratedConditionalStatementTests.java	1	check(lt, a, pack(Math.random()));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> dLdHatXGroup.valueAt(pos) - dLdHatXGroupMean
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> gradient.valueAt(pos) * weights.valueAt(pos));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	flowtree/runtime/src/test/java/io/flowtree/jobs/FileStagerTest.java	1	Arrays.fill(binaryContent, 0, 20, (byte) 0);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	flowtree/runtime/src/test/java/io/flowtree/jobs/FileStagerTest.java	1	Arrays.fill(binaryContent, 20, 100, (byte) 'A');
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	flowtree/runtime/src/test/java/io/flowtree/jobs/FileStagerTest.java	1	Arrays.fill(largeContent, (byte) 'A');
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/main/java/org/almostrealism/studio/ml/AudioModulator.java	1	return pack(stereoAudio).reshape(2, finalSamples);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java	1	Arrays.fill(values, Double.NEGATIVE_INFINITY);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayRateModulationTest.java	1	new PackedCollection(new TraversalPolicy(1, signalSize)).fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayRateModulationTest.java	1	new TraversalPolicy(channels, signalSize)).fill(values);
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	Arrays.fill(inData, ch * PDSL_SIGNAL_SIZE, (ch + 1) * PDSL_SIGNAL_SIZE,
 PACKED_COLLECTION_OF_NON_LITERAL	domain/graph/src/main/java/org/almostrealism/layers/ParameterUpdate.java	1	return scaled(CollectionFeatures.getInstance().cp(PackedCollection.of(learningRate)));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.automationLevel);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	PackedCollection.of(md.filterAttack);
