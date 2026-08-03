@@ -294,12 +294,10 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 	 * @return the target collection
 	 */
 	private PackedCollection alternating(TraversalPolicy outShape, int v) {
-		PackedCollection target = new PackedCollection(outShape);
 		int stride = outShape.getTotalSize() / outShape.length(0);
-		equals(floor(integers(0, outShape.getTotalSize()).divide(stride)).mod(2.0),
+		return equals(floor(integers(0, outShape.getTotalSize()).divide(stride)).mod(2.0),
 					c(v), c(1.0), c(0.0))
-				.into(target.traverseEach()).evaluate();
-		return target;
+				.evaluate().reshape(outShape);
 	}
 
 }

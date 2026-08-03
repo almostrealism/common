@@ -379,8 +379,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 		int hd = dim / 2;
 		double scale = Math.log(10000) / (hd - 1);
 
-		PackedCollection values = new PackedCollection(hd);
-		integers(0, hd).multiply(-scale).into(values.traverseEach()).evaluate();
+		PackedCollection values = integers(0, hd).multiply(-scale).evaluate();
 
 		return layer("sinEmbed", shape(batchSize, 1), shape(batchSize, dim), (in) -> {
 			CollectionProducer embeddings =
@@ -705,8 +704,7 @@ public class UNetTest extends TestSuiteBase implements AttentionFeatures, Diffus
 
 			randn.refresh();
 			PackedCollection noise = randn.evaluate();
-			PackedCollection t = new PackedCollection(batchSize, 1);
-			floor(rand(t.getShape()).multiply(timesteps)).into(t.traverseEach()).evaluate();
+			PackedCollection t = floor(rand(shape(batchSize, 1)).multiply(timesteps)).evaluate();
 			PackedCollection xNoisy = qSample.evaluate(xStart.each(), t, noise.each());
 			List<ValueTarget<PackedCollection>> result = new ArrayList<>();
 			result.add(ValueTarget.of(xNoisy, noise).withArguments(t));

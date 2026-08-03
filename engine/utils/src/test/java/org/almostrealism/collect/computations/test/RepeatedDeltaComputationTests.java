@@ -209,8 +209,7 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 60000)
 	public void productEnumerateLarge() {
-		PackedCollection multiplier = new PackedCollection(10);
-		integers(1, 11).into(multiplier.traverseEach()).evaluate();
+		PackedCollection multiplier = integers(1, 11).evaluate();
 		PackedCollection in = new PackedCollection(10);
 
 		CollectionProducer id = cp(new PackedCollection(10, 10));
@@ -458,9 +457,7 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 		int ro = r / s;
 		int co = c / s;
 
-		PackedCollection flat = new PackedCollection(r * c);
-		integers(0, r * c).into(flat.traverseEach()).evaluate();
-		PackedCollection in = flat.reshape(r, c, 1).traverse(1);
+		PackedCollection in = integers(0, r * c).evaluate().reshape(r, c, 1).traverse(1);
 		PackedCollection out = Process.optimized(cp(in)
 						.traverse(0)
 						.enumerate(2, 1)

@@ -208,21 +208,16 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		PackedCollection result = ifft.get().evaluate();
 
 		// Extract real part -- column 0 of the interleaved (real, imaginary) pairs
-		PackedCollection output = new PackedCollection(fftSize);
-		subset(shape(fftSize, 1), cp(result.reshape(shape(fftSize, 2))), 0, 0)
-				.into(output.traverseEach()).evaluate();
-
-		return output;
+		return subset(shape(fftSize, 1), cp(result.reshape(shape(fftSize, 2))), 0, 0)
+				.evaluate().reshape(shape(fftSize));
 	}
 
 	/**
 	 * Creates a Hann window of the specified size.
 	 */
 	private PackedCollection createHannWindow(int size) {
-		PackedCollection window = new PackedCollection(size);
-		c(1.0).subtract(cos(integers(0, size).multiply(2 * Math.PI / size)))
-				.multiply(0.5).into(window.traverseEach()).evaluate();
-		return window;
+		return c(1.0).subtract(cos(integers(0, size).multiply(2 * Math.PI / size)))
+				.multiply(0.5).evaluate();
 	}
 
 	/**

@@ -558,10 +558,8 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 	public void divideProduct1() {
 		int c = 2;
 
-		PackedCollection o = new PackedCollection(c);
-		rand(o.getShape()).divide(10.0).into(o.traverseEach()).evaluate();
-		PackedCollection g = new PackedCollection(c);
-		rand(g.getShape()).divide(4.0).into(g.traverseEach()).evaluate();
+		PackedCollection o = rand(shape(c)).divide(10.0).evaluate();
+		PackedCollection g = rand(shape(c)).divide(4.0).evaluate();
 		double eps = 1e-5;
 
 		kernelTest(() -> {
@@ -609,10 +607,8 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 	public void divideProduct2() throws IOException {
 		int c = 2;
 
-		PackedCollection o = new PackedCollection(c);
-		rand(o.getShape()).divide(10.0).into(o.traverseEach()).evaluate();
-		PackedCollection g = new PackedCollection(c);
-		rand(g.getShape()).divide(4.0).into(g.traverseEach()).evaluate();
+		PackedCollection o = rand(shape(c)).divide(10.0).evaluate();
+		PackedCollection g = rand(shape(c)).divide(4.0).evaluate();
 		PackedCollection b = new PackedCollection(c).fill(0.0);
 		double eps = 1e-5;
 
@@ -659,11 +655,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 	@Test(timeout = 60000)
 	public void divideProduct3() throws IOException {
 		int c = 2;
-		divideProduct("divideProduct3", c, () -> {
-			PackedCollection o = new PackedCollection(c);
-			rand(o.getShape()).divide(10.0).into(o.traverseEach()).evaluate();
-			return o;
-		});
+		divideProduct("divideProduct3", c, () -> rand(shape(c)).divide(10.0).evaluate());
 	}
 
 	/**
@@ -684,8 +676,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 	 */
 	public void divideProduct(String name, int c, Supplier<PackedCollection> source) throws IOException {
 		PackedCollection o = source.get();
-		PackedCollection g = new PackedCollection(c);
-		rand(g.getShape()).multiply(4.0).add(1.0).into(g.traverseEach()).evaluate();
+		PackedCollection g = rand(shape(c)).multiply(4.0).add(1.0).evaluate();
 		PackedCollection w = new PackedCollection(c).fill(1.0);
 		PackedCollection b = new PackedCollection(c).fill(0.0);
 		double eps = 1e-5;

@@ -152,8 +152,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		PackedCollection buffer = new PackedCollection(shape(count, size)).fill(0.0);
 		PackedCollection bufferIndices = new PackedCollection(shape(count)).fill(1, 2, 3);
-		PackedCollection value = new PackedCollection(shape(count));
-		rand(value.getShape()).add(1.0).into(value.traverseEach()).evaluate();
+		PackedCollection value = rand(shape(count)).add(1.0).evaluate();
 		Assignment<?> c = a(
 				traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
 				p(value));
@@ -309,14 +308,12 @@ public class CollectionComputationTests extends TestSuiteBase {
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection va = new PackedCollection(n, hd);
-		integers(0, n * hd).mod(hd)
+		PackedCollection va = integers(0, n * hd).mod(hd)
 				.add(floor(integers(0, n * hd).divide(hd)).multiply(10.0)).add(1.0)
-				.into(va.traverseEach()).evaluate();
-		PackedCollection vb = new PackedCollection(n, hd);
-		integers(0, n * hd).mod(hd)
+				.evaluate().reshape(shape(n, hd));
+		PackedCollection vb = integers(0, n * hd).mod(hd)
 				.add(floor(integers(0, n * hd).divide(hd)).multiply(10.0)).add(1.0)
-				.multiply(-1.0).into(vb.traverseEach()).evaluate();
+				.multiply(-1.0).evaluate().reshape(shape(n, hd));
 
 		CollectionProducer a = pad(shape(n, dim), cp(va), 0, 0);
 		CollectionProducer b = pad(shape(n, dim), cp(vb), 0, hd);
@@ -343,8 +340,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection va = new PackedCollection(hd);
-		integers(1, hd + 1).into(va.traverseEach()).evaluate();
+		PackedCollection va = integers(1, hd + 1).evaluate();
 		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
 		CollectionProducer product =
@@ -379,8 +375,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 		int dim = 6;
 		int hd = dim / 2;
 
-		PackedCollection va = new PackedCollection(hd);
-		integers(1, hd + 1).into(va.traverseEach()).evaluate();
+		PackedCollection va = integers(1, hd + 1).evaluate();
 		PackedCollection alt = pack(-1.0, 1.0).reshape(n, 1);
 
 		CollectionProducer product =
@@ -508,12 +503,10 @@ public class CollectionComputationTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void max3d() {
-		PackedCollection base = new PackedCollection(shape(2, 3, 2));
-		floor(integers(0, 12).divide(6)).add(1.0)
+		PackedCollection value = floor(integers(0, 12).divide(6)).add(1.0)
 				.multiply(floor(integers(0, 12).divide(2)).mod(3).mod(2.0).add(-0.5))
 				.multiply(integers(0, 12).mod(2).add(0.7))
-				.into(base.traverseEach()).evaluate();
-		PackedCollection value = base.traverse(2);
+				.evaluate().reshape(shape(2, 3, 2)).traverse(2);
 		value.print();
 		log("--");
 
@@ -539,12 +532,10 @@ public class CollectionComputationTests extends TestSuiteBase {
 	 */
 	// @Test(timeout = 30000)
 	private void dynamicMax() {
-		PackedCollection base = new PackedCollection(shape(2, 3, 2));
-		floor(integers(0, 12).divide(6)).add(1.0)
+		PackedCollection value = floor(integers(0, 12).divide(6)).add(1.0)
 				.multiply(floor(integers(0, 12).divide(2)).mod(3).mod(2.0).add(-0.5))
 				.multiply(integers(0, 12).mod(2).add(0.7))
-				.into(base.traverseEach()).evaluate();
-		PackedCollection value = base.traverse(2);
+				.evaluate().reshape(shape(2, 3, 2)).traverse(2);
 		value.print();
 		log("--");
 
