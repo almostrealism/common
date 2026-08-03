@@ -63,7 +63,7 @@ public class ComplexMathTests extends TestSuiteBase {
 	@TestProperties(knownIssue = true)
 	public void complexFromPartsBatches2() {
 
-		PackedCollection values = new PackedCollection(10, 2, 1024).fill(Math::random);
+		PackedCollection values = new PackedCollection(10, 2, 1024).randFill();
 
 		Producer<PackedCollection> c = complexFromParts(
 				subset(shape(10, 1, 1024), cp(values), 0, 0, 0),
@@ -101,8 +101,8 @@ public class ComplexMathTests extends TestSuiteBase {
 						v(shape(1024).traverseEach(), 1))
 						.magnitude().get();
 
-		PackedCollection real = new PackedCollection(1024).fill(Math::random);
-		PackedCollection imag = new PackedCollection(1024).fill(Math::random);
+		PackedCollection real = new PackedCollection(1024).randFill();
+		PackedCollection imag = new PackedCollection(1024).randFill();
 		PackedCollection out = new PackedCollection(1024, 1);
 
 		verboseLog(() -> {

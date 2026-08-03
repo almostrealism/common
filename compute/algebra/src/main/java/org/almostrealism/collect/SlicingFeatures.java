@@ -61,7 +61,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <pre>{@code
 	 * // Extract a 5x5 patch from a 256x256 image starting at (100, 150)
 	 * PackedCollection image = new PackedCollection(shape(256, 256));
-	 * image.fill(Math::random);
+	 * image.randFill();
 	 * 
 	 * CollectionProducer patch =
 	 *     subset(shape(5, 5), p(image), 100, 150);
@@ -106,7 +106,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <p><strong>Example - Computed position subset:</strong></p>
 	 * <pre>{@code
 	 * PackedCollection data = new PackedCollection(shape(50, 50));
-	 * data.fill(Math::random);
+	 * data.randFill();
 	 * 
 	 * // Calculate positions using expressions
 	 * Expression centerX = e(25);
@@ -169,7 +169,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * <p><strong>Example - 2D dynamic region extraction:</strong></p>
 	 * <pre>{@code
 	 * PackedCollection image = new PackedCollection(shape(640, 480));
-	 * image.fill(Math::random);
+	 * image.randFill();
 	 * 
 	 * // Dynamic position based on some computed region of interest
 	 * PackedCollection roiPosition = new PackedCollection(2);

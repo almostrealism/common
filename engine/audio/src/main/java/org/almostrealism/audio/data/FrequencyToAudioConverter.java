@@ -240,14 +240,21 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 
 	/**
 	 * Normalizes audio to prevent clipping.
+	 *
+	 * <p>The peak is reduced in its own kernel rather than left as a {@link
+	 * io.almostrealism.relation.Producer} inside the scale. A whole-collection
+	 * reduction embedded in an elementwise expression is inlined at every
+	 * element, so the expression depth grows with the length of the buffer and
+	 * compilation fails once the audio is long enough. Reducing first costs one
+	 * additional kernel and keeps the scale a constant-depth expression.</p>
 	 */
 	private void normalizeAudio(PackedCollection audio) {
-		CollectionProducer peak = max(cp(audio).abs());
-
-		// Scale to 0.9 to leave headroom, or leave silence untouched. The
-		// guard selects rather than branches, so the unused quotient is
-		// computed and discarded instead of dividing by zero on the host.
-		cp(audio).multiply(greaterThan(peak, c(1e-6), c(0.9).divide(peak), c(1.0)))
-				.into(audio.traverseEach()).evaluate();
+		try (PackedCollection peak = max(cp(audio).abs()).evaluate()) {
+			// Scale to 0.9 to leave headroom, or leave silence untouched. The
+			// guard selects rather than branches, so the unused quotient is
+			// computed and discarded instead of dividing by zero on the host.
+			cp(audio).multiply(greaterThan(cp(peak), c(1e-6), c(0.9).divide(cp(peak)), c(1.0)))
+					.into(audio.traverseEach()).evaluate();
+		}
 	}
 }

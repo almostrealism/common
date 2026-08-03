@@ -41,8 +41,8 @@ public class RepeatedTraversableComputationTests extends TestSuiteBase {
 
 		int len = 60000;
 
-		PackedCollection a = new PackedCollection(len).fill(Math::random);
-		PackedCollection b = new PackedCollection(len).fill(Math::random);
+		PackedCollection a = new PackedCollection(len).randFill();
+		PackedCollection b = new PackedCollection(len).randFill();
 
 		PackedCollection out = new PackedCollection(len);
 

@@ -53,7 +53,7 @@ import java.util.stream.Stream;
  * <pre>{@code
  * // Create a 10x10 collection
  * PackedCollection input = new PackedCollection(shape(10, 10));
- * input.fill(Math::random);
+ * input.randFill();
  * 
  * // Extract a 3x3 subset starting at position (2, 3)
  * CollectionProducer producer = subset(shape(3, 3), p(input), 2, 3);
@@ -65,7 +65,7 @@ import java.util.stream.Stream;
  * <p><em>2. 3D subset with static positions:</em></p>
  * <pre>{@code
  * PackedCollection volume = new PackedCollection(shape(100, 100, 50));
- * volume.fill(Math::random);
+ * volume.randFill();
  * 
  * // Extract a 10x10x5 cube starting at (20, 30, 10)
  * CollectionProducer cubeProducer =
@@ -76,7 +76,7 @@ import java.util.stream.Stream;
  * <p><em>3. Dynamic subset with computed positions:</em></p>
  * <pre>{@code
  * PackedCollection data = new PackedCollection(shape(50, 50));
- * data.fill(Math::random);
+ * data.randFill();
  * 
  * // Position determined at runtime
  * PackedCollection position = new PackedCollection(2);

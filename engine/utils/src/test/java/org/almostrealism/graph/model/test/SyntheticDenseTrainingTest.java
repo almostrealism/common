@@ -211,7 +211,7 @@ public class SyntheticDenseTrainingTest extends TestSuiteBase implements ModelTe
 
 			for (int i = 0; i < steps; i++) {
 				PackedCollection input = new PackedCollection(shape(inputSize))
-						.fill(Math::random);
+						.randFill();
 
 				double sum = 0.0;
 				for (int j = 0; j < inputSize; j++) {
