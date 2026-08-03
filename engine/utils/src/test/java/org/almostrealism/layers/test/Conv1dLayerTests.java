@@ -43,7 +43,8 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Create input with values in range [-pi, pi] to test sinusoidal behavior
 		PackedCollection input = new PackedCollection(shape(size));
-		input.fill(pos -> (pos[0] - size / 2.0) * Math.PI / (size / 2.0));
+		integers(0, size).add(-size / 2.0).multiply(Math.PI / (size / 2.0))
+				.into(input.traverseEach()).evaluate();
 
 		// Create Snake layer
 		CellularLayer snake = snake(shape(size), alpha);
@@ -86,7 +87,8 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		double alpha = 0.5;
 
 		PackedCollection input = new PackedCollection(shape(size));
-		input.fill(pos -> (pos[0] - size / 2.0) * 0.2);
+		integers(0, size).add(-size / 2.0).multiply(0.2)
+				.into(input.traverseEach()).evaluate();
 
 		CellularLayer snake = snake(shape(size), alpha);
 
@@ -221,10 +223,13 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		int padding = 1;
 
 		PackedCollection input = new PackedCollection(shape(batchSize, inputChannels, seqLength));
-		input.fill(pos -> pos[2] + 1.0); // Sequential values 1, 2, 3, ..., 16
+		// Sequential values 1, 2, 3, ..., seqLength along the last axis
+		integers(0, batchSize * inputChannels * seqLength).mod(seqLength).add(1.0)
+				.into(input.traverseEach()).evaluate();
 
 		PackedCollection weights = new PackedCollection(shape(outputChannels, inputChannels, kernelSize));
-		weights.fill(pos -> 1.0 / (inputChannels * kernelSize));
+		double weightValue = 1.0 / (inputChannels * kernelSize);
+		weights.fill(weightValue);
 
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
 		bias.fill(0.0);
@@ -487,7 +492,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		// Create simple weights: all same value so output is predictable
 		PackedCollection weights = new PackedCollection(shape(inputChannels, outputChannels, kernelSize));
 		double weightVal = 1.0 / weightedSumSize;
-		weights.fill(pos -> weightVal);
+		weights.fill(weightVal);
 
 		int outLength = (seqLength - 1) * stride - 2 * padding + kernelSize + outputPadding;
 		warn("  Output length: " + outLength);

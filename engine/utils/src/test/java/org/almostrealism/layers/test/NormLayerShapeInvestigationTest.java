@@ -178,7 +178,7 @@ public class NormLayerShapeInvestigationTest extends TestSuiteBase {
 		CompiledModel compiled = model.compile();
 
 		PackedCollection input = new PackedCollection(inputShape);
-		input.fill(pos -> 1.0 + pos[0]);
+		input.fill(1.0);
 		log("Input: " + input.toArrayString());
 
 		PackedCollection output = compiled.forward(input);

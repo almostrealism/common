@@ -114,7 +114,8 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 				rank, 16.0
 		);
 
-		loraLayer.getLoraB().fill(pos -> random.nextGaussian() * 0.1);
+		randn(loraLayer.getLoraB().getShape(), random).multiply(0.1)
+				.into(loraLayer.getLoraB().traverseEach()).evaluate();
 
 		CellularLayer baseLayer = dense(shape(batchSize, inputSize), baseWeights, null, false);
 
@@ -168,8 +169,10 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 				rank, 16.0
 		);
 
-		loraLayer.getLoraA().fill(pos -> random.nextGaussian() * 0.1);
-		loraLayer.getLoraB().fill(pos -> random.nextGaussian() * 0.1);
+		randn(loraLayer.getLoraA().getShape(), random).multiply(0.1)
+				.into(loraLayer.getLoraA().traverseEach()).evaluate();
+		randn(loraLayer.getLoraB().getShape(), random).multiply(0.1)
+				.into(loraLayer.getLoraB().traverseEach()).evaluate();
 
 		PackedCollection mergedWeights = loraLayer.mergeWeights();
 
@@ -353,8 +356,10 @@ public class LoRALinearTests extends TestSuiteBase implements LayerFeatures {
 				rank, 16.0
 		);
 
-		loraLayer.getLoraA().fill(pos -> random.nextGaussian() * 0.1);
-		loraLayer.getLoraB().fill(pos -> random.nextGaussian() * 0.1);
+		randn(loraLayer.getLoraA().getShape(), random).multiply(0.1)
+				.into(loraLayer.getLoraA().traverseEach()).evaluate();
+		randn(loraLayer.getLoraB().getShape(), random).multiply(0.1)
+				.into(loraLayer.getLoraB().traverseEach()).evaluate();
 
 		CellularLayer mergedLayer = loraLayer.toMergedLayer();
 

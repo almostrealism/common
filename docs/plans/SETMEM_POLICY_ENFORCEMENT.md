@@ -321,11 +321,24 @@ closes out the last three migrated sites. From there:
    `pos -> 1.0 + pos[0]` on `shape(1, size)`, where `pos[0]` is always 0 and the
    result is uniformly 1.0 — a ramp would silently change the data; and
    `DenseLayerShapeInvestigationTest` fills `pos -> (pos[0] + 1) * 0.1` on
-   `shape(4, 3)`, which is a per-row constant and wants a 4-element ramp
-   repeated along the last axis, not a 12-element ramp. Only genuinely 1-D
-   receivers convert directly. Multi-axis decomposition additionally needs a
-   `floor` on `CollectionProducer`, which does not exist yet (`mod` does), so
-   those sites are blocked on that primitive.
+   `shape(4, 3)`, which is a per-row constant. Only genuinely 1-D receivers
+   convert to a flat ramp directly.
+
+   Everything else these sites need already exists, and none of them are blocked
+   on a new primitive:
+
+   - a value that varies along one axis and repeats along another is
+     `repeat(...)` over the ramp for that axis (`CollectionProducer.repeat(int)`
+     and `repeat(int axis, int repeat)`, plus the `SlicingFeatures` forms);
+   - a value derived from a *position* within a shape is `index(...)`
+     (`CollectionFeatures.index`, backed by `IndexOfPositionComputation`), which
+     computes the index corresponding to a position and is the general answer
+     when no shape-specific operation fits;
+   - `floor` is available on `ArithmeticFeatures` (and `Expression.floor()`) for
+     the cases that genuinely want truncation.
+
+   The constraint on this bucket is therefore reading each site's shape
+   correctly, not a missing capability.
 
    **`GradientTestFeatures` is deliberately last.** Its two element-wise fills
    have the producer form written and commented out directly above them; it was
