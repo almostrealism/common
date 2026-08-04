@@ -98,12 +98,14 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Guidance appended to every {@code PackedCollection.of} violation. */
 	private static final String OF_GUIDANCE =
-			"PackedCollection.of bulk-copies host values to the device and accepts only numeric "
-					+ "literals (e.g. PackedCollection.of(1.0, 2.0)). Values computed in Java must be "
-					+ "produced by the computation graph instead (integers(), producer arithmetic, or a "
-					+ "producer assignment); data from outside the system enters through the sanctioned "
-					+ "ingest surface. Staging computed values in a double[] and shipping them in one "
-					+ "transfer is the same violation as writing them element by element.";
+			"PackedCollection.of bulk-copies host values to the device. It is what pack(...) "
+					+ "calls, so it is held to the same standard: every argument an individual value "
+					+ "(a literal or a scalar expression, never an array, a list, a device read-back, "
+					+ "or a call). Values computed in Java must be produced by the computation graph "
+					+ "instead (integers(), producer arithmetic, or a producer assignment); data from "
+					+ "outside the system enters through the sanctioned ingest surface. Staging "
+					+ "computed values in a double[] and shipping them in one transfer is the same "
+					+ "violation as writing them element by element.";
 
 	/** Rule code reported for a {@code fill} or {@code pack} call outside the scalar allowance. */
 	public static final String INGEST_RULE = "FILL_PACK_BEYOND_SCALAR_ALLOWANCE";
@@ -369,7 +371,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			scanCalls(file, content, masked, SETMEM_CALL,
 					args -> isSanctioned(args, masked), RULE, GUIDANCE);
 			scanCalls(file, content, masked, OF_CALL,
-					this::isSanctionedIngest, OF_RULE, OF_GUIDANCE);
+					args -> isWithinScalarAllowance(args, masked), OF_RULE, OF_GUIDANCE);
 			scanCalls(file, content, masked, RANGE_FILL_CALL,
 					args -> false, RANGE_FILL_RULE, RANGE_FILL_GUIDANCE);
 			scanCalls(file, content, masked, FILL_CALL,
@@ -458,24 +460,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		}
 	}
 
-	/**
-	 * Determines whether a {@code PackedCollection.of} argument list is sanctioned: every
-	 * argument must be a numeric literal. Unlike {@code setMem} there is no offset argument,
-	 * so no identifier of any kind is permitted — a host array, a {@code List}, a stream
-	 * pipeline, or a computed scalar are all violations.
-	 *
-	 * @param argString  the raw text between the call's parentheses (comment/string masked)
-	 * @return           {@code true} if the call is sanctioned
-	 */
-	private boolean isSanctionedIngest(String argString) {
-		List<String> args = splitTopLevel(argString);
-		if (args.isEmpty()) return false;
-
-		for (String arg : args) {
-			if (isArrayish(arg) || !isNumericLiteral(arg)) return false;
-		}
-		return true;
-	}
 
 	/**
 	 * Determines whether a {@code fill}/{@code pack} argument list is within the scalar
@@ -499,7 +483,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		boolean allLiterals = true;
 
 		for (String arg : args) {
-			if (isArrayish(arg) || arg.contains("(") || arg.contains("->") || arg.contains("::")) {
+			if (isArrayish(arg) || containsCall(arg) || arg.contains("->") || arg.contains("::")) {
 				return false;
 			}
 
@@ -603,11 +587,22 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * reads. A leading numeric literal is indistinguishable from a first value, so an
 	 * all-literal list is accepted whichever of the two shapes the author intended.</p>
 	 *
+	 * <p>A call passing five arguments is the low-level host&harr;device primitive —
+	 * {@code MemoryProvider.setMem(mem, offset, source, srcOffset, length)} or the static
+	 * {@code MemoryData.setMem(Memory, ...)} it delegates to — and is not subject to this
+	 * rule, which governs writes into a {@link org.almostrealism.hardware.MemoryData}. No
+	 * instance overload takes five arguments; the widest takes two. If one is ever added,
+	 * this allowance has to be revisited, because arity is what distinguishes them.</p>
+	 *
 	 * @param argString  the raw text between the call's parentheses (comment/string masked)
 	 * @param masked     the whole masked file, used to resolve a leading identifier's type
 	 * @return           {@code true} if the call is sanctioned
 	 */
 	private boolean isSanctioned(String argString, String masked) {
+		if (splitTopLevel(argString).size() == 5) {
+			return true;
+		}
+
 		List<String> args = splitTopLevel(argString);
 		if (args.isEmpty()) return false;
 
@@ -695,18 +690,50 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	}
 
 	/**
-	 * Returns {@code true} if {@code ident} is declared with an array or varargs type anywhere
-	 * in the (masked) file — i.e. {@code T[] ident} or {@code T... ident}.
+	 * Returns {@code true} if the argument invokes a method — an opening parenthesis directly
+	 * preceded by an identifier character.
+	 *
+	 * <p>A call is rejected because the scan cannot see what it returns, and an array would
+	 * be indistinguishable from a scalar. Parentheses that merely group, as in a cast or an
+	 * arithmetic expression, carry no such uncertainty: whatever they contain is still
+	 * examined, so an array reaching the device through one is caught on its own terms.</p>
+	 *
+	 * @param arg  the argument text
+	 * @return     whether the argument contains a method invocation
+	 */
+	private boolean containsCall(String arg) {
+		for (int i = arg.indexOf('('); i >= 0; i = arg.indexOf('(', i + 1)) {
+			int p = i - 1;
+			while (p >= 0 && arg.charAt(p) == ' ') p--;
+			if (p >= 0 && (Character.isJavaIdentifierPart(arg.charAt(p)))) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if {@code ident} is declared anywhere in the (masked) file with a
+	 * type that carries many values rather than one — an array or varargs ({@code T[] ident},
+	 * {@code T... ident}) or a collection of boxed numbers ({@code List<Double> ident}).
+	 *
+	 * <p>The collection case matters because the ingest surface is overloaded for it:
+	 * {@code PackedCollection.of(List<Double>)} moves as many values as the list holds, so an
+	 * identifier of that type is a bulk source even though it carries no array syntax.</p>
 	 *
 	 * @param masked  the comment/string-masked file content
 	 * @param ident   the identifier to look up
-	 * @return        whether the identifier is declared as a host array
+	 * @return        whether the identifier names many values rather than one
 	 */
 	private boolean isDeclaredArray(String masked, String ident) {
 		Pattern decl = Pattern.compile(
 				"[A-Za-z_$][\\w$.]*(?:\\s*<[^;{}=]*>)?\\s*(?:\\[\\s*\\]|\\.\\.\\.)\\s+"
 						+ Pattern.quote(ident) + "\\b");
-		return decl.matcher(masked).find();
+		if (decl.matcher(masked).find()) return true;
+
+		Pattern collection = Pattern.compile(
+				"(?:List|Collection|Iterable|Set|Queue|Deque|ArrayList|LinkedList)"
+						+ "\\s*<[^;{}=]*>\\s+" + Pattern.quote(ident) + "\\b");
+		return collection.matcher(masked).find();
 	}
 
 	/**
