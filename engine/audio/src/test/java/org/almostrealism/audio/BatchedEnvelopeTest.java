@@ -45,12 +45,6 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 	/** Audio sample rate. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
-	/** Returns a {@link PackedCollection} populated with the given array of values. */
-	private PackedCollection col(double[] values) {
-		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
-		return c;
-	}
 
 	/**
 	 * For each of {@value #N} notes, compares the batched volume-envelope curve to
@@ -77,13 +71,9 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		}
 
 		// ── Production reference: getVolumeEnv applied to all-ones per note. ──
-		double[] onesData = new double[TARGET_LENGTH];
-		Arrays.fill(onesData, 1.0);
-
 		double[] reference = new double[N * TARGET_LENGTH];
 		for (int n = 0; n < N; n++) {
-			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
-			ones.setMem(onesData);
+			PackedCollection ones = new PackedCollection(TARGET_LENGTH).fill(1.0);
 			double dur = durationV[n], atk = attackV[n], dec = decayV[n];
 			double sus = sustainV[n], rel = releaseV[n];
 			PackedCollection ref = AudioProcessingUtils.getVolumeEnv().evaluate(
@@ -96,8 +86,8 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 
 		// ── Batched curve generation. ──
 		PackedCollection out = renderer.buildVolumeEnvelopeCurve(
-				col(attackV), col(decayV), col(sustainV),
-				col(releaseV), col(durationV))
+				PackedCollection.of(attackV), PackedCollection.of(decayV), PackedCollection.of(sustainV),
+				PackedCollection.of(releaseV), PackedCollection.of(durationV))
 				.get().evaluate();
 
 		assertRmsBelow("Batched volume envelope vs production getVolumeEnv", reference, out);
@@ -133,13 +123,9 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 			v3[n] = 0.0;
 		}
 
-		double[] onesData = new double[TARGET_LENGTH];
-		Arrays.fill(onesData, 1.0);
-
 		double[] reference = new double[N * TARGET_LENGTH];
 		for (int n = 0; n < N; n++) {
-			PackedCollection ones = new PackedCollection(TARGET_LENGTH);
-			ones.setMem(onesData);
+			PackedCollection ones = new PackedCollection(TARGET_LENGTH).fill(1.0);
 			double mdN = md[n], f0N = f0[n], f1N = f1[n], f2N = f2[n];
 			double v0N = v0[n], v1N = v1[n], v2N = v2[n], v3N = v3[n];
 			PackedCollection ref = AudioProcessingUtils.getLayerEnv().evaluate(
@@ -152,7 +138,7 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		}
 
 		PackedCollection out = renderer.buildLayerEnvelopeCurve(
-				col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3))
+				PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3))
 				.get().evaluate();
 
 		assertRmsBelow("Batched layer envelope vs production getLayerEnv", reference, out);

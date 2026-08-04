@@ -675,7 +675,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 			System.arraycopy(sourcePool[md.sourceIdx[n]], md.sourceOffset[n],
 					audioData, n * paddedNoteSize + padHalf, NOTE_SIZE);
 		}
-		audioBuf.setMem(audioData);
+		audioBuf.setFrom(0, PackedCollection.of(audioData));
 
 		PackedCollection.of(md.pitchRatio);
 		PackedCollection.of(md.volAttack);

@@ -1091,7 +1091,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		double[] delaysData = new double[REVERB_TAPS];
 		for (int i = 0; i < REVERB_TAPS; i++) delaysData[i] = REVERB_DELAY_SAMPLES[i];
 		PackedCollection delaySamples = new PackedCollection(REVERB_TAPS);
-		delaySamples.setMem(delaysData);
+		delaySamples.setFrom(0, PackedCollection.of(delaysData));
 		args.put("delay_samples", delaySamples);
 
 		double diag = 0.4;
@@ -1104,7 +1104,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		}
 		PackedCollection feedback = new PackedCollection(
 				new TraversalPolicy(REVERB_TAPS, REVERB_TAPS));
-		feedback.setMem(matrixData);
+		feedback.setFrom(0, PackedCollection.of(matrixData));
 		args.put("feedback_matrix", feedback);
 
 		// Two frames per line: the read-first ring band is [signal_size, ringSize], so

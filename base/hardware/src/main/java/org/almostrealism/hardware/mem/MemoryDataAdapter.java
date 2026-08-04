@@ -279,6 +279,56 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		MemoryData.setMem(getMem(), getOffset() + offset, new float[] { value }, 0, 1);
 	}
 
+	/**
+	 * Writes double values from a host array into this memory, starting at index 0.
+	 *
+	 * <p>Protected because a bulk host array is the shape a large transfer takes, and
+	 * the point of the write surface is that such a transfer is deliberate and rare.
+	 * Data entering the system from outside — a file, a message, a serialized form —
+	 * arrives through {@link MemoryData#read(java.nio.ByteBuffer)} or
+	 * {@link MemoryData#read(java.io.InputStream)}; values a collection is constructed
+	 * from arrive through its factories. Neither route needs this, and a caller that
+	 * cannot use either is usually computing the values, which belongs in a
+	 * {@link io.almostrealism.relation.Producer}.</p>
+	 *
+	 * @param source Values to write
+	 */
+	protected void setMem(double[] source) {
+		setMem(0, source);
+	}
+
+	/**
+	 * Writes double values from a host array into this memory at the given offset.
+	 *
+	 * <p>The offset exists for a container writing into a region of its own storage —
+	 * the entry of a bank, for instance — which is why it is reachable only from a
+	 * subclass. See {@link #setMem(double[])} for the routes available to everyone
+	 * else.</p>
+	 *
+	 * @param offset Index in this memory
+	 * @param source Values to write
+	 */
+	protected void setMem(int offset, double[] source) {
+		MemoryData root = getRootDelegate();
+
+		if (getOffset() - root.getOffset() + offset + source.length > root.getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
+		MemoryData.setMem(getMem(), getOffset() + offset, source, 0, source.length);
+	}
+
+	/**
+	 * Writes float values from a host array into this memory, starting at index 0.
+	 *
+	 * <p>See {@link #setMem(double[])} for why this is not public.</p>
+	 *
+	 * @param source Values to write
+	 */
+	protected void setMem(float[] source) {
+		MemoryData.setMem(getMem(), getOffset(), source, 0, source.length);
+	}
+
 	public Heap getDefaultDelegate() { return null; }
 
 	@Override

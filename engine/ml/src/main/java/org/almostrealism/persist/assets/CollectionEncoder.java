@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.protobuf.Collections;
 
+import java.nio.ByteBuffer;
 import java.util.stream.IntStream;
 
 /**
@@ -168,16 +169,18 @@ public class CollectionEncoder {
 
 		PackedCollection decoded = destination.range(shape, destinationOffset);
 
-		if (data.getDataList().isEmpty()) {
-			float f[] = new float[data.getData32Count()];
-			for (int i = 0; i < f.length; i++) {
-				f[i] = data.getData32(i);
-			}
+		ByteBuffer buffer = ByteBuffer.allocate(decoded.getMemLength() * Double.BYTES);
 
-			decoded.setMem(f);
+		if (data.getDataList().isEmpty()) {
+			for (int i = 0; i < data.getData32Count(); i++) {
+				buffer.putDouble(data.getData32(i));
+			}
 		} else {
-			decoded.setMem(data.getDataList().stream().mapToDouble(d -> d).toArray());
+			data.getDataList().forEach(buffer::putDouble);
 		}
+
+		buffer.flip();
+		decoded.read(buffer);
 
 		return decoded;
 	}

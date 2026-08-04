@@ -794,8 +794,7 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 			for (int i = 0; i < config.vocabSize; i++) {
 				filtered[i] = values[i] >= threshold ? values[i] : -1e9;
 			}
-			PackedCollection topKLogits = new PackedCollection(config.vocabSize);
-			topKLogits.setMem(filtered);
+			PackedCollection topKLogits = PackedCollection.of(filtered);
 			return AutoregressiveModel.sampleToken(topKLogits, config.vocabSize,
 					temperature, topP, random);
 		}

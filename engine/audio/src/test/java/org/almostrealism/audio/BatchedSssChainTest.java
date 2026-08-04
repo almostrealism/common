@@ -129,13 +129,13 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
 								.get().evaluate();
 				CollectionProducer layer = cp(resampled)
-						.multiply(cp(w.layerEnvelopes[l].get(n)));
+						.multiply(cp(w.layerEnvelopes[l].get(n, shape(TARGET_LENGTH))));
 				merged = merged == null ? layer : merged.add(layer);
 			}
 
 			PackedCollection mergedN = merged.evaluate();
-			PackedCollection cutoffN = w.filterCutoffs.get(n);
-			PackedCollection volN = w.volumeEnvelopes.get(n);
+			PackedCollection cutoffN = w.filterCutoffs.get(n, shape(TARGET_LENGTH));
+			PackedCollection volN = w.volumeEnvelopes.get(n, shape(TARGET_LENGTH));
 
 			PackedCollection filtered =
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))

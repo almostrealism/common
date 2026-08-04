@@ -254,7 +254,7 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 			public Evaluable<PackedCollection> into(Object destination) {
 				return args -> {
 					initValues();
-					((MemoryBank) destination).setMem(values);
+					((PackedCollection) destination).setFrom(0, PackedCollection.of(values));
 					return (PackedCollection) destination;
 				};
 			}

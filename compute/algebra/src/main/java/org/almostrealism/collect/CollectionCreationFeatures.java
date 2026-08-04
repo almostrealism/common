@@ -321,9 +321,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 			return constant(values[0]);
 		}
 
-		PackedCollection c = PackedCollection.factory().apply(values.length);
-		c.setMem(values);
-		return c(c);
+		return c(PackedCollection.of(values));
 	}
 
 	/**
@@ -356,7 +354,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 
 		PackedCollection c = new PackedCollection(shape);
-		c.setMem(values);
+		c.fill(values);
 		return c(c);
 	}
 

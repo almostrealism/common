@@ -250,7 +250,7 @@ public class MoonbeamMidi implements AttentionFeatures {
 		double[] values = token.isSpecial()
 				? new double[MoonbeamConfig.NUM_ATTRIBUTES]
 				: token.toDoubleArray();
-		attributePositions.setMem(values);
+		attributePositions.fill(values);
 	}
 
 	/** Returns the compound MIDI embedding layer. */
