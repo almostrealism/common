@@ -110,9 +110,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatu
 
 		// Create a synthetic hidden state (all 0.1) and decode
 		PackedCollection fakeHidden = new PackedCollection(config.hiddenSize);
-		for (int i = 0; i < config.hiddenSize; i++) {
-			fakeHidden.setMem(i, 0.1);
-		}
+		fakeHidden.fill(0.1);
 
 		int[] decodeTokens = decoder.decode(fakeHidden);
 

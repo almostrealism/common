@@ -82,8 +82,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, count * dim).evaluate()
 				.reshape(count, dim).traverse();
 		PackedCollection w = pack(4, -3, 2);
 		CollectionProducer x = x(-1, dim);
@@ -120,8 +119,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, count * dim).evaluate()
 				.reshape(count, dim).traverse();
 		PackedCollection w = pack(4, -3, 2);
 		CollectionProducer x = x(-1, dim);
@@ -160,8 +158,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 	public void polynomial4() {
 		int dim = 3;
 
-		PackedCollection v = pack(IntStream.range(0, 4 * dim).boxed()
-										.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, 4 * dim).evaluate()
 										.reshape(4, dim).traverse();
 		PackedCollection w = pack(4, -3, 2);
 		CollectionProducer x = x(-1, dim);
@@ -197,8 +194,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 	public void polynomial5() {
 		int dim = 3;
 
-		PackedCollection v = pack(IntStream.range(0, 4 * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, 4 * dim).evaluate()
 				.reshape(4, dim).traverse();
 		PackedCollection w = pack(4, -3, 2);
 		CollectionProducer x = x(-1, dim);
@@ -233,8 +229,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 	public void polynomial6() {
 		int dim = 3;
 
-		PackedCollection v = pack(IntStream.range(0, dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, dim).evaluate()
 				.reshape(dim).traverse();
 		PackedCollection w = pack(4, -3, 2);
 		CollectionProducer x = cp(v);
@@ -268,8 +263,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 	public void powerFixed() {
 		int dim = 3;
 
-		PackedCollection v = pack(IntStream.range(0, dim).boxed()
-				.mapToDouble(d -> 1 + d / 2.0).toArray())
+		PackedCollection v = integers(0, dim).divide(2.0).add(1.0).evaluate()
 				.reshape(dim);
 		PackedCollection w = pack(4, 1, 2);
 		CollectionProducer x = cp(v);
@@ -301,8 +295,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 		int dim = 3;
 
 		IntFunction<PackedCollection> inputGenerator = count ->
-				pack(IntStream.range(0, count * dim).boxed()
-						.mapToDouble(d -> 1 + d / 2.0).toArray())
+				integers(0, count * dim).divide(2.0).add(1.0).evaluate()
 						.reshape(count, dim).traverse();
 
 		Factor<PackedCollection> f = x -> {
@@ -335,8 +328,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 		int dim = 3;
 
 		IntFunction<PackedCollection> inputGenerator = count ->
-				pack(IntStream.range(0, count * dim).boxed()
-						.mapToDouble(d -> 1 + d / 2.0).toArray())
+				integers(0, count * dim).divide(2.0).add(1.0).evaluate()
 						.reshape(count, dim).traverse();
 
 		PackedCollection w = pack(4, 1, 2);

@@ -561,9 +561,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 	 */
 	private static PackedCollection onesCollection(int size) {
 		PackedCollection collection = new PackedCollection(new TraversalPolicy(size));
-		for (int i = 0; i < size; i++) {
-			collection.setMem(i, 1.0);
-		}
+		collection.fill(1.0);
 		return collection;
 	}
 

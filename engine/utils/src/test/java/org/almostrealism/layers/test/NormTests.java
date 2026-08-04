@@ -76,14 +76,14 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 	 * Creates a random input supplier for tests.
 	 */
 	protected Supplier<PackedCollection> randomInput(int size) {
-		return () -> new PackedCollection(size).fill(() -> random() / 10.0);
+		return () -> rand(shape(size)).divide(10.0).evaluate();
 	}
 
 	/**
 	 * Creates a random gradient supplier for tests.
 	 */
 	protected Supplier<PackedCollection> randomGradient(int size) {
-		return () -> new PackedCollection(shape(size)).fill(() -> 1 + (random() * 4.0));
+		return () -> rand(shape(size)).multiply(4.0).add(1.0).evaluate();
 	}
 
 	/**

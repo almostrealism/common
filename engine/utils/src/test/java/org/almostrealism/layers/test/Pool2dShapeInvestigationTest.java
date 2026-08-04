@@ -107,9 +107,7 @@ public class Pool2dShapeInvestigationTest extends TestSuiteBase {
 		// Channel 1: all 1s
 		PackedCollection input = new PackedCollection(inputShape);
 		integers(0, 16).into(input.range(shape(16), 0).traverseEach()).evaluate();  // Channel 0: 0-15
-		for (int i = 16; i < 32; i++) {
-			input.setMem(i, 1.0);  // Channel 1: all 1s
-		}
+		c(1.0).repeat(16).into(input.range(shape(16), 16).traverseEach()).evaluate();  // Channel 1: all 1s
 
 		log("Input: " + input.toArrayString());
 

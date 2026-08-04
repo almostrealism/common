@@ -86,9 +86,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		log("\n[5] Running forward pass...");
 		start = System.currentTimeMillis();
 		PackedCollection input = new PackedCollection(shape(1, inputDim));
-		for (int i = 0; i < inputDim; i++) {
-			input.setMem(i, 0.1);
-		}
+		input.fill(0.1);
 		PackedCollection output = compiled.forward(input);
 		log("    Forward pass in " + (System.currentTimeMillis() - start) + "ms");
 		log("    Output shape: " + output.getShape());
@@ -131,9 +129,7 @@ public class Qwen3VocabProjectionTest extends TestSuiteBase implements LayerFeat
 		log("\n[4] Running forward pass...");
 		start = System.currentTimeMillis();
 		PackedCollection input = new PackedCollection(shape(1, inputDim));
-		for (int i = 0; i < inputDim; i++) {
-			input.setMem(i, 0.1);
-		}
+		input.fill(0.1);
 		PackedCollection output = compiled.forward(input);
 		log("    Forward pass in " + (System.currentTimeMillis() - start) + "ms");
 		log("    Output shape: " + output.getShape());
