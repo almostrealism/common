@@ -93,12 +93,10 @@ public class DelayRateModulationTest extends TestSuiteBase
 	 * @return the pass output
 	 */
 	private double[] forward(CompiledModel model, int signalSize, int firstIndex) {
-		double[] values = new double[signalSize];
-		for (int i = 0; i < signalSize; i++) {
-			values[i] = firstIndex + i + 1;
-		}
-		PackedCollection input =
-				new PackedCollection(new TraversalPolicy(1, signalSize)).fill(values);
+		// The ramp continues the global sample count: the pass's first sample is
+		// firstIndex + 1, and each sample after it increases by one.
+		PackedCollection input = integers(0, signalSize).add(c(firstIndex + 1.0))
+				.evaluate().reshape(1, signalSize);
 		return model.forward(input).toArray(0, signalSize);
 	}
 
@@ -133,14 +131,14 @@ public class DelayRateModulationTest extends TestSuiteBase
 
 		for (int pass = 0; pass < 6; pass++) {
 			int first = pass * signalSize;
-			double[] values = new double[channels * signalSize];
-			for (int ch = 0; ch < channels; ch++) {
-				for (int i = 0; i < signalSize; i++) {
-					values[ch * signalSize + i] = (ch + 1) * 1000 + first + i + 1;
-				}
-			}
-			PackedCollection input = new PackedCollection(
-					new TraversalPolicy(channels, signalSize)).fill(values);
+			// Each channel carries the global sample count offset into its own
+			// thousands band, so a cross-channel read is visible in the output.
+			PackedCollection input =
+					repeat(1, signalSize, integers(0, channels).reshape(channels, 1))
+							.multiply(c(1000.0))
+							.add(repeat(0, channels, integers(0, signalSize).reshape(1, signalSize)))
+							.add(c(1000.0 + first + 1))
+							.evaluate().reshape(channels, signalSize);
 			double[] out = model.forward(input).toArray(0, channels * signalSize);
 
 			for (int ch = 0; ch < channels; ch++) {

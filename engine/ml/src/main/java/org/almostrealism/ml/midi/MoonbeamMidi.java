@@ -105,9 +105,16 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 * Per-attribute position values for MRA RoPE, packed into a single collection
 	 * of shape {@code (NUM_ATTRIBUTES)}. Each slot is exposed to the compiled
 	 * transformer as a {@code subset(shape(1), i)} producer so all six
-	 * attribute positions can be updated with a single bulk {@code setMem} call.
+	 * attribute positions can be updated with a single bulk transfer.
 	 */
 	private final PackedCollection attributePositions;
+
+	/**
+	 * The positions used for a special token, which occupies no place in the
+	 * attribute space and so has a position of zero for every attribute.
+	 */
+	private final PackedCollection specialTokenPositions =
+			new PackedCollection(MoonbeamConfig.NUM_ATTRIBUTES);
 
 	/**
 	 * Create a MoonbeamMidi model with explicit components for testing.
@@ -247,10 +254,8 @@ public class MoonbeamMidi implements AttentionFeatures {
 	 * @param token the compound token providing attribute values
 	 */
 	public void setAttributePositions(MidiCompoundToken token) {
-		double[] values = token.isSpecial()
-				? new double[MoonbeamConfig.NUM_ATTRIBUTES]
-				: token.toDoubleArray();
-		attributePositions.fill(values);
+		attributePositions.setFrom(0,
+				token.isSpecial() ? specialTokenPositions : token.pack());
 	}
 
 	/** Returns the compound MIDI embedding layer. */

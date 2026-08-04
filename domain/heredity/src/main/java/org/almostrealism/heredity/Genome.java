@@ -66,7 +66,8 @@ import java.util.stream.IntStream;
  * Factor<PackedCollection> factor = genome.valueAt(0, 0, 0);  // Chr 0, Gene 0, Factor 0
  *
  * // Create offspring with mutations
- * ProjectedGenome offspring = genome.variation(-1.0, 1.0, 0.1, () -> Math.random() * 0.2 - 0.1);
+ * ProjectedGenome offspring = genome.variation(-1.0, 1.0, 0.1,
+ *         randn(genome.getParameters().getShape(), 0.0, 0.1));
  * }</pre>
  *
  * @param <T> the type of data that chromosomes in this genome operate on

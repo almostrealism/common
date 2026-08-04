@@ -112,18 +112,15 @@ public class AudioModulator implements AutoCloseable, CodeFeatures {
 	 */
 	public PackedCollection project(PackedCollection position) {
 		try (PackedCollection result = composer.getResultant(cp(position)).evaluate()) {
-			double[] data = result.toArray();
-			int totalSamples = data.length;
-			int channelSamples = totalSamples / 2; // Stereo audio, 2 channels
+			int channelSamples = result.getShape().getTotalSize() / 2; // Stereo audio, 2 channels
 			int finalSamples = (int) (getAudioDuration() * composer.getSampleRate());
 
-			double[] stereoAudio = new double[2 * finalSamples];
-			for (int i = 0; i < finalSamples; i++) {
-				stereoAudio[i] = data[i];
-				stereoAudio[finalSamples + i] = data[channelSamples + i];
-			}
-
-			return pack(stereoAudio).reshape(2, finalSamples);
+			// Each channel is truncated to finalSamples, which is the leading
+			// column range of the result viewed as one row per channel.
+			PackedCollection stereoAudio = new PackedCollection(2, finalSamples);
+			a(cp(stereoAudio), subset(shape(2, finalSamples),
+					cp(result).reshape(2, channelSamples), 0, 0)).get().run();
+			return stereoAudio;
 		}
 	}
 

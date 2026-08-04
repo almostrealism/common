@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.midi;
 
+import org.almostrealism.collect.PackedCollection;
+
 /**
  * A compound MIDI token consisting of 6 discrete attributes that together
  * represent a single musical note. This is the tokenized representation
@@ -123,12 +125,25 @@ public class MidiCompoundToken {
 	}
 
 	/**
-	 * Returns all 6 attribute values as a double array, suitable for bulk assignment
-	 * into a {@code PackedCollection} via {@code setMem(0, ...)}.
+	 * Returns all 6 attribute values as a double array, for host-side inspection of
+	 * individual attributes. To move the values into a {@link PackedCollection}, use
+	 * {@link #pack()} rather than assigning from this array.
 	 * Order: onset, duration, octave, pitchClass, instrument, velocity.
 	 */
 	public double[] toDoubleArray() {
 		return new double[]{onset, duration, octave, pitchClass, instrument, velocity};
+	}
+
+	/**
+	 * Returns all 6 attribute values as a {@link PackedCollection}, in the order the
+	 * model's per-attribute arguments expect: onset, duration, octave, pitchClass,
+	 * instrument, velocity. Special tokens carry their sentinel values here; a consumer
+	 * that requires non-negative values must check {@link #isSpecial()} first.
+	 *
+	 * @return the attribute values, shaped {@code [6]}
+	 */
+	public PackedCollection pack() {
+		return PackedCollection.of(onset, duration, octave, pitchClass, instrument, velocity);
 	}
 
 	/**

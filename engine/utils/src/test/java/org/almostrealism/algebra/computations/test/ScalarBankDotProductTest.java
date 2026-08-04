@@ -24,8 +24,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-import java.util.stream.IntStream;
-
 /**
  * Tests for scalar bank dot product computation.
  */
@@ -49,10 +47,11 @@ public class ScalarBankDotProductTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void scalarBankDotProduct32() {
-		PackedCollection window = window();
-
-		PackedCollection given = pack(IntStream.range(0, SIZE)
-				.mapToDouble(i -> window.valueAt(i, 0) * window.valueAt(i, 0)).sum());
+		// Column 0 of the window holds 4i, so its dot product with itself is the
+		// sum of (4i) squared -- derived from the rule the window is built by,
+		// independently of the computation under test.
+		PackedCollection given = sum(sq(integers(0, SIZE).multiply(4)
+				.reshape(shape(SIZE, 1)))).evaluate();
 
 		verboseLog(() -> {
 			Producer<PackedCollection> a = subset(shape(SIZE, 1), v(shape(SIZE, 2), 0), 0);

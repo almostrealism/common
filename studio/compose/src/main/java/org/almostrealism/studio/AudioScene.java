@@ -15,6 +15,8 @@
  */
 
 package org.almostrealism.studio;
+
+import org.almostrealism.Ops;
 import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.CellFeatures;
@@ -74,7 +76,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.Function;
@@ -1435,11 +1436,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * @return a {@link UnaryOperator} that produces a perturbed copy of the input genome
 	 */
 	public static UnaryOperator<ProjectedGenome> defaultVariation() {
-		return genome -> {
-			Random rand = new Random();
-			return genome.variation(0, 1, variationRate,
-					() -> variationIntensity * rand.nextGaussian());
-		};
+		return genome -> genome.variation(0, 1, variationRate,
+				Ops.o().randn(genome.getParameters().getShape(), 0.0, variationIntensity));
 	}
 
 	/**
