@@ -220,6 +220,13 @@ public class DiffusionSampler implements ConsoleFeatures {
 	 *
 	 * <p>Noise is sampled on CPU (inherently CPU-bound), but all math operations
 	 * use the Producer pattern and are evaluated on GPU.</p>
+	 *
+	 * <p>The timestep is supplied in the model's declared {@code (batchSize, 1)} shape
+	 * rather than as a bare 1-D tensor, so the model receives exactly the rank it was
+	 * compiled for. The embedding reads one timestep per batch element, and the whole
+	 * batch advances through the schedule together, so every element of that tensor
+	 * carries the current step — writing only the first would leave the rest of the
+	 * batch denoising at a timestep of zero.</p>
 	 */
 	private PackedCollection runSamplingLoop(PackedCollection x, int startStep,
 											 Random random, PackedCollection crossAttnCond,
@@ -234,9 +241,6 @@ public class DiffusionSampler implements ConsoleFeatures {
 		long modelTotal = 0;
 		long samplingTotal = 0;
 
-		// Timestep is a per-batch scalar; supply it in the model's declared
-		// (batchSize, 1) shape rather than a bare 1-D tensor so the model receives
-		// exactly the rank it was compiled for.
 		PackedCollection tTensor = new PackedCollection(new TraversalPolicy(latentShape.length(0), 1));
 		int totalSteps = numInferenceSteps - startStep;
 
@@ -246,7 +250,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 			// TODO  The schedule is a device-resident table indexed by the step, once
 			// TODO  SamplingStrategy can express it as a producer instead of a double[].
-			tTensor.setMem(0, t);
+			tTensor.fill(t);
 
 			// Model forward pass
 			long start = System.currentTimeMillis();

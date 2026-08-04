@@ -15,18 +15,6 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/u
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	dest.fill(values);
 PACKED_COLLECTION_OF_NON_LITERAL	compute/algebra/src/main/java/org/almostrealism/collect/computations/Random.java	1	((PackedCollection) destination).setFrom(0, PackedCollection.of(values));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	waveform.setFrom(0, PackedCollection.of(data[chan]));
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	1	PackedCollection destOffsets = PackedCollection.of(destOffsetValues);
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	8	PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3)
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	5	PackedCollection[] filterAdsr = { PackedCollection.of(fAtt), PackedCollection.of(fDec), PackedCollection.of(fSus), PackedCollection.of(fRel), PackedCollection.of(fDur) };
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	5	PackedCollection[] volumeAdsr = { PackedCollection.of(vAtt), PackedCollection.of(vDec), PackedCollection.of(vSus), PackedCollection.of(vRel), PackedCollection.of(vDur) };
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssFromScalarsTest.java	1	ratios[l] = PackedCollection.of(ratioData);
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	PackedCollection destOffsets = PackedCollection.of(destOffsetValues);
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	PackedCollection mergedN = PackedCollection.of(merged);
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	5	PackedCollection.of(fAtt), PackedCollection.of(fDec), PackedCollection.of(fSus), PackedCollection.of(fRel), PackedCollection.of(fDur))
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	8	PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3))
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	5	PackedCollection.of(vAtt), PackedCollection.of(vDec), PackedCollection.of(vSus), PackedCollection.of(vRel), PackedCollection.of(vDur))
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	ratios[l] = PackedCollection.of(ratioData);
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/BatchedSssPlaybackTest.java	1	return PackedCollection.of(data);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	audioBuf.setFrom(0, PackedCollection.of(audioData));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(1.5 * in.valueAt(0));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
@@ -47,5 +35,4 @@ PACKED_COLLECTION_OF_NON_LITERAL	studio/spatial/src/main/java/org/almostrealism/
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	resets.setMem(index, (double) value);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	time.setMem(0, newLeft);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/line/SharedMemoryAudioLine.java	1	controls.setMem(PASSTHROUGH_LEVEL, level);
-SETMEM_NON_LITERAL_ARGUMENT	engine/ml/src/main/java/org/almostrealism/ml/audio/DiffusionSampler.java	1	tTensor.setMem(0, t);
 SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/optimize/AudioSceneOptimizer.java	1	combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));

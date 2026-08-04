@@ -19,9 +19,7 @@ package org.almostrealism.audio;
 import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestDepth;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -36,28 +34,10 @@ import java.util.Random;
  * materialized from those scalars. This is the gather's target API: a single
  * dispatch consuming only cheap per-note scalars, ratios, sources, and offsets.
  */
-public class BatchedSssFromScalarsTest extends TestSuiteBase implements TemporalFeatures {
-
-	/** Number of notes in each batch. */
-	private static final int N = 4;
-
-	/** Number of layers in the SSS chain. */
-	private static final int LAYERS = 3;
-
-	/** Number of samples in each source audio buffer. */
-	private static final int SOURCE_LENGTH = 2048;
-
-	/** Number of samples in the target output buffer. */
-	private static final int TARGET_LENGTH = 1024;
-
-	/** Number of output samples written by the placement window. */
-	private static final int WINDOW_WIDTH = 1536;
+public class BatchedSssFromScalarsTest extends BatchedSssTestBase {
 
 	/** Audio sample rate used for envelope curve construction. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
-
-	/** Filter order used when constructing the multi-order filter processor. */
-	private static final int FILTER_ORDER = 40;
 
 
 	/**
@@ -79,61 +59,17 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 		for (int l = 0; l < LAYERS; l++) {
 			PackedCollection batch =
 					rand(shape(N, SOURCE_LENGTH), rng).multiply(2.0).add(-1.0).evaluate();
-			double[] ratioData = new double[N];
-			double[] md = new double[N];
-			double[] f0 = new double[N];
-			double[] f1 = new double[N];
-			double[] f2 = new double[N];
-			double[] v0 = new double[N];
-			double[] v1 = new double[N];
-			double[] v2 = new double[N];
-			double[] v3 = new double[N];
-			for (int nn = 0; nn < N; nn++) {
-				ratioData[nn] = 1.0 + 0.1 * l + 0.05 * nn;
-				md[nn] = 0.012 + 0.002 * nn;
-				f0[nn] = 0.3;
-				f1[nn] = 0.6;
-				f2[nn] = 1.0;
-				v0[nn] = 0.0;
-				v1[nn] = 0.85 + 0.02 * l;
-				v2[nn] = 0.5 + 0.03 * nn;
-				v3[nn] = 0.0;
-			}
 			sources[l] = batch;
-			ratios[l] = PackedCollection.of(ratioData);
-			layerEnvParams[l] = new PackedCollection[] {
-					PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3)
-			};
+			ratios[l] = perNote(1.0 + 0.1 * l, 0.05);
+			layerEnvParams[l] = layerEnvelopeParameters(l);
 			layerCurves[l] = renderer.buildLayerEnvelopeCurve(
 					layerEnvParams[l][0], layerEnvParams[l][1], layerEnvParams[l][2], layerEnvParams[l][3],
 					layerEnvParams[l][4], layerEnvParams[l][5], layerEnvParams[l][6], layerEnvParams[l][7])
 					.get().evaluate();
 		}
 
-		double[] fAtt = new double[N];
-		double[] fDec = new double[N];
-		double[] fSus = new double[N];
-		double[] fRel = new double[N];
-		double[] fDur = new double[N];
-		double[] vAtt = new double[N];
-		double[] vDec = new double[N];
-		double[] vSus = new double[N];
-		double[] vRel = new double[N];
-		double[] vDur = new double[N];
-		for (int nn = 0; nn < N; nn++) {
-			fDur[nn] = 0.016 + 0.002 * nn;
-			fAtt[nn] = 0.002 + 0.0003 * nn;
-			fDec[nn] = 0.0015 + 0.0002 * nn;
-			fSus[nn] = 0.5 + 0.05 * nn;
-			fRel[nn] = 0.004 + 0.0005 * nn;
-			vDur[nn] = 0.018 + 0.002 * nn;
-			vAtt[nn] = 0.0015 + 0.0003 * nn;
-			vDec[nn] = 0.0010 + 0.0002 * nn;
-			vSus[nn] = 0.45 + 0.05 * nn;
-			vRel[nn] = 0.003 + 0.0005 * nn;
-		}
-		PackedCollection[] filterAdsr = { PackedCollection.of(fAtt), PackedCollection.of(fDec), PackedCollection.of(fSus), PackedCollection.of(fRel), PackedCollection.of(fDur) };
-		PackedCollection[] volumeAdsr = { PackedCollection.of(vAtt), PackedCollection.of(vDec), PackedCollection.of(vSus), PackedCollection.of(vRel), PackedCollection.of(vDur) };
+		PackedCollection[] filterAdsr = filterAdsr();
+		PackedCollection[] volumeAdsr = volumeAdsr();
 
 		PackedCollection filterCutoffs = renderer.buildVolumeEnvelopeCurve(
 				filterAdsr[0], filterAdsr[1], filterAdsr[2], filterAdsr[3], filterAdsr[4])
@@ -143,8 +79,7 @@ public class BatchedSssFromScalarsTest extends TestSuiteBase implements Temporal
 				volumeAdsr[0], volumeAdsr[1], volumeAdsr[2], volumeAdsr[3], volumeAdsr[4])
 				.get().evaluate();
 
-		double[] destOffsetValues = { 0, 200, 512, 700 };
-		PackedCollection destOffsets = PackedCollection.of(destOffsetValues);
+		PackedCollection destOffsets = destinationOffsets();
 
 		// Materialized-curve path (already verified against the per-note reference).
 		PackedCollection materialized = renderer.buildBatchedSssChainPlaced(
