@@ -25,8 +25,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
-
 /**
  * Verifies that {@link BatchedPatternRenderer#buildVolumeEnvelopeCurve} generates
  * per-note ADSR volume-envelope gain curves matching the production
@@ -56,38 +54,27 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		BatchedPatternRenderer renderer = new BatchedPatternRenderer(
 				N, 2048, TARGET_LENGTH, SAMPLE_RATE, 2);
 
-		double[] attackV = new double[N];
-		double[] decayV = new double[N];
-		double[] sustainV = new double[N];
-		double[] releaseV = new double[N];
-		double[] durationV = new double[N];
-		for (int n = 0; n < N; n++) {
-			// Short phases so attack+decay+sustain+release all fit in TARGET_LENGTH.
-			durationV[n] = 0.008 + 0.002 * n;
-			attackV[n] = 0.0015 + 0.0003 * n;
-			decayV[n] = 0.0010 + 0.0002 * n;
-			sustainV[n] = 0.4 + 0.1 * n;
-			releaseV[n] = 0.003 + 0.0005 * n;
-		}
+		// Short phases so attack+decay+sustain+release all fit in TARGET_LENGTH.
+		PackedCollection duration = linear(0.008, 0.016, N).evaluate().reshape(N);
+		PackedCollection attack = linear(0.0015, 0.0027, N).evaluate().reshape(N);
+		PackedCollection decay = linear(0.0010, 0.0018, N).evaluate().reshape(N);
+		PackedCollection sustain = linear(0.4, 0.8, N).evaluate().reshape(N);
+		PackedCollection release = linear(0.003, 0.005, N).evaluate().reshape(N);
 
 		// ── Production reference: getVolumeEnv applied to all-ones per note. ──
-		double[] reference = new double[N * TARGET_LENGTH];
+		PackedCollection reference = new PackedCollection(N, TARGET_LENGTH);
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH).fill(1.0);
-			double dur = durationV[n], atk = attackV[n], dec = decayV[n];
-			double sus = sustainV[n], rel = releaseV[n];
 			PackedCollection ref = AudioProcessingUtils.getVolumeEnv().evaluate(
 					ones.traverse(1),
-					pack(dur), pack(atk), pack(dec), pack(sus), pack(rel));
-			for (int i = 0; i < TARGET_LENGTH; i++) {
-				reference[n * TARGET_LENGTH + i] = ref.toDouble(i);
-			}
+					duration.range(shape(1), n), attack.range(shape(1), n), decay.range(shape(1), n),
+					sustain.range(shape(1), n), release.range(shape(1), n));
+			cp(ref).get().into(reference.range(shape(TARGET_LENGTH), n * TARGET_LENGTH)).evaluate();
 		}
 
 		// ── Batched curve generation. ──
 		PackedCollection out = renderer.buildVolumeEnvelopeCurve(
-				PackedCollection.of(attackV), PackedCollection.of(decayV), PackedCollection.of(sustainV),
-				PackedCollection.of(releaseV), PackedCollection.of(durationV))
+				attack, decay, sustain, release, duration)
 				.get().evaluate();
 
 		assertRmsBelow("Batched volume envelope vs production getVolumeEnv", reference, out);
@@ -103,58 +90,42 @@ public class BatchedEnvelopeTest extends TestSuiteBase implements TemporalFeatur
 		BatchedPatternRenderer renderer = new BatchedPatternRenderer(
 				N, 2048, TARGET_LENGTH, SAMPLE_RATE, 2);
 
-		double[] md = new double[N];
-		double[] f0 = new double[N];
-		double[] f1 = new double[N];
-		double[] f2 = new double[N];
-		double[] v0 = new double[N];
-		double[] v1 = new double[N];
-		double[] v2 = new double[N];
-		double[] v3 = new double[N];
-		for (int n = 0; n < N; n++) {
-			// Segment ends d0<d1<d2 all fall within TARGET_LENGTH frames.
-			md[n] = 0.010 + 0.002 * n;
-			f0[n] = 0.3;
-			f1[n] = 0.6;
-			f2[n] = 1.0;
-			v0[n] = 0.0;
-			v1[n] = 0.9 + 0.01 * n;
-			v2[n] = 0.5 + 0.02 * n;
-			v3[n] = 0.0;
-		}
+		// Segment ends d0<d1<d2 all fall within TARGET_LENGTH frames.
+		PackedCollection md = linear(0.010, 0.018, N).evaluate().reshape(N);
+		PackedCollection f0 = linear(0.3, 0.3, N).evaluate().reshape(N);
+		PackedCollection f1 = linear(0.6, 0.6, N).evaluate().reshape(N);
+		PackedCollection f2 = linear(1.0, 1.0, N).evaluate().reshape(N);
+		PackedCollection v0 = linear(0.0, 0.0, N).evaluate().reshape(N);
+		PackedCollection v1 = linear(0.9, 0.94, N).evaluate().reshape(N);
+		PackedCollection v2 = linear(0.5, 0.58, N).evaluate().reshape(N);
+		PackedCollection v3 = linear(0.0, 0.0, N).evaluate().reshape(N);
 
-		double[] reference = new double[N * TARGET_LENGTH];
+		PackedCollection reference = new PackedCollection(N, TARGET_LENGTH);
 		for (int n = 0; n < N; n++) {
 			PackedCollection ones = new PackedCollection(TARGET_LENGTH).fill(1.0);
-			double mdN = md[n], f0N = f0[n], f1N = f1[n], f2N = f2[n];
-			double v0N = v0[n], v1N = v1[n], v2N = v2[n], v3N = v3[n];
 			PackedCollection ref = AudioProcessingUtils.getLayerEnv().evaluate(
 					ones.traverse(1),
-					pack(mdN), pack(f0N), pack(f1N), pack(f2N),
-					pack(v0N), pack(v1N), pack(v2N), pack(v3N));
-			for (int i = 0; i < TARGET_LENGTH; i++) {
-				reference[n * TARGET_LENGTH + i] = ref.toDouble(i);
-			}
+					md.range(shape(1), n), f0.range(shape(1), n),
+					f1.range(shape(1), n), f2.range(shape(1), n),
+					v0.range(shape(1), n), v1.range(shape(1), n),
+					v2.range(shape(1), n), v3.range(shape(1), n));
+			cp(ref).get().into(reference.range(shape(TARGET_LENGTH), n * TARGET_LENGTH)).evaluate();
 		}
 
 		PackedCollection out = renderer.buildLayerEnvelopeCurve(
-				PackedCollection.of(md), PackedCollection.of(f0), PackedCollection.of(f1), PackedCollection.of(f2), PackedCollection.of(v0), PackedCollection.of(v1), PackedCollection.of(v2), PackedCollection.of(v3))
+				md, f0, f1, f2, v0, v1, v2, v3)
 				.get().evaluate();
 
 		assertRmsBelow("Batched layer envelope vs production getLayerEnv", reference, out);
 	}
 
-	/** Asserts the RMS difference between a flat reference and a collection is below {@code 1e-4}. */
-	private void assertRmsBelow(String label, double[] reference, PackedCollection actual) {
-		double sumSqDiff = 0.0;
-		double sumSqRef = 0.0;
-		for (int i = 0; i < reference.length; i++) {
-			double diff = reference[i] - actual.toDouble(i);
-			sumSqDiff += diff * diff;
-			sumSqRef += reference[i] * reference[i];
-		}
-		double rms = Math.sqrt(sumSqDiff / reference.length);
-		double refRms = Math.sqrt(sumSqRef / reference.length);
+	/** Asserts the RMS difference between the reference and a collection is below {@code 1e-4}. */
+	private void assertRmsBelow(String label, PackedCollection reference, PackedCollection actual) {
+		int length = reference.getMemLength();
+		double rms = Math.sqrt(sum(cp(reference).reshape(length)
+				.subtract(cp(actual).reshape(length)).sq()).evaluate().toDouble(0) / length);
+		double refRms = Math.sqrt(sum(cp(reference).reshape(length).sq())
+				.evaluate().toDouble(0) / length);
 
 		log(label + ":");
 		log(String.format("  Reference RMS: %.6f", refRms));

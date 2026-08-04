@@ -338,6 +338,29 @@ filter.get().evaluate(data1);
 filter.get().evaluate(data2);  // Same kernel, different data
 ```
 
+`CodeFeatures` provides `x()`, `y()` and `z()` as shorthand for the first three
+arguments. They are varargs, so the no-argument form is a call to `x(int... dims)`:
+
+```java
+x()             // equivalent to c(value(shape(-1, 1), 0))
+y()             // argument 1
+z()             // argument 2
+x(1000)         // argument 0 with an explicit shape
+```
+
+This is the idiomatic way to write a computation over its own arguments, and it is
+what makes a graph directly evaluable:
+
+```java
+CollectionProducer c = x().sq().add(x().mul(3)).add(1);
+Evaluable<PackedCollection> dy = c.delta(x()).get();
+dy.evaluate(input);
+```
+
+Prefer `x()`/`y()`/`z()` over `v(shape, index)` when the shape is inferred and the
+argument is one of the first three; reach for `v(shape, index)` when the shape must
+be stated or the index is higher.
+
 **Benefits:**
 - Kernel compiled once, reused many times
 - No recompilation overhead

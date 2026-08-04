@@ -15,8 +15,6 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/pers
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/persist/index/test/HnswSearchTest.java	1	return new PackedCollection(dimension).fill(values);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/algebra/computations/test/ScalarBankDotProductTest.java	1	PackedCollection given = pack(IntStream.range(0, SIZE)
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	2	input.fill(pos -> {
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/math/bool/test/AcceleratedConditionalStatementTests.java	1	.mapToObj(i -> pack(Math.random()))
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/math/bool/test/AcceleratedConditionalStatementTests.java	1	check(lt, a, pack(Math.random()));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> dLdHatXGroup.valueAt(pos) - dLdHatXGroupMean
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> gradient.valueAt(pos) * weights.valueAt(pos));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/compose/src/main/java/org/almostrealism/studio/ml/AudioModulator.java	1	return pack(stereoAudio).reshape(2, finalSamples);
@@ -48,10 +46,6 @@ PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/gr
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/main/java/org/almostrealism/studio/arrange/DefaultChannelSectionFactory.java	1	PackedCollection repeat = PackedCollection.of(
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/main/java/org/almostrealism/studio/arrange/EfxManager.java	1	PackedCollection c = PackedCollection.of(choices);
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/main/java/org/almostrealism/studio/midi/SkyTntMidi.java	1	PackedCollection topKLogits = PackedCollection.of(filtered);
-PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	delays.setFrom(0, PackedCollection.of(tapDelays));
-PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	feedback.setFrom(0, PackedCollection.of(feedbackMatrixRowMajor));
-PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	input.setFrom(0, PackedCollection.of(flatInput));
-PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/DelayNetworkBehaviorTest.java	1	pass.setFrom(0, PackedCollection.of(passthroughMatrixRowMajor));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	PackedCollection.of(referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER)));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	delaySamples.setFrom(0, PackedCollection.of(delaysData));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	feedback.setFrom(0, PackedCollection.of(matrixData));

@@ -786,6 +786,6 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 		}
 
 		double step = (end - start) / (steps - 1);
-		return integers(0, steps).multiply(c(step));
+		return integers(0, steps).multiply(c(step)).add(c(start));
 	}
 }

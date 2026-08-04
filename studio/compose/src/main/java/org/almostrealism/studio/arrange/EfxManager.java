@@ -116,14 +116,13 @@ public class EfxManager implements CellFeatures {
 	 * gene segments from the projected chromosome.
 	 */
 	protected void init() {
-		double[] choices = IntStream.range(0, 5)
-				.mapToDouble(i -> Math.pow(2, i - 2))
-				.mapToObj(d -> List.of(d, 1.5 * d))
-				.flatMap(List::stream)
-				.mapToDouble(d -> d)
-				.toArray();
-
-		PackedCollection c = PackedCollection.of(choices);
+		// Five octaves from a quarter, each offered plain and dotted (half again as long)
+		PackedCollection c = PackedCollection.of(
+				0.25, 0.375,
+				0.5, 0.75,
+				1.0, 1.5,
+				2.0, 3.0,
+				4.0, 6.0);
 
 		delayTimes = chromosome(IntStream.range(0, channels)
 				.mapToObj(i -> chromosome.addChoiceGene(c, 1))
