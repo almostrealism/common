@@ -77,7 +77,11 @@ act() {
 }
 
 ok()   { echo "  ok: $1"; }
+
+# Reports one problem. Use detail() for continuation lines so a multi-line
+# explanation is not counted as several distinct problems.
 warn() { PROBLEMS=$((PROBLEMS + 1)); echo "  WARNING: $1"; }
+detail() { echo "           $1"; }
 
 # Runs a command unless --check is active.
 apply() {
@@ -99,8 +103,9 @@ echo "Render group"
 if getent group "${RENDER_GROUP}" > /dev/null; then
     ok "group '${RENDER_GROUP}' exists (gid $(getent group "${RENDER_GROUP}" | cut -d: -f3))"
 else
-    warn "group '${RENDER_GROUP}' does not exist. The GPU driver package normally"
-    warn "creates it; without it the udev rule below cannot resolve a group."
+    warn "group '${RENDER_GROUP}' does not exist."
+    detail "The GPU driver package normally creates it; without it the udev rule"
+    detail "below cannot resolve a group."
 fi
 echo
 
@@ -243,8 +248,8 @@ SAMPLES_PARENT=$(dirname "${SAMPLES_DEST}")
 
 if [ -z "${ADMIN_USER}" ]; then
     warn "no admin account given (--admin-user); skipping ${SAMPLES_DEST} ownership."
-    warn "The rsync account must own the tree AND belong to '${SERVICE_USER}'"
-    warn "for the sync script's chgrp step to work without sudo."
+    detail "The rsync account must own the tree AND belong to '${SERVICE_USER}'"
+    detail "for the sync script's chgrp step to work without sudo."
 else
     if [ -d "${SAMPLES_DEST}" ]; then
         ok "${SAMPLES_DEST} exists"
@@ -269,22 +274,45 @@ echo
 
 # ---------- Gate ----------
 
-echo "Gate: GPU visible from inside a rootless container"
+echo "Gate: render group reaches inside a rootless container"
+RENDER_GID=$(getent group "${RENDER_GROUP}" 2>/dev/null | cut -d: -f3 || true)
+
 if [ "$CHECK_ONLY" = 1 ]; then
     echo "  skipped under --check (it would pull an image)"
 elif ! command -v podman > /dev/null 2>&1; then
     warn "podman is not installed; cannot run the gate"
+elif [ -z "${RENDER_GID}" ]; then
+    warn "cannot resolve the '${RENDER_GROUP}' gid; skipping the gate"
 else
-    if runuser -u "${SERVICE_USER}" -- podman run --rm \
-            --device /dev/kfd --device /dev/dri --group-add keep-groups \
-            docker.io/library/debian:12 \
-            test -r /dev/kfd -a -r /dev/dri/renderD128 2>/dev/null; then
-        ok "'${SERVICE_USER}' can read both devices inside a container"
+    # What matters is whether the supplementary group survives into the user
+    # namespace — that is what --group-add keep-groups exists to do. Do NOT
+    # probe with `test -r`: inside a userns the device is owned by nobody:nogroup
+    # whenever the host owner is outside the subuid map, so a readability test
+    # reports failure even where access genuinely works.
+    #
+    # stderr is deliberately not discarded. A pull failure, a missing
+    # XDG_RUNTIME_DIR, or a runtime that does not understand keep-groups would
+    # otherwise be indistinguishable from a permissions problem.
+    GATE_OUT=$(runuser -u "${SERVICE_USER}" -- \
+        env "XDG_RUNTIME_DIR=/run/user/${SERVICE_UID}" \
+        podman run --rm --device /dev/kfd --device /dev/dri \
+            --group-add keep-groups \
+            docker.io/library/debian:12 id 2>&1) && GATE_RC=0 || GATE_RC=$?
+
+    if [ "${GATE_RC}" -ne 0 ]; then
+        warn "the gate container did not run at all (exit ${GATE_RC}):"
+        printf '%s\n' "${GATE_OUT}" | sed 's/^/           /'
+        detail "This is a container-runtime problem, not a GPU problem."
+    elif printf '%s' "${GATE_OUT}" | grep -qE "(^|[=,(])${RENDER_GID}([(,]|$)"; then
+        ok "'${RENDER_GROUP}' (gid ${RENDER_GID}) is present inside the container"
     else
-        warn "'${SERVICE_USER}' CANNOT read the render devices inside a container."
-        warn "Do not proceed — every later failure would be misattributed to the"
-        warn "ICD or the ROCm mount. Check 'sudo -iu ${SERVICE_USER} id' for the"
-        warn "'${RENDER_GROUP}' group, and see README.md."
+        warn "the '${RENDER_GROUP}' group (gid ${RENDER_GID}) did NOT reach the container."
+        detail "Container reported: ${GATE_OUT}"
+        detail "The host side is fine — 'sudo -iu ${SERVICE_USER} id' shows the group —"
+        detail "so this is keep-groups not taking effect. Check that the runtime is"
+        detail "crun (podman info --format '{{.Host.OCIRuntime.Name}}'), and see README.md."
+        detail "Do not proceed: a later failure would be misattributed to the ICD"
+        detail "or the ROCm mount."
     fi
 fi
 echo

@@ -401,6 +401,35 @@ configuration that looks correct.
 Do not edit the ICD inside a running container — the next rebuild silently
 reverts it.
 
+### The setup-host.sh gate fails but `sudo -iu ar-ci id` shows the render group
+
+The host side is fine; the group is not surviving into the user namespace. Run
+the probe by hand — `id` inside the container is the direct test, and the render
+gid must appear in its group list:
+
+```bash
+sudo -iu ar-ci
+echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"        # must be set for rootless podman
+podman info --format '{{.Host.OCIRuntime.Name}}'
+podman run --rm --device /dev/kfd --device /dev/dri --group-add keep-groups \
+    docker.io/library/debian:12 sh -c 'id; ls -ln /dev/kfd /dev/dri/renderD128'
+```
+
+Three causes, in the order worth checking:
+
+1. **`XDG_RUNTIME_DIR` is unset.** Rootless podman needs it. Lingering creates
+   `/run/user/<uid>`, but a non-login invocation (`runuser`, some `sudo`
+   configurations) does not export the variable.
+2. **The OCI runtime is `runc`, not `crun`.** `keep-groups` is a crun feature;
+   under runc it is not honoured. Install `crun` or set it in
+   `~/.config/containers/containers.conf`.
+3. **The image could not be pulled** — no network, or a registry restriction.
+
+Note that `test -r` on the device is *not* a valid probe. Inside a user
+namespace the device shows as `nobody:nogroup` whenever the host owner falls
+outside the subuid map, so a readability test reports failure even where access
+works. Check group membership, not readability.
+
 ### Jobs don't get picked up
 
 - Verify labels match `self-hosted`, `linux`, `ar-ci-cl`
