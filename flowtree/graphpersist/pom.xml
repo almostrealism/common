@@ -50,12 +50,6 @@
 			<version>1.9.2</version>
 		</dependency>
 
-		<dependency>
-			<groupId>org.dcache</groupId>
-			<artifactId>nfs4j-core</artifactId>
-			<version>${dcache.version}</version>
-		</dependency>
-
 		<!-- https://mvnrepository.com/artifact/com.jcraft/jsch -->
 		<dependency>
 			<groupId>com.jcraft</groupId>
@@ -77,13 +71,4 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
-
-	<repositories>
-		<repository>
-			<id>dcache-releases</id>
-			<name>dCache.ORG maven repository</name>
-			<url>https://download.dcache.org/nexus/repository/public/</url>
-			<layout>default</layout>
-		</repository>
-	</repositories>
 </project>
