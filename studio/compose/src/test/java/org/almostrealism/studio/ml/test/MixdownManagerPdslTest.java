@@ -722,7 +722,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("filter_order", (double) FILTER_ORDER);
 		args.put("hp_cutoff", dryHpCutoff);
 		args.put("wet_filter_coeffs",
-				PackedCollection.of(referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER)));
+				referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER));
 		args.put("wet_level", wetLevel);
 		args.put("reverb_factor", reverbFactor);
 

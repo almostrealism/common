@@ -227,16 +227,6 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	}
 
 	/**
-	 * Creates a zero feedback matrix of the specified size.
-	 *
-	 * @param channels matrix dimension
-	 * @return zero-initialized matrix
-	 */
-	private static PackedCollection zeroFeedback(int channels) {
-		return new PackedCollection(channels * channels);
-	}
-
-	/**
 	 * Creates a row-major square matrix carrying {@code value} on the diagonal and zero
 	 * elsewhere. The diagonal is the set of flat indices whose row {@code i / size} equals
 	 * their column {@code i % size}.
@@ -274,7 +264,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	@Test(timeout = 60000)
 	public void test01BufferIsMutatedByForward() {
-		Harness h = build(1, 4, 4, pack(1.0), zeroFeedback(1));
+		Harness h = build(1, 4, 4, pack(1.0), new PackedCollection(1));
 		h.forward(pack(1.0, 0.0, 0.0, 0.0));
 
 		PackedCollection state = h.readBuffer();
@@ -297,7 +287,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	@Test(timeout = 60000)
 	public void test02HeadAdvancesAfterOneForward() {
-		Harness h = build(1, 4, 4, pack(1.0), zeroFeedback(1));
+		Harness h = build(1, 4, 4, pack(1.0), new PackedCollection(1));
 		h.forward(pack(1.0, 0.0, 0.0, 0.0));
 
 		double head = h.readHeads().toDouble(0);
@@ -318,7 +308,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	@Test(timeout = 60000)
 	public void test03HeadAdvancesCumulatively() {
-		Harness h = build(1, 4, 4, pack(1.0), zeroFeedback(1));
+		Harness h = build(1, 4, 4, pack(1.0), new PackedCollection(1));
 		h.forward(pack(1.0, 0.0, 0.0, 0.0));
 		h.forward(pack(0.0, 0.0, 0.0, 0.0));
 
@@ -376,7 +366,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	@Test(timeout = 60000)
 	public void test05SubFrameTapClampsToOneFrame() {
-		Harness h = build(1, 4, 4, pack(1.0), zeroFeedback(1));
+		Harness h = build(1, 4, 4, pack(1.0), new PackedCollection(1));
 		h.forward(pack(0.0, 0.0, 0.0, 0.0));         // pass 1: silence warmup
 		PackedCollection pass2 = h.forward(pack(1.0, 0.0, 0.0, 0.0));  // pass 2: write impulse
 		PackedCollection pass3 = h.forward(pack(0.0, 0.0, 0.0, 0.0));  // pass 3: read echo
@@ -402,7 +392,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	@Test(timeout = 60000)
 	public void test06DelayEqualsSignalSize() {
-		Harness h = build(1, 4, 4, pack(4.0), zeroFeedback(1));
+		Harness h = build(1, 4, 4, pack(4.0), new PackedCollection(1));
 		h.forward(pack(1.0, 0.0, 0.0, 0.0));
 		PackedCollection pass2 = h.forwardMulti(new PackedCollection(4));
 
@@ -431,7 +421,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int signalSize = 8;
 		int bufSize = 16;
 		PackedCollection tapDelays = pack(9.0, 11.0, 13.0);
-		PackedCollection noFeedback = zeroFeedback(channels);
+		PackedCollection noFeedback = new PackedCollection(channels * channels);
 
 		Harness h = build(channels, signalSize, bufSize, tapDelays, noFeedback);
 		PackedCollection impulse = oneHot(signalSize, 0);
@@ -481,7 +471,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int signalSize = 4;
 		int bufSize = 8;
 		Harness h = build(channels, signalSize, bufSize,
-				pack(5.0, 5.0), zeroFeedback(channels));
+				pack(5.0, 5.0), new PackedCollection(channels * channels));
 
 		// Per-channel input flat layout: [ch0 sigSize samples][ch1 sigSize samples].
 		// impulse on channel 0 sample 0
@@ -537,7 +527,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	@Test(timeout = 60000)
 	public void test09BufferWrapAround() {
 		int wrapDelay = 3;
-		Harness h = build(1, 2, 4, pack(wrapDelay), zeroFeedback(1));
+		Harness h = build(1, 2, 4, pack(wrapDelay), new PackedCollection(1));
 		h.forward(pack(1.0, 0.0));
 		PackedCollection pass2 = h.forwardMulti(pack(0.0, 0.0));
 		PackedCollection pass3 = h.forwardMulti(pack(0.0, 0.0));
@@ -866,7 +856,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	@Test(timeout = 60000)
 	public void test12PassthroughRoutesCrossChannel() {
-		PackedCollection zeroFb = zeroFeedback(2);
+		PackedCollection zeroFb = new PackedCollection(2 * 2);
 		PackedCollection swap = pack(0.0, 1.0, 1.0, 0.0);
 		Harness identity = build(2, 4, 8, pack(2.0, 2.0), zeroFb, null);
 		Harness swapped = build(2, 4, 8, pack(2.0, 2.0), zeroFb, swap);
@@ -906,7 +896,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	@Test(timeout = 60000)
 	public void test13MultiFrameTapDelayExact() {
-		Harness h = build(1, 4, 12, pack(6.0), zeroFeedback(1));
+		Harness h = build(1, 4, 12, pack(6.0), new PackedCollection(1));
 		PackedCollection pass1 = h.forward(pack(1.0, 0.0, 0.0, 0.0));
 		PackedCollection pass2 = h.forwardMulti(new PackedCollection(4));
 		PackedCollection pass3 = h.forwardMulti(new PackedCollection(4));

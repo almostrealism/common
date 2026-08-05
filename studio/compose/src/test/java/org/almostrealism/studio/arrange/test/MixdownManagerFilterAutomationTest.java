@@ -277,7 +277,6 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 
 			PackedCollection params = new PackedCollection(GENOME_PARAMS);
 			if (opts.zeroGenome) {
-				params.clear();
 			} else {
 				params.randFill();
 			}

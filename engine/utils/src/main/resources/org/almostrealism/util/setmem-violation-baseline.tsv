@@ -1,7 +1,6 @@
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/hardware/computations/Assignment.java	1	return JVMMemory.fill(d, len, s.getAsDouble());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	PackedCollection sequence = pack(values());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	return pack(values());
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	return PackedCollection.of(spectrum);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcA = new PackedCollection(a.length).fill(a);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcB = new PackedCollection(b.length).fill(b);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	return new PackedCollection(data.length).fill(data);
@@ -12,8 +11,16 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/test/java/org/almostrealism/pers
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/graph/model/test/ConvolutionModelTrainingTest.java	2	input.fill(pos -> {
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> dLdHatXGroup.valueAt(pos) - dLdHatXGroupMean
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> gradient.valueAt(pos) * weights.valueAt(pos));
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	dest.fill(values);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	boundFilter[p].fill(filterAdsr[p]);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	boundLayerEnv[l][p].fill(layerParams[l][p]);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	renderer.getPercDestOffsets().fill(destOffsets);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	renderer.getPercSamplingOffsets().fill(samplingOffsets);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	renderer.getSssDestOffsets().fill(destOffsets);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	renderer.getSssSamplingOffsets().fill(samplingOffsets);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	2	boundRatios[l].fill(ratios[l]);
+FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	2	boundVolume[p].fill(volumeAdsr[p]);
 PACKED_COLLECTION_OF_NON_LITERAL	compute/algebra/src/main/java/org/almostrealism/collect/computations/Random.java	1	values = PackedCollection.of(IntStream.range(0, getShape().getTotalSize())
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	return PackedCollection.of(spectrum);
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(1.5 * in.valueAt(0));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));
@@ -24,10 +31,10 @@ PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	delaySamples.setFrom(0, PackedCollection.of(delaysData));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java	1	feedback.setFrom(0, PackedCollection.of(matrixData));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	delaySamples.setFrom(0, PackedCollection.of(delaySamplesData));
-PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	3	input.setFrom(0, PackedCollection.of(inData));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	passthrough.setFrom(0, PackedCollection.of(passthroughRowMajor));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	signal.setFrom(0, PackedCollection.of(s));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	1	transmission.setFrom(0, PackedCollection.of(transmissionRowMajor));
+PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java	3	input.setFrom(0, PackedCollection.of(inData));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/compose/src/test/java/org/almostrealism/studio/ml/test/PdslAudioDspTest.java	1	filterCoeffs.setFrom(0, PackedCollection.of(coeffs));
 PACKED_COLLECTION_OF_NON_LITERAL	studio/spatial/src/main/java/org/almostrealism/spatial/GenomicTimeseries.java	1	this.genome = new ProjectedGenome(PackedCollection.of(params));
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	resets.setMem(index, (double) value);

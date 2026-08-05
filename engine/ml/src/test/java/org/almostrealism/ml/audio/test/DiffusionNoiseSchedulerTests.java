@@ -51,7 +51,6 @@ public class DiffusionNoiseSchedulerTests extends TestSuiteBase {
 
 		PackedCollection one = new PackedCollection(shape(1)).fill(1.0);
 		PackedCollection zero = new PackedCollection(shape(1));
-		zero.clear();
 
 		for (int t = 0; t < steps; t++) {
 			assertEquals(expected[t], scheduler.getAlphaCumprod(t));

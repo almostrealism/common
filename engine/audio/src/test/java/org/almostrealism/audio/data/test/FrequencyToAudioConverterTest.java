@@ -57,7 +57,6 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 	 */
 	private WaveDetails tonalDetails() {
 		PackedCollection freqData = new PackedCollection(shape(FRAMES, BINS));
-		freqData.clear();
 
 		for (int f = 0; f < FRAMES; f++) {
 			freqData.setMem(f * BINS + 3, 1.0);

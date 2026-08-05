@@ -184,6 +184,11 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * layer), the randomness ingest primitive, the mesh-intersection kernel read-back writes in
 	 * {@code domain/space}, and the {@code Tensor} bridge for host-resident boxed values (whose
 	 * correct long-term treatment is an open question); these are expected to shrink to zero.
+	 *
+	 * <p>The reference filter implementations are a different case, and are not expected to go
+	 * away. They compute on the host deliberately: they are the oracle the framework's own
+	 * coefficient and convolution computations are checked against, and expressing them with
+	 * the producers under test would let a fault agree with itself.</p>
 	 */
 	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
@@ -192,6 +197,9 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/hardware/mem/MemoryBankAdapter.java", "((MemoryDataAdapter) entry).setMem(values);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
+			new String[] {"/util/FirFilterTestFeatures.java", "return PackedCollection.of(coefficients);"},
+			new String[] {"/util/FirFilterTestFeatures.java", "return PackedCollection.of(output);"},
+			new String[] {"/time/test/TemporalFeaturesTest.java", "return PackedCollection.of(highPassCoefficients);"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},

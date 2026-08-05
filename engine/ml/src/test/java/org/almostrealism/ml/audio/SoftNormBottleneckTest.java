@@ -88,7 +88,6 @@ public class SoftNormBottleneckTest extends TestSuiteBase implements LayerFeatur
 
 		PackedCollection scale = new PackedCollection(shape(dim)).fill(1.0);
 		PackedCollection bias = new PackedCollection(shape(dim));
-		bias.clear();
 
 		verifySoftNorm(batch, dim, length, scale, bias, null);
 	}

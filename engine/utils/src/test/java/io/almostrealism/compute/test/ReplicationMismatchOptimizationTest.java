@@ -208,8 +208,8 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 				traverseEach(cp(signal)), c(cutoff), sampleRate, filterOrder);
 		PackedCollection result = filter.get().evaluate();
 
-		double[] coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
-		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
+		PackedCollection coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
+		PackedCollection expected = referenceConvolve(signal, coeffs);
 		assertConvolutionEquals(expected, result, signalSize);
 	}
 
@@ -235,8 +235,8 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 				traverseEach(cp(signal)), c(cutoff), sampleRate, filterOrder);
 		PackedCollection result = filter.get().evaluate();
 
-		double[] coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
-		double[] expected = referenceConvolve(signal.toArray(0, signalSize), coeffs);
+		PackedCollection coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
+		PackedCollection expected = referenceConvolve(signal, coeffs);
 		assertConvolutionEquals(expected, result, signalSize);
 	}
 }

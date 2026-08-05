@@ -75,7 +75,6 @@ class PatternRenderBuffers implements Destroyable {
 	void consolidate(int channelCount, int bufferSize) {
 		cells = new ArrayList<>();
 		buffer = new PackedCollection(bufferSize * channelCount * 4);
-		buffer.clear();
 		regionIndex = 0;
 	}
 

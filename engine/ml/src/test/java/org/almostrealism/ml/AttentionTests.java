@@ -394,10 +394,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Identity norms
 		PackedCollection qNormWeight = new PackedCollection(shape(dimHead)).fill(1.0);
 		PackedCollection qNormBias = new PackedCollection(shape(dimHead));
-		qNormBias.clear();
 		PackedCollection kNormWeight = new PackedCollection(shape(dimHead)).fill(1.0);
 		PackedCollection kNormBias = new PackedCollection(shape(dimHead));
-		kNormBias.clear();
 
 		// Simple inv_freq for rotary
 		PackedCollection invFreq = new PackedCollection(shape(dimHead / 4)).fill(0.01);

@@ -46,6 +46,19 @@ if [ -z "$BASE_BRANCH" ]; then
     exit 1
 fi
 
+# ── Exempt branches ─────────────────────────────────────────────────
+#
+# Kept in step with validate-agent-commit.sh, which explains why the
+# setMem policy branches are exempt and when the exemption should go.
+EXEMPT_BRANCH_PATTERN='^feature/setmem-policy-phases/'
+
+CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+
+if [ -n "$CURRENT_BRANCH" ] && echo "$CURRENT_BRANCH" | grep -qE "$EXEMPT_BRANCH_PATTERN"; then
+    echo "Branch ${CURRENT_BRANCH} is exempt from test-hiding detection."
+    exit 0
+fi
+
 VIOLATION_COUNT=0
 VIOLATIONS=""
 

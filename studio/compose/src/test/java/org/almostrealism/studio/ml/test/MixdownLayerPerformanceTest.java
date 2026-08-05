@@ -81,9 +81,7 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 		Map<String, Object> main = new HashMap<>();
 		main.put("channels", CHANNELS);
 		main.put("signal_size", SIGNAL_SIZE);
-		PackedCollection hpCutoff = new PackedCollection(CHANNELS);
-		hpCutoff.clear();
-		main.put("hp_cutoff", hpCutoff);
+		main.put("hp_cutoff", new PackedCollection(CHANNELS));
 		main.put("volume", onesCollection(CHANNELS));
 		main.put("sample_rate", (double) SAMPLE_RATE);
 		main.put("filter_order", (double) PDSL_FILTER_ORDER);
@@ -97,16 +95,10 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 		efx.put("wet_filter_coeffs", identityFirBank(CHANNELS, taps));
 		efx.put("wet_level", WET_LEVEL);
 		efx.put("delay_samples", 6500);
-		PackedCollection transmission = new PackedCollection(
-				new TraversalPolicy(CHANNELS, CHANNELS));
-		transmission.clear();
-		PackedCollection buffers = new PackedCollection(CHANNELS * SIGNAL_SIZE);
-		buffers.clear();
-		PackedCollection heads = new PackedCollection(CHANNELS);
-		heads.clear();
-		efx.put("transmission", transmission);
-		efx.put("buffers", buffers);
-		efx.put("heads", heads);
+		efx.put("transmission", new PackedCollection(
+				new TraversalPolicy(CHANNELS, CHANNELS)));
+		efx.put("buffers", new PackedCollection(CHANNELS * SIGNAL_SIZE));
+		efx.put("heads", new PackedCollection(CHANNELS));
 		timeLayerForward("mixdown_efx_bus", "mixdown_efx_bus",
 				new TraversalPolicy(CHANNELS, SIGNAL_SIZE), efx);
 
@@ -216,12 +208,8 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 				squareArgs.put("delay_samples", 64);
 				squareArgs.put("transmission", new PackedCollection(
 						new TraversalPolicy(inChannels, inChannels)).fill(0.25));
-				PackedCollection squareBuffers = new PackedCollection(inChannels * signal);
-				squareBuffers.clear();
-				PackedCollection squareHeads = new PackedCollection(inChannels);
-				squareHeads.clear();
-				squareArgs.put("buffers", squareBuffers);
-				squareArgs.put("heads", squareHeads);
+				squareArgs.put("buffers", new PackedCollection(inChannels * signal));
+				squareArgs.put("heads", new PackedCollection(inChannels));
 				CompiledModel square = compileLayer("mixdown_efx_bus",
 						new TraversalPolicy(inChannels, signal), squareArgs);
 
@@ -245,12 +233,8 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 				args.put("wet_level", WET_LEVEL);
 				args.put("delay_samples", 64);
 				args.put("transmission", transmission);
-				PackedCollection outBuffers = new PackedCollection(outChannels * signal);
-				outBuffers.clear();
-				PackedCollection outHeads = new PackedCollection(outChannels);
-				outHeads.clear();
-				args.put("buffers", outBuffers);
-				args.put("heads", outHeads);
+				args.put("buffers", new PackedCollection(outChannels * signal));
+				args.put("heads", new PackedCollection(outChannels));
 
 				CompiledModel compiled = compileLayer("mixdown_efx_bus_rectangular",
 						new TraversalPolicy(inChannels, signal), args);
