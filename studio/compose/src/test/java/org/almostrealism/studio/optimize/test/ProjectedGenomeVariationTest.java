@@ -110,6 +110,28 @@ public class ProjectedGenomeVariationTest extends TestSuiteBase implements Colle
 		}
 	}
 
+	/**
+	 * Each parameter must be perturbed by its own delta. Uniform parameters cannot
+	 * distinguish an element-wise clamp from one that collapses to a single value and
+	 * broadcasts it, so both the parameters and the deltas differ per element here.
+	 */
+	@Test(timeout = 60000)
+	public void everyParameterIsPerturbedIndependently() {
+		PackedCollection parameters =
+				linear(0.1, 0.9, PARAMETERS).evaluate().reshape(PARAMETERS);
+		PackedCollection deltas =
+				linear(0.01, 0.05, PARAMETERS).evaluate().reshape(PARAMETERS);
+
+		double[] result = new ProjectedGenome(parameters)
+				.variation(0.0, 1.0, 1.0, cp(deltas))
+				.getParameters().toArray(0, PARAMETERS);
+
+		for (int i = 0; i < PARAMETERS; i++) {
+			Assert.assertEquals("parameter " + i + " must carry its own delta",
+					parameters.toDouble(i) + deltas.toDouble(i), result[i], 1e-6);
+		}
+	}
+
 	/** The original genome must not be modified by producing a variation of it. */
 	@Test(timeout = 60000)
 	public void originalGenomeIsUnmodified() {

@@ -19,6 +19,7 @@ package org.almostrealism.heredity;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
@@ -266,10 +267,15 @@ public class ProjectedGenome implements Genome<PackedCollection>, CollectionFeat
 		TraversalPolicy shape = parameters.getShape();
 		PackedCollection variation = new PackedCollection(shape);
 
+		// The bounds are expanded to the parameter shape because min/max collapse to a
+		// scalar when their operands differ in size, which would clamp every parameter
+		// to the value of the first.
+		CollectionProducer perturbed = min(
+				max(cp(parameters).add(delta), constant(shape, min)),
+				constant(shape, max));
+
 		a(cp(variation),
-				lessThan(rand(shape), c(rate),
-						bound(cp(parameters).add(delta), min, max),
-						cp(parameters))).get().run();
+				lessThan(rand(shape), c(rate), perturbed, cp(parameters))).get().run();
 
 		return new ProjectedGenome(variation);
 	}

@@ -35,4 +35,3 @@ PACKED_COLLECTION_OF_NON_LITERAL	studio/spatial/src/main/java/org/almostrealism/
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	resets.setMem(index, (double) value);
 SETMEM_NON_LITERAL_ARGUMENT	domain/graph/src/main/java/org/almostrealism/graph/TimeCell.java	1	time.setMem(0, newLeft);
 SETMEM_NON_LITERAL_ARGUMENT	engine/audio/src/main/java/org/almostrealism/audio/line/SharedMemoryAudioLine.java	1	controls.setMem(PASSTHROUGH_LEVEL, level);
-SETMEM_NON_LITERAL_ARGUMENT	studio/compose/src/main/java/org/almostrealism/studio/optimize/AudioSceneOptimizer.java	1	combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));

@@ -626,49 +626,35 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	}
 
 	/**
-	 * Computes the element-wise minimum of two collection producers. When the two inputs have
-	 * equal total sizes the output retains that shape; otherwise the output is a scalar shape.
+	 * Computes the element-wise minimum of two collection producers. Operand shapes are
+	 * aligned, so a smaller operand (a scalar bound, for example) is broadcast across a
+	 * larger one and the result keeps the larger shape.
 	 *
 	 * @param a the first collection producer
 	 * @param b the second collection producer
-	 * @return a {@link CollectionProducerComputationBase} producing the element-wise minimum of
+	 * @return a {@link CollectionProducer} producing the element-wise minimum of
 	 *         {@code a} and {@code b}
 	 */
-	default CollectionProducerComputationBase min(Producer<PackedCollection> a, Producer<PackedCollection> b) {
-		TraversalPolicy shape;
-
-		if (shape(a).getSize() == shape(b).getSize()) {
-			shape = shape(a);
-		} else {
-			shape = shape(1);
-		}
-
-		return new DefaultTraversableExpressionComputation("min", shape,
-				args -> new UniformCollectionExpression("min", shape,
+	default CollectionProducer min(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return CollectionFeatures.getInstance().compute("min",
+				shape -> args -> new UniformCollectionExpression("min", shape,
 								in -> Min.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
 
 	/**
-	 * Computes the element-wise maximum of two collection producers. When the two inputs have
-	 * equal total sizes the output retains that shape; otherwise the output is a scalar shape.
+	 * Computes the element-wise maximum of two collection producers. Operand shapes are
+	 * aligned, so a smaller operand (a scalar bound, for example) is broadcast across a
+	 * larger one and the result keeps the larger shape.
 	 *
 	 * @param a the first collection producer
 	 * @param b the second collection producer
-	 * @return a {@link CollectionProducerComputationBase} producing the element-wise maximum of
+	 * @return a {@link CollectionProducer} producing the element-wise maximum of
 	 *         {@code a} and {@code b}
 	 */
-	default CollectionProducerComputationBase max(Producer<PackedCollection> a, Producer<PackedCollection> b) {
-		TraversalPolicy shape;
-
-		if (shape(a).getSize() == shape(b).getSize()) {
-			shape = shape(a);
-		} else {
-			shape = shape(1);
-		}
-
-		return new DefaultTraversableExpressionComputation("max", shape,
-				args -> new UniformCollectionExpression("max", shape,
+	default CollectionProducer max(Producer<PackedCollection> a, Producer<PackedCollection> b) {
+		return CollectionFeatures.getInstance().compute("max",
+				shape -> args -> new UniformCollectionExpression("max", shape,
 								in -> Max.of(in[0], in[1]), args[1], args[2]),
 				a, b);
 	}
@@ -706,9 +692,9 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * @param a   the collection producer whose elements are to be clamped
 	 * @param min the lower bound of the clamp range
 	 * @param max the upper bound of the clamp range
-	 * @return a {@link CollectionProducerComputationBase} producing clamped element values
+	 * @return a {@link CollectionProducer} producing clamped element values
 	 */
-	default CollectionProducerComputationBase bound(Producer<PackedCollection> a, double min, double max) {
+	default CollectionProducer bound(Producer<PackedCollection> a, double min, double max) {
 		return min(max(a, c(min)), c(max));
 	}
 
