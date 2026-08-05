@@ -473,10 +473,20 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * Fills all elements of this collection by cycling through the given values.
 	 *
+	 * <p>Filling with zeros is {@link #clear()} written the slow way: this method
+	 * materializes the whole content on the host and writes it across, where
+	 * {@code clear} runs a kernel. Zeros are therefore reported rather than
+	 * silently accepted.</p>
+	 *
 	 * @param value the values to cycle through; repeated if shorter than the collection
 	 * @return this collection
 	 */
 	public PackedCollection fill(double... value) {
+		if (DoubleStream.of(value).allMatch(v -> v == 0.0)) {
+			warn("fill with zeros writes " + getMemLength()
+					+ " values from the host; clear() does this with a kernel");
+		}
+
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(data);
 		return this;

@@ -180,7 +180,7 @@ public class EditableSpatialWaveDetails extends SpatialWaveDetails
 	@Override
 	public void clear() {
 		PackedCollection freqData = getWave().getFreqData();
-		freqData.fill(0.0);
+		freqData.clear();
 		modified = false;
 		resetElements();
 	}

@@ -142,7 +142,7 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 				.multiply(c(0.9 * maxDelayFrames)).add(c(0.1 * maxDelayFrames)));
 		greaterThan(lengths, c(1.0), lengths, c(1.0)).into(bufferLengths).evaluate();
 
-		this.bufferIndices.fill(0.0);
+		this.bufferIndices.clear();
 	}
 
 	@Override
@@ -243,10 +243,10 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 
 	@Override
 	public void reset() {
-		this.delayIn.fill(0.0);
-		this.delayOut.fill(0.0);
-		this.delayBuffer.fill(0.0);
-		this.bufferIndices.fill(0.0);
+		this.delayIn.clear();
+		this.delayOut.clear();
+		this.delayBuffer.clear();
+		this.bufferIndices.clear();
 	}
 
 	/**

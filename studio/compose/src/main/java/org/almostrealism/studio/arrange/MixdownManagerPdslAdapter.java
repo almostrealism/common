@@ -379,7 +379,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		for (String key : STATE_SLOTS) {
 			Object slot = args.get(key);
 			if (slot != null) {
-				((PackedCollection) slot).fill(0.0);
+				((PackedCollection) slot).clear();
 			}
 		}
 	}

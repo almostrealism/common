@@ -264,7 +264,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		// Test 2: Spike logit should produce concentrated samples
 		log("\nTest 3b: Spike logit at index 100");
 		PackedCollection spikeLogits = new PackedCollection(vocabSize);
-		spikeLogits.fill(0.0);
+		spikeLogits.clear();
 		spikeLogits.setMem(100, 100.0); // Very strong preference
 
 		int spikeCount = 0;
@@ -281,7 +281,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		// Test 3: Greedy (argmax) should always pick the max
 		log("\nTest 3c: Greedy argmax verification");
 		PackedCollection greedyLogits = new PackedCollection(vocabSize);
-		greedyLogits.fill(0.0);
+		greedyLogits.clear();
 		greedyLogits.setMem(4242, 10.0);
 
 		// GRUDecoder.decode uses argmax internally, but we verify the static method

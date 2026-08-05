@@ -105,7 +105,9 @@ package org.almostrealism.hardware;
  *     @Override
  *     public PackedCollection replaceNull(Object[] args) {
  *         // Provide alternative when condition fails
- *         return new PackedCollection(1000).fill(0.0);  // Empty result
+ *         PackedCollection empty = new PackedCollection(1000);
+ *         empty.clear();
+ *         return empty;
  *     }
  * }
  * }</pre>

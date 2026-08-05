@@ -50,7 +50,8 @@ public class DynamicTanhTest extends TestSuiteBase implements LayerFeatures {
 
 		PackedCollection alpha = new PackedCollection(shape(1)).fill(1.0);
 		PackedCollection weight = new PackedCollection(shape(features)).fill(1.0);
-		PackedCollection bias = new PackedCollection(shape(features)).fill(0.0);
+		PackedCollection bias = new PackedCollection(shape(features));
+		bias.clear();
 
 		verifyDynamicTanh(batch, features, alpha, weight, bias);
 	}
@@ -97,7 +98,8 @@ public class DynamicTanhTest extends TestSuiteBase implements LayerFeatures {
 
 		PackedCollection alpha = new PackedCollection(shape(1)).fill(1.0);
 		PackedCollection weight = new PackedCollection(shape(features)).fill(1.0);
-		PackedCollection bias = new PackedCollection(shape(features)).fill(0.0);
+		PackedCollection bias = new PackedCollection(shape(features));
+		bias.clear();
 
 		CellularLayer dyt = dynamicTanh(shape, alpha, weight, bias);
 		assertEquals(shape.getTotalSize(), dyt.getOutputShape().getTotalSize());

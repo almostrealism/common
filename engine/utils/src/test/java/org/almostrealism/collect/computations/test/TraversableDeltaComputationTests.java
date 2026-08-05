@@ -609,7 +609,8 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 
 		PackedCollection o = rand(shape(c)).divide(10.0).evaluate();
 		PackedCollection g = rand(shape(c)).divide(4.0).evaluate();
-		PackedCollection b = new PackedCollection(c).fill(0.0);
+		PackedCollection b = new PackedCollection(c);
+		b.clear();
 		double eps = 1e-5;
 
 		kernelTest("divideProduct2", () -> {
@@ -678,7 +679,8 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		PackedCollection o = source.get();
 		PackedCollection g = rand(shape(c)).multiply(4.0).add(1.0).evaluate();
 		PackedCollection w = new PackedCollection(c).fill(1.0);
-		PackedCollection b = new PackedCollection(c).fill(0.0);
+		PackedCollection b = new PackedCollection(c);
+		b.clear();
 		double eps = 1e-5;
 
 		kernelTest(name, () -> {

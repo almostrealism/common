@@ -186,7 +186,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		weights.fill(0.1);
 
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
-		bias.fill(0.0);
+		bias.clear();
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, bias);
@@ -232,7 +232,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		weights.fill(weightValue);
 
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
-		bias.fill(0.0);
+		bias.clear();
 
 		Block conv = convolution1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, bias);
@@ -275,7 +275,7 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		weights.fill(0.25);
 
 		PackedCollection bias = new PackedCollection(shape(outputChannels));
-		bias.fill(0.0);
+		bias.clear();
 
 		Block convT = convTranspose1d(batchSize, inputChannels, outputChannels, seqLength,
 				kernelSize, stride, padding, weights, bias);

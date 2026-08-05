@@ -222,7 +222,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 	 */
 	private PackedCollection initializeLoraB(int rank, int outputSize) {
 		PackedCollection b = new PackedCollection(shape(rank, outputSize));
-		b.fill(0.0);
+		b.clear();
 		return b;
 	}
 

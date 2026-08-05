@@ -57,7 +57,7 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 	 */
 	private WaveDetails tonalDetails() {
 		PackedCollection freqData = new PackedCollection(shape(FRAMES, BINS));
-		freqData.fill(0.0);
+		freqData.clear();
 
 		for (int f = 0; f < FRAMES; f++) {
 			freqData.setMem(f * BINS + 3, 1.0);
@@ -108,7 +108,7 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 	@Test(timeout = 120000)
 	public void silentInputStaysSilent() {
 		WaveDetails details = tonalDetails();
-		details.getFreqData().fill(0.0);
+		details.getFreqData().clear();
 
 		new FrequencyToAudioConverter(new Random(1234)).convert(details);
 

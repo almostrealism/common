@@ -150,7 +150,8 @@ public class CollectionComputationTests extends TestSuiteBase {
 		int count = 6;
 		int size = 10;
 
-		PackedCollection buffer = new PackedCollection(shape(count, size)).fill(0.0);
+		PackedCollection buffer = new PackedCollection(shape(count, size));
+		buffer.clear();
 		PackedCollection bufferIndices = new PackedCollection(shape(count)).fill(1, 2, 3);
 		PackedCollection value = rand(shape(count)).add(1.0).evaluate();
 		Assignment<?> c = a(
@@ -210,7 +211,8 @@ public class CollectionComputationTests extends TestSuiteBase {
 					c(1.0), c(0.0))
 				.into(feedback.traverseEach()).evaluate();
 
-		PackedCollection buffer = new PackedCollection(shape(count, size)).fill(0.0);
+		PackedCollection buffer = new PackedCollection(shape(count, size));
+		buffer.clear();
 		PackedCollection bufferIndices = pack(1, 2, 5);
 
 		OperationList op = new OperationList("Integers Index Assignment");

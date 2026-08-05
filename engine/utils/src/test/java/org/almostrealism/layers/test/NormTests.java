@@ -483,7 +483,8 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		PackedCollection lr = pack(0.01);
 		PackedCollection input = inputSource.get();
 		PackedCollection gradient = randomGradient(c).get();
-		PackedCollection biases = new PackedCollection(shape(c)).fill(0.0);
+		PackedCollection biases = new PackedCollection(shape(c));
+		biases.clear();
 		PackedCollection origBiases = new PackedCollection(biases);
 
 		PackedCollection result = new PackedCollection(shape(c));

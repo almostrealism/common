@@ -163,7 +163,7 @@ public class BufferOutputLine implements OutputLine {
 		writePosition = 0;
 		totalFramesWritten = 0;
 		startTimeNanos = System.nanoTime();
-		buffer.fill(0.0);
+		buffer.clear();
 	}
 
 	@Override

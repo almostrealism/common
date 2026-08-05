@@ -24,6 +24,7 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
@@ -622,19 +623,12 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	@Test(timeout = 120_000)
 	public void firFilterGainProbe() {
 		int n = 16384;
-		double[] s = new double[n];
-		double inEnergy = 0.0;
-		for (int i = 0; i < n; i++) {
-			double t = i;
-			double v = Math.sin(2 * Math.PI * 100 * t / 44100)
-					+ Math.sin(2 * Math.PI * 1000 * t / 44100)
-					+ Math.sin(2 * Math.PI * 6000 * t / 44100);
-			s[i] = v;
-			inEnergy += v * v;
-		}
-		double inRms = Math.sqrt(inEnergy / n);
-		PackedCollection signal = new PackedCollection(n);
-		signal.setFrom(0, PackedCollection.of(s));
+		CollectionProducer time = integers(0, n).reshape(shape(n));
+		PackedCollection signal = sin(time.multiply(2 * Math.PI * 100 / 44100))
+				.add(sin(time.multiply(2 * Math.PI * 1000 / 44100)))
+				.add(sin(time.multiply(2 * Math.PI * 6000 / 44100)))
+				.evaluate();
+		double inRms = rmsOf(signal);
 
 		for (double cutoff : new double[] {50.0, 200.0, 1000.0, 5000.0}) {
 			PackedCollection out = highPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
@@ -655,13 +649,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return the root-mean-square of all elements
 	 */
 	private double rmsOf(PackedCollection data) {
-		double energy = 0.0;
 		int len = data.getMemLength();
-		for (int i = 0; i < len; i++) {
-			double x = data.toDouble(i);
-			energy += x * x;
-		}
-		return Math.sqrt(energy / Math.max(1, len));
+		return Math.sqrt(sum(cp(data).sq()).evaluate().toDouble(0) / Math.max(1, len));
 	}
 
 	/**
@@ -888,9 +877,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Block rowsBlock = loader.buildLayer(program, "fe_rows", inputShape, args);
 		Model rowsModel = new Model(inputShape);
 		rowsModel.add(rowsBlock);
-		double[] rows = rowsModel.compile().forward(input).toArray(0, channels * sig);
-		double row0 = rows[0];
-		double row1 = rows[sig];
+		PackedCollection rows = rowsModel.compile().forward(input);
+		double row0 = rows.toDouble(0);
+		double row1 = rows.toDouble(sig);
 		log(String.format("forEach rows: row0=%.6f (expect 0.020000) row1=%.6f (expect 0.060000; "
 				+ "0.030000 means chain 1 received row 0)", row0, row1));
 
@@ -898,10 +887,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Block sumBlock = loader.buildLayer(program, "fe_test", inputShape, args);
 		Model sumModel = new Model(inputShape);
 		sumModel.add(sumBlock);
-		double[] out = sumModel.compile().forward(input).toArray(0, sig);
-		double mean = 0.0;
-		for (double v : out) mean += v;
-		mean /= sig;
+		PackedCollection out = sumModel.compile().forward(input);
+		double mean = sum(cp(out.range(shape(sig)))).evaluate().toDouble(0) / sig;
 		log(String.format("forEach sum: expected=0.080000 measured=%.6f", mean));
 
 		Assert.assertEquals("chain 0 must process its own row times its own gain",
@@ -955,33 +942,26 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		// MAIN rows carry DISTINCT DC values; WET rows are silent.
-		double[] channelValues = new double[CHANNELS];
-		double expected = 0.0;
-		for (int ch = 0; ch < CHANNELS; ch++) {
-			// Row 0 deliberately SILENT: a dispatch that feeds every chain row 0 then
-			// produces total silence, which is unmistakable in the failure message.
-			channelValues[ch] = 0.01 * ch;
-			expected += channelValues[ch];
-		}
-		double conflated = CHANNELS * channelValues[0];
+		// MAIN row ch carries the DC value step * ch; WET rows are silent. Row 0 is
+		// deliberately silent, so a dispatch that feeds every chain row 0 produces
+		// total silence, which is unmistakable in the failure message.
+		double step = 0.01;
+		double expected = step * CHANNELS * (CHANNELS - 1) / 2.0;
+		double conflated = 0.0;
 
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[2 * CHANNELS * PDSL_SIGNAL_SIZE];
-		for (int ch = 0; ch < CHANNELS; ch++) {
-			Arrays.fill(inData, ch * PDSL_SIGNAL_SIZE, (ch + 1) * PDSL_SIGNAL_SIZE,
-					channelValues[ch]);
-		}
-		input.setFrom(0, PackedCollection.of(inData));
+		CollectionProducer channel = floor(integers(0, 2 * CHANNELS * PDSL_SIGNAL_SIZE)
+				.divide((double) PDSL_SIGNAL_SIZE));
+		channel.multiply(step)
+				.multiply(lessThan(channel, c(CHANNELS), c(1.0), c(0.0)))
+				.into(input.traverseEach()).evaluate();
 
-		double[] out = compiled.forward(input).toArray(0, PDSL_SIGNAL_SIZE);
+		PackedCollection out = compiled.forward(input);
+
 		// Skip the FIR settling region at the start of the buffer.
 		int settle = 4 * (PDSL_FILTER_ORDER + 1);
-		double mean = 0.0;
-		for (int i = settle; i < PDSL_SIGNAL_SIZE; i++) {
-			mean += out[i];
-		}
-		mean /= (PDSL_SIGNAL_SIZE - settle);
+		double mean = sum(cp(out.range(shape(PDSL_SIGNAL_SIZE - settle), settle)))
+				.evaluate().toDouble(0) / (PDSL_SIGNAL_SIZE - settle);
 
 		log(String.format("distinct-channel sum: expected=%.6f conflated=%.6f measured=%.6f",
 				expected, conflated, mean));
@@ -1062,10 +1042,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		WaveData wav = WaveData.load(outputFile);
 		try {
 			PackedCollection data = wav.getData();
-			int n = Math.min(data.getMemLength(), TOTAL_FRAMES);
-			double[] samples = new double[n];
-			for (int i = 0; i < n; i++) samples[i] = data.toDouble(i);
-			return samples;
+			return data.toArray(0, Math.min(data.getMemLength(), TOTAL_FRAMES));
 		} finally {
 			wav.destroy();
 		}
@@ -1548,6 +1525,15 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/**
 	 * Attempts to load a {@code .wav} file's first channel, capped at one second of frames.
 	 *
+	 * <p>Non-finite samples are replaced with silence, since some library files carry odd
+	 * formats and a single one propagates through the DSP and corrupts the whole render.
+	 * They are recognised by a magnitude that fails to compare below the largest finite
+	 * value, which is true of both an infinity and a value that is not a number.</p>
+	 *
+	 * <p>The result is normalised to a safe peak, so the DSP sees a sane input range
+	 * whatever the source file's native scale was. A clip with no signal at all is
+	 * rejected rather than amplified.</p>
+	 *
 	 * @param f the WAV file to load
 	 * @return mono sample data, or {@code null} if the file cannot be loaded
 	 */
@@ -1558,23 +1544,16 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				PackedCollection data = wav.getData();
 				int n = Math.min(data.getMemLength(), SAMPLE_RATE);
 				if (n <= 0) return null;
-				double[] clip = new double[n];
-				double peak = 0.0;
-				for (int i = 0; i < n; i++) {
-					double v = data.toDouble(i);
-					// Drop non-finite samples (some library files carry odd formats); a
-					// single NaN propagates through the DSP and corrupts the whole render.
-					if (!Double.isFinite(v)) v = 0.0;
-					clip[i] = v;
-					peak = Math.max(peak, Math.abs(v));
-				}
-				if (peak < 1.0e-6) return null;  // silent / garbage — try the next file
-				// Normalise to a safe peak so the DSP always sees a sane input range
-				// regardless of the source file's native scale.
-				double norm = 0.9 / peak;
-				for (int i = 0; i < n; i++) clip[i] *= norm;
+
+				CollectionProducer raw = cp(data.range(shape(n)));
+				PackedCollection clip = lessThan(abs(raw), c(Double.MAX_VALUE), raw, c(0.0))
+						.evaluate();
+
+				double peak = max(cp(clip).abs()).evaluate().toDouble(0);
+				if (peak < 1.0e-6) return null;
+
 				log("loop source: " + f.getName() + " (" + n + " frames, peak " + peak + ")");
-				return clip;
+				return cp(clip).multiply(0.9 / peak).evaluate().toArray(0, n);
 			} finally {
 				wav.destroy();
 			}
