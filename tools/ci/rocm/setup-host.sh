@@ -185,6 +185,20 @@ if [ "$CHECK_ONLY" = 1 ] && ! id "${SERVICE_USER}" > /dev/null 2>&1; then
     exit 0
 fi
 
+SERVICE_UID=$(id -u "${SERVICE_USER}" 2>/dev/null || echo "")
+
+# Runs a command as the service account from a neutral working directory.
+#
+# The cd is load-bearing. podman resolves its own working directory at startup,
+# and this script is normally invoked from an admin user's home — which the
+# service account cannot chdir into. Inheriting that directory makes every
+# container fail with "cannot chdir ...: Permission denied" and exit 125,
+# before any device is touched, which reads exactly like a GPU access problem.
+as_service_user() {
+    (cd / && runuser -u "${SERVICE_USER}" -- \
+        env "XDG_RUNTIME_DIR=/run/user/${SERVICE_UID}" "$@")
+}
+
 if id -nG "${SERVICE_USER}" | tr ' ' '\n' | grep -qx "${RENDER_GROUP}"; then
     ok "'${SERVICE_USER}' is in '${RENDER_GROUP}'"
 else
@@ -209,7 +223,7 @@ else
         "${SERVICE_USER}"
     act "allocated subuid/subgid ranges for '${SERVICE_USER}'"
     if command -v podman > /dev/null 2>&1; then
-        apply runuser -u "${SERVICE_USER}" -- podman system migrate 2>/dev/null || true
+        apply as_service_user podman system migrate 2>/dev/null || true
     fi
 fi
 
@@ -220,7 +234,6 @@ else
     act "enabled lingering for '${SERVICE_USER}'"
 fi
 
-SERVICE_UID=$(id -u "${SERVICE_USER}" 2>/dev/null || echo "")
 if [ -n "${SERVICE_UID}" ] && [ "$CHECK_ONLY" = 0 ]; then
     # enable-linger creates /run/user/<uid> asynchronously.
     for _ in $(seq 1 20); do
@@ -232,9 +245,7 @@ fi
 if [ -n "${SERVICE_UID}" ] && [ -S "/run/user/${SERVICE_UID}/podman/podman.sock" ]; then
     ok "podman user socket is active"
 elif command -v podman > /dev/null 2>&1; then
-    apply runuser -u "${SERVICE_USER}" -- \
-        env "XDG_RUNTIME_DIR=/run/user/${SERVICE_UID}" \
-        systemctl --user enable --now podman.socket
+    apply as_service_user systemctl --user enable --now podman.socket
     act "enabled the podman user socket"
 else
     warn "podman is not installed; skipping the user socket"
@@ -293,11 +304,10 @@ else
     # stderr is deliberately not discarded. A pull failure, a missing
     # XDG_RUNTIME_DIR, or a runtime that does not understand keep-groups would
     # otherwise be indistinguishable from a permissions problem.
-    GATE_OUT=$(runuser -u "${SERVICE_USER}" -- \
-        env "XDG_RUNTIME_DIR=/run/user/${SERVICE_UID}" \
-        podman run --rm --device /dev/kfd --device /dev/dri \
-            --group-add keep-groups \
-            docker.io/library/debian:12 id 2>&1) && GATE_RC=0 || GATE_RC=$?
+    GATE_OUT=$(as_service_user podman run --rm \
+        --device /dev/kfd --device /dev/dri \
+        --group-add keep-groups \
+        docker.io/library/debian:12 id 2>&1) && GATE_RC=0 || GATE_RC=$?
 
     if [ "${GATE_RC}" -ne 0 ]; then
         warn "the gate container did not run at all (exit ${GATE_RC}):"

@@ -415,15 +415,23 @@ podman run --rm --device /dev/kfd --device /dev/dri --group-add keep-groups \
     docker.io/library/debian:12 sh -c 'id; ls -ln /dev/kfd /dev/dri/renderD128'
 ```
 
-Three causes, in the order worth checking:
+Four causes, in the order worth checking:
 
-1. **`XDG_RUNTIME_DIR` is unset.** Rootless podman needs it. Lingering creates
+1. **The working directory is unreadable by the service account.** podman
+   resolves its own cwd at startup, so running it from an admin user's home
+   fails with `cannot chdir ...: Permission denied` and exit **125** — before
+   any device is touched, which reads exactly like a GPU problem. Run it from
+   `/` or anywhere world-traversable.
+2. **`XDG_RUNTIME_DIR` is unset.** Rootless podman needs it. Lingering creates
    `/run/user/<uid>`, but a non-login invocation (`runuser`, some `sudo`
    configurations) does not export the variable.
-2. **The OCI runtime is `runc`, not `crun`.** `keep-groups` is a crun feature;
+3. **The OCI runtime is `runc`, not `crun`.** `keep-groups` is a crun feature;
    under runc it is not honoured. Install `crun` or set it in
    `~/.config/containers/containers.conf`.
-3. **The image could not be pulled** — no network, or a registry restriction.
+4. **The image could not be pulled** — no network, or a registry restriction.
+
+An exit code of 125 means podman itself failed before starting the container,
+so it is always one of the first two rather than anything GPU-related.
 
 Note that `test -r` on the device is *not* a valid probe. Inside a user
 namespace the device shows as `nobody:nogroup` whenever the host owner falls
