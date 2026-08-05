@@ -147,7 +147,7 @@ Same as flowtree/base.
 #### What it does
 `graphpersist` handles persistent storage of computation graphs, neural network model weights,
 and associated data. It provides:
-- NFS and SSH-backed storage backends
+- SSH-backed storage backends
 - Graph serialization and deserialization
 - Weight persistence for trained models (via `StateDictionary` integration)
 - Storage abstraction interfaces so the rest of the system is backend-agnostic

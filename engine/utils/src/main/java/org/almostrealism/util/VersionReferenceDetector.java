@@ -109,9 +109,6 @@ public class VersionReferenceDetector extends PolicyViolationDetector {
 	 * tag).
 	 */
 	private static final List<String> ALLOWLISTED_PATH_FRAGMENTS = List.of(
-			// NFS protocol versions ("v3", "v4.1"). These are protocol versions
-			// of an external standard, not project release tags.
-			"flowtree/graphpersist/src/main/java/io/almostrealism/nfs/NetworkFileSystemServer.java",
 			// The detector's own unit test. Its fixtures embed deliberate release
 			// markers ("Common 0.74", "Rings 0.39", "v0.74") as inputs that the
 			// detector is expected to flag; they are not real version references.

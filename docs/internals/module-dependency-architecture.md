@@ -397,7 +397,7 @@ Cross-cutting helpers (`JsonFieldExtractor`, `GitOperations`) consumed by both
 does not have to depend on the runtime.
 
 **ar-graphpersist** (`flowtree/graphpersist`)
-Database persistence and NFS/SSH integration. Depends on `ar-utils`. Provides
+Database persistence and SSH integration. Depends on `ar-utils`. Provides
 storage infrastructure for computation graphs and model state, used by `ar-flowtree-runtime`.
 
 **ar-flowtree-agents** (`flowtree/agents`)

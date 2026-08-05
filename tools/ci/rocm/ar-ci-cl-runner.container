@@ -1,0 +1,84 @@
+# ─── AR OpenCL CI Runner (Quadlet) ───────────────────────────────────
+#
+# A podman Quadlet unit, installed by install-runner.sh into
+# ~/.config/containers/systemd/ and managed by the service account's systemd
+# user instance as ar-ci-cl-runner.service.
+#
+# WHY THIS IS NOT A COMPOSE FILE
+#
+# GroupAdd=keep-groups below is the only mechanism that gives a rootless
+# container access to the render devices, and it is a podman CLI/Quadlet
+# feature: it is translated into the run.oci.keep_original_groups=1 OCI
+# annotation. `docker compose` does not use the CLI — it posts
+# HostConfig.GroupAdd to podman's Docker-compatible REST API, which performs a
+# literal group-name lookup in the container's /etc/group and fails with
+# "Unable to find group keep-groups". A numeric gid is not a substitute: it
+# would be interpreted inside the user namespace, map to a subgid, and grant
+# nothing. So this fleet is Quadlet-managed even though its Linux CPU sibling
+# (tools/ci/docker) uses Compose.
+#
+# Quadlet also composes properly with the lingering that setup-host.sh enables:
+# start on boot, restart after each ephemeral job, and journalctl for logs.
+#
+#   systemctl --user status ar-ci-cl-runner.service
+#   journalctl --user -u ar-ci-cl-runner.service -f
+#
+# Paths below match setup-host.sh's defaults. If you passed --samples-dest, or
+# the host's ROCm is elsewhere, edit the Volume lines and re-run
+# install-runner.sh.
+
+[Unit]
+Description=AR OpenCL CI runner (ar-ci-cl)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image=localhost/ar-ci-cl-runner:latest
+ContainerName=ar-ci-cl-runner
+AutoUpdate=disabled
+
+# The render devices. Passing them through is necessary but not sufficient —
+# see GroupAdd below.
+AddDevice=/dev/kfd
+AddDevice=/dev/dri
+
+# Retains the host's supplementary groups (including render) across the user
+# namespace boundary. Without this the devices are present but unusable, and
+# the symptom is zero OpenCL platforms rather than a permission error.
+GroupAdd=keep-groups
+
+# The host's ROCm userspace. The image ships none and its entrypoint refuses to
+# register a runner without this.
+Volume=/opt/rocm:/opt/rocm:ro
+
+# The curated audio sample library for the studio benchmarks in test-media-cl.
+# The workflow points AR_RINGS_LIBRARY / AR_RINGS_PATTERNS at this mount.
+Volume=/srv/ar-ci/music:/opt/ar-samples:ro
+
+# Credentials and runner configuration, installed from .env by
+# install-runner.sh. Kept out of this file so it stays committable.
+EnvironmentFile=%h/.config/ar-ci-cl/runner.env
+
+# Not configurable: this fleet exists to serve the CL lane. Carrying ar-ci as
+# well would pull general CPU test jobs onto a machine dedicated to it.
+Environment=RUNNER_LABELS=ar-ci-cl
+
+[Service]
+# Runners register as ephemeral and exit after a single job; systemd brings the
+# next one up, which re-registers. This is the Quadlet equivalent of the Docker
+# fleet's `restart: unless-stopped`.
+Restart=always
+RestartSec=5
+
+# The entrypoint traps SIGTERM to deregister from GitHub before exiting. Give it
+# room, so a stop does not leave a stale offline runner behind.
+TimeoutStopSec=90
+
+# Sized for this host rather than the Docker fleet's 16g/4-core default. Lower
+# these if the runner shares the machine. CPUQuota is expressed in percent, so
+# 1200% is twelve cores.
+MemoryMax=64G
+CPUQuota=1200%
+
+[Install]
+WantedBy=default.target

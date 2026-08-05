@@ -55,12 +55,14 @@ import java.util.stream.IntStream;
  * non-silence and a real-time ratio. Reuses {@link AudioSceneBenchmark}'s production
  * render methods so the path matches what the optimizer/app actually runs.
  *
- * <p>Configured by absolute paths supplied at the class level (the curated library is
- * not part of the repository); the test skips if they are absent. Run with the Metal
+ * <p>Configured by the inherited {@link AudioSceneTestBase#SAMPLES_PATH} and
+ * {@link AudioSceneTestBase#PATTERN_FACTORY} locations (the curated library is not part of
+ * the repository, so both are absolute and overridable via {@code AR_RINGS_LIBRARY} /
+ * {@code AR_RINGS_PATTERNS}); the test skips if they are absent. Run with the Metal
  * backend forced via {@code -DAR_HARDWARE_DRIVER=mtl} to measure GPU behaviour.</p>
  *
  * <p><strong>Curated-library gated.</strong> These full-scene integration renders require the
- * curated sample library ({@link #LIBRARY}); they skip via {@link Assume} where it is absent,
+ * curated sample library ({@link #SAMPLES_PATH}); they skip via {@link Assume} where it is absent,
  * so they do not run in CI. They were previously disabled for two reasons, both now resolved:
  * (1) full-scene renders exhausted the fixed {@code GeneratedOperation} pool because
  * per-instance compilation was not reused — fixed by the rebuilt argument-aggregation system,
@@ -78,12 +80,6 @@ import java.util.stream.IntStream;
  */
 public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 
-	/** Curated sample library root. */
-	private static final String LIBRARY = "/Users/Shared/Music/Samples";
-
-	/** Production pattern-factory configuration (audio categories per channel). */
-	private static final String PATTERN_FACTORY = "/Users/Shared/Music/pattern-factory.json";
-
 	/** Melodic channel index (Lead Synth) per {@code pattern-factory.json}. */
 	private static final int LEAD_CHANNEL = 4;
 
@@ -100,10 +96,10 @@ public class BatchedRealSceneRenderTest extends AudioSceneTestBase {
 	 * Skips the calling test when the assets are absent.
 	 */
 	private void requireRealAssets() throws Exception {
-		Assume.assumeTrue("curated library missing: " + LIBRARY, new File(LIBRARY).isDirectory());
+		Assume.assumeTrue("curated library missing: " + SAMPLES_PATH, new File(SAMPLES_PATH).isDirectory());
 		Assume.assumeTrue("pattern factory missing: " + PATTERN_FACTORY, new File(PATTERN_FACTORY).isFile());
 
-		AudioSceneOptimizer.LIBRARY = LIBRARY;
+		AudioSceneOptimizer.LIBRARY = SAMPLES_PATH;
 		AudioSceneOptimizer.setFeatureLevel(7);
 		AudioProcessingUtils.init();
 		WaveData.init();

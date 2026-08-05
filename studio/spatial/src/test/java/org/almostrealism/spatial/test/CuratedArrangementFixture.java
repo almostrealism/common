@@ -16,6 +16,7 @@
 
 package org.almostrealism.spatial.test;
 
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
@@ -31,11 +32,20 @@ import java.io.IOException;
  */
 public class CuratedArrangementFixture {
 
-	/** The curated sample library the scene draws from. */
-	public static final String SAMPLES = "/Users/Shared/Music/Samples";
+	/**
+	 * The curated sample library the scene draws from, overridable via
+	 * {@code AR_RINGS_LIBRARY}. The default is the macOS shared-library path; CI runners that
+	 * stage the library elsewhere set the property instead of relying on it.
+	 */
+	public static final String SAMPLES =
+			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples");
 
-	/** The curated pattern factory the scene draws from. */
-	public static final String PATTERN_FACTORY = "/Users/Shared/Music/pattern-factory.json";
+	/**
+	 * The curated pattern factory the scene draws from, overridable via
+	 * {@code AR_RINGS_PATTERNS}. Defaults alongside {@link #SAMPLES}.
+	 */
+	public static final String PATTERN_FACTORY =
+			SystemUtils.getProperty("AR_RINGS_PATTERNS", "/Users/Shared/Music/pattern-factory.json");
 
 	/** Persisted scene settings, shared with the compose render tests. */
 	public static final String SCENE_SETTINGS =
