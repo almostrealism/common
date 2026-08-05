@@ -286,20 +286,25 @@ echo
 # ---------- Gate ----------
 
 echo "Gate: render group reaches inside a rootless container"
-RENDER_GID=$(getent group "${RENDER_GROUP}" 2>/dev/null | cut -d: -f3 || true)
 
 if [ "$CHECK_ONLY" = 1 ]; then
     echo "  skipped under --check (it would pull an image)"
 elif ! command -v podman > /dev/null 2>&1; then
     warn "podman is not installed; cannot run the gate"
-elif [ -z "${RENDER_GID}" ]; then
-    warn "cannot resolve the '${RENDER_GROUP}' gid; skipping the gate"
 else
-    # What matters is whether the supplementary group survives into the user
-    # namespace — that is what --group-add keep-groups exists to do. Do NOT
-    # probe with `test -r`: inside a userns the device is owned by nobody:nogroup
-    # whenever the host owner is outside the subuid map, so a readability test
-    # reports failure even where access genuinely works.
+    # Test READABILITY, which is what actually matters — not the group id as it
+    # appears inside the container.
+    #
+    # Under --group-add keep-groups the host's supplementary groups are retained
+    # on the process, but a gid outside the subgid map is unmapped in the user
+    # namespace and therefore DISPLAYS as 65534(nogroup). Searching `id` output
+    # for the render gid reports failure on a correctly configured host. The
+    # kernel evaluates access against the process's real credentials, where the
+    # group is intact, so a readability test is both valid and direct.
+    #
+    # The container always exits 0; success is signalled by the marker. That
+    # keeps "podman could not start" (non-zero, e.g. 125) distinguishable from
+    # "podman ran and the devices were unreadable".
     #
     # stderr is deliberately not discarded. A pull failure, a missing
     # XDG_RUNTIME_DIR, or a runtime that does not understand keep-groups would
@@ -307,20 +312,26 @@ else
     GATE_OUT=$(as_service_user podman run --rm \
         --device /dev/kfd --device /dev/dri \
         --group-add keep-groups \
-        docker.io/library/debian:12 id 2>&1) && GATE_RC=0 || GATE_RC=$?
+        docker.io/library/debian:12 \
+        sh -c 'id; if test -r /dev/kfd && test -r /dev/dri/renderD128; then echo GATE_OK; fi' \
+        2>&1) && GATE_RC=0 || GATE_RC=$?
 
     if [ "${GATE_RC}" -ne 0 ]; then
         warn "the gate container did not run at all (exit ${GATE_RC}):"
         printf '%s\n' "${GATE_OUT}" | sed 's/^/           /'
-        detail "This is a container-runtime problem, not a GPU problem."
-    elif printf '%s' "${GATE_OUT}" | grep -qE "(^|[=,(])${RENDER_GID}([(,]|$)"; then
-        ok "'${RENDER_GROUP}' (gid ${RENDER_GID}) is present inside the container"
+        detail "This is a container-runtime problem, not a GPU problem. Exit 125"
+        detail "means podman failed before the container started — most often an"
+        detail "unreadable working directory or an unset XDG_RUNTIME_DIR."
+    elif printf '%s' "${GATE_OUT}" | grep -q 'GATE_OK'; then
+        ok "'${SERVICE_USER}' can read both render devices inside a container"
     else
-        warn "the '${RENDER_GROUP}' group (gid ${RENDER_GID}) did NOT reach the container."
-        detail "Container reported: ${GATE_OUT}"
-        detail "The host side is fine — 'sudo -iu ${SERVICE_USER} id' shows the group —"
-        detail "so this is keep-groups not taking effect. Check that the runtime is"
-        detail "crun (podman info --format '{{.Host.OCIRuntime.Name}}'), and see README.md."
+        warn "'${SERVICE_USER}' cannot read the render devices inside a container."
+        detail "Container reported:"
+        printf '%s\n' "${GATE_OUT}" | sed 's/^/             /'
+        detail "Check 'sudo -iu ${SERVICE_USER} id' for the '${RENDER_GROUP}' group, and"
+        detail "that the runtime is crun (podman info --format"
+        detail "'{{.Host.OCIRuntime.Name}}') — keep-groups is a crun feature and is"
+        detail "ignored under runc. See README.md."
         detail "Do not proceed: a later failure would be misattributed to the ICD"
         detail "or the ROCm mount."
     fi

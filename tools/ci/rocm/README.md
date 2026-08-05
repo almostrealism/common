@@ -403,17 +403,32 @@ reverts it.
 
 ### The setup-host.sh gate fails but `sudo -iu ar-ci id` shows the render group
 
-The host side is fine; the group is not surviving into the user namespace. Run
-the probe by hand — `id` inside the container is the direct test, and the render
-gid must appear in its group list:
+Run the probe by hand. Test **readability**, which is what matters:
 
 ```bash
+cd /                                            # see cause 1 below
 sudo -iu ar-ci
 echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"        # must be set for rootless podman
 podman info --format '{{.Host.OCIRuntime.Name}}'
 podman run --rm --device /dev/kfd --device /dev/dri --group-add keep-groups \
-    docker.io/library/debian:12 sh -c 'id; ls -ln /dev/kfd /dev/dri/renderD128'
+    docker.io/library/debian:12 \
+    sh -c 'id; test -r /dev/kfd && test -r /dev/dri/renderD128 && echo GATE_OK'
 ```
+
+**Do not judge this by the group id `id` reports.** Under `keep-groups` the
+host's supplementary groups are retained on the process, but a gid outside the
+subgid map is unmapped in the user namespace and displays as `65534(nogroup)`.
+So a correct host looks like this:
+
+```
+uid=0(root) gid=0(root) groups=0(root),65534(nogroup)
+GATE_OK
+```
+
+That `65534` **is** the render group. Its presence is evidence `keep-groups`
+worked — without it you would see bare `groups=0(root)`. The kernel checks
+access against the process's real credentials, where the gid is still intact,
+which is why `GATE_OK` prints.
 
 Four causes, in the order worth checking:
 
