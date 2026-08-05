@@ -676,8 +676,8 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * Copies all data from another {@link MemoryData} to this memory starting at the specified offset.
 	 *
 	 * <p>This performs a {@link MemoryData}-to-{@link MemoryData} copy and is deliberately
-	 * named distinctly from the {@code setMem(...)} array/literal overloads so that the
-	 * copy surface can be told apart from host-array uploads at every call site.</p>
+	 * named distinctly from the array and indexed scalar write surfaces so that the
+	 * copy operation can be identified at every call site.</p>
 	 *
 	 * @param offset Starting index in this memory
 	 * @param src Source memory data
@@ -755,8 +755,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	/**
 	 * Writes double values from a host array into this memory, resolving the
 	 * delegate chain to the root reservation. This is the terminal step of the
-	 * literal varargs surface; bulk host-array ingest instead stages through a
-	 * ByteBuffer (see {@link #read(ByteBuffer)} and the native buffer provider).
+	 * whole-content array write surface; serialized system-boundary ingest instead
+	 * stages through a {@link ByteBuffer} (see {@link #read(ByteBuffer)} and the
+	 * native buffer provider).
 	 */
 	private void setMemInternal(int offset, double[] source, int srcOffset, int length) {
 		MemoryData root = getRootDelegate();
@@ -770,8 +771,9 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	/**
 	 * Writes float values from a host array into this memory, resolving the
 	 * delegate chain to the root reservation. This is the terminal step of the
-	 * literal varargs surface; bulk host-array ingest instead stages through a
-	 * ByteBuffer (see {@link #read(ByteBuffer)} and the native buffer provider).
+	 * whole-content array write surface; serialized system-boundary ingest instead
+	 * stages through a {@link ByteBuffer} (see {@link #read(ByteBuffer)} and the
+	 * native buffer provider).
 	 */
 	private void setMemInternal(int offset, float[] source, int srcOffset, int length) {
 		setMem(getMem(), getOffset() + offset, source, srcOffset, length);

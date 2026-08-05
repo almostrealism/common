@@ -229,8 +229,9 @@ ops.add(addBias(result, bias));
 ops.add(activation(sum));
 
 // Optimization and execution
-Runnable compiled = ops.get();  // Triggers optimization → compilation
-compiled.run();                  // Executes all operations
+ParallelProcess<?, Runnable> optimized = ops.optimize();
+Runnable compiled = optimized.get();  // Compiles the optimized tree
+compiled.run();                       // Executes all operations
 ```
 
 ## The optimize() → get() Contract
@@ -268,8 +269,6 @@ a graph that needs to be split by hand.**
 Process<?, Runnable> process = buildProcessTree();
 Process<?, Runnable> optimized = process.optimize(ProcessContext.create());
 Runnable compiled = optimized.get();
-
-// The OperationList.get() method handles this internally
 ```
 
 ### Which entry points optimize
@@ -285,6 +284,9 @@ Runnable compiled = optimized.get();
 | `producer.evaluateOptimized(args)` | **Yes** — `Process.optimized(this).get().evaluate(args)` |
 | `Process.optimized(producer).get()` | **Yes** |
 | `operationList.optimize().get()` | **Yes** |
+
+For an `OperationList`, `get()` performs automatic optimization only when
+`OperationList.enableAutomaticOptimization` is enabled; that flag defaults to `false`.
 
 To write into a pre-allocated destination *and* optimize, there is no single
 convenience method — combine the two:
