@@ -2,9 +2,9 @@
 #
 # This image is NOT a general-purpose ROCm image and is NOT portable. It ships
 # the OpenCL ICD loader and registers an ICD entry, but deliberately contains no
-# ROCm userspace: the host's ROCm is bind-mounted read-only at /opt/rocm (see
-# docker-compose.yml). Without that mount the image is inert and the entrypoint's
-# preflight refuses to register a runner.
+# ROCm userspace: the host's ROCm is bind-mounted read-only at /opt/rocm (see the
+# Volume lines in ar-ci-cl-runner.container). Without that mount the image is
+# inert and the entrypoint's preflight refuses to register a runner.
 #
 # The reason is that the host's ROCm comes from a platform-specific package
 # matched to its kernel driver. Pinning a public rocm/* base image would couple

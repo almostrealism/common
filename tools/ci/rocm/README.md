@@ -159,11 +159,21 @@ other::---
 
 The container already runs as the service account, which holds the render group
 on the host, but podman drops supplementary groups inside the user namespace
-unless told to keep them. That is what `RENDER_GROUP=keep-groups` is for.
+unless told to keep them. That is what `GroupAdd=keep-groups` in the Quadlet
+unit is for.
 
-Passing a numeric gid instead — the correct answer under rootful Docker — is
-read *inside* the user namespace, where it maps to a subgid and grants nothing.
-It fails silently: no permission error, just zero OpenCL platforms.
+Passing a numeric gid instead is read *inside* the user namespace, where it maps
+to a subgid and grants nothing. It fails silently: no permission error, just
+zero OpenCL platforms.
+
+**This is also why the fleet is Quadlet-managed and not Compose-managed.**
+`keep-groups` is a podman CLI/Quadlet token, translated into the
+`run.oci.keep_original_groups=1` OCI annotation. `docker compose` bypasses the
+CLI and posts `HostConfig.GroupAdd` to podman's Docker-compatible REST API,
+which does a literal group-name lookup in the container's `/etc/group` and
+fails with `Unable to find group keep-groups`. There is no compose-expressible
+substitute, so this fleet diverges from its Compose-managed sibling in
+`tools/ci/docker`.
 
 ### Rootless podman needs subuid/subgid ranges
 
@@ -202,19 +212,19 @@ entire reason for using a udev rule rather than ACLs set by hand.
 ## Quick Start
 
 ```bash
-cd tools/ci/rocm
-
 # 1. One-time host setup (service account, udev rule, rootless prerequisites)
+cd tools/ci/rocm
 sudo ./setup-host.sh --admin-user <your-login>
 
-# 2. Configure — as the service account
+# 2. Build and install, as the service account
 sudo -iu ar-ci
-export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+cd ~/common/tools/ci/rocm
 cp .env.example .env
-# Edit .env — set GITHUB_PAT. RENDER_GROUP defaults to keep-groups (rootless podman).
+$EDITOR .env                 # set GITHUB_PAT
+./install-runner.sh
 
-# 3. Build and launch ONE runner
-docker compose up -d --build
+# 3. Watch it come up — the OpenCL preflight is the first thing it logs
+journalctl --user -u ar-ci-cl-runner.service -f
 ```
 
 Start with **one** runner. This host has a single GPU; concurrent jobs contend
@@ -223,23 +233,35 @@ avoid. Scale only once contention has been measured.
 
 ## Configuration
 
-All configuration is via the `.env` file (see `.env.example`). `.env` is
-gitignored; never commit a filled-in copy.
+Configuration is split by what it governs:
+
+- **`.env`** — credentials and runner settings, read by the entrypoint.
+  `install-runner.sh` copies it to `~/.config/ar-ci-cl/runner.env` at mode 600,
+  so the token does not live in the checkout. `.env` is gitignored; never commit
+  a filled-in copy.
+- **`ar-ci-cl-runner.container`** — the container's shape: devices, mounts,
+  group handling, and resource limits. Edit it and re-run `install-runner.sh`.
 
 | Variable | Default | Description |
 |---|---|---|
 | `GITHUB_PAT` | *(required)* | Token with `admin:org` for org-scoped registration |
-| `RENDER_GROUP` | *(required)* | `keep-groups` for rootless podman; the numeric host gid for rootful docker |
 | `GITHUB_OWNER` | `almostrealism` | GitHub org or user |
 | `RUNNER_SCOPE` | `org` | `org` (shared across the org) or `repo` |
 | `GITHUB_REPO` | `common` | Repository name (only used for `repo` scope) |
 | `RUNNER_PREFIX` | `amd-halo` | Runners register as `<prefix>-1`, `<prefix>-2`, … |
 | `RUNNER_GROUP` | `Default` | Runner group |
-| `ROCM_HOST_PATH` | `/opt/rocm` | Host ROCm, bind-mounted read-only |
-| `ROCM_OPENCL_LIB` | `/opt/rocm/lib/opencl/libamdocl64.so` | Absolute path baked into the ICD |
-| `SAMPLES_HOST_PATH` | `/srv/ar-ci/music` | Curated sample library, mounted at `/opt/ar-samples` |
-| `RUNNER_MEMORY_LIMIT` | `64g` | Memory limit per container |
-| `RUNNER_CPU_LIMIT` | `12` | CPU cores per container |
+| `ROCM_OPENCL_LIB` | `/opt/rocm/lib/opencl/libamdocl64.so` | Absolute path baked into the ICD at build time |
+
+Set in `ar-ci-cl-runner.container` rather than `.env`, because systemd unit
+files do not interpolate environment variables into these fields:
+
+| Setting | Default | Description |
+|---|---|---|
+| `Volume=` (ROCm) | `/opt/rocm:/opt/rocm:ro` | Host ROCm bind-mount |
+| `Volume=` (samples) | `/srv/ar-ci/music:/opt/ar-samples:ro` | Curated sample library |
+| `GroupAdd=` | `keep-groups` | Render group across the namespace boundary |
+| `MemoryMax=` | `64G` | Memory limit |
+| `CPUQuota=` | `1200%` | CPU limit, in percent — 1200% is twelve cores |
 
 ## How It Works
 
@@ -301,9 +323,9 @@ Two different failure modes matter here, and they are not the same:
   silently** and report misleading timings. This is the dangerous case: a green
   run can hide the fact that the benchmarks stopped measuring anything real.
 
-Stage the library at `SAMPLES_HOST_PATH`, mirroring the macOS
-`/Users/Shared/Music` layout — a `Samples/` directory beside
-`pattern-factory.json`:
+Stage the library at the host path the unit mounts (`/srv/ar-ci/music` by
+default), mirroring the macOS `/Users/Shared/Music` layout — a `Samples/`
+directory beside `pattern-factory.json`:
 
 ```
 /srv/ar-ci/music/
@@ -347,19 +369,29 @@ unreadable pattern factory fails those tests rather than skipping them.
 
 ## Operations
 
+All as the service account (`sudo -iu ar-ci`):
+
 ```bash
 # Status
-docker compose ps
+systemctl --user status ar-ci-cl-runner.service
 
-# Logs — the OpenCL preflight output is at the top of each container's log
-docker compose logs -f
+# Logs — the OpenCL preflight is the first thing each container logs
+journalctl --user -u ar-ci-cl-runner.service -f
 
-# Stop and deregister
-docker compose down
+# Stop. The entrypoint traps SIGTERM and deregisters from GitHub first,
+# so this does not leave a stale offline runner behind.
+systemctl --user stop ar-ci-cl-runner.service
 
-# Rebuild after changing the Dockerfile or the ICD path
-docker compose up -d --build
+# Apply a changed .env or unit file (no rebuild)
+./install-runner.sh --no-build
+
+# Rebuild after changing the Dockerfile, entrypoint, or ICD path
+./install-runner.sh
 ```
+
+Because runners register as ephemeral, the container exits after every job and
+systemd starts the next one. A service that keeps restarting is normal; one that
+enters `failed` is not.
 
 ## Troubleshooting
 
@@ -367,12 +399,12 @@ docker compose up -d --build
 
 The entrypoint prints this and refuses to register. In the order worth checking:
 
-1. **Render-device permissions.** `RENDER_GROUP_ID` is unset or wrong, or the
-   service account was never granted access. Confirm with
-   `getent group render` on the host, and re-run the verification command in
-   *Service Account Device Access* above.
-2. **The ROCm bind-mount.** Confirm `ROCM_HOST_PATH` exists and holds a real
-   ROCm tree.
+1. **Render-device permissions.** `GroupAdd=keep-groups` is missing from the
+   unit, or the service account was never granted the group. Confirm with
+   `getent group render` and `sudo -iu ar-ci id` on the host, then re-run the
+   gate command in *Render-device access* above.
+2. **The ROCm bind-mount.** Confirm the unit's ROCm `Volume=` line points at a
+   real ROCm tree on the host.
 3. **`libatomic1`.** Present in this image; if you derived your own, check it.
 
 ### "The registered ICD points at … which does not exist"
@@ -387,10 +419,10 @@ find /opt/rocm/ -name 'libamdocl*'        # where it actually is
 ls -ld /opt/rocm && readlink -f /opt/rocm # is the mount point a symlink?
 ```
 
-Then set it in `.env` and rebuild:
+Then set `ROCM_OPENCL_LIB` in `.env` and rebuild:
 
 ```bash
-docker compose up -d --build
+./install-runner.sh
 ```
 
 Express the path under `/opt/rocm` — the mount point. If `/opt/rocm` is a
@@ -477,14 +509,19 @@ per-step.
 
 ```
 tools/ci/rocm/
-├── .env.example       # Template for environment configuration
-├── Dockerfile         # Runner agent + JDK + Maven + OpenCL ICD loader
-├── docker-compose.yml # Device passthrough, ROCm bind-mount, resource limits
-├── entrypoint.sh      # OpenCL preflight, register / run / deregister (org or repo)
-├── settings.xml       # Maven settings
-├── setup-host.sh      # One-time host setup; idempotent, --check to verify only
-└── README.md          # This file
+├── .env.example              # Credentials and runner settings template
+├── Dockerfile                # Runner agent + JDK + Maven + OpenCL ICD loader
+├── ar-ci-cl-runner.container # Quadlet unit: devices, mounts, keep-groups, limits
+├── entrypoint.sh             # OpenCL preflight, register / run / deregister
+├── install-runner.sh         # Build the image and install the systemd user service
+├── settings.xml              # Maven settings
+├── setup-host.sh             # One-time host setup; idempotent, --check to verify
+└── README.md                 # This file
 ```
+
+There is deliberately no `docker-compose.yml`. See *Supplementary groups do not
+cross into a rootless container* — Compose cannot express `keep-groups`, and
+without it the container has no GPU.
 
 For the Linux CPU fleet see [`../docker/`](../docker/); for the macOS fleet see
 [`../macos/`](../macos/).

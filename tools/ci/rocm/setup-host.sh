@@ -358,10 +358,11 @@ Next:
   1. Stage the sample library (from a machine that holds it):
        tools/ci/sync-music-samples.sh --host \$(hostname) --user ${ADMIN_USER:-<admin>} \\
            --group ${SERVICE_USER} --dest ${SAMPLES_DEST}
-  2. Configure and start the fleet, as ${SERVICE_USER}:
-       export DOCKER_HOST=unix:///run/user/${SERVICE_UID:-<uid>}/podman/podman.sock
+  2. Build and install the runner, as ${SERVICE_USER}:
+       sudo -iu ${SERVICE_USER}
+       cd <checkout>/tools/ci/rocm
        cp .env.example .env && \$EDITOR .env
-       docker compose up -d --build
+       ./install-runner.sh
   3. Reboot once and re-run this script with --check to confirm the render
      group access survived. That is the point of the udev rule.
 EOF

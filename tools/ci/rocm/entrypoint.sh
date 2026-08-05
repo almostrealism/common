@@ -94,7 +94,7 @@ verify_opencl() {
     if [ ! -d /opt/rocm ]; then
         echo "ERROR: /opt/rocm is not present in the container."
         echo "  This image is inert without the host's ROCm userspace bind-mounted"
-        echo "  read-only at /opt/rocm. See docker-compose.yml and README.md."
+        echo "  read-only at /opt/rocm. See ar-ci-cl-runner.container and README.md."
         return 1
     fi
 
@@ -125,9 +125,11 @@ verify_opencl() {
         echo "  Most likely causes, in the order worth checking:"
         echo "    1. The service account cannot read /dev/kfd or /dev/dri/renderD128."
         echo "       The host ACL grants the interactive user, not a group — a service"
-        echo "       account inherits nothing from it. Check RENDER_GROUP in .env:"
-        echo "       rootless podman needs 'keep-groups', rootful docker needs the"
-        echo "       numeric gid from 'getent group render'. Current groups here:"
+        echo "       account inherits nothing from it. Check that the unit carries"
+        echo "       GroupAdd=keep-groups (ar-ci-cl-runner.container) and that the"
+        echo "       service account is in the render group on the host."
+        echo "       Current groups here — note that a retained host group is"
+        echo "       UNMAPPED in this namespace and shows as 65534(nogroup):"
         id | sed 's/^/         /'
         echo "    2. The ROCm bind-mount is missing or points somewhere unexpected."
         echo "    3. libatomic1 is absent, which makes the ROCm runtime fail to load."
