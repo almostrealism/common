@@ -119,6 +119,21 @@ mkdir -p "${QUADLET_DIR}"
 install -m 644 "${SCRIPT_DIR}/${UNIT_FILE}" "${QUADLET_DIR}/${UNIT_FILE}"
 echo "Installed ${QUADLET_DIR}/${UNIT_FILE}"
 
+# ---------- Retire the pre-template unit ----------
+# Before the template rename this fleet installed a single, non-templated
+# ar-ci-cl-runner.container. Installing the template does not displace it, and
+# the scale-down sweep below only considers @N instances — so a host set up
+# before the rename quietly runs one extra runner that --runners can never
+# account for. Retire it explicitly.
+LEGACY_UNIT="${QUADLET_DIR}/${UNIT_NAME}.container"
+if [ -f "${LEGACY_UNIT}" ] || \
+        systemctl --user is-active --quiet "${UNIT_NAME}.service" 2>/dev/null; then
+    echo "Retiring the pre-template ${UNIT_NAME}.service ..."
+    systemctl --user stop "${UNIT_NAME}.service" 2>/dev/null || true
+    rm -f "${LEGACY_UNIT}"
+    echo "  removed ${LEGACY_UNIT}"
+fi
+
 # ---------- Resource limits ----------
 
 # The unit's MemoryMax/CPUQuota are per instance, and scaling multiplies them.
