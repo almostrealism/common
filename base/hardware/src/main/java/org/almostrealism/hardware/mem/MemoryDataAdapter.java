@@ -305,14 +305,24 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * subclass. See {@link #setMem(double[])} for the routes available to everyone
 	 * else.</p>
 	 *
+	 * <p>The write must stay within the region this {@link MemoryData} owns, as well as
+	 * within the underlying storage it delegates to. The second alone would let a write
+	 * into one entry of a bank continue into the entries that follow it, since those are
+	 * part of the same storage.</p>
+	 *
 	 * @param offset Index in this memory
 	 * @param source Values to write
+	 * @throws IllegalArgumentException if the write extends beyond this memory or its storage
 	 */
 	protected void setMem(int offset, double[] source) {
+		if (offset < 0 || offset + source.length > getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
 		MemoryData root = getRootDelegate();
 
 		if (getOffset() - root.getOffset() + offset + source.length > root.getMemLength()) {
-			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+			throw new IllegalArgumentException("Array extends beyond the length of the underlying storage");
 		}
 
 		MemoryData.setMem(getMem(), getOffset() + offset, source, 0, source.length);

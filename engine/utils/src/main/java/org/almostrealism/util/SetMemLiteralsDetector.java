@@ -189,6 +189,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().get(index).setMem(data);"},
+			new String[] {"/hardware/mem/MemoryBankAdapter.java", "((MemoryDataAdapter) entry).setMem(values);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},

@@ -300,33 +300,6 @@ public class WavFile implements AutoCloseable {
 		return wavFile;
 	}
 
-	/**
-	 * Extracts a single channel from a double[][] audio buffer as a traversed PackedCollection.
-	 *
-	 * @param data the multi-channel audio data, indexed as [channel][frame]
-	 * @param chan the channel index to extract
-	 * @return a PackedCollection containing the channel data
-	 */
-	public static PackedCollection channel(double[][] data, int chan) {
-		return channel(data, chan, 0);
-	}
-
-	/**
-	 * Extracts a single channel from a double[][] audio buffer as a traversed PackedCollection,
-	 * optionally padding with extra frames.
-	 *
-	 * @param data      the multi-channel audio data, indexed as [channel][frame]
-	 * @param chan      the channel index to extract
-	 * @param padFrames the number of zero-padded frames to append
-	 * @return a PackedCollection containing the channel data with optional padding
-	 */
-	public static PackedCollection channel(double[][] data, int chan, int padFrames) {
-		PackedCollection waveform = new PackedCollection(data[chan].length + padFrames);
-		waveform.setFrom(0, PackedCollection.of(data[chan]));
-		return waveform.traverse(1);
-	}
-
-
 	/** Opens and parses the header of the specified WAV file for reading. */
 	public static WavFile openWavFile(File file) throws IOException {
 		// Instantiate new Wavfile and store the file reference

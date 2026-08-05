@@ -1,7 +1,7 @@
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	base/hardware/src/main/java/org/almostrealism/hardware/computations/Assignment.java	1	return JVMMemory.fill(d, len, s.getAsDouble());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	PackedCollection sequence = pack(values());
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	compute/algebra/src/main/java/org/almostrealism/collect/computations/ArithmeticSequenceComputation.java	1	return pack(values());
-FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	input.fill(complexSpectrum);
+PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/main/java/org/almostrealism/audio/data/FrequencyToAudioConverter.java	1	return PackedCollection.of(spectrum);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcA = new PackedCollection(a.length).fill(a);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	PackedCollection pcB = new PackedCollection(b.length).fill(b);
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/ml/src/main/java/org/almostrealism/persist/index/SimilarityMetric.java	1	return new PackedCollection(data.length).fill(data);
@@ -13,9 +13,7 @@ FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/g
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> dLdHatXGroup.valueAt(pos) - dLdHatXGroupMean
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	engine/utils/src/test/java/org/almostrealism/util/GradientTestFeatures.java	1	.fill(pos -> gradient.valueAt(pos) * weights.valueAt(pos));
 FILL_PACK_BEYOND_SCALAR_ALLOWANCE	studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java	1	dest.fill(values);
-PACKED_COLLECTION_OF_NON_LITERAL	compute/algebra/src/main/java/org/almostrealism/collect/computations/Random.java	1	((PackedCollection) destination).setFrom(0, PackedCollection.of(values));
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/main/java/org/almostrealism/audio/WavFile.java	1	waveform.setFrom(0, PackedCollection.of(data[chan]));
-PACKED_COLLECTION_OF_NON_LITERAL	engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java	1	audioBuf.setFrom(0, PackedCollection.of(audioData));
+PACKED_COLLECTION_OF_NON_LITERAL	compute/algebra/src/main/java/org/almostrealism/collect/computations/Random.java	1	values = PackedCollection.of(IntStream.range(0, getShape().getTotalSize())
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(1.5 * in.valueAt(0));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
 PACKED_COLLECTION_OF_NON_LITERAL	engine/utils/src/test/java/org/almostrealism/graph/model/test/GradientDescentTests.java	1	in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));

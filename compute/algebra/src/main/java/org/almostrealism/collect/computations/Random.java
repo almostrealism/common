@@ -88,8 +88,8 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 	/** Flag indicating whether to generate normal distribution (true) or uniform distribution (false) */
 	private final boolean normal;
 
-	/** Cached array of generated random values, null until first initialization */
-	private double[] values;
+	/** Cached collection of generated random values, null until first initialization */
+	private PackedCollection values;
 
 	/**
 	 * Creates a new {@link Random} {@link Producer} with uniform distribution.
@@ -207,14 +207,15 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 	 *   <li>Uniform distribution: uses {@link java.util.Random#nextDouble()}</li>
 	 * </ul>
 	 * 
-	 * <p>The values are cached in the internal array and will not be regenerated
-	 * until {@link #refresh()} is called.</p>
+	 * <p>The values are cached as a {@link PackedCollection} and will not be regenerated
+	 * until {@link #refresh()} is called. They are generated once and held in the form
+	 * they are delivered in, rather than being wrapped again on each evaluation.</p>
 	 */
 	protected void initValues() {
 		if (values == null) {
-			values = IntStream.range(0, getShape().getTotalSize())
+			values = PackedCollection.of(IntStream.range(0, getShape().getTotalSize())
 					.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
-					.toArray();
+					.toArray()).reshape(getShape());
 		}
 	}
 
@@ -254,7 +255,7 @@ public class Random implements CollectionProducer, OperationInfo, Signature {
 			public Evaluable<PackedCollection> into(Object destination) {
 				return args -> {
 					initValues();
-					((PackedCollection) destination).setFrom(0, PackedCollection.of(values));
+					((PackedCollection) destination).setFrom(0, values);
 					return (PackedCollection) destination;
 				};
 			}

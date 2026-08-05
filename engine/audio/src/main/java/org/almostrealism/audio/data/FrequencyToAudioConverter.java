@@ -112,7 +112,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 			double[] magnitude = extractMagnitude(freqData, frame, freqBins);
 
 			// Create complex spectrum with random phase
-			double[] complexSpectrum = createComplexSpectrum(magnitude, fftSize);
+			PackedCollection complexSpectrum = createComplexSpectrum(magnitude, fftSize);
 
 			// Apply IFFT
 			PackedCollection timeDomain = applyIfft(complexSpectrum, fftSize);
@@ -157,7 +157,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * @param fftSize   total FFT size (2 * magnitude.length)
 	 * @return complex spectrum in interleaved format [re0, im0, re1, im1, ...]
 	 */
-	private double[] createComplexSpectrum(double[] magnitude, int fftSize) {
+	private PackedCollection createComplexSpectrum(double[] magnitude, int fftSize) {
 		// Complex spectrum: interleaved real/imaginary
 		double[] spectrum = new double[fftSize * 2];
 		int halfSize = fftSize / 2;
@@ -190,7 +190,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 			spectrum[halfSize * 2 + 1] = 0.0;
 		}
 
-		return spectrum;
+		return PackedCollection.of(spectrum);
 	}
 
 	/**
@@ -200,13 +200,8 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * @param fftSize         number of frequency bins
 	 * @return time-domain samples (real part only)
 	 */
-	private PackedCollection applyIfft(double[] complexSpectrum, int fftSize) {
-		// Create input collection
-		PackedCollection input = new PackedCollection(fftSize * 2);
-		input.fill(complexSpectrum);
-
-		// Apply IFFT
-		FourierTransform ifft = new FourierTransform(1, fftSize, true, c(input));
+	private PackedCollection applyIfft(PackedCollection complexSpectrum, int fftSize) {
+		FourierTransform ifft = new FourierTransform(1, fftSize, true, cp(complexSpectrum));
 		PackedCollection result = ifft.get().evaluate();
 
 		// Extract real part -- column 0 of the interleaved (real, imaginary) pairs
