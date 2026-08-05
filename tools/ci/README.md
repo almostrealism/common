@@ -8,8 +8,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | Directory | Purpose |
 |---|---|
 | `agent-protection/` | Anti-deception enforcement scripts (test write locks, audit) |
-| `docker/` | Self-hosted GitHub Actions runner fleet configuration |
-| `macos/` | macOS self-hosted runner configuration |
+| `docker/` | Linux CPU runner fleet (`ar-ci`), Docker Compose |
+| `macos/` | macOS GPU runner configuration (`ar-ci`) |
+| `rocm/` | AMD/ROCm OpenCL runner fleet (`ar-ci-cl`), Docker Compose |
 | `monitor/` | Host monitoring tools for CI infrastructure |
 | `prompts/` | Prompt builders and templates for agent jobs |
 
@@ -20,6 +21,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller |
+| `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Agent Protection (`agent-protection/`)
 

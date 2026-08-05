@@ -17,6 +17,7 @@
 package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.studio.persistence.AudioLibraryPersistence;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -42,11 +43,19 @@ import java.util.concurrent.TimeUnit;
  */
 public class ReproduceRefreshBug extends TestSuiteBase {
 
-	/** Path prefix for the protobuf library file on the local machine. */
-	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
+	/**
+	 * Path prefix for the protobuf library file on the local machine, overridable via
+	 * {@code AR_RINGS_PROTOBUF}.
+	 */
+	private static final String PROTOBUF_PREFIX = SystemUtils.getProperty(
+			"AR_RINGS_PROTOBUF", "/Users/michael/Projects/AlmostRealism/library");
 
-	/** Root directory containing audio sample files on the local machine. */
-	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
+	/**
+	 * Root directory containing audio sample files on the local machine, overridable via
+	 * {@code AR_RINGS_LIBRARY}.
+	 */
+	private static final String SAMPLES_ROOT =
+			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/michael/Music/Samples");
 
 	/** Sample rate for audio playback. */
 	private static final int SAMPLE_RATE = 44100;

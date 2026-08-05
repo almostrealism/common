@@ -16,6 +16,7 @@
 
 package org.almostrealism.studio.discovery.test;
 
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.studio.discovery.PrototypeDiscovery;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Ignore;
@@ -34,11 +35,13 @@ import java.io.File;
 @Ignore("Manual diagnostic — requires developer-local protobuf and samples directory; too slow for CI")
 public class PrototypeDiscoveryTest extends TestSuiteBase {
 
-	/** Path prefix for protobuf store files. */
-	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
+	/** Path prefix for protobuf store files, overridable via {@code AR_RINGS_PROTOBUF}. */
+	private static final String PROTOBUF_PREFIX = SystemUtils.getProperty(
+			"AR_RINGS_PROTOBUF", "/Users/michael/Projects/AlmostRealism/library");
 
-	/** Root directory for audio samples. */
-	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
+	/** Root directory for audio samples, overridable via {@code AR_RINGS_LIBRARY}. */
+	private static final String SAMPLES_ROOT =
+			SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/michael/Music/Samples");
 
 	/**
 	 * Runs the prototype discovery process against local data files.
