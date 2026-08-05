@@ -113,13 +113,17 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 				PackedCollection resampled =
 						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
 								.get().evaluate();
-				CollectionProducer shaped = cp(resampled).multiply(cp(layerCurves[l].get(n)));
+				CollectionProducer shaped =
+						cp(resampled).multiply(cp(layerCurves[l].traverse(1).get(n)));
 				merged = merged == null ? shaped : merged.add(shaped);
 			}
 
 			PackedCollection mergedN = merged.evaluate();
-			PackedCollection cutoffN = filterCutoffs.get(n);
-			PackedCollection volN = volumeEnvelopes.get(n);
+			// The curves are shaped [N, TARGET_LENGTH] with traversal on axis 0, so
+			// the row has to be selected on axis 1 to get one note's curve rather
+			// than the whole batch
+			PackedCollection cutoffN = filterCutoffs.traverse(1).get(n);
+			PackedCollection volN = volumeEnvelopes.traverse(1).get(n);
 
 			PackedCollection filtered =
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))

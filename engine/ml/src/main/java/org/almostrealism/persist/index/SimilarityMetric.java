@@ -108,6 +108,14 @@ public interface SimilarityMetric {
 			return (float) dot;
 		}
 
+		/**
+		 * Normalizes on the host, which the ledger records as an outstanding
+		 * violation. Expressing it as a computation requires this method to
+		 * return a {@link org.almostrealism.collect.CollectionProducer} so the
+		 * caller evaluates at the insertion boundary; done here it just relocates
+		 * the host round trip behind an evaluate the detector reads, correctly, as
+		 * breaking the graph.
+		 */
 		@Override
 		public PackedCollection normalize(PackedCollection vector) {
 			double[] data = normalizeToArray(vector);

@@ -1229,8 +1229,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		IntToDoubleFunction looped = loopedSource();
 		double[] mono = renderFeedbackCombMono(1, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
-				new double[]{COMB_DELAY_SAMPLES}, new double[]{COMB_FEEDBACK_GAIN},
-				new double[]{COMB_WET_LEVEL}, looped, (int) (DEMO_SECONDS * SAMPLE_RATE));
+				pack(COMB_DELAY_SAMPLES), pack(COMB_FEEDBACK_GAIN),
+				pack(COMB_WET_LEVEL), looped, (int) (DEMO_SECONDS * SAMPLE_RATE));
 
 		File demoWav = new File(outputDir, "pdsl_feedback_comb_looped_sample.wav");
 		writeMonoWav(demoWav, mono);
@@ -1272,14 +1272,14 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		// Prime-ish per-tap delays, all longer than one frame and shorter than the ring, for
 		// natural (non-metallic) diffusion.
-		double[] delays = {11000, 13003, 16007, 19001};
-		double[] grid = householderGrid(channels, GRID_FEEDBACK_GAIN);
-		double[] passthrough = scaledIdentity(channels, GRID_WET_LEVEL);
+		PackedCollection delays = pack(11000, 13003, 16007, 19001);
+		PackedCollection grid = householderGrid(channels, GRID_FEEDBACK_GAIN);
+		PackedCollection passthrough = scaledIdentity(channels, GRID_WET_LEVEL);
 
 		// Reference: same per-tap self-gain (the Householder diagonal) but NO cross-channel
 		// coupling — four independent combs. Used to prove the off-diagonals matter.
-		double selfGain = grid[0];  // diagonal entry of the scaled Householder
-		double[] diagonalOnly = scaledIdentity(channels, selfGain);
+		double selfGain = grid.toDouble(0);  // diagonal entry of the scaled Householder
+		PackedCollection diagonalOnly = scaledIdentity(channels, selfGain);
 
 		double[] mono = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
 				delays, grid, passthrough, looped, totalFrames);
@@ -1336,23 +1336,17 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param channels             number of feedback taps/channels
 	 * @param sig                  samples per frame
 	 * @param bufFrames            ring depth in frames ({@code bufSize = bufFrames * sig})
-	 * @param delaySamplesData     per-channel delay in samples, length {@code channels}
-	 * @param transmissionRowMajor row-major transmission matrix, length {@code channels*channels}
-	 * @param passthroughRowMajor  row-major passthrough matrix, length {@code channels*channels}
+	 * @param delaySamples         per-channel delay in samples, shaped {@code [channels]}
+	 * @param transmission         transmission matrix, shaped {@code [channels, channels]}
+	 * @param passthrough          passthrough matrix, shaped {@code [channels, channels]}
 	 * @param sampleAt             input sample at an absolute frame index (shared across channels)
 	 * @param totalFrames          number of frames to render
 	 * @return the mono (channel-summed) output samples
 	 */
 	private double[] renderFeedbackCombMono(int channels, int sig, int bufFrames,
-			double[] delaySamplesData, double[] transmissionRowMajor,
-			double[] passthroughRowMajor, IntToDoubleFunction sampleAt, int totalFrames) {
+			PackedCollection delaySamples, PackedCollection transmission,
+			PackedCollection passthrough, IntToDoubleFunction sampleAt, int totalFrames) {
 		int bufSize = bufFrames * sig;
-		PackedCollection delaySamples = new PackedCollection(channels);
-		delaySamples.setFrom(0, PackedCollection.of(delaySamplesData));
-		PackedCollection transmission = new PackedCollection(new TraversalPolicy(channels, channels));
-		transmission.setFrom(0, PackedCollection.of(transmissionRowMajor));
-		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
-		passthrough.setFrom(0, PackedCollection.of(passthroughRowMajor));
 		PackedCollection buffers = new PackedCollection(channels * bufSize);
 		PackedCollection heads = new PackedCollection(channels);
 
@@ -1377,17 +1371,18 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		int passes = totalFrames / sig;
 		double[] mono = new double[passes * sig];
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[channels * sig];
+		PackedCollection frame = new PackedCollection(sig);
+		double[] frameData = new double[sig];
 
 		for (int pass = 0; pass < passes; pass++) {
 			int off = pass * sig;
 			for (int t = 0; t < sig; t++) {
-				double v = sampleAt.applyAsDouble(off + t);
-				for (int c = 0; c < channels; c++) {
-					inData[c * sig + t] = v;
-				}
+				frameData[t] = sampleAt.applyAsDouble(off + t);
 			}
-			input.setFrom(0, PackedCollection.of(inData));
+
+			// Only the frame itself comes from the host; every channel receives it
+			frame.setFrom(0, PackedCollection.of(frameData));
+			repeat(0, channels, cp(frame).reshape(1, sig)).into(input).evaluate();
 			double[] passOut = compiled.forward(input).toArray(0, channels * sig);
 			for (int t = 0; t < sig; t++) {
 				double s = 0.0;
@@ -1430,33 +1425,22 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 *
 	 * @param n    matrix dimension (channel count)
 	 * @param gain scale factor; the resulting spectral radius
-	 * @return the row-major {@code n*n} transmission matrix
+	 * @return the {@code n*n} transmission matrix
 	 */
-	private static double[] householderGrid(int n, double gain) {
-		double[] m = new double[n * n];
-		double off = 2.0 / n;  // 2 * (1/√n)^2
-		for (int i = 0; i < n; i++) {
-			for (int j = 0; j < n; j++) {
-				double h = (i == j ? 1.0 : 0.0) - off;
-				m[i * n + j] = gain * h;
-			}
-		}
-		return m;
+	private PackedCollection householderGrid(int n, double gain) {
+		// The off-diagonal term is 2 * (1/√n)^2, uniform across the matrix
+		return identity(n).subtract(c(2.0 / n)).multiply(gain).evaluate();
 	}
 
 	/**
-	 * Builds a row-major {@code n*n} diagonal matrix with {@code scale} on the diagonal.
+	 * Builds an {@code n*n} diagonal matrix with {@code scale} on the diagonal.
 	 *
 	 * @param n     matrix dimension
 	 * @param scale the diagonal value
-	 * @return the row-major diagonal matrix
+	 * @return the diagonal matrix
 	 */
-	private static double[] scaledIdentity(int n, double scale) {
-		double[] m = new double[n * n];
-		for (int i = 0; i < n; i++) {
-			m[i * n + i] = scale;
-		}
-		return m;
+	private PackedCollection scaledIdentity(int n, double scale) {
+		return identity(n).multiply(scale).evaluate();
 	}
 
 	/**
