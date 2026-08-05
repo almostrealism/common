@@ -1,37 +1,50 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─── Seed /Users/Shared/Music onto a macOS CI runner ─────────────────
+# ─── Seed the curated sample library onto a CI runner ────────────────
 #
 # Several benchmark tests (AudioSceneSingleVsMultiChannelTest,
-# PdslHotPathBreakdownTest, ...) read real sample data from
-# /Users/Shared/Music/Samples. A runner that lacks that directory silently
-# falls back to synthetic samples and reports misleading timings, so every
-# macOS self-hosted runner ([self-hosted, macos, ar-ci]) must have the real
-# library present.
+# PdslHotPathBreakdownTest, ...) read real sample data from a curated library.
+# A runner that lacks it either falls back to synthetic samples and reports
+# misleading timings, or — on a host where a GPU is available — fails outright
+# via AudioSceneTestBase.requireCuratedLibrary(). Every self-hosted runner that
+# runs the media suites must have the real library present.
 #
-# This script mirrors the local /Users/Shared/Music to a remote Mac via
-# rsync over SSH, then makes the tree group-readable on the remote so the
-# runner's user account (any regular macOS user, which is a member of the
-# `staff` group) can read it during CI jobs.
+# The library is not platform-specific and neither is this script. It serves
+# both fleets:
+#   macOS ([self-hosted, macos, ar-ci])    -> /Users/Shared/Music
+#   ROCm  ([self-hosted, linux, ar-ci-cl]) -> the host path bind-mounted into
+#                                             the runner container, e.g.
+#                                             /srv/ar-ci/music
+# The layout is the same either way: a Samples/ directory beside
+# pattern-factory.json. Tests locate it via AR_RINGS_LIBRARY / AR_RINGS_PATTERNS,
+# which default to the macOS paths.
+#
+# It mirrors the local library to the remote host via rsync over SSH, then makes
+# the tree group-readable there so the runner's account can read it during jobs.
 #
 # rsync is used rather than zip+ssh because the payload is ~1.8 GB across
 # thousands of files: rsync is incremental, resumable (--partial), and
 # idempotent, so a re-run ships only changed files.
 #
 # Run it as a user whose SSH key authenticates as REMOTE_USER on the remote
-# host. No sudo is required: /Users/Shared is world-writable (mode 1777) on
-# macOS, and changing a file's group to a group you belong to, on files you
-# own, is permitted.
+# host. No sudo is required, but the remote account must OWN the transferred
+# files and BELONG TO --group, since that is what permits the chgrp below.
+#
+# On the ROCm fleet, do not sync as the runner's service account — it is
+# login-locked on purpose. Sync as an admin account that shares a group with it;
+# tools/ci/rocm/setup-host.sh prepares exactly that arrangement.
 #
 #   ./sync-music-samples.sh                      # mirror to the default host
 #   ./sync-music-samples.sh --dry-run            # preview, transfer nothing
 #   ./sync-music-samples.sh --host other-mac.local --user michael
+#   ./sync-music-samples.sh --host amd-halo --user michael \
+#       --group ar-ci --dest /srv/ar-ci/music
 
 # ---------- Configuration (env vars, overridable by the flags below) ----------
 REMOTE_HOST="${REMOTE_HOST:-michaels-mac-mini-2}"
 REMOTE_USER="${REMOTE_USER:-michael}"
-REMOTE_GROUP="${REMOTE_GROUP:-staff}"   # shared group the runner user belongs to (staff = every macOS user)
+REMOTE_GROUP="${REMOTE_GROUP:-staff}"   # shared group the runner user belongs to (staff = every macOS user; use the service group on Linux, e.g. ar-ci)
 SRC="${SRC:-/Users/Shared/Music}"
 DEST="${DEST:-/Users/Shared/Music}"
 SSH_KEY="${SSH_KEY:-}"                   # optional explicit private key; empty = ssh-agent / default identity
@@ -158,7 +171,10 @@ chgrp -R "$group" "$dest" 2>/dev/null || true
 # into subdirectories.
 chmod -R g+rX "$dest"
 chmod g+rx "$dest"
-# Ensure the parent is traversable by group and other (normally 1777 already).
+# macOS only: ensure the shared parent is traversable (normally 1777 already).
+# A no-op elsewhere — on Linux the destination's parent is prepared by
+# tools/ci/rocm/setup-host.sh, which owns it by the service group instead of
+# widening it to everyone.
 chmod g+x,o+x /Users/Shared 2>/dev/null || true
 echo "  $(ls -ld "$dest")"
 echo "  remote file count: $(find "$dest" -type f | wc -l | tr -d ' ')"
@@ -166,4 +182,6 @@ REMOTE_FIX
 
 echo
 echo "Done. ${REMOTE}:${DEST} is populated and group-readable by '${REMOTE_GROUP}'."
-echo "The macOS CI runner (any user in '${REMOTE_GROUP}') can now read the sample library."
+echo "Any CI runner account in '${REMOTE_GROUP}' can now read the sample library."
+echo "Verify from the runner's own account before trusting it, e.g.:"
+echo "  ssh ${REMOTE} 'sudo -iu <runner-account> test -r ${DEST}/pattern-factory.json && echo readable'"

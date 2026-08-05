@@ -27,6 +27,7 @@ import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
@@ -1526,7 +1527,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return mono sample data, at most {@link #SAMPLE_RATE} frames
 	 */
 	private double[] loadLoopSource() throws IOException {
-		File library = new File("/Users/Shared/Music/Samples");
+		File library = new File(SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples"));
 		if (library.isDirectory()) {
 			File[] wavs = library.listFiles((d, n) -> n.toLowerCase().endsWith(".wav"));
 			if (wavs != null) {

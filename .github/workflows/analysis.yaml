@@ -1193,12 +1193,12 @@ jobs:
 
   test-mac:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    # GPU lane, first stage. The GPU lane (test-mac -> test-media-mac -> test-cl ->
-    # test-media-cl) runs in parallel with the CPU lane (test -> test-media): the two use
-    # different runner fleets (macOS vs linux), so there is no reason to serialise across
-    # them. Within the GPU lane the stages are serialised so only one GPU-heavy suite runs
-    # on the macOS fleet at a time. This stage gates on the validation checks directly
-    # (it no longer inherits them by depending on `test`).
+    # GPU lane, first stage. The GPU lane (test-mac -> test-media-mac) runs in parallel with
+    # the CPU lane (test -> test-media) and the CL lane (test-cl -> test-media-cl): all three
+    # use different runner fleets (macOS ar-ci, linux ar-ci, linux ar-ci-cl), so there is no
+    # reason to serialise across them. Within the GPU lane the stages are serialised so only
+    # one GPU-heavy suite runs on the macOS fleet at a time. This stage gates on the
+    # validation checks directly (it no longer inherits them by depending on `test`).
     # Layer gate: engine tests only run when engine-or-below layers are modified.
     if: >-
       needs.build.result == 'success' &&
@@ -1304,14 +1304,16 @@ jobs:
           if-no-files-found: ignore
 
   test-cl:
-    needs: [changes, build, test-mac, test-media-mac, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    # GPU lane, third stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
-    # (rather than *) so Metal is excluded and GPU-eligible work routes through CL. Runs after
-    # the earlier GPU stages so the lane stays serialised — only one GPU-heavy suite on the
-    # macOS fleet at a time. Gates on ALL earlier GPU stages (test-mac, test-media-mac) with
-    # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
-    # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
-    # `!cancelled()` is required for that tolerance to take effect — see test-media.
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CL lane, first stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
+    # (rather than *) so Metal is excluded and GPU-eligible work routes through CL.
+    #
+    # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, so it no longer gates on
+    # test-mac/test-media-mac: those gates existed only to serialise the *macOS* GPUs, and
+    # keeping them would leave this lane idle waiting on unrelated Metal work. The CL lane is
+    # now an independent third lane, serialised internally as test-cl -> test-media-cl because
+    # the ROCm host has a single GPU. Gates on the validation checks directly.
+    # `!cancelled()` is retained for consistency with the other lane stages — see test-media.
     if: >-
       !cancelled() &&
       needs.build.result == 'success' &&
@@ -1319,13 +1321,11 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
-      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
-      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: [self-hosted, linux, ar-ci-cl]
     # Same as test: native,cl runs the compute tests on direct-ByteBuffer native RAM
     # (no Metal), so raise the forked test JVM's direct-memory ceiling without changing
     # heap. See the test-media job for the full rationale.
@@ -1367,14 +1367,14 @@ jobs:
       - name: Run Hardware Tests
         if: matrix.group == 0
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1383,7 +1383,7 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1394,7 +1394,7 @@ jobs:
       - name: Run Render Tests
         if: matrix.group == 0
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
@@ -1403,7 +1403,7 @@ jobs:
       - name: Run IO and HTTP Tests
         if: matrix.group == 0
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1536,13 +1536,16 @@ jobs:
           if-no-files-found: ignore
 
   test-media-cl:
-    needs: [changes, build, test-mac, test-media-mac, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
-    # GPU lane, fourth (final) stage: the OpenCL duplicate of test-media-mac. Every step runs
+    needs: [changes, build, test-cl, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    # CL lane, second (final) stage: the OpenCL duplicate of test-media-mac. Every step runs
     # with AR_HARDWARE_DRIVER=native,cl where test-media-mac uses * (Metal preferred), so
-    # GPU-eligible work routes through CL. Runs after the earlier GPU stages so the lane stays
-    # serialised. Gates on ALL earlier GPU stages (test-mac, test-media-mac, test-cl) with
-    # success-or-skipped, so a failure anywhere earlier in the lane skips this stage (fail-chain);
-    # a stage skipped by its own layer gate is tolerated. Gates on the validation checks directly.
+    # GPU-eligible work routes through CL.
+    #
+    # Runs on the ROCm fleet (tools/ci/rocm). The former gates on test-mac/test-media-mac
+    # serialised the macOS GPUs and no longer apply; the gate on test-cl remains, because the
+    # ROCm host has a single GPU and the two CL stages must not contend for it. test-cl is
+    # gated success-or-skipped, so a failure there skips this stage (fail-chain) while a stage
+    # skipped by its own layer gate is tolerated. Gates on the validation checks directly.
     # `!cancelled()` is required for that tolerance to take effect — see test-media.
     if: >-
       !cancelled() &&
@@ -1551,8 +1554,6 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
-      (needs.test-mac.result == 'success' || needs.test-mac.result == 'skipped') &&
-      (needs.test-media-mac.result == 'success' || needs.test-media-mac.result == 'skipped') &&
       (needs.test-cl.result == 'success' || needs.test-cl.result == 'skipped') &&
       (needs.changes.outputs.studio_changed == 'true' ||
        needs.changes.outputs.extern_changed == 'true' ||
@@ -1560,14 +1561,24 @@ jobs:
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
-    runs-on: [self-hosted, macos, ar-ci]
+    runs-on: [self-hosted, linux, ar-ci-cl]
     # native,cl media tests with the native provider on JNI malloc blocks
     # (AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled, matching the other CL jobs) so the
     # 8g direct-memory cap is spent on CL's own reservations rather than shared with
     # the native provider. Split into eight groups (see test-media); the small per-group
     # load keeps CL within the 8g cap.
+    #
+    # AR_RINGS_LIBRARY / AR_RINGS_PATTERNS point at the curated audio sample library staged on
+    # the ROCm host and bind-mounted read-only into the runner container (see tools/ci/rocm).
+    # They are read by SystemUtils.getProperty, which falls through to the environment, so a
+    # job-level env entry reaches every forked test JVM without repeating a -D on each step.
+    # Without them the studio benchmarks either fail outright (tests that call
+    # AudioSceneTestBase.requireCuratedLibrary, since a GPU IS available here) or silently fall
+    # back to synthetic samples and report timings that measure nothing real.
     env:
       _JAVA_OPTIONS: -XX:MaxDirectMemorySize=8g
+      AR_RINGS_LIBRARY: /opt/ar-samples/Samples
+      AR_RINGS_PATTERNS: /opt/ar-samples/pattern-factory.json
     strategy:
       fail-fast: false
       # Cap at 2 even with eight groups so the job does not monopolize the runners.
@@ -1596,7 +1607,7 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1607,7 +1618,7 @@ jobs:
 
       - name: Run Music Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1617,7 +1628,7 @@ jobs:
 
       - name: Run Compose Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1628,7 +1639,7 @@ jobs:
 
       - name: Run Spatial Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1640,7 +1651,7 @@ jobs:
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \

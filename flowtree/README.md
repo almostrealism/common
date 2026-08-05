@@ -32,7 +32,7 @@ flowtree/
 ├── base/            # ar-flowtree-base        — shared helpers (JsonFieldExtractor, GitOperations)
 ├── agents/          # ar-flowtree-agents      — AgentRunner SPI + bundled runners (Claude, opencode)
 ├── python/          # ar-flowtree-python      — Python bindings
-├── graphpersist/    # ar-graphpersist         — database persistence, NFS/SSH
+├── graphpersist/    # ar-graphpersist         — database persistence, SSH
 ├── runtime/         # ar-flowtree-runtime     — controller, jobs, NodeGroup, Slack integration
 └── runtime/rebuild.sh  # one-command build + deploy for the controller stack and agent pool
 ```

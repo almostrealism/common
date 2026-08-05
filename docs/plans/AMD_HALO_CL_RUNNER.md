@@ -262,8 +262,7 @@ Per job:
 
 `test-media-cl` runs `studio/music`, `studio/compose`, and `studio/spatial`.
 Several of those tests read a real audio sample library, and on the macOS fleet
-that lives at a shared macOS path seeded by
-`tools/ci/macos/sync-music-samples.sh`.
+that lives at a shared macOS path seeded by `tools/ci/sync-music-samples.sh`.
 
 This matters because the failure mode is **silent**: per the macOS README, a
 runner without the library falls back to synthetic samples and reports
@@ -282,9 +281,13 @@ Two caveats to resolve during Phase 4:
   `ReproduceRefreshBug`). Their behaviour on Linux must be checked explicitly —
   if they skip or silently degrade, that needs to be visible, and fixing them to
   honour the existing properties is in scope.
-- A Linux analogue of `sync-music-samples.sh` is needed, or the existing script
-  extended. It must handle the service account's read access, which is the same
-  concern as the device ACLs in Phase 1.
+- ~~A Linux analogue of `sync-music-samples.sh` is needed, or the existing script
+  extended.~~ **Resolved.** The script turned out to be platform-neutral already
+  (its one macOS-specific line is guarded and no-ops elsewhere), so it moved up
+  to `tools/ci/sync-music-samples.sh` and serves both fleets via `--dest` and
+  `--group`. The service account's read access is handled by group ownership
+  rather than by syncing as that account, which stays login-locked; see
+  `tools/ci/rocm/setup-host.sh`.
 
 ## Risks
 

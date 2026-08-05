@@ -117,7 +117,7 @@ common/
 │   ├── base/                      #   ar-flowtree-base: shared helpers (JsonFieldExtractor, GitOperations)
 │   ├── agents/                    #   ar-flowtree-agents: AgentRunner abstraction + ClaudeCodeRunner
 │   ├── python/                    #   ar-flowtree-python: Python bindings for FlowTree
-│   ├── graphpersist/              #   ar-graphpersist: database persistence, NFS/SSH
+│   ├── graphpersist/              #   ar-graphpersist: database persistence, SSH
 │   └── runtime/                   #   ar-flowtree-runtime: controller, jobs, NodeGroup, Slack integration
 │                                  #   NOTE: flowtree/runtime depends on engine layer (ar-utils, ar-utils-http).
 │                                  #   Internal order: api & base & graphpersist → agents (uses base) →
