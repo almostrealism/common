@@ -15,6 +15,9 @@ set -euo pipefail
 # Options:
 #   --runners N   Run N runners (default: RUNNER_COUNT from .env, else 1).
 #                 Scaling down stops the instances above N.
+#   --allow-overcommit
+#                 Start even when the combined memory allowance exceeds what the
+#                 host can back. Only with a specific reason.
 #   --no-build    Install/refresh the unit only; do not rebuild the image
 #   --no-start    Install everything but leave the services stopped
 #   -h, --help    Show this help
@@ -43,12 +46,20 @@ MAX_INSTANCE=32
 DO_BUILD=1
 DO_START=1
 RUNNERS=""
+ALLOW_OVERCOMMIT=0
+
+# Refuse to start a fleet whose combined memory allowance exceeds this share of
+# host RAM. The GPU here is integrated, so its memory comes out of the same pool
+# the kernel needs; overcommitting has already taken this machine down hard
+# enough to need physical intervention.
+MEM_BUDGET_PERCENT=85
 
 usage() { sed -n '4,28p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --runners)  RUNNERS="$2"; shift 2 ;;
+        --allow-overcommit) ALLOW_OVERCOMMIT=1; shift ;;
         --no-build) DO_BUILD=0; shift ;;
         --no-start) DO_START=0; shift ;;
         -h|--help)  usage; exit 0 ;;
@@ -65,12 +76,24 @@ if [ "$(id -u)" -eq 0 ]; then
     exit 1
 fi
 
+# Rootless podman and `systemctl --user` both need XDG_RUNTIME_DIR. It is set by
+# pam_systemd when a login session is created, which `sudo -iu` does not always
+# do — and the directory itself only exists while the user manager is running,
+# which for a service account means lingering must be enabled.
 if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
-    echo "ERROR: XDG_RUNTIME_DIR is not set." >&2
-    echo "  Rootless podman and 'systemctl --user' both need it. If you got here" >&2
-    echo "  via 'runuser' or a non-login sudo, use 'sudo -iu $(id -un)' instead," >&2
-    echo "  or export XDG_RUNTIME_DIR=/run/user/$(id -u)." >&2
-    exit 1
+    CANDIDATE="/run/user/$(id -u)"
+    if [ -d "${CANDIDATE}" ]; then
+        export XDG_RUNTIME_DIR="${CANDIDATE}"
+        echo "note: XDG_RUNTIME_DIR was unset; using ${CANDIDATE}"
+        echo
+    else
+        echo "ERROR: XDG_RUNTIME_DIR is not set and ${CANDIDATE} does not exist." >&2
+        echo "  The user manager is not running for $(id -un). That is expected if" >&2
+        echo "  lingering is disabled — re-enable it from an account with sudo:" >&2
+        echo "    sudo loginctl enable-linger $(id -un)" >&2
+        echo "  then start a fresh session with 'sudo -iu $(id -un)'." >&2
+        exit 1
+    fi
 fi
 
 for cmd in podman systemctl; do
@@ -170,6 +193,65 @@ esac
 if [ "${RUNNERS}" -gt "${MAX_INSTANCE}" ]; then
     echo "ERROR: refusing to start ${RUNNERS} runners; ${MAX_INSTANCE} is the cap." >&2
     exit 2
+fi
+
+# ---------- Memory headroom ----------
+# MemoryMax is a per-cgroup ceiling, so it only protects the host while the SUM
+# across instances leaves the host something to run on. Three runners at the
+# unit's 64G default once put 192G of allowance on a 125G machine, which hung it
+# hard enough to need physical intervention: the GPU is integrated, its memory
+# comes from the same pool, and ROCm allocations are pinned, so the kernel has
+# nothing to reclaim and stalls rather than OOM-killing its way out.
+
+# Converts a systemd byte value (64G, 8192M, 1048576K, or plain bytes) to KiB.
+# Echoes 0 for anything unparseable, which disables the check rather than
+# guessing at a limit.
+to_kib() {
+    local value="$1" number unit
+    number=$(printf '%s' "${value}" | sed 's/[^0-9].*$//')
+    unit=$(printf '%s' "${value}" | sed 's/^[0-9]*//' | tr '[:lower:]' '[:upper:]')
+    [ -z "${number}" ] && { echo 0; return; }
+    case "${unit}" in
+        T|TI|TB) echo $((number * 1024 * 1024 * 1024)) ;;
+        G|GI|GB) echo $((number * 1024 * 1024)) ;;
+        M|MI|MB) echo $((number * 1024)) ;;
+        K|KI|KB) echo $((number)) ;;
+        "")      echo $((number / 1024)) ;;
+        *)       echo 0 ;;
+    esac
+}
+
+PER_INSTANCE_MEM="${MEMORY_MAX}"
+if [ -z "${PER_INSTANCE_MEM}" ]; then
+    PER_INSTANCE_MEM=$(sed -n 's/^MemoryMax=//p' "${SCRIPT_DIR}/${UNIT_FILE}" | tail -1)
+fi
+
+PER_KIB=$(to_kib "${PER_INSTANCE_MEM}")
+HOST_KIB=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+
+if [ "${PER_KIB}" -gt 0 ] && [ "${HOST_KIB}" -gt 0 ]; then
+    TOTAL_KIB=$((PER_KIB * RUNNERS))
+    BUDGET_KIB=$((HOST_KIB * MEM_BUDGET_PERCENT / 100))
+    TOTAL_G=$((TOTAL_KIB / 1024 / 1024))
+    HOST_G=$((HOST_KIB / 1024 / 1024))
+    BUDGET_G=$((BUDGET_KIB / 1024 / 1024))
+
+    if [ "${TOTAL_KIB}" -gt "${BUDGET_KIB}" ]; then
+        echo "ERROR: ${RUNNERS} runners at ${PER_INSTANCE_MEM} each is ${TOTAL_G}G of memory" >&2
+        echo "  allowance, against ${HOST_G}G of host RAM (budget ${BUDGET_G}G at" >&2
+        echo "  ${MEM_BUDGET_PERCENT}%). Refusing to start." >&2
+        echo "" >&2
+        echo "  Lower RUNNER_MEMORY_MAX in .env, or run fewer runners. Remember the" >&2
+        echo "  GPU is integrated: its memory comes out of this same pool, and so" >&2
+        echo "  does AR_HARDWARE_MEMORY_SCALE per test JVM." >&2
+        echo "" >&2
+        echo "  --allow-overcommit proceeds anyway, if you have a reason." >&2
+        [ "${ALLOW_OVERCOMMIT}" = 1 ] || exit 2
+        echo "  --allow-overcommit given; continuing." >&2
+        echo "" >&2
+    else
+        echo "Memory: ${RUNNERS} x ${PER_INSTANCE_MEM} = ${TOTAL_G}G of ${HOST_G}G host RAM (budget ${BUDGET_G}G)"
+    fi
 fi
 
 systemctl --user daemon-reload
