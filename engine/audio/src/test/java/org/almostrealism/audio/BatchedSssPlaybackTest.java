@@ -46,11 +46,6 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 
-	/** Extracts row {@code n} of a flat {@code [N, TARGET_LENGTH]} collection. */
-	private PackedCollection row(PackedCollection flat, int n) {
-		return flat.range(shape(TARGET_LENGTH), n * TARGET_LENGTH);
-	}
-
 	/**
 	 * Verifies that a single batched SSS chain dispatch produces output within 1e-4 RMS
 	 * of a per-note reference that applies resampling, layer envelopes, filter-cutoff
@@ -118,13 +113,13 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 				PackedCollection resampled =
 						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
 								.get().evaluate();
-				CollectionProducer shaped = cp(resampled).multiply(cp(row(layerCurves[l], n)));
+				CollectionProducer shaped = cp(resampled).multiply(cp(layerCurves[l].get(n)));
 				merged = merged == null ? shaped : merged.add(shaped);
 			}
 
 			PackedCollection mergedN = merged.evaluate();
-			PackedCollection cutoffN = row(filterCutoffs, n);
-			PackedCollection volN = row(volumeEnvelopes, n);
+			PackedCollection cutoffN = filterCutoffs.get(n);
+			PackedCollection volN = volumeEnvelopes.get(n);
 
 			PackedCollection filtered =
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))

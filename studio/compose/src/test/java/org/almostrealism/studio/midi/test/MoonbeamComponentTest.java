@@ -502,8 +502,8 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 
 		for (int i = 0; i < config.numLayers; i++) {
 			String prefix = String.format("model.layers.%d", i);
-			weights.put(prefix + ".input_layernorm.weight", onesCollection(dim));
-			weights.put(prefix + ".post_attention_layernorm.weight", onesCollection(dim));
+			weights.put(prefix + ".input_layernorm.weight", new PackedCollection(dim).fill(1.0));
+			weights.put(prefix + ".post_attention_layernorm.weight", new PackedCollection(dim).fill(1.0));
 			weights.put(prefix + ".self_attn.q_proj.weight",
 					createRandomCollection(rng, dim, dim));
 			weights.put(prefix + ".self_attn.k_proj.weight",
@@ -520,7 +520,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 					createRandomCollection(rng, ffnDim, dim));
 		}
 
-		weights.put("model.norm.weight", onesCollection(dim));
+		weights.put("model.norm.weight", new PackedCollection(dim).fill(1.0));
 
 		return new StateDictionary(weights);
 	}
@@ -554,15 +554,6 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 				createRandomCollection(rng, vocabSize, decoderHidden),
 				createRandomCollection(rng, vocabSize),
 				createRandomCollection(rng, vocabSize, decoderHidden));
-	}
-
-	/**
-	 * Create a PackedCollection filled with ones.
-	 */
-	private static PackedCollection onesCollection(int size) {
-		PackedCollection collection = new PackedCollection(new TraversalPolicy(size));
-		collection.fill(1.0);
-		return collection;
 	}
 
 	/**

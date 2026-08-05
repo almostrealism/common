@@ -1020,6 +1020,25 @@ export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB (FP32)
 export AR_HARDWARE_MEMORY_LOCATION=host
 ```
 
+Every `AR_HARDWARE_` setting is read as a **system property first**, and only then
+from the environment. Exporting it works when the process inherits the environment,
+but a test running in a forked JVM does not, so pass the setting to that JVM
+instead:
+
+```bash
+mvn test -DargLine=-DAR_HARDWARE_MEMORY_SCALE=6
+```
+
+The MCP test runner takes the same thing through `jvm_args`:
+
+```
+mcp__ar-test-runner__start_test_run module:"<module>" jvm_args:["-DAR_HARDWARE_MEMORY_SCALE=6"]
+```
+
+The scale is exponential — raise it a step at a time. It cannot exceed the memory
+the device actually has, so a value larger than the hardware will not resolve a
+limit that the hardware itself imposes.
+
 ## Module Dependencies
 
 ```xml

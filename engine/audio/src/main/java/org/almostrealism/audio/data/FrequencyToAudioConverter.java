@@ -68,6 +68,12 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * already set. After conversion, {@code data} and {@code frameCount}
 	 * will be populated.</p>
 	 *
+	 * <p>Every frame's spectrum is built by one computation, but the inverse
+	 * transform runs a frame at a time and reads from a buffer that stays in the
+	 * same place. An operation compiled against a particular offset into a larger
+	 * buffer is not the operation the next frame needs, so handing the transform a
+	 * moving view of the spectra would compile one program per frame.</p>
+	 *
 	 * @param details the WaveDetails to convert
 	 * @throws IllegalArgumentException if required frequency data is missing
 	 */
@@ -106,18 +112,16 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		// Precompute Hann window
 		PackedCollection window = createHannWindow(fftSize);
 
+		// Complex spectra for every frame at once, with random phase
+		PackedCollection spectra = createComplexSpectra(freqData, freqFrames, freqBins);
+		PackedCollection frameSpectrum = new PackedCollection(shape(fftSize, 2));
+
 		// Process each frame
 		for (int frame = 0; frame < freqFrames; frame++) {
-			// Extract magnitude for this frame
-			double[] magnitude = extractMagnitude(freqData, frame, freqBins);
+			frameSpectrum.setFrom(0, spectra.range(shape(fftSize * 2), frame * fftSize * 2));
 
-			// Create complex spectrum with random phase
-			PackedCollection complexSpectrum = createComplexSpectrum(magnitude, fftSize);
+			PackedCollection timeDomain = applyIfft(frameSpectrum, fftSize);
 
-			// Apply IFFT
-			PackedCollection timeDomain = applyIfft(complexSpectrum, fftSize);
-
-			// Apply window and overlap-add to output
 			int startSample = frame * hopSize;
 			overlapAdd(output, timeDomain, window, startSample, outputLength);
 		}
@@ -133,64 +137,42 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	}
 
 	/**
-	 * Extracts magnitude values for a single frame from frequency data.
-	 */
-	private double[] extractMagnitude(PackedCollection freqData, int frame, int bins) {
-		double[] magnitude = new double[bins];
-		int offset = frame * bins;
-
-		for (int i = 0; i < bins; i++) {
-			magnitude[i] = freqData.toDouble(offset + i);
-		}
-
-		return magnitude;
-	}
-
-	/**
-	 * Creates a complex spectrum from magnitude with random phase.
+	 * Creates the complex spectrum of every frame, with random phase.
 	 *
-	 * <p>For real-valued output, the spectrum must be conjugate symmetric:
-	 * X[N-k] = conj(X[k]). This method generates random phase for positive
-	 * frequencies and mirrors them for negative frequencies.</p>
+	 * <p>For real-valued output, each spectrum must be conjugate symmetric:
+	 * X[N-k] = conj(X[k]). Random phase is assigned to the positive frequencies
+	 * and {@link #conjugateSymmetric(io.almostrealism.relation.Producer)} mirrors
+	 * them into the negative frequencies. The DC bin of each frame is given zero
+	 * phase, so that it stays real as conjugate symmetry requires.</p>
 	 *
-	 * @param magnitude magnitude values for positive frequencies
-	 * @param fftSize   total FFT size (2 * magnitude.length)
-	 * @return complex spectrum in interleaved format [re0, im0, re1, im1, ...]
+	 * <p>Every frame is built by the same computation rather than one at a time:
+	 * the phase draw, the polar to rectangular conversion and the symmetric
+	 * extension do not depend on each other across frames, and running them once
+	 * for the whole sequence avoids paying for a separate evaluation per frame.</p>
+	 *
+	 * @param freqData the magnitude spectrum for every frame, shaped (frames, bins)
+	 * @param frames   the number of frames
+	 * @param bins     the number of magnitude values per frame
+	 * @return the spectra, shaped (frames, 2 * bins, 2), each in interleaved
+	 *         format [re0, im0, re1, im1, ...]
 	 */
-	private PackedCollection createComplexSpectrum(double[] magnitude, int fftSize) {
-		// Complex spectrum: interleaved real/imaginary
-		double[] spectrum = new double[fftSize * 2];
-		int halfSize = fftSize / 2;
+	private PackedCollection createComplexSpectra(PackedCollection freqData, int frames, int bins) {
+		// Zero phase for the DC bin of each frame, random phase elsewhere. The draw
+		// is realized once, so the real and imaginary parts describe the same angle.
+		PackedCollection angle = rand(shape(frames, bins), random)
+				.multiply(2 * Math.PI)
+				.multiply(greaterThan(integers(0, frames * bins).mod((double) bins),
+						c(0.5), c(1.0), c(0.0)).reshape(shape(frames, bins)))
+				.evaluate();
 
-		// DC component (bin 0) - real only, no phase
-		spectrum[0] = magnitude[0];
-		spectrum[1] = 0.0;
+		CollectionProducer magnitude = cp(freqData).reshape(shape(frames, bins, 1));
+		CollectionProducer phase = cp(angle).reshape(shape(frames, bins, 1));
 
-		// Positive frequencies (bins 1 to N/2-1)
-		for (int k = 1; k < halfSize; k++) {
-			double mag = k < magnitude.length ? magnitude[k] : 0.0;
-			double phase = random.nextDouble() * 2 * Math.PI;
+		CollectionProducer half = concat(2,
+				magnitude.multiply(cos(phase)),
+				magnitude.multiply(sin(phase)));
 
-			double re = mag * Math.cos(phase);
-			double im = mag * Math.sin(phase);
-
-			// Positive frequency
-			spectrum[k * 2] = re;
-			spectrum[k * 2 + 1] = im;
-
-			// Negative frequency (conjugate symmetric)
-			int negK = fftSize - k;
-			spectrum[negK * 2] = re;
-			spectrum[negK * 2 + 1] = -im;
-		}
-
-		// Nyquist frequency (bin N/2) - real only
-		if (halfSize < magnitude.length) {
-			spectrum[halfSize * 2] = magnitude[halfSize];
-			spectrum[halfSize * 2 + 1] = 0.0;
-		}
-
-		return PackedCollection.of(spectrum);
+		return conjugateSymmetric(half).evaluate();
 	}
 
 	/**
