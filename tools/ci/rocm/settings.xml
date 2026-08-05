@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven settings for the AR OpenCL CI runner.
+  Mirrors tools/ci/docker/settings.xml: each container has its own local
+  repository to avoid concurrency issues when runners build in parallel.
+
+  Note that the CL jobs additionally override maven.repo.local per runner via
+  MAVEN_OPTS (the "Isolate Maven repository per runner" step), which takes
+  precedence over this file. This setting is the fallback for anything run in
+  the container outside a job step.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+    <localRepository>/home/runner/.m2/repository</localRepository>
+
+</settings>

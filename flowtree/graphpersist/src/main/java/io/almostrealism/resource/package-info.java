@@ -29,7 +29,6 @@
  *   <li>{@link io.almostrealism.resource.ResourceVariable} — Bridges resource data into the expression scope system</li>
  * </ul>
  *
- * @see io.almostrealism.nfs
  * @see io.almostrealism.persist
  */
 package io.almostrealism.resource;

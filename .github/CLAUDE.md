@@ -224,16 +224,29 @@ already exclude every failure path, so `!cancelled()` does not weaken the gate �
 it is what makes the gate run at all. Never add a lane stage that depends on a
 layer-gated stage without it.
 
-### Two lanes: CPU (linux) and GPU (macOS)
+### Three lanes: CPU (linux), GPU (macOS), and CL (linux/ROCm)
 
-The self-hosted test jobs run as two independent, parallel lanes, each serialised
-internally so heavy suites do not contend on their fleet:
+The self-hosted test jobs run as three independent, parallel lanes, each
+serialised internally so heavy suites do not contend on their fleet:
 
-- **CPU lane (linux):** `test` → `test-media`.
-- **GPU lane (macOS):** `test-mac` → `test-media-mac` → `test-cl` → `test-media-cl`.
-  Only one GPU-heavy Metal/CL suite runs on the macOS fleet at a time — this keeps
+- **CPU lane (linux, `ar-ci`):** `test` → `test-media`.
+- **GPU lane (macOS, `ar-ci`):** `test-mac` → `test-media-mac`.
+  Only one GPU-heavy Metal suite runs on the macOS fleet at a time — this keeps
   the studio benchmark tick tails from ballooning under GPU contention (the
   mechanism behind the PDSL hot-path timeouts).
+- **CL lane (linux/ROCm, `ar-ci-cl`):** `test-cl` → `test-media-cl`.
+  Serialised for the same reason: the ROCm host has a single GPU.
+
+The CL lane was formerly the third and fourth stages of the macOS GPU lane. It
+moved to its own AMD/ROCm fleet (`tools/ci/rocm`) to give the OpenCL backend a
+real, non-deprecated OpenCL implementation. The cross-lane gates on `test-mac`
+and `test-media-mac` went with it: they existed only to serialise the macOS
+GPUs, so keeping them would have left the CL lane idle waiting on unrelated
+Metal work.
+
+The `ar-ci-cl` label is deliberately distinct from `ar-ci`. If the ROCm host
+also carried `ar-ci` it would start picking up general CPU test jobs, putting
+the CL lane behind an unrelated queue.
 
 Each stage gates on the four validation checks directly (it no longer inherits
 them by depending on `test`). Within a lane, each stage gates on ALL earlier
@@ -246,12 +259,29 @@ change-awareness that only runs the modules that changed.)
 
 ### What the `test-cl` and `test-media-cl` jobs cover
 
-OpenCL-backend duplicates of `test-mac` and `test-media-mac`, running on the
-same self-hosted macOS runners with `AR_HARDWARE_DRIVER=native,cl` instead of
-`*` — under `*`, Metal always wins GPU context selection, so the CL backend is
-otherwise never exercised by CI. They are the last two stages of the GPU lane
-(`test-cl` after `test-media-mac`; `test-media-cl` after `test-cl`). Every step in
-the CL variants uses `native,cl` where its counterpart uses `*`.
+OpenCL-backend duplicates of `test-mac` and `test-media-mac`, running with
+`AR_HARDWARE_DRIVER=native,cl` instead of `*` — under `*`, Metal always wins GPU
+context selection, so the CL backend is otherwise never exercised by CI. They
+are the two stages of the CL lane (`test-media-cl` after `test-cl`). Every step
+in the CL variants uses `native,cl` where its counterpart uses `*`.
+
+They run on the **ROCm fleet** — `[self-hosted, linux, ar-ci-cl]`, an AMD host
+with a real OpenCL implementation, set up per `tools/ci/rocm/README.md`. Because
+the fleet is Linux, every step uses `LD_LIBRARY_PATH` where the macOS jobs use
+`DYLD_LIBRARY_PATH`; `AR_HARDWARE_LIBS` is unchanged and remains the primary
+mechanism. `test-media-cl` additionally sets `AR_RINGS_LIBRARY` and
+`AR_RINGS_PATTERNS` at job level, pointing at the curated sample library
+bind-mounted into the runner container. Do not drop those: the studio benchmarks
+either fail outright without the library (a GPU is available, so
+`AudioSceneTestBase.requireCuratedLibrary()` fails rather than skips) or fall
+back to synthetic samples and report timings that measure nothing real.
+
+The memory settings below (`AR_HARDWARE_MEMORY_SCALE=7`, the 8-group split, the
+`_JAVA_OPTIONS` direct-memory caps, `AR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled`)
+were all tuned for Apple's OpenCL on the macOS fleet and moved across unchanged.
+The AMD device exposes far more memory, so several are likely over-constrained —
+retune them one variable at a time, as measured follow-ups, so a regression stays
+attributable.
 
 Most self-hosted jobs use an 8-group matrix (`test`, `test-media`, `test-mac`,
 `test-cl`, `test-media-cl`). The CL backend hits its memory ceiling under large

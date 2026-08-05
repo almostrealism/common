@@ -355,12 +355,14 @@ from `/Users/Shared/Music/Samples`. A runner **without** that directory silently
 falls back to synthetic samples and reports misleading timings, so every macOS
 runner must have the library present before it picks up jobs.
 
-`sync-music-samples.sh` seeds a runner from a machine that already has the
-library. Run it from the source machine as a user whose SSH key authenticates as
-the remote user:
+[`../sync-music-samples.sh`](../sync-music-samples.sh) seeds a runner from a
+machine that already has the library. It lives one level up because it is not
+macOS-specific — the ROCm fleet uses it too, with a different `--dest` and
+`--group`. Run it from the source machine as a user whose SSH key authenticates
+as the remote user:
 
 ```bash
-cd tools/ci/macos
+cd tools/ci
 
 # Preview first (transfers nothing, changes no permissions)
 ./sync-music-samples.sh --dry-run --host michaels-mac-mini-2 --user michael
@@ -383,6 +385,9 @@ the `staff` group. See `./sync-music-samples.sh --help` for all options
 tools/ci/macos/
 ├── .env.example            # Template for environment configuration
 ├── runner.sh               # Setup + run with auto-recovery
-├── sync-music-samples.sh   # Seed /Users/Shared/Music onto a runner (group-readable)
+├── cpu-watcher.sh          # Enforces RUNNER_CPU_LIMIT during a job
 └── README.md               # This file
+
+tools/ci/
+└── sync-music-samples.sh   # Seed the curated sample library onto any runner
 ```
