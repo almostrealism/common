@@ -123,17 +123,12 @@ PackedCollection extends `MemoryData`. The interface exposes two distinct
 write surfaces, deliberately named so the call site tells them apart:
 
 - **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`, a
-  `Bytes` view, a device-backed tensor) into this one — the only
-  sanctioned way to copy one collection's contents into another.
-- **`setMem(...)`** takes literal varargs only. Bulk host-array uploads are
-  not exposed here; system-boundary ingest goes through
-  `MemoryData.read(ByteBuffer)` into a native staging allocation, and the
-  framework migrates that staging area to the compute device on first
-  kernel use.
-  <!-- TODO(review): "literal varargs only" omits the single-value indexed
-       overloads (setMem(int, double) / setMem(int, float)) documented a few
-       lines below in the fixed example; reconcile the wording. See memory
-       tag review-followup. -->
+  `Bytes` view, a device-backed tensor) into this one — the sanctioned way to
+  copy one collection's contents into another.
+- **`setMem(...)`** writes a complete region from a `double[]` or `float[]` at
+  index 0. Concrete `MemoryDataAdapter` implementations also provide a
+  single-value indexed form (`setMem(int, double)` / `setMem(int, float)`).
+  Serialized system-boundary ingest goes through `MemoryData.read(ByteBuffer)`.
 
 ```java
 // Copy entire collection to another (same size)
@@ -148,13 +143,12 @@ target.setFrom(targetOffset, source, srcOffset, length);
 target.setFrom(source, srcOffset, length);
 
 // Write a small literal vector (whole buffer, starting at index 0)
-target.setMem(1.0, 2.0, 3.0, 4.0);
+target.setMem(new double[] {1.0, 2.0, 3.0, 4.0});
 ```
 
 > These are significantly faster than element-by-element loops. Use bulk
-> region copies whenever possible; `setMem` is now a literals-only surface
-> (single-value indexed writes and whole-buffer varargs) — host arrays
-> belong in `setFrom` or `read(ByteBuffer)`.
+> region copies whenever possible; reserve `setMem(...)` for literal
+> whole-content writes or single indexed literal updates.
 
 **Using `CodeFeatures.copy()` (Producer Pattern):**
 
@@ -180,7 +174,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve `setMem(...)` for literal varargs.
+> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve `setMem(...)` for literal whole-content writes or single indexed literal updates.
 
 #### Shape and Traversal
 

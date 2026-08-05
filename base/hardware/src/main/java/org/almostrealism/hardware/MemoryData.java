@@ -648,8 +648,8 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	 * Copies all data from another {@link MemoryData} to this memory starting at the specified offset.
 	 *
 	 * <p>This performs a {@link MemoryData}-to-{@link MemoryData} copy and is deliberately
-	 * named distinctly from the {@code setMem(...)} array/literal overloads so that the
-	 * copy surface can be told apart from host-array uploads at every call site.</p>
+	 * named distinctly from the array and indexed scalar write surfaces so that the
+	 * copy operation can be identified at every call site.</p>
 	 *
 	 * @param offset Starting index in this memory
 	 * @param src Source memory data
@@ -723,8 +723,6 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			getDelegate().getMem(getDelegateOffset() + sOffset, out, oOffset, length);
 		}
 	}
-
-
 
 	/**
 	 * Low-level method to write float array data directly to {@link Memory}.

@@ -47,18 +47,16 @@ shape.getTotalSize()                 // Total size
 
 ### Memory Copy Operations
 
-PackedCollection extends MemoryData. The interface exposes two distinct
-write surfaces, deliberately named so the call site tells them apart:
+PackedCollection extends `MemoryData`. The write surfaces are separated by purpose:
 
-- **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`,
-  a `Bytes` view, a device-backed tensor) into this one.
-- **`setMem(...)`** takes only numeric literals — single values at an
-  index (`setMem(int, double)` / `setMem(int, float)`) or whole-buffer
-  varargs (`setMem(double...)` / `setMem(float...)`, starting at index 0).
-  Host arrays and computed values are not accepted. System-boundary
-  ingest goes through `MemoryData.read(ByteBuffer)` into a native staging
-  allocation, and the framework migrates the staging area to the compute
-  device on first kernel use.
+- **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`, a
+  `Bytes` view, or a device-backed tensor) into this one.
+- **`setMem(...)`** writes a complete region from a `double[]` or `float[]` at
+  index 0. Concrete `MemoryDataAdapter` implementations provide the
+  single-value indexed form (`setMem(int, double)` / `setMem(int, float)`).
+  System-boundary ingest goes through `MemoryData.read(ByteBuffer)` into a
+  native staging allocation, and the framework migrates that staging area to
+  the compute device on first kernel use.
 
 ```java
 // Copy all of source into target at offset 0
@@ -71,7 +69,7 @@ target.setFrom(targetOffset, source, srcOffset, length);
 target.setFrom(source, srcOffset, length);
 
 // Write a small literal vector (whole buffer, starting at index 0)
-target.setMem(1.0, 2.0, 3.0, 4.0);
+target.setMem(new double[] {1.0, 2.0, 3.0, 4.0});
 ```
 
 **Using CodeFeatures.copy()** (via interface - preferred for producer pattern):
@@ -92,7 +90,8 @@ normalize(cp(vector)).into(vector).evaluate();
 
 > **Note**: `setFrom(MemoryData)` is more efficient than element-by-element
 > loops. Both PackedCollection and other MemoryData implementations support
-> these operations. Reserve `setMem(...)` for literal varargs.
+> these operations. Reserve `setMem(...)` for literal whole-content writes or
+> single indexed literal updates.
 
 ---
 
@@ -392,8 +391,8 @@ hw.getComputeContext().getDataContext();  // Memory management
 ```java
 // Explicit memory control
 MemoryData data = collection.getMemoryData();
-data.reallocate(newSize);
-data.destroy();  // Release
+data.reallocate(targetProvider);  // Move data to the target memory provider
+data.destroy();                    // Release
 ```
 
 ### MemoryData Interface
@@ -405,13 +404,15 @@ PackedCollection implements `MemoryData`. Key operations:
 destination.setFrom(0, source);                          // Copy all
 destination.setFrom(destOffset, source, srcOffset, len); // Copy range
 
-// Read/write individual values
-double val = data.toDouble(index);
-data.setMem(index, value);  // single value at index
+// Read/write individual values on a concrete implementation
+PackedCollection indexedData = new PackedCollection(3);
+double val = indexedData.toDouble(index);
+indexedData.setMem(index, value);  // single value at index
 
-// Literal varargs writes (whole buffer, starting at index 0)
-data.setMem(1.0, 2.0, 3.0);    // FP64
-data.setMem(1.0f, 2.0f, 3.0f); // FP32
+// Whole-content array writes through MemoryData
+MemoryData data = indexedData;
+data.setMem(new double[] {1.0, 2.0, 3.0});    // FP64
+data.setMem(new float[] {1.0f, 2.0f, 3.0f}); // FP32
 
 // Bulk ingest from a ByteBuffer (the primary system-boundary ingest)
 data.read(byteBuffer);  // values land in a native staging allocation
@@ -421,13 +422,11 @@ data.getMem(0, doubleArray, 0, length);                 // To double[] (sOffset,
 data.getMem(0, floatArray, 0, length);                  // To float[] (sOffset, out, oOffset, length)
 ```
 
-> `MemoryData` previously exposed bulk `setMem(double[])`/`setMem(float[])` overloads.
-> Those have been removed from the public surface — bulk host-array ingest now
-> stages through a `ByteBuffer` (see `MemoryData.read(ByteBuffer)` and the
-> native buffer provider). The remaining `setMem` surface is single-value indexed
-> writes (`setMem(int, double)` / `setMem(int, float)`) and whole-buffer literal
-> varargs (`setMem(double...)` / `setMem(float...)`) — both must be numeric
-> literals, never a host array or computed value.
+> `MemoryData` no longer declares indexed bulk-array or indexed varargs
+> overloads. Whole-content writes remain `setMem(double[])` / `setMem(float[])`,
+> while indexed scalar writes are available on concrete `MemoryDataAdapter`
+> implementations. Serialized host data should use `MemoryData.read(ByteBuffer)`;
+> use `setFrom(...)` for memory-to-memory copies.
 
 ### MemoryDataCopy (Low-level)
 
