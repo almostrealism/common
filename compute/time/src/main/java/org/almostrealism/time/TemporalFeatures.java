@@ -23,6 +23,7 @@ import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.expression.Atan2;
+import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.lifecycle.Lifecycle;
@@ -33,6 +34,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
@@ -446,6 +448,90 @@ public interface TemporalFeatures extends GeometryFeatures {
 	default FourierTransform ifft(int bins, Producer<PackedCollection> input,
 								  ComputeRequirement... requirements) {
 		return fft(bins, true, input, requirements);
+	}
+
+	/**
+	 * Extends a half spectrum into the conjugate symmetric full spectrum whose
+	 * inverse transform is real valued.
+	 *
+	 * <p>The input is the interleaved (real, imaginary) spectrum for bins
+	 * {@code 0} through {@code n - 1}, shaped {@code (n, 2)}. The result is
+	 * shaped {@code (2n, 2)}: bins {@code 0} through {@code n - 1} are carried
+	 * over unchanged, the Nyquist bin {@code n} is zero, and bins {@code n + 1}
+	 * through {@code 2n - 1} are the complex conjugates of their positive
+	 * frequency counterparts, so that {@code X[2n - k] = conj(X[k])}.</p>
+	 *
+	 * <p>A leading dimension may be present, in which case every spectrum it
+	 * contains is extended independently: an input shaped {@code (f, n, 2)}
+	 * produces {@code (f, 2n, 2)}. Extending a whole sequence of frames as one
+	 * computation is the reason this is expressed over an arbitrary leading
+	 * dimension rather than one frame at a time.</p>
+	 *
+	 * <p>Whether the result is genuinely real valued after the inverse transform
+	 * additionally requires the DC bin to be real; that is a property of the input
+	 * this method preserves rather than imposes, since a caller that has already
+	 * assigned zero phase to bin {@code 0} should not pay for a second correction.</p>
+	 *
+	 * @param half the interleaved half spectrum, shaped {@code (n, 2)} or {@code (f, n, 2)}
+	 * @return a producer for the interleaved full spectrum, with the bin count doubled
+	 * @throws IllegalArgumentException if the last dimension of the input is not 2
+	 */
+	default CollectionProducer conjugateSymmetric(Producer<PackedCollection> half) {
+		TraversalPolicy inputShape = shape(half);
+		int dimensions = inputShape.getDimensions();
+
+		if (dimensions < 2 || inputShape.length(dimensions - 1) != 2) {
+			throw new IllegalArgumentException(
+					"A half spectrum must have an interleaved final dimension of 2");
+		}
+
+		int axis = dimensions - 2;
+		int bins = inputShape.length(axis);
+		int total = 2 * bins;
+
+		long dims[] = new long[dimensions];
+		for (int i = 0; i < dimensions; i++) {
+			dims[i] = inputShape.length(i);
+		}
+		dims[axis] = total;
+		TraversalPolicy outputShape = new TraversalPolicy(dims);
+
+		CollectionProducer mirrored = new IndexProjectionProducerComputation(
+				"conjugateSymmetric", outputShape,
+				idx -> {
+					Expression[] pos = outputShape.position(idx);
+					pos[axis] = Conditional.of(pos[axis].greaterThan(e(bins)),
+							e(total).subtract(pos[axis]), pos[axis].imod(bins));
+					return inputShape.index(pos);
+				}, half);
+
+		return mirrored.multiply(
+				conjugationSigns(bins, outputShape.getTotalSize()).reshape(outputShape));
+	}
+
+	/**
+	 * Produces the per element multiplier that turns a mirrored spectrum into a
+	 * conjugate symmetric one: the imaginary part of every negative frequency is
+	 * negated, and the Nyquist bin is removed entirely.
+	 *
+	 * <p>The multipliers repeat every {@code 4 * bins} elements, so a run long
+	 * enough to cover several spectra applies the same correction to each.</p>
+	 *
+	 * @param bins   the number of positive frequency bins
+	 * @param length the total number of multipliers to produce
+	 * @return a producer for the multipliers, ordered to match an interleaved
+	 *         spectrum of {@code 2 * bins} complex values per frame
+	 */
+	private CollectionProducer conjugationSigns(int bins, long length) {
+		int total = 2 * bins;
+
+		CollectionProducer index = integers(0, (int) length);
+		CollectionProducer column = index.mod(2.0);
+		CollectionProducer row = index.subtract(column).divide(c(2.0)).mod((double) total);
+
+		CollectionProducer retained = greaterThan(abs(row.subtract(c(bins))), c(0.5), c(1.0), c(0.0));
+		CollectionProducer negated = greaterThan(row, c(bins), c(1.0), c(0.0)).multiply(column);
+		return retained.multiply(c(1.0).subtract(negated.multiply(2.0)));
 	}
 
 	/**

@@ -79,10 +79,10 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void withPassThrough() {
 		IntStream.range(0, 5)
-				.mapToObj(i -> pack(Math.random()))
+				.mapToObj(i -> new PackedCollection(1).randFill())
 				.forEach(a -> {
 					CollectionProducer lt = lessThan();
-					check(lt, a, pack(Math.random()));
+					check(lt, a, new PackedCollection(1).randFill());
 				});
 	}
 

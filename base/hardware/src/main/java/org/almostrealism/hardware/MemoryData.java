@@ -645,39 +645,11 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	/**
-	 * Writes float values to this memory starting at index 0.
-	 *
-	 * <p>Declared over an array rather than varargs deliberately. A varargs form
-	 * accepts any sequence of numeric literals, which means an indexed write
-	 * ({@code setMem(offset, value)}) issued against a {@link MemoryData}
-	 * reference resolves to it silently and writes the offset as data at index 0
-	 * instead of writing the value at the offset. Requiring an explicit array
-	 * makes that call shape a compile error rather than a wrong answer.</p>
-	 *
-	 * @param source Values to write
-	 */
-	default void setMem(float[] source) {
-		setMemInternal(0, source, 0, source.length);
-	}
-
-	/**
-	 * Writes double values to this memory starting at index 0.
-	 *
-	 * <p>See {@link #setMem(float[])} for why this is declared over an array
-	 * rather than varargs.</p>
-	 *
-	 * @param source Values to write
-	 */
-	default void setMem(double[] source) {
-		setMemInternal(0, source, 0, source.length);
-	}
-
-	/**
 	 * Copies all data from another {@link MemoryData} to this memory starting at the specified offset.
 	 *
 	 * <p>This performs a {@link MemoryData}-to-{@link MemoryData} copy and is deliberately
-	 * named distinctly from the {@code setMem(...)} array/literal overloads so that the
-	 * copy surface can be told apart from host-array uploads at every call site.</p>
+	 * named distinctly from the array and indexed scalar write surfaces so that the
+	 * copy operation can be identified at every call site.</p>
 	 *
 	 * @param offset Starting index in this memory
 	 * @param src Source memory data
@@ -750,31 +722,6 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		} else {
 			getDelegate().getMem(getDelegateOffset() + sOffset, out, oOffset, length);
 		}
-	}
-
-	/**
-	 * Writes double values from a host array into this memory, resolving the
-	 * delegate chain to the root reservation. This is the terminal step of the
-	 * literal varargs surface; bulk host-array ingest instead stages through a
-	 * ByteBuffer (see {@link #read(ByteBuffer)} and the native buffer provider).
-	 */
-	private void setMemInternal(int offset, double[] source, int srcOffset, int length) {
-		MemoryData root = getRootDelegate();
-		if (getOffset() - root.getOffset() + offset + length > root.getMemLength()) {
-			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
-		}
-
-		setMem(getMem(), getOffset() + offset, source, srcOffset, length);
-	}
-
-	/**
-	 * Writes float values from a host array into this memory, resolving the
-	 * delegate chain to the root reservation. This is the terminal step of the
-	 * literal varargs surface; bulk host-array ingest instead stages through a
-	 * ByteBuffer (see {@link #read(ByteBuffer)} and the native buffer provider).
-	 */
-	private void setMemInternal(int offset, float[] source, int srcOffset, int length) {
-		setMem(getMem(), getOffset() + offset, source, srcOffset, length);
 	}
 
 	/**

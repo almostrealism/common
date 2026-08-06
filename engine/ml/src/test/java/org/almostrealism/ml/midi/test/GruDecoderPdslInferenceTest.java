@@ -182,9 +182,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 		// Synthetic transformer hidden state (all 0.1)
 		PackedCollection transformerHidden = new PackedCollection(
 				new TraversalPolicy(config.hiddenSize));
-		for (int i = 0; i < config.hiddenSize; i++) {
-			transformerHidden.setMem(i, 0.1);
-		}
+		transformerHidden.fill(0.1);
 
 		int[] tokens = decoder.decode(transformerHidden);
 

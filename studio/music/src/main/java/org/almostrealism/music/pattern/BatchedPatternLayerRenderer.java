@@ -482,19 +482,19 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 			PackedCollection[] boundRatios = renderer.getSssRatios();
 			PackedCollection[][] boundLayerEnv = renderer.getSssLayerEnv();
 			for (int l = 0; l < layers; l++) {
-				writeColumn(boundRatios[l], ratios[l]);
+				boundRatios[l].fill(ratios[l]);
 				for (int p = 0; p < 8; p++) {
-					writeColumn(boundLayerEnv[l][p], layerParams[l][p]);
+					boundLayerEnv[l][p].fill(layerParams[l][p]);
 				}
 			}
 			PackedCollection[] boundFilter = renderer.getSssFilterAdsr();
 			PackedCollection[] boundVolume = renderer.getSssVolumeAdsr();
 			for (int p = 0; p < 5; p++) {
-				writeColumn(boundFilter[p], filterAdsr[p]);
-				writeColumn(boundVolume[p], volumeAdsr[p]);
+				boundFilter[p].fill(filterAdsr[p]);
+				boundVolume[p].fill(volumeAdsr[p]);
 			}
-			writeColumn(renderer.getSssDestOffsets(), destOffsets);
-			writeColumn(renderer.getSssSamplingOffsets(), samplingOffsets);
+			renderer.getSssDestOffsets().fill(destOffsets);
+			renderer.getSssSamplingOffsets().fill(samplingOffsets);
 
 			marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
@@ -583,16 +583,16 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 			// Write the assembled per-note scalar columns into the kernel's bound buffers.
 			PackedCollection[] boundRatios = renderer.getPercRatios();
 			for (int l = 0; l < layers; l++) {
-				writeColumn(boundRatios[l], ratios[l]);
+				boundRatios[l].fill(ratios[l]);
 			}
 			if (wet) {
 				PackedCollection[] boundVolume = renderer.getPercVolumeAdsr();
 				for (int p = 0; p < 5; p++) {
-					writeColumn(boundVolume[p], volumeAdsr[p]);
+					boundVolume[p].fill(volumeAdsr[p]);
 				}
 			}
-			writeColumn(renderer.getPercDestOffsets(), destOffsets);
-			writeColumn(renderer.getPercSamplingOffsets(), samplingOffsets);
+			renderer.getPercDestOffsets().fill(destOffsets);
+			renderer.getPercSamplingOffsets().fill(samplingOffsets);
 
 			marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
@@ -632,18 +632,6 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 			}
 		}
 		return ((required + SOURCE_BUCKET - 1) / SOURCE_BUCKET) * SOURCE_BUCKET;
-	}
-
-	/**
-	 * Writes a per-note scalar column into a bound kernel-input buffer. This is a
-	 * bulk host-to-collection marshalling copy assembling the batch input, not
-	 * element-wise host computation.
-	 *
-	 * @param dest   the bound {@code [n]} kernel-input buffer
-	 * @param values the per-note scalar values to write
-	 */
-	private void writeColumn(PackedCollection dest, double[] values) {
-		dest.setMem(values);
 	}
 
 	/**

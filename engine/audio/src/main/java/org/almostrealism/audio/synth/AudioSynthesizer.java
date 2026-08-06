@@ -190,7 +190,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 		this.filterBaseCutoffData = new PackedCollection(1);
 		this.filterEnvelopeAmountData = new PackedCollection(1);
 		this.filterBaseCutoffData.fill(5000.0);
-		this.filterEnvelopeAmountData.fill(0.0);
+		this.filterEnvelopeAmountData.clear();
 
 		createOscillators(voices.count());
 	}

@@ -16,12 +16,15 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.function.DoubleSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -48,11 +51,11 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h2>Mutation via Variation</h2>
- * <p>The {@link #variation(double, double, double, DoubleSupplier)} method creates offspring
+ * <p>The {@link #variation(double, double, double, Producer)} method creates offspring
  * by perturbing the parameter values. This is the primary mechanism for evolution:
  * <ul>
  *   <li>Parameters are perturbed with a given probability (mutation rate)</li>
- *   <li>Perturbation magnitude is provided by a delta supplier</li>
+ *   <li>Perturbation magnitude is provided by a delta producer</li>
  *   <li>Values are clamped to specified bounds [min, max]</li>
  * </ul>
  *
@@ -81,7 +84,7 @@ import java.util.stream.Collectors;
  *     -1.0,                           // min parameter value
  *     1.0,                            // max parameter value
  *     0.1,                            // 10% mutation rate
- *     () -> Math.random() * 0.2 - 0.1 // delta in [-0.1, 0.1]
+ *     randn(genome.getParameters().getShape(), 0.0, 0.1) // delta
  * );
  *
  * // Create random genome (for population initialization)
@@ -92,7 +95,7 @@ import java.util.stream.Collectors;
  * @see ProjectedGene
  * @see Genome
  */
-public class ProjectedGenome implements Genome<PackedCollection> {
+public class ProjectedGenome implements Genome<PackedCollection>, CollectionFeatures {
 	/**
 	 * Default seed used for deterministic weight initialization.
 	 */
@@ -256,20 +259,23 @@ public class ProjectedGenome implements Genome<PackedCollection> {
 	 * @param min the minimum allowed parameter value
 	 * @param max the maximum allowed parameter value
 	 * @param rate the probability of mutation for each parameter (0.0 to 1.0)
-	 * @param delta a supplier that provides mutation deltas
+	 * @param delta the mutation deltas, one for each parameter
 	 * @return a new ProjectedGenome with mutated parameters
 	 */
-	public ProjectedGenome variation(double min, double max, double rate, DoubleSupplier delta) {
-		PackedCollection variation = new PackedCollection(parameters.getShape());
-		variation.fill(pos -> {
-			double v = parameters.valueAt(pos);
+	public ProjectedGenome variation(double min, double max, double rate,
+									 Producer<PackedCollection> delta) {
+		TraversalPolicy shape = parameters.getShape();
+		PackedCollection variation = new PackedCollection(shape);
 
-			if (Math.random() < rate) {
-				return Math.min(max, Math.max(min, v + delta.getAsDouble()));
-			} else {
-				return v;
-			}
-		});
+		// The bounds are expanded to the parameter shape because min/max collapse to a
+		// scalar when their operands differ in size, which would clamp every parameter
+		// to the value of the first.
+		CollectionProducer perturbed = min(
+				max(cp(parameters).add(delta), constant(shape, min)),
+				constant(shape, max));
+
+		a(cp(variation),
+				lessThan(rand(shape), c(rate), perturbed, cp(parameters))).get().run();
 
 		return new ProjectedGenome(variation);
 	}

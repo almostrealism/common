@@ -42,8 +42,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, count * dim).evaluate()
 				.reshape(count, dim).traverse();
 		PackedCollection w1 = pack(4, -3, 2);
 		PackedCollection w2 = pack(2, 1, 5);
@@ -84,8 +83,7 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, count * dim).evaluate()
 				.reshape(count, dim).traverse();
 
 		CollectionProducer x = x(dim);

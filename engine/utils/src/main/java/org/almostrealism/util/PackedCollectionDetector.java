@@ -96,6 +96,16 @@ public class PackedCollectionDetector extends PolicyViolationDetector {
 			Pattern.DOTALL
 	);
 
+	/** Detects {@code fill(0)} and its spellings, which {@link #FILL_ZERO_MESSAGE clear() does better}. */
+	private static final Pattern FILL_ZERO = Pattern.compile(
+			"\\.fill\\s*\\(\\s*-?0(?:\\.0*)?[dDfF]?\\s*\\)"
+	);
+
+	/** Explains why filling with zeros is never the operation the caller wants. */
+	private static final String FILL_ZERO_MESSAGE =
+			"fill(0) builds the whole content on the host and writes it across. "
+					+ "clear() zeroes the same memory with a kernel — use it instead.";
+
 	/**
 	 * Creates a detector that will scan Java source files under the given directory.
 	 *
@@ -113,10 +123,6 @@ public class PackedCollectionDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public PackedCollectionDetector scanFile(Path file) {
-		// Test sources are exempt: building host-side reference data to validate
-		// device output is a legitimate, expected pattern in tests.
-		if (isTestSource(file)) return this;
-
 		try {
 			String content = Files.readString(file);
 
@@ -126,13 +132,47 @@ public class PackedCollectionDetector extends PolicyViolationDetector {
 
 			if (usesPackedCollection) {
 				List<String> lines = Files.readAllLines(file);
-				checkPackedCollectionViolations(file, content, lines);
+
+				// Zeroing is wrong everywhere, so this rule holds for tests as well
+				checkFillZero(file, lines);
+
+				// The remaining rules exempt test sources: building host-side reference
+				// data to validate device output is legitimate and expected in tests.
+				if (!isTestSource(file)) {
+					checkPackedCollectionViolations(file, content, lines);
+				}
 			}
 		} catch (IOException e) {
 			warn("Could not read file " + file, e);
 		}
 
 		return this;
+	}
+
+	/**
+	 * Flags every {@code fill(0)} in the file, wherever it appears.
+	 *
+	 * @param file  the file being checked
+	 * @param lines the file content split into lines
+	 */
+	private void checkFillZero(Path file, List<String> lines) {
+		boolean inJavadoc = false;
+
+		for (int i = 0; i < lines.size(); i++) {
+			String trimmedLine = lines.get(i).trim();
+
+			if (trimmedLine.startsWith("/**")) inJavadoc = true;
+			if (trimmedLine.contains("*/")) inJavadoc = false;
+
+			if (inJavadoc || trimmedLine.startsWith("*") || trimmedLine.startsWith("//")) {
+				continue;
+			}
+
+			if (FILL_ZERO.matcher(trimmedLine).find()) {
+				violations.add(new Violation(file, i + 1, trimmedLine,
+						"PACKED_COLLECTION_FILL_ZERO", FILL_ZERO_MESSAGE));
+			}
+		}
 	}
 
 	/**

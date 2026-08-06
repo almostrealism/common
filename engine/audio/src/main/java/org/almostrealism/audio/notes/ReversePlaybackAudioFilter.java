@@ -38,9 +38,10 @@ public class ReversePlaybackAudioFilter implements NoteAudioFilter, CodeFeatures
 											   Producer<PackedCollection> automationLevel) {
 		return new DynamicCollectionProducer(shape(input), args -> {
 			PackedCollection audioData = input.get().evaluate();
+			double length = audioData.getShape().getTotalSize();
 
 			PackedCollection out = AudioProcessingUtils.getReverse()
-					.evaluate(audioData.traverse(1), pack(audioData.getShape().getTotalSize()));
+					.evaluate(audioData.traverse(1), pack(length));
 
 			if (out.getShape().getTotalSize() == 1) {
 				warn("Reverse filter produced a value with shape " +

@@ -181,11 +181,8 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 			throw new PdslParseException(
 					"clip() requires lo < hi, got lo=" + lo + " hi=" + hi);
 		}
-		// bound() delegates to min()/max(), which collapse to a scalar shape when the two
-		// operand sizes differ — so the bounds must be expanded to the block shape for the
-		// clamp to stay element-wise over the whole buffer.
 		return shape -> new ForwardOnlyBlock(layer("clip", shape, shape,
-				input -> min(max(input, constant(shape, lo)), constant(shape, hi))));
+				input -> bound(input, lo, hi)));
 	}
 
 	/** {@code biquad(b0, b1, b2, a1, a2, history)} — stateful biquad IIR. */

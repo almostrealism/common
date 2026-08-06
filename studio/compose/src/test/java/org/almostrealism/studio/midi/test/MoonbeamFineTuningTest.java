@@ -510,8 +510,8 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 
 		for (int i = 0; i < config.numLayers; i++) {
 			String prefix = String.format("model.layers.%d", i);
-			weights.put(prefix + ".input_layernorm.weight", onesCollection(dim));
-			weights.put(prefix + ".post_attention_layernorm.weight", onesCollection(dim));
+			weights.put(prefix + ".input_layernorm.weight", new PackedCollection(dim).fill(1.0));
+			weights.put(prefix + ".post_attention_layernorm.weight", new PackedCollection(dim).fill(1.0));
 			weights.put(prefix + ".self_attn.q_proj.weight",
 					smallRandomCollection(dim, dim));
 			weights.put(prefix + ".self_attn.k_proj.weight",
@@ -528,7 +528,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 					smallRandomCollection(ffnDim, dim));
 		}
 
-		weights.put("model.norm.weight", onesCollection(dim));
+		weights.put("model.norm.weight", new PackedCollection(dim).fill(1.0));
 		return new StateDictionary(weights);
 	}
 
@@ -560,17 +560,6 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 				new PackedCollection(new TraversalPolicy(vocabSize, decoderHidden)),
 				new PackedCollection(new TraversalPolicy(vocabSize)),
 				new PackedCollection(new TraversalPolicy(vocabSize, decoderHidden)));
-	}
-
-	/**
-	 * Create a PackedCollection filled with ones.
-	 */
-	private static PackedCollection onesCollection(int size) {
-		PackedCollection collection = new PackedCollection(new TraversalPolicy(size));
-		for (int i = 0; i < size; i++) {
-			collection.setMem(i, 1.0);
-		}
-		return collection;
 	}
 
 	/**

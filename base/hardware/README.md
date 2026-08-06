@@ -124,6 +124,7 @@ mvn test
 | **HardwareFeatures** | Feature interface for building operations | [HardwareFeatures.java](src/main/java/org/almostrealism/hardware/HardwareFeatures.java) |
 | **MemoryData** | Hardware-accessible data abstraction | [MemoryData.java](src/main/java/org/almostrealism/hardware/MemoryData.java) |
 | **MemoryBank** | Collection of MemoryData in single allocation | [MemoryBank.java](src/main/java/org/almostrealism/hardware/MemoryBank.java) |
+| **ByteBufferTransfer** | Precision-aware transfers between serialized buffers | [ByteBufferTransfer.java](src/main/java/org/almostrealism/hardware/mem/ByteBufferTransfer.java) |
 | **OperationList** | Composable operation sequences | [OperationList.java](src/main/java/org/almostrealism/hardware/OperationList.java) |
 | **PassThroughProducer** | Dynamic input placeholders | [PassThroughProducer.java](src/main/java/org/almostrealism/hardware/PassThroughProducer.java) |
 
@@ -202,19 +203,15 @@ call site tells them apart:
 - **`setFrom(...)`** copies the contents of another `MemoryData` (a
   `PackedCollection`, a `Bytes` view, a device-backed tensor, …) into this one.
   Use it for region-to-region moves that never touch a host array.
-- **`setMem(...)`** takes literal varargs only — write a small set of
-  constants into a region. Bulk host-array uploads are no longer exposed
-  here; system-boundary ingest goes through `read(ByteBuffer)` into a native
-  staging allocation, and the framework migrates that staging area to the
-  compute device on first kernel use.
-  <!-- TODO(review): this summary bullet says "literal varargs only" but the
-       detailed explanation below it also documents the single-value indexed
-       overloads (setMem(int, double) / setMem(int, float)), which are not
-       varargs. Reconcile the wording. See memory tag review-followup. -->
+- **`setMem(...)`** writes a complete region from a `double[]` or `float[]` at
+  index 0. Concrete `MemoryDataAdapter` implementations also provide a
+  single-value indexed form (`setMem(int, double)` / `setMem(int, float)`).
+  Serialized system-boundary ingest should use `read(ByteBuffer)`, which stages
+  the values before the framework migrates that staging area to the compute device.
 
 ```java
-PackedCollection<?> source = new PackedCollection<>(1000);
-PackedCollection<?> target = new PackedCollection<>(1000);
+PackedCollection source = new PackedCollection(1000);
+PackedCollection target = new PackedCollection(1000);
 // Copy all of source into target at offset 0
 target.setFrom(0, source);
 
@@ -224,19 +221,16 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (whole buffer, no host-array overloads)
-target.setMem(1.0, 2.0, 3.0, 4.0);
+// Write a small literal vector (whole buffer)
+target.setMem(new double[] {1.0, 2.0, 3.0, 4.0});
 ```
 
-> **Why the split:** the recent `setmem-policy-phases` work collapsed the old
-> `setMem(int, double[])`, `setMem(double[], int, int)`, and the varargs
-> `setMem(int, double...)` / `setMem(int, float...)` overloads into a literal-only
-> surface — single-value indexed writes (`setMem(int, double)` / `setMem(int, float)`)
-> and whole-buffer literal varargs (`setMem(double...)` / `setMem(float...)`) —
-> and routed everything that actually moves serialized data through
-> `MemoryData.read(ByteBuffer)` so values reach the backing memory in one transfer
-> instead of being funnelled through a host array. `setFrom` is the only sanctioned
-> way to copy one `MemoryData` into another.
+> **Why the split:** the recent `setmem-policy-phases` work removed the indexed
+> bulk-array and indexed varargs overloads from `MemoryData`, moved indexed scalar
+> writes to `MemoryDataAdapter`, and changed whole-content writes from varargs to
+> `double[]` / `float[]`. Serialized data instead enters through
+> `MemoryData.read(ByteBuffer)`, while `setFrom` remains the explicit way to copy
+> one `MemoryData` into another.
 
 **Using `MemoryDataCopy` for Explicit Control:**
 
@@ -280,7 +274,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk region copies whenever possible; reserve `setMem(...)` for literal varargs.
+> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk region copies whenever possible; reserve `setMem(...)` for literal whole-content writes or single indexed literal updates.
 
 ### OperationList: Composing Operations
 
@@ -337,6 +331,29 @@ MultiOrderFilter filter = highPass(input, c(1000.0), 44100);
 filter.get().evaluate(data1);
 filter.get().evaluate(data2);  // Same kernel, different data
 ```
+
+`CodeFeatures` provides `x()`, `y()` and `z()` as shorthand for the first three
+arguments. They are varargs, so the no-argument form is a call to `x(int... dims)`:
+
+```java
+x()             // equivalent to c(value(shape(-1, 1), 0))
+y()             // argument 1
+z()             // argument 2
+x(1000)         // argument 0 with an explicit shape
+```
+
+This is the idiomatic way to write a computation over its own arguments, and it is
+what makes a graph directly evaluable:
+
+```java
+CollectionProducer c = x().sq().add(x().mul(3)).add(1);
+Evaluable<PackedCollection> dy = c.delta(x()).get();
+dy.evaluate(input);
+```
+
+Prefer `x()`/`y()`/`z()` over `v(shape, index)` when the shape is inferred and the
+argument is one of the first three; reach for `v(shape, index)` when the shape must
+be stated or the index is higher.
 
 **Benefits:**
 - Kernel compiled once, reused many times
@@ -1002,6 +1019,25 @@ export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB (FP32)
 # Or use host memory
 export AR_HARDWARE_MEMORY_LOCATION=host
 ```
+
+Every `AR_HARDWARE_` setting is read as a **system property first**, and only then
+from the environment. Exporting it works when the process inherits the environment,
+but a test running in a forked JVM does not, so pass the setting to that JVM
+instead:
+
+```bash
+mvn test -DargLine=-DAR_HARDWARE_MEMORY_SCALE=6
+```
+
+The MCP test runner takes the same thing through `jvm_args`:
+
+```
+mcp__ar-test-runner__start_test_run module:"<module>" jvm_args:["-DAR_HARDWARE_MEMORY_SCALE=6"]
+```
+
+The scale is exponential — raise it a step at a time. It cannot exceed the memory
+the device actually has, so a value larger than the hardware will not resolve a
+limit that the hardware itself imposes.
 
 ## Module Dependencies
 

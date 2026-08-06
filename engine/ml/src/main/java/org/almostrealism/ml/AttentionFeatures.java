@@ -826,8 +826,6 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		PackedCollection valueCache = new PackedCollection(seqLen, heads, headSize);
 
 		// Zero-initialize caches to prevent garbage values from causing numerical explosions
-		keyCache.clear();
-		valueCache.clear();
 
 		attention.add(rmsnorm(inputShape, rmsAttWeight, epsilon, requirements));
 

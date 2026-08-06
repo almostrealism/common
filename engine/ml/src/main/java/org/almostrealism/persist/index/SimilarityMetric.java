@@ -19,47 +19,37 @@ package org.almostrealism.persist.index;
 import org.almostrealism.collect.PackedCollection;
 
 /**
- * Strategy interface for computing similarity between two {@link PackedCollection}
- * vectors. Implementations must be symmetric:
+ * Strategy interface for computing similarity between two vectors.
+ * Implementations must be symmetric:
  * {@code similarity(a, b) == similarity(b, a)}.
  *
  * <p>Higher values indicate greater similarity. The default implementation
  * uses cosine similarity on pre-normalized vectors (i.e., dot product).</p>
+ *
+ * <h2>Why this interface is expressed over arrays</h2>
+ *
+ * <p>{@link HnswIndex} holds each node's vector as a {@code double[]} and compares
+ * one pair at a time while walking the graph. The traversal is a long sequence of
+ * small, data-dependent comparisons whose next step is not known until the current
+ * one is scored, so there is no batch to hand to the device and nothing to gain by
+ * moving a single short dot product there. The arrays the index caches are what
+ * keeps that walk off the native memory bus.</p>
+ *
+ * <p>The array-valued methods are therefore the primitives, and the ones that take
+ * a {@link PackedCollection} read it once and delegate. Making the collection form
+ * primitive instead only converts values back and forth around the same
+ * arithmetic.</p>
  */
 public interface SimilarityMetric {
 
 	/**
 	 * Compute the similarity between two vectors of the same dimension.
 	 *
-	 * @param a first vector
-	 * @param b second vector
-	 * @return similarity score (higher is more similar)
-	 */
-	float similarity(PackedCollection a, PackedCollection b);
-
-	/**
-	 * Compute the similarity between two vectors given their cached
-	 * double-array representations. Used by {@link HnswIndex} internally
-	 * to avoid repeated native memory reads during graph traversal.
-	 *
-	 * <p>The default implementation delegates to
-	 * {@link #similarity(PackedCollection, PackedCollection)} by wrapping
-	 * the arrays. Implementations should override for performance.</p>
-	 *
 	 * @param a first vector data
 	 * @param b second vector data
-	 * @return similarity score
+	 * @return similarity score (higher is more similar)
 	 */
-	default float similarityCached(double[] a, double[] b) {
-		PackedCollection pcA = new PackedCollection(a.length).fill(a);
-		PackedCollection pcB = new PackedCollection(b.length).fill(b);
-		try {
-			return similarity(pcA, pcB);
-		} finally {
-			pcA.destroy();
-			pcB.destroy();
-		}
-	}
+	float similarityCached(double[] a, double[] b);
 
 	/**
 	 * Normalize a vector so that similarity computations are correct.
@@ -67,26 +57,29 @@ public interface SimilarityMetric {
 	 * at insertion time.
 	 *
 	 * @param vector the vector to normalize
-	 * @return a normalized copy of the vector
+	 * @return the normalized data
 	 */
-	PackedCollection normalize(PackedCollection vector);
+	double[] normalizeToArray(PackedCollection vector);
 
 	/**
-	 * Normalize a vector and return the result as a {@code double[]}
-	 * without retaining a {@link PackedCollection}. This avoids native
-	 * memory allocation in hot paths where only the raw data is needed.
+	 * Compute the similarity between two vectors held as collections.
 	 *
-	 * <p>The default implementation delegates to {@link #normalize} and
-	 * immediately destroys the temporary collection.</p>
+	 * @param a first vector
+	 * @param b second vector
+	 * @return similarity score (higher is more similar)
+	 */
+	default float similarity(PackedCollection a, PackedCollection b) {
+		return similarityCached(toDoubleArray(a), toDoubleArray(b));
+	}
+
+	/**
+	 * Normalize a vector, returning the result as a collection.
 	 *
 	 * @param vector the vector to normalize
-	 * @return the normalized data as a double array
+	 * @return a normalized copy of the vector
 	 */
-	default double[] normalizeToArray(PackedCollection vector) {
-		PackedCollection normalized = normalize(vector);
-		double[] data = toDoubleArray(normalized);
-		normalized.destroy();
-		return data;
+	default PackedCollection normalize(PackedCollection vector) {
+		return PackedCollection.of(normalizeToArray(vector));
 	}
 
 	/**
@@ -95,23 +88,12 @@ public interface SimilarityMetric {
 	 */
 	SimilarityMetric COSINE = new SimilarityMetric() {
 		@Override
-		public float similarity(PackedCollection a, PackedCollection b) {
-			return similarityCached(toDoubleArray(a), toDoubleArray(b));
-		}
-
-		@Override
 		public float similarityCached(double[] a, double[] b) {
 			double dot = 0.0;
 			for (int i = 0; i < a.length; i++) {
 				dot += a[i] * b[i];
 			}
 			return (float) dot;
-		}
-
-		@Override
-		public PackedCollection normalize(PackedCollection vector) {
-			double[] data = normalizeToArray(vector);
-			return new PackedCollection(data.length).fill(data);
 		}
 
 		@Override

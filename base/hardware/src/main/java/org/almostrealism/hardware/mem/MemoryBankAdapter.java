@@ -288,11 +288,30 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	/**
 	 * Writes the given double values into the entry at the specified index.
 	 *
+	 * <p>The write goes through the entry itself wherever that is possible, so that
+	 * whatever a subclass does when producing an entry is not bypassed. An entry that
+	 * cannot be written that way is written at its offset instead, which is only safe
+	 * once the values are known to fit within one entry — otherwise the write would
+	 * continue into the entries that follow it.</p>
+	 *
 	 * @param index Zero-based index of the entry to write
 	 * @param values Double values to write into the entry
+	 * @throws IllegalArgumentException if there are more values than an entry can hold
 	 */
 	public void set(int index, double... values) {
-		get(index).setMem(values);
+		T entry = get(index);
+
+		if (entry instanceof MemoryDataAdapter) {
+			((MemoryDataAdapter) entry).setMem(values);
+			return;
+		}
+
+		if (values.length > getAtomicMemLength()) {
+			throw new IllegalArgumentException("Entry " + index + " holds " +
+					getAtomicMemLength() + " values, but " + values.length + " were provided");
+		}
+
+		setMem(index * getAtomicMemLength(), values);
 	}
 
 	@Override

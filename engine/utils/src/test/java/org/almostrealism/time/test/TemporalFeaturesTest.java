@@ -30,16 +30,20 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 
 	/**
 	 * Computes high-pass filter coefficients from low-pass coefficients.
+	 *
+	 * <p>Spectral inversion: the unit impulse at the centre tap, less the low-pass
+	 * response. Like the low-pass reference it stays host arithmetic, so that it
+	 * remains an independent check on the framework rather than a restatement of it.
 	 */
-	protected double[] highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
-		double[] lowPassCoefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
+	protected PackedCollection highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
+		PackedCollection lowPassCoefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 
 		double[] highPassCoefficients = new double[filterOrder + 1];
 		for (int i = 0; i <= filterOrder; i++) {
-			highPassCoefficients[i] = ((i == filterOrder / 2) ? 1.0 : 0.0) - lowPassCoefficients[i];
+			highPassCoefficients[i] = ((i == filterOrder / 2) ? 1.0 : 0.0) - lowPassCoefficients.toDouble(i);
 		}
 
-		return highPassCoefficients;
+		return PackedCollection.of(highPassCoefficients);
 	}
 
 	/**
@@ -51,11 +55,11 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		int sampleRate = 44100;
 		double cutoff = 3000;
 
-		double[] coefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
+		PackedCollection coefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double[] result = lowPassCoefficients(c(cutoff), sampleRate, filterOrder).get().evaluate().toArray();
 
 		for (int i = 0; i < filterOrder + 1; i++) {
-			assertEquals(coefficients[i], result[i]);
+			assertEquals(coefficients.toDouble(i), result[i]);
 		}
 	}
 
@@ -73,11 +77,11 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		int len = filterOrder + 1;
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
-			double[] coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			PackedCollection coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
 			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
 			for (int i = 0; i < filterOrder + 1; i++) {
-				assertEquals(coefficients[i], resultCoefficients[i]);
+				assertEquals(coefficients.toDouble(i), resultCoefficients[i]);
 			}
 		}
 	}
@@ -96,11 +100,11 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		int len = filterOrder + 1;
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
-			double[] coefficients = highPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			PackedCollection coefficients = highPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
 			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
 			for (int i = 0; i < filterOrder + 1; i++) {
-				assertEquals(coefficients[i], resultCoefficients[i]);
+				assertEquals(coefficients.toDouble(i), resultCoefficients[i]);
 			}
 		}
 	}
@@ -127,12 +131,12 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		int len = filterOrder + 1;
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
-			double[] coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			PackedCollection coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
 			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
 			for (int i = 0; i < filterOrder + 1; i++) {
-				log(coefficients[i] + " vs " + resultCoefficients[i]);
-				assertEquals(coefficients[i], resultCoefficients[i]);
+				log(coefficients.toDouble(i) + " vs " + resultCoefficients[i]);
+				assertEquals(coefficients.toDouble(i), resultCoefficients[i]);
 			}
 		}
 	}

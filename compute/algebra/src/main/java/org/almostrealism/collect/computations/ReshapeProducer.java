@@ -214,7 +214,9 @@ public class ReshapeProducer
 		this.producer = (Producer<PackedCollection>) producer;
 
 		if (shape(producer).getTotalSizeLong() != shape.getTotalSizeLong()) {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Cannot reshape " + shape(producer) +
+					" to " + shape + "; the total size differs (" +
+					shape(producer).getTotalSizeLong() + " vs " + shape.getTotalSizeLong() + ")");
 		}
 
 		init();

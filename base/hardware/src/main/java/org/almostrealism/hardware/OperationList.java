@@ -874,8 +874,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	/**
 	 * Compiles and returns a runnable for this operation list.
 	 *
-	 * <p>Automatically selects the best execution strategy (compilation,
-	 * optimization, or sequential execution) based on list characteristics.</p>
+	 * <p>Returns an executable using the configured execution strategy. Non-uniform lists are
+	 * optimized automatically only when {@link #enableAutomaticOptimization} is enabled;
+	 * otherwise the list is compiled when supported or executed sequentially.</p>
 	 *
 	 * @return Runnable that executes all operations in this list
 	 */

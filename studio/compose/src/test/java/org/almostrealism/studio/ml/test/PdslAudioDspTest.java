@@ -249,15 +249,13 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI / 32.0))
 				.into(signal.traverseEach()).evaluate();
 
-		double[] coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
-		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		filterCoeffs.setMem(coeffs);
+		PackedCollection coeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
-		args.put("filter_coeffs", filterCoeffs);
+		args.put("filter_coeffs", coeffs);
 		args.put("wet_level", WET_LEVEL);
 
 		Block block = loader.buildLayer(program, "efx_wet_chain", inputShape, args);
@@ -271,10 +269,8 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		Assert.assertNotNull("Output should not be null", output);
 
 		// Compare to reference: lowpass(signal) * wet_level
-		double[] expected = referenceConvolve(signal.toArray(0, SIGNAL_SIZE), coeffs);
-		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			assertEquals(expected[i] * WET_LEVEL, output.toDouble(i));
-		}
+		PackedCollection expected = referenceConvolve(signal, coeffs);
+		assertConvolutionEquals(cp(expected).multiply(WET_LEVEL).evaluate(), output, SIGNAL_SIZE);
 	}
 
 	/**

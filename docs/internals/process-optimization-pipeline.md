@@ -283,9 +283,10 @@ is consulted. They override the strategy's decision.
 - Simple element-wise operations with uniform parallelism
 - Single-operation process trees with no children
 
-**Always call `Process.optimize()` before `Process.get()`.** The `OperationList.get()`
-method handles this internally, but if you are working with raw `Process` trees, you
-must call `optimize()` explicitly.
+**Always call `Process.optimize()` before `Process.get()`** when the tree may require
+isolation. `OperationList.get()` performs this automatically only when
+`OperationList.enableAutomaticOptimization` is enabled; that flag defaults to
+`false`. Raw `Process` trees always require an explicit `optimize()` call.
 
 This includes the case where the graph is a `Producer` rather than an `OperationList`
 or a hand-built `Process` tree. `Producer.evaluate(...)` and `Producer.into(...)` are

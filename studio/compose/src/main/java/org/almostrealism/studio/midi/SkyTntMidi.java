@@ -773,8 +773,9 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * {@link AutoregressiveModel#sampleToken} which handles temperature scaling,
 	 * softmax, and top-p nucleus sampling.</p>
 	 *
-	 * <p>Note: the use of a {@code double[]} here is explicitly allowed -- this
-	 * method is token-selection orchestration, not model computation.</p>
+	 * <p>The only value read back to the host is the threshold itself, which comes
+	 * from a sort. Applying it is a comparison over the whole vocabulary and is
+	 * expressed as one computation rather than a loop.</p>
 	 *
 	 * @param maskedLogits logits after validity mask, shape [vocabSize]
 	 * @param temperature  sampling temperature (0 = greedy)
@@ -785,17 +786,13 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	private int sampleWithTopK(PackedCollection maskedLogits, double temperature,
 							   double topP, int topK) {
 		if (topK > 0 && topK < config.vocabSize) {
-			double[] values = maskedLogits.toArray(0, config.vocabSize);
-			double[] sorted = values.clone();
+			double[] sorted = maskedLogits.toArray(0, config.vocabSize);
 			Arrays.sort(sorted);
 			double threshold = sorted[config.vocabSize - topK];
 
-			double[] filtered = new double[config.vocabSize];
-			for (int i = 0; i < config.vocabSize; i++) {
-				filtered[i] = values[i] >= threshold ? values[i] : -1e9;
-			}
 			PackedCollection topKLogits = new PackedCollection(config.vocabSize);
-			topKLogits.setMem(filtered);
+			a(cp(topKLogits), greaterThan(cp(maskedLogits), c(threshold),
+					cp(maskedLogits), c(-1e9), true)).get().run();
 			return AutoregressiveModel.sampleToken(topKLogits, config.vocabSize,
 					temperature, topP, random);
 		}

@@ -24,6 +24,7 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
@@ -622,19 +623,12 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	@Test(timeout = 120_000)
 	public void firFilterGainProbe() {
 		int n = 16384;
-		double[] s = new double[n];
-		double inEnergy = 0.0;
-		for (int i = 0; i < n; i++) {
-			double t = i;
-			double v = Math.sin(2 * Math.PI * 100 * t / 44100)
-					+ Math.sin(2 * Math.PI * 1000 * t / 44100)
-					+ Math.sin(2 * Math.PI * 6000 * t / 44100);
-			s[i] = v;
-			inEnergy += v * v;
-		}
-		double inRms = Math.sqrt(inEnergy / n);
-		PackedCollection signal = new PackedCollection(n);
-		signal.setMem(s);
+		CollectionProducer time = integers(0, n).reshape(shape(n));
+		PackedCollection signal = sin(time.multiply(2 * Math.PI * 100 / 44100))
+				.add(sin(time.multiply(2 * Math.PI * 1000 / 44100)))
+				.add(sin(time.multiply(2 * Math.PI * 6000 / 44100)))
+				.evaluate();
+		double inRms = rmsOf(signal);
 
 		for (double cutoff : new double[] {50.0, 200.0, 1000.0, 5000.0}) {
 			PackedCollection out = highPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
@@ -655,13 +649,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return the root-mean-square of all elements
 	 */
 	private double rmsOf(PackedCollection data) {
-		double energy = 0.0;
 		int len = data.getMemLength();
-		for (int i = 0; i < len; i++) {
-			double x = data.toDouble(i);
-			energy += x * x;
-		}
-		return Math.sqrt(energy / Math.max(1, len));
+		return Math.sqrt(sum(cp(data).sq()).evaluate().toDouble(0) / Math.max(1, len));
 	}
 
 	/**
@@ -888,9 +877,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Block rowsBlock = loader.buildLayer(program, "fe_rows", inputShape, args);
 		Model rowsModel = new Model(inputShape);
 		rowsModel.add(rowsBlock);
-		double[] rows = rowsModel.compile().forward(input).toArray(0, channels * sig);
-		double row0 = rows[0];
-		double row1 = rows[sig];
+		PackedCollection rows = rowsModel.compile().forward(input);
+		double row0 = rows.toDouble(0);
+		double row1 = rows.toDouble(sig);
 		log(String.format("forEach rows: row0=%.6f (expect 0.020000) row1=%.6f (expect 0.060000; "
 				+ "0.030000 means chain 1 received row 0)", row0, row1));
 
@@ -898,10 +887,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Block sumBlock = loader.buildLayer(program, "fe_test", inputShape, args);
 		Model sumModel = new Model(inputShape);
 		sumModel.add(sumBlock);
-		double[] out = sumModel.compile().forward(input).toArray(0, sig);
-		double mean = 0.0;
-		for (double v : out) mean += v;
-		mean /= sig;
+		PackedCollection out = sumModel.compile().forward(input);
+		double mean = sum(cp(out.range(shape(sig)))).evaluate().toDouble(0) / sig;
 		log(String.format("forEach sum: expected=0.080000 measured=%.6f", mean));
 
 		Assert.assertEquals("chain 0 must process its own row times its own gain",
@@ -955,33 +942,26 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		// MAIN rows carry DISTINCT DC values; WET rows are silent.
-		double[] channelValues = new double[CHANNELS];
-		double expected = 0.0;
-		for (int ch = 0; ch < CHANNELS; ch++) {
-			// Row 0 deliberately SILENT: a dispatch that feeds every chain row 0 then
-			// produces total silence, which is unmistakable in the failure message.
-			channelValues[ch] = 0.01 * ch;
-			expected += channelValues[ch];
-		}
-		double conflated = CHANNELS * channelValues[0];
+		// MAIN row ch carries the DC value step * ch; WET rows are silent. Row 0 is
+		// deliberately silent, so a dispatch that feeds every chain row 0 produces
+		// total silence, which is unmistakable in the failure message.
+		double step = 0.01;
+		double expected = step * CHANNELS * (CHANNELS - 1) / 2.0;
+		double conflated = 0.0;
 
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[2 * CHANNELS * PDSL_SIGNAL_SIZE];
-		for (int ch = 0; ch < CHANNELS; ch++) {
-			Arrays.fill(inData, ch * PDSL_SIGNAL_SIZE, (ch + 1) * PDSL_SIGNAL_SIZE,
-					channelValues[ch]);
-		}
-		input.setMem(inData);
+		CollectionProducer channel = floor(integers(0, 2 * CHANNELS * PDSL_SIGNAL_SIZE)
+				.divide((double) PDSL_SIGNAL_SIZE));
+		channel.multiply(step)
+				.multiply(lessThan(channel, c(CHANNELS), c(1.0), c(0.0)))
+				.into(input.traverseEach()).evaluate();
 
-		double[] out = compiled.forward(input).toArray(0, PDSL_SIGNAL_SIZE);
+		PackedCollection out = compiled.forward(input);
+
 		// Skip the FIR settling region at the start of the buffer.
 		int settle = 4 * (PDSL_FILTER_ORDER + 1);
-		double mean = 0.0;
-		for (int i = settle; i < PDSL_SIGNAL_SIZE; i++) {
-			mean += out[i];
-		}
-		mean /= (PDSL_SIGNAL_SIZE - settle);
+		double mean = sum(cp(out.range(shape(PDSL_SIGNAL_SIZE - settle), settle)))
+				.evaluate().toDouble(0) / (PDSL_SIGNAL_SIZE - settle);
 
 		log(String.format("distinct-channel sum: expected=%.6f conflated=%.6f measured=%.6f",
 				expected, conflated, mean));
@@ -1062,10 +1042,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		WaveData wav = WaveData.load(outputFile);
 		try {
 			PackedCollection data = wav.getData();
-			int n = Math.min(data.getMemLength(), TOTAL_FRAMES);
-			double[] samples = new double[n];
-			for (int i = 0; i < n; i++) samples[i] = data.toDouble(i);
-			return samples;
+			return data.toArray(0, Math.min(data.getMemLength(), TOTAL_FRAMES));
 		} finally {
 			wav.destroy();
 		}
@@ -1179,7 +1156,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 					inData[c * sig + t] = v;
 				}
 			}
-			input.setMem(inData);
+			input.setFrom(0, PackedCollection.of(inData));
 			double[] passOut = compiled.forward(input).toArray(0, sig);
 			System.arraycopy(passOut, 0, samples, sampleOffset, sig);
 			for (int i = 0; i < sig; i++) {
@@ -1252,8 +1229,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		IntToDoubleFunction looped = loopedSource();
 		double[] mono = renderFeedbackCombMono(1, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
-				new double[]{COMB_DELAY_SAMPLES}, new double[]{COMB_FEEDBACK_GAIN},
-				new double[]{COMB_WET_LEVEL}, looped, (int) (DEMO_SECONDS * SAMPLE_RATE));
+				pack(COMB_DELAY_SAMPLES), pack(COMB_FEEDBACK_GAIN),
+				pack(COMB_WET_LEVEL), looped, (int) (DEMO_SECONDS * SAMPLE_RATE));
 
 		File demoWav = new File(outputDir, "pdsl_feedback_comb_looped_sample.wav");
 		writeMonoWav(demoWav, mono);
@@ -1295,14 +1272,14 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		// Prime-ish per-tap delays, all longer than one frame and shorter than the ring, for
 		// natural (non-metallic) diffusion.
-		double[] delays = {11000, 13003, 16007, 19001};
-		double[] grid = householderGrid(channels, GRID_FEEDBACK_GAIN);
-		double[] passthrough = scaledIdentity(channels, GRID_WET_LEVEL);
+		PackedCollection delays = pack(11000, 13003, 16007, 19001);
+		PackedCollection grid = householderGrid(channels, GRID_FEEDBACK_GAIN);
+		PackedCollection passthrough = scaledIdentity(channels, GRID_WET_LEVEL);
 
 		// Reference: same per-tap self-gain (the Householder diagonal) but NO cross-channel
 		// coupling — four independent combs. Used to prove the off-diagonals matter.
-		double selfGain = grid[0];  // diagonal entry of the scaled Householder
-		double[] diagonalOnly = scaledIdentity(channels, selfGain);
+		double selfGain = grid.toDouble(0);  // diagonal entry of the scaled Householder
+		PackedCollection diagonalOnly = scaledIdentity(channels, selfGain);
 
 		double[] mono = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
 				delays, grid, passthrough, looped, totalFrames);
@@ -1359,23 +1336,17 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param channels             number of feedback taps/channels
 	 * @param sig                  samples per frame
 	 * @param bufFrames            ring depth in frames ({@code bufSize = bufFrames * sig})
-	 * @param delaySamplesData     per-channel delay in samples, length {@code channels}
-	 * @param transmissionRowMajor row-major transmission matrix, length {@code channels*channels}
-	 * @param passthroughRowMajor  row-major passthrough matrix, length {@code channels*channels}
+	 * @param delaySamples         per-channel delay in samples, shaped {@code [channels]}
+	 * @param transmission         transmission matrix, shaped {@code [channels, channels]}
+	 * @param passthrough          passthrough matrix, shaped {@code [channels, channels]}
 	 * @param sampleAt             input sample at an absolute frame index (shared across channels)
 	 * @param totalFrames          number of frames to render
 	 * @return the mono (channel-summed) output samples
 	 */
 	private double[] renderFeedbackCombMono(int channels, int sig, int bufFrames,
-			double[] delaySamplesData, double[] transmissionRowMajor,
-			double[] passthroughRowMajor, IntToDoubleFunction sampleAt, int totalFrames) {
+			PackedCollection delaySamples, PackedCollection transmission,
+			PackedCollection passthrough, IntToDoubleFunction sampleAt, int totalFrames) {
 		int bufSize = bufFrames * sig;
-		PackedCollection delaySamples = new PackedCollection(channels);
-		delaySamples.setMem(delaySamplesData);
-		PackedCollection transmission = new PackedCollection(new TraversalPolicy(channels, channels));
-		transmission.setMem(transmissionRowMajor);
-		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
-		passthrough.setMem(passthroughRowMajor);
 		PackedCollection buffers = new PackedCollection(channels * bufSize);
 		PackedCollection heads = new PackedCollection(channels);
 
@@ -1400,17 +1371,18 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		int passes = totalFrames / sig;
 		double[] mono = new double[passes * sig];
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[channels * sig];
+		PackedCollection frame = new PackedCollection(sig);
+		double[] frameData = new double[sig];
 
 		for (int pass = 0; pass < passes; pass++) {
 			int off = pass * sig;
 			for (int t = 0; t < sig; t++) {
-				double v = sampleAt.applyAsDouble(off + t);
-				for (int c = 0; c < channels; c++) {
-					inData[c * sig + t] = v;
-				}
+				frameData[t] = sampleAt.applyAsDouble(off + t);
 			}
-			input.setMem(inData);
+
+			// Only the frame itself comes from the host; every channel receives it
+			frame.setFrom(0, PackedCollection.of(frameData));
+			repeat(0, channels, cp(frame).reshape(1, sig)).into(input).evaluate();
 			double[] passOut = compiled.forward(input).toArray(0, channels * sig);
 			for (int t = 0; t < sig; t++) {
 				double s = 0.0;
@@ -1453,33 +1425,22 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 *
 	 * @param n    matrix dimension (channel count)
 	 * @param gain scale factor; the resulting spectral radius
-	 * @return the row-major {@code n*n} transmission matrix
+	 * @return the {@code n*n} transmission matrix
 	 */
-	private static double[] householderGrid(int n, double gain) {
-		double[] m = new double[n * n];
-		double off = 2.0 / n;  // 2 * (1/√n)^2
-		for (int i = 0; i < n; i++) {
-			for (int j = 0; j < n; j++) {
-				double h = (i == j ? 1.0 : 0.0) - off;
-				m[i * n + j] = gain * h;
-			}
-		}
-		return m;
+	private PackedCollection householderGrid(int n, double gain) {
+		// The off-diagonal term is 2 * (1/√n)^2, uniform across the matrix
+		return identity(n).subtract(c(2.0 / n)).multiply(gain).evaluate();
 	}
 
 	/**
-	 * Builds a row-major {@code n*n} diagonal matrix with {@code scale} on the diagonal.
+	 * Builds an {@code n*n} diagonal matrix with {@code scale} on the diagonal.
 	 *
 	 * @param n     matrix dimension
 	 * @param scale the diagonal value
-	 * @return the row-major diagonal matrix
+	 * @return the diagonal matrix
 	 */
-	private static double[] scaledIdentity(int n, double scale) {
-		double[] m = new double[n * n];
-		for (int i = 0; i < n; i++) {
-			m[i * n + i] = scale;
-		}
-		return m;
+	private PackedCollection scaledIdentity(int n, double scale) {
+		return identity(n).multiply(scale).evaluate();
 	}
 
 	/**
@@ -1548,6 +1509,15 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/**
 	 * Attempts to load a {@code .wav} file's first channel, capped at one second of frames.
 	 *
+	 * <p>Non-finite samples are replaced with silence, since some library files carry odd
+	 * formats and a single one propagates through the DSP and corrupts the whole render.
+	 * They are recognised by a magnitude that fails to compare below the largest finite
+	 * value, which is true of both an infinity and a value that is not a number.</p>
+	 *
+	 * <p>The result is normalised to a safe peak, so the DSP sees a sane input range
+	 * whatever the source file's native scale was. A clip with no signal at all is
+	 * rejected rather than amplified.</p>
+	 *
 	 * @param f the WAV file to load
 	 * @return mono sample data, or {@code null} if the file cannot be loaded
 	 */
@@ -1558,23 +1528,16 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				PackedCollection data = wav.getData();
 				int n = Math.min(data.getMemLength(), SAMPLE_RATE);
 				if (n <= 0) return null;
-				double[] clip = new double[n];
-				double peak = 0.0;
-				for (int i = 0; i < n; i++) {
-					double v = data.toDouble(i);
-					// Drop non-finite samples (some library files carry odd formats); a
-					// single NaN propagates through the DSP and corrupts the whole render.
-					if (!Double.isFinite(v)) v = 0.0;
-					clip[i] = v;
-					peak = Math.max(peak, Math.abs(v));
-				}
-				if (peak < 1.0e-6) return null;  // silent / garbage — try the next file
-				// Normalise to a safe peak so the DSP always sees a sane input range
-				// regardless of the source file's native scale.
-				double norm = 0.9 / peak;
-				for (int i = 0; i < n; i++) clip[i] *= norm;
+
+				CollectionProducer raw = cp(data.range(shape(n)));
+				PackedCollection clip = lessThan(abs(raw), c(Double.MAX_VALUE), raw, c(0.0))
+						.evaluate();
+
+				double peak = max(cp(clip).abs()).evaluate().toDouble(0);
+				if (peak < 1.0e-6) return null;
+
 				log("loop source: " + f.getName() + " (" + n + " frames, peak " + peak + ")");
-				return clip;
+				return cp(clip).multiply(0.9 / peak).evaluate().toArray(0, n);
 			} finally {
 				wav.destroy();
 			}

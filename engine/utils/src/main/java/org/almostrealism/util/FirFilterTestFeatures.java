@@ -40,12 +40,17 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 * Reference implementation of low-pass FIR coefficient computation
 	 * using sinc-windowed Hamming window.
 	 *
+	 * <p>The arithmetic is deliberately performed on the host: this is the oracle the
+	 * framework's own coefficient computation is checked against, and expressing it
+	 * with the same producers it is meant to test would let a fault agree with
+	 * itself. Only the result is a collection, which is the form every caller needs.</p>
+	 *
 	 * @param cutoff the cutoff frequency in Hz
 	 * @param sampleRate the sample rate in Hz
 	 * @param filterOrder the filter order (number of taps minus one)
 	 * @return the computed FIR coefficients
 	 */
-	default double[] referenceLowPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
+	default PackedCollection referenceLowPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
 		double[] coefficients = new double[filterOrder + 1];
 		double normalizedCutoff = 2.0 * cutoff / sampleRate;
 
@@ -59,7 +64,7 @@ public interface FirFilterTestFeatures extends TestFeatures {
 			coefficients[i] *= 0.54 - 0.46 * Math.cos(2.0 * Math.PI * i / filterOrder);
 		}
 
-		return coefficients;
+		return PackedCollection.of(coefficients);
 	}
 
 	/**
@@ -70,35 +75,43 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 * @param result the actual convolution result
 	 * @param length number of elements to compare
 	 */
-	default void assertConvolutionEquals(double[] expected, PackedCollection result, int length) {
+	default void assertConvolutionEquals(PackedCollection expected, PackedCollection result, int length) {
 		for (int i = 0; i < length; i++) {
-			assertEquals(expected[i], result.toDouble(i));
+			assertEquals(expected.toDouble(i), result.toDouble(i));
 		}
 	}
 
 	/**
 	 * Reference implementation of centered FIR convolution for test verification.
 	 *
+	 * <p>As with {@link #referenceLowPassCoefficients}, the convolution itself is
+	 * host arithmetic on purpose — it exists to disagree with the framework when
+	 * the framework is wrong.</p>
+	 *
 	 * @param signal the input signal
 	 * @param coefficients the FIR filter coefficients
 	 * @return the convolved output signal
 	 */
-	default double[] referenceConvolve(double[] signal, double[] coefficients) {
-		int order = coefficients.length - 1;
-		double[] output = new double[signal.length];
+	default PackedCollection referenceConvolve(PackedCollection signal, PackedCollection coefficients) {
+		int length = signal.getMemLength();
+		int order = coefficients.getMemLength() - 1;
 
-		for (int n = 0; n < signal.length; n++) {
+		double[] in = signal.toArray(0, length);
+		double[] taps = coefficients.toArray(0, order + 1);
+		double[] output = new double[length];
+
+		for (int n = 0; n < length; n++) {
 			double sum = 0.0;
 			for (int k = 0; k <= order; k++) {
 				int idx = n + k - order / 2;
-				if (idx >= 0 && idx < signal.length) {
-					sum += signal[idx] * coefficients[k];
+				if (idx >= 0 && idx < length) {
+					sum += in[idx] * taps[k];
 				}
 			}
 			output[n] = sum;
 		}
 
-		return output;
+		return PackedCollection.of(output);
 	}
 
 	/**

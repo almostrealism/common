@@ -18,10 +18,9 @@ package org.almostrealism.audio;
 
 import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestDepth;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -41,44 +40,11 @@ import java.util.Random;
  * curves. The envelope generators themselves are verified against production
  * (getVolumeEnv / getLayerEnv) by {@code BatchedEnvelopeTest}.</p>
  */
-public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFeatures {
-
-	/** Number of notes active in the window. */
-	private static final int N = 4;
-
-	/** Source layers summed per note (production {@code PatternNoteFactory.LAYER_COUNT}). */
-	private static final int LAYERS = 3;
-
-	/** Source samples per note before resampling. */
-	private static final int SOURCE_LENGTH = 2048;
-
-	/** Target samples per note after resampling. */
-	private static final int TARGET_LENGTH = 1024;
-
-	/** Output window width in frames (the a2 window; wider than a single note). */
-	private static final int WINDOW_WIDTH = 1536;
+public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 
 	/** Audio sample rate. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
-	/** FIR filter order matching production {@code EfxManager.filterOrder}. */
-	private static final int FILTER_ORDER = 40;
-
-	/** Creates a flat {@link PackedCollection} pre-loaded with the given values. */
-	private PackedCollection col(double[] values) {
-		PackedCollection c = new PackedCollection(values.length);
-		c.setMem(values);
-		return c;
-	}
-
-	/** Extracts row {@code n} of a flat {@code [N, TARGET_LENGTH]} collection. */
-	private PackedCollection row(PackedCollection flat, int n) {
-		double[] data = new double[TARGET_LENGTH];
-		for (int i = 0; i < TARGET_LENGTH; i++) {
-			data[i] = flat.toDouble(n * TARGET_LENGTH + i);
-		}
-		return col(data);
-	}
 
 	/**
 	 * Verifies that a single batched SSS chain dispatch produces output within 1e-4 RMS
@@ -102,72 +68,36 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 		for (int l = 0; l < LAYERS; l++) {
 			PackedCollection batch =
 					rand(shape(N, SOURCE_LENGTH), rng).multiply(2.0).add(-1.0).evaluate();
-			double[] ratioData = new double[N];
-			double[] md = new double[N];
-			double[] f0 = new double[N];
-			double[] f1 = new double[N];
-			double[] f2 = new double[N];
-			double[] v0 = new double[N];
-			double[] v1 = new double[N];
-			double[] v2 = new double[N];
-			double[] v3 = new double[N];
+			ratios[l] = perNote(1.0 + 0.1 * l, 0.05);
+
 			for (int n = 0; n < N; n++) {
 				sourceByLayerNote[l][n] = batch.range(shape(SOURCE_LENGTH), n * SOURCE_LENGTH);
-				ratioValues[l][n] = 1.0 + 0.1 * l + 0.05 * n;
-				ratioData[n] = ratioValues[l][n];
-
-				md[n] = 0.012 + 0.002 * n;
-				f0[n] = 0.3;
-				f1[n] = 0.6;
-				f2[n] = 1.0;
-				v0[n] = 0.0;
-				v1[n] = 0.85 + 0.02 * l;
-				v2[n] = 0.5 + 0.03 * n;
-				v3[n] = 0.0;
+				// The reference resamples note by note with a host scalar while the
+				// batched path reads the collection, so it takes them from there.
+				ratioValues[l][n] = ratios[l].toDouble(n);
 			}
+
 			sources[l] = batch;
-			ratios[l] = col(ratioData);
+			PackedCollection[] env = layerEnvelopeParameters(l);
 			layerCurves[l] = renderer.buildLayerEnvelopeCurve(
-					col(md), col(f0), col(f1), col(f2), col(v0), col(v1), col(v2), col(v3))
+					env[0], env[1], env[2], env[3], env[4], env[5], env[6], env[7])
 					.get().evaluate();
 		}
 
 		// ── Filter cutoff curve = ADSR shape scaled to filterPeak (Hz). ──
-		double[] fAtt = new double[N];
-		double[] fDec = new double[N];
-		double[] fSus = new double[N];
-		double[] fRel = new double[N];
-		double[] fDur = new double[N];
-		// ── Volume envelope. ──
-		double[] vAtt = new double[N];
-		double[] vDec = new double[N];
-		double[] vSus = new double[N];
-		double[] vRel = new double[N];
-		double[] vDur = new double[N];
-		for (int n = 0; n < N; n++) {
-			fDur[n] = 0.016 + 0.002 * n;
-			fAtt[n] = 0.002 + 0.0003 * n;
-			fDec[n] = 0.0015 + 0.0002 * n;
-			fSus[n] = 0.5 + 0.05 * n;
-			fRel[n] = 0.004 + 0.0005 * n;
-
-			vDur[n] = 0.018 + 0.002 * n;
-			vAtt[n] = 0.0015 + 0.0003 * n;
-			vDec[n] = 0.0010 + 0.0002 * n;
-			vSus[n] = 0.45 + 0.05 * n;
-			vRel[n] = 0.003 + 0.0005 * n;
-		}
+		PackedCollection[] filterAdsr = filterAdsr();
 		PackedCollection filterCutoffs = renderer.buildVolumeEnvelopeCurve(
-				col(fAtt), col(fDec), col(fSus), col(fRel), col(fDur))
+				filterAdsr[0], filterAdsr[1], filterAdsr[2], filterAdsr[3], filterAdsr[4])
 				.multiply(c(MultiOrderFilterEnvelopeProcessor.filterPeak))
 				.get().evaluate();
+		// ── Volume envelope. ──
+		PackedCollection[] volumeAdsr = volumeAdsr();
 		PackedCollection volumeEnvelopes = renderer.buildVolumeEnvelopeCurve(
-				col(vAtt), col(vDec), col(vSus), col(vRel), col(vDur))
+				volumeAdsr[0], volumeAdsr[1], volumeAdsr[2], volumeAdsr[3], volumeAdsr[4])
 				.get().evaluate();
 
 		// ── Per-note destination offsets (one starts mid-window). ──
-		double[] destOffsetValues = { 0, 200, 512, 700 };
-		PackedCollection destOffsets = col(destOffsetValues);
+		PackedCollection destOffsets = destinationOffsets();
 
 		// ── Single batched dispatch: 3 layers → placed, summed window. ──
 		PackedCollection out = renderer.buildBatchedSssChainPlaced(
@@ -178,19 +108,22 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 		// ── Per-note reference (the path real playback takes today). ──
 		double[] expected = new double[WINDOW_WIDTH];
 		for (int n = 0; n < N; n++) {
-			double[] merged = new double[TARGET_LENGTH];
+			CollectionProducer merged = null;
 			for (int l = 0; l < LAYERS; l++) {
 				PackedCollection resampled =
 						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
 								.get().evaluate();
-				for (int i = 0; i < TARGET_LENGTH; i++) {
-					merged[i] += resampled.toDouble(i) * layerCurves[l].toDouble(n * TARGET_LENGTH + i);
-				}
+				CollectionProducer shaped =
+						cp(resampled).multiply(cp(layerCurves[l].traverse(1).get(n)));
+				merged = merged == null ? shaped : merged.add(shaped);
 			}
 
-			PackedCollection mergedN = col(merged);
-			PackedCollection cutoffN = row(filterCutoffs, n);
-			PackedCollection volN = row(volumeEnvelopes, n);
+			PackedCollection mergedN = merged.evaluate();
+			// The curves are shaped [N, TARGET_LENGTH] with traversal on axis 0, so
+			// the row has to be selected on axis 1 to get one note's curve rather
+			// than the whole batch
+			PackedCollection cutoffN = filterCutoffs.traverse(1).get(n);
+			PackedCollection volN = volumeEnvelopes.traverse(1).get(n);
 
 			PackedCollection filtered =
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))
@@ -198,7 +131,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 							.get().evaluate();
 			PackedCollection voiced = cp(filtered).multiply(cp(volN)).get().evaluate();
 
-			int off = (int) destOffsetValues[n];
+			int off = (int) destOffsets.toDouble(n);
 			for (int k = 0; k < TARGET_LENGTH; k++) {
 				int f = off + k;
 				if (f < WINDOW_WIDTH) {

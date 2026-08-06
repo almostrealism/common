@@ -248,8 +248,8 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * implementation. An indexed scalar write is the shape a host-side loop takes
 	 * when it computes values one at a time, and offering it on the interface put
 	 * it within reach of every consumer of a {@link MemoryData} reference. A call
-	 * that needs to place more than one value writes the whole buffer with
-	 * {@link MemoryData#setMem(double...)} at index 0, or is a computation and
+	 * that needs to place more than one value writes the whole buffer with an array
+	 * passed to {@link MemoryData#setMem(double[])} at index 0, or is a computation and
 	 * belongs in a {@link io.almostrealism.relation.Producer} rather than at a
 	 * write site.</p>
 	 *
@@ -277,6 +277,66 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 */
 	public void setMem(int offset, float value) {
 		MemoryData.setMem(getMem(), getOffset() + offset, new float[] { value }, 0, 1);
+	}
+
+	/**
+	 * Writes double values from a host array into this memory, starting at index 0.
+	 *
+	 * <p>Protected because a bulk host array is the shape a large transfer takes, and
+	 * the point of the write surface is that such a transfer is deliberate and rare.
+	 * Data entering the system from outside — a file, a message, a serialized form —
+	 * arrives through {@link MemoryData#read(java.nio.ByteBuffer)} or
+	 * {@link MemoryData#read(java.io.InputStream)}; values a collection is constructed
+	 * from arrive through its factories. Neither route needs this, and a caller that
+	 * cannot use either is usually computing the values, which belongs in a
+	 * {@link io.almostrealism.relation.Producer}.</p>
+	 *
+	 * @param source Values to write
+	 */
+	protected void setMem(double[] source) {
+		setMem(0, source);
+	}
+
+	/**
+	 * Writes double values from a host array into this memory at the given offset.
+	 *
+	 * <p>The offset exists for a container writing into a region of its own storage —
+	 * the entry of a bank, for instance — which is why it is reachable only from a
+	 * subclass. See {@link #setMem(double[])} for the routes available to everyone
+	 * else.</p>
+	 *
+	 * <p>The write must stay within the region this {@link MemoryData} owns, as well as
+	 * within the underlying storage it delegates to. The second alone would let a write
+	 * into one entry of a bank continue into the entries that follow it, since those are
+	 * part of the same storage.</p>
+	 *
+	 * @param offset Index in this memory
+	 * @param source Values to write
+	 * @throws IllegalArgumentException if the write extends beyond this memory or its storage
+	 */
+	protected void setMem(int offset, double[] source) {
+		if (offset < 0 || offset + source.length > getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
+		MemoryData root = getRootDelegate();
+
+		if (getOffset() - root.getOffset() + offset + source.length > root.getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of the underlying storage");
+		}
+
+		MemoryData.setMem(getMem(), getOffset() + offset, source, 0, source.length);
+	}
+
+	/**
+	 * Writes float values from a host array into this memory, starting at index 0.
+	 *
+	 * <p>See {@link #setMem(double[])} for why this is not public.</p>
+	 *
+	 * @param source Values to write
+	 */
+	protected void setMem(float[] source) {
+		MemoryData.setMem(getMem(), getOffset(), source, 0, source.length);
 	}
 
 	public Heap getDefaultDelegate() { return null; }
