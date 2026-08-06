@@ -1367,14 +1367,14 @@ jobs:
       - name: Run Hardware Tests
         if: matrix.group == 0
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1383,7 +1383,7 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1394,7 +1394,7 @@ jobs:
       - name: Run Render Tests
         if: matrix.group == 0
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
@@ -1403,7 +1403,7 @@ jobs:
       - name: Run IO and HTTP Tests
         if: matrix.group == 0
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1607,7 +1607,7 @@ jobs:
 
       - name: Run Audio Tests
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1618,7 +1618,7 @@ jobs:
 
       - name: Run Music Tests
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1628,7 +1628,7 @@ jobs:
 
       - name: Run Compose Tests
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1639,7 +1639,7 @@ jobs:
 
       - name: Run Spatial Tests
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -1651,7 +1651,7 @@ jobs:
       # See the identical step in test-media for why these two modules share one invocation.
       - name: Run Extern and Experiments Tests
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
            -DAR_HARDWARE_DRIVER=native,cl \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \

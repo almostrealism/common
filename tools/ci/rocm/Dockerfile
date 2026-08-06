@@ -67,9 +67,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g \
         sudo \
         ocl-icd-libopencl1 \
+        ocl-icd-opencl-dev \
         libatomic1 \
         clinfo \
     && rm -rf /var/lib/apt/lists/*
+
+# ocl-icd-opencl-dev is not optional, and not just headers. ocl-icd-libopencl1
+# installs only the versioned soname, libOpenCL.so.1. Programs linked at build
+# time against that soname — clinfo among them — resolve it through ldconfig and
+# work anywhere. JOCL does not: it dlopens the UNVERSIONED "libOpenCL.so" at
+# runtime, and the unversioned symlink is shipped by the -dev package.
+#
+# Without it the only unversioned libOpenCL.so on the image is ROCm's, under
+# /opt/rocm/lib, reachable solely via LD_LIBRARY_PATH. Any job that replaces
+# LD_LIBRARY_PATH instead of appending to it then loses OpenCL from the JVM while
+# clinfo keeps working — so the entrypoint's preflight passes, the CL backend
+# silently fails to initialize, and the suite runs on the native backend and
+# reports green. That is exactly what happened; see README.md.
 
 # ---------- OpenCL ICD registration ----------
 # The ICD loader discovers vendors by reading /etc/OpenCL/vendors. Writing the

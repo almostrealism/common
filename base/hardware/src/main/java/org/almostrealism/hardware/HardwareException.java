@@ -104,6 +104,22 @@ public class HardwareException extends RuntimeException {
 	}
 
 	/**
+	 * Creates a hardware exception wrapping any throwable.
+	 *
+	 * <p>Backend initialization can fail with an {@link Error} rather than an
+	 * {@link Exception} — a missing or unloadable native library surfaces as
+	 * {@link UnsatisfiedLinkError}, which the narrower constructors cannot
+	 * carry. Preserving it as the cause is what makes such a failure
+	 * diagnosable, since the offending library path appears only there.</p>
+	 *
+	 * @param message Description of the hardware error
+	 * @param cause The underlying throwable
+	 */
+	public HardwareException(String message, Throwable cause) {
+		super(message, cause);
+	}
+
+	/**
 	 * Creates a hardware exception wrapping an OpenCL exception.
 	 *
 	 * @param message Description of the hardware error
