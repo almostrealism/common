@@ -31,6 +31,14 @@ import org.almostrealism.collect.PackedCollection;
  * {@code default} methods) rather than accept or hold a {@code Features} instance —
  * passing one around as an object defeats the purpose of the pattern.</p>
  *
+ * <p>This mixin is for tests only. It extends {@link TestFeatures}, so implementing it
+ * pulls the whole test surface — assertions, depth and profile settings — onto the
+ * implementing type. It lives in main sources solely so that tests in other modules can
+ * reach it; that is not licence for production code to implement it. A production type
+ * that needs one of these operations is evidence the operation belongs on a production
+ * {@code Features} mixin instead, and it should be moved there rather than reached for
+ * here.</p>
+ *
  * @see org.almostrealism.time.computations.test.MultiOrderFilterConvolutionTest
  * @see io.almostrealism.compute.test.ReplicationMismatchOptimizationTest
  */
@@ -123,6 +131,46 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 */
 	default double peakOf(PackedCollection samples) {
 		return max(cp(samples).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Computes the sum-of-squares energy of the difference between two signals of
+	 * equal length. Used to establish that one rendering differs from another.
+	 *
+	 * @param signal    the signal under test
+	 * @param reference the signal to compare against
+	 * @return the sum of squared differences
+	 */
+	default double differenceEnergy(PackedCollection signal, PackedCollection reference) {
+		return sum(cp(signal).subtract(cp(reference)).sq()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Sums a multi-channel signal down to mono, the channels being laid out as
+	 * contiguous runs of equal length.
+	 *
+	 * @param signal   the multi-channel signal
+	 * @param channels the number of channels
+	 * @return the summed signal, one sample per channel position
+	 */
+	default PackedCollection sumChannels(PackedCollection signal, int channels) {
+		int length = signal.getMemLength() / channels;
+		return matmul(constant(shape(1, channels), 1.0),
+				cp(signal.reshape(shape(channels, length)))).evaluate().reshape(shape(length));
+	}
+
+	/**
+	 * Computes the sum-of-squares energy of each channel of a multi-channel signal,
+	 * which is laid out as {@code channels} contiguous runs of equal length.
+	 *
+	 * @param signal   the multi-channel signal
+	 * @param channels the number of channels
+	 * @return the per-channel energies, of shape ({@code channels})
+	 */
+	default PackedCollection channelEnergy(PackedCollection signal, int channels) {
+		int length = signal.getMemLength() / channels;
+		return sum(cp(signal.reshape(shape(channels, length)).traverse(1)).sq())
+				.evaluate().reshape(shape(channels));
 	}
 
 	/**

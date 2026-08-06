@@ -49,13 +49,31 @@ The loop scans lines of Java source in the policy detectors. Its data is text.
 This performs element-wise numeric work on data that is, or could be, collection-resident. It should be expressed with CollectionProducer. Listed here without a defense because it does not have one.
 
 
+## Progress
+
+Three of the largest files are done — each now contains no `double[]` or `float[]` at all:
+
+- `MixdownManagerPdslVerificationTest` (was 63)
+- `MoonbeamValueDistributionTest` (was 66)
+- `MixdownManagerPdslTest` (was 39)
+
+Work that came out of them and is now available to every consumer, rather than being
+repeated per file: `FirFilterTestFeatures` gained `differenceEnergy`, `sumChannels` and
+`channelEnergy` alongside the existing `energy` and `peakOf`; `VectorFeatures` gained
+`oneHot`. `PackedCollection.clone()` already covered snapshotting a model output, and
+`MatrixFeatures.identity` already covered the matrix construction two tests had copied.
+
+Two lessons that apply to the rest of the list, both learned by measurement:
+
+- Loop-carried collections must be allocated once and written through with `setFrom`.
+  An operand's offset is part of its signature, so a fresh allocation per iteration makes
+  every iteration a distinct graph and recompiles the pipeline once per iteration.
+- Aggregates reported together should be concatenated into one computation. Six separate
+  evaluations compile six kernels per shape.
+
 ## Undefended items by file
 
 640 of 971 items have no defense. Ranked by count:
-
--   66  `studio/compose/src/test/java/org/almostrealism/studio/midi/test/MoonbeamValueDistributionTest.java`
--   63  `studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslVerificationTest.java`
--   39  `studio/compose/src/test/java/org/almostrealism/studio/ml/test/MixdownManagerPdslTest.java`
 -   34  `engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java`
 -   34  `engine/utils/src/test/java/org/almostrealism/collect/computations/test/TraversableDeltaComputationTests.java`
 -   33  `studio/music/src/main/java/org/almostrealism/music/pattern/BatchedPatternLayerRenderer.java`

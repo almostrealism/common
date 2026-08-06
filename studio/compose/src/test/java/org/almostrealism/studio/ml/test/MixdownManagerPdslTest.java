@@ -41,6 +41,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.IntFunction;
 
 /**
  * Tests for the PDSL rendition of
@@ -289,28 +290,16 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		int totalSamples = SAMPLE_RATE;
 		int numPasses = totalSamples / SIGNAL_SIZE;
-		float[] dryMono = new float[totalSamples];
-		float[] masterMono = new float[totalSamples];
 
 		// Per-channel carrier frequencies: one tone per channel
 		PackedCollection channelFreqs = pack(220.0, 440.0, 880.0, 1760.0);
 
-		for (int pass = 0; pass < numPasses; pass++) {
-			final int sampleOffset = pass * SIGNAL_SIZE;
-			PackedCollection input = multiChannelCarrier(channelFreqs, sampleOffset);
-			double[] inArr = input.toArray(0, CHANNELS * SIGNAL_SIZE);
-			double[] outArr = compiled.forward(input).toArray(0, SIGNAL_SIZE);
+		PackedCollection masterMono = render(numPasses,
+				offset -> compiled.forward(multiChannelCarrier(channelFreqs, offset)));
 
-			// Summed dry (reference: what a naive pre-effects sum would produce)
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				double sum = 0.0;
-				for (int c = 0; c < CHANNELS; c++) {
-					sum += inArr[c * SIGNAL_SIZE + i];
-				}
-				dryMono[sampleOffset + i] = (float) sum;
-				masterMono[sampleOffset + i] = (float) outArr[i];
-			}
-		}
+		// Summed dry (reference: what a naive pre-effects sum would produce)
+		PackedCollection dryMono = render(numPasses,
+				offset -> sumChannels(multiChannelCarrier(channelFreqs, offset), CHANNELS));
 
 		PdslAudioDemoTest.writeDemoWav(
 				new File(outputDir, "pdsl_mixdown_manager_dry.wav"), dryMono, SAMPLE_RATE);
@@ -324,11 +313,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		// The master output must differ from the naive dry sum — filters, delay,
 		// and routing must all be active.
-		double diffEnergy = 0.0;
-		for (int i = 0; i < totalSamples; i++) {
-			double diff = masterMono[i] - dryMono[i];
-			diffEnergy += diff * diff;
-		}
+		double diffEnergy = differenceEnergy(masterMono, dryMono);
 		Assert.assertTrue(
 				"master output must differ from naive dry sum (HP+LP+delay+route must be active)",
 				diffEnergy > 0.0);
@@ -359,7 +344,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	@Test(timeout = 120000)
 	public void testMixdownManagerAutomatedHighpass() throws IOException {
 		PackedCollection cutoffSlot = new PackedCollection(1);
-		double[] schedule = sweepSchedule(100.0, 4500.0, NUM_AUTOMATION_PASSES);
+		PackedCollection schedule = sweepSchedule(100.0, 4500.0, NUM_AUTOMATION_PASSES);
 
 		Map<String, Object> producerArgs = mainBusArgs();
 		producerArgs.put("hp_cutoff", cutoffSlot);
@@ -393,7 +378,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	@Test(timeout = 120000)
 	public void testMixdownManagerAutomatedVolume() throws IOException {
 		PackedCollection volumeSlot = new PackedCollection(1);
-		double[] schedule = sweepSchedule(0.0, 1.0, NUM_AUTOMATION_PASSES);
+		PackedCollection schedule = sweepSchedule(0.0, 1.0, NUM_AUTOMATION_PASSES);
 
 		Map<String, Object> producerArgs = mainBusArgs();
 		producerArgs.put("volume", volumeSlot);
@@ -429,7 +414,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	@Test(timeout = 120000)
 	public void testMixdownManagerAutomatedLowpass() throws IOException {
 		PackedCollection lpSlot = new PackedCollection(1);
-		double[] schedule = sweepSchedule(8000.0, 500.0, NUM_AUTOMATION_PASSES);
+		PackedCollection schedule = sweepSchedule(8000.0, 500.0, NUM_AUTOMATION_PASSES);
 
 		Map<String, Object> producerArgs = masterArgs();
 		producerArgs.put("lp_cutoff", lpSlot);
@@ -473,7 +458,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	@Test(timeout = 120000)
 	public void testMixdownManagerVariableDelayTime() throws IOException {
 		PackedCollection delaySlot = new PackedCollection(1);
-		double[] schedule = sweepSchedule(16.0, 192.0, NUM_AUTOMATION_PASSES);
+		PackedCollection schedule = sweepSchedule(16.0, 192.0, NUM_AUTOMATION_PASSES);
 
 		Map<String, Object> producerArgs = efxBusArgs();
 		producerArgs.put("delay_samples", delaySlot);
@@ -551,40 +536,26 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		CompiledModel probeCompiled = probeModel.compile();
 
 		PackedCollection input = multiChannelTone(440.0);
-		double[] fullOut = probeCompiled.forward(input).toArray(0, outChannels * SIGNAL_SIZE);
-		double[] perOutEnergyFull = new double[outChannels];
+		PackedCollection fullEnergy = channelEnergy(
+				probeCompiled.forward(input).range(shape(outChannels * SIGNAL_SIZE)), outChannels);
 		for (int m = 0; m < outChannels; m++) {
-			double e = 0.0;
-			for (int t = 0; t < SIGNAL_SIZE; t++) {
-				double s = fullOut[m * SIGNAL_SIZE + t];
-				e += s * s;
-			}
-			perOutEnergyFull[m] = e;
 			Assert.assertTrue("output channel " + m
-							+ " must have non-zero energy with full transmission, got " + e,
-					e > 0.0);
+							+ " must have non-zero energy with full transmission, got "
+							+ fullEnergy.toDouble(m),
+					fullEnergy.toDouble(m) > 0.0);
 		}
 
 		// Zero column m=0 in-place — every input channel's contribution to output 0
 		// is now zero. Re-run with the same compiled model: output channel 0 must be
 		// silent; channels 1, 2 unchanged.
 		zeroTransmissionColumn(probeMatrix, inChannels, outChannels, 0);
-		double[] zeroedOut = probeCompiled.forward(input).toArray(0, outChannels * SIGNAL_SIZE);
-		double silentEnergy = 0.0;
-		for (int t = 0; t < SIGNAL_SIZE; t++) {
-			double s = zeroedOut[t];
-			silentEnergy += s * s;
-		}
+		PackedCollection zeroedEnergy = channelEnergy(
+				probeCompiled.forward(input).range(shape(outChannels * SIGNAL_SIZE)), outChannels);
 		Assert.assertEquals(
 				"zeroing transmission column 0 must silence output channel 0",
-				0.0, silentEnergy, 1e-9);
-		double otherEnergy = 0.0;
-		for (int m = 1; m < outChannels; m++) {
-			for (int t = 0; t < SIGNAL_SIZE; t++) {
-				double s = zeroedOut[m * SIGNAL_SIZE + t];
-				otherEnergy += s * s;
-			}
-		}
+				0.0, zeroedEnergy.toDouble(0), 1e-9);
+		double otherEnergy = sum(cp(zeroedEnergy.range(shape(outChannels - 1), 1)))
+				.evaluate().toDouble(0);
 		Assert.assertTrue(
 				"zeroing column 0 must NOT silence the other output channels: otherEnergy="
 						+ otherEnergy,
@@ -616,19 +587,10 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		int totalSamples = SAMPLE_RATE / 2;
 		int numPasses = totalSamples / SIGNAL_SIZE;
-		float[] mono = new float[numPasses * SIGNAL_SIZE];
 		PackedCollection channelFreqs = pack(220.0, 440.0, 880.0, 1760.0);
-		double busEnergy = 0.0;
-		for (int pass = 0; pass < numPasses; pass++) {
-			int sampleOffset = pass * SIGNAL_SIZE;
-			double[] out = busCompiled
-					.forward(multiChannelCarrier(channelFreqs, sampleOffset))
-					.toArray(0, SIGNAL_SIZE);
-			for (int t = 0; t < SIGNAL_SIZE; t++) {
-				mono[sampleOffset + t] = (float) out[t];
-				busEnergy += out[t] * out[t];
-			}
-		}
+		PackedCollection mono = render(numPasses,
+				offset -> busCompiled.forward(multiChannelCarrier(channelFreqs, offset)));
+		double busEnergy = energy(mono, 0);
 		Assert.assertTrue(
 				"rectangular efx bus must produce non-zero output: busEnergy=" + busEnergy,
 				busEnergy > 0.0);
@@ -739,17 +701,9 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// effect on the two components.
 		int totalSamples = SAMPLE_RATE / 2;
 		int numPasses = totalSamples / SIGNAL_SIZE;
-		float[] mono = new float[numPasses * SIGNAL_SIZE];
-		double outEnergy = 0.0;
-		for (int pass = 0; pass < numPasses; pass++) {
-			int sampleOffset = pass * SIGNAL_SIZE;
-			PackedCollection in = monoTwoToneInput(220.0, 3000.0, sampleOffset);
-			double[] out = compiled.forward(in).toArray(0, SIGNAL_SIZE);
-			for (int t = 0; t < SIGNAL_SIZE; t++) {
-				mono[sampleOffset + t] = (float) out[t];
-				outEnergy += out[t] * out[t];
-			}
-		}
+		PackedCollection mono = render(numPasses, offset ->
+				compiled.forward(monoTwoToneInput(220.0, 3000.0, offset)));
+		double outEnergy = energy(mono, 0);
 		Assert.assertTrue(
 				"hetero branch must produce non-zero output: outEnergy=" + outEnergy,
 				outEnergy > 0.0);
@@ -771,28 +725,22 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		CompiledModel noReverbCompiled = noReverbModel.compile();
 
 		PackedCollection probeIn = monoTwoToneInput(220.0, 3000.0, 0);
-		double[] full = compiled.forward(probeIn).toArray(0, SIGNAL_SIZE);
-		double[] noReverb = noReverbCompiled.forward(probeIn).toArray(0, SIGNAL_SIZE);
-		double diffEnergy = 0.0;
-		for (int t = 0; t < SIGNAL_SIZE; t++) {
-			double diff = full[t] - noReverb[t];
-			diffEnergy += diff * diff;
-		}
+		PackedCollection full = compiled.forward(probeIn).range(shape(SIGNAL_SIZE)).clone();
+		PackedCollection noReverb =
+				noReverbCompiled.forward(probeIn).range(shape(SIGNAL_SIZE)).clone();
+		double diffEnergy = differenceEnergy(full, noReverb);
 		Assert.assertTrue(
 				"removing reverb branch must change the summed output (reverb branch active): diffEnergy="
 						+ diffEnergy, diffEnergy > 0.0);
 
-		// Verify the reverb branch's contribution matches reverb_factor * input.
 		// Because the three branches sum, full - noReverb == reverb_factor * input
-		// for every sample (reverb branch is just `scale(reverb_factor)`).
-		double[] inputArr = probeIn.toArray(0, SIGNAL_SIZE);
+		// for every sample; the interior skips the filter's edge transient.
 		int skipEdge = FILTER_ORDER;
-		double maxAbsErr = 0.0;
-		for (int t = skipEdge; t < SIGNAL_SIZE; t++) {
-			double expected = reverbFactor * inputArr[t];
-			double actual = full[t] - noReverb[t];
-			maxAbsErr = Math.max(maxAbsErr, Math.abs(expected - actual));
-		}
+		int interior = SIGNAL_SIZE - skipEdge;
+		double maxAbsErr = max(cp(full.range(shape(interior), skipEdge))
+				.subtract(cp(noReverb.range(shape(interior), skipEdge)))
+				.subtract(cp(probeIn.range(shape(interior), skipEdge)).multiply(reverbFactor))
+				.abs()).evaluate().toDouble(0);
 		Assert.assertTrue(
 				"reverb branch contribution (full - noReverb) must equal reverb_factor * input: maxAbsErr="
 						+ maxAbsErr, maxAbsErr < 1e-3);
@@ -962,20 +910,44 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		double lo = Math.max(0.15 * SAMPLE_RATE, signalSize);
 		double hi = 1.5 * SAMPLE_RATE;
 		int ring = adapter.reverbRingFrames() * signalSize;
-		double[] values = taps.toArray(0, count);
+		double smallest = -max(cp(taps).multiply(-1.0)).evaluate().toDouble(0);
+		double largest = max(cp(taps)).evaluate().toDouble(0);
+		Assert.assertTrue("tap " + smallest + " must be at least " + lo
+				+ " (band floor: one frame / legacy range bottom)", smallest >= lo);
+		Assert.assertTrue("tap " + largest + " must be at most " + hi
+				+ " (legacy range top)", largest <= hi);
+		Assert.assertTrue("tap " + largest + " must fit the ring span " + ring, largest <= ring);
+
 		Set<Long> distinct = new HashSet<>();
-		for (double v : values) {
-			Assert.assertTrue("tap " + v + " must be at least " + lo
-					+ " (band floor: one frame / legacy range bottom)", v >= lo);
-			Assert.assertTrue("tap " + v + " must be at most " + hi
-					+ " (legacy range top)", v <= hi);
-			Assert.assertTrue("tap " + v + " must fit the ring span " + ring, v <= ring);
-			distinct.add(Math.round(v));
+		for (int i = 0; i < count; i++) {
+			distinct.add(Math.round(taps.toDouble(i)));
 		}
 		Assert.assertEquals("taps must be mutually distinct", count, distinct.size());
 	}
 
 	// ==== Helpers ====
+
+	/**
+	 * Renders consecutive passes into one continuous signal.
+	 *
+	 * <p>Each pass contributes {@value #SIGNAL_SIZE} samples, and receives the index of
+	 * the first sample it is responsible for so that it can keep phase across buffer
+	 * boundaries.</p>
+	 *
+	 * @param numPasses the number of passes to render
+	 * @param pass      produces one pass of output, given the pass's first sample index
+	 * @return the rendered signal, of shape ({@code numPasses * SIGNAL_SIZE})
+	 */
+	private PackedCollection render(int numPasses, IntFunction<PackedCollection> pass) {
+		PackedCollection signal = new PackedCollection(numPasses * SIGNAL_SIZE);
+
+		for (int p = 0; p < numPasses; p++) {
+			int sampleOffset = p * SIGNAL_SIZE;
+			signal.setFrom(sampleOffset, pass.apply(sampleOffset).range(shape(SIGNAL_SIZE)));
+		}
+
+		return signal;
+	}
 
 	/**
 	 * Zero-initialised input of shape {@code [channels, signalSize]}.
@@ -1182,24 +1154,17 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * across {@code numPasses} entries. Used to drive the producer-valued
 	 * scalar slot from one forward pass to the next.
 	 */
-	private double[] sweepSchedule(double start, double end, int numPasses) {
-		double[] schedule = new double[numPasses];
-		if (numPasses == 1) {
-			schedule[0] = 0.5 * (start + end);
-			return schedule;
-		}
-		for (int i = 0; i < numPasses; i++) {
-			double t = (double) i / (numPasses - 1);
-			schedule[i] = start + t * (end - start);
-		}
-		return schedule;
+	private PackedCollection sweepSchedule(double start, double end, int numPasses) {
+		if (numPasses == 1) return pack(0.5 * (start + end));
+
+		return integers(0, numPasses).divide(c(numPasses - 1.0))
+				.multiply(c(end - start)).add(c(start))
+				.evaluate().reshape(shape(numPasses));
 	}
 
 	/** Arithmetic mean of a schedule, used as the constant baseline. */
-	private double scheduleMean(double[] schedule) {
-		double sum = 0.0;
-		for (double v : schedule) sum += v;
-		return sum / schedule.length;
+	private double scheduleMean(PackedCollection schedule) {
+		return mean(cp(schedule)).evaluate().toDouble(0);
 	}
 
 	/**
@@ -1215,7 +1180,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 													   Map<String, Object> producerArgs,
 													   Map<String, Object> constArgs,
 													   PackedCollection slot,
-													   double[] schedule,
+													   PackedCollection schedule,
 													   String wavFileName) throws IOException {
 		File outputDir = new File("results/pdsl-audio-dsp");
 		outputDir.mkdirs();
@@ -1235,43 +1200,24 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		constModel.add(constBlock);
 		CompiledModel constCompiled = constModel.compile();
 
-		int numPasses = schedule.length;
-		int totalSamples = numPasses * SIGNAL_SIZE;
-		float[] producerMono = new float[totalSamples];
-		float[] constMono = new float[totalSamples];
-
+		int numPasses = schedule.getMemLength();
 		PackedCollection channelFreqs = pack(220.0, 440.0, 880.0, 1760.0);
 
-		for (int pass = 0; pass < numPasses; pass++) {
-			int sampleOffset = pass * SIGNAL_SIZE;
-			double slotValue = schedule[pass];
-			slot.fill(slotValue);
-
-			double[] producerOut = producerCompiled
-					.forward(multiChannelCarrier(channelFreqs, sampleOffset))
-					.toArray(0, SIGNAL_SIZE);
-			double[] constOut = constCompiled
-					.forward(multiChannelCarrier(channelFreqs, sampleOffset))
-					.toArray(0, SIGNAL_SIZE);
-
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				producerMono[sampleOffset + i] = (float) producerOut[i];
-				constMono[sampleOffset + i] = (float) constOut[i];
-			}
-		}
+		// The producer path reads the slot as it stands when the pass runs, so the
+		// slot is advanced to the pass's scheduled value before rendering it.
+		PackedCollection producerMono = render(numPasses, offset -> {
+			slot.setFrom(0, schedule.range(shape(1), offset / SIGNAL_SIZE));
+			return producerCompiled.forward(multiChannelCarrier(channelFreqs, offset));
+		});
+		PackedCollection constMono = render(numPasses,
+				offset -> constCompiled.forward(multiChannelCarrier(channelFreqs, offset)));
 
 		File wav = new File(outputDir, wavFileName);
 		PdslAudioDemoTest.writeDemoWav(wav, producerMono, SAMPLE_RATE);
 		Assert.assertTrue("Producer-driven WAV must be non-empty: " + wav, wav.length() > 0);
 
-		double diffEnergy = 0.0;
-		double baselineEnergy = 0.0;
-		for (int i = 0; i < totalSamples; i++) {
-			double diff = (double) producerMono[i] - (double) constMono[i];
-			diffEnergy += diff * diff;
-			baselineEnergy += (double) constMono[i] * (double) constMono[i];
-		}
-		return new AutomationResult(diffEnergy, baselineEnergy);
+		return new AutomationResult(differenceEnergy(producerMono, constMono),
+				energy(constMono, 0));
 	}
 
 }

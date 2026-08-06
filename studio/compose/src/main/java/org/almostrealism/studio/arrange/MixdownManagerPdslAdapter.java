@@ -32,7 +32,6 @@ import org.almostrealism.model.Block;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.studio.optimize.OptimizeFactorFeatures;
-import org.almostrealism.util.FirFilterTestFeatures;
 
 import java.util.HashMap;
 import java.util.List;
@@ -80,8 +79,7 @@ import java.util.stream.IntStream;
  * decoupled during the cutover.
  */
 @Deprecated
-public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFeatures,
-		FirFilterTestFeatures {
+public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFeatures {
 
 	/** Number of log-spaced cutoff bins in the filter impulse-response lookup tables. */
 	private static final int FILTER_TABLE_BINS = 1024;
