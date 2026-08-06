@@ -248,10 +248,10 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 	 * implementation. An indexed scalar write is the shape a host-side loop takes
 	 * when it computes values one at a time, and offering it on the interface put
 	 * it within reach of every consumer of a {@link MemoryData} reference. A call
-	 * that needs to place more than one value writes the whole buffer with an array
-	 * passed to {@link MemoryData#setMem(double[])} at index 0, or is a computation and
-	 * belongs in a {@link io.almostrealism.relation.Producer} rather than at a
-	 * write site.</p>
+	 * that needs to place more than one value either writes through
+	 * {@link org.almostrealism.collect.PackedCollection#set(int, double...)} on a
+	 * concrete collection reference, or is a computation and belongs in a
+	 * {@link io.almostrealism.relation.Producer} rather than at a write site.</p>
 	 *
 	 * @param offset Index in this memory
 	 * @param value Value to write
