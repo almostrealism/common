@@ -18,17 +18,10 @@ package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.Ops;
+import io.almostrealism.compute.Process;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.Precision;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.mem.ByteBufferTransfer;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.DirectMemory;
-import org.almostrealism.hardware.mem.RAM;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.DoubleBuffer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.ml.AutoregressiveModel;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.midi.MidiCompoundToken;
@@ -402,13 +395,11 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
 
 		int nl = REAL_CONFIG.decoderLayers;
-		int[] inputSizesL = new int[nl];
 		PackedCollection[] weightIhL = new PackedCollection[nl];
 		PackedCollection[] weightHhL = new PackedCollection[nl];
 		PackedCollection[] biasIhL = new PackedCollection[nl];
 		PackedCollection[] biasHhL = new PackedCollection[nl];
 		for (int l = 0; l < nl; l++) {
-			inputSizesL[l] = decoderHidden;
 			weightIhL[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
 			weightHhL[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
 			biasIhL[l] = createRandomCollection(rng, 3 * decoderHidden);
@@ -417,14 +408,14 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 
 		// Stage 1: Random input hidden state
 		PackedCollection inputHidden = createRandomCollection(new Random(99), hidden);
-		double[] inputArr = inputHidden.toArray(0, hidden);
-		printStats("Stage 1: Input hidden state (hiddenSize=" + hidden + ")", inputArr);
+		printStats("Stage 1: Input hidden state (hiddenSize=" + hidden + ")",
+				inputHidden.range(shape(hidden)));
 
 		// Stage 2: Summary projection
 		PackedCollection projected = linearForward(
 				inputHidden, hidden, summaryWeight, decoderHidden, summaryBias);
-		double[] projArr = projected.toArray(0, decoderHidden);
-		printStats("Stage 2: After summary projection (decoderHidden=" + decoderHidden + ")", projArr);
+		printStats("Stage 2: After summary projection (decoderHidden=" + decoderHidden + ")",
+				projected.range(shape(decoderHidden)));
 
 		// Stage 3: GRU forward steps
 		PackedCollection[] h = new PackedCollection[nl];
@@ -432,27 +423,26 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 			h[l] = copyCollection(projected, decoderHidden);
 		}
 
-		PackedCollection sosEmb = getEmbeddingSlice(decoderEmb, 0, decoderHidden);
-		double[] sosArr = sosEmb.toArray(0, decoderHidden);
-		printStats("Stage 3a: SOS embedding (token 0)", sosArr);
+		PackedCollection x = getEmbeddingSlice(decoderEmb, 0, decoderHidden);
+		PackedCollection logits = new PackedCollection(vocabSize);
+		printStats("Stage 3a: SOS embedding (token 0)", x.range(shape(decoderHidden)));
 
-		PackedCollection x = sosEmb;
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < nl; l++) {
-				h[l] = gruStep(weightIhL[l], weightHhL[l], biasIhL[l], biasHhL[l], layerInput, h[l]);
+				h[l].setFrom(0, gruStep(weightIhL[l], weightHhL[l],
+						biasIhL[l], biasHhL[l], layerInput, h[l]));
 				layerInput = h[l];
 			}
 
-			double[] gruOut = h[nl - 1].toArray(0, decoderHidden);
-			printStats("Stage 3b: GRU output (step " + step + ", " + ATTR_NAMES[step] + ")", gruOut);
+			printStats("Stage 3b: GRU output (step " + step + ", " + ATTR_NAMES[step] + ")",
+					h[nl - 1].range(shape(decoderHidden)));
 
 			// Stage 4: lm_head projection to logits
-			PackedCollection logits = linearForward(
-					h[nl - 1], decoderHidden,
-					lmHeadWeight, vocabSize, lmHeadBias);
-			double[] logitArr = logits.toArray(0, vocabSize);
-			printStats("Stage 4: lm_head logits (step " + step + ", " + ATTR_NAMES[step] + ")", logitArr);
+			logits.setFrom(0, linearForward(h[nl - 1], decoderHidden,
+					lmHeadWeight, vocabSize, lmHeadBias));
+			printStats("Stage 4: lm_head logits (step " + step + ", " + ATTR_NAMES[step] + ")",
+					logits.range(shape(vocabSize)));
 
 			// Stage 5: Argmax
 			int token = argmax(logits, vocabSize);
@@ -460,7 +450,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 			log(String.format("Stage 5: Argmax token=%d -> %s%n%n", token, region));
 
 			// Embed the selected token for next step
-			x = getEmbeddingSlice(decoderEmb, token, decoderHidden);
+			x.setFrom(0, decoderEmb, token * decoderHidden, decoderHidden);
 		}
 
 		// Key diagnostic: what is the lm_head logit magnitude relative to vocab structure?
@@ -722,13 +712,11 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		PackedCollection decoderEmb = createRandomCollection(rng, vocabSize, decoderHidden);
 
 		int na = REAL_CONFIG.decoderLayers;
-		int[] inputSizesA = new int[na];
 		PackedCollection[] weightIhA = new PackedCollection[na];
 		PackedCollection[] weightHhA = new PackedCollection[na];
 		PackedCollection[] biasIhA = new PackedCollection[na];
 		PackedCollection[] biasHhA = new PackedCollection[na];
 		for (int l = 0; l < na; l++) {
-			inputSizesA[l] = decoderHidden;
 			weightIhA[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
 			weightHhA[l] = createRandomCollection(rng, 3 * decoderHidden, decoderHidden);
 			biasIhA[l] = createRandomCollection(rng, 3 * decoderHidden);
@@ -747,29 +735,31 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		}
 
 		PackedCollection x = getEmbeddingSlice(decoderEmb, 0, decoderHidden);
+		PackedCollection logits = new PackedCollection(vocabSize);
 
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < na; l++) {
-				h[l] = gruStep(weightIhA[l], weightHhA[l], biasIhA[l], biasHhA[l], layerInput, h[l]);
+				h[l].setFrom(0, gruStep(weightIhA[l], weightHhA[l],
+						biasIhA[l], biasHhA[l], layerInput, h[l]));
 				layerInput = h[l];
 			}
 
-			PackedCollection logits = linearForward(
-					h[na - 1], decoderHidden,
-					lmHeadWeight, vocabSize, lmHeadBias);
+			logits.setFrom(0, linearForward(h[na - 1], decoderHidden,
+					lmHeadWeight, vocabSize, lmHeadBias));
 
-			double[] logitArr = logits.toArray(0, vocabSize);
+			PackedCollection logitValues = logits.range(shape(vocabSize));
 
 			// Find top-5 tokens
-			int[] topK = topKIndices(logitArr, 5);
+			int[] topK = topKIndices(logitValues, 5);
+			PackedCollection stats = statistics(logitValues);
 			log(String.format("Step %d (%s):%n", step, ATTR_NAMES[step]));
 			log(String.format("  Logit stats: min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
-					arrayMin(logitArr), arrayMax(logitArr),
-					arrayMean(logitArr), arrayStd(logitArr)));
+					stats.toDouble(STAT_MIN), stats.toDouble(STAT_MAX),
+					stats.toDouble(STAT_MEAN), stats.toDouble(STAT_STD)));
 			log("  Top-5 tokens: ");
 			for (int k = 0; k < 5; k++) {
-				log(String.format("[%d]=%.4f ", topK[k], logitArr[topK[k]]));
+				log(String.format("[%d]=%.4f ", topK[k], logitValues.toDouble(topK[k])));
 			}
 			log("");
 
@@ -793,7 +783,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 			}
 			log(String.format("  Top-5 tokens in correct range: %d/5%n%n", inRange));
 
-			x = getEmbeddingSlice(decoderEmb, token, decoderHidden);
+			x.setFrom(0, decoderEmb, token * decoderHidden, decoderHidden);
 		}
 	}
 
@@ -876,12 +866,40 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	}
 
 	/**
-	 * Run one GRU layer step in plain Java for diagnostic purposes.
+	 * Project one of the three gates stacked into a GRU weight matrix.
+	 *
+	 * <p>GRU weights arrive stacked as (3*size, inputSize) in reset, update, candidate
+	 * order, with biases stacked the same way. This slices out the requested gate's
+	 * rows and returns {@code W_gate @ input + b_gate}.</p>
+	 *
+	 * @param weight     stacked weights of shape (3*size, inputSize)
+	 * @param bias       stacked biases of shape (3*size)
+	 * @param input      vector of shape (inputSize)
+	 * @param gate       gate index: 0 for reset, 1 for update, 2 for candidate
+	 * @param size       hidden size, the number of rows belonging to each gate
+	 * @param inputSize  length of the input vector
+	 * @return the gate projection of shape (size)
+	 */
+	private CollectionProducer gateProjection(PackedCollection weight, PackedCollection bias,
+											  Producer<PackedCollection> input,
+											  int gate, int size, int inputSize) {
+		return add(
+				matmul(cp(weight.range(shape(size, inputSize), gate * size * inputSize)), input),
+				cp(bias.range(shape(size), gate * size))).reshape(shape(size));
+	}
+
+	/**
+	 * Run one GRU layer step for diagnostic purposes.
 	 *
 	 * <p>Computes: r = σ(W_ir·x + b_ir + W_hr·h + b_hr),
 	 * z = σ(W_iz·x + b_iz + W_hz·h + b_hz),
 	 * n = tanh(W_in·x + b_in + r*(W_hn·h + b_hn)),
 	 * h_new = (1-z)*n + z*h.</p>
+	 *
+	 * <p>Callers stepping this in a loop should read the result back into the same
+	 * hidden state collection rather than letting it be replaced by the returned one.
+	 * An operand's offset forms part of its signature, so a fresh allocation per step
+	 * makes every step a distinct graph and recompiles the pipeline once per step.</p>
 	 *
 	 * @param weightIh   stacked input-hidden weights, shape (3*dh, inputSize)
 	 * @param weightHh   stacked hidden-hidden weights, shape (3*dh, dh)
@@ -891,213 +909,149 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 	 * @param h          previous hidden state of shape (hiddenSize)
 	 * @return new hidden state of shape (hiddenSize)
 	 */
-	private static PackedCollection gruStep(
+	private PackedCollection gruStep(
 			PackedCollection weightIh, PackedCollection weightHh,
 			PackedCollection biasIh, PackedCollection biasHh,
 			PackedCollection x, PackedCollection h) {
 		int dh = h.getShape().getTotalSize();
 		int inputSize = x.getShape().getTotalSize();
 
-		double[] xArr = x.toArray(0, inputSize);
-		double[] hArr = h.toArray(0, dh);
+		CollectionProducer input = cp(x.range(shape(inputSize)));
+		CollectionProducer hidden = cp(h.range(shape(dh)));
 
-		double[] wIr = weightIh.toArray(0, dh * inputSize);
-		double[] bIr = biasIh.toArray(0, dh);
-		double[] wHr = weightHh.toArray(0, dh * dh);
-		double[] bHr = biasHh.toArray(0, dh);
+		CollectionProducer r = sigmoid(add(
+				gateProjection(weightIh, biasIh, input, 0, dh, inputSize),
+				gateProjection(weightHh, biasHh, hidden, 0, dh, dh)));
+		CollectionProducer z = sigmoid(add(
+				gateProjection(weightIh, biasIh, input, 1, dh, inputSize),
+				gateProjection(weightHh, biasHh, hidden, 1, dh, dh)));
+		CollectionProducer n = tanh(add(
+				gateProjection(weightIh, biasIh, input, 2, dh, inputSize),
+				r.multiply(gateProjection(weightHh, biasHh, hidden, 2, dh, dh))));
 
-		double[] wIz = weightIh.toArray(dh * inputSize, dh * inputSize);
-		double[] bIz = biasIh.toArray(dh, dh);
-		double[] wHz = weightHh.toArray(dh * dh, dh * dh);
-		double[] bHz = biasHh.toArray(dh, dh);
-
-		double[] wIn = weightIh.toArray(2 * dh * inputSize, dh * inputSize);
-		double[] bIn = biasIh.toArray(2 * dh, dh);
-		double[] wHn = weightHh.toArray(2 * dh * dh, dh * dh);
-		double[] bHn = biasHh.toArray(2 * dh, dh);
-
-		double[] r = new double[dh];
-		double[] z = new double[dh];
-		double[] n = new double[dh];
-		double[] hNew = new double[dh];
-
-		for (int i = 0; i < dh; i++) {
-			double rGate = bIr[i] + bHr[i];
-			double zGate = bIz[i] + bHz[i];
-			double nGateIh = bIn[i];
-			double nGateHh = bHn[i];
-			for (int j = 0; j < inputSize; j++) {
-				rGate += wIr[i * inputSize + j] * xArr[j];
-				zGate += wIz[i * inputSize + j] * xArr[j];
-				nGateIh += wIn[i * inputSize + j] * xArr[j];
-			}
-			for (int j = 0; j < dh; j++) {
-				rGate += wHr[i * dh + j] * hArr[j];
-				zGate += wHz[i * dh + j] * hArr[j];
-				nGateHh += wHn[i * dh + j] * hArr[j];
-			}
-			r[i] = 1.0 / (1.0 + Math.exp(-rGate));
-			z[i] = 1.0 / (1.0 + Math.exp(-zGate));
-			n[i] = Math.tanh(nGateIh + r[i] * nGateHh);
-			hNew[i] = (1.0 - z[i]) * n[i] + z[i] * hArr[i];
-		}
-
-		MemoryProvider<? extends RAM> provider =
-				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(dh);
-		ByteBuffer source = ByteBuffer.allocate(dh * Precision.FP64.bytes())
-				.order(ByteOrder.nativeOrder());
-		source.asDoubleBuffer().put(hNew);
-		new ByteBufferTransfer(source, Precision.FP64,
-				((DirectMemory) mem).asByteBuffer(),
-				Precision.ofBytes(provider.getNumberSize())).copyAll();
-
-		return new PackedCollection(new TraversalPolicy(dh), 0, Bytes.of(mem, dh), 0);
+		CollectionProducer hNew = add(
+				c(1.0).subtract(z).multiply(n),
+				z.multiply(hidden)).reshape(shape(dh));
+		return (PackedCollection) Process.optimized(hNew).get().evaluate();
 	}
 
 	/**
 	 * Compute matrix-vector product plus bias: result = weight @ input + bias.
-	 * Mirrors GRUDecoder.linearForward which is package-private.
+	 * Mirrors the projection {@link GRUDecoder} applies for its summary and lm_head layers.
+	 *
+	 * @param input       vector of shape (inputSize)
+	 * @param inputSize   length of the input vector
+	 * @param weight      weights of shape (outputSize, inputSize)
+	 * @param outputSize  length of the result
+	 * @param bias        biases of shape (outputSize)
+	 * @return the projection of shape (outputSize)
 	 */
-	private static PackedCollection linearForward(PackedCollection input, int inputSize,
-												  PackedCollection weight, int outputSize,
-												  PackedCollection bias) {
-		double[] inputArr = input.toArray();
-		double[] weightArr = weight.toArray();
-		double[] biasArr = bias.toArray();
-		double[] resultArr = new double[outputSize];
-		for (int i = 0; i < outputSize; i++) {
-			double sum = biasArr[i];
-			int rowOffset = i * inputSize;
-			for (int j = 0; j < inputSize; j++) {
-				sum += weightArr[rowOffset + j] * inputArr[j];
-			}
-			resultArr[i] = sum;
-		}
-		MemoryProvider<? extends RAM> provider =
-				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(outputSize);
-		ByteBuffer source = ByteBuffer.allocate(outputSize * Precision.FP64.bytes())
-				.order(ByteOrder.nativeOrder());
-		source.asDoubleBuffer().put(resultArr);
-		new ByteBufferTransfer(source, Precision.FP64,
-				((DirectMemory) mem).asByteBuffer(),
-				Precision.ofBytes(provider.getNumberSize())).copyAll();
-
-		return new PackedCollection(new TraversalPolicy(outputSize), 0, Bytes.of(mem, outputSize), 0);
+	private PackedCollection linearForward(PackedCollection input, int inputSize,
+										   PackedCollection weight, int outputSize,
+										   PackedCollection bias) {
+		CollectionProducer projection = add(
+				matmul(cp(weight.range(shape(outputSize, inputSize))),
+						cp(input.range(shape(inputSize)))),
+				cp(bias.range(shape(outputSize)))).reshape(shape(outputSize));
+		return (PackedCollection) Process.optimized(projection).get().evaluate();
 	}
 
 	/**
 	 * Find argmax of a PackedCollection.
 	 */
-	private static int argmax(PackedCollection collection, int size) {
-		double[] data = collection.toArray(0, size);
-		int maxIdx = 0;
-		double maxVal = data[0];
-		for (int i = 1; i < size; i++) {
-			if (data[i] > maxVal) {
-				maxVal = data[i];
-				maxIdx = i;
-			}
-		}
-		return maxIdx;
+	private int argmax(PackedCollection collection, int size) {
+		return (int) cp(collection.range(shape(size))).indexOfMax().evaluate().toDouble(0);
 	}
 
 	/**
 	 * Find the indices of the top-k values in an array.
 	 */
-	private static int[] topKIndices(double[] arr, int k) {
-		int[] indices = new int[k];
-		double[] values = new double[k];
-		Arrays.fill(values, Double.NEGATIVE_INFINITY);
+	private int[] topKIndices(PackedCollection values, int k) {
+		int n = values.getMemLength();
 
-		for (int i = 0; i < arr.length; i++) {
-			int minPos = 0;
-			for (int j = 1; j < k; j++) {
-				if (values[j] < values[minPos]) minPos = j;
-			}
-			if (arr[i] > values[minPos]) {
-				values[minPos] = arr[i];
-				indices[minPos] = i;
-			}
-		}
+		// Selection proceeds on a copy, each winner masked out so the next round
+		// finds the one after it. The result is already in descending order.
+		PackedCollection remaining = new PackedCollection(n);
+		remaining.setFrom(0, values);
 
-		// Sort by descending value
-		for (int i = 0; i < k - 1; i++) {
-			for (int j = i + 1; j < k; j++) {
-				if (values[j] > values[i]) {
-					double tmpV = values[i]; values[i] = values[j]; values[j] = tmpV;
-					int tmpI = indices[i]; indices[i] = indices[j]; indices[j] = tmpI;
-				}
-			}
+		int indices[] = new int[k];
+		for (int i = 0; i < k; i++) {
+			indices[i] = argmax(remaining, n);
+			a(cp(remaining), equals(integers(0, n), c(indices[i]),
+					c(-Double.MAX_VALUE), cp(remaining))).get().run();
 		}
 		return indices;
 	}
 
-	/** Prints min/max/mean/std statistics for an array. */
-	private static void printStats(String label, double[] arr) {
+	/** Position of the minimum within the collection returned by {@link #statistics}. */
+	private static final int STAT_MIN = 0;
+
+	/** Position of the maximum within the collection returned by {@link #statistics}. */
+	private static final int STAT_MAX = 1;
+
+	/** Position of the mean within the collection returned by {@link #statistics}. */
+	private static final int STAT_MEAN = 2;
+
+	/** Position of the standard deviation within the collection returned by {@link #statistics}. */
+	private static final int STAT_STD = 3;
+
+	/** Position of the NaN count within the collection returned by {@link #statistics}. */
+	private static final int STAT_NAN = 4;
+
+	/** Position of the non-finite count within the collection returned by {@link #statistics}. */
+	private static final int STAT_NON_FINITE = 5;
+
+	/** Number of values in the collection returned by {@link #statistics}. */
+	private static final int STAT_COUNT = 6;
+
+	/**
+	 * Summarize a signal as min, max, mean, standard deviation, NaN count and
+	 * non-finite count, indexed by the {@code STAT_} constants.
+	 *
+	 * <p>The six aggregates are concatenated into a single computation so that one
+	 * kernel is compiled and dispatched rather than six. There is no whole-collection
+	 * minimum, so the smallest value is found by negating around a maximum. A value
+	 * that differs from itself is not a number, and one whose magnitude does not
+	 * compare below the largest finite value is either that or an infinity.</p>
+	 *
+	 * <p>Optimized before evaluation: the square root and the counts consume
+	 * whole-collection reductions, which an unoptimized consumer embeds at every
+	 * element.</p>
+	 *
+	 * @param values the signal to summarize
+	 * @return the six aggregates, of shape (6)
+	 */
+	private PackedCollection statistics(PackedCollection values) {
+		int n = values.getMemLength();
+		CollectionProducer v = cp(values);
+
+		CollectionProducer stats = concat(
+				max(v.multiply(-1.0)).multiply(-1.0),
+				max(v),
+				mean(v),
+				sqrt(variance(v)),
+				sum(equals(v, v, c(0.0), c(1.0)).reshape(shape(n))),
+				sum(lessThan(abs(v), c(Double.MAX_VALUE), c(0.0), c(1.0)).reshape(shape(n))))
+				.reshape(shape(STAT_COUNT));
+		return (PackedCollection) Process.optimized(stats).get().evaluate();
+	}
+
+	/** Prints min/max/mean/std statistics for a signal. */
+	private void printStats(String label, PackedCollection values) {
+		PackedCollection stats = statistics(values);
+
 		Console.root().println(String.format("%s:%n", label));
 		Console.root().println(String.format("  size=%d, min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
-				arr.length, arrayMin(arr), arrayMax(arr), arrayMean(arr), arrayStd(arr)));
+				values.getMemLength(), stats.toDouble(STAT_MIN), stats.toDouble(STAT_MAX),
+				stats.toDouble(STAT_MEAN), stats.toDouble(STAT_STD)));
 
-		// Count NaN/Inf
-		int nanCount = 0;
-		int infCount = 0;
-		for (double v : arr) {
-			if (Double.isNaN(v)) nanCount++;
-			if (Double.isInfinite(v)) infCount++;
-		}
-		if (nanCount > 0 || infCount > 0) {
-			Console.root().println(String.format("  WARNING: %d NaN, %d Inf values%n", nanCount, infCount));
+		int nanCount = (int) stats.toDouble(STAT_NAN);
+		int nonFinite = (int) stats.toDouble(STAT_NON_FINITE);
+
+		if (nonFinite > 0) {
+			Console.root().println(String.format("  WARNING: %d NaN, %d Inf values%n",
+					nanCount, nonFinite - nanCount));
 		}
 	}
 
-	/**
-	 * Computes the minimum value in an array.
-	 *
-	 * @param arr the array to search
-	 * @return minimum value
-	 */
-	private static double arrayMin(double[] arr) {
-		double min = arr[0];
-		for (int i = 1; i < arr.length; i++) if (arr[i] < min) min = arr[i];
-		return min;
-	}
-
-	/**
-	 * Computes the maximum value in an array.
-	 *
-	 * @param arr the array to search
-	 * @return maximum value
-	 */
-	private static double arrayMax(double[] arr) {
-		double max = arr[0];
-		for (int i = 1; i < arr.length; i++) if (arr[i] > max) max = arr[i];
-		return max;
-	}
-
-	/**
-	 * Computes the arithmetic mean of an array.
-	 *
-	 * @param arr the array to average
-	 * @return mean value
-	 */
-	private static double arrayMean(double[] arr) {
-		double sum = 0;
-		for (double v : arr) sum += v;
-		return sum / arr.length;
-	}
-
-	/**
-	 * Computes the standard deviation of an array.
-	 *
-	 * @param arr the array to analyze
-	 * @return standard deviation
-	 */
-	private static double arrayStd(double[] arr) {
-		double mean = arrayMean(arr);
-		double sumSq = 0;
-		for (double v : arr) sumSq += (v - mean) * (v - mean);
-		return Math.sqrt(sumSq / arr.length);
-	}
 }

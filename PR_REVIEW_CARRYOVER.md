@@ -113,6 +113,30 @@ demo signals as collections.
 
 ---
 
+## studio/compose — MoonbeamValueDistributionTest
+
+**DONE in phase 24.** The file went from 36 host-array occurrences to zero.
+`gruStep` and `linearForward` are `CollectionProducer` compositions; the reported
+aggregates come from `max`, `mean`, `variance` and `indexOfMax` rather than local
+reimplementations.
+
+Two performance properties are load-bearing and should not be undone:
+
+- The step input and the logits are read back into fixed collections. An operand's
+  offset forms part of its signature, so a fresh allocation per step makes every
+  step a distinct graph and recompiles the pipeline once per step. This alone was
+  the difference between exceeding the 60s timeout and finishing in 32s.
+- The six aggregates in `statistics` are concatenated into one computation. Six
+  separate evaluations meant six kernels compiled per shape.
+
+`testGruDecoderLogitDistribution` ("value 4365 exceeds max 4098") and
+`testDecodedAttributeRangeValidation` ("greedy trial 0: onset 5953") fail, and
+did so identically at HEAD with the change stashed. They look like a genuine
+decoder defect — decoded attribute values overshooting their vocab ranges — and
+are worth investigating on their own.
+
+---
+
 ## Standing instruction from review
 
 No `double[]`. Use `PackedCollection` / `CollectionProducer`. Where a conversion appears
