@@ -550,13 +550,11 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 
 		Random rng = new Random(54321L);
 		int[] sourceLengths = new int[B1_SOURCE_POOL_SIZE];
-		double[][] sourcePool = new double[B1_SOURCE_POOL_SIZE][];
+		PackedCollection[] sourcePool = new PackedCollection[B1_SOURCE_POOL_SIZE];
 		for (int s = 0; s < B1_SOURCE_POOL_SIZE; s++) {
 			sourceLengths[s] = B1_SOURCE_MIN_SAMPLES + rng.nextInt(B1_SOURCE_EXTRA_RANGE);
-			sourcePool[s] = new double[sourceLengths[s]];
-			for (int i = 0; i < sourceLengths[s]; i++) {
-				sourcePool[s][i] = rng.nextDouble() * 2.0 - 1.0;
-			}
+			sourcePool[s] = rand(shape(sourceLengths[s]), rng)
+					.multiply(c(2.0)).add(c(-1.0)).evaluate();
 		}
 
 		log("--- Measurement 1: B1 gather + scalar tensor build (no kernel invoke) ---");
@@ -567,7 +565,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 			B1NoteMetadata md = buildB1NoteMetadata(totalNotes, sourceLengths, rng);
 
 			PackedCollection audioBuf = new PackedCollection(shape(totalNotes, paddedNoteSize));
-			double[] audioData = new double[totalNotes * paddedNoteSize];
+			PackedCollection audioData = new PackedCollection(totalNotes * paddedNoteSize);
 
 			for (int w = 0; w < WARMUP_RUNS; w++) {
 				runB1Gather(audioBuf, audioData, totalNotes, paddedNoteSize, padHalf, sourcePool, md);
@@ -605,7 +603,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 				continue;
 			}
 
-			double[] audioData = new double[totalNotes * paddedNoteSize];
+			PackedCollection audioData = new PackedCollection(totalNotes * paddedNoteSize);
 
 			for (int w = 0; w < WARMUP_RUNS; w++) {
 				runB1GatherAndInvoke(compiled, audioData, totalNotes, paddedNoteSize, padHalf,
@@ -668,14 +666,15 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * the gathered buffer to the pre-allocated audio collection, and allocates and populates
 	 * the eleven {@code [N]} scalar tensors that production would need per tick.
 	 */
-	private void runB1Gather(PackedCollection audioBuf, double[] audioData,
+	private void runB1Gather(PackedCollection audioBuf, PackedCollection audioData,
 							 int totalNotes, int paddedNoteSize, int padHalf,
-							 double[][] sourcePool, B1NoteMetadata md) {
+							 PackedCollection[] sourcePool, B1NoteMetadata md) {
 		for (int n = 0; n < totalNotes; n++) {
-			System.arraycopy(sourcePool[md.sourceIdx[n]], md.sourceOffset[n],
-					audioData, n * paddedNoteSize + padHalf, NOTE_SIZE);
+			audioData.range(shape(NOTE_SIZE), n * paddedNoteSize + padHalf)
+					.setFrom(0, sourcePool[md.sourceIdx[n]]
+							.range(shape(NOTE_SIZE), md.sourceOffset[n]));
 		}
-		audioBuf.setMem(audioData);
+		audioBuf.setFrom(0, audioData);
 
 		PackedCollection.of(md.pitchRatio);
 		PackedCollection.of(md.volAttack);
@@ -697,9 +696,9 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * the {@code cp(...)} idiom, so the {@code setMem} call inside {@link #runB1Gather}
 	 * replaces the contents the chain sees on the next invocation.
 	 */
-	private void runB1GatherAndInvoke(B1Chain compiled, double[] audioData,
+	private void runB1GatherAndInvoke(B1Chain compiled, PackedCollection audioData,
 									  int totalNotes, int paddedNoteSize, int padHalf,
-									  double[][] sourcePool, B1NoteMetadata md) {
+									  PackedCollection[] sourcePool, B1NoteMetadata md) {
 		runB1Gather(compiled.audioInput, audioData, totalNotes, paddedNoteSize, padHalf,
 				sourcePool, md);
 		compiled.chain.evaluate();

@@ -168,8 +168,8 @@ public class DefaultChannelSectionFactory implements Setup, Destroyable,
 			return g;
 		}).collect(Collectors.toList()));
 
-		PackedCollection repeat = new PackedCollection(repeatChoices.length);
-		repeat.setMem(Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray());
+		PackedCollection repeat = PackedCollection.of(
+				Arrays.stream(repeatChoices).map(this::factorForRepeat).toArray());
 
 		this.simpleDuration = chromosome(IntStream.range(0, channels)
 				.mapToObj(i -> chromosome.addChoiceGene(repeat,1))

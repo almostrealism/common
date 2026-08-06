@@ -85,24 +85,27 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 
 	/** Guidance appended to every violation, naming the sanctioned idioms. */
 	private static final String GUIDANCE =
-			"setMem writes device memory only from numeric literals — the whole contents from "
-					+ "index 0 (e.g. setMem(new double[] { 1.0, 2.0 })), or one value at an index "
-					+ "(e.g. setMem(i, 1.0)). The whole-content form takes an array rather than "
-					+ "varargs so that an indexed write cannot silently bind to it, and the indexed "
-					+ "form is declared on MemoryDataAdapter rather than MemoryData so that it is "
-					+ "reachable only through a concrete implementation. "
+			"setMem writes device memory only from numeric literals, one value at an index "
+					+ "(e.g. setMem(i, 1.0)), and that form is declared on MemoryDataAdapter rather "
+					+ "than MemoryData so it is reachable only through a concrete implementation. "
+					+ "The whole-content form is protected and reachable only from the write surface "
+					+ "itself: build a collection from values with PackedCollection.of(...), populate "
+					+ "one with fill(...), or load data from outside the system through "
+					+ "read(ByteBuffer) / read(InputStream). "
 					+ "To copy from another MemoryData use setFrom(...) or cp(src).into(dest).evaluate(); "
 					+ "to materialise computed values use a Producer with fill(value) / fill(pos -> ...) "
 					+ "or a producer assignment. A host double[]/float[] must never be uploaded via setMem.";
 
 	/** Guidance appended to every {@code PackedCollection.of} violation. */
 	private static final String OF_GUIDANCE =
-			"PackedCollection.of bulk-copies host values to the device and accepts only numeric "
-					+ "literals (e.g. PackedCollection.of(1.0, 2.0)). Values computed in Java must be "
-					+ "produced by the computation graph instead (integers(), producer arithmetic, or a "
-					+ "producer assignment); data from outside the system enters through the sanctioned "
-					+ "ingest surface. Staging computed values in a double[] and shipping them in one "
-					+ "transfer is the same violation as writing them element by element.";
+			"PackedCollection.of bulk-copies host values to the device. It is what pack(...) "
+					+ "calls, so it is held to the same standard: every argument an individual value "
+					+ "(a literal or a scalar expression, never an array, a list, a device read-back, "
+					+ "or a call). Values computed in Java must be produced by the computation graph "
+					+ "instead (integers(), producer arithmetic, or a producer assignment); data from "
+					+ "outside the system enters through the sanctioned ingest surface. Staging "
+					+ "computed values in a double[] and shipping them in one transfer is the same "
+					+ "violation as writing them element by element.";
 
 	/** Rule code reported for a {@code fill} or {@code pack} call outside the scalar allowance. */
 	public static final String INGEST_RULE = "FILL_PACK_BEYOND_SCALAR_ALLOWANCE";
@@ -181,18 +184,22 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * layer), the randomness ingest primitive, the mesh-intersection kernel read-back writes in
 	 * {@code domain/space}, and the {@code Tensor} bridge for host-resident boxed values (whose
 	 * correct long-term treatment is an open question); these are expected to shrink to zero.
+	 *
+	 * <p>The reference filter implementations are a different case, and are not expected to go
+	 * away. They compute on the host deliberately: they are the oracle the framework's own
+	 * coefficient and convolution computations are checked against, and expressing them with
+	 * the producers under test would let a fault agree with itself.</p>
 	 */
 	private static final List<String[]> KNOWN_EXCLUSIONS = List.of(
 			new String[] {"/hardware/HardwareFeatures.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/computations/Periodic.java", "counter.setMem(0, count);"},
 			new String[] {"/hardware/mem/MemoryDataCacheManager.java", "getData().get(index).setMem(data);"},
-			new String[] {"/hardware/mem/MemoryBankAdapter.java", "get(index).setMem(values);"},
-			new String[] {"/collect/computations/Random.java", "((MemoryBank) destination).setMem(values);"},
+			new String[] {"/hardware/mem/MemoryBankAdapter.java", "((MemoryDataAdapter) entry).setMem(values);"},
 			new String[] {"/space/MeshData.java", "destination.setMem(i, result.toDouble(i * 2));"},
 			new String[] {"/algebra/Tensor.java", "return PackedCollection.of(values).reshape(shape);"},
-			new String[] {"/assets/CollectionEncoder.java", "decoded.setMem(f);"},
-			new String[] {"/assets/CollectionEncoder.java",
-					"decoded.setMem(data.getDataList().stream().mapToDouble(d -> d).toArray());"},
+			new String[] {"/util/FirFilterTestFeatures.java", "return PackedCollection.of(coefficients);"},
+			new String[] {"/util/FirFilterTestFeatures.java", "return PackedCollection.of(output);"},
+			new String[] {"/time/test/TemporalFeaturesTest.java", "return PackedCollection.of(highPassCoefficients);"},
 			new String[] {"FullAttentionMethodTest.java", "input.setMem(i, pytorchInput[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, inputData[i]);"},
 			new String[] {"ResidualBlockSubComponentTest.java", "input.setMem(i, res0Input[i]);"},
@@ -221,8 +228,20 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	/** Locates the start of each {@code PackedCollection.of(} call. */
 	private static final Pattern OF_CALL = Pattern.compile("PackedCollection\\s*\\.\\s*of\\s*\\(");
 
-	/** Locates the start of each {@code .fill(} call. */
-	private static final Pattern FILL_CALL = Pattern.compile("\\.fill\\s*\\(");
+	/**
+	 * Locates the start of each {@code .fill(} call, excluding {@link java.util.Arrays}
+	 * and {@link java.util.Collections}.
+	 *
+	 * <p>This rule is about writes into device memory. {@code Arrays.fill} and
+	 * {@code Collections.fill} operate on a host array or list and never reach a
+	 * {@link org.almostrealism.hardware.MemoryData}, so matching them only fills the
+	 * inventory with entries that no migration will ever remove. They are excluded by
+	 * name, which would also skip a collection variable whose name ended in
+	 * {@code Arrays} or {@code Collections}; no such name exists, and one would be a
+	 * poor name for a collection.</p>
+	 */
+	private static final Pattern FILL_CALL =
+			Pattern.compile("(?<!Arrays)(?<!Collections)\\.fill\\s*\\(");
 
 	/**
 	 * Locates each {@code fill} call invoked directly on a {@code range(...)} view. A
@@ -361,7 +380,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 			scanCalls(file, content, masked, SETMEM_CALL,
 					args -> isSanctioned(args, masked), RULE, GUIDANCE);
 			scanCalls(file, content, masked, OF_CALL,
-					this::isSanctionedIngest, OF_RULE, OF_GUIDANCE);
+					args -> isWithinScalarAllowance(args, masked), OF_RULE, OF_GUIDANCE);
 			scanCalls(file, content, masked, RANGE_FILL_CALL,
 					args -> false, RANGE_FILL_RULE, RANGE_FILL_GUIDANCE);
 			scanCalls(file, content, masked, FILL_CALL,
@@ -450,24 +469,6 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		}
 	}
 
-	/**
-	 * Determines whether a {@code PackedCollection.of} argument list is sanctioned: every
-	 * argument must be a numeric literal. Unlike {@code setMem} there is no offset argument,
-	 * so no identifier of any kind is permitted — a host array, a {@code List}, a stream
-	 * pipeline, or a computed scalar are all violations.
-	 *
-	 * @param argString  the raw text between the call's parentheses (comment/string masked)
-	 * @return           {@code true} if the call is sanctioned
-	 */
-	private boolean isSanctionedIngest(String argString) {
-		List<String> args = splitTopLevel(argString);
-		if (args.isEmpty()) return false;
-
-		for (String arg : args) {
-			if (isArrayish(arg) || !isNumericLiteral(arg)) return false;
-		}
-		return true;
-	}
 
 	/**
 	 * Determines whether a {@code fill}/{@code pack} argument list is within the scalar
@@ -491,7 +492,7 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 		boolean allLiterals = true;
 
 		for (String arg : args) {
-			if (isArrayish(arg) || arg.contains("(") || arg.contains("->") || arg.contains("::")) {
+			if (isArrayish(arg) || containsCall(arg) || arg.contains("->") || arg.contains("::")) {
 				return false;
 			}
 
@@ -595,11 +596,22 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	 * reads. A leading numeric literal is indistinguishable from a first value, so an
 	 * all-literal list is accepted whichever of the two shapes the author intended.</p>
 	 *
+	 * <p>A call passing five arguments is the low-level host&harr;device primitive —
+	 * {@code MemoryProvider.setMem(mem, offset, source, srcOffset, length)} or the static
+	 * {@code MemoryData.setMem(Memory, ...)} it delegates to — and is not subject to this
+	 * rule, which governs writes into a {@link org.almostrealism.hardware.MemoryData}. No
+	 * instance overload takes five arguments; the widest takes two. If one is ever added,
+	 * this allowance has to be revisited, because arity is what distinguishes them.</p>
+	 *
 	 * @param argString  the raw text between the call's parentheses (comment/string masked)
 	 * @param masked     the whole masked file, used to resolve a leading identifier's type
 	 * @return           {@code true} if the call is sanctioned
 	 */
 	private boolean isSanctioned(String argString, String masked) {
+		if (splitTopLevel(argString).size() == 5) {
+			return true;
+		}
+
 		List<String> args = splitTopLevel(argString);
 		if (args.isEmpty()) return false;
 
@@ -687,18 +699,50 @@ public class SetMemLiteralsDetector extends PolicyViolationDetector {
 	}
 
 	/**
-	 * Returns {@code true} if {@code ident} is declared with an array or varargs type anywhere
-	 * in the (masked) file — i.e. {@code T[] ident} or {@code T... ident}.
+	 * Returns {@code true} if the argument invokes a method — an opening parenthesis directly
+	 * preceded by an identifier character.
+	 *
+	 * <p>A call is rejected because the scan cannot see what it returns, and an array would
+	 * be indistinguishable from a scalar. Parentheses that merely group, as in a cast or an
+	 * arithmetic expression, carry no such uncertainty: whatever they contain is still
+	 * examined, so an array reaching the device through one is caught on its own terms.</p>
+	 *
+	 * @param arg  the argument text
+	 * @return     whether the argument contains a method invocation
+	 */
+	private boolean containsCall(String arg) {
+		for (int i = arg.indexOf('('); i >= 0; i = arg.indexOf('(', i + 1)) {
+			int p = i - 1;
+			while (p >= 0 && arg.charAt(p) == ' ') p--;
+			if (p >= 0 && (Character.isJavaIdentifierPart(arg.charAt(p)))) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Returns {@code true} if {@code ident} is declared anywhere in the (masked) file with a
+	 * type that carries many values rather than one — an array or varargs ({@code T[] ident},
+	 * {@code T... ident}) or a collection of boxed numbers ({@code List<Double> ident}).
+	 *
+	 * <p>The collection case matters because the ingest surface is overloaded for it:
+	 * {@code PackedCollection.of(List<Double>)} moves as many values as the list holds, so an
+	 * identifier of that type is a bulk source even though it carries no array syntax.</p>
 	 *
 	 * @param masked  the comment/string-masked file content
 	 * @param ident   the identifier to look up
-	 * @return        whether the identifier is declared as a host array
+	 * @return        whether the identifier names many values rather than one
 	 */
 	private boolean isDeclaredArray(String masked, String ident) {
 		Pattern decl = Pattern.compile(
 				"[A-Za-z_$][\\w$.]*(?:\\s*<[^;{}=]*>)?\\s*(?:\\[\\s*\\]|\\.\\.\\.)\\s+"
 						+ Pattern.quote(ident) + "\\b");
-		return decl.matcher(masked).find();
+		if (decl.matcher(masked).find()) return true;
+
+		Pattern collection = Pattern.compile(
+				"(?:List|Collection|Iterable|Set|Queue|Deque|ArrayList|LinkedList)"
+						+ "\\s*<[^;{}=]*>\\s+" + Pattern.quote(ident) + "\\b");
+		return collection.matcher(masked).find();
 	}
 
 	/**

@@ -306,8 +306,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		int dim = 3;
 		int count = 2;
 
-		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(0, count * dim).evaluate()
 				.reshape(count, dim).traverse();
 		PackedCollection w = pack(4, -3, 2);
 		CollectionProducer x = x(dim);

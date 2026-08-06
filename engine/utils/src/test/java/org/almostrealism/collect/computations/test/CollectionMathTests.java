@@ -188,6 +188,12 @@ public class CollectionMathTests extends TestSuiteBase {
 		assertEquals(0.0, out.valueAt(0));
 		assertEquals(10.0 / 3.0, out.valueAt(6));
 		assertEquals(5.0, out.valueAt(9));
+
+		// A non-zero start must be honoured, not dropped.
+		PackedCollection offset = linear(2.0, 5.0, 4).evaluate();
+		assertEquals(2.0, offset.valueAt(0));
+		assertEquals(3.0, offset.valueAt(1));
+		assertEquals(5.0, offset.valueAt(3));
 	}
 
 	/**

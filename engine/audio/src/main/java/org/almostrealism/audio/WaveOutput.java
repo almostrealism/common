@@ -594,7 +594,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		@Override
 		public void reset() {
 			Lifecycle.super.reset();
-			cursor.fill(0.0);
+			cursor.clear();
 		}
 
 		@Override

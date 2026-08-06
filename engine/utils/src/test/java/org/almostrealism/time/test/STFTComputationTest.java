@@ -135,9 +135,7 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 
 		// Create DC signal (all ones)
 		PackedCollection signal = new PackedCollection(shape(signalLength));
-		for (int i = 0; i < signalLength; i++) {
-			signal.setMem(i, 1.0);
-		}
+		signal.fill(1.0);
 
 		int numFrames = TemporalFeatures.computeNumFrames(signalLength, fftSize, hopSize);
 		CollectionProducer stftProducer = stft(fftSize, hopSize, WindowComputation.Type.HANN, cp(signal));

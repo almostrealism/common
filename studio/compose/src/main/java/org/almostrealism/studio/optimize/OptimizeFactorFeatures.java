@@ -350,7 +350,7 @@ public interface OptimizeFactorFeatures extends HeredityFeatures, CodeFeatures {
 	 * @param relative           when {@code true} the scale is multiplied by the initial value
 	 * @return a producer yielding the clamped adjustment value at each sample
 	 */
-	default ProducerComputation<PackedCollection> adjustment(Producer<PackedCollection> periodicWavelength,
+	default CollectionProducer adjustment(Producer<PackedCollection> periodicWavelength,
 																Producer<PackedCollection> polyWaveLength,
 																Producer<PackedCollection> polyExp,
 																Producer<PackedCollection> initial,

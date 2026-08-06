@@ -17,6 +17,7 @@
 package org.almostrealism.studio.optimize;
 
 import io.almostrealism.code.DataContext;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneLoader;
@@ -38,12 +39,13 @@ import org.almostrealism.music.pattern.PatternElementFactory;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
+import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.jni.NativeComputeContext;
 import org.almostrealism.hardware.mem.Heap;
-import org.almostrealism.heredity.Breeders;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.GenomeBreeder;
 import org.almostrealism.heredity.ProjectedGenome;
@@ -207,6 +209,11 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 	 * Creates the default genome breeder that combines two parent genomes via perturbation.
 	 * Each gene value is perturbed by a random scale factor derived from {@code magnitude}.
 	 *
+	 * <p>Every parameter of the first genome moves toward the corresponding parameter of
+	 * the second, by the scale factor or by the whole distance between them if that is
+	 * shorter — bounding the move by the distance is what keeps the offspring between its
+	 * parents, and leaves a parameter untouched when both parents agree on it.</p>
+	 *
 	 * @param magnitude the base perturbation magnitude applied during breeding
 	 * @return a {@link GenomeBreeder} that produces perturbed offspring genomes
 	 */
@@ -219,9 +226,18 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 			PackedCollection combined = new PackedCollection(len);
 
 			double scale = (1 + Math.random()) * magnitude / 2;
-			for (int i = 0; i < len; i++) {
-				combined.setMem(i, Breeders.perturbation(a.toDouble(i), b.toDouble(i), scale));
-			}
+			Ops o = Ops.o();
+			TraversalPolicy shape = o.shape(len);
+			CollectionProducer from = o.cp(a).reshape(shape);
+			CollectionProducer toward = o.cp(b).reshape(shape);
+
+			// The bounds are expanded to the parameter shape because min/max collapse to a
+			// scalar when their operands differ in size, which would clamp by one parameter.
+			CollectionProducer step = o.min(
+					o.max(toward.subtract(from), o.constant(shape, -scale)),
+					o.constant(shape, scale));
+
+			o.a(o.cp(combined), from.add(step)).get().run();
 
 			return new ProjectedGenome(new PackedCollection(combined));
 		};

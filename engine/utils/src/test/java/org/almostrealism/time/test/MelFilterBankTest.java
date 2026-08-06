@@ -75,9 +75,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 
 		// Create a flat power spectrum (all ones)
 		PackedCollection powerSpectrum = new PackedCollection(shape(numFreqBins));
-		for (int i = 0; i < numFreqBins; i++) {
-			powerSpectrum.setMem(i, 1.0);
-		}
+		powerSpectrum.fill(1.0);
 
 		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));
 		PackedCollection melEnergies = melBank.evaluate();
@@ -138,9 +136,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		double fMax = 8000;
 
 		PackedCollection powerSpectrum = new PackedCollection(shape(fftSize / 2 + 1));
-		for (int i = 0; i < fftSize / 2 + 1; i++) {
-			powerSpectrum.setMem(i, 1.0);
-		}
+		powerSpectrum.fill(1.0);
 
 		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, fMin, fMax, cp(powerSpectrum));
 		PackedCollection melEnergies = melBank.evaluate();
@@ -222,9 +218,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 
 		// All mel bands have same energy
 		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			melEnergies.setMem(i, 1.0);
-		}
+		melEnergies.fill(1.0);
 
 		PackedCollection mfccs = mfcc(numMfccCoeffs, melEnergies);
 
@@ -247,9 +241,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		int numMfccCoeffs = 20;  // More coefficients than mel bands
 
 		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		for (int i = 0; i < numMelBands; i++) {
-			melEnergies.setMem(i, 1.0);
-		}
+		melEnergies.fill(1.0);
 
 		mfcc(numMfccCoeffs, melEnergies);  // Should throw
 	}
@@ -264,9 +256,7 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		int numMelBands = 40;
 
 		PackedCollection powerSpectrum = new PackedCollection(shape(fftSize / 2 + 1));
-		for (int i = 0; i < fftSize / 2 + 1; i++) {
-			powerSpectrum.setMem(i, 1.0);
-		}
+		powerSpectrum.fill(1.0);
 
 		// Default should use 0 to sampleRate/2
 		CollectionProducer melBank = melFilterBank(fftSize, sampleRate, numMelBands, cp(powerSpectrum));

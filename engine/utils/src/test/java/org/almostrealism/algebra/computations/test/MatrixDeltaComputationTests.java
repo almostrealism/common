@@ -46,8 +46,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 	public void matmul1() {
 		int dim = 2;
 
-		PackedCollection v = pack(IntStream.range(2, 2 + dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(2, 2 + dim).evaluate()
 				.reshape(dim);
 		PackedCollection w = pack(4.0, -3.0, 2.0, 1.5)
 				.reshape(shape(dim, dim));
@@ -82,8 +81,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 	public void matmul2() {
 		int dim = 10;
 
-		PackedCollection v = pack(IntStream.range(2, 2 + dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(2, 2 + dim).evaluate()
 				.reshape(dim);
 		PackedCollection w = empty(shape(dim, dim))
 				.fill(1, 2, 3, 4)
@@ -120,8 +118,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		int count = 1;
 		int dim = 2;
 
-		PackedCollection v = pack(IntStream.range(2, 2 + count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(2, 2 + count * dim).evaluate()
 				.reshape(count, dim).traverse();
 		PackedCollection w = pack(4.0, -3.0, 2.0, 1.5)
 				.reshape(shape(dim, dim));
@@ -151,8 +148,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		int count = 1;
 		int dim = 2;
 
-		PackedCollection v = pack(IntStream.range(2, 2 + count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(2, 2 + count * dim).evaluate()
 				.reshape(count, dim).traverse();
 		PackedCollection w = pack(4.0, -3.0, 2.0, 1.5)
 				.reshape(shape(dim, dim));
@@ -344,8 +340,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		int count = 2;
 		int dim = 3;
 
-		PackedCollection v = pack(IntStream.range(2, 2 + count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
+		PackedCollection v = integers(2, 2 + count * dim).evaluate()
 				.reshape(count, dim).traverse();
 		PackedCollection w = pack(4.0, -3.0, 2.5, 2.0, 1.5, 1.0, 7.0, 4.0, -2.0)
 				.reshape(shape(dim, dim));

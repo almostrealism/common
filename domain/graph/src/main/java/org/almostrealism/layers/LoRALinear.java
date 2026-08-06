@@ -169,7 +169,10 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 			this.loraB = existingLoraWeights[1];
 		} else {
 			this.loraA = initializeLoraA(inputSize, rank);
-			this.loraB = initializeLoraB(rank, outputSize);
+
+			// B starts empty, so that LoRA contributes nothing until it is
+			// trained and the original model's behaviour is preserved
+			this.loraB = new PackedCollection(shape(rank, outputSize));
 		}
 
 		// Create forward operator using same pattern as dense layer
@@ -213,17 +216,6 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 		double std = 1.0 / Math.sqrt(inputSize);
 		randn(shape(inputSize, rank), random).multiply(c(std)).into(a).evaluate();
 		return a;
-	}
-
-	/**
-	 * Initialize LoRA B matrix to zeros.
-	 * This ensures LoRA contribution is zero at the start of training,
-	 * preserving the original model behavior.
-	 */
-	private PackedCollection initializeLoraB(int rank, int outputSize) {
-		PackedCollection b = new PackedCollection(shape(rank, outputSize));
-		b.fill(0.0);
-		return b;
 	}
 
 	@Override

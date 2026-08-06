@@ -295,9 +295,9 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		for (int i = 0; i < config.numLayers; i++) {
 			String prefix = String.format("model.layers.%d", i);
 			weights.put(prefix + ".input_layernorm.weight",
-					onesCollection(dim));
+					new PackedCollection(dim).fill(1.0));
 			weights.put(prefix + ".post_attention_layernorm.weight",
-					onesCollection(dim));
+					new PackedCollection(dim).fill(1.0));
 			weights.put(prefix + ".self_attn.q_proj.weight",
 					new PackedCollection(new TraversalPolicy(dim, dim)));
 			weights.put(prefix + ".self_attn.k_proj.weight",
@@ -314,7 +314,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 					new PackedCollection(new TraversalPolicy(ffnDim, dim)));
 		}
 
-		weights.put("model.norm.weight", onesCollection(dim));
+		weights.put("model.norm.weight", new PackedCollection(dim).fill(1.0));
 
 		return new StateDictionary(weights);
 	}
@@ -543,13 +543,4 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		return new PackedCollection(new TraversalPolicy(dh), 0, Bytes.of(mem, dh), 0);
 	}
 
-	/**
-	 * Create a PackedCollection of the given size filled with ones.
-	 * Used for RMSNorm weights so the norm doesn't zero out activations.
-	 */
-	private static PackedCollection onesCollection(int size) {
-		PackedCollection collection = new PackedCollection(new TraversalPolicy(size));
-		collection.fill(1.0);
-		return collection;
-	}
 }

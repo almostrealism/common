@@ -406,9 +406,7 @@ public class WindowComputationTest extends TestSuiteBase {
 
 		// Create a simple signal of all ones
 		PackedCollection signal = new PackedCollection(size);
-		for (int i = 0; i < size; i++) {
-			signal.setMem(i, 1.0);
-		}
+		signal.fill(1.0);
 
 		// Apply Hann window
 		PackedCollection windowed = applyWindow(cp(signal), WindowComputation.Type.HANN).get().evaluate();

@@ -104,18 +104,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	private static final int REVERB_TAPS = 4;
 
 	/**
-	 * Per-tap delay lengths (in samples) used by {@code testMixdownManagerReverbPath}.
-	 * Irregular (prime-offset) values inside the read-first ring band
-	 * {@code [REVERB_SIGNAL_SIZE, 2 * REVERB_SIGNAL_SIZE]} — a block-parallel
-	 * delay network cannot represent sub-frame taps (they clamp to one frame), so the
-	 * irregular-tap pattern of the Java DelayNetwork is expressed one frame up. The
-	 * per-line rings span two frames to hold the longest tap.
-	 */
-	private static final int[] REVERB_DELAY_SAMPLES = {
-			REVERB_SIGNAL_SIZE + 103, REVERB_SIGNAL_SIZE + 211,
-			REVERB_SIGNAL_SIZE + 401, REVERB_SIGNAL_SIZE + 619 };
-
-	/**
 	 * Number of forward passes used by the producer-args automation tests.
 	 * Each pass is one buffer of {@link #SIGNAL_SIZE} samples; with the
 	 * default value the tests render roughly half a second of audio per
@@ -734,7 +722,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("filter_order", (double) FILTER_ORDER);
 		args.put("hp_cutoff", dryHpCutoff);
 		args.put("wet_filter_coeffs",
-				PackedCollection.of(referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER)));
+				referenceLowPassCoefficients(wetLpCutoff, SAMPLE_RATE, FILTER_ORDER));
 		args.put("wet_level", wetLevel);
 		args.put("reverb_factor", reverbFactor);
 
@@ -922,11 +910,13 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// entered at absolute sample 0, so tap n's echo lands at absolute
 		// sample REVERB_DELAY_SAMPLES[n] — inside pass 2's window at index
 		// (delay - REVERB_SIGNAL_SIZE).
+		PackedCollection delays = (PackedCollection) args.get("delay_samples");
+
 		for (int n = 0; n < REVERB_TAPS; n++) {
-			int t = REVERB_DELAY_SAMPLES[n] - REVERB_SIGNAL_SIZE;
+			int delay = (int) delays.toDouble(n);
+			int t = delay - REVERB_SIGNAL_SIZE;
 			Assert.assertTrue(
-					"Pass 2 sample at tap " + n + " delay ("
-							+ REVERB_DELAY_SAMPLES[n]
+					"Pass 2 sample at tap " + n + " delay (" + delay
 							+ ") must carry impulse echo, got " + pass2Output[t],
 					Math.abs(pass2Output[t]) > 0.5);
 		}
@@ -1078,8 +1068,23 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	}
 
 	/**
+	 * Per-tap delay lengths (in samples) used by {@code testMixdownManagerReverbPath}.
+	 *
+	 * <p>Irregular (prime-offset) values inside the read-first ring band
+	 * {@code [REVERB_SIGNAL_SIZE, 2 * REVERB_SIGNAL_SIZE]} — a block-parallel
+	 * delay network cannot represent sub-frame taps (they clamp to one frame), so the
+	 * irregular-tap pattern of the Java DelayNetwork is expressed one frame up. The
+	 * per-line rings span two frames to hold the longest tap.</p>
+	 *
+	 * @return the delay length of each tap
+	 */
+	private PackedCollection reverbDelaySamples() {
+		return cp(pack(103.0, 211.0, 401.0, 619.0)).add(REVERB_SIGNAL_SIZE).evaluate();
+	}
+
+	/**
 	 * Argument map for {@code mixdown_reverb_bus}. Builds per-tap delay
-	 * lengths from {@link #REVERB_DELAY_SAMPLES} and a stable feedback matrix
+	 * lengths from {@link #reverbDelaySamples()} and a stable feedback matrix
 	 * with diagonal weight 0.4 and off-diagonal weight 0.1 (row-sum 0.7,
 	 * spectral radius &lt; 1 so the closed loop is a contraction).
 	 */
@@ -1088,24 +1093,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		args.put("channels", REVERB_TAPS);
 		args.put("signal_size", REVERB_SIGNAL_SIZE);
 
-		double[] delaysData = new double[REVERB_TAPS];
-		for (int i = 0; i < REVERB_TAPS; i++) delaysData[i] = REVERB_DELAY_SAMPLES[i];
-		PackedCollection delaySamples = new PackedCollection(REVERB_TAPS);
-		delaySamples.setMem(delaysData);
-		args.put("delay_samples", delaySamples);
+		args.put("delay_samples", reverbDelaySamples());
 
 		double diag = 0.4;
 		double off = 0.1;
-		double[] matrixData = new double[REVERB_TAPS * REVERB_TAPS];
-		for (int n = 0; n < REVERB_TAPS; n++) {
-			for (int m = 0; m < REVERB_TAPS; m++) {
-				matrixData[n * REVERB_TAPS + m] = (n == m) ? diag : off;
-			}
-		}
-		PackedCollection feedback = new PackedCollection(
-				new TraversalPolicy(REVERB_TAPS, REVERB_TAPS));
-		feedback.setMem(matrixData);
-		args.put("feedback_matrix", feedback);
+		args.put("feedback_matrix",
+				identity(REVERB_TAPS).multiply(diag - off).add(c(off)).evaluate());
 
 		// Two frames per line: the read-first ring band is [signal_size, ringSize], so
 		// the ring must span the longest tap (REVERB_SIGNAL_SIZE + 619 < 2 frames).

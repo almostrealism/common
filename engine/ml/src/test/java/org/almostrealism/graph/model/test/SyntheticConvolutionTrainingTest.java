@@ -18,6 +18,7 @@ package org.almostrealism.graph.model.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
@@ -60,6 +61,45 @@ import java.util.function.Supplier;
 public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements ModelFeatures, ModelTestFeatures {
 
 	/**
+	 * The column index of every pixel, shaped like the images being generated.
+	 *
+	 * @param batchSize images in a batch
+	 * @param rows      image height
+	 * @param cols      image width
+	 * @return a producer of shape {@code [batchSize, rows, cols]}
+	 */
+	private CollectionProducer columnIndices(int batchSize, int rows, int cols) {
+		return repeat(0, batchSize, repeat(1, rows, integers(0, cols).reshape(1, 1, cols)));
+	}
+
+	/**
+	 * The row index of every pixel, shaped like the images being generated.
+	 *
+	 * @param batchSize images in a batch
+	 * @param rows      image height
+	 * @param cols      image width
+	 * @return a producer of shape {@code [batchSize, rows, cols]}
+	 */
+	private CollectionProducer rowIndices(int batchSize, int rows, int cols) {
+		return repeat(0, batchSize, repeat(2, cols, integers(0, rows).reshape(1, rows, 1)));
+	}
+
+	/**
+	 * Produces a random shape placement: a centre anywhere within the image and a
+	 * radius between {@code 2} and {@code 2 + rows / 5}.
+	 *
+	 * @param rows image height
+	 * @param cols image width
+	 * @return the centre column, centre row, and radius, shaped {@code [3]}
+	 */
+	private PackedCollection randomPlacement(int rows, int cols) {
+		return rand(shape(3))
+				.multiply(c(cols, rows, rows / 5.0))
+				.add(c(0.0, 0.0, 2.0))
+				.evaluate();
+	}
+
+	/**
 	 * Generates a synthetic dataset of circles and squares for binary classification.
 	 *
 	 * @param batchSize batch size
@@ -75,15 +115,16 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 
 		log("Generating circles...");
 		for (int i = 0; i < samplesPerClass; i++) {
-			PackedCollection input = new PackedCollection(shape(batchSize, rows, cols));
-			double x = Math.random() * cols;
-			double y = Math.random() * rows;
-			double r = 2 + Math.random() * (rows / 5.0);
-			input.fill(pos -> {
-				double dx = pos[2] - x;
-				double dy = pos[1] - y;
-				return dx * dx + dy * dy < r * r ? 1.0 : 0.0;
-			});
+			PackedCollection placement = randomPlacement(rows, cols);
+			CollectionProducer dx = columnIndices(batchSize, rows, cols)
+					.subtract(cp(placement.range(shape(1), 0)));
+			CollectionProducer dy = rowIndices(batchSize, rows, cols)
+					.subtract(cp(placement.range(shape(1), 1)));
+			CollectionProducer radius = cp(placement.range(shape(1), 2));
+
+			PackedCollection input = greaterThan(radius.multiply(radius),
+							dx.multiply(dx).add(dy.multiply(dy)), c(1.0), c(0.0))
+					.evaluate().reshape(batchSize, rows, cols);
 
 			if (outShape.getTotalSize() == 2) {
 				data.add(ValueTarget.of(input, PackedCollection.of(1.0, 0.0)));
@@ -94,15 +135,16 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 
 		log("Generating squares...");
 		for (int i = 0; i < samplesPerClass; i++) {
-			PackedCollection input = new PackedCollection(shape(batchSize, rows, cols));
-			double x = Math.random() * cols;
-			double y = Math.random() * rows;
-			double r = 2 + Math.random() * (rows / 5.0);
-			input.fill(pos -> {
-				double dx = Math.abs(pos[2] - x);
-				double dy = Math.abs(pos[1] - y);
-				return dx < r && dy < r ? 1.0 : 0.0;
-			});
+			PackedCollection placement = randomPlacement(rows, cols);
+			CollectionProducer dx = columnIndices(batchSize, rows, cols)
+					.subtract(cp(placement.range(shape(1), 0)));
+			CollectionProducer dy = rowIndices(batchSize, rows, cols)
+					.subtract(cp(placement.range(shape(1), 1)));
+			CollectionProducer radius = cp(placement.range(shape(1), 2));
+
+			PackedCollection input = greaterThan(radius, dx.abs(), c(1.0), c(0.0))
+					.multiply(greaterThan(radius, dy.abs(), c(1.0), c(0.0)))
+					.evaluate().reshape(batchSize, rows, cols);
 
 			if (outShape.getTotalSize() == 2) {
 				data.add(ValueTarget.of(input, PackedCollection.of(0.0, 1.0)));

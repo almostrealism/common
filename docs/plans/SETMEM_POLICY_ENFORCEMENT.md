@@ -406,3 +406,41 @@ Violation messages throughout should name the sanctioned idioms — `fill(value)
 `pack(...)` within the scalar allowance, a single whole-buffer producer, literal
 varargs, the ingest API — since the goal is to redirect the author at the moment
 of writing.
+
+## Closing the loop workaround
+
+Now that the whole-array write is protected, the way around it is to write the
+same array one element at a time: `for (i) dest.setMem(i, values[i])`. The
+indexed write is public by design — a value type setting one channel of itself
+needs it — so nothing in the type system distinguishes that loop from a
+legitimate use, and the enforcement has to.
+
+`PackedCollectionDetector` already has the rule: `PACKED_COLLECTION_CPU_LOOP`
+covers `setMem()` inside a `for` loop and `setMem(index, expr.toDouble(index))`
+on one line. It is not currently a backstop, because it can be avoided five
+ways: a path whitelist of about eighteen entries, an allowance for any method
+whose name reads as initialization, a bulk-copy skip, a heuristic that has to
+recognise the loop as CPU manipulation, and comment suppression. Anything the
+protection pushes into a loop can land in one of those and never be reported.
+`SetMemLiteralsDetector` has none of them, which is why the rule should move
+there rather than be patched where it is.
+
+The discriminator to implement is **whether the index argument mentions the loop
+variable**. A survey of the tree found forty-three indexed writes inside loops,
+which fall into three groups:
+
+- fifteen write a host array element by element — `input.setMem(i, latent[i])` —
+  which is the workaround, already present, mostly in the Oobleck validation
+  tests;
+- twelve write a constant — `powerSpectrum.setMem(i, 1.0)` — which is `fill`
+  spelled as a loop, and which this document's preparatory pass has since
+  converted;
+- the remainder write a fixed slot each time round — `tTensor.setMem(0, t)`,
+  `note.getOffsetArg().setMem(0, 0)` — which is per-iteration state, not a bulk
+  transfer, and must keep working.
+
+Only the first two mention the loop variable in the index, so the test separates
+them from the third cleanly. Expect turning the rule on to surface the first
+group as real violations needing conversion; that is the point, but it is a
+batch of work rather than a switch, and it should be started deliberately rather
+than tacked onto the end of another change.
