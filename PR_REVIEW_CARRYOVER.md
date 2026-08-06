@@ -7,6 +7,10 @@ will drift; the file and the quoted intent are what matter.
 Companion to `HOST_ARRAY_AUDIT.md`, which lists the 631 undefended host-array and loop sites
 across the branch. Several comments below are specific instances of that general problem.
 
+**Status: every comment recorded here is closed.** The only work still carried by this
+document is the deferred `HnswIndex` batch scoring described in the first section, which
+was postponed deliberately pending CI results. What remains after that is the audit.
+
 ---
 
 ## engine/ml — SimilarityMetric
@@ -38,53 +42,72 @@ as graph-walk boundaries. Those entries should be removed once batch scoring lan
 
 ## engine/utils — FirFilterTestFeatures
 
-| Line | Comment |
-| --- | --- |
-| 78 | How is this different than assetEquals defined in the TestFeatures interface? because it accepts variable length? is the length every different than the length of the expected collection? |
+**DONE.** `assertConvolutionEquals` no longer exists anywhere in the tree; it was
+redundant with `TestFeatures.assertEquals` apart from ignoring shape, and callers
+reshape instead.
 
-**Carried forward as:** determine whether `assertConvolutionEquals` is redundant with
-`TestFeatures.assertEquals`, and delete it if the length parameter is never anything other
-than the expected collection's own length.
+| Line | Comment | Status |
+| --- | --- | --- |
+| 78 | How is this different than assetEquals defined in the TestFeatures interface? because it accepts variable length? is the length every different than the length of the expected collection? | done |
 
 ---
 
 ## engine/utils — TemporalFeaturesTest
 
-| Line | Comment |
-| --- | --- |
-| 42 | Should be CollectionProducer. |
+**DONE.** `highPassCoefficients` returns `CollectionProducer` and is expressed as
+`subtract(oneHot(filterOrder + 1, filterOrder / 2), ...)` using the `VectorFeatures`
+one-hot rather than a local construction.
+
+| Line | Comment | Status |
+| --- | --- | --- |
+| 42 | Should be CollectionProducer. | done |
 
 ---
 
 ## studio/compose — MixdownManagerFilterAutomationTest
 
-| Line | Comment |
-| --- | --- |
-| 279 | An empty if block? You don't even read the code you write? |
+**DONE.** The branch reads `if (!opts.zeroGenome) { params.randFill(); }` — a new
+collection is already zero, so the zero-genome case needs no body.
 
-**Carried forward as:** an empty `if` block was left behind at this site. Read the
-surrounding method and either restore the intended body or remove the branch.
+| Line | Comment | Status |
+| --- | --- | --- |
+| 279 | An empty if block? You don't even read the code you write? | done |
 
 ---
 
 ## studio/compose — DelayNetworkBehaviorTest
 
-| Line | Comment |
-| --- | --- |
-| 238 | There is already a dedicated MatrixFeatures method for this, do not create a new one. |
-| 251 | We should just add the CollectionProducer form of this to VectorFeatures. |
+**DONE.** The test calls `identity(channels)` from `MatrixFeatures` and `oneHot(...)`
+from `VectorFeatures`; no local copy of either remains.
 
-**Carried forward as:** replace the locally written matrix construction with the existing
-`MatrixFeatures` method, and move the vector operation at 251 up to `VectorFeatures` in its
-`CollectionProducer` form rather than keeping a local copy.
+| Line | Comment | Status |
+| --- | --- | --- |
+| 238 | There is already a dedicated MatrixFeatures method for this, do not create a new one. | done |
+| 251 | We should just add the CollectionProducer form of this to VectorFeatures. | done |
 
 ---
 
 ## studio/compose — MixdownManagerPdslTest
 
-| Line | Comment |
-| --- | --- |
-| 915 | Why isn't this a CollectionProducer? |
+**DONE in phase 24.** The comment sat on the tap-echo assertion loop in
+`testMixdownManagerReverbPath`, which walked a host `double[]` of pass 2 output and
+indexed it per tap. All of the taps are now gathered in one computation —
+`cp(pass2Output).valueAt(cp(delays).subtract(c(REVERB_SIGNAL_SIZE))).abs()` — and the
+remaining loop only formats one assertion message per tap from that result.
+
+| Line | Comment | Status |
+| --- | --- | --- |
+| 915 | Why isn't this a CollectionProducer? | done |
+
+The rest of that test method went with it: pass energies and the impulse tail are
+collections, energy per pass is `sum(passOut.sq())`, the WAV tail is clamped by
+`bound(passOut, -1.0, 1.0)` and written through the `PackedCollection` overload of
+`writeDemoWav`, and the total is `sum(cp(passEnergies))`. Verified by running the
+method (it is `knownIssue`, so it needs `AR_LONG_TESTS=enabled AR_KNOWN_ISSUES=enabled`
+to execute rather than skip); energies came out `[0.0, 4.0, 0.72, 0.275, 0.119]` —
+silence, four unit-magnitude tap echoes, then decay.
+
+Other host arrays remain in this file; they are audit items, not this comment.
 
 ---
 

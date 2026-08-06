@@ -36,7 +36,6 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -859,26 +858,24 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		double[] passEnergies = new double[REVERB_PASSES];
-		float[] tail = new float[REVERB_PASSES * REVERB_SIGNAL_SIZE];
-		double[] pass2Output = null;
+		PackedCollection passEnergies = new PackedCollection(REVERB_PASSES);
+		PackedCollection tail = new PackedCollection(REVERB_PASSES * REVERB_SIGNAL_SIZE);
+		PackedCollection pass2Output = new PackedCollection(REVERB_SIGNAL_SIZE);
+		PackedCollection input = new PackedCollection(inputShape);
 
 		for (int pass = 0; pass < REVERB_PASSES; pass++) {
-			PackedCollection input = new PackedCollection(inputShape);
+			input.clear();
 			if (pass == 0) input.setMem(0, 1.0);       // impulse
 
-			double[] passOut = compiled.forward(input).toArray(0, REVERB_SIGNAL_SIZE);
+			CollectionProducer passOut = cp(compiled.forward(input)
+					.range(shape(REVERB_SIGNAL_SIZE)));
 			if (pass == 1) {
-				pass2Output = passOut.clone();
+				pass2Output.setFrom(0, passOut.evaluate());
 			}
 
-			double e = 0.0;
-			for (int i = 0; i < REVERB_SIGNAL_SIZE; i++) {
-				e += passOut[i] * passOut[i];
-				tail[pass * REVERB_SIGNAL_SIZE + i] = (float) Math.max(-1.0,
-						Math.min(1.0, passOut[i]));
-			}
-			passEnergies[pass] = e;
+			passEnergies.setFrom(pass, sum(passOut.sq()).evaluate());
+			tail.setFrom(pass * REVERB_SIGNAL_SIZE,
+					bound(passOut, -1.0, 1.0).evaluate());
 		}
 
 		File wav = new File(outputDir, "pdsl_reverb_impulse.wav");
@@ -886,12 +883,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		Assert.assertTrue("Reverb impulse WAV must be non-empty", wav.length() > 0);
 
 		log(String.format("Reverb pass energies: %s",
-				Arrays.toString(passEnergies)));
+				passEnergies.toArrayString(0, REVERB_PASSES)));
 
 		// (1) Pass 1 must be silence — the closed-loop reads happen before the
 		// write, so a freshly zero-initialised buffer produces zero output.
 		Assert.assertEquals("Pass 1 must be silence (zero-initialised buffer)",
-				0.0, passEnergies[0], 1e-12);
+				0.0, passEnergies.toDouble(0), 1e-12);
 
 		// (2) Pass 2 must have non-zero energy concentrated at the configured
 		// delay positions. Each tap n produces a sample-magnitude-1 echo at
@@ -902,7 +899,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// have but tolerance gives anyway).
 		Assert.assertTrue(
 				"Pass 2 must have non-zero energy from delay_network echoes (energy="
-						+ passEnergies[1] + ")", passEnergies[1] > 0.5);
+						+ passEnergies.toDouble(1) + ")", passEnergies.toDouble(1) > 0.5);
 
 		// (3) Energy at the configured delay sample positions must dominate
 		// energy at other positions in pass 2 — the impulse propagates through
@@ -912,13 +909,18 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		// (delay - REVERB_SIGNAL_SIZE).
 		PackedCollection delays = (PackedCollection) args.get("delay_samples");
 
+		// Every tap's echo is gathered in one computation: the tap positions index
+		// pass 2 directly, so what remains below is the reporting of each result.
+		PackedCollection echoes = cp(pass2Output)
+				.valueAt(cp(delays.range(shape(REVERB_TAPS)))
+						.subtract(c(REVERB_SIGNAL_SIZE)))
+				.abs().evaluate();
+
 		for (int n = 0; n < REVERB_TAPS; n++) {
-			int delay = (int) delays.toDouble(n);
-			int t = delay - REVERB_SIGNAL_SIZE;
 			Assert.assertTrue(
-					"Pass 2 sample at tap " + n + " delay (" + delay
-							+ ") must carry impulse echo, got " + pass2Output[t],
-					Math.abs(pass2Output[t]) > 0.5);
+					"Pass 2 sample at tap " + n + " delay (" + (int) delays.toDouble(n)
+							+ ") must carry impulse echo, got " + echoes.toDouble(n),
+					echoes.toDouble(n) > 0.5);
 		}
 
 		// (4) Energy must decay from pass 2 onwards — feedback matrix has
@@ -926,15 +928,14 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		for (int p = 3; p < REVERB_PASSES; p++) {
 			Assert.assertTrue(
 					"Reverb tail must decay (pass " + p + " energy "
-							+ passEnergies[p] + " >= pass 2 energy "
-							+ passEnergies[1] + ")",
-					passEnergies[p] < passEnergies[1]);
+							+ passEnergies.toDouble(p) + " >= pass 2 energy "
+							+ passEnergies.toDouble(1) + ")",
+					passEnergies.toDouble(p) < passEnergies.toDouble(1));
 		}
 
 		// (5) Total energy across passes must be non-zero — the reverb tail
 		// produces audible audio.
-		double totalEnergy = 0.0;
-		for (double e : passEnergies) totalEnergy += e;
+		double totalEnergy = sum(cp(passEnergies)).evaluate().toDouble(0);
 		Assert.assertTrue("Total reverb energy must be non-zero (totalEnergy="
 				+ totalEnergy + ")", totalEnergy > 0.5);
 	}
