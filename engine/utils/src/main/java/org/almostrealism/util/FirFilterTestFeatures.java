@@ -104,31 +104,25 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 * Computes the sum-of-squares energy of a signal, skipping the first and last
 	 * {@code skip} samples to avoid FIR filter edge effects.
 	 *
-	 * @param signal the signal samples
+	 * @param signal the signal
 	 * @param skip   number of samples to skip at each end
 	 * @return the sum of squared sample values in the interior region
 	 */
-	default double energy(double[] signal, int skip) {
-		double sum = 0.0;
-		for (int i = skip; i < signal.length - skip; i++) {
-			sum += signal[i] * signal[i];
-		}
-		return sum;
+	default double energy(PackedCollection signal, int skip) {
+		int interior = signal.getMemLength() - 2 * skip;
+		if (interior <= 0) return 0.0;
+
+		return sum(cp(signal.range(shape(interior), skip)).sq()).evaluate().toDouble(0);
 	}
 
 	/**
 	 * Returns the peak absolute value of a signal.
 	 *
-	 * @param samples the signal samples
+	 * @param samples the signal
 	 * @return the maximum absolute sample value
 	 */
-	default double peakOf(double[] samples) {
-		double peak = 0.0;
-		for (double v : samples) {
-			double a = Math.abs(v);
-			if (a > peak) peak = a;
-		}
-		return peak;
+	default double peakOf(PackedCollection samples) {
+		return max(cp(samples).abs()).evaluate().toDouble(0);
 	}
 
 	/**

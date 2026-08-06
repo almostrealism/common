@@ -90,19 +90,26 @@ surrounding method and either restore the intended body or remove the branch.
 
 ## studio/compose — MixdownManagerPdslVerificationTest
 
-| Line | Comment |
-| --- | --- |
-| 653 | Why is this a mix of CollectionProducer and host math? |
-| 1018 | This should return PackedCollection. |
-| 1375 | STOP USING double[] |
-| 1524 | Should return PackedCollection. |
+**DONE in phase 24.** The render and WAV chain carries collections end to end and the file
+went from 65 host-array occurrences to zero.
 
-**Carried forward as:** this file holds the largest concentration of undefended sites in the
-audit. The render and WAV-writing chain (`renderJavaPath`, `renderPdslPath`,
-`renderPdslMaster`, `renderFeedbackCombMono`, `writeDiffWav`, `writeMonoWav`,
-`loadLoopSource`, `tryLoadClip`) still threads `double[]` end to end, and the per-pass input
-assembly still builds host arrays. Converting it means changing that whole chain to carry
-collections, not patching individual lines.
+| Line | Comment | Status |
+| --- | --- | --- |
+| 653 | Why is this a mix of CollectionProducer and host math? | done |
+| 1018 | This should return PackedCollection. | done |
+| 1375 | STOP USING double[] | done |
+| 1524 | Should return PackedCollection. | done |
+
+`renderJavaPath`, `renderPdslPath`, both `renderPdslMaster` overloads,
+`renderFeedbackCombMono`, `loadLoopSource` and `tryLoadClip` take and return collections;
+`writeMonoWav` and `writeDiffWav` take collections; `firstNonFinite` is a device reduction.
+`loopedSource(totalFrames)` returns one device-resident signal built by repeating the clip on
+the device, replacing an `IntToDoubleFunction` sampled per frame — that is what let the rest
+of the chain drop its arrays. Per-pass input is `repeat(0, channels, ...)` into the input
+collection; channel summing is a `matmul` against a row of ones. `PdslAudioDemoTest` gained a
+`writeDemoWav(File, PackedCollection, int)` overload, so the WAV writer owns the one place
+samples leave the system, and `MixdownChannelPdslTest` / `PdslAudioDemoTest` accumulate their
+demo signals as collections.
 
 ---
 

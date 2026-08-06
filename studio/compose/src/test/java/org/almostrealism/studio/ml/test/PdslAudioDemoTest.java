@@ -107,8 +107,8 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		lpModel.add(lpBlock);
 		CompiledModel lpCompiled = lpModel.compile();
 
-		float[] drySignal = new float[totalSamples];
-		float[] lpSignal = new float[totalSamples];
+		PackedCollection drySignal = new PackedCollection(totalSamples);
+		PackedCollection lpSignal = new PackedCollection(totalSamples);
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
@@ -118,12 +118,8 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
 					.into(input.traverseEach()).evaluate();
 			PackedCollection output = lpCompiled.forward(input.reshape(lpCompiled.getInputShape()));
-			double[] inArr = input.toArray(0, SIGNAL_SIZE);
-			double[] outArr = output.toArray(0, SIGNAL_SIZE);
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				drySignal[sampleOffset + i] = (float) inArr[i];
-				lpSignal[sampleOffset + i] = (float) outArr[i];
-			}
+			drySignal.setFrom(sampleOffset, input);
+			lpSignal.setFrom(sampleOffset, output.range(shape(SIGNAL_SIZE)));
 		}
 
 		writeDemoWav(new File(outputDir, "pdsl_dry_multitone.wav"), drySignal, SAMPLE_RATE);
@@ -135,8 +131,8 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 
 		// LP output must have less energy than dry (12 kHz content attenuated)
 		int skipEdge = FILTER_ORDER / 2;
-		double dryEnergy = energy(floatToDouble(drySignal), skipEdge);
-		double lpEnergy = energy(floatToDouble(lpSignal), skipEdge);
+		double dryEnergy = energy(drySignal, skipEdge);
+		double lpEnergy = energy(lpSignal, skipEdge);
 		Assert.assertTrue("LP output must have less energy than dry (LP attenuates 12 kHz)",
 				lpEnergy < dryEnergy * 0.9);
 
@@ -261,6 +257,32 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 	 * @param file       the file to create (parent directories must exist)
 	 * @param samples    the audio samples in the range {@code [-1.0, 1.0]}
 	 * @param sampleRate the audio sample rate in Hz
+	 * @throws IOException if the file cannot be written
+	 */
+	/**
+	 * Writes a mono signal as a WAV.
+	 *
+	 * <p>The WAV writer takes frames as doubles, so a collection is written directly; this
+	 * is the point at which the samples leave the system.</p>
+	 *
+	 * @param file       destination file
+	 * @param samples    the signal to write
+	 * @param sampleRate frames per second
+	 * @throws IOException if the file cannot be written
+	 */
+	static void writeDemoWav(File file, PackedCollection samples, int sampleRate) throws IOException {
+		int n = samples.getMemLength();
+		try (WavFile wav = WavFile.newWavFile(file, 1, n, 16, sampleRate)) {
+			wav.writeFrames(samples.toArray(), n);
+		}
+	}
+
+	/**
+	 * Writes a mono signal, supplied as frames, as a WAV.
+	 *
+	 * @param file       destination file
+	 * @param samples    the frames to write
+	 * @param sampleRate frames per second
 	 * @throws IOException if the file cannot be written
 	 */
 	static void writeDemoWav(File file, float[] samples, int sampleRate) throws IOException {

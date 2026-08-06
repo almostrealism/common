@@ -226,13 +226,13 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		// Zero input → zero output
 		PackedCollection zeroOut = compiled.forward(zeroInput(CHANNELS, SIGNAL_SIZE));
-		double zeroEnergy = energy(zeroOut.toArray(0, SIGNAL_SIZE), FILTER_ORDER);
+		double zeroEnergy = energy(zeroOut.range(shape(SIGNAL_SIZE)), FILTER_ORDER);
 		Assert.assertEquals("Zero input must produce zero output", 0.0, zeroEnergy, 1e-9);
 
 		// 1 kHz tone on channel 0 only → non-zero mono output (passband)
 		PackedCollection sparse = sparseChannelInput(0, 1000.0);
-		double[] sparseOut = compiled.forward(sparse).toArray(0, SIGNAL_SIZE);
-		double sparseEnergy = energy(sparseOut, FILTER_ORDER);
+		PackedCollection sparseOut = compiled.forward(sparse);
+		double sparseEnergy = energy(sparseOut.range(shape(SIGNAL_SIZE)), FILTER_ORDER);
 		Assert.assertTrue(
 				"Sparse channel-0 input must produce non-zero mono output via sum_channels: outEnergy=" + sparseEnergy,
 				sparseEnergy > 0.0);
@@ -257,8 +257,8 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 		// 440 Hz tone on all channels → non-zero wet output
 		PackedCollection input = multiChannelTone(440.0);
-		double[] out = compiled.forward(input).toArray(0, SIGNAL_SIZE);
-		double outEnergy = energy(out, FILTER_ORDER);
+		PackedCollection out = compiled.forward(input);
+		double outEnergy = energy(out.range(shape(SIGNAL_SIZE)), FILTER_ORDER);
 		Assert.assertTrue(
 				"efx_bus on all-channels 440 Hz tone must produce non-zero output: outEnergy=" + outEnergy,
 				outEnergy > 0.0);

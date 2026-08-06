@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
@@ -55,8 +56,8 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.function.IntToDoubleFunction;
 
 /**
  * Real-audio comparison between {@link MixdownManager#cells} (the production Java path)
@@ -149,7 +150,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Feedback-comb ring depth in frames; {@code bufSize = COMB_BUFFER_FRAMES * signal_size} must exceed the delay. */
 	private static final int COMB_BUFFER_FRAMES = 4;
 
-	/** Feedback-comb regeneration gain ({@code transmission[[g]]}); &lt; 1 for a decaying echo train. */
+	/** Feedback-comb regeneration gain ({@code transmission.toDouble([g)]}); &lt; 1 for a decaying echo train. */
 	private static final double COMB_FEEDBACK_GAIN = 0.55;
 
 	/** Feedback-comb output level ({@code passthrough[[wet]]}). */
@@ -296,10 +297,10 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// genome maps even a uniform parameter vector to DISTINCT per-gene values,
 		// so the diagonal entries are individually gene-driven, not identical.
 		double eps = 1e-6;
-		double[] grid = evaluateProducer(args.get("efx_fb_transmission"), CHANNELS * CHANNELS);
+		PackedCollection grid = evaluateProducer(args.get("efx_fb_transmission"), CHANNELS * CHANNELS);
 		for (int n = 0; n < CHANNELS; n++) {
 			for (int m = 0; m < CHANNELS; m++) {
-				double cell = grid[n * CHANNELS + m];
+				double cell = grid.toDouble(n * CHANNELS + m);
 				if (n == m) {
 					Assert.assertTrue(
 							"diagonal " + n + " self-feedback must be nonzero (gene-driven);"
@@ -322,24 +323,24 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// output); the feedback stage's matrix is [into, from] — assert the transpose,
 		// UNSCALED. The base map's [channels, channels] transmission grid holds the
 		// chromosome in its top-left [layers, layers] block, zero beyond.
-		double[] busT = evaluateProducer(args.get("bus_transmission"), BUS_LAYERS * BUS_LAYERS);
-		double[] transmission = evaluateProducer(args.get("transmission"), CHANNELS * CHANNELS);
+		PackedCollection busT = evaluateProducer(args.get("bus_transmission"), BUS_LAYERS * BUS_LAYERS);
+		PackedCollection transmission = evaluateProducer(args.get("transmission"), CHANNELS * CHANNELS);
 		for (int j = 0; j < BUS_LAYERS; j++) {
 			for (int m = 0; m < BUS_LAYERS; m++) {
 				double expected = (m < CHANNELS && j < CHANNELS)
-						? transmission[m * CHANNELS + j]
+						? transmission.toDouble(m * CHANNELS + j)
 						: transmissionReference(mixdown, m, j);
 				Assert.assertEquals(
 						"bus_transmission[" + j + "," + m + "] must be the UNSCALED genome"
 								+ " transmission [from=" + m + ", into=" + j + "]",
-						expected, busT[j * BUS_LAYERS + m], eps);
+						expected, busT.toDouble(j * BUS_LAYERS + m), eps);
 			}
 		}
 
-		double[] wetOut = evaluateProducer(args.get("bus_wet_out"), BUS_LAYERS * BUS_LAYERS);
+		PackedCollection wetOut = evaluateProducer(args.get("bus_wet_out"), BUS_LAYERS * BUS_LAYERS);
 		for (int n = 0; n < BUS_LAYERS; n++) {
 			for (int m = 0; m < BUS_LAYERS; m++) {
-				double cell = wetOut[n * BUS_LAYERS + m];
+				double cell = wetOut.toDouble(n * BUS_LAYERS + m);
 				if (n == m) {
 					Assert.assertTrue(
 							"bus_wet_out diagonal " + n + " must carry the wetOut gene"
@@ -353,36 +354,36 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		}
 
 		PackedCollection send = (PackedCollection) args.get("bus_send");
-		double[] sendData = send.toArray(0, CHANNELS * BUS_LAYERS);
+		PackedCollection sendData = send.range(shape(CHANNELS * BUS_LAYERS));
 		for (int ch = 0; ch < CHANNELS; ch++) {
 			for (int j = 0; j < BUS_LAYERS; j++) {
 				Assert.assertEquals(
 						"bus_send must route every channel into the first bus line only"
 								+ " (legacy delayGene)",
-						j == 0 ? 1.0 : 0.0, sendData[ch * BUS_LAYERS + j], eps);
+						j == 0 ? 1.0 : 0.0, sendData.toDouble(ch * BUS_LAYERS + j), eps);
 			}
 		}
 
 		// The bus delays live in a per-buffer-refreshed slot (the build-time refresh
 		// ran with the clock at frame 0, where the cursor rate is exactly 1, so the
 		// slot holds the raw gene delays here).
-		double[] busDelays = ((PackedCollection) args.get("bus_delay_samples"))
-				.toArray(0, BUS_LAYERS);
+		PackedCollection busDelays = ((PackedCollection) args.get("bus_delay_samples"))
+				.range(shape(BUS_LAYERS));
 		for (int j = 0; j < BUS_LAYERS; j++) {
 			Assert.assertTrue(
-					"bus line " + j + " delay " + busDelays[j] + " must sit inside the"
+					"bus line " + j + " delay " + busDelays.toDouble(j) + " must sit inside the"
 							+ " configured 4-20 s gene range, not at a static constant",
-					busDelays[j] >= 4.0 * SAMPLE_RATE - 1 && busDelays[j] <= 20.0 * SAMPLE_RATE);
+					busDelays.toDouble(j) >= 4.0 * SAMPLE_RATE - 1 && busDelays.toDouble(j) <= 20.0 * SAMPLE_RATE);
 		}
 
 		// The fixture disables enableWetInAdjustment, so the send gain is the legacy
 		// 0.2 constant (the gene-driven path shares the toAdjustmentGene machinery the
 		// volume wiring already pins).
-		double[] wetInData = ((PackedCollection) args.get("wet_in")).toArray(0, CHANNELS);
+		PackedCollection wetInData = ((PackedCollection) args.get("wet_in")).range(shape(CHANNELS));
 		for (int ch = 0; ch < CHANNELS; ch++) {
 			Assert.assertEquals(
 					"wet_in with enableWetInAdjustment=false must be the legacy 0.2 constant",
-					0.2, wetInData[ch], eps);
+					0.2, wetInData.toDouble(ch), eps);
 		}
 	}
 
@@ -398,7 +399,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 */
 	private double transmissionReference(MixdownManager mixdown, int from, int into) {
 		return evaluateProducer(mixdown.getTransmission().valueAt(from, into)
-				.getResultant(c(1.0)), 1)[0];
+				.getResultant(c(1.0)), 1).toDouble(0);
 	}
 
 	/**
@@ -439,44 +440,44 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		double eps = 1e-6;
 		fixtureTime.getClock().setFrame(0);
 		refresh.run();
-		double[] atZero = slot.toArray(0, layers);
+		PackedCollection atZero = copyOf(slot, layers);
 		for (int j = 0; j < layers; j++) {
 			Assert.assertTrue(
 					"line " + j + " delay at frame 0 must be the 4-20 s gene (the rate"
-							+ " is exactly 1 there); got " + atZero[j],
-					atZero[j] >= 4.0 * SAMPLE_RATE - 1 && atZero[j] <= 20.0 * SAMPLE_RATE);
+							+ " is exactly 1 there); got " + atZero.toDouble(j),
+					atZero.toDouble(j) >= 4.0 * SAMPLE_RATE - 1 && atZero.toDouble(j) <= 20.0 * SAMPLE_RATE);
 		}
 
 		fixtureTime.getClock().setFrame(7 * SAMPLE_RATE);
 		refresh.run();
-		double[] tightened = slot.toArray(0, layers);
+		PackedCollection tightened = copyOf(slot, layers);
 		refresh.run();
 		refresh.run();
-		double[] repeated = slot.toArray(0, layers);
+		PackedCollection repeated = copyOf(slot, layers);
 		for (int j = 0; j < layers; j++) {
 			Assert.assertTrue(
 					"line " + j + " must tighten away from frame 0 (the accelerando"
-							+ " keeps the rate above 1); atZero=" + atZero[j]
-							+ " tightened=" + tightened[j],
-					tightened[j] < atZero[j]);
+							+ " keeps the rate above 1); atZero=" + atZero.toDouble(j)
+							+ " tightened=" + tightened.toDouble(j),
+					tightened.toDouble(j) < atZero.toDouble(j));
 			Assert.assertTrue(
 					"line " + j + " must remain a multi-second wash, far from the"
-							+ " one-frame floor; got " + tightened[j],
-					tightened[j] > 8 * PDSL_SIGNAL_SIZE);
+							+ " one-frame floor; got " + tightened.toDouble(j),
+					tightened.toDouble(j) > 8 * PDSL_SIGNAL_SIZE);
 			Assert.assertEquals(
 					"repeated refreshes at one clock position must not move line " + j
 							+ " (the ratio is memoryless — no accumulating drift)",
-					tightened[j], repeated[j], eps);
+					tightened.toDouble(j), repeated.toDouble(j), eps);
 		}
 
 		fixtureTime.getClock().setFrame(0);
 		refresh.run();
-		double[] restored = slot.toArray(0, layers);
+		PackedCollection restored = copyOf(slot, layers);
 		for (int j = 0; j < layers; j++) {
 			Assert.assertEquals(
 					"returning the clock to frame 0 must restore line " + j + "'s gene"
 							+ " delay exactly (sectional snap-back)",
-					atZero[j], restored[j], eps);
+					atZero.toDouble(j), restored.toDouble(j), eps);
 		}
 	}
 
@@ -508,20 +509,20 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Assert.assertNotNull("the wet argument map must carry the wet_in_prev slot",
 				wetInPrev);
 
-		double[] before = volume.toArray(0, CHANNELS);
-		double[] wetInBefore = wetIn.toArray(0, CHANNELS);
+		PackedCollection before = copyOf(volume, CHANNELS);
+		PackedCollection wetInBefore = copyOf(wetIn, CHANNELS);
 		fixtureTime.getClock().setFrame(5 * SAMPLE_RATE);
 		refresh.run();
 
-		double[] prev = volumePrev.toArray(0, CHANNELS);
-		double[] wetInPrevData = wetInPrev.toArray(0, CHANNELS);
+		PackedCollection prev = copyOf(volumePrev, CHANNELS);
+		PackedCollection wetInPrevData = copyOf(wetInPrev, CHANNELS);
 		for (int ch = 0; ch < CHANNELS; ch++) {
 			Assert.assertEquals(
 					"volume_prev must hold the pre-refresh current value at channel " + ch,
-					before[ch], prev[ch], 1e-9);
+					before.toDouble(ch), prev.toDouble(ch), 1e-9);
 			Assert.assertEquals(
 					"wet_in_prev must hold the pre-refresh current value at channel " + ch,
-					wetInBefore[ch], wetInPrevData[ch], 1e-9);
+					wetInBefore.toDouble(ch), wetInPrevData.toDouble(ch), 1e-9);
 		}
 	}
 
@@ -583,22 +584,22 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		impulseFrame.setMem(impulseAt, 0.5);
 		PackedCollection silentFrame = new PackedCollection(inputShape);
 
-		double[] frame0 = compiled.forward(impulseFrame).toArray(0, PDSL_SIGNAL_SIZE);
-		double[] frame1 = compiled.forward(silentFrame).toArray(0, PDSL_SIGNAL_SIZE);
-		double[] frame2 = compiled.forward(silentFrame).toArray(0, PDSL_SIGNAL_SIZE);
+		PackedCollection frame0 = copyOf(compiled.forward(impulseFrame), PDSL_SIGNAL_SIZE);
+		PackedCollection frame1 = copyOf(compiled.forward(silentFrame), PDSL_SIGNAL_SIZE);
+		PackedCollection frame2 = copyOf(compiled.forward(silentFrame), PDSL_SIGNAL_SIZE);
 
 		// The FIR stages are CENTER-aligned (MultiOrderFilter: y[n] = sum h[i] *
 		// x[n - i + order/2]), so an identity bank's centered delta is an exact
 		// zero-shift passthrough — dry and echo both land at the impulse index, the
 		// echo exactly one frame later.
 		Assert.assertEquals("frame 0 must carry the dry impulse",
-				amp, frame0[impulseAt], 0.05);
+				amp, frame0.toDouble(impulseAt), 0.05);
 		Assert.assertEquals("frame 1 must carry the apply echo of the MAIN impulse,"
 						+ " exactly one frame later",
-				amp, frame1[impulseAt], 0.05);
+				amp, frame1.toDouble(impulseAt), 0.05);
 		Assert.assertEquals("with zero self-feedback the pure tap fires exactly once"
 						+ " (frame 2 must be silent at the echo index)",
-				0.0, frame2[impulseAt], 1e-4);
+				0.0, frame2.toDouble(impulseAt), 1e-4);
 	}
 
 	/**
@@ -608,9 +609,29 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param size     the number of elements to read
 	 * @return the evaluated values
 	 */
-	private double[] evaluateProducer(Object producer, int size) {
-		PackedCollection result = (PackedCollection) ((Producer) producer).get().evaluate();
-		return result.toArray(0, size);
+	/**
+	 * Copies the leading {@code size} values of a model output, which is written again by
+	 * the next forward pass.
+	 *
+	 * @param output the pass output
+	 * @param size   the number of values to keep
+	 * @return an independent copy
+	 */
+	private PackedCollection copyOf(PackedCollection output, int size) {
+		PackedCollection copy = new PackedCollection(size);
+		copy.setFrom(0, output.range(shape(size)));
+		return copy;
+	}
+
+	/**
+	 * Evaluates a producer-valued argument-map entry once and returns its contents.
+	 *
+	 * @param producer the argument-map value (a {@link Producer})
+	 * @param size     the number of elements to read
+	 * @return the evaluated values
+	 */
+	private PackedCollection evaluateProducer(Object producer, int size) {
+		return ((PackedCollection) ((Producer) producer).get().evaluate()).range(shape(size));
 	}
 
 	/**
@@ -630,12 +651,12 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				.evaluate();
 		double inRms = rmsOf(signal);
 
-		for (double cutoff : new double[] {50.0, 200.0, 1000.0, 5000.0}) {
+		for (double cutoff : List.of(50.0, 200.0, 1000.0, 5000.0)) {
 			PackedCollection out = highPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
 			log("highpass cutoff=" + cutoff + " order=40 inRms=" + inRms
 					+ " outRms=" + rmsOf(out) + " gain=" + (rmsOf(out) / inRms));
 		}
-		for (double cutoff : new double[] {20000.0, 12000.0, 5000.0}) {
+		for (double cutoff : List.of(20000.0, 12000.0, 5000.0)) {
 			PackedCollection out = lowPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
 			log("lowpass cutoff=" + cutoff + " order=40 inRms=" + inRms
 					+ " outRms=" + rmsOf(out) + " gain=" + (rmsOf(out) / inRms));
@@ -650,7 +671,12 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 */
 	private double rmsOf(PackedCollection data) {
 		int len = Math.max(1, data.getMemLength());
-		return sqrt(divide(sum(cp(data).sq()), c(len))).evaluate().toDouble(0);
+		CollectionProducer rms = sqrt(divide(sum(cp(data).sq()), c(len)));
+
+		// Optimized before evaluation: isolation is only consulted during optimization, and
+		// an unoptimized consumer of a whole-collection reduction embeds that reduction at
+		// every element, so the expression grows with the length of the signal.
+		return ((PackedCollection) Process.optimized(rms).get().evaluate()).toDouble(0);
 	}
 
 	/**
@@ -673,20 +699,20 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		File pdslWav = new File(outputDir, "mixdown_manager_pdsl_path.wav");
 		File diffWav = new File(outputDir, "mixdown_manager_diff.wav");
 
-		double[] javaSamples = renderJavaPath(mixdown, automation, time, javaWav);
-		double[] pdslSamples = renderPdslPath(mixdown, pdslWav);
+		PackedCollection javaSamples = renderJavaPath(mixdown, automation, time, javaWav);
+		PackedCollection pdslSamples = renderPdslPath(mixdown, pdslWav);
 
 		double javaEnergy = energy(javaSamples, 0);
 		double pdslEnergy = energy(pdslSamples, 0);
 
 		log(String.format(
 				"Java path: %d samples, energy=%.6f, RMS=%.6f, peak=%.6f",
-				javaSamples.length, javaEnergy,
-				Math.sqrt(javaEnergy / javaSamples.length), peakOf(javaSamples)));
+				javaSamples.getMemLength(), javaEnergy,
+				rmsOf(javaSamples), peakOf(javaSamples)));
 		log(String.format(
 				"PDSL path: %d samples, energy=%.6f, RMS=%.6f, peak=%.6f",
-				pdslSamples.length, pdslEnergy,
-				Math.sqrt(pdslEnergy / pdslSamples.length), peakOf(pdslSamples)));
+				pdslSamples.getMemLength(), pdslEnergy,
+				rmsOf(pdslSamples), peakOf(pdslSamples)));
 
 		// Sample-by-sample difference WAV — the audible answer to whether the two
 		// paths produce acoustically equivalent output. Scaled by max(|diff|) so
@@ -743,29 +769,30 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
-		IntToDoubleFunction source =
-				t -> Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE * t / SAMPLE_RATE);
+		PackedCollection source = sin(integers(0, TOTAL_FRAMES)
+				.multiply(2.0 * Math.PI * SOURCE_FREQ_BASE / SAMPLE_RATE))
+				.reshape(shape(TOTAL_FRAMES)).evaluate();
 
-		double[] single = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
+		PackedCollection single = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
 				source, TOTAL_FRAMES, false,
 				new File(outputDir, "mixdown_master_single.wav"));
 
 		Map<String, Object> neutralEfx = neutralEfxArgs();
 
-		double[] wet = renderPdslMaster(mixdown, "mixdown_master_wet", config, 2 * CHANNELS,
+		PackedCollection wet = renderPdslMaster(mixdown, "mixdown_master_wet", config, 2 * CHANNELS,
 				neutralEfx, source, TOTAL_FRAMES, false,
 				new File(outputDir, "mixdown_master_wet_equal.wav"));
 
 		Assert.assertEquals("Both layers must produce the same sample count",
-				single.length, wet.length);
+				single.getMemLength(), wet.getMemLength());
 
-		double energy = 0.0;
-		for (int i = 0; i < wet.length; i++) {
-			Assert.assertTrue("mixdown_master_wet produced a non-finite sample at " + i,
-					Double.isFinite(wet[i]));
-			energy += wet[i] * wet[i];
-		}
-		log(String.format("mixdown_master_wet smoke: samples=%d energy=%.6f", wet.length, energy));
+		int firstBad = firstNonFinite(wet);
+		Assert.assertEquals("mixdown_master_wet produced a non-finite sample at " + firstBad,
+				-1, firstBad);
+
+		double energy = energy(wet, 0);
+		log(String.format("mixdown_master_wet smoke: samples=%d energy=%.6f",
+				wet.getMemLength(), energy));
 
 		Assert.assertTrue("mixdown_master_wet output must be non-silent (energy=" + energy + ")",
 				energy > 1e-9);
@@ -985,23 +1012,19 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param pdslSamples mono PDSL-path output
 	 * @param outputFile  destination WAV
 	 */
-	private void writeDiffWav(double[] javaSamples, double[] pdslSamples, File outputFile)
-			throws IOException {
-		int n = Math.min(javaSamples.length, pdslSamples.length);
-		double[] diff = new double[n];
-		double peak = 0.0;
-		for (int i = 0; i < n; i++) {
-			diff[i] = pdslSamples[i] - javaSamples[i];
-			double a = Math.abs(diff[i]);
-			if (a > peak) peak = a;
-		}
+	private void writeDiffWav(PackedCollection javaSamples, PackedCollection pdslSamples,
+							  File outputFile) throws IOException {
+		int n = Math.min(javaSamples.getMemLength(), pdslSamples.getMemLength());
+
+		PackedCollection diff = cp(pdslSamples.range(shape(n)))
+				.subtract(cp(javaSamples.range(shape(n)))).evaluate();
+
+		double peak = peakOf(diff);
 		double scale = peak > 0.0 ? 0.95 / peak : 1.0;
-		float[] floatSamples = new float[n];
-		for (int i = 0; i < n; i++) {
-			floatSamples[i] = (float) Math.max(-1.0, Math.min(1.0, diff[i] * scale));
-		}
+
 		log(String.format("Diff WAV peak=%.6f, scale-to-fullscale=%.6f", peak, scale));
-		PdslAudioDemoTest.writeDemoWav(outputFile, floatSamples, SAMPLE_RATE);
+		PdslAudioDemoTest.writeDemoWav(outputFile,
+				bound(cp(diff).multiply(scale), -1.0, 1.0).evaluate(), SAMPLE_RATE);
 	}
 
 	/**
@@ -1015,7 +1038,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param outputFile destination WAV file
 	 * @return mono audio samples ({@link #TOTAL_FRAMES} entries)
 	 */
-	private double[] renderJavaPath(MixdownManager mixdown, AutomationManager automation,
+	private PackedCollection renderJavaPath(MixdownManager mixdown, AutomationManager automation,
 									GlobalTimeManager time, File outputFile) throws IOException {
 		WaveOutput mixOut = new WaveOutput(outputFile);
 		MultiChannelAudioOutput output = new MultiChannelAudioOutput(mixOut);
@@ -1042,7 +1065,12 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		WaveData wav = WaveData.load(outputFile);
 		try {
 			PackedCollection data = wav.getData();
-			return data.toArray(0, Math.min(data.getMemLength(), TOTAL_FRAMES));
+			int n = Math.min(data.getMemLength(), TOTAL_FRAMES);
+
+			// Copied out because the WaveData that owns it is destroyed below
+			PackedCollection samples = new PackedCollection(n);
+			samples.setFrom(0, data.range(shape(n)));
+			return samples;
 		} finally {
 			wav.destroy();
 		}
@@ -1057,13 +1085,16 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param outputFile destination WAV file
 	 * @return mono audio samples (up to {@link #TOTAL_FRAMES} entries)
 	 */
-	private double[] renderPdslPath(MixdownManager mixdown, File outputFile) throws IOException {
+	private PackedCollection renderPdslPath(MixdownManager mixdown, File outputFile) throws IOException {
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		PackedCollection tone = sin(integers(0, TOTAL_FRAMES)
+				.multiply(2.0 * Math.PI * SOURCE_FREQ_BASE / SAMPLE_RATE))
+				.reshape(shape(TOTAL_FRAMES)).evaluate();
+
 		return renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
-				t -> Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE * t / SAMPLE_RATE),
-				TOTAL_FRAMES, false, outputFile);
+				tone, TOTAL_FRAMES, false, outputFile);
 	}
 
 	/**
@@ -1073,15 +1104,15 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * and returns the samples.
 	 *
 	 * @param mixdown    constructed mixdown manager whose chromosomes drive the args
-	 * @param sampleAt   supplies the input sample value at an absolute frame index
+	 * @param signal     the input signal, shared across channels
 	 * @param outputFile destination WAV file
 	 * @return mono audio samples
 	 */
-	private double[] renderPdslMaster(MixdownManager mixdown, String layerName,
-			MixdownManagerPdslAdapter.Config config, int inputChannels, IntToDoubleFunction sampleAt,
+	private PackedCollection renderPdslMaster(MixdownManager mixdown, String layerName,
+			MixdownManagerPdslAdapter.Config config, int inputChannels, PackedCollection signal,
 			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
 		return renderPdslMaster(mixdown, layerName, config, inputChannels,
-				Collections.emptyMap(), sampleAt, totalFrames, advanceClock, outputFile);
+				Collections.emptyMap(), signal, totalFrames, advanceClock, outputFile);
 	}
 
 	/**
@@ -1095,15 +1126,15 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param config        structural configuration
 	 * @param inputChannels number of input rows to fill (e.g. {@code 2*channels} for the wet layer)
 	 * @param extraArgs     extra argument-map entries merged over the adapter args (may be empty)
-	 * @param sampleAt      supplies the input sample value at an absolute frame index
+	 * @param signal        the input signal, shared across channels
 	 * @param totalFrames   number of frames to render
 	 * @param advanceClock  whether to advance the shared clock one buffer per pass
 	 * @param outputFile    destination WAV file
 	 * @return mono audio samples
 	 */
-	private double[] renderPdslMaster(MixdownManager mixdown, String layerName,
+	private PackedCollection renderPdslMaster(MixdownManager mixdown, String layerName,
 			MixdownManagerPdslAdapter.Config config, int inputChannels,
-			Map<String, Object> extraArgs, IntToDoubleFunction sampleAt,
+			Map<String, Object> extraArgs, PackedCollection signal,
 			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
 		int sig = config.signalSize;
 		MixdownManagerPdslAdapter adapter = new MixdownManagerPdslAdapter(mixdown, config);
@@ -1136,11 +1167,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				1, wrapped.size());
 
 		int passes = totalFrames / sig;
-		double[] samples = new double[passes * sig];
-		float[] floatSamples = new float[samples.length];
-
+		PackedCollection samples = new PackedCollection(passes * sig);
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[inputChannels * sig];
 
 		// When advanceClock is set, step the shared clock forward one buffer's worth of frames
 		// after each forward pass, so the genome/automation producers (HP/LP cutoffs, volume)
@@ -1150,23 +1178,17 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		for (int pass = 0; pass < passes; pass++) {
 			int sampleOffset = pass * sig;
-			for (int t = 0; t < sig; t++) {
-				double v = sampleAt.applyAsDouble(sampleOffset + t);
-				for (int c = 0; c < inputChannels; c++) {
-					inData[c * sig + t] = v;
-				}
-			}
-			input.setFrom(0, PackedCollection.of(inData));
-			double[] passOut = compiled.forward(input).toArray(0, sig);
-			System.arraycopy(passOut, 0, samples, sampleOffset, sig);
-			for (int i = 0; i < sig; i++) {
-				floatSamples[sampleOffset + i] = (float) Math.max(-1.0,
-						Math.min(1.0, passOut[i]));
-			}
+
+			// Every channel receives the same frame
+			repeat(0, inputChannels,
+					cp(signal.range(shape(sig), sampleOffset)).reshape(1, sig))
+					.into(input).evaluate();
+
+			samples.setFrom(sampleOffset, compiled.forward(input).range(shape(sig)));
 			if (clockAdvance != null) clockAdvance.run();
 		}
 
-		PdslAudioDemoTest.writeDemoWav(outputFile, floatSamples, SAMPLE_RATE);
+		writeMonoWav(outputFile, samples);
 		return samples;
 	}
 
@@ -1188,23 +1210,19 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManager mixdown = buildFixtureMixdown();
 		runFixtureSetup(mixdown);
 
-		double[] source = loadLoopSource();
-		int loopFrames = SAMPLE_RATE; // retrigger the clip every 1 second
-		IntToDoubleFunction looped = t -> {
-			int pos = t % loopFrames;
-			return pos < source.length ? source[pos] : 0.0;
-		};
+		int totalFrames = (int) (DEMO_SECONDS * SAMPLE_RATE);
+		PackedCollection looped = loopedSource(totalFrames);
 
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, DEMO_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				DEMO_WET_LEVEL, DEMO_DELAY_SAMPLES);
 		File demoWav = new File(outputDir, "pdsl_mixdown_looped_sample.wav");
-		double[] out = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS, looped,
-				(int) (DEMO_SECONDS * SAMPLE_RATE), true, demoWav);
+		PackedCollection out = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
+				looped, totalFrames, true, demoWav);
 		double e = energy(out, 0);
 
 		log(String.format("PDSL looped-sample demo: %d samples, energy=%.6f, peak=%.6f, wav=%s",
-				out.length, e, peakOf(out), demoWav.getAbsolutePath()));
+				out.getMemLength(), e, peakOf(out), demoWav.getAbsolutePath()));
 
 		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
 		Assert.assertTrue("demo output must be non-silent (energy=" + e + ")", e > 1e-9);
@@ -1227,8 +1245,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		File outputDir = new File("results/pdsl-audio-dsp");
 		outputDir.mkdirs();
 
-		IntToDoubleFunction looped = loopedSource();
-		double[] mono = renderFeedbackCombMono(1, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+		PackedCollection looped = loopedSource((int) (DEMO_SECONDS * SAMPLE_RATE));
+		PackedCollection mono = renderFeedbackCombMono(1, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
 				pack(COMB_DELAY_SAMPLES), pack(COMB_FEEDBACK_GAIN),
 				pack(COMB_WET_LEVEL), looped, (int) (DEMO_SECONDS * SAMPLE_RATE));
 
@@ -1238,7 +1256,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		int firstBad = firstNonFinite(mono);
 		double e = energy(mono, 0);
 		log(String.format("feedback comb demo: samples=%d firstNonFinite=%d energy=%.6f peak=%.6f wav=%s",
-				mono.length, firstBad, e, peakOf(mono), demoWav.getAbsolutePath()));
+				mono.getMemLength(), firstBad, e, peakOf(mono), demoWav.getAbsolutePath()));
 
 		Assert.assertEquals("feedback comb produced a non-finite sample at index " + firstBad,
 				-1, firstBad);
@@ -1267,8 +1285,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		outputDir.mkdirs();
 
 		int channels = GRID_CHANNELS;
-		IntToDoubleFunction looped = loopedSource();
 		int totalFrames = (int) (DEMO_SECONDS * SAMPLE_RATE);
+		PackedCollection looped = loopedSource(totalFrames);
 
 		// Prime-ish per-tap delays, all longer than one frame and shorter than the ring, for
 		// natural (non-metallic) diffusion.
@@ -1281,9 +1299,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		double selfGain = grid.toDouble(0);  // diagonal entry of the scaled Householder
 		PackedCollection diagonalOnly = scaledIdentity(channels, selfGain);
 
-		double[] mono = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+		PackedCollection mono = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
 				delays, grid, passthrough, looped, totalFrames);
-		double[] diag = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+		PackedCollection diag = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
 				delays, diagonalOnly, passthrough, looped, totalFrames);
 
 		File demoWav = new File(outputDir, "pdsl_feedback_grid_looped_sample.wav");
@@ -1291,14 +1309,10 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		int firstBad = firstNonFinite(mono);
 		double e = energy(mono, 0);
-		double couplingDiff = 0.0;
-		for (int i = 0; i < mono.length; i++) {
-			double d = mono[i] - diag[i];
-			couplingDiff += d * d;
-		}
+		double couplingDiff = sum(cp(mono).subtract(cp(diag)).sq()).evaluate().toDouble(0);
 		log(String.format("feedback grid demo (%dch): samples=%d firstNonFinite=%d energy=%.6f "
 						+ "peak=%.6f couplingDiff=%.6f wav=%s",
-				channels, mono.length, firstBad, e, peakOf(mono), couplingDiff,
+				channels, mono.getMemLength(), firstBad, e, peakOf(mono), couplingDiff,
 				demoWav.getAbsolutePath()));
 
 		Assert.assertEquals("feedback grid produced a non-finite sample at index " + firstBad,
@@ -1318,18 +1332,26 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return a function mapping absolute frame index to the looped source sample
 	 * @throws IOException if the source clip cannot be loaded
 	 */
-	private IntToDoubleFunction loopedSource() throws IOException {
-		double[] source = loadLoopSource();
+	private PackedCollection loopedSource(int totalFrames) throws IOException {
+		PackedCollection source = loadLoopSource();
 		int loopFrames = SAMPLE_RATE; // retrigger the clip every 1 second
-		return t -> {
-			int pos = t % loopFrames;
-			return pos < source.length ? source[pos] : 0.0;
-		};
+
+		// One loop's worth, zero-padded when the clip is shorter than the period
+		PackedCollection period = new PackedCollection(loopFrames);
+		period.setFrom(0, source.range(shape(Math.min(source.getMemLength(), loopFrames))));
+
+		int repeats = (totalFrames + loopFrames - 1) / loopFrames;
+		PackedCollection looped = repeat(0, repeats, cp(period).reshape(1, loopFrames))
+				.reshape(shape(repeats * loopFrames)).evaluate();
+
+		PackedCollection signal = new PackedCollection(totalFrames);
+		signal.setFrom(0, looped.range(shape(totalFrames)));
+		return signal;
 	}
 
 	/**
 	 * Compiles the {@code feedback_comb} PDSL layer for the given channel count and matrices, then
-	 * runs {@code totalFrames} of {@code sampleAt} (broadcast to every channel) through it with a
+	 * runs {@code totalFrames} of {@code signal} (broadcast to every channel) through it with a
 	 * multi-frame ring, summing all channels to a mono signal. Shared by the single-channel comb
 	 * and the M×M grid demos.
 	 *
@@ -1339,13 +1361,13 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param delaySamples         per-channel delay in samples, shaped {@code [channels]}
 	 * @param transmission         transmission matrix, shaped {@code [channels, channels]}
 	 * @param passthrough          passthrough matrix, shaped {@code [channels, channels]}
-	 * @param sampleAt             input sample at an absolute frame index (shared across channels)
+	 * @param signal               the input signal, shared across channels
 	 * @param totalFrames          number of frames to render
 	 * @return the mono (channel-summed) output samples
 	 */
-	private double[] renderFeedbackCombMono(int channels, int sig, int bufFrames,
+	private PackedCollection renderFeedbackCombMono(int channels, int sig, int bufFrames,
 			PackedCollection delaySamples, PackedCollection transmission,
-			PackedCollection passthrough, IntToDoubleFunction sampleAt, int totalFrames) {
+			PackedCollection passthrough, PackedCollection signal, int totalFrames) {
 		int bufSize = bufFrames * sig;
 		PackedCollection buffers = new PackedCollection(channels * bufSize);
 		PackedCollection heads = new PackedCollection(channels);
@@ -1369,39 +1391,32 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		CompiledModel compiled = model.compile();
 
 		int passes = totalFrames / sig;
-		double[] mono = new double[passes * sig];
+		PackedCollection mono = new PackedCollection(passes * sig);
 		PackedCollection input = new PackedCollection(inputShape);
-		PackedCollection frame = new PackedCollection(sig);
-		double[] frameData = new double[sig];
 
 		for (int pass = 0; pass < passes; pass++) {
 			int off = pass * sig;
-			for (int t = 0; t < sig; t++) {
-				frameData[t] = sampleAt.applyAsDouble(off + t);
-			}
 
-			// Only the frame itself comes from the host; every channel receives it
-			frame.setFrom(0, PackedCollection.of(frameData));
-			repeat(0, channels, cp(frame).reshape(1, sig)).into(input).evaluate();
-			double[] passOut = compiled.forward(input).toArray(0, channels * sig);
-			for (int t = 0; t < sig; t++) {
-				double s = 0.0;
-				for (int c = 0; c < channels; c++) {
-					s += passOut[c * sig + t];
-				}
-				mono[off + t] = s;
-			}
+			// Every channel receives the same frame
+			repeat(0, channels, cp(signal.range(shape(sig), off)).reshape(1, sig))
+					.into(input).evaluate();
+
+			// Sum the channels by multiplying the pass on the left by a row of ones
+			PackedCollection passOut = compiled.forward(input);
+			mono.setFrom(off, matmul(constant(shape(1, channels), 1.0),
+					cp(passOut.reshape(shape(channels, sig)))).evaluate());
 		}
 		return mono;
 	}
 
-	/** Clamps a mono signal to [-1, 1] floats and writes it as a WAV. */
-	private void writeMonoWav(File f, double[] mono) throws IOException {
-		float[] floats = new float[mono.length];
-		for (int i = 0; i < mono.length; i++) {
-			floats[i] = (float) Math.max(-1.0, Math.min(1.0, mono[i]));
-		}
-		PdslAudioDemoTest.writeDemoWav(f, floats, SAMPLE_RATE);
+	/**
+	 * Clamps a mono signal to [-1, 1] and writes it as a WAV.
+	 *
+	 * <p>The clamp is a computation; the conversion to {@code float[]} that follows is the
+	 * WAV writer's parameter type, and is the one place the samples become a host array.</p>
+	 */
+	private void writeMonoWav(File f, PackedCollection mono) throws IOException {
+		PdslAudioDemoTest.writeDemoWav(f, bound(cp(mono), -1.0, 1.0).evaluate(), SAMPLE_RATE);
 	}
 
 	/**
@@ -1410,11 +1425,17 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param x the signal to scan
 	 * @return the first non-finite index, or -1
 	 */
-	private static int firstNonFinite(double[] x) {
-		for (int i = 0; i < x.length; i++) {
-			if (!Double.isFinite(x[i])) return i;
-		}
-		return -1;
+	private int firstNonFinite(PackedCollection x) {
+		int n = x.getMemLength();
+
+		// A magnitude that fails to compare below the largest finite value is either
+		// infinite or not a number. Non-finite positions carry their own index and the
+		// rest carry n, so the smallest is the first offender — taken as a maximum of
+		// the negated indices, there being no whole-collection minimum.
+		CollectionProducer candidate = lessThan(abs(cp(x)), c(Double.MAX_VALUE),
+				c(n), integers(0, n));
+		int first = (int) -max(candidate.multiply(-1.0)).evaluate().toDouble(0);
+		return first >= n ? -1 : first;
 	}
 
 	/**
@@ -1457,25 +1478,17 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		new File("results/pdsl-audio-dsp").mkdirs();
 		MixdownManager mixdown = buildFixtureMixdown();
 		runFixtureSetup(mixdown);
-		double[] source = loadLoopSource();
-		int loopFrames = SAMPLE_RATE;
-		IntToDoubleFunction looped = t -> {
-			int pos = t % loopFrames;
-			return pos < source.length ? source[pos] : 0.0;
-		};
+		PackedCollection looped = loopedSource(TOTAL_FRAMES);
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
 		File probeWav = new File("results/pdsl-audio-dsp/pdsl_main_bus_probe.wav");
-		double[] out = renderPdslMaster(mixdown, "mixdown_main_bus", config, CHANNELS, looped,
-				TOTAL_FRAMES, false, probeWav);
+		PackedCollection out = renderPdslMaster(mixdown, "mixdown_main_bus", config, CHANNELS,
+				looped, TOTAL_FRAMES, false, probeWav);
 
-		int firstBad = -1;
-		for (int i = 0; i < out.length; i++) {
-			if (!Double.isFinite(out[i])) { firstBad = i; break; }
-		}
+		int firstBad = firstNonFinite(out);
 		log(String.format("main_bus probe: samples=%d firstNonFinite=%d energy=%.6f peak=%.6f",
-				out.length, firstBad, energy(out, 0), peakOf(out)));
+				out.getMemLength(), firstBad, energy(out, 0), peakOf(out)));
 		Assert.assertEquals("main_bus (HP+volume+sum) produced a non-finite sample at index "
 				+ firstBad, -1, firstBad);
 	}
@@ -1487,19 +1500,19 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 *
 	 * @return mono sample data, at most {@link #SAMPLE_RATE} frames
 	 */
-	private double[] loadLoopSource() throws IOException {
+	private PackedCollection loadLoopSource() throws IOException {
 		File library = new File(SystemUtils.getProperty("AR_RINGS_LIBRARY", "/Users/Shared/Music/Samples"));
 		if (library.isDirectory()) {
 			File[] wavs = library.listFiles((d, n) -> n.toLowerCase().endsWith(".wav"));
 			if (wavs != null) {
 				Arrays.sort(wavs);
 				for (int i = 0; i < wavs.length && i < 25; i++) {
-					double[] clip = tryLoadClip(wavs[i]);
+					PackedCollection clip = tryLoadClip(wavs[i]);
 					if (clip != null) return clip;
 				}
 			}
 		}
-		double[] synthetic = tryLoadClip(getTestWavFile(SOURCE_FREQ_BASE, 0.5));
+		PackedCollection synthetic = tryLoadClip(getTestWavFile(SOURCE_FREQ_BASE, 0.5));
 		if (synthetic == null) {
 			throw new IOException("no loadable source clip for the PDSL demo");
 		}
@@ -1521,7 +1534,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @param f the WAV file to load
 	 * @return mono sample data, or {@code null} if the file cannot be loaded
 	 */
-	private double[] tryLoadClip(File f) {
+	private PackedCollection tryLoadClip(File f) {
 		try {
 			WaveData wav = WaveData.load(f);
 			try {
@@ -1537,7 +1550,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				if (peak < 1.0e-6) return null;
 
 				log("loop source: " + f.getName() + " (" + n + " frames, peak " + peak + ")");
-				return cp(clip).multiply(0.9 / peak).evaluate().toArray(0, n);
+				return cp(clip).multiply(0.9 / peak).evaluate();
 			} finally {
 				wav.destroy();
 			}
