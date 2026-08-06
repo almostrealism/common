@@ -68,20 +68,6 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	}
 
 	/**
-	 * Asserts that a convolution result matches the expected output element-by-element
-	 * using hardware-precision tolerance from {@link TestFeatures#assertEquals(double, double)}.
-	 *
-	 * @param expected the expected output values
-	 * @param result the actual convolution result
-	 * @param length number of elements to compare
-	 */
-	default void assertConvolutionEquals(PackedCollection expected, PackedCollection result, int length) {
-		for (int i = 0; i < length; i++) {
-			assertEquals(expected.toDouble(i), result.toDouble(i));
-		}
-	}
-
-	/**
 	 * Reference implementation of centered FIR convolution for test verification.
 	 *
 	 * <p>As with {@link #referenceLowPassCoefficients}, the convolution itself is

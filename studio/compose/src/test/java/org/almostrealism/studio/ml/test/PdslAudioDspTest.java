@@ -270,7 +270,8 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Compare to reference: lowpass(signal) * wet_level
 		PackedCollection expected = referenceConvolve(signal, coeffs);
-		assertConvolutionEquals(cp(expected).multiply(WET_LEVEL).evaluate(), output, SIGNAL_SIZE);
+		assertEquals(cp(expected).multiply(WET_LEVEL).evaluate(),
+				output.reshape(shape(SIGNAL_SIZE)));
 	}
 
 	/**

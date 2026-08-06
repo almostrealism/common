@@ -649,8 +649,8 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return the root-mean-square of all elements
 	 */
 	private double rmsOf(PackedCollection data) {
-		int len = data.getMemLength();
-		return Math.sqrt(sum(cp(data).sq()).evaluate().toDouble(0) / Math.max(1, len));
+		int len = Math.max(1, data.getMemLength());
+		return sqrt(divide(sum(cp(data).sq()), c(len))).evaluate().toDouble(0);
 	}
 
 	/**

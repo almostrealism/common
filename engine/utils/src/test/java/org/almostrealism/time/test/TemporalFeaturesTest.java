@@ -29,21 +29,17 @@ import org.junit.Test;
 public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTestFeatures {
 
 	/**
-	 * Computes high-pass filter coefficients from low-pass coefficients.
+	 * Computes high-pass filter coefficients from low-pass coefficients by spectral
+	 * inversion: the unit impulse at the centre tap, less the low-pass response.
 	 *
-	 * <p>Spectral inversion: the unit impulse at the centre tap, less the low-pass
-	 * response. Like the low-pass reference it stays host arithmetic, so that it
-	 * remains an independent check on the framework rather than a restatement of it.
+	 * @param cutoff      the cutoff frequency in Hz
+	 * @param sampleRate  the sample rate in Hz
+	 * @param filterOrder the filter order
+	 * @return a producer for the high-pass coefficients
 	 */
-	protected PackedCollection highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
-		PackedCollection lowPassCoefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
-
-		double[] highPassCoefficients = new double[filterOrder + 1];
-		for (int i = 0; i <= filterOrder; i++) {
-			highPassCoefficients[i] = ((i == filterOrder / 2) ? 1.0 : 0.0) - lowPassCoefficients.toDouble(i);
-		}
-
-		return PackedCollection.of(highPassCoefficients);
+	protected CollectionProducer highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
+		return subtract(oneHot(filterOrder + 1, filterOrder / 2),
+				cp(referenceLowPassCoefficients(cutoff, sampleRate, filterOrder)));
 	}
 
 	/**
@@ -100,7 +96,8 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		int len = filterOrder + 1;
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
-			PackedCollection coefficients = highPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			PackedCollection coefficients =
+					highPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder).evaluate();
 			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
 			for (int i = 0; i < filterOrder + 1; i++) {
