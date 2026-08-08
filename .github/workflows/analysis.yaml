@@ -716,6 +716,7 @@ jobs:
   # Runs the unittest suites that live alongside Python code under tools/.
   # Currently covers:
   #   - tools/mcp/manager/test_server.py (ar-manager MCP tools)
+  #   - tools/mcp/common/test_memory_text.py (shared MCP libraries)
   #   - tools/tests/test_migrate_workstreams.py (workstreams migration tool)
   # These are pure Python — no Maven build needed, so this job only depends
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
@@ -747,6 +748,9 @@ jobs:
 
       - name: Run ar-manager MCP tests
         run: python3 -m unittest discover -v -s tools/mcp/manager -p "test_*.py"
+
+      - name: Run shared MCP library tests
+        run: python3 -m unittest discover -v -s tools/mcp/common -p "test_*.py"
 
       - name: Run migration tool tests
         run: python3 -m unittest discover -v -s tools/tests -p "test_*.py"

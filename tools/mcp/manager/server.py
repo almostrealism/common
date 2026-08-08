@@ -20,6 +20,8 @@ Configuration via environment variables:
                               (default: ~/.config/ar/manager-tokens.json)
     AR_MANAGER_TOKENS       - JSON string of token config (overrides file)
     AR_MEMORY_URL           - ar-memory HTTP server URL (auto-discovered if not set)
+    AR_MEMORY_REFORMULATED  - "1" to show reformulated memory text by default
+                              (beta; off by default, originals are shown)
     MCP_TRANSPORT           - Transport: http (default) or sse. stdio is
                               refused; ar-manager runs only as an authenticated
                               HTTP server (no tokenless / stdio mode).
@@ -76,6 +78,11 @@ from config import (
 _COMMON_DIR = os.path.join(os.path.dirname(__file__), "..", "common")
 if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
+
+# Memory entries store the author's text and the Consultant's rewrite of it
+# in one row; memory_text resolves which one a response shows. It has no
+# heavy dependencies, so it is imported eagerly unlike the memory/LLM clients.
+from memory_text import prefers_reformulated, present, projected
 
 _memory_client = None
 _memory_init_failed = False
@@ -2727,12 +2734,19 @@ def memory_recall(
     workstream_id: str = "",
     include_messages: bool = False,
     scope: str = "repo",
+    reformulated: bool = False,
 ) -> dict:
     """Search agent memories with optional LLM synthesis.
 
     Retrieves semantically similar memories from the ar-memory server.
     If an LLM backend is available, provides a synthesized summary.
     Can resolve repo_url/branch from workstream_id if provided.
+
+    Memory text is returned as its author wrote it. Memories stored through
+    the Consultant's ``remember`` tool also carry a rewritten version
+    ("reformulation"), a beta feature whose quality is still under
+    development; ask for it with ``reformulated`` when evaluating the
+    rewrite itself.
 
     By default, results are scoped to the current repository to avoid
     returning unrelated memories from other projects.
@@ -2749,9 +2763,13 @@ def memory_recall(
         scope: Search scope — ``repo`` (default) searches the current
             repository across all branches; ``branch`` narrows to the
             current branch within the repo; ``all`` searches all repos.
+        reformulated: When true, return the Consultant's rewrite of each
+            memory instead of the original text, with the original included
+            alongside it for comparison. Beta — off by default.
 
     Returns:
-        Dictionary with memories and optional summary.
+        Dictionary with memories and optional summary. Each memory carries
+        ``text_source`` recording which version of the text is shown.
     """
     _require_scope("memory-read")
     if scope not in ("repo", "branch", "all"):
@@ -2846,6 +2864,10 @@ def memory_recall(
             "memories": [],
         }
 
+    memories, notice = present(
+        memories, reformulated=reformulated or prefers_reformulated(),
+    )
+
     # Attempt LLM synthesis
     summary = None
     llm = _get_llm()
@@ -2871,15 +2893,10 @@ def memory_recall(
     result = {
         "ok": True,
         "memories": [
-            {
-                "id": m.get("id"),
-                "content": m.get("content"),
-                "score": m.get("score"),
-                "tags": m.get("tags"),
-                "created_at": m.get("created_at"),
-                "repo_url": m.get("repo_url"),
-                "branch": m.get("branch"),
-            }
+            projected(m, (
+                "id", "content", "score", "tags", "created_at",
+                "repo_url", "branch",
+            ))
             for m in memories
         ],
         "count": len(memories),
@@ -2891,6 +2908,8 @@ def memory_recall(
 
     if summary:
         result["summary"] = summary
+    if notice:
+        result["notice"] = notice
 
     return result
 
@@ -2907,6 +2926,7 @@ def workstream_context(
     commit_limit: int = 30,
     job_limit: int = 20,
     include_activities: "list[str] | str" = "primary",
+    reformulated: bool = False,
 ) -> dict:
     """Reconstruct the narrative of a workstream — what agents have been
     thinking about and doing on a branch. This is the primary tool for
@@ -2969,13 +2989,18 @@ def workstream_context(
             by default.  Pass ``"all"`` to see every message, or a specific
             activity name (e.g. ``"deduplication"``) to see that phase plus
             primary/untagged messages.
+        reformulated: When true, present the Consultant's rewrite of each
+            memory instead of the text its author wrote. Beta — off by
+            default, because a narrative reconstructed from rewrites loses
+            the specifics it depends on.
 
     Returns:
         Dictionary with branch memories, optionally commits, and optionally
         a compact jobs timeline. When commits are included, the response also
         contains ``total_commits`` (the full number of commits on the branch)
         and ``initial_commit_sha`` (the first commit on the branch relative
-        to the base).
+        to the base). Each memory carries ``text_source`` recording which
+        version of the text is shown.
     """
     _require_scope("memory-read")
     err = _check_short_strings(
@@ -3066,6 +3091,13 @@ def workstream_context(
             return any(a in allowed for a in activity_tags)
 
         memories = [m for m in memories if _activity_allowed(m)]
+
+    # Resolve which version of each memory's text the narrative shows. This
+    # also unwraps the dual-text JSON out of ``source``, so the entries that
+    # went through Consultant reformulation look like every other entry.
+    memories, notice = present(
+        memories, reformulated=reformulated or prefers_reformulated(),
+    )
 
     # Fetch commit history from GitHub Compare API if requested
     commits = None
@@ -3212,6 +3244,8 @@ def workstream_context(
             "Use project_read_plan to read the planning document",
         ],
     }
+    if notice:
+        result["notice"] = notice
     # Expose the jobs key unconditionally when the caller requested it —
     # an empty list is a meaningful signal (no jobs on this branch yet),
     # distinct from "the caller opted out with job_limit=0 or passed no
