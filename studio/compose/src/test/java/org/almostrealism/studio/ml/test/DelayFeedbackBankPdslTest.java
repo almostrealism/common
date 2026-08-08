@@ -116,21 +116,20 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		float[] drySignal = new float[totalSamples];
-		float[] wetSignal = new float[totalSamples];
+		PackedCollection drySignal = new PackedCollection(totalSamples);
+		PackedCollection wetSignal = new PackedCollection(totalSamples);
 
+		// The bank carries its delay rings between passes, so the dry and wet signals are
+		// assembled together as the passes run rather than one after the other.
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int offset = pass * SIGNAL_SIZE;
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
 			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
 					.into(input.traverseEach()).evaluate();
-			PackedCollection output = compiled.forward(input.reshape(compiled.getInputShape()));
-			double[] inArr = input.toArray(0, SIGNAL_SIZE);
-			double[] outArr = output.toArray(0, SIGNAL_SIZE);
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				drySignal[offset + i] = (float) inArr[i];
-				wetSignal[offset + i] = (float) outArr[i];
-			}
+
+			drySignal.setFrom(offset, input);
+			wetSignal.setFrom(offset, compiled.forward(input.reshape(compiled.getInputShape()))
+					.range(shape(SIGNAL_SIZE)));
 		}
 
 		File wavFile = new File(outputDir, "delay_feedback_bank.wav");
@@ -140,13 +139,8 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 
 		// The delay-feedback bank output must differ from the raw dry input
 		// because the delay shifts the signal and the routing matrix scales it.
-		double diffEnergy = 0.0;
-		for (int i = 0; i < totalSamples; i++) {
-			double diff = wetSignal[i] - drySignal[i];
-			diffEnergy += diff * diff;
-		}
 		Assert.assertTrue(
 				"Output must differ from dry input (delay + routing must be active)",
-				diffEnergy > 0.0);
+				differenceEnergy(wetSignal, drySignal) > 0.0);
 	}
 }

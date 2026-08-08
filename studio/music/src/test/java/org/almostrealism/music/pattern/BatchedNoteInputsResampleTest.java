@@ -123,7 +123,7 @@ public class BatchedNoteInputsResampleTest extends TestSuiteBase implements Audi
 			}
 			// The gather supplies the per-note effective resample ratio; the kernel resamples.
 			Assert.assertEquals("layer " + l + " effective ratio",
-					effectiveRatio, in.getRatios()[l], 1e-12);
+					effectiveRatio, in.getScalar(BatchedNoteInputs.ratioIndex(l)), 1e-12);
 
 			// ...and the RAW (un-resampled) channel — a cached lookup, not a per-note resample.
 			PackedCollection expected = fit(wave.getChannelData(0, 1.0));

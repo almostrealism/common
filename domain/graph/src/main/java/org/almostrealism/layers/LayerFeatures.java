@@ -890,6 +890,66 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Projects one of the three gates stacked into a GRU weight matrix.
+	 *
+	 * <p>GRU weights arrive from a model checkpoint stacked as
+	 * {@code (3 * size, inputSize)} in reset, update, candidate order, with the biases
+	 * stacked the same way. This slices out the requested gate's rows and returns
+	 * {@code W_gate @ input + b_gate}.</p>
+	 *
+	 * @param weight    stacked weights of shape {@code (3 * size, inputSize)}
+	 * @param bias      stacked biases of shape {@code (3 * size)}
+	 * @param input     the vector to project, of shape {@code (inputSize)}
+	 * @param gate      gate index: 0 for reset, 1 for update, 2 for candidate
+	 * @param size      hidden size, the number of rows belonging to each gate
+	 * @param inputSize length of the input vector
+	 * @return the gate projection, of shape {@code (size)}
+	 */
+	default CollectionProducer gruGate(PackedCollection weight, PackedCollection bias,
+									   Producer<PackedCollection> input,
+									   int gate, int size, int inputSize) {
+		return add(
+				matmul(cp(weight.range(shape(size, inputSize), gate * size * inputSize)), input),
+				cp(bias.range(shape(size), gate * size))).reshape(shape(size));
+	}
+
+	/**
+	 * Advances a GRU layer by one step from weights in the stacked checkpoint layout.
+	 *
+	 * <p>Computes {@code r = sigmoid(W_ir x + b_ir + W_hr h + b_hr)},
+	 * {@code z = sigmoid(W_iz x + b_iz + W_hz h + b_hz)},
+	 * {@code n = tanh(W_in x + b_in + r * (W_hn h + b_hn))} and
+	 * {@code h' = (1 - z) n + z h}.</p>
+	 *
+	 * @param weightIh  stacked input-hidden weights, {@code (3 * size, inputSize)}
+	 * @param weightHh  stacked hidden-hidden weights, {@code (3 * size, size)}
+	 * @param biasIh    stacked input-hidden biases, {@code (3 * size)}
+	 * @param biasHh    stacked hidden-hidden biases, {@code (3 * size)}
+	 * @param input     the step's input, of shape {@code (inputSize)}
+	 * @param hidden    the previous hidden state, of shape {@code (size)}
+	 * @param size      hidden size
+	 * @param inputSize length of the input vector
+	 * @return the new hidden state, of shape {@code (size)}
+	 */
+	default CollectionProducer gruStep(PackedCollection weightIh, PackedCollection weightHh,
+									   PackedCollection biasIh, PackedCollection biasHh,
+									   Producer<PackedCollection> input,
+									   Producer<PackedCollection> hidden,
+									   int size, int inputSize) {
+		CollectionProducer r = sigmoid(add(
+				gruGate(weightIh, biasIh, input, 0, size, inputSize),
+				gruGate(weightHh, biasHh, hidden, 0, size, size)));
+		CollectionProducer z = sigmoid(add(
+				gruGate(weightIh, biasIh, input, 1, size, inputSize),
+				gruGate(weightHh, biasHh, hidden, 1, size, size)));
+		CollectionProducer n = tanh(add(
+				gruGate(weightIh, biasIh, input, 2, size, inputSize),
+				r.multiply(gruGate(weightHh, biasHh, hidden, 2, size, size))));
+
+		return add(c(1.0).subtract(z).multiply(n), z.multiply(hidden)).reshape(shape(size));
+	}
+
+	/**
 	 * A {@link Cell} that also implements {@link Learning}, combining data-flow
 	 * propagation with gradient-based weight update support.
 	 */

@@ -59,7 +59,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		PackedCollection result = filter.get().evaluate();
 
 		PackedCollection expected = referenceConvolve(signal, coefficients);
-		assertConvolutionEquals(expected, result, signalSize);
+		assertEquals(expected, result);
 	}
 
 	/**
@@ -87,7 +87,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 
 		PackedCollection coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		PackedCollection expected = referenceConvolve(signal, coeffs);
-		assertConvolutionEquals(expected, result, signalSize);
+		assertEquals(expected, result);
 	}
 
 	/**
@@ -114,7 +114,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 
 		PackedCollection coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		PackedCollection expected = referenceConvolve(signal, coeffs);
-		assertConvolutionEquals(expected, result, signalSize);
+		assertEquals(expected, result);
 	}
 
 	/**
@@ -164,6 +164,6 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 
 		PackedCollection coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		PackedCollection expected = referenceConvolve(signal, coeffs);
-		assertConvolutionEquals(expected, result, signalSize);
+		assertEquals(expected, result);
 	}
 }

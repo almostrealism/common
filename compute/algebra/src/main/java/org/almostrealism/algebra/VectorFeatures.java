@@ -106,6 +106,28 @@ public interface VectorFeatures extends ScalarFeatures {
 	default CollectionProducer v(Vector value) { return value(value); }
 
 	/**
+	 * Produces a one-hot vector: {@code 1.0} at {@code position} and zero elsewhere.
+	 *
+	 * @param length   the length of the vector
+	 * @param position the index to set
+	 * @return a producer for the one-hot vector
+	 */
+	default CollectionProducer oneHot(int length, int position) {
+		return oneHot(length, c(position));
+	}
+
+	/**
+	 * Produces a one-hot vector whose set index is itself computed.
+	 *
+	 * @param length   the length of the vector
+	 * @param position a producer for the index to set
+	 * @return a producer for the one-hot vector
+	 */
+	default CollectionProducer oneHot(int length, Producer<PackedCollection> position) {
+		return equals(integers(0, length), position, c(1.0), c(0.0));
+	}
+
+	/**
 	 * Creates a {@link CollectionProducer} that produces a constant {@link Vector} value.
 	 * This method creates a computation that returns the values from the provided {@link Vector},
 	 * effectively creating a constant computation that always returns the same values.

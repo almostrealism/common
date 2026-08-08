@@ -249,47 +249,4 @@ public class DelayNetwork implements TemporalFactor<PackedCollection>, Lifecycle
 		this.bufferIndices.clear();
 	}
 
-	/**
-	 * Returns the transpose of the given matrix.
-	 *
-	 * @param matrix the input matrix (rows x columns)
-	 * @return a new matrix (columns x rows) that is the transpose of the input
-	 */
-	public static double[][] transpose(double[][] matrix) {
-		int rows = matrix.length;
-		int columns = matrix[0].length;
-		double[][] transpose = new double[columns][rows];
-
-		for (int i = 0; i < rows; i++) {
-			for (int j = 0; j < columns; j++) {
-				transpose[j][i] = matrix[i][j];
-			}
-		}
-
-		return transpose;
-	}
-
-	/**
-	 * Multiplies two matrices and returns the result.
-	 *
-	 * @param firstMatrix  the left operand matrix (r1 x c1)
-	 * @param secondMatrix the right operand matrix (c1 x c2)
-	 * @return the product matrix (r1 x c2)
-	 */
-	public static double[][] multiplyMatrices(double[][] firstMatrix, double[][] secondMatrix) {
-		int r1 = firstMatrix.length;
-		int c1 = firstMatrix[0].length;
-		int c2 = secondMatrix[0].length;
-		double[][] product = new double[r1][c2];
-
-		for (int i = 0; i < r1; i++) {
-			for (int j = 0; j < c2; j++) {
-				for (int k = 0; k < c1; k++) {
-					product[i][j] += firstMatrix[i][k] * secondMatrix[k][j];
-				}
-			}
-		}
-
-		return product;
-	}
 }

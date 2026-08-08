@@ -35,6 +35,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.IntFunction;
 
 /**
  * Demonstrates the PDSL DSP pipeline by processing audio signals and writing
@@ -107,8 +108,8 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		lpModel.add(lpBlock);
 		CompiledModel lpCompiled = lpModel.compile();
 
-		float[] drySignal = new float[totalSamples];
-		float[] lpSignal = new float[totalSamples];
+		PackedCollection drySignal = new PackedCollection(totalSamples);
+		PackedCollection lpSignal = new PackedCollection(totalSamples);
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			final int sampleOffset = pass * SIGNAL_SIZE;
@@ -118,12 +119,8 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 					.add(sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
 					.into(input.traverseEach()).evaluate();
 			PackedCollection output = lpCompiled.forward(input.reshape(lpCompiled.getInputShape()));
-			double[] inArr = input.toArray(0, SIGNAL_SIZE);
-			double[] outArr = output.toArray(0, SIGNAL_SIZE);
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				drySignal[sampleOffset + i] = (float) inArr[i];
-				lpSignal[sampleOffset + i] = (float) outArr[i];
-			}
+			drySignal.setFrom(sampleOffset, input);
+			lpSignal.setFrom(sampleOffset, output.range(shape(SIGNAL_SIZE)));
 		}
 
 		writeDemoWav(new File(outputDir, "pdsl_dry_multitone.wav"), drySignal, SAMPLE_RATE);
@@ -135,8 +132,8 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 
 		// LP output must have less energy than dry (12 kHz content attenuated)
 		int skipEdge = FILTER_ORDER / 2;
-		double dryEnergy = energy(floatToDouble(drySignal), skipEdge);
-		double lpEnergy = energy(floatToDouble(lpSignal), skipEdge);
+		double dryEnergy = energy(drySignal, skipEdge);
+		double lpEnergy = energy(lpSignal, skipEdge);
 		Assert.assertTrue("LP output must have less energy than dry (LP attenuates 12 kHz)",
 				lpEnergy < dryEnergy * 0.9);
 
@@ -157,21 +154,16 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		delayModel.add(delayBlock);
 		CompiledModel delayCompiled = delayModel.compile();
 
-		float[] delaySignal = new float[totalSamples];
-
-		for (int pass = 0; pass < numPasses; pass++) {
-			final int sampleOffset = pass * SIGNAL_SIZE;
+		// The delay carries a ring between passes, so the passes run in order and each
+		// output lands in the span it occupies.
+		PackedCollection delaySignal = render(numPasses, SIGNAL_SIZE, sampleOffset -> {
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
 			// 440 Hz tone for the first half second (t < 0.5), silence after
 			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
 					.multiply(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).lessThan(c(0.5 * SAMPLE_RATE)))
 					.into(input.traverseEach()).evaluate();
-			PackedCollection output = delayCompiled.forward(input.reshape(delayCompiled.getInputShape()));
-			double[] outArr = output.toArray(0, SIGNAL_SIZE);
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				delaySignal[sampleOffset + i] = (float) outArr[i];
-			}
-		}
+			return delayCompiled.forward(input.reshape(delayCompiled.getInputShape()));
+		});
 
 		writeDemoWav(new File(outputDir, "pdsl_delay_echo.wav"), delaySignal, SAMPLE_RATE);
 		Assert.assertTrue("Delay WAV must be non-empty",
@@ -220,22 +212,18 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		mixModel.add(mixBlock);
 		CompiledModel mixCompiled = mixModel.compile();
 
-		float[] drySignal = new float[totalSamples];
-		float[] mixSignal = new float[totalSamples];
-
-		for (int pass = 0; pass < numPasses; pass++) {
-			final int sampleOffset = pass * SIGNAL_SIZE;
+		IntFunction<PackedCollection> tone = sampleOffset -> {
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
 			sin(integers(sampleOffset, sampleOffset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
 					.into(input.traverseEach()).evaluate();
-			PackedCollection output = mixCompiled.forward(input.reshape(mixCompiled.getInputShape()));
-			double[] inArr = input.toArray(0, SIGNAL_SIZE);
-			double[] outArr = output.toArray(0, SIGNAL_SIZE);
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				drySignal[sampleOffset + i] = (float) inArr[i];
-				mixSignal[sampleOffset + i] = (float) outArr[i];
-			}
-		}
+			return input;
+		};
+
+		// The dry signal is the tone itself, so it is assembled without invoking the
+		// model; the mix runs its passes in order, the model carrying state between them.
+		PackedCollection drySignal = render(numPasses, SIGNAL_SIZE, tone);
+		PackedCollection mixSignal = render(numPasses, SIGNAL_SIZE, sampleOffset ->
+				mixCompiled.forward(tone.apply(sampleOffset).reshape(mixCompiled.getInputShape())));
 
 		writeDemoWav(new File(outputDir, "pdsl_wet_dry_mix.wav"), mixSignal, SAMPLE_RATE);
 		Assert.assertTrue("Mix WAV must be non-empty",
@@ -246,30 +234,26 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		// The energy of the sum (dry + 0.5 * delayed) > energy of dry alone
 		// would not hold in general, but we can at least check the file exists
 		// and the output differs from the raw input.
-		double diffEnergy = 0.0;
-		for (int i = 0; i < totalSamples; i++) {
-			double diff = mixSignal[i] - drySignal[i];
-			diffEnergy += diff * diff;
-		}
 		Assert.assertTrue("Mix output must differ from dry (wet path contributes delay echo)",
-				diffEnergy > 0.0);
+				differenceEnergy(mixSignal, drySignal) > 0.0);
 	}
 
 	/**
-	 * Writes a mono 16-bit PCM WAV file with the given samples using {@link WavFile}.
+	 * Writes a mono signal as a WAV.
 	 *
-	 * @param file       the file to create (parent directories must exist)
-	 * @param samples    the audio samples in the range {@code [-1.0, 1.0]}
-	 * @param sampleRate the audio sample rate in Hz
+	 * <p>The WAV writer takes frames as doubles, so a collection is written directly; this
+	 * is the point at which the samples leave the system.</p>
+	 *
+	 * @param file       destination file
+	 * @param samples    the signal to write
+	 * @param sampleRate frames per second
 	 * @throws IOException if the file cannot be written
 	 */
-	static void writeDemoWav(File file, float[] samples, int sampleRate) throws IOException {
-		double[] data = new double[samples.length];
-		for (int i = 0; i < samples.length; i++) {
-			data[i] = samples[i];
-		}
-		try (WavFile wav = WavFile.newWavFile(file, 1, samples.length, 16, sampleRate)) {
-			wav.writeFrames(data, samples.length);
+	static void writeDemoWav(File file, PackedCollection samples, int sampleRate) throws IOException {
+		int n = samples.getMemLength();
+		try (WavFile wav = WavFile.newWavFile(file, 1, n, 16, sampleRate)) {
+			wav.writeFrames(samples.toArray(), n);
 		}
 	}
+
 }

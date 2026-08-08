@@ -18,6 +18,8 @@ package org.almostrealism.util;
 
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.function.IntFunction;
+
 
 /**
  * Shared test utilities for FIR filter and convolution tests.
@@ -30,6 +32,14 @@ import org.almostrealism.collect.PackedCollection;
  * operations should <em>implement</em> this interface (the methods are stateless
  * {@code default} methods) rather than accept or hold a {@code Features} instance —
  * passing one around as an object defeats the purpose of the pattern.</p>
+ *
+ * <p>This mixin is for tests only. It extends {@link TestFeatures}, so implementing it
+ * pulls the whole test surface — assertions, depth and profile settings — onto the
+ * implementing type. It lives in main sources solely so that tests in other modules can
+ * reach it; that is not licence for production code to implement it. A production type
+ * that needs one of these operations is evidence the operation belongs on a production
+ * {@code Features} mixin instead, and it should be moved there rather than reached for
+ * here.</p>
  *
  * @see org.almostrealism.time.computations.test.MultiOrderFilterConvolutionTest
  * @see io.almostrealism.compute.test.ReplicationMismatchOptimizationTest
@@ -65,20 +75,6 @@ public interface FirFilterTestFeatures extends TestFeatures {
 		}
 
 		return PackedCollection.of(coefficients);
-	}
-
-	/**
-	 * Asserts that a convolution result matches the expected output element-by-element
-	 * using hardware-precision tolerance from {@link TestFeatures#assertEquals(double, double)}.
-	 *
-	 * @param expected the expected output values
-	 * @param result the actual convolution result
-	 * @param length number of elements to compare
-	 */
-	default void assertConvolutionEquals(PackedCollection expected, PackedCollection result, int length) {
-		for (int i = 0; i < length; i++) {
-			assertEquals(expected.toDouble(i), result.toDouble(i));
-		}
 	}
 
 	/**
@@ -118,31 +114,92 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 * Computes the sum-of-squares energy of a signal, skipping the first and last
 	 * {@code skip} samples to avoid FIR filter edge effects.
 	 *
-	 * @param signal the signal samples
+	 * @param signal the signal
 	 * @param skip   number of samples to skip at each end
 	 * @return the sum of squared sample values in the interior region
 	 */
-	default double energy(double[] signal, int skip) {
-		double sum = 0.0;
-		for (int i = skip; i < signal.length - skip; i++) {
-			sum += signal[i] * signal[i];
-		}
-		return sum;
+	default double energy(PackedCollection signal, int skip) {
+		int interior = signal.getMemLength() - 2 * skip;
+		if (interior <= 0) return 0.0;
+
+		return sum(cp(signal.range(shape(interior), skip)).sq()).evaluate().toDouble(0);
 	}
 
 	/**
 	 * Returns the peak absolute value of a signal.
 	 *
-	 * @param samples the signal samples
+	 * @param samples the signal
 	 * @return the maximum absolute sample value
 	 */
-	default double peakOf(double[] samples) {
-		double peak = 0.0;
-		for (double v : samples) {
-			double a = Math.abs(v);
-			if (a > peak) peak = a;
+	default double peakOf(PackedCollection samples) {
+		return max(cp(samples).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Assembles a signal from a sequence of fixed-length passes, each pass writing into
+	 * the span it occupies.
+	 *
+	 * <p>The passes run in order and each is given the absolute sample offset it starts
+	 * at, so a stateful model — one carrying a delay ring or a filter history between
+	 * invocations — sees them in the order it would in a real render. Each pass's output
+	 * is copied into the assembled signal where it belongs, so nothing leaves the device
+	 * on the way and the whole signal is available for measurement afterwards.</p>
+	 *
+	 * @param numPasses  the number of passes to run
+	 * @param signalSize the frames each pass produces
+	 * @param pass       supplies one pass's output, given the offset it begins at
+	 * @return the assembled signal, {@code numPasses * signalSize} frames
+	 */
+	default PackedCollection render(int numPasses, int signalSize,
+									IntFunction<PackedCollection> pass) {
+		PackedCollection signal = new PackedCollection(numPasses * signalSize);
+
+		for (int p = 0; p < numPasses; p++) {
+			int sampleOffset = p * signalSize;
+			signal.setFrom(sampleOffset, pass.apply(sampleOffset).range(shape(signalSize)));
 		}
-		return peak;
+
+		return signal;
+	}
+
+	/**
+	 * Computes the sum-of-squares energy of the difference between two signals of
+	 * equal length. Used to establish that one rendering differs from another.
+	 *
+	 * @param signal    the signal under test
+	 * @param reference the signal to compare against
+	 * @return the sum of squared differences
+	 */
+	default double differenceEnergy(PackedCollection signal, PackedCollection reference) {
+		return sum(cp(signal).subtract(cp(reference)).sq()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Sums a multi-channel signal down to mono, the channels being laid out as
+	 * contiguous runs of equal length.
+	 *
+	 * @param signal   the multi-channel signal
+	 * @param channels the number of channels
+	 * @return the summed signal, one sample per channel position
+	 */
+	default PackedCollection sumChannels(PackedCollection signal, int channels) {
+		int length = signal.getMemLength() / channels;
+		return matmul(constant(shape(1, channels), 1.0),
+				cp(signal.reshape(shape(channels, length)))).evaluate().reshape(shape(length));
+	}
+
+	/**
+	 * Computes the sum-of-squares energy of each channel of a multi-channel signal,
+	 * which is laid out as {@code channels} contiguous runs of equal length.
+	 *
+	 * @param signal   the multi-channel signal
+	 * @param channels the number of channels
+	 * @return the per-channel energies, of shape ({@code channels})
+	 */
+	default PackedCollection channelEnergy(PackedCollection signal, int channels) {
+		int length = signal.getMemLength() / channels;
+		return sum(cp(signal.reshape(shape(channels, length)).traverse(1)).sq())
+				.evaluate().reshape(shape(channels));
 	}
 
 	/**

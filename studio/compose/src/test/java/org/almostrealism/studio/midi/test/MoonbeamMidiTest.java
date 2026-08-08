@@ -17,17 +17,10 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.code.Precision;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.mem.ByteBufferTransfer;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.DirectMemory;
-import org.almostrealism.hardware.mem.RAM;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.DoubleBuffer;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.midi.CompoundMidiEmbedding;
 import org.almostrealism.ml.midi.GRUDecoder;
@@ -383,7 +376,10 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection h = pack(
 				0.5, -0.5);
 
-		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
+		PackedCollection hNew = (PackedCollection) Process.optimized(
+				gruStep(weightIh, weightHh, biasIh, biasHh, cp(x), cp(h),
+						h.getShape().getTotalSize(), x.getShape().getTotalSize()))
+				.get().evaluate();
 
 		Assert.assertEquals("Output size", 2, hNew.getShape().getTotalSize());
 
@@ -426,7 +422,10 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		PackedCollection x = pack(5.0);
 		PackedCollection h = pack(3.0);
 
-		PackedCollection hNew = gruStep(weightIh, weightHh, biasIh, biasHh, x, h);
+		PackedCollection hNew = (PackedCollection) Process.optimized(
+				gruStep(weightIh, weightHh, biasIh, biasHh, cp(x), cp(h),
+						h.getShape().getTotalSize(), x.getShape().getTotalSize()))
+				.get().evaluate();
 
 		// With z ≈ sigmoid(10) ≈ 1.0, h' ≈ z * h ≈ h
 		Assert.assertEquals("With high update gate, h' should be close to h",
@@ -476,71 +475,6 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 		int lastVocab = config.vocabSizes[5]; // velocity vocab
 		Assert.assertEquals("Last offset + last vocab = decodeVocabSize",
 				config.decodeVocabSize, lastOffset + lastVocab);
-	}
-
-	/**
-	 * Run one GRU layer step in plain Java for unit testing.
-	 *
-	 * @param weightIh stacked input-hidden weights, shape (3*dh, inputSize)
-	 * @param weightHh stacked hidden-hidden weights, shape (3*dh, dh)
-	 * @param biasIh   stacked input-hidden biases, shape (3*dh)
-	 * @param biasHh   stacked hidden-hidden biases, shape (3*dh)
-	 * @param x        input vector
-	 * @param h        previous hidden state
-	 * @return new hidden state
-	 */
-	private static PackedCollection gruStep(
-			PackedCollection weightIh, PackedCollection weightHh,
-			PackedCollection biasIh, PackedCollection biasHh,
-			PackedCollection x, PackedCollection h) {
-		int dh = h.getShape().getTotalSize();
-		int inputSize = x.getShape().getTotalSize();
-		double[] xArr = x.toArray(0, inputSize);
-		double[] hArr = h.toArray(0, dh);
-		double[] wIr = weightIh.toArray(0, dh * inputSize);
-		double[] bIr = biasIh.toArray(0, dh);
-		double[] wHr = weightHh.toArray(0, dh * dh);
-		double[] bHr = biasHh.toArray(0, dh);
-		double[] wIz = weightIh.toArray(dh * inputSize, dh * inputSize);
-		double[] bIz = biasIh.toArray(dh, dh);
-		double[] wHz = weightHh.toArray(dh * dh, dh * dh);
-		double[] bHz = biasHh.toArray(dh, dh);
-		double[] wIn = weightIh.toArray(2 * dh * inputSize, dh * inputSize);
-		double[] bIn = biasIh.toArray(2 * dh, dh);
-		double[] wHn = weightHh.toArray(2 * dh * dh, dh * dh);
-		double[] bHn = biasHh.toArray(2 * dh, dh);
-		double[] hNew = new double[dh];
-		for (int i = 0; i < dh; i++) {
-			double rGate = bIr[i] + bHr[i];
-			double zGate = bIz[i] + bHz[i];
-			double nGateIh = bIn[i];
-			double nGateHh = bHn[i];
-			for (int j = 0; j < inputSize; j++) {
-				rGate += wIr[i * inputSize + j] * xArr[j];
-				zGate += wIz[i * inputSize + j] * xArr[j];
-				nGateIh += wIn[i * inputSize + j] * xArr[j];
-			}
-			for (int j = 0; j < dh; j++) {
-				rGate += wHr[i * dh + j] * hArr[j];
-				zGate += wHz[i * dh + j] * hArr[j];
-				nGateHh += wHn[i * dh + j] * hArr[j];
-			}
-			double r = 1.0 / (1.0 + Math.exp(-rGate));
-			double z = 1.0 / (1.0 + Math.exp(-zGate));
-			double n = Math.tanh(nGateIh + r * nGateHh);
-			hNew[i] = (1.0 - z) * n + z * hArr[i];
-		}
-		MemoryProvider<? extends RAM> provider =
-				Hardware.getLocalHardware().getNativeBufferMemoryProvider();
-		RAM mem = provider.allocate(dh);
-		ByteBuffer source = ByteBuffer.allocate(dh * Precision.FP64.bytes())
-				.order(ByteOrder.nativeOrder());
-		source.asDoubleBuffer().put(hNew);
-		new ByteBufferTransfer(source, Precision.FP64,
-				((DirectMemory) mem).asByteBuffer(),
-				Precision.ofBytes(provider.getNumberSize())).copyAll();
-
-		return new PackedCollection(new TraversalPolicy(dh), 0, Bytes.of(mem, dh), 0);
 	}
 
 }

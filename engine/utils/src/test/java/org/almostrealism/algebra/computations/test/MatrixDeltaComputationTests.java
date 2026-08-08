@@ -31,7 +31,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -61,7 +60,7 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate();
-		log(Arrays.toString(out.toArray(0, dim)));
+		log(out.toArrayString(0, dim));
 		assertEquals(8.5, out.toDouble(1));
 
 		// dy0/dw = x0, x1, 0,  0
@@ -97,14 +96,14 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		// y = f(x)
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate();
-		log(Arrays.toString(out.toArray(0, dim)));
+		log(out.toArrayString(0, dim));
 		// assertEquals(8.5, out.toDouble(1));
 
 		// dy0/dw = x0, x1, 0,  0
 		// dy1/dw = 0,  0,  x0, x1
 		Evaluable<? extends PackedCollection> dy = Process.optimized(c.delta(p(w))).get();
 		PackedCollection dout = dy.evaluate();
-		log(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+		log(dout.toArrayString(0, dout.getMemLength()));
 		Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
 		// assertEquals(0.0, dout.toDouble(5));
 		// assertEquals(3.0, dout.toDouble(7));

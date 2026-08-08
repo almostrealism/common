@@ -226,32 +226,6 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				.evaluate().toDouble(0);
 	}
 
-	/**
-	 * Creates a row-major square matrix carrying {@code value} on the diagonal and zero
-	 * elsewhere. The diagonal is the set of flat indices whose row {@code i / size} equals
-	 * their column {@code i % size}.
-	 *
-	 * @param size  matrix dimension
-	 * @param value the value to place on the diagonal
-	 * @return the matrix, flattened row-major
-	 */
-	private PackedCollection diagonalMatrix(int size, double value) {
-		return equals(floor(divide(integers(0, size * size), c(size))),
-				mod(integers(0, size * size), c(size)),
-				c(value), c(0.0)).evaluate();
-	}
-
-	/**
-	 * Creates a one-hot vector: {@code 1.0} at {@code position}, zero elsewhere.
-	 *
-	 * @param length   vector length
-	 * @param position the index to light
-	 * @return the one-hot vector
-	 */
-	private PackedCollection oneHot(int length, int position) {
-		return equals(integers(0, length), c(position), c(1.0), c(0.0)).evaluate();
-	}
-
 	// =====================================================================
 	// Test 1 — buffer is mutated by forward()
 	// =====================================================================
@@ -424,7 +398,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection noFeedback = new PackedCollection(channels * channels);
 
 		Harness h = build(channels, signalSize, bufSize, tapDelays, noFeedback);
-		PackedCollection impulse = oneHot(signalSize, 0);
+		PackedCollection impulse = oneHot(signalSize, 0).evaluate();
 		// Pass 1: silence warmup so the impulse's absolute time (sample 8) plus
 		// each tap delay lands inside pass 3's window.
 		h.forwardMulti(new PackedCollection(channels * signalSize));
@@ -475,7 +449,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 
 		// Per-channel input flat layout: [ch0 sigSize samples][ch1 sigSize samples].
 		// impulse on channel 0 sample 0
-		PackedCollection input = oneHot(channels * signalSize, 0);
+		PackedCollection input = oneHot(channels * signalSize, 0).evaluate();
 		// Pass 1: silence warmup.
 		h.forwardMulti(new PackedCollection(channels * signalSize));
 		// Pass 2: impulse on channel 0 only (absolute sample 4). Read happens
@@ -604,10 +578,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int channels = 3;
 		int signalSize = 4;
 		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
-		double[] gains = {2.0, 3.0, 5.0};
+		PackedCollection gains = pack(2.0, 3.0, 5.0);
 		List<Block> blocks = new ArrayList<>();
-		for (double g : gains) {
-			final double gain = g;
+		for (int ch = 0; ch < channels; ch++) {
+			final double gain = gains.toDouble(ch);
 			blocks.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
 					input -> multiply(input, constant(singleShape, gain)))));
 		}
@@ -619,15 +593,16 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
 		integers(0, channels * signalSize).add(1.0)
 				.into(input.traverseEach()).evaluate();
-		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+		PackedCollection out = compiled.forward(input)
+				.range(shape(channels * signalSize));
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * (ch * signalSize + i + 1);
+				double expected = gains.toDouble(ch) * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
-						expected, out[ch * signalSize + i], EPS);
+						expected, out.toDouble(ch * signalSize + i), EPS);
 			}
 		}
 	}
@@ -647,10 +622,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int channels = 3;
 		int signalSize = 4;
 		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
-		double[] gains = {2.0, 3.0, 5.0};
+		PackedCollection gains = pack(2.0, 3.0, 5.0);
 		List<Block> blocks = new ArrayList<>();
-		for (double g : gains) {
-			final double gain = g;
+		for (int ch = 0; ch < channels; ch++) {
+			final double gain = gains.toDouble(ch);
 			SequentialBlock body = new SequentialBlock(singleShape);
 			body.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
 					input -> multiply(input, constant(singleShape, gain)))));
@@ -664,15 +639,16 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
 		integers(0, channels * signalSize).add(1.0)
 				.into(input.traverseEach()).evaluate();
-		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+		PackedCollection out = compiled.forward(input)
+				.range(shape(channels * signalSize));
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * (ch * signalSize + i + 1);
+				double expected = gains.toDouble(ch) * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
-						expected, out[ch * signalSize + i], EPS);
+						expected, out.toDouble(ch * signalSize + i), EPS);
 			}
 		}
 	}
@@ -693,10 +669,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int signalSize = 4;
 		TraversalPolicy multiShape = new TraversalPolicy(channels, signalSize);
 		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
-		double[] gains = {2.0, 3.0, 5.0};
+		PackedCollection gains = pack(2.0, 3.0, 5.0);
 		List<Block> blocks = new ArrayList<>();
-		for (double g : gains) {
-			final double gain = g;
+		for (int ch = 0; ch < channels; ch++) {
+			final double gain = gains.toDouble(ch);
 			SequentialBlock body = new SequentialBlock(singleShape);
 			body.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
 					input -> multiply(input, constant(singleShape, gain)))));
@@ -711,15 +687,16 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection input = new PackedCollection(multiShape);
 		integers(0, channels * signalSize).add(1.0)
 				.into(input.traverseEach()).evaluate();
-		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+		PackedCollection out = compiled.forward(input)
+				.range(shape(channels * signalSize));
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * (ch * signalSize + i + 1);
+				double expected = gains.toDouble(ch) * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
-						expected, out[ch * signalSize + i], EPS);
+						expected, out.toDouble(ch * signalSize + i), EPS);
 			}
 		}
 	}
@@ -741,7 +718,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int channels = 3;
 		int signalSize = 8;
 		PackedCollection fb = new PackedCollection(channels * channels).fill(0.05);
-		PackedCollection pass = diagonalMatrix(channels, 0.5);
+		PackedCollection pass = identity(channels).multiply(0.5).evaluate();
 		Harness h = build(channels, signalSize, signalSize,
 				pack(6.0, 6.0, 6.0), fb, pass);
 
@@ -790,7 +767,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 			cp(t3.range(shape(3), n * 3))
 					.into(fb.range(shape(3), n * channels)).evaluate();
 		}
-		PackedCollection pass = diagonalMatrix(channels, 0.5);
+		PackedCollection pass = identity(channels).multiply(0.5).evaluate();
 		PackedCollection delays = new PackedCollection(channels).fill(6500.0);
 		Harness h = build(channels, signalSize, signalSize, delays, fb, pass);
 
