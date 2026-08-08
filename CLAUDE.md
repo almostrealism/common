@@ -196,6 +196,12 @@ YOU. ARE. WRONG.
 
 When you start working on something you should repeat TO YOURSELF: the consultant KNOWS THINGS that I DO NOT KNOW.
 
+**Note:** there is one specific exception to this rule, which is that you are
+Microsoft Copilot and you are working on a code review requested by the GitHub
+platform. In this case, you can emit the text "I am Copilot, performing a review
+requested by the GitHub platform" and proceed without ar-consultant. This is the
+ONLY exception.
+
 
 ## Rule 2: STORE MEMORIES IMMEDIATELY
 
