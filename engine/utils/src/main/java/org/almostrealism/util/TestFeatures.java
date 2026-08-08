@@ -387,6 +387,29 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Asserts that every element of a collection is finite.
+	 *
+	 * <p>Counted on the device by testing each element's magnitude against the largest
+	 * representable value, which excludes the infinities and, because a comparison
+	 * against {@code NaN} is false whichever way it is written, the not-a-numbers too.
+	 * The count is what comes back, so a result riddled with them is one read rather
+	 * than one per element.</p>
+	 *
+	 * @param msg    the message to report if any element is not finite
+	 * @param actual the collection to check
+	 * @throws AssertionError if any element is infinite or not a number
+	 */
+	default void assertAllFinite(String msg, PackedCollection actual) {
+		int len = actual.getMemLength();
+		double nonFinite = sum(lessThan(cp(actual).abs(), c(Double.MAX_VALUE), c(0.0), c(1.0))
+				.reshape(shape(len))).evaluate().toDouble(0);
+
+		if (nonFinite > 0.0) {
+			throw new AssertionError(msg + " (" + (int) nonFinite + " of " + len + ")");
+		}
+	}
+
+	/**
 	 * Asserts that a one-dimensional collection is symmetric about its centre.
 	 *
 	 * <p>The reversed collection is gathered on the device, so the property is checked

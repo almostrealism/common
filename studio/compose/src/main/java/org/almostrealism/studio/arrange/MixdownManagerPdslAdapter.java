@@ -1460,6 +1460,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * genome's gene-driven delays; the kernels' ring-band clamp bounds any later
 	 * live-swap value that exceeds the built ring.
 	 *
+	 * <p>The largest element is found by reading the evaluated values rather than by a
+	 * reduction on the device. The answer has to become an {@code int} to size a buffer,
+	 * so some read is unavoidable; taking it as a reduction would mean an
+	 * {@code evaluate().toDouble()} pair inside production code, which is the shape the
+	 * policy prohibits and would not save the read anyway. The count here is the layer
+	 * count, and this runs once per argument build.</p>
+	 *
 	 * @param values the producer to evaluate
 	 * @param count  the element count
 	 * @return the ceiling of the maximum element
