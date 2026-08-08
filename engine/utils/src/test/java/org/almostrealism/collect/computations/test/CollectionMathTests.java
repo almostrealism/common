@@ -208,16 +208,19 @@ public class CollectionMathTests extends TestSuiteBase {
 		CollectionProducer products =
 				cumulativeProduct(c(1.0).subtract(inputs), false);
 
-		double[] in = products.evaluate().toArray();
-		double[] ad = sqrt(products).evaluate().toArray();
-		double[] bd = sqrt(c(1.0).subtract(products)).evaluate().toArray();
+		PackedCollection in = products.evaluate();
+		PackedCollection ad = sqrt(products).evaluate();
+		PackedCollection bd = sqrt(c(1.0).subtract(products)).evaluate();
 
-		Assert.assertEquals(in.length, ad.length);
-		Assert.assertEquals(in.length, bd.length);
+		assertEquals(in.getShape(), ad.getShape());
+		assertEquals(in.getShape(), bd.getShape());
 
-		for (int i = 0; i < in.length; i++) {
-			assertEquals(Math.sqrt(in[i]), ad[i]);
-			assertEquals(Math.sqrt(1.0 - in[i]), bd[i]);
+		// The square roots are checked against the host's own, which is an independent
+		// reference; computing the expectation with the framework's sqrt would compare
+		// the operation against itself.
+		for (int i = 0; i < in.getMemLength(); i++) {
+			assertEquals(Math.sqrt(in.toDouble(i)), ad.toDouble(i));
+			assertEquals(Math.sqrt(1.0 - in.toDouble(i)), bd.toDouble(i));
 		}
 	}
 

@@ -578,10 +578,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int channels = 3;
 		int signalSize = 4;
 		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
-		double[] gains = {2.0, 3.0, 5.0};
+		PackedCollection gains = pack(2.0, 3.0, 5.0);
 		List<Block> blocks = new ArrayList<>();
-		for (double g : gains) {
-			final double gain = g;
+		for (int ch = 0; ch < channels; ch++) {
+			final double gain = gains.toDouble(ch);
 			blocks.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
 					input -> multiply(input, constant(singleShape, gain)))));
 		}
@@ -593,15 +593,16 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
 		integers(0, channels * signalSize).add(1.0)
 				.into(input.traverseEach()).evaluate();
-		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+		PackedCollection out = compiled.forward(input)
+				.range(shape(channels * signalSize));
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * (ch * signalSize + i + 1);
+				double expected = gains.toDouble(ch) * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
-						expected, out[ch * signalSize + i], EPS);
+						expected, out.toDouble(ch * signalSize + i), EPS);
 			}
 		}
 	}
@@ -621,10 +622,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int channels = 3;
 		int signalSize = 4;
 		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
-		double[] gains = {2.0, 3.0, 5.0};
+		PackedCollection gains = pack(2.0, 3.0, 5.0);
 		List<Block> blocks = new ArrayList<>();
-		for (double g : gains) {
-			final double gain = g;
+		for (int ch = 0; ch < channels; ch++) {
+			final double gain = gains.toDouble(ch);
 			SequentialBlock body = new SequentialBlock(singleShape);
 			body.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
 					input -> multiply(input, constant(singleShape, gain)))));
@@ -638,15 +639,16 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
 		integers(0, channels * signalSize).add(1.0)
 				.into(input.traverseEach()).evaluate();
-		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+		PackedCollection out = compiled.forward(input)
+				.range(shape(channels * signalSize));
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * (ch * signalSize + i + 1);
+				double expected = gains.toDouble(ch) * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
-						expected, out[ch * signalSize + i], EPS);
+						expected, out.toDouble(ch * signalSize + i), EPS);
 			}
 		}
 	}
@@ -667,10 +669,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		int signalSize = 4;
 		TraversalPolicy multiShape = new TraversalPolicy(channels, signalSize);
 		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
-		double[] gains = {2.0, 3.0, 5.0};
+		PackedCollection gains = pack(2.0, 3.0, 5.0);
 		List<Block> blocks = new ArrayList<>();
-		for (double g : gains) {
-			final double gain = g;
+		for (int ch = 0; ch < channels; ch++) {
+			final double gain = gains.toDouble(ch);
 			SequentialBlock body = new SequentialBlock(singleShape);
 			body.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
 					input -> multiply(input, constant(singleShape, gain)))));
@@ -685,15 +687,16 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection input = new PackedCollection(multiShape);
 		integers(0, channels * signalSize).add(1.0)
 				.into(input.traverseEach()).evaluate();
-		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+		PackedCollection out = compiled.forward(input)
+				.range(shape(channels * signalSize));
 
 		for (int ch = 0; ch < channels; ch++) {
 			for (int i = 0; i < signalSize; i++) {
-				double expected = gains[ch] * (ch * signalSize + i + 1);
+				double expected = gains.toDouble(ch) * (ch * signalSize + i + 1);
 				Assert.assertEquals(
 						"channel " + ch + " sample " + i
 								+ " must be its own input row times its own gain",
-						expected, out[ch * signalSize + i], EPS);
+						expected, out.toDouble(ch * signalSize + i), EPS);
 			}
 		}
 	}

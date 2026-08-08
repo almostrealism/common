@@ -430,8 +430,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < nl; l++) {
-				h[l].setFrom(0, gruStep(weightIhL[l], weightHhL[l],
-						biasIhL[l], biasHhL[l], layerInput, h[l]));
+				h[l].setFrom(0, Process.optimized(
+						gruStep(weightIhL[l], weightHhL[l], biasIhL[l], biasHhL[l],
+								cp(layerInput), cp(h[l]), decoderHidden, decoderHidden))
+						.get().evaluate());
 				layerInput = h[l];
 			}
 
@@ -740,8 +742,10 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		for (int step = 0; step < GRUDecoder.TOKENS_PER_NOTE; step++) {
 			PackedCollection layerInput = x;
 			for (int l = 0; l < na; l++) {
-				h[l].setFrom(0, gruStep(weightIhA[l], weightHhA[l],
-						biasIhA[l], biasHhA[l], layerInput, h[l]));
+				h[l].setFrom(0, Process.optimized(
+						gruStep(weightIhA[l], weightHhA[l], biasIhA[l], biasHhA[l],
+								cp(layerInput), cp(h[l]), decoderHidden, decoderHidden))
+						.get().evaluate());
 				layerInput = h[l];
 			}
 
@@ -863,76 +867,6 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		Ops.o().randn(collection.getShape(), rng).multiply(std)
 				.into(collection.traverseEach()).evaluate();
 		return collection;
-	}
-
-	/**
-	 * Project one of the three gates stacked into a GRU weight matrix.
-	 *
-	 * <p>GRU weights arrive stacked as (3*size, inputSize) in reset, update, candidate
-	 * order, with biases stacked the same way. This slices out the requested gate's
-	 * rows and returns {@code W_gate @ input + b_gate}.</p>
-	 *
-	 * @param weight     stacked weights of shape (3*size, inputSize)
-	 * @param bias       stacked biases of shape (3*size)
-	 * @param input      vector of shape (inputSize)
-	 * @param gate       gate index: 0 for reset, 1 for update, 2 for candidate
-	 * @param size       hidden size, the number of rows belonging to each gate
-	 * @param inputSize  length of the input vector
-	 * @return the gate projection of shape (size)
-	 */
-	private CollectionProducer gateProjection(PackedCollection weight, PackedCollection bias,
-											  Producer<PackedCollection> input,
-											  int gate, int size, int inputSize) {
-		return add(
-				matmul(cp(weight.range(shape(size, inputSize), gate * size * inputSize)), input),
-				cp(bias.range(shape(size), gate * size))).reshape(shape(size));
-	}
-
-	/**
-	 * Run one GRU layer step for diagnostic purposes.
-	 *
-	 * <p>Computes: r = σ(W_ir·x + b_ir + W_hr·h + b_hr),
-	 * z = σ(W_iz·x + b_iz + W_hz·h + b_hz),
-	 * n = tanh(W_in·x + b_in + r*(W_hn·h + b_hn)),
-	 * h_new = (1-z)*n + z*h.</p>
-	 *
-	 * <p>Callers stepping this in a loop should read the result back into the same
-	 * hidden state collection rather than letting it be replaced by the returned one.
-	 * An operand's offset forms part of its signature, so a fresh allocation per step
-	 * makes every step a distinct graph and recompiles the pipeline once per step.</p>
-	 *
-	 * @param weightIh   stacked input-hidden weights, shape (3*dh, inputSize)
-	 * @param weightHh   stacked hidden-hidden weights, shape (3*dh, dh)
-	 * @param biasIh     stacked input-hidden biases, shape (3*dh)
-	 * @param biasHh     stacked hidden-hidden biases, shape (3*dh)
-	 * @param x          input vector of shape (inputSize)
-	 * @param h          previous hidden state of shape (hiddenSize)
-	 * @return new hidden state of shape (hiddenSize)
-	 */
-	private PackedCollection gruStep(
-			PackedCollection weightIh, PackedCollection weightHh,
-			PackedCollection biasIh, PackedCollection biasHh,
-			PackedCollection x, PackedCollection h) {
-		int dh = h.getShape().getTotalSize();
-		int inputSize = x.getShape().getTotalSize();
-
-		CollectionProducer input = cp(x.range(shape(inputSize)));
-		CollectionProducer hidden = cp(h.range(shape(dh)));
-
-		CollectionProducer r = sigmoid(add(
-				gateProjection(weightIh, biasIh, input, 0, dh, inputSize),
-				gateProjection(weightHh, biasHh, hidden, 0, dh, dh)));
-		CollectionProducer z = sigmoid(add(
-				gateProjection(weightIh, biasIh, input, 1, dh, inputSize),
-				gateProjection(weightHh, biasHh, hidden, 1, dh, dh)));
-		CollectionProducer n = tanh(add(
-				gateProjection(weightIh, biasIh, input, 2, dh, inputSize),
-				r.multiply(gateProjection(weightHh, biasHh, hidden, 2, dh, dh))));
-
-		CollectionProducer hNew = add(
-				c(1.0).subtract(z).multiply(n),
-				z.multiply(hidden)).reshape(shape(dh));
-		return (PackedCollection) Process.optimized(hNew).get().evaluate();
 	}
 
 	/**
