@@ -7,7 +7,19 @@ and other MCP servers that interact with the ar-memory HTTP service.
 
 from .memory_http_client import MemoryHTTPClient
 from .inference import InferenceBackend, create_backend, SYSTEM_PROMPT
-from .git_context import detect_git_context, normalize_repo_url
+from .git_context import detect_git_context
+from .memory_text import (
+    BETA_NOTICE,
+    encode_dual_source,
+    is_reformulated,
+    original_text,
+    present,
+    presented_entries,
+    presented_entry,
+    prefers_reformulated,
+    reformulated_text,
+    text_notice,
+)
 
 __all__ = [
     "MemoryHTTPClient",
@@ -15,5 +27,14 @@ __all__ = [
     "create_backend",
     "SYSTEM_PROMPT",
     "detect_git_context",
-    "normalize_repo_url",
+    "BETA_NOTICE",
+    "encode_dual_source",
+    "is_reformulated",
+    "original_text",
+    "present",
+    "presented_entries",
+    "presented_entry",
+    "prefers_reformulated",
+    "reformulated_text",
+    "text_notice",
 ]

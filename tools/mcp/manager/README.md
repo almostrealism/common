@@ -93,12 +93,22 @@ Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not
 provided directly. LLM synthesis (via llama.cpp) is attempted for `memory_recall`
 summaries when a backend is available.
 
+Memories written through the Consultant's `remember` tool carry two versions of
+their text: what the agent wrote, and a rewrite ("reformulation") produced by a
+small local model. Reformulation is a **beta feature**, so `memory_recall` and
+`workstream_context` return the original text and mark it with `text_source`.
+Pass `reformulated=true` to see the rewrite instead — the response then also
+carries the original for comparison plus a `notice` about the feature's state.
+See [the Consultant README](../consultant/README.md#memory-text-original-vs-reformulated)
+for the full contract.
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AR_CONTROLLER_URL` | `http://localhost:7780` | FlowTree controller base URL |
 | `AR_MEMORY_URL` | (auto-discovered) | ar-memory HTTP server URL |
+| `AR_MEMORY_REFORMULATED` | unset (off) | Show reformulated memory text by default instead of the original (beta) |
 | `AR_MANAGER_GITHUB_TOKEN` | (none) | GitHub PAT for Tier 2 ops (falls back to `GITHUB_TOKEN`) |
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |

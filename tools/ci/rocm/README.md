@@ -1,9 +1,8 @@
 # AR CI OpenCL Runner (ROCm)
 
 Self-hosted GitHub Actions runner fleet for the **OpenCL lane**. Runs under
-Docker Compose (or a Docker-CLI-compatible runtime such as rootless podman) and
-picks up jobs labelled `[self-hosted, linux, ar-ci-cl]` — `test-cl` and
-`test-media-cl`.
+rootless podman as systemd user services (Quadlet) and picks up jobs labelled
+`[self-hosted, linux, ar-ci-cl]` — `test-cl` and `test-media-cl`.
 
 Its purpose is to give the OpenCL backend a real GPU. Those jobs previously ran
 on the macOS fleet against Apple's deprecated OpenCL implementation, sharing
@@ -224,12 +223,44 @@ $EDITOR .env                 # set GITHUB_PAT
 ./install-runner.sh
 
 # 3. Watch it come up — the OpenCL preflight is the first thing it logs
-journalctl --user -u ar-ci-cl-runner.service -f
+journalctl --user -u 'ar-ci-cl-runner@*' -f
 ```
 
-Start with **one** runner. This host has a single GPU; concurrent jobs contend
-for it, which is the exact problem the macOS GPU lane's serialisation exists to
-avoid. Scale only once contention has been measured.
+Start with **one** runner, then scale deliberately — see *Scaling* below.
+
+## Scaling
+
+```bash
+./install-runner.sh --runners 4     # or set RUNNER_COUNT in .env
+```
+
+Each runner is an instance of the template unit, so this starts
+`ar-ci-cl-runner@1` through `@4`. Re-running with a smaller number stops the
+instances above it, so scaling down is the same command. The GitHub-side names
+need no coordination: the entrypoint claims the lowest free `<prefix>-N` from the
+API, so instances self-assign `amd-halo-1`, `-2`, and so on.
+
+Two things decide whether more runners actually help.
+
+**The workflow caps concurrency independently of the fleet.** `test-cl` runs
+`max-parallel: 3` and `test-media-cl` `max-parallel: 2`, and the two never
+overlap because `test-media-cl` gates on `test-cl`. A single pipeline therefore
+cannot use more than three runners however many are registered — beyond that they
+only absorb concurrent pipelines. Raise `max-parallel` in `analysis.yaml` if you
+want one pipeline to use more.
+
+**Resource limits are per runner and the GPU memory is not separate.** This is an
+integrated GPU whose memory is unified with system RAM, so N concurrent jobs
+contend for one ~125 GB pool that must also cover `AR_HARDWARE_MEMORY_SCALE=7`
+per test JVM. Set `RUNNER_MEMORY_MAX` / `RUNNER_CPU_QUOTA` in `.env` to a value
+that makes sense multiplied by `RUNNER_COUNT`; `install-runner.sh` writes them as
+a systemd drop-in. Overcommitting surfaces as an OOM kill or a
+`HardwareException`, not as a gradual slowdown.
+
+Much of each job is CPU-bound — checkout, then a full `mvn install -DskipTests` —
+which is why extra runners can pay off despite the single GPU. But the test
+phases do contend. Raise the count in steps and compare wall-clock against the
+previous setting rather than assuming more is faster.
 
 ## Configuration
 
@@ -239,8 +270,9 @@ Configuration is split by what it governs:
   `install-runner.sh` copies it to `~/.config/ar-ci-cl/runner.env` at mode 600,
   so the token does not live in the checkout. `.env` is gitignored; never commit
   a filled-in copy.
-- **`ar-ci-cl-runner.container`** — the container's shape: devices, mounts,
-  group handling, and resource limits. Edit it and re-run `install-runner.sh`.
+- **`ar-ci-cl-runner@.container`** — the container's shape: devices, mounts,
+  group handling, and default resource limits. A systemd *template*, so one file
+  serves every runner. Edit it and re-run `install-runner.sh`.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -252,8 +284,10 @@ Configuration is split by what it governs:
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `ROCM_OPENCL_LIB` | `/opt/rocm/lib/opencl/libamdocl64.so` | Absolute path baked into the ICD at build time |
 
-Set in `ar-ci-cl-runner.container` rather than `.env`, because systemd unit
-files do not interpolate environment variables into these fields:
+Set in `ar-ci-cl-runner@.container` rather than `.env`, because systemd unit
+files do not interpolate environment variables into these fields. The limits are
+the exception: `install-runner.sh` writes them as a drop-in from `.env`, so
+scaling does not mean editing the unit.
 
 | Setting | Default | Description |
 |---|---|---|
@@ -373,14 +407,14 @@ All as the service account (`sudo -iu ar-ci`):
 
 ```bash
 # Status
-systemctl --user status ar-ci-cl-runner.service
+systemctl --user list-units 'ar-ci-cl-runner@*'
 
 # Logs — the OpenCL preflight is the first thing each container logs
-journalctl --user -u ar-ci-cl-runner.service -f
+journalctl --user -u 'ar-ci-cl-runner@*' -f
 
 # Stop. The entrypoint traps SIGTERM and deregisters from GitHub first,
 # so this does not leave a stale offline runner behind.
-systemctl --user stop ar-ci-cl-runner.service
+systemctl --user stop 'ar-ci-cl-runner@*'
 
 # Apply a changed .env or unit file (no rebuild)
 ./install-runner.sh --no-build
@@ -485,6 +519,44 @@ namespace the device shows as `nobody:nogroup` whenever the host owner falls
 outside the subuid map, so a readability test reports failure even where access
 works. Check group membership, not readability.
 
+### "Runner update in progress ... Downloading <version> runner" on every job
+
+The image's agent is older than the release GitHub currently requires, so the
+agent self-updates before accepting work. These runners are ephemeral, so the
+container is discarded when the job ends and the update goes with it — meaning
+*every* job pays the download. A sixteen-group lane does it sixteen times, and
+it shows up as request timeouts against `broker.actions.githubusercontent.com`
+under load.
+
+Rebuild; the image resolves the current release at build time:
+
+```bash
+./install-runner.sh
+```
+
+Nothing checks for this automatically, so rebuild periodically. The symptom is
+visible in the journal well before it starts costing failures.
+
+### More runners are registered than `--runners` asked for
+
+Check for the pre-template unit. Before the unit became a systemd template it
+was installed as a single `ar-ci-cl-runner.container`, and a host set up before
+that rename can still be running `ar-ci-cl-runner.service` alongside the
+`@N` instances:
+
+```bash
+systemctl --user list-units 'ar-ci-cl-runner*' --all
+```
+
+Current versions of `install-runner.sh` retire it automatically. To do it by
+hand:
+
+```bash
+systemctl --user stop ar-ci-cl-runner.service
+rm -f ~/.config/containers/systemd/ar-ci-cl-runner.container
+systemctl --user daemon-reload
+```
+
 ### Jobs don't get picked up
 
 - Verify labels match `self-hosted`, `linux`, `ar-ci-cl`
@@ -511,7 +583,7 @@ per-step.
 tools/ci/rocm/
 ├── .env.example              # Credentials and runner settings template
 ├── Dockerfile                # Runner agent + JDK + Maven + OpenCL ICD loader
-├── ar-ci-cl-runner.container # Quadlet unit: devices, mounts, keep-groups, limits
+├── ar-ci-cl-runner@.container # Quadlet template unit: devices, mounts, keep-groups
 ├── entrypoint.sh             # OpenCL preflight, register / run / deregister
 ├── install-runner.sh         # Build the image and install the systemd user service
 ├── settings.xml              # Maven settings

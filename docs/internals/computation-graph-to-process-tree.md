@@ -83,6 +83,43 @@ Computation<T>                                   (base interface — has getScop
   management, delta computation for autodiff, and index expression generation. This is
   the class most users interact with when building computation graphs.
 
+### `Operator` — A `ProducerComputation` that participates in the process tree
+
+`ProducerComputationBase<I, O>` implements the `Operator<O>` interface
+(`base/code/src/.../code/Operator.java`), which is the value-producing counterpart to
+`OperationComputation`. An `Operator<T>` extends both `ProducerComputation<T>` and
+`Process<Process<?, ?>, Evaluable<? extends T>>`, so an operator's `getScope()`,
+`getChildren()`, and `optimize()` participate in the process tree the same way an
+`OperationComputation`'s do. Surfaces and other classes whose `get()` method must return
+an `Operator<T>` (e.g. `AbstractSurface.get()`, `Intersectable.expect()`) implement it
+by composing producers.
+
+For a value that is already a producer graph — a `lengthSq`, a coordinate projection,
+any arithmetic on inputs that the rest of the framework already exposes as a producer —
+the static factory `Operator.of(Producer<T>)` is the way to satisfy the `Operator`
+return type without leaving the graph:
+
+```java
+// Sphere.get() — the input length squared is already a producer
+public Operator<PackedCollection> get() {
+    return Operator.of(lengthSq(getInput()));
+}
+
+// Plane.get() — pick the coordinate along the plane's normal
+public Operator<PackedCollection> get() {
+    return Operator.of(surfaceCoordinate());
+}
+```
+
+The alternative — returning an `Evaluable` that evaluates the inputs in Java and
+combines them — produces a correct number, but the operator then reports no children
+and an empty `Scope`, so the computation it performs is invisible to the compiler and
+to differentiation. The wrapping `Operator` returned by `of(...)` forwards
+`getScope(KernelStructureContext)` and `getChildren()` to the underlying producer when
+it already implements `ProducerComputation` or `Process`, so the produced graph stays
+connected. If the producer is already an `Operator`, it is returned directly rather
+than re-wrapped.
+
 ### Scope: The Computation AST
 
 A `Scope` is the intermediate representation between the high-level producer graph and

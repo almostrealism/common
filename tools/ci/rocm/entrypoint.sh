@@ -94,7 +94,7 @@ verify_opencl() {
     if [ ! -d /opt/rocm ]; then
         echo "ERROR: /opt/rocm is not present in the container."
         echo "  This image is inert without the host's ROCm userspace bind-mounted"
-        echo "  read-only at /opt/rocm. See ar-ci-cl-runner.container and README.md."
+        echo "  read-only at /opt/rocm. See ar-ci-cl-runner@.container and README.md."
         return 1
     fi
 
@@ -126,7 +126,7 @@ verify_opencl() {
         echo "    1. The service account cannot read /dev/kfd or /dev/dri/renderD128."
         echo "       The host ACL grants the interactive user, not a group — a service"
         echo "       account inherits nothing from it. Check that the unit carries"
-        echo "       GroupAdd=keep-groups (ar-ci-cl-runner.container) and that the"
+        echo "       GroupAdd=keep-groups (ar-ci-cl-runner@.container) and that the"
         echo "       service account is in the render group on the host."
         echo "       Current groups here — note that a retained host group is"
         echo "       UNMAPPED in this namespace and shows as 65534(nogroup):"

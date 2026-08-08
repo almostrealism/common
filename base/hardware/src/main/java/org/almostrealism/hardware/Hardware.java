@@ -508,41 +508,17 @@ public final class Hardware implements ConsoleFeatures {
 		String opDepth = SystemUtils.getProperty("AR_HARDWARE_MAX_DEPTH");
 		if (opDepth != null) OperationList.setMaxDepth(Integer.parseInt(opDepth));
 
-		String drivers[] = SystemUtils.getProperty("AR_HARDWARE_DRIVER", "*").split(",");
+		DriverSelection selection = DriverSelection.parse(
+				SystemUtils.getProperty("AR_HARDWARE_DRIVER", "*"),
+				SystemUtils.isMacOS(), aarch);
 
-		List<ComputeRequirement> requirements = new ArrayList<>();
+		if (selection.isUniformPrecisionRequired()) {
+			KernelPreferences.requireUniformPrecision();
+		}
 
-		boolean sharedMem = false;
-
-		for (String driver : drivers) {
-			if ("cl".equalsIgnoreCase(driver)) {
-				KernelPreferences.requireUniformPrecision();
-				requirements.add(ComputeRequirement.CL);
-			} else if ("mtl".equalsIgnoreCase(driver)) {
-				requirements.add(ComputeRequirement.MTL);
-			} else if ("native".equalsIgnoreCase(driver)) {
-				requirements.add(ComputeRequirement.JNI);
-			} else if ("cpu".equalsIgnoreCase(driver)) {
-				requirements.add(ComputeRequirement.CPU);
-			} else if ("gpu".equalsIgnoreCase(driver)) {
-				requirements.add(ComputeRequirement.GPU);
-			} else if ("*".equalsIgnoreCase(driver)) {
-				if (SystemUtils.isMacOS()) {
-					requirements.add(ComputeRequirement.JNI);
-					if (aarch) requirements.add(ComputeRequirement.MTL);
-					requirements.add(ComputeRequirement.CL);
-				} else {
-					requirements.add(ComputeRequirement.CL);
-					requirements.add(ComputeRequirement.JNI);
-				}
-
-				if (drivers.length <= 1 && requirements.contains(ComputeRequirement.MTL)) {
-					KernelPreferences.enableSharedMemory();
-					sharedMem = true;
-				}
-			} else {
-				throw new IllegalStateException("Unknown driver " + driver);
-			}
+		boolean sharedMem = selection.isSharedMemoryPreferred();
+		if (sharedMem) {
+			KernelPreferences.enableSharedMemory();
 		}
 
 		sharedMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(sharedMem);
@@ -571,7 +547,7 @@ public final class Hardware implements ConsoleFeatures {
 				new ParallelismTargetOptimization()
 		));
 
-		local = new Hardware(requirements, location, sharedMem);
+		local = new Hardware(selection, location, sharedMem);
 	}
 
 	/** Display name for this hardware instance, used in log messages. */
@@ -605,28 +581,35 @@ public final class Hardware implements ConsoleFeatures {
 	private ThreadLocal<ComputeContext<MemoryData>> explicitComputeCtx = new ThreadLocal<>();
 	/** Weak references to registered context lifecycle listeners; entries are cleaned up on GC. */
 	private final List<WeakReference<ContextListener>> contextListeners;
+	/** The backends that were requested, and which of them were named rather than inferred. */
+	private final DriverSelection drivers;
 
 	/**
-	 * Creates a Hardware instance with the given backend requirements, using a default name.
+	 * Creates a Hardware instance from a driver selection, using a default name.
 	 *
-	 * @param type List of required compute backends (e.g., JNI, MTL, CL)
+	 * @param selection Backends to initialize, and which of them were named explicitly
 	 * @param location CL memory location strategy
 	 * @param sharedMemory If true, NIO-based shared memory between backends is enabled
 	 */
-	private Hardware(List<ComputeRequirement> type, Location location, boolean sharedMemory) {
-		this("local", type, location, sharedMemory);
+	private Hardware(DriverSelection selection, Location location, boolean sharedMemory) {
+		this("local", selection, location, sharedMemory);
 	}
 
 	/**
 	 * Creates a named Hardware instance and initializes all configured backend data contexts.
 	 *
+	 * <p>Backends the {@link DriverSelection} marks as required must initialize;
+	 * one that fails throws rather than being skipped, so a request for a
+	 * specific backend cannot be silently downgraded to whatever else loaded.</p>
+	 *
 	 * @param name Display name for logging
-	 * @param reqs List of required compute backends to initialize
+	 * @param selection Backends to initialize, and which of them were named explicitly
 	 * @param location CL memory location strategy
 	 * @param sharedMemory If true, NIO-based shared memory between backends is enabled
 	 */
-	private Hardware(String name, List<ComputeRequirement> reqs, Location location, boolean sharedMemory) {
+	private Hardware(String name, DriverSelection selection, Location location, boolean sharedMemory) {
 		this.name = name;
+		this.drivers = selection;
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
 		this.memVolatile = location == Location.HEAP;
@@ -646,9 +629,9 @@ public final class Hardware implements ConsoleFeatures {
 
 		if (sharedMemory) {
 			this.nioMemory = NativeMemoryProvider.sharedBridge(Precision.FP32, Precision.FP32.bytes() * maxReservation);
-			count = processRequirements(reqs, Precision.FP32);
+			count = processRequirements(selection.getRequirements(), Precision.FP32);
 		} else {
-			count = processRequirements(reqs);
+			count = processRequirements(selection.getRequirements());
 		}
 
 		if (count > 0) {
@@ -718,7 +701,9 @@ public final class Hardware implements ConsoleFeatures {
 		boolean kernelFriendly = defaultKernelFriendly;
 		DataContext<MemoryData> sharedMemoryCtx = null;
 
-		r: for (ComputeRequirement type : requirements) {
+		r: for (ComputeRequirement requested : requirements) {
+			ComputeRequirement type = requested;
+
 			if (type == ComputeRequirement.CPU) {
 				type = SystemUtils.isAarch64() ? ComputeRequirement.JNI : ComputeRequirement.CL;
 			} else if (type == ComputeRequirement.GPU) {
@@ -769,8 +754,13 @@ public final class Hardware implements ConsoleFeatures {
 
 				forEachContextListener(l -> l.contextStarted(getDataContext()));
 			} catch (Exception | LinkageError e) {
-				console.warn("Unable to load context due to " +
-						Optional.ofNullable(e.getMessage()).orElse(e.getClass().getSimpleName()));
+				if (drivers != null && drivers.isRequired(requested)) {
+					throw new HardwareException("AR_HARDWARE_DRIVER names " + requested
+							+ (requested == type ? "" : " (resolved to " + type + ")")
+							+ ", but its context could not be initialized", e);
+				}
+
+				warn("Unable to load " + type + " context", e);
 			}
 		}
 

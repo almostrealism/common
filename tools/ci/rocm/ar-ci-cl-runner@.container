@@ -1,8 +1,20 @@
-# ─── AR OpenCL CI Runner (Quadlet) ───────────────────────────────────
+# ─── AR OpenCL CI Runner (Quadlet template) ──────────────────────────
 #
-# A podman Quadlet unit, installed by install-runner.sh into
+# A podman Quadlet TEMPLATE unit, installed by install-runner.sh into
 # ~/.config/containers/systemd/ and managed by the service account's systemd
-# user instance as ar-ci-cl-runner.service.
+# user instance as ar-ci-cl-runner@<n>.service — one service per runner.
+#
+# The `@` in the filename is what makes it a template; %i below expands to the
+# instance name, so each runner gets a distinct container. The GitHub-side names
+# do not need templating: the entrypoint queries the API and claims the lowest
+# free <prefix>-N, so concurrent instances self-assign amd-halo-1, -2, and so on.
+#
+#   systemctl --user status ar-ci-cl-runner@1.service
+#   journalctl --user -u 'ar-ci-cl-runner@*' -f
+#
+# Resource limits below are PER INSTANCE. Running N runners multiplies them, so
+# install-runner.sh writes a drop-in from RUNNER_MEMORY_MAX / RUNNER_CPU_QUOTA
+# in .env rather than making you edit this file for every scaling change.
 #
 # WHY THIS IS NOT A COMPOSE FILE
 #
@@ -20,8 +32,8 @@
 # Quadlet also composes properly with the lingering that setup-host.sh enables:
 # start on boot, restart after each ephemeral job, and journalctl for logs.
 #
-#   systemctl --user status ar-ci-cl-runner.service
-#   journalctl --user -u ar-ci-cl-runner.service -f
+#   systemctl --user status ar-ci-cl-runner@1.service
+#   journalctl --user -u 'ar-ci-cl-runner@*' -f
 #
 # Paths below match setup-host.sh's defaults. If you passed --samples-dest, or
 # the host's ROCm is elsewhere, edit the Volume lines and re-run
@@ -34,7 +46,7 @@ After=network-online.target
 
 [Container]
 Image=localhost/ar-ci-cl-runner:latest
-ContainerName=ar-ci-cl-runner
+ContainerName=ar-ci-cl-runner-%i
 AutoUpdate=disabled
 
 # The render devices. Passing them through is necessary but not sufficient —
@@ -74,9 +86,11 @@ RestartSec=5
 # room, so a stop does not leave a stale offline runner behind.
 TimeoutStopSec=90
 
-# Sized for this host rather than the Docker fleet's 16g/4-core default. Lower
-# these if the runner shares the machine. CPUQuota is expressed in percent, so
-# 1200% is twelve cores.
+# Conservative single-runner defaults. These are PER INSTANCE — with four
+# runners the aggregate is four times what is written here, which on a host with
+# unified GPU memory is how you exhaust the GPU as well as the RAM. Set
+# RUNNER_MEMORY_MAX / RUNNER_CPU_QUOTA in .env and install-runner.sh will write a
+# drop-in that overrides both. CPUQuota is in percent: 1200% is twelve cores.
 MemoryMax=64G
 CPUQuota=1200%
 
