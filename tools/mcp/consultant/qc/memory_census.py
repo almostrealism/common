@@ -38,12 +38,23 @@ Example:
 import argparse
 import json
 import hashlib
+import os
 import re
 import sys
 import urllib.request
 import urllib.error
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+
+# ``is_reformulated`` recognises the dual-text wrapper written by
+# store_dual; tools/mcp/common/memory_text.py owns that format and the
+# retrieval code reads entries through the same definition.
+_COMMON_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+from memory_text import is_reformulated
 
 
 DEFAULT_URL = "http://host.docker.internal:8020"
@@ -91,22 +102,6 @@ def parse_created(ts: str):
         return datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except ValueError:
         return None
-
-
-def is_reformulated(entry: dict) -> bool:
-    """True when the entry carries the store_dual JSON source wrapper.
-
-    ``store_dual`` writes ``source`` as ``{"original": ..., "user_source":
-    ...}``. A verbatim job memory has ``source`` null or a plain string.
-    """
-    source = entry.get("source")
-    if not source or not isinstance(source, str):
-        return False
-    try:
-        parsed = json.loads(source)
-    except (json.JSONDecodeError, TypeError):
-        return False
-    return isinstance(parsed, dict) and "original" in parsed
 
 
 def normalized_prefix(content: str, width: int = 64) -> str:

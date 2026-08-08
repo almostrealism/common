@@ -519,6 +519,44 @@ namespace the device shows as `nobody:nogroup` whenever the host owner falls
 outside the subuid map, so a readability test reports failure even where access
 works. Check group membership, not readability.
 
+### "Runner update in progress ... Downloading <version> runner" on every job
+
+The image's agent is older than the release GitHub currently requires, so the
+agent self-updates before accepting work. These runners are ephemeral, so the
+container is discarded when the job ends and the update goes with it — meaning
+*every* job pays the download. A sixteen-group lane does it sixteen times, and
+it shows up as request timeouts against `broker.actions.githubusercontent.com`
+under load.
+
+Rebuild; the image resolves the current release at build time:
+
+```bash
+./install-runner.sh
+```
+
+Nothing checks for this automatically, so rebuild periodically. The symptom is
+visible in the journal well before it starts costing failures.
+
+### More runners are registered than `--runners` asked for
+
+Check for the pre-template unit. Before the unit became a systemd template it
+was installed as a single `ar-ci-cl-runner.container`, and a host set up before
+that rename can still be running `ar-ci-cl-runner.service` alongside the
+`@N` instances:
+
+```bash
+systemctl --user list-units 'ar-ci-cl-runner*' --all
+```
+
+Current versions of `install-runner.sh` retire it automatically. To do it by
+hand:
+
+```bash
+systemctl --user stop ar-ci-cl-runner.service
+rm -f ~/.config/containers/systemd/ar-ci-cl-runner.container
+systemctl --user daemon-reload
+```
+
 ### Jobs don't get picked up
 
 - Verify labels match `self-hosted`, `linux`, `ar-ci-cl`

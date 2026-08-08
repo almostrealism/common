@@ -26,8 +26,10 @@
 
 FROM ubuntu:22.04
 
+# Empty means "resolve the current release at build time" (see below). Pin it
+# only to reproduce a specific build.
+ARG RUNNER_VERSION=
 # Keep in sync with tools/ci/docker/Dockerfile, from which this image is derived.
-ARG RUNNER_VERSION=2.321.0
 ARG MAVEN_VERSION=3.9.6
 
 # Absolute path to the ROCm OpenCL runtime, as it will appear under the
@@ -65,9 +67,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g \
         sudo \
         ocl-icd-libopencl1 \
+        ocl-icd-opencl-dev \
         libatomic1 \
         clinfo \
     && rm -rf /var/lib/apt/lists/*
+
+# ocl-icd-opencl-dev is not optional, and not just headers. ocl-icd-libopencl1
+# installs only the versioned soname, libOpenCL.so.1. Programs linked at build
+# time against that soname — clinfo among them — resolve it through ldconfig and
+# work anywhere. JOCL does not: it dlopens the UNVERSIONED "libOpenCL.so" at
+# runtime, and the unversioned symlink is shipped by the -dev package.
+#
+# Without it the only unversioned libOpenCL.so on the image is ROCm's, under
+# /opt/rocm/lib, reachable solely via LD_LIBRARY_PATH. Any job that replaces
+# LD_LIBRARY_PATH instead of appending to it then loses OpenCL from the JVM while
+# clinfo keeps working — so the entrypoint's preflight passes, the CL backend
+# silently fails to initialize, and the suite runs on the native backend and
+# reports green. That is exactly what happened; see README.md.
 
 # ---------- OpenCL ICD registration ----------
 # The ICD loader discovers vendors by reading /etc/OpenCL/vendors. Writing the
@@ -127,14 +143,33 @@ RUN useradd -m -s /bin/bash runner && \
 # ---------- GitHub Actions Runner ----------
 WORKDIR /home/runner
 
+# The version is resolved from the API rather than pinned, because these runners
+# are ephemeral. GitHub forces an agent older than the current release to
+# self-update before it will accept a job, and the container is discarded when
+# that job ends — so a stale pin means every job re-downloads the agent, and a
+# lane of sixteen matrix groups does it sixteen times. That surfaced as
+# "Runner update in progress ... Downloading <newer> runner" followed by request
+# timeouts. Building against the current release keeps the update path cold.
+#
+# Rebuild periodically to stay current; the entrypoint does not check.
 RUN ARCH=$(dpkg --print-architecture) && \
     case "${ARCH}" in \
         amd64) RUNNER_ARCH="x64" ;; \
         arm64) RUNNER_ARCH="arm64" ;; \
         *)     RUNNER_ARCH="x64" ;; \
     esac && \
+    VERSION="${RUNNER_VERSION}" && \
+    if [ -z "${VERSION}" ]; then \
+        VERSION=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest \
+            | jq -r '.tag_name // empty' | sed 's/^v//'); \
+    fi && \
+    if [ -z "${VERSION}" ]; then \
+        echo "ERROR: could not determine the actions/runner release to install." >&2; \
+        exit 1; \
+    fi && \
+    echo "Installing GitHub Actions runner ${VERSION} (${RUNNER_ARCH})" && \
     curl -fsSL -o runner.tar.gz \
-        "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz" && \
+        "https://github.com/actions/runner/releases/download/v${VERSION}/actions-runner-linux-${RUNNER_ARCH}-${VERSION}.tar.gz" && \
     tar xzf runner.tar.gz && \
     rm runner.tar.gz && \
     ./bin/installdependencies.sh || true

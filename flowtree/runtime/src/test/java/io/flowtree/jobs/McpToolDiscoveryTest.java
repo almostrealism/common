@@ -552,6 +552,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");
 		assertTrue("memory_recall must declare query in signature",
 			memoryRecallParams.contains("query"));
+		assertTrue("memory_recall must declare reformulated in signature; without it"
+				+ " the beta reformulated-text opt-in is absent from the MCP schema"
+				+ " and callers can only ever see the original memory text",
+			memoryRecallParams.contains("reformulated"));
 
 		List<String> memoryStoreParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_store");
@@ -595,6 +599,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_context");
 		assertTrue("workstream_context must declare include_activities in signature",
 			workstreamContextParams.contains("include_activities"));
+		assertTrue("workstream_context must declare reformulated in signature; without"
+				+ " it the beta reformulated-text opt-in is absent from the MCP schema",
+			workstreamContextParams.contains("reformulated"));
 
 		List<String> readFileParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "github_read_file");

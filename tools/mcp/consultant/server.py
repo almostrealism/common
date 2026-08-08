@@ -22,6 +22,7 @@ Environment variables:
     AR_CONSULTANT_OLLAMA_URL   - Ollama base URL (default: http://localhost:11434)
     AR_CONSULTANT_HISTORY_DIR  - Directory for history.db (default: tools/mcp/consultant/data)
     AR_MEMORY_URL              - ar-memory HTTP server URL (auto-discovered if not set)
+    AR_MEMORY_REFORMULATED     - "1" to show reformulated memory text by default (beta; off by default)
 """
 
 import json
@@ -35,12 +36,25 @@ from typing import Optional
 # Allow importing sibling modules when run as a script
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Shared libraries live in tools/mcp/common. memory_client puts this directory
+# on the path as a side effect of its own import, which left the imports below
+# dependent on the order they happen to appear in; declaring it here removes
+# that coupling. It goes *after* this directory so the local inference.py shim
+# keeps precedence — it loads common/inference.py under a distinct module name
+# and a plain `import inference` must continue to find the shim.
+_COMMON_DIR = os.path.join(os.path.dirname(__file__), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(1, _COMMON_DIR)
+
 from mcp.server.fastmcp import FastMCP
 
 from docs_retriever import DocsRetriever
 from history import HistoryStore, _current_request, tracked_generate, tracked_tool
 from inference import SYSTEM_PROMPT, create_backend
 from memory_client import MemoryClient
+from memory_text import (
+    BETA_NOTICE, prefers_reformulated, present, presented_entries, projected,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
 log = logging.getLogger("ar-consultant")
@@ -265,8 +279,12 @@ def consult(
     doc_results = doc_retrieval["markdown_results"]
     html_refs = doc_retrieval["html_refs"]
 
-    # Search memories for related prior knowledge
-    memories = memory.search(query=question, namespace="default", limit=3)
+    # Search memories for related prior knowledge. Memories are shown as
+    # their authors wrote them; reformulation is opt-in (see memory_text).
+    memories = presented_entries(
+        memory.search(query=question, namespace="default", limit=3),
+        reformulated=prefers_reformulated(),
+    )
     mem_context = _format_memory_context(memories)
 
     # Log retrieval results
@@ -312,12 +330,22 @@ def consult(
 
 @mcp.tool()
 @tracked_tool(history, "recall")
-def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
+def recall(
+    query: str,
+    namespace: str = "default",
+    limit: int = 5,
+    reformulated: bool = False,
+) -> dict:
     """Search memories and return Consultant-summarized results.
 
     Unlike raw memory_search, this returns memories contextualized with
     relevant documentation. The Consultant highlights which memories are
     still accurate and flags any that may be outdated.
+
+    Memory text is returned as its author wrote it. Memories stored through
+    ``remember`` also carry a Consultant rewrite ("reformulation"), which is
+    a beta feature whose quality is still under development — request it
+    explicitly with ``reformulated`` when evaluating the rewrite itself.
 
     Results are scoped to the current repository on a best-effort basis.
     When git context detection succeeds, memories from unrelated projects
@@ -328,9 +356,13 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
         query: What to search for.
         namespace: Memory namespace to search.
         limit: Maximum number of memories to retrieve.
+        reformulated: When true, return the Consultant's rewrite of each
+            memory instead of the original text, with the original included
+            alongside it for comparison. Beta — off by default.
 
     Returns:
-        Dictionary with summary, raw memories, and doc references.
+        Dictionary with summary, raw memories, and doc references. Each
+        memory carries ``text_source`` recording which version is shown.
     """
     # Auto-detect repo URL to scope results to the current repository
     detected_repo_url = None
@@ -343,9 +375,12 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     except (ValueError, ImportError):
         pass  # Git detection is best-effort
 
-    memories = memory.search(
-        query=query, namespace=namespace, limit=limit,
-        repo_url=detected_repo_url,
+    memories, notice = present(
+        memory.search(
+            query=query, namespace=namespace, limit=limit,
+            repo_url=detected_repo_url,
+        ),
+        reformulated=reformulated or prefers_reformulated(),
     )
 
     if not memories:
@@ -371,21 +406,20 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     doc_refs = list({r["file"] for r in doc_results})
     doc_refs.extend(doc_retrieval["html_refs"])  # Include HTML refs too
 
-    return {
+    result = {
         "summary": summary,
         "memories": [
-            {
-                "id": m.get("id"),
-                "content": m["content"],
-                "score": m.get("score"),
-                "tags": m.get("tags"),
-                "created_at": m.get("created_at"),
-            }
+            projected(m, ("id", "content", "score", "tags", "created_at"))
             for m in memories
         ],
         "doc_references": doc_refs,
         "backend": llm.name,
     }
+
+    if notice:
+        result["notice"] = notice
+
+    return result
 
 
 @mcp.tool()
@@ -448,6 +482,10 @@ def remember(
     terminology and documentation before storing. Both the original text
     and the reformulated version are persisted, preserving the agent's
     intent while adding documentation context.
+
+    Reformulation is a beta feature whose quality is still under
+    development, so ``recall`` and the other retrieval tools return the
+    original text by default; nothing is lost when the rewrite is poor.
 
     If repo_url/branch are not provided, they are auto-detected from
     the current git working directory.
@@ -525,6 +563,7 @@ def remember(
         "repo_url": repo_url,
         "branch": branch,
         "backend": llm.name,
+        "notice": BETA_NOTICE,
     }
 
     if "error" in entry:
@@ -610,7 +649,10 @@ def start_consultation(topic: str) -> dict:
     doc_context = doc_retrieval["context"]
     doc_results = doc_retrieval["markdown_results"]
 
-    memories = memory.search(query=topic, namespace="default", limit=3)
+    memories = presented_entries(
+        memory.search(query=topic, namespace="default", limit=3),
+        reformulated=prefers_reformulated(),
+    )
     mem_context = _format_memory_context(memories)
 
     # Log retrieval results
@@ -777,6 +819,7 @@ def branch_catchup(
     memory_limit: int = 20,
     commit_limit: int = 30,
     working_directory: Optional[str] = None,
+    reformulated: bool = False,
 ) -> dict:
     """Catch up on recent branch activity by combining memories and git history.
 
@@ -807,6 +850,10 @@ def branch_catchup(
         commit_limit: Maximum number of recent commits to include.
         working_directory: Optional path to the git working directory.
             If provided, git log is read from this directory.
+        reformulated: When true, brief from the Consultant's rewrite of each
+            memory instead of the text its author wrote. Beta — off by
+            default, because the rewrite can drop the specifics a catch-up
+            briefing depends on.
 
     Returns:
         Dictionary with the synthesized briefing, raw memories, and commit log.
@@ -831,6 +878,10 @@ def branch_catchup(
         if m.get("id") and m["id"] not in seen_ids:
             branch_memories.append(m)
             seen_ids.add(m["id"])
+
+    branch_memories, notice = present(
+        branch_memories, reformulated=reformulated or prefers_reformulated(),
+    )
 
     # 2. Get git commit log for the branch
     commit_log = ""
@@ -898,23 +949,23 @@ def branch_catchup(
     prompt = "\n".join(prompt_parts)
     briefing = _generate(prompt, system=SYSTEM_PROMPT, max_tokens=2048)
 
-    return {
+    result = {
         "briefing": briefing,
         "branch": branch,
         "repo_url": repo_url,
         "memory_count": len(branch_memories),
         "memories": [
-            {
-                "id": m.get("id"),
-                "content": m["content"],
-                "tags": m.get("tags"),
-                "created_at": m.get("created_at"),
-            }
+            projected(m, ("id", "content", "tags", "created_at"))
             for m in branch_memories
         ],
         "commit_log": commit_log,
         "backend": llm.name,
     }
+
+    if notice:
+        result["notice"] = notice
+
+    return result
 
 
 @mcp.tool()

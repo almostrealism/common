@@ -165,6 +165,7 @@ export AR_CONSULTANT_BACKEND=passthrough
 | `AR_CONSULTANT_MLX_MODEL` | `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` | MLX model path |
 | `AR_CONSULTANT_HISTORY_DIR` | `tools/mcp/consultant/data` | Directory for `history.db` |
 | `AR_MEMORY_URL` | (auto-discovered) | ar-memory HTTP server URL |
+| `AR_MEMORY_REFORMULATED` | unset (off) | Show reformulated memory text by default instead of the original (beta) |
 
 ## Available Tools
 
@@ -173,13 +174,42 @@ export AR_CONSULTANT_BACKEND=passthrough
 | `consult` | Ask a question, get a documentation-grounded answer |
 | `search_docs` | Search docs with consultant summary |
 | `recall` | Search memories contextualized with docs |
-| `remember` | Store a memory with consultant reformulation |
+| `remember` | Store a memory with consultant reformulation (beta) |
 | `start_consultation` | Begin a multi-turn session |
 | `continue_consultation` | Follow up in a session |
 | `end_consultation` | End session and optionally store summary |
 | `consultant_status` | Check backend health and configuration |
 | `list_request_history` | List recent tool invocations |
 | `export_request_history` | Export full history for analysis |
+
+## Memory Text: Original vs Reformulated
+
+`remember` rewrites a note before storing it so the wording matches project
+terminology. Both versions are kept: the rewrite becomes the entry's `content`
+(that is what gets embedded and ranked) and the text the agent actually wrote is
+preserved alongside it.
+
+**Reformulation is a beta feature.** The rewrite runs on a small local model and
+can drop detail, collapse specifics, or state things the author did not. So every
+retrieval path — `recall`, `consult`, `branch_catchup`, and ar-manager's
+`memory_recall` and `workstream_context` — returns the **original text by
+default**. Each returned memory carries a `text_source` field (`original` or
+`reformulated`) saying which version it holds.
+
+To read the rewrite instead — when evaluating reformulation quality, for example —
+pass `reformulated=true`. The response then contains the rewrite as `content`, the
+author's text as `original` for comparison, and a `notice` repeating the beta
+warning. Setting `AR_MEMORY_REFORMULATED=1` makes rewrites the default for a whole
+session, including the surfaces that expose no parameter of their own (`consult`,
+`start_consultation`, `workstream_context`).
+
+Retrieval still *ranks* on the rewrite, because that is what was embedded;
+only the text shown to the caller changes. Memories stored by FlowTree jobs never
+went through reformulation and are unaffected either way.
+
+The encoding and the presentation rules live in
+[`tools/mcp/common/memory_text.py`](../common/memory_text.py), shared by both
+servers.
 
 ## Troubleshooting
 
