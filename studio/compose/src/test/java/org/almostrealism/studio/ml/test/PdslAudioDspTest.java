@@ -809,11 +809,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				.add(1.0).multiply(0.1)
 				.into(input.traverseEach()).evaluate();
 
-		double[] out1 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
+		PackedCollection out1 = identityCompiled.forward(input);
 		for (int c = 0; c < channels; c++) {
 			assertEquals(
 					"identity routing on channel " + c + " must pass input unchanged",
-					(c + 1) * 0.1, out1[c * SIGNAL_SIZE + 0]);
+					(c + 1) * 0.1, out1.toDouble(c * SIGNAL_SIZE));
 		}
 
 		// Mutate the slot to swap channels 0 and 1; the next forward pass must
@@ -824,13 +824,13 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				0.0, 0.0, 1.0, 0.0,
 				0.0, 0.0, 0.0, 1.0);
 
-		double[] out2 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
+		PackedCollection out2 = identityCompiled.forward(input);
 		assertEquals("output channel 0 must now read input channel 1",
-				(2) * 0.1, out2[0 * SIGNAL_SIZE + 0]);
+				(2) * 0.1, out2.toDouble(0 * SIGNAL_SIZE));
 		assertEquals("output channel 1 must now read input channel 0",
-				(1) * 0.1, out2[1 * SIGNAL_SIZE + 0]);
+				(1) * 0.1, out2.toDouble(1 * SIGNAL_SIZE));
 		assertEquals("output channel 2 must still read input channel 2",
-				(3) * 0.1, out2[2 * SIGNAL_SIZE + 0]);
+				(3) * 0.1, out2.toDouble(2 * SIGNAL_SIZE));
 	}
 
 	/**
@@ -868,24 +868,22 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				.add(sin(integers(0, SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)))
 				.into(signal.traverseEach()).evaluate();
 
-		double[] lpOut = compiled.forward(signal.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-		double lpEnergy = 0.0;
-		for (int i = FILTER_ORDER; i < SIGNAL_SIZE; i++) {
-			lpEnergy += lpOut[i] * lpOut[i];
-		}
-		Assert.assertTrue("LP FIR must produce non-zero output", lpEnergy > 0.0);
+		// Snapshotted because the second forward pass reuses the model's output buffer,
+		// and the two renders are compared below.
+		int interior = SIGNAL_SIZE - FILTER_ORDER;
+		PackedCollection lpOut = compiled.forward(signal.reshape(compiled.getInputShape()))
+				.range(shape(interior), FILTER_ORDER).clone();
+
+		Assert.assertTrue("LP FIR must produce non-zero output", energy(lpOut, 0) > 0.0);
 
 		// Mutate the slot to a much narrower low-pass — the producer-bound FIR must
 		// re-read the slot on the next forward pass and produce a different output.
 		lowPassCoefficients(c(500.0), SAMPLE_RATE, FILTER_ORDER)
 				.into(coeffSlot.traverseEach()).evaluate();
 
-		double[] narrowOut = compiled.forward(signal.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-		double diffEnergy = 0.0;
-		for (int i = FILTER_ORDER; i < SIGNAL_SIZE; i++) {
-			double d = narrowOut[i] - lpOut[i];
-			diffEnergy += d * d;
-		}
+		PackedCollection narrowOut = compiled.forward(signal.reshape(compiled.getInputShape()))
+				.range(shape(interior), FILTER_ORDER);
+		double diffEnergy = differenceEnergy(narrowOut, lpOut);
 		Assert.assertTrue(
 				"swapping FIR coefficients must change the output substantially: diffEnergy="
 						+ diffEnergy, diffEnergy > 0.001);
