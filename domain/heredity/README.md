@@ -78,10 +78,10 @@ genome.refreshValues();
 
 // Create variations (offspring with mutations)
 ProjectedGenome offspring = genome.variation(
-    min,              // Minimum parameter value
-    max,              // Maximum parameter value
-    mutationRate,     // Probability of mutation
-    deltaSupplier     // Magnitude of mutations
+    min,                                  // Minimum parameter value
+    max,                                  // Maximum parameter value
+    mutationRate,                         // Probability of mutation
+    randn(genome.getParameters().getShape(), 0.0, delta)   // Delta per parameter
 );
 ```
 
@@ -242,10 +242,10 @@ genome.initWeights();
 
 // Create offspring with mutations
 ProjectedGenome child = genome.variation(
-    -1.0,                    // Min weight value
-    1.0,                     // Max weight value
-    0.1,                     // 10% mutation rate
-    () -> Math.random() * 0.2 - 0.1  // Mutation delta ±0.1
+    -1.0,                                                // Min weight value
+    1.0,                                                 // Max weight value
+    0.1,                                                 // 10% mutation rate
+    randn(genome.getParameters().getShape(), 0.0, 0.1)   // Mutation delta per parameter
 );
 ```
 

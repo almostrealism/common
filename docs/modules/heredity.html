@@ -190,10 +190,10 @@ double clamped = Breeders.perturbation(0.0, 1.0, 2.0);  // Returns 1.0</code></p
                 <p>ProjectedGenome provides a variation() method for creating mutated offspring:</p>
                 <pre><code class="language-java">// Create offspring with mutations
 ProjectedGenome offspring = genome.variation(
-    -1.0,                           // min parameter value
-    1.0,                            // max parameter value
-    0.1,                            // 10% mutation rate
-    () -> Math.random() * 0.2 - 0.1 // delta in [-0.1, 0.1]
+    -1.0,                                                // min parameter value
+    1.0,                                                 // max parameter value
+    0.1,                                                 // 10% mutation rate
+    randn(genome.getParameters().getShape(), 0.0, 0.1)   // delta per parameter
 );
 
 // Create completely random genome (for population initialization)
@@ -365,10 +365,10 @@ public class NeuralEvolution {
 
         // Create offspring with 10% mutation rate
         ProjectedGenome offspring = genome.variation(
-            -1.0,                           // min parameter value
-            1.0,                            // max parameter value
-            0.1,                            // 10% mutation rate
-            () -> Math.random() * 0.2 - 0.1 // delta in [-0.1, 0.1]
+            -1.0,                                                // min parameter value
+            1.0,                                                 // max parameter value
+            0.1,                                                 // 10% mutation rate
+            randn(genome.getParameters().getShape(), 0.0, 0.1)   // delta per parameter
         );
 
         // Create random genome for population initialization

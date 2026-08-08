@@ -314,11 +314,11 @@ Supplier<Genome<PackedCollection<?>>> generator = () -> {
     return genome;
 };
 
-// Define breeder (crossover + mutation)
+// Define breeder (mutation only — variation() returns a new genome)
 Supplier<GenomeBreeder<PackedCollection<?>>> breeder = () -> (g1, g2) -> {
-    ProjectedGenome offspring = g1.crossover(g2);
-    offspring.mutate(0.1, () -> Math.random() * 0.2 - 0.1);
-    return offspring;
+    ProjectedGenome parent = (ProjectedGenome) g1;
+    return parent.variation(-1.0, 1.0, 0.1,
+            randn(parent.getParameters().getShape(), 0.0, 0.1));
 };
 
 // Define health computation
