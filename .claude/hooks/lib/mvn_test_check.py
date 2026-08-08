@@ -69,6 +69,13 @@ BLOCK_REASON = (
     "  mcp__ar-test-runner__start_test_run\n"
     "    module: \"<module>\"\n"
     "    test_classes: [\"MyTest\"]\n\n"
+    "Testing a different Maven project (a sibling checkout, a downstream\n"
+    "consumer, a worktree)? Pass its root as `project` — the runner is not\n"
+    "limited to this repository:\n"
+    "  mcp__ar-test-runner__start_test_run\n"
+    "    project: \"../downstream\"\n"
+    "    module: \"app\"\n"
+    "    test_classes: [\"MyTest\"]\n\n"
     "Reason: Direct mvn test bypasses the controlled environment,\n"
     "runs at the wrong test depth, and produces unreliable results.\n"
 )

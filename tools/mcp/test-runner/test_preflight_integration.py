@@ -39,6 +39,7 @@ if str(_COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(_COMMON_DIR))
 
 import preflight  # noqa: E402
+import project  # noqa: E402
 import server  # noqa: E402
 
 
@@ -135,7 +136,9 @@ class StartRunPreflightIntegrationTests(unittest.TestCase):
         ])
 
         self._patches = [
-            patch.object(server, "PROJECT_ROOT", self._project_root),
+            # The default root is owned by the project module; patching the
+            # server's re-exported name would not reach the resolution itself.
+            patch.object(project, "PROJECT_ROOT", self._project_root),
             patch.object(server, "RUNS_DIR", self._runs_dir),
             patch.object(server, "subprocess",
                          _StubSubprocess(_FakePopen)),
