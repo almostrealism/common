@@ -691,11 +691,14 @@ assert original.toDouble(100) == 42.0;  // Same memory!
 
 // No data copied, just pointer arithmetic</code></pre>
 
-                <h3>Multi-Backend Fallback</h3>
-                <pre><code class="language-bash"># Try Metal first, fallback to OpenCL, then Native
+                <h3>Multi-Backend Configuration</h3>
+                <pre><code class="language-bash"># All named backends must initialize; the preference order is the order declared
 export AR_HARDWARE_DRIVER=mtl,cl,native
 
-# Auto-select best available
+# A named backend alongside the wildcard means "this one is required, the rest are best-effort"
+export AR_HARDWARE_DRIVER=cl,*
+
+# Auto-select best available: everything the wildcard expands to is tolerated
 export AR_HARDWARE_DRIVER=*</code></pre>
 
                 <h3>Metal Backend: Buffer Creation and Data Transfer</h3>
