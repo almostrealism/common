@@ -146,11 +146,8 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		// Expected: for kernel_size=1, each output = sum(inputs * weight) + bias
 		// input all 1s, weights all 0.5, so sum = inputChannels * 0.5 = 1.0, + bias 0.1 = 1.1
 		double expectedValue = inputChannels * 0.5 + 0.1;
-		// Every element carries the same value, so the largest deviation from it
-		// settles the whole output in one reduction.
 		Assert.assertEquals("Conv1d k=1 must be uniform", 0.0,
-				max(cp(actualOutput).subtract(c(expectedValue)).abs()).evaluate().toDouble(0),
-				1e-4);
+				largestDeviation(expectedValue, actualOutput), 1e-4);
 	}
 
 	/**
@@ -364,11 +361,8 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Expected: sum(inputs * weight) = inputChannels * 0.5 = 1.0 (no bias)
 		double expectedValue = inputChannels * 0.5;
-		// Every element carries the same value, so the largest deviation from it
-		// settles the whole output in one reduction.
 		Assert.assertEquals("Conv1d no bias must be uniform", 0.0,
-				max(cp(actualOutput).subtract(c(expectedValue)).abs()).evaluate().toDouble(0),
-				1e-4);
+				largestDeviation(expectedValue, actualOutput), 1e-4);
 	}
 
 	/**

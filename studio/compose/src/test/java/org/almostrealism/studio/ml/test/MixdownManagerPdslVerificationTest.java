@@ -837,9 +837,11 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PackedCollection input = new PackedCollection(inputShape);
 		input.fill(1.0);
 
-		double first = compiled.forward(input).toArray(0, sig)[0];
+		// Each probe reads its one slot before the next forward pass overwrites the
+		// output buffer the compiled model reuses.
+		double first = compiled.forward(input).toDouble(0);
 		gain.fill(3.0);
-		double second = compiled.forward(input).toArray(0, sig)[0];
+		double second = compiled.forward(input).toDouble(0);
 		log(String.format("live-arg probe: first=%.4f (expect 2) second=%.4f (expect 3)",
 				first, second));
 		Assert.assertEquals("initial gain must apply", 2.0, first, 1e-6);
@@ -863,9 +865,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		firModel.add(firBlock);
 		CompiledModel firCompiled = firModel.compile();
 
-		double firFirst = firCompiled.forward(input).toArray(0, sig)[sig - 1];
+		double firFirst = firCompiled.forward(input).toDouble(sig - 1);
 		coeffs.fill(0.5, 0.0, 0.0);
-		double firSecond = firCompiled.forward(input).toArray(0, sig)[sig - 1];
+		double firSecond = firCompiled.forward(input).toDouble(sig - 1);
 		log(String.format("live-fir probe: first=%.4f (expect 1) second=%.4f (expect 0.5)",
 				firFirst, firSecond));
 		Assert.assertEquals("initial coefficients must apply", 1.0, firFirst, 1e-6);

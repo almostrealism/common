@@ -65,49 +65,41 @@ public class ProjectedGenomeVariationTest extends TestSuiteBase implements Colle
 	/** A mutation rate of zero must leave every parameter untouched. */
 	@Test(timeout = 60000)
 	public void zeroRateLeavesParametersUnchanged() {
-		double[] result = genome().variation(0.0, 1.0, 0.0, cp(delta(10.0)))
-				.getParameters().toArray(0, PARAMETERS);
+		PackedCollection result = genome().variation(0.0, 1.0, 0.0, cp(delta(10.0)))
+				.getParameters();
 
-		for (int i = 0; i < PARAMETERS; i++) {
-			Assert.assertEquals("parameter " + i + " must be unchanged at a rate of zero",
-					ORIGINAL, result[i], EPS);
-		}
+		Assert.assertEquals("every parameter must be unchanged at a rate of zero",
+				0.0, largestDeviation(ORIGINAL, result), EPS);
 	}
 
 	/** A mutation rate of one, with a delta that overshoots, must clamp to the maximum. */
 	@Test(timeout = 60000)
 	public void fullRateClampsToMaximum() {
-		double[] result = genome().variation(0.0, 1.0, 1.0, cp(delta(10.0)))
-				.getParameters().toArray(0, PARAMETERS);
+		PackedCollection result = genome().variation(0.0, 1.0, 1.0, cp(delta(10.0)))
+				.getParameters();
 
-		for (int i = 0; i < PARAMETERS; i++) {
-			Assert.assertEquals("parameter " + i + " must be clamped to the maximum",
-					1.0, result[i], EPS);
-		}
+		Assert.assertEquals("every parameter must be clamped to the maximum",
+				0.0, largestDeviation(1.0, result), EPS);
 	}
 
 	/** A negative delta that undershoots must clamp to the minimum. */
 	@Test(timeout = 60000)
 	public void fullRateClampsToMinimum() {
-		double[] result = genome().variation(0.0, 1.0, 1.0, cp(delta(-10.0)))
-				.getParameters().toArray(0, PARAMETERS);
+		PackedCollection result = genome().variation(0.0, 1.0, 1.0, cp(delta(-10.0)))
+				.getParameters();
 
-		for (int i = 0; i < PARAMETERS; i++) {
-			Assert.assertEquals("parameter " + i + " must be clamped to the minimum",
-					0.0, result[i], EPS);
-		}
+		Assert.assertEquals("every parameter must be clamped to the minimum",
+				0.0, largestDeviation(0.0, result), EPS);
 	}
 
 	/** A delta that stays inside the range must be applied without clamping. */
 	@Test(timeout = 60000)
 	public void inRangeDeltaIsAppliedExactly() {
-		double[] result = genome().variation(0.0, 1.0, 1.0, cp(delta(0.25)))
-				.getParameters().toArray(0, PARAMETERS);
+		PackedCollection result = genome().variation(0.0, 1.0, 1.0, cp(delta(0.25)))
+				.getParameters();
 
-		for (int i = 0; i < PARAMETERS; i++) {
-			Assert.assertEquals("parameter " + i + " must carry the delta",
-					ORIGINAL + 0.25, result[i], EPS);
-		}
+		Assert.assertEquals("every parameter must carry the delta",
+				0.0, largestDeviation(ORIGINAL + 0.25, result), EPS);
 	}
 
 	/**
@@ -122,14 +114,16 @@ public class ProjectedGenomeVariationTest extends TestSuiteBase implements Colle
 		PackedCollection deltas =
 				linear(0.01, 0.05, PARAMETERS).evaluate().reshape(PARAMETERS);
 
-		double[] result = new ProjectedGenome(parameters)
+		PackedCollection result = new ProjectedGenome(parameters)
 				.variation(0.0, 1.0, 1.0, cp(deltas))
-				.getParameters().toArray(0, PARAMETERS);
+				.getParameters();
 
-		for (int i = 0; i < PARAMETERS; i++) {
-			Assert.assertEquals("parameter " + i + " must carry its own delta",
-					parameters.toDouble(i) + deltas.toDouble(i), result[i], 1e-6);
-		}
+		// The expectation differs per element, so it is built as a collection and the
+		// two are compared where they were computed.
+		PackedCollection expected = cp(parameters).add(cp(deltas)).evaluate();
+
+		Assert.assertEquals("every parameter must carry its own delta",
+				0.0, largestDeviation(expected, result), 1e-6);
 	}
 
 	/** The original genome must not be modified by producing a variation of it. */
@@ -138,10 +132,7 @@ public class ProjectedGenomeVariationTest extends TestSuiteBase implements Colle
 		ProjectedGenome original = genome();
 		original.variation(0.0, 1.0, 1.0, cp(delta(10.0)));
 
-		double[] parameters = original.getParameters().toArray(0, PARAMETERS);
-		for (int i = 0; i < PARAMETERS; i++) {
-			Assert.assertEquals("the original parameter " + i + " must be untouched",
-					ORIGINAL, parameters[i], EPS);
-		}
+		Assert.assertEquals("every original parameter must be untouched",
+				0.0, largestDeviation(ORIGINAL, original.getParameters()), EPS);
 	}
 }

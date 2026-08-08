@@ -322,6 +322,88 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Computes the largest absolute deviation of a collection from a single value every
+	 * element is required to hold.
+	 *
+	 * <p>This is the reduction to reach for when a requirement is uniform across the
+	 * output — a constant fill, a clamp that saturates, a padded region that must stay
+	 * zero. The whole comparison settles in one reduction, so the collection is read once
+	 * rather than once per element, and a single failure reports the worst offender
+	 * instead of the first one encountered.</p>
+	 *
+	 * <p>Unlike {@link #compare(PackedCollection, PackedCollection)}, which averages, this
+	 * does not let one large deviation hide among many small ones.</p>
+	 *
+	 * @param expected the value every element is required to hold
+	 * @param actual   the device-computed collection to check
+	 * @return the largest absolute deviation from {@code expected}
+	 */
+	default double largestDeviation(double expected, PackedCollection actual) {
+		return max(cp(actual).subtract(c(expected)).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Computes the largest absolute difference between two {@link PackedCollection}
+	 * instances, element by element, as a single reduction on the device.
+	 *
+	 * <p>The averaging form, {@link #compare(PackedCollection, PackedCollection)}, reads
+	 * both collections back to the host and lets one large difference hide among many
+	 * small ones; this reports the worst element and leaves the data where it was computed.</p>
+	 *
+	 * @param expected the expected collection values
+	 * @param actual   the actual collection values
+	 * @return the largest absolute difference between corresponding elements
+	 */
+	default double largestDeviation(PackedCollection expected, PackedCollection actual) {
+		return max(cp(actual).subtract(cp(expected)).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Computes the largest absolute deviation of a device-computed
+	 * {@link PackedCollection} from expected values derived, position by position, from
+	 * a function.
+	 *
+	 * <p>This is the strict counterpart to
+	 * {@link #compare(TraversalPolicy, Function, PackedCollection)}, for the same case:
+	 * an expectation that is a formula worked out independently of the device, so that
+	 * agreement means something. It is what a test wants in place of a loop of
+	 * per-element assertions — the reference stays a function rather than becoming an
+	 * array, the collection is read once rather than once per element, and asserting
+	 * that the result is zero is exactly as strict as asserting every element
+	 * individually, because the largest deviation is within tolerance precisely when
+	 * all of them are.</p>
+	 *
+	 * @param shape    the shape whose positions are visited
+	 * @param expected the function supplying the expected value at each position
+	 * @param actual   the device-computed collection to check
+	 * @return the largest absolute difference between corresponding elements
+	 */
+	default double largestDeviation(TraversalPolicy shape, Function<int[], Double> expected,
+									PackedCollection actual) {
+		double act[] = actual.toArray();
+		return shape.stream()
+				.mapToDouble(pos -> Math.abs(expected.apply(pos) - act[shape.index(pos)]))
+				.max().orElseThrow();
+	}
+
+	/**
+	 * Asserts that a one-dimensional collection is symmetric about its centre.
+	 *
+	 * <p>The reversed collection is gathered on the device, so the property is checked
+	 * without reading index against mirrored index from the host.</p>
+	 *
+	 * @param actual the collection to check
+	 * @throws AssertionError if any element differs from its mirror
+	 */
+	default void assertSymmetric(PackedCollection actual) {
+		int size = actual.getShape().getTotalSize();
+		PackedCollection reversed = cp(actual)
+				.valueAt(c(size - 1.0).subtract(integers(0, size)))
+				.evaluate();
+		assertEquals(0.0, largestDeviation(actual, reversed));
+	}
+
+	/**
 	 * Asserts that two {@link PackedCollection} instances are equal.
 	 * Compares shapes (ignoring axis differences) and element values.
 	 *
