@@ -385,5 +385,85 @@ class GetRunStatusBlockingTest(unittest.TestCase):
         self.assertIn("error", status)
 
 
+class InvocationReportCopyTest(unittest.TestCase):
+    """Per-invocation report collection must ignore reports left by earlier runs.
+
+    Maven overwrites the report for a class it runs and leaves every other report in
+    place, so ``target/surefire-reports`` accumulates results from earlier runs of other
+    classes. Copying the directory wholesale attributed those stale classes to the current
+    run, which inflated the reported test count and silently corrupted any comparison
+    between runs.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        tmp = Path(self._tmp)
+
+        self.module = "engine/utils"
+        self.reports_src = tmp / self.module / "target" / "surefire-reports"
+        self.reports_src.mkdir(parents=True)
+        self.runs_dir = tmp / "runs"
+        self.runs_dir.mkdir()
+
+        self._patches = [
+            patch.object(server, "PROJECT_ROOT", tmp),
+            patch.object(server, "RUNS_DIR", self.runs_dir),
+        ]
+        for p in self._patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self._patches:
+            p.stop()
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_report(self, class_name: str, tests: int, mtime: float):
+        path = self.reports_src / f"TEST-{class_name}.xml"
+        path.write_text(
+            f'<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<testsuite name="{class_name}" tests="{tests}" '
+            f'failures="0" errors="0" skipped="0"></testsuite>\n')
+        os.utime(path, (mtime, mtime))
+        return path
+
+    def test_stale_reports_from_other_classes_are_not_counted(self):
+        """Only reports written during the invocation contribute to its counts."""
+        invocation_start = datetime.now()
+
+        # Three classes left behind by earlier runs, plus the one this invocation ran.
+        stale = invocation_start.timestamp() - 600
+        self._write_report("com.example.AlphaTest", 5, stale)
+        self._write_report("com.example.BetaTest", 4, stale)
+        self._write_report("com.example.GammaTest", 5, stale)
+        self._write_report("com.example.TargetTest", 44, invocation_start.timestamp() + 1)
+
+        server.runner._copy_surefire_reports_to_invocation(
+                "run1", self.module, 1, invocation_start)
+
+        inv_dir = self.runs_dir / "run1" / "reports" / "invocation_1"
+        copied = sorted(p.name for p in inv_dir.glob("TEST-*.xml"))
+        self.assertEqual(["TEST-com.example.TargetTest.xml"], copied)
+
+        counts = server.runner._parse_test_counts(inv_dir)
+        self.assertEqual(44, counts["tests_run"],
+                         "stale reports from other classes must not inflate the count")
+
+    def test_reports_written_during_the_invocation_are_all_kept(self):
+        """A run covering several classes keeps every report it actually produced."""
+        invocation_start = datetime.now()
+        fresh = invocation_start.timestamp() + 1
+
+        self._write_report("com.example.OneTest", 3, fresh)
+        self._write_report("com.example.TwoTest", 7, fresh)
+        self._write_report("com.example.OldTest", 99, invocation_start.timestamp() - 600)
+
+        server.runner._copy_surefire_reports_to_invocation(
+                "run2", self.module, 2, invocation_start)
+
+        inv_dir = self.runs_dir / "run2" / "reports" / "invocation_2"
+        counts = server.runner._parse_test_counts(inv_dir)
+        self.assertEqual(10, counts["tests_run"])
+
+
 if __name__ == "__main__":
     unittest.main()

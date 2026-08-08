@@ -843,6 +843,11 @@ class TestRunner:
             metadata["current_invocation"] = invocation_num
             self._save_metadata_dict(run_id, metadata)
 
+            # Wall-clock stamp taken before the process launches, so the report copy can
+            # tell this invocation's reports from ones left by earlier runs. Distinct from
+            # inv_start below, which is monotonic and only measures duration.
+            inv_wall_start = datetime.now()
+
             # Write invocation marker to output
             with open(output_file, "a") as f:
                 f.write(f"\n{'='*60}\n")
@@ -925,7 +930,8 @@ class TestRunner:
                 inv_duration = time.monotonic() - inv_start
 
             # Copy surefire reports for this invocation
-            self._copy_surefire_reports_to_invocation(run_id, config.module, invocation_num)
+            self._copy_surefire_reports_to_invocation(
+                    run_id, config.module, invocation_num, inv_wall_start)
 
             # Parse test counts from this invocation's reports
             inv_reports_dir = run_dir / "reports" / f"invocation_{invocation_num}"
@@ -965,11 +971,23 @@ class TestRunner:
             metadata["status"] = "failed" if any_failed else "completed"
             self._save_metadata_dict(run_id, metadata)
 
-    def _copy_surefire_reports_to_invocation(self, run_id: str, module: str, invocation_num: int):
-        """Copy surefire reports to an invocation-specific subdirectory.
+    def _copy_surefire_reports_to_invocation(self, run_id: str, module: str,
+                                             invocation_num: int, invocation_start: datetime):
+        """Copy this invocation's surefire reports to an invocation-specific subdirectory.
 
-        Since invocations are sequential and Maven overwrites reports each time,
-        no time filtering is needed.
+        Only reports written at or after ``invocation_start`` are copied. Maven overwrites
+        the report for a class it actually runs, but leaves every other report in place, so
+        ``target/surefire-reports`` accumulates results from earlier runs of other classes
+        indefinitely. Copying the whole directory therefore counted those stale classes as
+        part of this run: a 44-test class reported 58 tests because three unrelated classes
+        (5, 4 and 5 tests) were still sitting in the directory. Single-invocation runs have
+        always filtered by time; this is the same filter, per invocation.
+
+        Args:
+            run_id: the run identifier
+            module: the Maven module under test
+            invocation_num: 1-based invocation index
+            invocation_start: wall-clock time captured before this invocation launched
         """
         reports_src = PROJECT_ROOT / module / "target" / "surefire-reports"
         reports_dst = RUNS_DIR / run_id / "reports" / f"invocation_{invocation_num}"
@@ -981,7 +999,9 @@ class TestRunner:
 
         for xml_file in reports_src.glob("TEST-*.xml"):
             try:
-                shutil.copy2(xml_file, reports_dst / xml_file.name)
+                file_mtime = datetime.fromtimestamp(xml_file.stat().st_mtime)
+                if file_mtime >= invocation_start:
+                    shutil.copy2(xml_file, reports_dst / xml_file.name)
             except Exception:
                 pass
 

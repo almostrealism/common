@@ -539,6 +539,37 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @throws AssertionError if the values differ by more than the specified tolerance
 	 */
 	default void assertSimilar(double a, double b, double r) {
+		assertSimilar(null, a, b, r);
+	}
+
+	/**
+	 * Asserts that two double values are similar within the default relative tolerance,
+	 * reporting {@code msg} alongside the values when they differ.
+	 *
+	 * <p>Use this wherever the inputs are generated rather than fixed — a random or
+	 * data-dependent case that fails is only actionable if the failure carries the inputs
+	 * that produced it, otherwise it is unreproducible.</p>
+	 *
+	 * @param msg context to report when the assertion fails, such as the generating inputs
+	 * @param a   the expected value
+	 * @param b   the actual value
+	 * @throws AssertionError if the values differ by more than 0.1%
+	 */
+	default void assertSimilar(String msg, double a, double b) {
+		assertSimilar(msg, a, b, 0.001);
+	}
+
+	/**
+	 * Asserts that two double values are similar within a specified relative tolerance,
+	 * reporting {@code msg} alongside the values when they differ.
+	 *
+	 * @param msg context to report when the assertion fails, such as the generating inputs
+	 * @param a   the expected value
+	 * @param b   the actual value
+	 * @param r   the relative tolerance (e.g., 0.001 for 0.1% tolerance)
+	 * @throws AssertionError if the values differ by more than the specified tolerance
+	 */
+	default void assertSimilar(String msg, double a, double b, double r) {
 		double gap = Math.max(Math.abs(a), Math.abs(b));
 		double eps = Hardware.getLocalHardware().epsilon();
 		double comp = Math.max(eps, r * gap);
@@ -547,8 +578,9 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 		if (c >= comp) {
 			double s = c / gap;
-			warn(b + " != " + a + " (" + s + " > " + r + ")");
-			throw new AssertionError();
+			String detail = b + " != " + a + " (" + s + " > " + r + ")";
+			warn(msg == null ? detail : detail + " " + msg);
+			throw new AssertionError(msg == null ? detail : detail + " " + msg);
 		}
 	}
 
