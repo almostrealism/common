@@ -36,6 +36,16 @@ from typing import Optional
 # Allow importing sibling modules when run as a script
 sys.path.insert(0, os.path.dirname(__file__))
 
+# Shared libraries live in tools/mcp/common. memory_client puts this directory
+# on the path as a side effect of its own import, which left the imports below
+# dependent on the order they happen to appear in; declaring it here removes
+# that coupling. It goes *after* this directory so the local inference.py shim
+# keeps precedence — it loads common/inference.py under a distinct module name
+# and a plain `import inference` must continue to find the shim.
+_COMMON_DIR = os.path.join(os.path.dirname(__file__), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(1, _COMMON_DIR)
+
 from mcp.server.fastmcp import FastMCP
 
 from docs_retriever import DocsRetriever
