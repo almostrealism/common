@@ -53,7 +53,7 @@ public class ConjugateSymmetryTests extends TestSuiteBase {
 		Assert.assertEquals(2 * BINS, full.getShape().length(0));
 		Assert.assertEquals(2, full.getShape().length(1));
 
-		double expected[] = {
+		PackedCollection expected = pack(
 				1.0, 0.0,
 				2.0, 3.0,
 				4.0, 5.0,
@@ -62,18 +62,21 @@ public class ConjugateSymmetryTests extends TestSuiteBase {
 				6.0, -7.0,
 				4.0, -5.0,
 				2.0, -3.0
-		};
+		).reshape(full.getShape());
 
-		double actual[] = full.toArray();
-
-		for (int i = 0; i < expected.length; i++) {
-			Assert.assertEquals("Element " + i, expected[i], actual[i], 1e-9);
-		}
+		Assert.assertEquals("The extended spectrum must mirror its bins",
+				0.0, largestDeviation(expected, full), 1e-9);
 	}
 
 	/**
 	 * A sequence of spectra is extended one frame at a time, with no bin of one
 	 * frame reaching into another.
+	 *
+	 * <p>Every frame extends to the same pattern — DC, bin 1, a zero Nyquist, then bin 1
+	 * mirrored with its imaginary part negated — scaled by that frame's own magnitude.
+	 * Expressing the expectation as that pattern against those scales is what puts
+	 * independence under test: a bin reaching into a neighbouring frame would carry the
+	 * wrong scale and show up as a deviation.</p>
 	 */
 	@Test(timeout = 120000)
 	public void everyFrameIsExtendedIndependently() {
@@ -88,23 +91,17 @@ public class ConjugateSymmetryTests extends TestSuiteBase {
 		Assert.assertEquals(4, full.getShape().length(1));
 		Assert.assertEquals(2, full.getShape().length(2));
 
-		double actual[] = full.toArray();
+		PackedCollection pattern = pack(1.0, 0.0, 2.0, 3.0, 0.0, 0.0, 2.0, -3.0);
+		PackedCollection scales = pack(1.0, 10.0, 100.0);
 
-		for (int f = 0; f < 3; f++) {
-			double scale = Math.pow(10.0, f);
-			int base = f * 8;
+		PackedCollection expected =
+				repeat(0, 3, cp(pattern).reshape(shape(1, 8)))
+						.multiply(repeat(1, 8, cp(scales).reshape(shape(3, 1))))
+						.reshape(full.getShape())
+						.evaluate();
 
-			Assert.assertEquals("Frame " + f + " DC", 1.0 * scale, actual[base], 1e-9);
-			Assert.assertEquals("Frame " + f + " DC phase", 0.0, actual[base + 1], 1e-9);
-			Assert.assertEquals("Frame " + f + " bin 1", 2.0 * scale, actual[base + 2], 1e-9);
-			Assert.assertEquals("Frame " + f + " bin 1 imaginary",
-					3.0 * scale, actual[base + 3], 1e-9);
-			Assert.assertEquals("Frame " + f + " Nyquist", 0.0, actual[base + 4], 1e-9);
-			Assert.assertEquals("Frame " + f + " Nyquist imaginary", 0.0, actual[base + 5], 1e-9);
-			Assert.assertEquals("Frame " + f + " mirrored bin", 2.0 * scale, actual[base + 6], 1e-9);
-			Assert.assertEquals("Frame " + f + " mirrored bin imaginary",
-					-3.0 * scale, actual[base + 7], 1e-9);
-		}
+		Assert.assertEquals("Each frame must extend independently",
+				0.0, largestDeviation(expected, full), 1e-9);
 	}
 
 	/**
@@ -127,11 +124,14 @@ public class ConjugateSymmetryTests extends TestSuiteBase {
 		PackedCollection spectrum = conjugateSymmetric(cp(half)).evaluate();
 
 		FourierTransform inverse = new FourierTransform(1, 2 * bins, true, cp(spectrum));
-		double samples[] = inverse.get().evaluate().toArray();
+		PackedCollection samples = inverse.get().evaluate();
 
-		for (int i = 0; i < 2 * bins; i++) {
-			Assert.assertEquals("Sample " + i + " has an imaginary part",
-					0.0, samples[i * 2 + 1], 1e-6);
-		}
+		// The imaginary parts are the second component of each sample, so they are the
+		// far column of the [samples, 2] result rather than a strided read of the whole.
+		PackedCollection imaginary = subset(shape(2 * bins, 1),
+				cp(samples).reshape(shape(2 * bins, 2)), 0, 1).evaluate();
+
+		Assert.assertEquals("The inverse transform must be real valued",
+				0.0, largestDeviation(0.0, imaginary), 1e-6);
 	}
 }

@@ -52,11 +52,9 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		double cutoff = 3000;
 
 		PackedCollection coefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
-		double[] result = lowPassCoefficients(c(cutoff), sampleRate, filterOrder).get().evaluate().toArray();
+		PackedCollection result = lowPassCoefficients(c(cutoff), sampleRate, filterOrder).get().evaluate();
 
-		for (int i = 0; i < filterOrder + 1; i++) {
-			assertEquals(coefficients.toDouble(i), result[i]);
-		}
+		assertEquals(0.0, largestDeviation(coefficients, result));
 	}
 
 	/**
@@ -74,11 +72,8 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
 			PackedCollection coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
-			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
-			for (int i = 0; i < filterOrder + 1; i++) {
-				assertEquals(coefficients.toDouble(i), resultCoefficients[i]);
-			}
+			assertEquals(0.0, largestDeviation(coefficients, result.range(shape(len), c * len)));
 		}
 	}
 
@@ -98,11 +93,8 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
 			PackedCollection coefficients =
 					highPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder).evaluate();
-			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
-			for (int i = 0; i < filterOrder + 1; i++) {
-				assertEquals(coefficients.toDouble(i), resultCoefficients[i]);
-			}
+			assertEquals(0.0, largestDeviation(coefficients, result.range(shape(len), c * len)));
 		}
 	}
 
@@ -129,12 +121,10 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
 			PackedCollection coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
-			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
+			PackedCollection resultCoefficients = result.range(shape(len), c * len);
 
-			for (int i = 0; i < filterOrder + 1; i++) {
-				log(coefficients.toDouble(i) + " vs " + resultCoefficients[i]);
-				assertEquals(coefficients.toDouble(i), resultCoefficients[i]);
-			}
+			log(coefficients.toArrayString() + " vs " + resultCoefficients.toArrayString());
+			assertEquals(0.0, largestDeviation(coefficients, resultCoefficients));
 		}
 	}
 
