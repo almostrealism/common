@@ -164,6 +164,20 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	public int getSssScalarColumns() { return sssLayers * 9 + 12; }
 
 	/**
+	 * Returns how many leading {@link #getSssScalars()} columns come verbatim from a single
+	 * note — every column except the destination and sampling offsets, which are properties
+	 * of the window a note is placed into rather than of the note itself.
+	 *
+	 * <p>These columns are contiguous and ordered from column zero, so a caller holding one
+	 * note's scalar set in this same order transfers it in one pass. A caller that relies on
+	 * that should compare this count against the length of the set it holds: the two agree
+	 * only while both describe the same layer count.</p>
+	 *
+	 * @return the count of leading note-supplied columns
+	 */
+	public int getSssNoteScalarColumns() { return sssLayers * 9 + 10; }
+
+	/**
 	 * Returns the {@link #getSssScalars()} column holding layer {@code l}'s pitch ratios.
 	 *
 	 * @param l the layer index

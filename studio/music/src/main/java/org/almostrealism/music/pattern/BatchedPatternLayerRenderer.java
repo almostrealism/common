@@ -460,22 +460,29 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 			// command-buffer commit instead of forcing one synchronous host wait per layer.
 			PackedCollection[] boundSources = renderer.getSssSources();
 			renderer.clearSssSources();
+
+			// A note's scalar set is stored in this store's column order, so the whole set
+			// transfers in one pass rather than one walk per envelope structure. That holds
+			// only while both sides describe the same layer count.
+			if (renderer.getSssNoteScalarColumns() != BatchedNoteInputs.SCALARS) {
+				throw new IllegalStateException("Renderer expects "
+						+ renderer.getSssNoteScalarColumns()
+						+ " note-supplied scalar columns, but a note carries "
+						+ BatchedNoteInputs.SCALARS);
+			}
+
 			for (int row = 0; row < count; row++) {
 				BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 				for (int l = 0; l < layers; l++) {
 					PackedCollection src = in.getSources()[l];
 					copyRow(boundSources[l], row * sourceLength, src,
 							Math.min(src.getMemLength(), sourceLength));
-					scalars[renderer.sssRatioColumn(l) * bucketN + row] = in.getRatios()[l];
-					for (int p = 0; p < 8; p++) {
-						scalars[renderer.sssLayerEnvColumn(l, p) * bucketN + row]
-								= in.getLayerParams()[l][p];
-					}
 				}
-				for (int p = 0; p < 5; p++) {
-					scalars[renderer.sssFilterAdsrColumn(p) * bucketN + row] = in.getFilterAdsr()[p];
-					scalars[renderer.sssVolumeAdsrColumn(p) * bucketN + row] = in.getVolumeAdsr()[p];
+
+				for (int c = 0; c < BatchedNoteInputs.SCALARS; c++) {
+					scalars[c * bucketN + row] = in.getScalar(c);
 				}
+
 				int noteStart = notes.get(row).getOffset();
 				scalars[renderer.sssDestOffsetColumn() * bucketN + row] =
 						Math.max(0, noteStart - startFrame);
@@ -562,12 +569,16 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 					PackedCollection src = in.getSources()[l];
 					copyRow(boundSources[l], row * sourceLength, src,
 							Math.min(src.getMemLength(), sourceLength));
-					scalars[renderer.percRatioColumn(l) * bucketN + row] = in.getRatios()[l];
+					scalars[renderer.percRatioColumn(l) * bucketN + row]
+							= in.getScalar(BatchedNoteInputs.ratioIndex(l));
 				}
 				if (wet) {
+					// Percussion carries no per-layer or filter envelope, so its bound store
+					// is a different (shorter) column order than the note's own scalar set;
+					// the two ranges it does share are mapped across explicitly.
 					for (int p = 0; p < 5; p++) {
 						scalars[renderer.percVolumeAdsrColumn(p) * bucketN + row]
-								= in.getVolumeAdsr()[p];
+								= in.getScalar(BatchedNoteInputs.volumeAdsrIndex(p));
 					}
 				}
 				int noteStart = notes.get(row).getOffset();
@@ -613,7 +624,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 			int samplingOffset = Math.max(0, startFrame - notes.get(row).getOffset());
 			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 			for (int l = 0; l < layers; l++) {
-				int read = (int) Math.ceil((samplingOffset + targetLength) * in.getRatios()[l]) + 1;
+				int read = (int) Math.ceil((samplingOffset + targetLength)
+						* in.getScalar(BatchedNoteInputs.ratioIndex(l))) + 1;
 				required = Math.max(required, read);
 			}
 		}
