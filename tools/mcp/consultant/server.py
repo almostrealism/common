@@ -106,7 +106,15 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
         parts.append("## Relevant Documentation\n\n(No documentation found for this query)")
 
     if memory_context:
-        parts.append(f"## Relevant Memories from Prior Sessions\n\n{memory_context}")
+        parts.append(
+            "## Notes From Prior Sessions\n\n"
+            "These are notes agents wrote about particular past work. They are not "
+            "documentation and carry no authority beyond the classes and files they "
+            "name. Use a note only for the subject it explicitly names; never carry "
+            "its details across to a class, file or module it does not mention, and "
+            "never let its wording supply a fact the documentation does not state.\n\n"
+            f"{memory_context}"
+        )
 
     parts.append(
         "## Instructions\n\n"
@@ -197,13 +205,25 @@ def _keyword_guidance(keywords: Optional[list[str]]) -> str:
 
 
 def _format_memory_context(memories: list[dict], max_entries: int = 3) -> str:
-    """Format memory entries into a context string."""
+    """Format memory entries into a context string.
+
+    Each note is labelled with the work it was written about, so that a record of
+    one class's internals reads as what it is rather than as a statement about the
+    framework. Presented as bare text it reads with the same authority as
+    documentation, and its specifics get attached to whatever the question happens
+    to ask about — a note describing one class's flat scalar layout becomes, for a
+    question naming several unrelated classes, an assertion about the one whose
+    name sounds nearest.
+    """
     if not memories:
         return ""
     parts = []
-    for m in memories[:max_entries]:
-        parts.append(f"- {m['content']}")
-    return "\n".join(parts)
+    for i, m in enumerate(memories[:max_entries], 1):
+        source = m.get("source") or "unspecified"
+        parts.append(
+            f"### Note {i} — written by an agent about: {source}\n\n{m['content']}"
+        )
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
