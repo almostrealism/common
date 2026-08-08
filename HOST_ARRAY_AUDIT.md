@@ -436,6 +436,23 @@ Two lessons that apply to the rest of the list, both learned by measurement:
 
 ### engine/audio/src/test/java/org/almostrealism/audio/benchmark/PatternRenderingFloorBenchmarkAdditional.java
 
+**Two distinct groups here; the automated classification lumped them together.**
+
+`seqPerNoteMs` and its siblings (lines 171, 264, 374) hold **wall-clock timings in
+milliseconds per note**, derived from `System.nanoTime` around the timed loop. They
+are measurements *of* the computation, not data *in* it — no device produces them,
+and a collection could not hold them any more meaningfully than a Java array does.
+These are defended, and the defense does not appeal to the prohibition on
+`evaluate()`: they are not signal data at all.
+
+`B1NoteMetadata`'s per-note arrays (lines 77–97) are the same shape as the
+`BatchedNoteInputs` scalars — per-note values extracted from generated fixtures and
+marshalled into device buffers. They are **not** defended, and they are the same
+migration as step 1 of the batched-renderer plan: give the metadata record one
+collection with a documented layout so gathering is a device copy. Doing it here
+first would be reasonable, since a benchmark fixture carries less risk than the
+production dispatch path.
+
 - `77` (array) — **MIGRATION CANDIDATE — no defense**  
   `final double[] pitchRatio;`
 - `79` (array) — **MIGRATION CANDIDATE — no defense**  
