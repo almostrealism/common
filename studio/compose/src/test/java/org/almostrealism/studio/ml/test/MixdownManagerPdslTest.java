@@ -939,14 +939,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * @return the rendered signal, of shape ({@code numPasses * SIGNAL_SIZE})
 	 */
 	private PackedCollection render(int numPasses, IntFunction<PackedCollection> pass) {
-		PackedCollection signal = new PackedCollection(numPasses * SIGNAL_SIZE);
-
-		for (int p = 0; p < numPasses; p++) {
-			int sampleOffset = p * SIGNAL_SIZE;
-			signal.setFrom(sampleOffset, pass.apply(sampleOffset).range(shape(SIGNAL_SIZE)));
-		}
-
-		return signal;
+		return render(numPasses, SIGNAL_SIZE, pass);
 	}
 
 	/**

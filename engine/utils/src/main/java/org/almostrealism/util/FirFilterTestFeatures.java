@@ -18,6 +18,8 @@ package org.almostrealism.util;
 
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.function.IntFunction;
+
 
 /**
  * Shared test utilities for FIR filter and convolution tests.
@@ -131,6 +133,33 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 */
 	default double peakOf(PackedCollection samples) {
 		return max(cp(samples).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Assembles a signal from a sequence of fixed-length passes, each pass writing into
+	 * the span it occupies.
+	 *
+	 * <p>The passes run in order and each is given the absolute sample offset it starts
+	 * at, so a stateful model — one carrying a delay ring or a filter history between
+	 * invocations — sees them in the order it would in a real render. Each pass's output
+	 * is copied into the assembled signal where it belongs, so nothing leaves the device
+	 * on the way and the whole signal is available for measurement afterwards.</p>
+	 *
+	 * @param numPasses  the number of passes to run
+	 * @param signalSize the frames each pass produces
+	 * @param pass       supplies one pass's output, given the offset it begins at
+	 * @return the assembled signal, {@code numPasses * signalSize} frames
+	 */
+	default PackedCollection render(int numPasses, int signalSize,
+									IntFunction<PackedCollection> pass) {
+		PackedCollection signal = new PackedCollection(numPasses * signalSize);
+
+		for (int p = 0; p < numPasses; p++) {
+			int sampleOffset = p * signalSize;
+			signal.setFrom(sampleOffset, pass.apply(sampleOffset).range(shape(signalSize)));
+		}
+
+		return signal;
 	}
 
 	/**

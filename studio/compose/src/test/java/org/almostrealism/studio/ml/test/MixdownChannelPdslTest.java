@@ -282,33 +282,27 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 
 		int totalSamples = SAMPLE_RATE;
 		int numPasses = totalSamples / SIGNAL_SIZE;
-		float[] mainSignal = new float[totalSamples];
-		float[] channelSignal = new float[totalSamples];
+		PackedCollection mainSignal = new PackedCollection(totalSamples);
+		PackedCollection channelSignal = new PackedCollection(totalSamples);
 
+		// Both models carry a delay ring between passes, so the two are advanced together
+		// pass by pass rather than one signal being rendered before the other.
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
 			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
 					.into(input.traverseEach()).evaluate();
 
-			double[] mainOut = mainCompiled.forward(input.reshape(mainCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-			double[] chanOut = channelCompiled.forward(input.reshape(channelCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				mainSignal[offset + i] = (float) mainOut[i];
-				channelSignal[offset + i] = (float) chanOut[i];
-			}
+			mainSignal.setFrom(offset, mainCompiled.forward(input.reshape(mainCompiled.getInputShape()))
+					.range(shape(SIGNAL_SIZE)));
+			channelSignal.setFrom(offset, channelCompiled.forward(input.reshape(channelCompiled.getInputShape()))
+					.range(shape(SIGNAL_SIZE)));
 		}
 
 		// The wet delay path must contribute echo energy — outputs must differ
-		double diffEnergy = 0.0;
-		for (int i = 0; i < totalSamples; i++) {
-			double diff = channelSignal[i] - mainSignal[i];
-			diffEnergy += diff * diff;
-		}
 		Assert.assertTrue(
 				"mixdown_channel wet delay must add echo energy (diff from main-only must be > 0)",
-				diffEnergy > 0.0);
+				differenceEnergy(channelSignal, mainSignal) > 0.0);
 	}
 
 	/**
