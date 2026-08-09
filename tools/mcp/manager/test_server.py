@@ -2604,6 +2604,99 @@ class TestMemoryRecall(unittest.TestCase):
         self.assertEqual(call_kwargs["branch"], "feature/x")
 
 
+class TestMemoryReformulatedText(unittest.TestCase):
+    """Retrieval shows the author's text; the rewrite is an opt-in beta."""
+
+    def _reformulated_memory(self):
+        """A memory as the Consultant's remember tool stores it."""
+        return {
+            "id": "m1",
+            "content": "rewritten by the consultant",
+            "source": json.dumps({
+                "original": "what the agent actually wrote",
+                "user_source": None,
+            }),
+            "score": 0.9,
+            "created_at": "2026-01-01",
+        }
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_recall_returns_the_original_by_default(self, mock_client_fn, _):
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [self._reformulated_memory()]
+        mock_client_fn.return_value = client
+        result = server.memory_recall(query="test", scope="all")
+        memory = result["memories"][0]
+        self.assertEqual("what the agent actually wrote", memory["content"])
+        self.assertEqual("original", memory["text_source"])
+        self.assertIn("reformulated=true", result["notice"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_recall_reformulated_is_opt_in(self, mock_client_fn, _):
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [self._reformulated_memory()]
+        mock_client_fn.return_value = client
+        result = server.memory_recall(
+            query="test", scope="all", reformulated=True)
+        memory = result["memories"][0]
+        self.assertEqual("rewritten by the consultant", memory["content"])
+        self.assertEqual("reformulated", memory["text_source"])
+        self.assertEqual("what the agent actually wrote", memory["original"])
+        self.assertIn("beta", result["notice"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_verbatim_memories_are_untouched(self, mock_client_fn, _):
+        """Memories stored by jobs never went through reformulation."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [
+            {"id": "m1", "content": "job note", "source": "job", "score": 0.5},
+        ]
+        mock_client_fn.return_value = client
+        result = server.memory_recall(query="test", scope="all")
+        self.assertEqual("job note", result["memories"][0]["content"])
+        self.assertNotIn("notice", result)
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_synthesis_summarizes_the_presented_text(self, mock_client_fn, mock_llm):
+        """The summary must describe the same text the caller is shown."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [self._reformulated_memory()]
+        mock_client_fn.return_value = client
+        llm = MagicMock()
+        llm.available = True
+        llm.generate.return_value = "summary"
+        mock_llm.return_value = llm
+        server.memory_recall(query="test", scope="all")
+        prompt = llm.generate.call_args[0][0]
+        self.assertIn("what the agent actually wrote", prompt)
+        self.assertNotIn("rewritten by the consultant", prompt)
+
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_workstream_context_unwraps_the_dual_source(self, mock_client_fn, _gh):
+        """The dual-text JSON is an implementation detail, not caller-facing."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = [self._reformulated_memory()]
+        mock_client_fn.return_value = client
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        memory = result["memories"][0]
+        self.assertEqual("what the agent actually wrote", memory["content"])
+        self.assertNotIn("source", memory)
+
+
 class TestMemoryBranchContext(unittest.TestCase):
 
     @patch.object(server, "_github_request")

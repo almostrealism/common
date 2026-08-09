@@ -9,7 +9,6 @@ When the ar-memory server is unavailable, methods return empty results
 or error dicts rather than raising exceptions, enabling graceful degradation.
 """
 
-import json
 import logging
 import os
 import sys
@@ -23,6 +22,7 @@ if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 
 from memory_http_client import MemoryHTTPClient
+from memory_text import encode_dual_source
 
 
 class MemoryClient:
@@ -202,7 +202,7 @@ class MemoryClient:
         """
         # Embed on the reformulated text (better search quality) but
         # store a JSON payload that includes both versions.
-        dual_source = json.dumps({"original": original, "user_source": source})
+        dual_source = encode_dual_source(original, source)
 
         entry = self.store(
             content=reformulated,

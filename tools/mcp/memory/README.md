@@ -134,6 +134,15 @@ SQLite table `entries`:
 
 FAISS: One flat L2 index per namespace. Dimension is 384 for both default backends.
 
+The `source` column carries a second meaning for entries written by the
+Consultant's `remember` tool: instead of a plain origin label it holds
+`{"original": ..., "user_source": ...}`, preserving the text the agent wrote
+while `content` holds the Consultant's rewrite of it. The store treats the
+column as opaque; the format is defined by
+[`tools/mcp/common/memory_text.py`](../common/memory_text.py), which is also
+what unwraps it so callers of the MCP servers see plain text and the author's
+original by default.
+
 ## File Structure
 
 ```

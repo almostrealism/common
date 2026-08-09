@@ -1,4 +1,7 @@
 # AR Manager MCP Server
-mcp>=1.0.0
+# Held below 2.0.0: the 2.x SDK drops the 1.x server API this server
+# imports (mcp.server.fastmcp / mcp.server.Server). Raising the bound
+# requires migrating the server to the 2.x API first.
+mcp>=1.0.0,<2
 uvicorn
 # Memory tools use tools/mcp/common/ (no extra pip deps - stdlib only)

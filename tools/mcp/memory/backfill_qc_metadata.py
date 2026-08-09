@@ -29,10 +29,19 @@ written.
 import argparse
 import hashlib
 import json
+import os
 import sqlite3
 import sys
 import urllib.request
 from collections import Counter, defaultdict
+
+# The dual-text wrapper format is owned by tools/mcp/common/memory_text.py;
+# this script classifies against the same definition the servers read.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+from memory_text import decode_dual_source
 
 
 DEFAULT_URL = "http://host.docker.internal:8020"
@@ -66,13 +75,7 @@ def is_garbage(content: str) -> bool:
 
 def is_dual_wrapper(source) -> bool:
     """True when ``source`` is the store_dual {"original": ...} JSON wrapper."""
-    if not source or not isinstance(source, str):
-        return False
-    try:
-        parsed = json.loads(source)
-    except (json.JSONDecodeError, TypeError):
-        return False
-    return isinstance(parsed, dict) and "original" in parsed
+    return decode_dual_source(source) is not None
 
 
 def classify(entry: dict) -> dict:
