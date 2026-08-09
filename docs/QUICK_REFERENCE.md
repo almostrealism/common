@@ -51,12 +51,12 @@ PackedCollection extends `MemoryData`. The write surfaces are separated by purpo
 
 - **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`, a
   `Bytes` view, or a device-backed tensor) into this one.
-- **`setMem(...)`** writes a complete region from a `double[]` or `float[]` at
-  index 0. Concrete `MemoryDataAdapter` implementations provide the
-  single-value indexed form (`setMem(int, double)` / `setMem(int, float)`).
-  System-boundary ingest goes through `MemoryData.read(ByteBuffer)` into a
-  native staging allocation, and the framework migrates that staging area to
-  the compute device on first kernel use.
+- **`setMem(...)`** is exposed only on concrete `MemoryDataAdapter`
+  implementations and is intentionally narrow: a single-value indexed write
+  (`setMem(int, double)` / `setMem(int, float)`). `PackedCollection.set(int, double...)`
+  is the public whole-content literal write for a `PackedCollection` reference.
+  System-boundary ingest should use `MemoryData.read(ByteBuffer)` into a native
+  staging allocation, and the framework migrates that staging area to the compute device.
 
 ```java
 // Copy all of source into target at offset 0
@@ -68,8 +68,11 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (whole buffer, starting at index 0)
-target.setMem(new double[] {1.0, 2.0, 3.0, 4.0});
+// Single-value indexed write on a concrete implementation
+target.setMem(0, 42.0);
+
+// Whole-content literal write on a PackedCollection reference
+target.set(0, 1.0, 2.0, 3.0, 4.0);
 ```
 
 **Using CodeFeatures.copy()** (via interface - preferred for producer pattern):
@@ -90,8 +93,9 @@ normalize(cp(vector)).into(vector).evaluate();
 
 > **Note**: `setFrom(MemoryData)` is more efficient than element-by-element
 > loops. Both PackedCollection and other MemoryData implementations support
-> these operations. Reserve `setMem(...)` for literal whole-content writes or
-> single indexed literal updates.
+> these operations. Reserve `setMem(int, double)` / `setMem(int, float)` for
+> scalar indexed updates and `set(int, double...)` for whole-content literal
+> writes.
 
 ---
 
@@ -408,13 +412,10 @@ destination.setFrom(destOffset, source, srcOffset, len); // Copy range
 PackedCollection indexedData = new PackedCollection(3);
 double val = indexedData.toDouble(index);
 indexedData.setMem(index, value);  // single value at index
-
-// Whole-content array writes through MemoryData
-MemoryData data = indexedData;
-data.setMem(new double[] {1.0, 2.0, 3.0});    // FP64
-data.setMem(new float[] {1.0f, 2.0f, 3.0f}); // FP32
+indexedData.set(0, 1.0, 2.0, 3.0); // whole-content literal write (PackedCollection)
 
 // Bulk ingest from a ByteBuffer (the primary system-boundary ingest)
+MemoryData data = indexedData;
 data.read(byteBuffer);  // values land in a native staging allocation
 
 // Read back to a host array
@@ -422,11 +423,12 @@ data.getMem(0, doubleArray, 0, length);                 // To double[] (sOffset,
 data.getMem(0, floatArray, 0, length);                  // To float[] (sOffset, out, oOffset, length)
 ```
 
-> `MemoryData` no longer declares indexed bulk-array or indexed varargs
-> overloads. Whole-content writes remain `setMem(double[])` / `setMem(float[])`,
-> while indexed scalar writes are available on concrete `MemoryDataAdapter`
-> implementations. Serialized host data should use `MemoryData.read(ByteBuffer)`;
-> use `setFrom(...)` for memory-to-memory copies.
+> `MemoryData` exposes region-to-region copies via `setFrom(...)` and bulk
+> ingest via `read(ByteBuffer)` (or `read(byte[])` / `read(InputStream)`).
+> Whole-content bulk writes are not part of the public surface: indexed
+> scalar writes live on concrete `MemoryDataAdapter` (`setMem(int, double)`
+> / `setMem(int, float)`); the canonical whole-content literal write for a
+> `PackedCollection` is `PackedCollection.set(int, double...)`.
 
 ### MemoryDataCopy (Low-level)
 
