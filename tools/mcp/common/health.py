@@ -49,6 +49,7 @@ class HealthCache:
     Args:
         probe: Returns True when the dependency is reachable. Called at most
             once per TTL.
+    """
 
     def __init__(self, probe: Callable[[], bool]):
         self._probe = probe
