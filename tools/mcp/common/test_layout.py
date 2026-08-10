@@ -27,6 +27,7 @@ check compares the module names collection actually derives, not
 filenames.
 """
 
+import ast
 import os
 import re
 import unittest
@@ -90,6 +91,44 @@ class TestModuleNamesAreUnique(unittest.TestCase):
             f"expected to find the tools/mcp test suite under {_MCP_DIR}; "
             "finding almost nothing means the walk is misrooted and the "
             "collision check above is vacuous",
+        )
+
+
+class TestEveryModuleParses(unittest.TestCase):
+    """No file here may be syntactically invalid.
+
+    A code-review suggestion once reworded the last line of a docstring and
+    deleted its closing quotes along with it, replacing two lines with one.
+    The file stopped parsing, every process importing it died at startup, and
+    ar-consultant would not load for anyone. It reached master because the
+    only thing that would have caught it was an indirect import chain from
+    one test, and a file that no test imports has no such chain at all.
+
+    Parsing every file is a tenth of a second and needs no imports, so it
+    catches the whole class directly rather than by luck of what imports
+    what. It also catches it for the servers with no test suite of their own.
+    """
+
+    def test_every_python_file_parses(self):
+        broken = {}
+        for root, dirs, files in os.walk(_MCP_DIR):
+            dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(root, name)
+                try:
+                    with open(path, encoding="utf-8") as handle:
+                        ast.parse(handle.read(), filename=path)
+                except SyntaxError as e:
+                    broken[os.path.relpath(path, _MCP_DIR)] = (
+                        f"line {e.lineno}: {e.msg}"
+                    )
+
+        self.assertEqual(
+            {}, broken,
+            "these files under tools/mcp are not valid Python, so every "
+            "process that imports them fails at startup",
         )
 
 
