@@ -10,7 +10,7 @@ required environment variables.
 
 import base64
 import hmac
-import importlib
+import importlib.util
 import io
 import json
 import os
@@ -59,9 +59,20 @@ def _import_server(env: dict = None):
     # Drop unset markers
     effective = {k: v for k, v in effective.items() if v is not None}
     with patch.dict(os.environ, effective, clear=False):
-        if "server" in sys.modules:
-            del sys.modules["server"]
-        import server as srv  # type: ignore
+        # Loaded by explicit path under a name only this directory uses.
+        # `import server` resolves by sys.path order, and several MCP
+        # server directories define a top-level server.py, so in a run
+        # spanning more than one of them this picked up whichever
+        # directory pytest had inserted most recently — the tests then
+        # failed against the wrong module. Re-executed on every call
+        # because each caller needs the module's import-time reads of
+        # the environment patched above.
+        spec = importlib.util.spec_from_file_location(
+            "ar_secrets_server", os.path.join(_SECRETS_DIR, "server.py"),
+        )
+        srv = importlib.util.module_from_spec(spec)
+        sys.modules["ar_secrets_server"] = srv
+        spec.loader.exec_module(srv)
         return srv
 
 

@@ -27,7 +27,9 @@ _SERVER_DIR = Path(__file__).resolve().parent
 if str(_SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(_SERVER_DIR))
 
-import server  # noqa: E402
+# Not `import server`: that name is claimed by several MCP server
+# directories at once. See server_under_test for why.
+from server_under_test import server  # noqa: E402
 import watcher  # noqa: E402
 
 

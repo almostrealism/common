@@ -2868,10 +2868,14 @@ def memory_recall(
         memories, reformulated=reformulated or prefers_reformulated(),
     )
 
-    # Attempt LLM synthesis
+    # Attempt LLM synthesis. The memories are the substance of the response
+    # and are returned either way; synthesis is a convenience over them.
     summary = None
+    degraded_reason = None
     llm = _get_llm()
-    if llm and llm.available:
+    if llm is None:
+        degraded_reason = "no inference backend could be constructed"
+    else:
         try:
             from inference import SYSTEM_PROMPT
 
@@ -2886,9 +2890,16 @@ def memory_recall(
                 "Summarize the retrieved memories. Highlight key findings and "
                 "any decisions or progress notes. Be concise (2-4 sentences)."
             )
-            summary = llm.generate(prompt, system=SYSTEM_PROMPT)
+            # synthesize() reports an unreachable model as a value rather
+            # than raising, and re-probes health so a recovered backend is
+            # picked up without restarting this server.
+            synthesis = llm.synthesize(prompt, system=SYSTEM_PROMPT)
+            if synthesis.degraded:
+                degraded_reason = synthesis.reason
+            else:
+                summary = synthesis.text
         except Exception as e:
-            summary = f"(LLM synthesis failed: {e})"
+            degraded_reason = f"LLM synthesis failed: {e}"
 
     result = {
         "ok": True,
@@ -2908,6 +2919,13 @@ def memory_recall(
 
     if summary:
         result["summary"] = summary
+    elif degraded_reason:
+        result["degraded"] = True
+        result["note"] = (
+            f"No summary was synthesized ({degraded_reason}). The memories "
+            "field is complete and unaffected — memory retrieval does not "
+            "depend on the inference backend."
+        )
     if notice:
         result["notice"] = notice
 

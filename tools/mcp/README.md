@@ -151,9 +151,31 @@ pip install -r tools/mcp/requirements.txt
 
 Individual servers also have their own `requirements.txt` files.
 
+## Running the Python Tests
+
+The whole suite runs in one command:
+
+```bash
+python3 -m pytest tools/mcp -q
+```
+
+These directories are not Python packages, so every module here shares one
+flat namespace. Two rules keep that workable, both asserted by
+`common/test_layout.py`:
+
+- **Test files need distinct basenames.** Two `test_x.py` files in two
+  non-package directories claim one module name, and collection of any run
+  spanning both aborts with "import file mismatch". Name a server's tests
+  after the server (`test_secrets_server.py`, not `test_server.py`).
+- **Only ar-manager imports `server` by bare name.** Nine directories define
+  a top-level `server.py`; a bare `import server` resolves by `sys.path`
+  order, so in a multi-directory run the others would silently exercise the
+  wrong module. Load the directory's own `server.py` by explicit path
+  instead — `test-runner/server_under_test.py` is the pattern to copy.
+
 ## LLM Backend Setup (ar-consultant)
 
-The `ar-consultant` server requires a local LLM for documentation synthesis. Without one, it falls back to passthrough mode (returning raw docs without synthesis).
+The `ar-consultant` server uses a local LLM to synthesize documentation into answers. It is not required to run: without one, documentation search, memory recall and history all keep working, and the tools return their retrieval results marked `degraded: true` instead of failing. Backend health is re-probed rather than fixed at startup, so starting or stopping a model takes effect without restarting the MCP server.
 
 **See [consultant/README.md](consultant/README.md) for detailed backend setup instructions.**
 

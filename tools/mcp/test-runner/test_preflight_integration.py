@@ -39,7 +39,9 @@ if str(_COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(_COMMON_DIR))
 
 import preflight  # noqa: E402
-import server  # noqa: E402
+# Not `import server`: that name is claimed by several MCP server
+# directories at once. See server_under_test for why.
+from server_under_test import server  # noqa: E402
 
 
 def _write_root_pom(project_root: Path, version: str = "0.74") -> None:

@@ -15,6 +15,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+try:
+    from .health import HealthCache
+except ImportError:
+    # Loaded by path rather than as a package (see consultant/inference.py).
+    from health import HealthCache
+
 log = logging.getLogger(__name__)
 
 # Default port for the ar-memory HTTP service
@@ -47,24 +53,30 @@ class MemoryHTTPClient:
 
     def __init__(self, base_url: Optional[str] = None):
         self._base_url = base_url or _discover_memory_server()
-        self._available: Optional[bool] = None
+        self._health = HealthCache(self._probe)
 
     @property
     def base_url(self) -> str:
         """The resolved base URL of the ar-memory server."""
         return self._base_url
 
-    @property
-    def available(self) -> bool:
-        """Whether the ar-memory server is reachable."""
-        if self._available is not None:
-            return self._available
+    def _probe(self) -> bool:
         try:
             self.health()
-            self._available = True
+            return True
         except (ConnectionError, OSError):
-            self._available = False
-        return self._available
+            return False
+
+    @property
+    def available(self) -> bool:
+        """Whether the ar-memory server is reachable.
+
+        Re-checked once the cached result goes stale. A result cached for
+        the life of the process would report the state at first call
+        forever: a server that died would still read as up, and one that
+        came back would stay marked down until every consumer restarted.
+        """
+        return self._health.healthy
 
     def store(
         self,

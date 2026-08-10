@@ -10,7 +10,9 @@ import pathlib
 import tempfile
 import unittest
 
-import server
+# Not `import server`: that name is claimed by several MCP server
+# directories at once. See server_under_test for why.
+from server_under_test import server
 
 FIXTURE = """\
       - name: Run Utils Tests (Group ${{ matrix.group }})

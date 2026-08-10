@@ -6,7 +6,13 @@ and other MCP servers that interact with the ar-memory HTTP service.
 """
 
 from .memory_http_client import MemoryHTTPClient
-from .inference import InferenceBackend, create_backend, SYSTEM_PROMPT
+from .inference import (
+    InferenceBackend,
+    InferenceUnavailable,
+    Synthesis,
+    create_backend,
+    SYSTEM_PROMPT,
+)
 from .git_context import detect_git_context
 from .memory_text import (
     BETA_NOTICE,
@@ -24,6 +30,8 @@ from .memory_text import (
 __all__ = [
     "MemoryHTTPClient",
     "InferenceBackend",
+    "InferenceUnavailable",
+    "Synthesis",
     "create_backend",
     "SYSTEM_PROMPT",
     "detect_git_context",

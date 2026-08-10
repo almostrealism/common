@@ -10,7 +10,7 @@ The consultant wraps three subsystems:
 - **MemoryClient** -- reads/writes the centralized ar-memory HTTP service via `MemoryHTTPClient` (from `tools/mcp/common/`)
 - **InferenceBackend** -- a local LLM that synthesizes retrieved context into concise answers
 
-When no LLM is available, the server falls back to **passthrough mode**, returning raw retrieved documentation without synthesis.
+Only the third of these needs a model. When no LLM is reachable, retrieval keeps working and every tool returns what it retrieved, marked `degraded: true` with a `note` naming the fields that are still complete — so a consult still yields the matching documentation and memories, and a recall still yields the memories themselves. The one exception is `remember`, which refuses to store rather than write an unreformulated note into the corpus.
 
 Memory operations require the ar-memory HTTP server to be running (see `tools/mcp/memory/README.md`). When ar-memory is unavailable, memory tools degrade gracefully — returning empty results rather than errors.
 
@@ -18,7 +18,7 @@ Git context (repo_url, branch) is auto-detected from the working directory when 
 
 ## Inference Backends
 
-The consultant supports four inference backends. The backend is selected at server startup via auto-detection or the `AR_CONSULTANT_BACKEND` environment variable.
+The consultant supports four inference backends, selected by auto-detection or the `AR_CONSULTANT_BACKEND` environment variable.
 
 ### Auto-Detection Order
 
@@ -27,9 +27,16 @@ When `AR_CONSULTANT_BACKEND` is unset or `"auto"` (the default), the server trie
 1. **llama.cpp** -- checks `localhost:8084`, then `mac-studio:8084` as fallback
 2. **Ollama** -- checks `localhost:11434`
 3. **MLX** -- checks if `mlx-lm` is importable (Apple Silicon only)
-4. **Passthrough** -- always available, no model needed
+4. **Degraded** -- no model; retrieval-only responses marked `degraded: true`
 
-The backend is created once at startup. If the LLM server becomes available after the consultant starts, **you must restart the MCP server** (toggle it off/on in `/mcp` or restart Claude Code).
+Detection is re-run whenever the current choice goes stale, so **no restart is
+needed** when a model comes up or goes away. Start `llama-server` mid-session and
+the next consult synthesizes; kill it and the next consult degrades to retrieval.
+Health is cached for `AR_INFERENCE_HEALTH_TTL` seconds (default 30) so a status
+check is not a network round trip; set it to `0` in tests to probe every time.
+
+Because health is re-probed rather than fixed at startup, `consultant_status`
+always agrees with what the other tools will actually do.
 
 ### llama.cpp (Recommended)
 
@@ -148,11 +155,16 @@ The model is downloaded on first use from Hugging Face.
 
 ### Passthrough (No Model)
 
-Returns retrieved documentation context directly without LLM synthesis. Useful for testing the retrieval pipeline or when no GPU is available.
+Skips LLM synthesis entirely. Every tool returns its retrieval results marked
+`degraded: true`. Useful for exercising the retrieval pipeline or when no GPU is
+available.
 
 ```bash
 export AR_CONSULTANT_BACKEND=passthrough
 ```
+
+Note that pinning any backend by name disables auto-detection, so a pinned
+backend that is unreachable degrades rather than falling back to another one.
 
 ## Environment Variables
 
@@ -164,6 +176,7 @@ export AR_CONSULTANT_BACKEND=passthrough
 | `AR_CONSULTANT_MODEL` | `qwen2.5-coder:32b-instruct-q4_K_M` | Ollama model name |
 | `AR_CONSULTANT_MLX_MODEL` | `mlx-community/Qwen2.5-Coder-32B-Instruct-4bit` | MLX model path |
 | `AR_CONSULTANT_HISTORY_DIR` | `tools/mcp/consultant/data` | Directory for `history.db` |
+| `AR_INFERENCE_HEALTH_TTL` | `30` | Seconds a backend health probe is trusted before re-probing; `0` probes every time |
 | `AR_MEMORY_URL` | (auto-discovered) | ar-memory HTTP server URL |
 | `AR_MEMORY_REFORMULATED` | unset (off) | Show reformulated memory text by default instead of the original (beta) |
 
@@ -215,12 +228,23 @@ servers.
 
 ### "passthrough (no model)" in consultant_status
 
-The consultant could not find any LLM backend at startup. Check:
+No LLM backend is reachable right now. Documentation search, memory recall and
+history are unaffected; only synthesized answers are missing, and responses say
+so with `degraded: true`. Check:
 
 1. Is llama-server / Ollama actually running? (`curl http://localhost:8084/health`)
 2. If running on a remote host, is it reachable? (`curl http://mac-studio:8084/health`)
 3. If reachable via `nc` but not `curl`, check the [macOS firewall](#macos-firewall-common-issue) section
-4. After fixing, **restart the MCP server** -- the backend is cached at startup
+
+No restart is needed after fixing it — the consultant re-probes and picks the
+backend up within `AR_INFERENCE_HEALTH_TTL` seconds.
+
+### `remember` returns `stored: false`
+
+Reformulation needs a model, and storing an unreformulated note would put a raw
+context dump into the corpus, where it leads recall for large queries. The tool
+refuses instead, returning the note as `original` so it can be re-sent once a
+backend is up. This is the only tool that fails closed on a backend outage.
 
 ### "memory_available: false" in consultant_status
 
