@@ -66,14 +66,16 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		int sampleRate = 44100;
 		PackedCollection cutoffs = pack(1000, 2000, 3000);
 
-		PackedCollection result = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
-
+		int count = cutoffs.getShape().getTotalSize();
 		int len = filterOrder + 1;
 
-		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
+		PackedCollection result = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder)
+				.get().evaluate().reshape(shape(count, len)).traverse(1);
+
+		for (int c = 0; c < count; c++) {
 			PackedCollection coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
 
-			assertEquals(0.0, largestDeviation(coefficients, result.range(shape(len), c * len)));
+			assertEquals(0.0, largestDeviation(coefficients, result.get(c)));
 		}
 	}
 
@@ -86,15 +88,17 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		int sampleRate = 44100;
 		PackedCollection cutoffs = pack(1000, 2000, 3000);
 
-		PackedCollection result = highPassCoefficients(cp(cutoffs), sampleRate, filterOrder).get().evaluate();
-
+		int count = cutoffs.getShape().getTotalSize();
 		int len = filterOrder + 1;
 
-		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
+		PackedCollection result = highPassCoefficients(cp(cutoffs), sampleRate, filterOrder)
+				.get().evaluate().reshape(shape(count, len)).traverse(1);
+
+		for (int c = 0; c < count; c++) {
 			PackedCollection coefficients =
 					highPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder).evaluate();
 
-			assertEquals(0.0, largestDeviation(coefficients, result.range(shape(len), c * len)));
+			assertEquals(0.0, largestDeviation(coefficients, result.get(c)));
 		}
 	}
 
@@ -117,11 +121,11 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 //					v(shape(1), 0), sampleRate, filterOrder)
 //				.get().evaluate(cutoffs);
 
-		int len = filterOrder + 1;
+		PackedCollection rows = result.traverse(1);
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
 			PackedCollection coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
-			PackedCollection resultCoefficients = result.range(shape(len), c * len);
+			PackedCollection resultCoefficients = rows.get(c);
 
 			log(coefficients.toArrayString() + " vs " + resultCoefficients.toArrayString());
 			assertEquals(0.0, largestDeviation(coefficients, resultCoefficients));

@@ -565,7 +565,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		PackedCollection lpTable = biquadResponseTable(false);
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(a(taps,
-					cp(hpCoeffs.range(shape(taps), ch * taps)),
+					cp(hpCoeffs.reshape(shape(config.channels, taps)).traverse(1).get(ch)),
 					tableRow(hpTable, hpCutoffProducer(config.channel(ch)), taps)));
 		}
 		refresh.add(a(taps, cp(lpCoeffs),

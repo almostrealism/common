@@ -762,10 +762,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				0.0596, 0.0456, 0.0558);
 		// The three active rows occupy the leading 3 columns of the 6x6 grid; a row of
 		// the source is contiguous, so each lands as one transfer into its own row range.
-		PackedCollection fb = new PackedCollection(channels * channels);
+		PackedCollection fb = new PackedCollection(shape(channels, channels));
+		PackedCollection source = t3.reshape(shape(3, 3)).traverse(1);
 		for (int n = 0; n < 3; n++) {
-			cp(t3.range(shape(3), n * 3))
-					.into(fb.range(shape(3), n * channels)).evaluate();
+			cp(source.get(n)).into(fb.traverse(1).get(n).range(shape(3))).evaluate();
 		}
 		PackedCollection pass = identity(channels).multiply(0.5).evaluate();
 		PackedCollection delays = new PackedCollection(channels).fill(6500.0);

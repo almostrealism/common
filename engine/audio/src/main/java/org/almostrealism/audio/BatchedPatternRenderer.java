@@ -132,29 +132,6 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	private int sssLayers;
 
 	/**
-	 * Returns one {@code [n]} row of {@link #sssScalars} as a bindable buffer. The row is a
-	 * view, so the kernel sees the same offset and size it would for an independent
-	 * allocation while the caller can write every column in one pass.
-	 *
-	 * @param column the column index within the scalar store
-	 * @return the bound buffer for that column
-	 */
-	private PackedCollection scalarColumn(int column) {
-		return sssScalars.range(shape(n), column * n);
-	}
-
-	/**
-	 * Returns one {@code [n]} row of {@link #percScalars} as a bindable buffer, on the same
-	 * basis as {@link #scalarColumn(int)}.
-	 *
-	 * @param column the column index within the percussion scalar store
-	 * @return the bound buffer for that column
-	 */
-	private PackedCollection percScalarColumn(int column) {
-		return percScalars.range(shape(n), column * n);
-	}
-
-	/**
 	 * Returns the number of scalar columns the SSS dispatch reads: one pitch ratio and eight
 	 * envelope scalars per layer, then the five filter-envelope and five volume-envelope
 	 * scalars, then the destination and sampling offsets.
@@ -254,19 +231,19 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 			sssLayerEnv = new PackedCollection[layers][8];
 			for (int l = 0; l < layers; l++) {
 				sssSources[l] = new PackedCollection(n, sourceLength);
-				sssRatios[l] = scalarColumn(sssRatioColumn(l));
+				sssRatios[l] = sssScalars.traverse(1).get(sssRatioColumn(l));
 				for (int p = 0; p < 8; p++) {
-					sssLayerEnv[l][p] = scalarColumn(sssLayerEnvColumn(l, p));
+					sssLayerEnv[l][p] = sssScalars.traverse(1).get(sssLayerEnvColumn(l, p));
 				}
 			}
 			sssFilterAdsr = new PackedCollection[5];
 			sssVolumeAdsr = new PackedCollection[5];
 			for (int p = 0; p < 5; p++) {
-				sssFilterAdsr[p] = scalarColumn(sssFilterAdsrColumn(p));
-				sssVolumeAdsr[p] = scalarColumn(sssVolumeAdsrColumn(p));
+				sssFilterAdsr[p] = sssScalars.traverse(1).get(sssFilterAdsrColumn(p));
+				sssVolumeAdsr[p] = sssScalars.traverse(1).get(sssVolumeAdsrColumn(p));
 			}
-			sssDestOffsets = scalarColumn(sssDestOffsetColumn());
-			sssSamplingOffsets = scalarColumn(sssSamplingOffsetColumn());
+			sssDestOffsets = sssScalars.traverse(1).get(sssDestOffsetColumn());
+			sssSamplingOffsets = sssScalars.traverse(1).get(sssSamplingOffsetColumn());
 
 			CollectionProducer producer = buildBatchedSssChainPlacedFromScalars(
 					sssSources, sssRatios, sssLayerEnv, sssFilterAdsr, sssVolumeAdsr,
@@ -423,12 +400,12 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 			percRatios = new PackedCollection[layers];
 			for (int l = 0; l < layers; l++) {
 				percSources[l] = new PackedCollection(n, sourceLength);
-				percRatios[l] = percScalarColumn(percRatioColumn(l));
+				percRatios[l] = percScalars.traverse(1).get(percRatioColumn(l));
 			}
 			percVolumeAdsr = new PackedCollection[5];
-			for (int p = 0; p < 5; p++) percVolumeAdsr[p] = percScalarColumn(percVolumeAdsrColumn(p));
-			percDestOffsets = percScalarColumn(percDestOffsetColumn());
-			percSamplingOffsets = percScalarColumn(percSamplingOffsetColumn());
+			for (int p = 0; p < 5; p++) percVolumeAdsr[p] = percScalars.traverse(1).get(percVolumeAdsrColumn(p));
+			percDestOffsets = percScalars.traverse(1).get(percDestOffsetColumn());
+			percSamplingOffsets = percScalars.traverse(1).get(percSamplingOffsetColumn());
 		}
 	}
 

@@ -70,7 +70,7 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 			ratios[l] = perNote(1.0 + 0.1 * l, 0.05);
 
 			for (int n = 0; n < N; n++) {
-				sourceByLayerNote[l][n] = batch.range(shape(SOURCE_LENGTH), n * SOURCE_LENGTH);
+				sourceByLayerNote[l][n] = batch.traverse(1).get(n);
 			}
 
 			sources[l] = batch;

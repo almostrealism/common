@@ -30,7 +30,8 @@ PackedCollection.factory().apply(shape, pos -> initValue)  // Factory
 ```java
 collection.valueAt(0)                // Single value
 collection.toDouble(0)               // As double
-collection.range(shape, offset)      // Slice
+collection.traverse(1).get(i)        // Member i (use this, not range, for members)
+collection.range(shape, offset)      // Sub-region that is NOT a member
 collection.traverse(axis, visitor)   // Iterate axis
 collection.toArray(double[].class)   // Export
 collection.doubleStream()            // Stream
@@ -172,7 +173,8 @@ producer.get(CPU);      // Force CPU
 | reshape | `a.reshape(shape)` | Change shape |
 | repeat | `a.repeat(n)` | Repeat n times |
 | enumerate | `a.enumerate(axis, len)` | Expand axis |
-| range | `a.range(shape, offset)` | Slice |
+| get | `a.traverse(1).get(i)` | Member i — the way to address membership |
+| range | `a.range(shape, offset)` | Sub-region that is not a member (prefix, window, placement) |
 | traverse | `a.traverse(axis)` | Iterate |
 | each | `a.each()` | Per-element |
 | concat | `concat(a, b, c)` | Concatenate along axis 0 |

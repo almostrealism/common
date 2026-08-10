@@ -55,6 +55,16 @@
         ]
       },
       {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-collection-membership.sh",
+            "description": "Detect collection membership re-implemented as range(shape(size), i * size), or wrapped in a private accessor, where collection.get(i) expresses it \u2014 see .claude/hooks/rules/collection-membership.md"
+          }
+        ]
+      },
+      {
         "matcher": "AskUserQuestion",
         "hooks": [
           {
