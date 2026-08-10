@@ -175,6 +175,38 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	}
 
 	/**
+	 * Asserts that two signals are acoustically equivalent — that the root mean square of
+	 * their difference is below {@code 1e-4}.
+	 *
+	 * <p>Reports the reference level alongside the difference, and their ratio, because a
+	 * difference is only meaningful against the signal it is a difference from: the same
+	 * absolute figure is agreement on a loud signal and noise on a quiet one. Where
+	 * {@code actual} is longer than {@code expected} — a render placed into a wider window
+	 * — the comparison covers the reference's length.</p>
+	 *
+	 * @param label    names the comparison in the log and in any failure
+	 * @param expected the reference signal
+	 * @param actual   the signal under test
+	 * @throws AssertionError if the difference RMS is 1e-4 or above
+	 */
+	default void assertRmsEquivalent(String label, PackedCollection expected, PackedCollection actual) {
+		int length = expected.getMemLength();
+		double rms = Math.sqrt(differenceEnergy(actual.range(shape(length)), expected) / length);
+		double refRms = Math.sqrt(energy(expected, 0) / length);
+
+		log(label + " acoustic equivalence:");
+		log(String.format("  Reference RMS: %.6f", refRms));
+		log(String.format("  Difference RMS: %.6f", rms));
+		if (refRms > 1e-10) {
+			log(String.format("  Relative difference: %.2e", rms / refRms));
+		}
+
+		if (rms >= 1e-4) {
+			throw new AssertionError(label + " RMS difference exceeds 1e-4 (got " + rms + ")");
+		}
+	}
+
+	/**
 	 * Sums a multi-channel signal down to mono, the channels being laid out as
 	 * contiguous runs of equal length.
 	 *

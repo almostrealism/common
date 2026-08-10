@@ -51,12 +51,7 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-enforcement-files.sh",
             "description": "Announce, on-record, any edit to integrity-enforcement infrastructure (agent-protection detectors, .claude hooks, CI workflows) so a quiet weakening cannot pass unnoticed"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|MultiEdit|Write",
-        "hooks": [
+          },
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-collection-membership.sh",

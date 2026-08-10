@@ -17,6 +17,7 @@
 package org.almostrealism.audio;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -536,7 +537,23 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 *         {@code [targetLength]}
 	 */
 	public CollectionProducer buildResampleProducer(PackedCollection source, double ratio) {
-		CollectionProducer srcPos = integers(0, targetLength).multiply(c(ratio));
+		return buildResampleProducer(source, c(ratio));
+	}
+
+	/**
+	 * Resamples one note's source at the given ratio, the ratio supplied as a producer.
+	 *
+	 * <p>This is the form to reach for when the ratio is already held in a collection —
+	 * one note's entry in a per-note ratio buffer, say. Reading it out as a {@code double}
+	 * to call the other form only has it wrapped straight back up here.</p>
+	 *
+	 * @param source source audio buffer of length {@code sourceLength}
+	 * @param ratio  resample ratio — reads source at {@code sample × ratio}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [targetLength]}
+	 */
+	public CollectionProducer buildResampleProducer(PackedCollection source,
+												   Producer<PackedCollection> ratio) {
+		CollectionProducer srcPos = integers(0, targetLength).multiply(ratio);
 		CollectionProducer fPos = floor(srcPos);
 		CollectionProducer frac = srcPos.subtract(fPos);
 		CollectionProducer s0 = c(shape(targetLength), cp(source), fPos);

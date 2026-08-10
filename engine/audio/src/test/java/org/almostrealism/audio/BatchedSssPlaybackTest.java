@@ -110,7 +110,7 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 				// batched path reads the collection, so it takes the ratio from there.
 				PackedCollection resampled =
 						renderer.buildResampleProducer(sourceByLayerNote[l][n],
-										ratios[l].toDouble(n))
+										cp(ratios[l].get(n, shape(1))))
 								.get().evaluate();
 				CollectionProducer shaped =
 						cp(resampled).multiply(cp(layerCurves[l].traverse(1).get(n)));
@@ -140,19 +140,6 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 			}
 		}
 
-		PackedCollection window = out.range(shape(WINDOW_WIDTH));
-		double rms = Math.sqrt(differenceEnergy(window, expected) / WINDOW_WIDTH);
-		double refRms = Math.sqrt(energy(expected, 0) / WINDOW_WIDTH);
-
-		log("Full SSS playback chain vs per-note reference:");
-		log(String.format("  Reference RMS: %.6f", refRms));
-		log(String.format("  Difference RMS: %.6f", rms));
-		if (refRms > 1e-10) {
-			log(String.format("  Relative difference: %.2e", rms / refRms));
-		}
-
-		Assert.assertTrue(
-				"Full SSS playback chain RMS difference from per-note reference exceeds 1e-4 (got " + rms + ")",
-				rms < 1e-4);
+		assertRmsEquivalent("Full SSS playback chain vs per-note reference", expected, out);
 	}
 }

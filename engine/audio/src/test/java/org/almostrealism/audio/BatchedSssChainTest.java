@@ -22,6 +22,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -36,7 +37,8 @@ import java.util.Random;
  * aligned reduction) and {@link BatchedPatternRenderer#buildBatchedSssChainPlaced}
  * (the fused offset-aware scatter placement into a wider window).
  */
-public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatures {
+public class BatchedSssChainTest extends TestSuiteBase
+		implements TemporalFeatures, FirFilterTestFeatures {
 
 	/** Number of notes in the synthetic workload. */
 	private static final int N = 4;
@@ -124,7 +126,8 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 			CollectionProducer merged = null;
 			for (int l = 0; l < LAYERS; l++) {
 				PackedCollection resampled =
-						renderer.buildResampleProducer(sourceByLayerNote[l][n], w.ratios[l].toDouble(n))
+						renderer.buildResampleProducer(sourceByLayerNote[l][n],
+								cp(w.ratios[l].get(n, shape(1))))
 								.get().evaluate();
 				CollectionProducer layer = cp(resampled)
 						.multiply(cp(w.layerEnvelopes[l].get(n, shape(TARGET_LENGTH))));
@@ -144,25 +147,6 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 		}
 
 		return w;
-	}
-
-	/** Asserts the RMS difference between {@code expected} and {@code actual} is below {@code 1e-4}. */
-	private void assertRmsEquivalent(String label, PackedCollection expected, PackedCollection actual) {
-		int length = expected.getMemLength();
-		double sumSqDiff = sum(cp(expected).subtract(cp(actual.range(shape(length)))).sq())
-				.evaluate().toDouble(0);
-		double sumSqRef = sum(cp(expected).sq()).evaluate().toDouble(0);
-
-		double rms = Math.sqrt(sumSqDiff / length);
-		double refRms = Math.sqrt(sumSqRef / length);
-
-		log(label + " acoustic equivalence:");
-		log(String.format("  Reference RMS: %.6f", refRms));
-		log(String.format("  Difference RMS: %.6f", rms));
-		if (refRms > 1e-10) {
-			log(String.format("  Relative difference: %.2e", rms / refRms));
-		}
-		Assert.assertTrue(label + " RMS difference exceeds 1e-4 (got " + rms + ")", rms < 1e-4);
 	}
 
 	/**
