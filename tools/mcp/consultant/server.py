@@ -49,8 +49,8 @@ if _COMMON_DIR not in sys.path:
 from mcp.server.fastmcp import FastMCP
 
 from docs_retriever import DocsRetriever
-from history import HistoryStore, _current_request, tracked_generate, tracked_tool
-from inference import SYSTEM_PROMPT, create_backend
+from history import HistoryStore, _current_request, tracked_synthesize, tracked_tool
+from inference import SYSTEM_PROMPT, Synthesis, create_backend
 from memory_client import MemoryClient
 from memory_text import (
     BETA_NOTICE, prefers_reformulated, present, presented_entries, projected,
@@ -251,11 +251,46 @@ def _log_session_id(session_id: str) -> None:
         record.session_id = session_id
 
 
-def _generate(prompt: str, system: Optional[str] = None, max_tokens: int = 1024,
-              temperature: float = 0.3) -> str:
-    """Tracked wrapper around ``llm.generate()``."""
-    return tracked_generate(llm, prompt, system=system, max_tokens=max_tokens,
-                            temperature=temperature)
+def _synthesize(prompt: str, system: Optional[str] = None, max_tokens: int = 1024,
+                temperature: float = 0.3) -> Synthesis:
+    """Tracked wrapper around ``llm.synthesize()``.
+
+    Never raises when the model is unreachable — the caller inspects
+    :attr:`Synthesis.degraded` and returns its retrieval results anyway.
+    """
+    return tracked_synthesize(llm, prompt, system=system, max_tokens=max_tokens,
+                              temperature=temperature)
+
+
+def _degraded_note(result: Synthesis, retained: str) -> str:
+    """Explain a lost synthesis and point the caller at what did survive.
+
+    Retrieval runs before synthesis and is unaffected by a dead model, so
+    the caller is told exactly which fields are still trustworthy rather
+    than being handed an error.
+
+    Args:
+        result: The degraded synthesis.
+        retained: Description of the fields still populated in the response.
+    """
+    return (
+        "No summary was synthesized because the inference backend is "
+        f"unavailable ({result.reason}). {retained} Retrieval is unaffected, "
+        "so these results are complete and safe to use. To restore "
+        "synthesis, start a llama.cpp server (llama-server -m model.gguf "
+        "--host 0.0.0.0 --port 8084); the Consultant reconnects on its own."
+    )
+
+
+def _degrade(result: Synthesis, payload: dict, retained: str) -> dict:
+    """Mark a response as degraded and attach an explanatory note.
+
+    Used in place of a synthesized ``answer``/``summary`` so no caller can
+    mistake a backend outage for a substantive reply.
+    """
+    payload["degraded"] = True
+    payload["note"] = _degraded_note(result, retained)
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +348,7 @@ def consult(
 
     # Build prompt and generate
     prompt = _build_consult_prompt(question, doc_context, mem_context, context)
-    answer = _generate(prompt, system=SYSTEM_PROMPT)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     # Source references: markdown files used in context + HTML for exploration
     sources = list({r["file"] for r in doc_results})
@@ -327,6 +362,20 @@ def consult(
         ],
         "backend": llm.name,
     }
+
+    # A dead model costs the synthesized answer, not the search that
+    # preceded it: return the documentation and memories that were found.
+    if synthesis.degraded:
+        _degrade(
+            synthesis, result,
+            "The sources, html_refs and related_memories fields below were "
+            "retrieved successfully and contain the documentation matching "
+            "this question — read them directly.",
+        )
+        result["note"] += _keyword_guidance(keywords)
+        return result
+
+    answer = synthesis.text
 
     # When the LLM could not synthesize an answer, replace "answer" with
     # a "note" that encourages the caller to explore the listed sources.
@@ -421,13 +470,12 @@ def recall(
 
     # Summarize with the model
     prompt = _build_recall_prompt(query, memories, doc_context)
-    summary = _generate(prompt, system=SYSTEM_PROMPT)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     doc_refs = list({r["file"] for r in doc_results})
     doc_refs.extend(doc_retrieval["html_refs"])  # Include HTML refs too
 
     result = {
-        "summary": summary,
         "memories": [
             projected(m, ("id", "content", "score", "tags", "created_at"))
             for m in memories
@@ -435,6 +483,17 @@ def recall(
         "doc_references": doc_refs,
         "backend": llm.name,
     }
+
+    # The memories themselves are the substance of a recall; the summary is
+    # a convenience over them. Losing the model must not lose the memories.
+    if synthesis.degraded:
+        _degrade(
+            synthesis, result,
+            "The memories field below holds the full text of every match, "
+            "unsummarized and in the order retrieved.",
+        )
+    else:
+        result["summary"] = synthesis.text
 
     if notice:
         result["notice"] = notice
@@ -544,25 +603,27 @@ def remember(
 
     # Reformulate with the model
     prompt = _build_reformulate_prompt(content, doc_context)
-    reformulated = _generate(prompt, system=SYSTEM_PROMPT, max_tokens=512)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT, max_tokens=512)
 
-    # Strip any wrapping the model might add
-    reformulated = reformulated.strip().strip('"').strip("'")
-
-    # When no model is reachable, _generate returns the passthrough banner
-    # plus the raw prompt. Storing that as a memory pollutes recall (a census
-    # found 36 such dumps already in the corpus). Refuse early — before
-    # embedding — with a clear message. The ar-memory store guards this too,
-    # but catching it here avoids a wasted embed and a round trip.
-    if reformulated.lstrip().startswith("[Consultant model not available"):
+    # Reformulation is the one path that must NOT degrade to storing
+    # something: a context dump written into the corpus pollutes every
+    # later recall (a census found 36 such dumps already). Refuse before
+    # embedding. The ar-memory store guards this too, but catching it here
+    # avoids a wasted embed and a round trip.
+    if synthesis.degraded:
         return {
             "stored": False,
-            "error": "inference backend unavailable; memory not stored. "
-                     "Retry once a model is reachable.",
+            "degraded": True,
+            "error": "inference backend unavailable; memory not stored "
+                     f"({synthesis.reason}). Retry once a model is reachable — "
+                     "the note below is returned unchanged so it is not lost.",
             "original": content,
             "namespace": namespace,
             "backend": llm.name,
         }
+
+    # Strip any wrapping the model might add
+    reformulated = synthesis.text.strip().strip('"').strip("'")
 
     # Store both versions
     entry = memory.store_dual(
@@ -632,16 +693,27 @@ def search_docs(query: str, module: Optional[str] = None) -> dict:
         "Provide a brief summary of what the documentation says about this "
         "topic. Reference specific files, classes, or methods. Be concise."
     )
-    summary = _generate(prompt, system=SYSTEM_PROMPT)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
-    return {
-        "summary": summary,
+    result = {
         "results": [
             {"file": r["file"], "line": r["line"], "context": r["context"]}
             for r in results
         ],
         "backend": llm.name,
     }
+
+    if synthesis.degraded:
+        _degrade(
+            synthesis, result,
+            "The results field below carries every matching chunk with its "
+            "file and line number, which is the searchable substance of this "
+            "response.",
+        )
+    else:
+        result["summary"] = synthesis.text
+
+    return result
 
 
 @mcp.tool()
@@ -680,23 +752,40 @@ def start_consultation(topic: str) -> dict:
     _log_memory_results(topic, memories)
 
     prompt = _build_consult_prompt(topic, doc_context, mem_context)
-    response = _generate(prompt, system=SYSTEM_PROMPT)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
+
+    # A degraded turn is not part of the conversation. Recording the
+    # failure as an assistant message would feed it back as context on
+    # every later turn, so only the user's opening is kept. The retrieved
+    # doc context is kept, so the session is usable the moment a model
+    # returns.
+    messages = [{"role": "user", "content": topic}]
+    if not synthesis.degraded:
+        messages.append({"role": "assistant", "content": synthesis.text})
 
     _sessions[session_id] = {
         "topic": topic,
-        "messages": [
-            {"role": "user", "content": topic},
-            {"role": "assistant", "content": response},
-        ],
+        "messages": messages,
         "doc_context": doc_context,
         "created": time.time(),
     }
 
-    return {
+    result = {
         "session_id": session_id,
-        "response": response,
         "backend": llm.name,
     }
+
+    if synthesis.degraded:
+        _degrade(
+            synthesis, result,
+            f"Session '{session_id}' was opened and its documentation context "
+            "retrieved, so continue_consultation will work once a model is "
+            "reachable.",
+        )
+    else:
+        result["response"] = synthesis.text
+
+    return result
 
 
 @mcp.tool()
@@ -751,17 +840,31 @@ def continue_consultation(session_id: str, message: str) -> dict:
                         "conversation history.")
 
     prompt = "\n\n".join(prompt_parts)
-    response = _generate(prompt, system=SYSTEM_PROMPT)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
-    session["messages"].append({"role": "user", "content": message})
-    session["messages"].append({"role": "assistant", "content": response})
+    # Leave the transcript untouched on a degraded turn: appending the user
+    # message without a reply would strand it, and appending the failure as
+    # a reply would poison every subsequent turn's context.
+    if not synthesis.degraded:
+        session["messages"].append({"role": "user", "content": message})
+        session["messages"].append({"role": "assistant", "content": synthesis.text})
 
-    return {
-        "response": response,
+    result = {
         "session_id": session_id,
         "turn": len(session["messages"]) // 2,
         "backend": llm.name,
     }
+
+    if synthesis.degraded:
+        _degrade(
+            synthesis, result,
+            "This turn was not recorded, so the session is unchanged and the "
+            "same message can be sent again once a model is reachable.",
+        )
+    else:
+        result["response"] = synthesis.text
+
+    return result
 
 
 @mcp.tool()
@@ -808,24 +911,44 @@ def end_consultation(
         "recommendations made. This summary will be stored as a memory "
         "entry for future reference."
     )
-    summary = _generate(prompt, system=SYSTEM_PROMPT, max_tokens=512)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT, max_tokens=512)
 
     result = {
-        "summary": summary,
         "session_id": session_id,
         "topic": session["topic"],
         "turns": len(session["messages"]) // 2,
         "backend": llm.name,
     }
 
+    # Without a summary there is nothing worth storing, and storing the
+    # failure text would put a non-memory into the corpus. Return the
+    # transcript instead so the caller keeps what the session produced.
+    if synthesis.degraded:
+        _degrade(
+            synthesis, result,
+            "No summary was stored. The full transcript is returned in the "
+            "messages field so nothing from the session is lost.",
+        )
+        result["messages"] = session["messages"]
+        return result
+
+    result["summary"] = synthesis.text
+
     if store_summary:
         entry = memory.store(
-            content=summary,
+            content=synthesis.text,
             namespace=namespace,
             tags=["consultation", "summary"],
             source=f"consultation:{session_id}",
         )
-        result["memory_entry_id"] = entry["id"]
+        # The memory service degrades to an error dict rather than raising,
+        # so the id is not guaranteed to be present.
+        if "id" in entry:
+            result["memory_entry_id"] = entry["id"]
+        else:
+            result["storage_error"] = entry.get(
+                "error", "memory service unavailable; summary not stored",
+            )
 
     return result
 
@@ -967,10 +1090,9 @@ def branch_catchup(
     ]
 
     prompt = "\n".join(prompt_parts)
-    briefing = _generate(prompt, system=SYSTEM_PROMPT, max_tokens=2048)
+    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT, max_tokens=2048)
 
     result = {
-        "briefing": briefing,
         "branch": branch,
         "repo_url": repo_url,
         "memory_count": len(branch_memories),
@@ -981,6 +1103,19 @@ def branch_catchup(
         "commit_log": commit_log,
         "backend": llm.name,
     }
+
+    # The briefing is a synthesis of the memories and commit log, both of
+    # which are already in the response. A dead model costs the narrative,
+    # not the underlying material.
+    if synthesis.degraded:
+        _degrade(
+            synthesis, result,
+            "The memories and commit_log fields below hold the raw material "
+            "the briefing would have summarized — read them in order to catch "
+            "up on this branch.",
+        )
+    else:
+        result["briefing"] = synthesis.text
 
     if notice:
         result["notice"] = notice
@@ -993,18 +1128,38 @@ def branch_catchup(
 def consultant_status() -> dict:
     """Check the Consultant's status and backend configuration.
 
+    ``backend_available`` reflects a live health probe (re-checked at most
+    once per health TTL), not the state at process start, so it can be
+    trusted to agree with what the other tools will actually do.
+
     Returns:
         Dictionary with backend info, active sessions, and health status.
     """
-    return {
+    backend_available = llm.available
+
+    status = {
         "backend": llm.name,
-        "backend_available": llm.available,
+        "backend_available": backend_available,
         "memory_available": memory.available,
         "active_sessions": len(_sessions),
         "session_ttl_seconds": _SESSION_TTL,
         "docs_modules_available": len(docs._all_doc_files()),
         "history_db": str(history._db_path),
     }
+
+    if not backend_available:
+        status["degraded"] = True
+        status["note"] = (
+            "No inference model is reachable. Documentation search, memory "
+            "recall and history remain fully functional; only synthesized "
+            "answers and summaries are unavailable, and every tool reports "
+            "degraded=true while that is so. remember is the exception: it "
+            "refuses to store rather than write an unreformulated note. "
+            "Start a llama.cpp server (llama-server -m model.gguf --host "
+            "0.0.0.0 --port 8084) to restore synthesis; no restart is needed."
+        )
+
+    return status
 
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,12 @@ _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
 if _MANAGER_DIR not in sys.path:
     sys.path.insert(0, _MANAGER_DIR)
 
+_COMMON_DIR = os.path.join(os.path.dirname(_MANAGER_DIR), "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+
+from inference import Synthesis  # noqa: E402
+
 # Suppress startup prints during import
 with patch.dict(os.environ, {"AR_CONTROLLER_URL": "http://test:7780"}):
     import server
@@ -2672,12 +2678,36 @@ class TestMemoryReformulatedText(unittest.TestCase):
         mock_client_fn.return_value = client
         llm = MagicMock()
         llm.available = True
-        llm.generate.return_value = "summary"
+        llm.synthesize.return_value = Synthesis("summary", "fake")
         mock_llm.return_value = llm
         server.memory_recall(query="test", scope="all")
-        prompt = llm.generate.call_args[0][0]
+        prompt = llm.synthesize.call_args[0][0]
         self.assertIn("what the agent actually wrote", prompt)
         self.assertNotIn("rewritten by the consultant", prompt)
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_recall_returns_memories_when_synthesis_degrades(
+        self, mock_client_fn, mock_llm,
+    ):
+        """An unreachable model costs the summary, not the memories."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [self._reformulated_memory()]
+        mock_client_fn.return_value = client
+        llm = MagicMock()
+        llm.synthesize.return_value = Synthesis(None, "fake", "backend is down")
+        mock_llm.return_value = llm
+
+        result = server.memory_recall(query="test", scope="all")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            "what the agent actually wrote", result["memories"][0]["content"],
+        )
+        self.assertNotIn("summary", result)
+        self.assertTrue(result["degraded"])
+        self.assertIn("backend is down", result["note"])
 
     @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
     @patch.object(server, "_get_memory_client")

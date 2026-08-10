@@ -88,7 +88,12 @@ class RequestRecord:
         """Finalize timing and extract a result summary."""
         self.latency_ms = int((time.monotonic() - self.start_time) * 1000)
         if isinstance(result, dict):
-            summary = result.get("answer") or result.get("summary") or result.get("response")
+            # "note" last: it is what degraded results carry in place of
+            # synthesized text, so an outage still records what was returned.
+            summary = (
+                result.get("answer") or result.get("summary")
+                or result.get("response") or result.get("note")
+            )
             if summary:
                 self.result_summary = str(summary)[:500]
 
@@ -387,31 +392,45 @@ def tracked_tool(history: HistoryStore, tool_name: str) -> Callable:
 # Tracked LLM generation helper
 # ---------------------------------------------------------------------------
 
-def tracked_generate(
+def tracked_synthesize(
     llm: Any,
     prompt: str,
     system: Optional[str] = None,
     max_tokens: int = 1024,
     temperature: float = 0.3,
-) -> str:
-    """Call ``llm.generate()`` while recording prompt, response, and timing.
+) -> Any:
+    """Call ``llm.synthesize()`` while recording prompt, response, and timing.
 
     If there is an active ``RequestRecord`` in ``_current_request``, the
     prompt text, LLM response, backend name, and LLM latency are written
     to it.  If there is no active record (e.g. called outside of a
     tracked tool), the function behaves identically to a direct
-    ``llm.generate()`` call.
+    ``llm.synthesize()`` call.
+
+    A degraded result is recorded too, with the failure reason in place of
+    the response, so history analysis can tell a backend outage apart from
+    a poor answer.
+
+    Returns:
+        The ``Synthesis`` produced by the backend.
     """
     record = _current_request.get()
 
     t0 = time.monotonic()
-    response = llm.generate(prompt, system=system, max_tokens=max_tokens, temperature=temperature)
+    result = llm.synthesize(
+        prompt, system=system, max_tokens=max_tokens, temperature=temperature,
+    )
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
     if record is not None:
         record.prompt_text = prompt
-        record.llm_response = response
-        record.backend = llm.name
+        record.llm_response = (
+            result.text if not result.degraded
+            else f"(degraded: {result.reason})"
+        )
+        record.backend = result.backend
         record.llm_latency_ms = elapsed_ms
+        if result.degraded:
+            record.status = "degraded"
 
-    return response
+    return result
