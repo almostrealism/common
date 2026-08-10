@@ -110,9 +110,13 @@ import java.util.stream.IntStream;
  *
  * <h3>Reading and Writing Data</h3>
  * <pre>{@code
- * // Write data
- * MemoryData data = ...;
- * data.setMem(new double[] {1.0, 2.0, 3.0, 4.0});
+ * // Write data: indexed writes go through a concrete MemoryDataAdapter reference;
+ * // whole-content literal writes on a PackedCollection use set(int, double...).
+ * MemoryDataAdapter data = ...;
+ * data.setMem(0, 1.0);                    // Single-value indexed write
+ *
+ * // PackedCollection target = new PackedCollection(4);
+ * // target.set(0, 1.0, 2.0, 3.0, 4.0);   // Whole-content literal write
  *
  * // Read data
  * double[] values = data.toArray();

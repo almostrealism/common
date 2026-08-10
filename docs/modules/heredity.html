@@ -187,16 +187,19 @@ double result = Breeders.perturbation(0.5, 1.0, 0.3);  // Returns 0.8
 double clamped = Breeders.perturbation(0.0, 1.0, 2.0);  // Returns 1.0</code></pre>
 
                 <h3>ProjectedGenome Variation</h3>
-                <p>ProjectedGenome provides a variation() method for creating mutated offspring:</p>
-                <pre><code class="language-java">// Create offspring with mutations
+                <p>ProjectedGenome provides a variation() method for creating a new genome with mutated parameters:</p>
+                <pre><code class="language-java">// Create offspring with mutations.
+// Note: the returned genome has mutated parameters only; chromosomes and genes
+// are NOT copied from the parent and must be set up on the offspring separately.
 ProjectedGenome offspring = genome.variation(
-    -1.0,                           // min parameter value
-    1.0,                            // max parameter value
-    0.1,                            // 10% mutation rate
-    () -> Math.random() * 0.2 - 0.1 // delta in [-0.1, 0.1]
+    -1.0,                                                // min parameter value
+    1.0,                                                 // max parameter value
+    0.1,                                                 // 10% mutation rate
+    genome.randn(genome.getParameters().getShape(), 0.0, 0.1)   // delta per parameter
 );
 
-// Create completely random genome (for population initialization)
+// Create completely random genome (for population initialization).
+// Same caveat: no chromosomes or genes are created on the returned genome.
 ProjectedGenome randomGenome = genome.random();</code></pre>
 
                 <h3>Signature Generation</h3>
@@ -363,15 +366,18 @@ public class NeuralEvolution {
         // Access genetic information
         Factor&lt;PackedCollection&gt; factor = genome.valueAt(0, 0, 0);
 
-        // Create offspring with 10% mutation rate
+        // Create offspring with 10% mutation rate.
+        // The returned genome has mutated parameters only; chromosomes and
+        // genes are NOT copied from the parent and must be set up separately.
         ProjectedGenome offspring = genome.variation(
-            -1.0,                           // min parameter value
-            1.0,                            // max parameter value
-            0.1,                            // 10% mutation rate
-            () -> Math.random() * 0.2 - 0.1 // delta in [-0.1, 0.1]
+            -1.0,                                                // min parameter value
+            1.0,                                                 // max parameter value
+            0.1,                                                 // 10% mutation rate
+            genome.randn(genome.getParameters().getShape(), 0.0, 0.1)   // delta per parameter
         );
 
-        // Create random genome for population initialization
+        // Create random genome for population initialization.
+        // Same caveat: no chromosomes or genes are created on the returned genome.
         ProjectedGenome randomGenome = genome.random();
     }
 }</code></pre>

@@ -203,11 +203,13 @@ call site tells them apart:
 - **`setFrom(...)`** copies the contents of another `MemoryData` (a
   `PackedCollection`, a `Bytes` view, a device-backed tensor, …) into this one.
   Use it for region-to-region moves that never touch a host array.
-- **`setMem(...)`** writes a complete region from a `double[]` or `float[]` at
-  index 0. Concrete `MemoryDataAdapter` implementations also provide a
-  single-value indexed form (`setMem(int, double)` / `setMem(int, float)`).
-  Serialized system-boundary ingest should use `read(ByteBuffer)`, which stages
-  the values before the framework migrates that staging area to the compute device.
+- **`setMem(...)`** is exposed only on concrete `MemoryDataAdapter`
+  implementations and is intentionally narrow: a single-value indexed write
+  (`setMem(int, double)` / `setMem(int, float)`). The canonical whole-content
+  literal write for a `PackedCollection` reference is
+  `PackedCollection.set(int, double...)`. Serialized system-boundary ingest
+  should use `read(ByteBuffer)`, which stages the values before the framework
+  migrates that staging area to the compute device.
 
 ```java
 PackedCollection source = new PackedCollection(1000);
@@ -221,16 +223,22 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (whole buffer)
-target.setMem(new double[] {1.0, 2.0, 3.0, 4.0});
+// Single-value indexed write on a concrete implementation
+target.setMem(0, 42.0);
+
+// Whole-content literal write on a PackedCollection reference
+target.set(0, 1.0, 2.0, 3.0, 4.0);
 ```
 
 > **Why the split:** the recent `setmem-policy-phases` work removed the indexed
-> bulk-array and indexed varargs overloads from `MemoryData`, moved indexed scalar
-> writes to `MemoryDataAdapter`, and changed whole-content writes from varargs to
-> `double[]` / `float[]`. Serialized data instead enters through
-> `MemoryData.read(ByteBuffer)`, while `setFrom` remains the explicit way to copy
-> one `MemoryData` into another.
+> bulk-array and indexed varargs overloads from `MemoryData`, kept only the
+> single-value indexed write on `MemoryDataAdapter`, and removed the
+> whole-content `setMem(double[])` / `setMem(float[])` overloads from the
+> public surface entirely (they remain protected on `MemoryDataAdapter` for
+> subclass-internal use, with `PackedCollection.set(int, double...)` as the
+> public whole-content literal write). Serialized data enters through
+> `MemoryData.read(ByteBuffer)`, and `setFrom` remains the explicit way to
+> copy one `MemoryData` into another.
 
 **Using `MemoryDataCopy` for Explicit Control:**
 
@@ -274,7 +282,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk region copies whenever possible; reserve `setMem(...)` for literal whole-content writes or single indexed literal updates.
+> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Use bulk region copies whenever possible; reserve `setMem(int, double)` / `setMem(int, float)` for scalar indexed updates and `set(int, double...)` for whole-content literal writes.
 
 ### OperationList: Composing Operations
 

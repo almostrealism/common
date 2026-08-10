@@ -149,7 +149,7 @@
                 <p><a href="../apidocs/org/almostrealism/hardware/MemoryData.html">MemoryData</a> exposes two distinct write surfaces, deliberately named so the call site tells them apart:</p>
                 <ul>
                     <li><code>setFrom(...)</code> copies another <code>MemoryData</code> into this one — the sanctioned way to move data region-to-region.</li>
-                    <li><code>setMem(double[])</code> / <code>setMem(float[])</code> writes a complete region at index 0; concrete <code>MemoryDataAdapter</code> implementations also provide single-value indexed writes. System-boundary ingest goes through <code>MemoryData.read(ByteBuffer)</code> into a native staging allocation.</li>
+                    <li><code>setMem(int, double)</code> / <code>setMem(int, float)</code> on concrete <code>MemoryDataAdapter</code> implementations are single-value indexed writes. The canonical whole-content literal write on a <code>PackedCollection</code> reference is <code>set(int, double...)</code>. System-boundary ingest goes through <code>MemoryData.read(ByteBuffer)</code> into a native staging allocation.</li>
                 </ul>
 
                 <div class="code-example">
@@ -165,8 +165,11 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (whole buffer, starting at index 0)
-target.setMem(new double[] {1.0, 2.0, 3.0, 4.0});</code></pre>
+// Single-value indexed write on a concrete implementation
+target.setMem(0, 42.0);
+
+// Whole-content literal write on a PackedCollection reference
+target.set(0, 1.0, 2.0, 3.0, 4.0);</code></pre>
                 </div>
 
                 <div class="code-example">
@@ -691,11 +694,14 @@ assert original.toDouble(100) == 42.0;  // Same memory!
 
 // No data copied, just pointer arithmetic</code></pre>
 
-                <h3>Multi-Backend Fallback</h3>
-                <pre><code class="language-bash"># Try Metal first, fallback to OpenCL, then Native
+                <h3>Multi-Backend Configuration</h3>
+                <pre><code class="language-bash"># All named backends must initialize; the preference order is the order declared
 export AR_HARDWARE_DRIVER=mtl,cl,native
 
-# Auto-select best available
+# A named backend alongside the wildcard means "this one is required, the rest are best-effort"
+export AR_HARDWARE_DRIVER=cl,*
+
+# Auto-select best available: everything the wildcard expands to is tolerated
 export AR_HARDWARE_DRIVER=*</code></pre>
 
                 <h3>Metal Backend: Buffer Creation and Data Transfer</h3>

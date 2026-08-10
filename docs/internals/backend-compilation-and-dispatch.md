@@ -452,8 +452,30 @@ dispatch). This is why warm-up runs matter for benchmarking.
 > selection. Per-operation selection is the intelligent decision described in "Per-operation
 > provider selection" above — it does **not** try one backend and fall back to another.
 
-1. Which backends are **loaded** depends on `AR_HARDWARE_DRIVER` and the platform (e.g. on x86
-   macOS there is no JNI, so only OpenCL is loaded).
+### What `AR_HARDWARE_DRIVER` actually means
+
+The driver string is parsed by `DriverSelection`
+(`base/hardware/src/main/java/org/almostrealism/hardware/DriverSelection.java`) into two separate sets:
+
+- **Named backends** — tokens the caller wrote explicitly (`cl`, `mtl`, `native`,
+  `cpu`, `gpu`). A named backend that fails to initialize is a failure of the
+  request: `Hardware` throws a `HardwareException` carrying the offending
+  throwable (a `LinkageError` for an unloadable native library, for instance,
+  with the library path appearing only in the cause).
+- **Wildcard backends** — what `*` expanded to on the current platform. A
+  wildcard-contributed backend that fails to initialize is logged and skipped;
+  the next attempt in the preference order is taken.
+
+Combining them — `cl,mtl` on Apple Silicon, or `cl,*` anywhere — is the
+intended way to express "*cl is mandatory; try the rest in order*". The named
+backend must initialize; the wildcard additions are best-effort.
+
+### Load vs route
+
+1. Which backends are **loaded** depends on `AR_HARDWARE_DRIVER` and the platform
+   (e.g. on x86 macOS there is no JNI, so only OpenCL is loaded). A named backend
+   that fails to load fails initialization; a wildcard-contributed backend that
+   fails is tolerated.
 2. Once loaded, each operation is routed by `DefaultComputer.getContext` (requirements +
    parallelism). There is **no automatic retry on a different backend**: if an operation is routed
    to a provider and compilation fails there, the error propagates. Routing an operation to a
