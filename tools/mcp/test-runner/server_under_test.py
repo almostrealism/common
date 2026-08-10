@@ -33,6 +33,8 @@ def _load():
         return cached
 
     spec = importlib.util.spec_from_file_location(MODULE_NAME, _SERVER_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load {MODULE_NAME} from {_SERVER_PATH}")
     module = importlib.util.module_from_spec(spec)
     # Registered before execution so a circular import inside server.py
     # resolves to the partially initialised module rather than re-entering.
