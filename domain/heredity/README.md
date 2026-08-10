@@ -76,12 +76,14 @@ ProjectedGene gene2 = chr.addGene(projectionDim);
 genome.initWeights();
 genome.refreshValues();
 
-// Create variations (offspring with mutations)
+// Create variations (offspring with mutations).
+// The returned genome has mutated parameters only; chromosomes and genes are
+// NOT copied from the parent and must be set up on the offspring separately.
 ProjectedGenome offspring = genome.variation(
-    min,              // Minimum parameter value
-    max,              // Maximum parameter value
-    mutationRate,     // Probability of mutation
-    deltaSupplier     // Magnitude of mutations
+    min,                                  // Minimum parameter value
+    max,                                  // Maximum parameter value
+    mutationRate,                         // Probability of mutation
+    genome.randn(genome.getParameters().getShape(), 0.0, delta)   // Delta per parameter
 );
 ```
 
@@ -240,12 +242,14 @@ for (int i = 0; i < neuronCount; i++) {
 // Initialize with random weights
 genome.initWeights();
 
-// Create offspring with mutations
+// Create offspring with mutations.
+// The returned genome has mutated parameters only; chromosomes and genes are
+// NOT copied from the parent and must be set up on the offspring separately.
 ProjectedGenome child = genome.variation(
-    -1.0,                    // Min weight value
-    1.0,                     // Max weight value
-    0.1,                     // 10% mutation rate
-    () -> Math.random() * 0.2 - 0.1  // Mutation delta ±0.1
+    -1.0,                                                // Min weight value
+    1.0,                                                 // Max weight value
+    0.1,                                                 // 10% mutation rate
+    genome.randn(genome.getParameters().getShape(), 0.0, 0.1)   // Mutation delta per parameter
 );
 ```
 
