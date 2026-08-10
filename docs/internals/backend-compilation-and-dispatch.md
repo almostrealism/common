@@ -455,7 +455,7 @@ dispatch). This is why warm-up runs matter for benchmarking.
 ### What `AR_HARDWARE_DRIVER` actually means
 
 The driver string is parsed by `DriverSelection`
-(`base/hardware/src/.../hardware/DriverSelection.java`) into two separate sets:
+(`base/hardware/src/main/java/org/almostrealism/hardware/DriverSelection.java`) into two separate sets:
 
 - **Named backends** — tokens the caller wrote explicitly (`cl`, `mtl`, `native`,
   `cpu`, `gpu`). A named backend that fails to initialize is a failure of the
