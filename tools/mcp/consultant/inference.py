@@ -25,8 +25,11 @@ _spec.loader.exec_module(_mod)
 # Re-export everything
 SYSTEM_PROMPT = _mod.SYSTEM_PROMPT
 InferenceBackend = _mod.InferenceBackend
+InferenceUnavailable = _mod.InferenceUnavailable
+Synthesis = _mod.Synthesis
 LlamaCppBackend = _mod.LlamaCppBackend
 OllamaBackend = _mod.OllamaBackend
 MLXBackend = _mod.MLXBackend
 PassthroughBackend = _mod.PassthroughBackend
+AutoBackend = _mod.AutoBackend
 create_backend = _mod.create_backend
