@@ -125,15 +125,17 @@ write surfaces, deliberately named so the call site tells them apart:
 - **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`, a
   `Bytes` view, a device-backed tensor) into this one — the sanctioned way to
   copy one collection's contents into another.
-- **`setMem(...)`** writes a complete region from a `double[]` or `float[]` at
-  index 0. Concrete `MemoryDataAdapter` implementations also provide a
-  single-value indexed form (`setMem(int, double)` / `setMem(int, float)`).
-  Serialized system-boundary ingest goes through `MemoryData.read(ByteBuffer)`.
+- **`setMem(...)`** is exposed only on concrete `MemoryDataAdapter`
+  implementations and is intentionally narrow: a single-value indexed write
+  (`setMem(int, double)` / `setMem(int, float)`). The canonical whole-content
+  literal write for a `PackedCollection` reference is
+  `PackedCollection.set(int, double...)`. Serialized system-boundary ingest
+  goes through `MemoryData.read(ByteBuffer)`.
 
 ```java
 // Copy entire collection to another (same size)
-PackedCollection source = new PackedCollection<>(1000);
-PackedCollection target = new PackedCollection<>(1000);
+PackedCollection source = new PackedCollection(1000);
+PackedCollection target = new PackedCollection(1000);
 target.setFrom(0, source);  // Copy all of source to target at offset 0
 
 // Copy with offsets and length
@@ -142,13 +144,17 @@ target.setFrom(targetOffset, source, srcOffset, length);
 // Copy a range starting at target offset 0
 target.setFrom(source, srcOffset, length);
 
-// Write a small literal vector (whole buffer, starting at index 0)
-target.setMem(new double[] {1.0, 2.0, 3.0, 4.0});
+// Single-value indexed write on a concrete implementation
+target.setMem(0, 42.0);
+
+// Whole-content literal write on a PackedCollection reference
+target.set(0, 1.0, 2.0, 3.0, 4.0);
 ```
 
 > These are significantly faster than element-by-element loops. Use bulk
-> region copies whenever possible; reserve `setMem(...)` for literal
-> whole-content writes or single indexed literal updates.
+> region copies whenever possible; reserve `setMem(int, double)` /
+> `setMem(int, float)` for scalar indexed updates and `set(int, double...)`
+> for whole-content literal writes.
 
 **Using `CodeFeatures.copy()` (Producer Pattern):**
 
@@ -174,7 +180,7 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve `setMem(...)` for literal whole-content writes or single indexed literal updates.
+> **Performance Note:** `setFrom(MemoryData)` is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve `setMem(int, double)` / `setMem(int, float)` for scalar indexed updates and `set(int, double...)` for whole-content literal writes.
 
 #### Shape and Traversal
 

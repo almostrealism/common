@@ -308,17 +308,17 @@ System.out.println("Test accuracy: " + (accuracy * 100) + "%");
 
 ```java
 // Define genome generator
-Supplier<Genome<PackedCollection<?>>> generator = () -> {
+Supplier<Genome<PackedCollection>> generator = () -> {
     ProjectedGenome genome = new ProjectedGenome(paramCount);
     genome.initWeights();
     return genome;
 };
 
-// Define breeder (crossover + mutation)
-Supplier<GenomeBreeder<PackedCollection<?>>> breeder = () -> (g1, g2) -> {
-    ProjectedGenome offspring = g1.crossover(g2);
-    offspring.mutate(0.1, () -> Math.random() * 0.2 - 0.1);
-    return offspring;
+// Define breeder (mutation only — variation() returns a new genome)
+Supplier<GenomeBreeder<PackedCollection>> breeder = () -> (g1, g2) -> {
+    ProjectedGenome parent = (ProjectedGenome) g1;
+    return parent.variation(-1.0, 1.0, 0.1,
+            parent.randn(parent.getParameters().getShape(), 0.0, 0.1));
 };
 
 // Define health computation
