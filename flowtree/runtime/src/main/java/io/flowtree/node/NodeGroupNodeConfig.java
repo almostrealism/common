@@ -22,13 +22,8 @@ import io.flowtree.msg.Message;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -252,20 +247,21 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 * Applies node labels to the given group and all its child nodes from the
 	 * supplied {@link Properties} (keys with prefix {@code nodes.labels.}) and
 	 * from the {@code FLOWTREE_NODE_LABELS} environment variable
-	 * ({@code key:value} pairs separated by commas).  Auto-detects the
-	 * {@code platform} and {@value #HOSTNAME_LABEL} labels when they are not
-	 * explicitly configured.
+	 * ({@code key:value} pairs separated by commas).
+	 *
+	 * <p>Labels that describe the machine itself rather than the configuration
+	 * are assigned separately by {@link AutomaticLabel}, which runs afterwards
+	 * and leaves anything applied here in place.</p>
 	 *
 	 * @param group  The owning {@link NodeGroup} to label.
-	 * @param nodes  The child nodes that should receive the same labels.
 	 * @param p      The properties containing optional label entries.
 	 */
-	static void applyNodeLabels(NodeGroup group, Collection<Node> nodes, Properties p) {
+	static void applyNodeLabels(NodeGroup group, Properties p) {
 		String labelPrefix = "nodes.labels.";
 		for (Object keyObj : p.keySet()) {
 			String key = (String) keyObj;
 			if (key.startsWith(labelPrefix)) {
-				setLabel(group, nodes, key.substring(labelPrefix.length()), p.getProperty(key));
+				group.setLabel(key.substring(labelPrefix.length()), p.getProperty(key));
 			}
 		}
 
@@ -274,118 +270,10 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 			for (String pair : envLabels.split(",")) {
 				String[] parts = pair.split(":", 2);
 				if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
-					setLabel(group, nodes, parts[0].trim(), parts[1].trim());
+					group.setLabel(parts[0].trim(), parts[1].trim());
 				}
 			}
 		}
-
-		if (group.getLabels().get("platform") == null) {
-			String os = System.getProperty("os.name", "").toLowerCase();
-			String platform = os.contains("mac") ? "macos" : "linux";
-			setLabel(group, nodes, "platform", platform);
-			Console.root().println("NodeGroup: Auto-detected platform label: platform=" + platform);
-		}
-
-		if (group.getLabels().get(HOSTNAME_LABEL) == null) {
-			String host = localHostLabel();
-
-			if (host == null) {
-				Console.root().println("NodeGroup: Unable to determine a " + HOSTNAME_LABEL
-						+ " label for this machine; jobs requiring one will not run here");
-			} else {
-				setLabel(group, nodes, HOSTNAME_LABEL, host);
-				Console.root().println("NodeGroup: Auto-detected hostname label: "
-						+ HOSTNAME_LABEL + "=" + host);
-			}
-		}
-	}
-
-	/**
-	 * Assigns a label to the group and to each of the supplied child nodes.
-	 *
-	 * @param group  The owning {@link NodeGroup} to label.
-	 * @param nodes  The child nodes that should receive the same label.
-	 * @param key    The label key.
-	 * @param value  The label value.
-	 */
-	private static void setLabel(NodeGroup group, Collection<Node> nodes, String key, String value) {
-		group.setLabel(key, value);
-		for (Node n : nodes) {
-			n.setLabel(key, value);
-		}
-	}
-
-	/**
-	 * The label key identifying the machine a {@link Node} runs on.
-	 *
-	 * <p>Jobs that must execute in a specific place on the network declare
-	 * {@code hostname:<name>} among their required labels.  The value is
-	 * auto-detected by {@link #localHostLabel()} unless it is configured
-	 * explicitly via {@code nodes.labels.hostname} or
-	 * {@code FLOWTREE_NODE_LABELS}.</p>
-	 */
-	public static final String HOSTNAME_LABEL = "hostname";
-
-	/**
-	 * Determines the {@value #HOSTNAME_LABEL} label for the machine this
-	 * process runs on, derived from the system host name.
-	 *
-	 * <p>The value is normalized by {@link #normalizeHostLabel(String)} so that
-	 * a machine reporting {@code Mac-Studio.local} is labelled
-	 * {@code mac-studio}, which is ordinarily also its name on the private
-	 * network overlay.  When the two differ, the label must be configured
-	 * explicitly rather than auto-detected.</p>
-	 *
-	 * @return  The detected host label, or {@code null} if the machine has no
-	 *          usable name (an unresolved host, or a name that would be
-	 *          ambiguous across machines).
-	 */
-	public static String localHostLabel() {
-		InetAddress local;
-
-		try {
-			local = InetAddress.getLocalHost();
-		} catch (UnknownHostException e) {
-			return null;
-		}
-
-		String name = local.getHostName();
-
-		// When the name cannot be resolved, getHostName() returns the
-		// literal address, which identifies an interface rather than a machine
-		if (name == null || name.equals(local.getHostAddress())) {
-			return null;
-		}
-
-		return normalizeHostLabel(name);
-	}
-
-	/**
-	 * Reduces a system host name to the short, lower case form used as the
-	 * {@value #HOSTNAME_LABEL} label.
-	 *
-	 * <p>Any domain suffix is discarded, so both {@code Mac-Studio.local} and
-	 * {@code mac-studio.example.ts.net} yield {@code mac-studio}.  Names that
-	 * do not identify a particular machine ({@code localhost}) are rejected,
-	 * since labelling every node with the same value would let any node
-	 * satisfy a requirement meant for one of them.</p>
-	 *
-	 * @param name  The host name to normalize.
-	 * @return  The normalized label, or {@code null} if {@code name} does not
-	 *          identify a particular machine.
-	 */
-	public static String normalizeHostLabel(String name) {
-		if (name == null) return null;
-
-		String label = name.trim();
-		int dot = label.indexOf('.');
-		if (dot >= 0) label = label.substring(0, dot);
-
-		label = label.toLowerCase(Locale.ROOT);
-
-		if (label.isEmpty() || label.equals("localhost")) return null;
-
-		return label;
 	}
 
 	/**
@@ -422,55 +310,6 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 */
 	public static boolean isOfflineMode() {
 		return Boolean.getBoolean(OFFLINE_MODE_PROPERTY);
-	}
-
-	/**
-	 * Opens the initial server connections specified in {@code p} and wires up
-	 * the persistent-host reconnect thread when the {@code FLOWTREE_ROOT_HOST}
-	 * environment variable is set.
-	 *
-	 * <p>When {@link #OFFLINE_MODE_PROPERTY} ({@code flowtree.offline}) is
-	 * {@code true} the {@code FLOWTREE_ROOT_HOST} connection is suppressed so
-	 * that tests cannot accidentally contact a live production controller.
-	 * Explicitly configured {@code servers.N.host} entries are still opened;
-	 * they are test-internal peers, not production endpoints.</p>
-	 *
-	 * @param group        The {@link NodeGroup} to register new server connections on.
-	 * @param p            Properties to read server host/port entries from.
-	 * @param serverCount  Number of server entries to open.
-	 */
-	static void initServerConnections(NodeGroup group, Properties p, int serverCount) {
-		if (isOfflineMode()) {
-			Console.root().println("NodeGroup: Offline mode active — skipping environment-provided root-host connection.");
-		} else {
-			String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-			String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
-
-			if (rootHost != null) {
-				if (rootPort == null) rootPort = String.valueOf(Server.defaultPort);
-				group.startPersistentHost(rootHost, Integer.parseInt(rootPort));
-			}
-		}
-
-		if (serverCount > 0) Console.root().println("NodeGroup: Opening server connections...");
-
-		for (int i = 0; i < serverCount; i++) {
-			String host = p.getProperty("servers." + i + ".host", "localhost");
-			int port = Integer.parseInt(p.getProperty("servers." + i + ".port", "7777"));
-
-			try {
-				Console.root().println("NodeGroup: Connecting to server " + i + " (" + host + ":" + port + ")...");
-				group.addServer(new Socket(host, port));
-			} catch (UnknownHostException uh) {
-				Console.root().warn("NodeGroup: Server " + i + " is unknown host", null);
-			} catch (IOException ioe) {
-				Console.root().warn("NodeGroup: IO error while connecting to server " +
-						i + " -- " + ioe.getMessage(), ioe);
-			} catch (SecurityException se) {
-				Console.root().warn("NodeGroup: Security exception while connecting to server " + i +
-						" (" + se.getMessage() + ")", se);
-			}
-		}
 	}
 
 	/**

@@ -25,18 +25,11 @@ import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.RSSFeed;
 import org.almostrealism.util.Chart;
 
-import javax.crypto.NoSuchPaddingException;
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.Socket;
-import java.net.SocketException;
-import java.net.UnknownHostException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.spec.InvalidKeySpecException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,11 +45,11 @@ import java.util.Properties;
  *
  * <h2>Two Networking Layers</h2>
  * <ul>
- *   <li><b>Server connections</b> ({@link NodeProxy}, stored in
- *       {@code this.servers}) are socket-level links between two
+ *   <li><b>Server connections</b> ({@link NodeProxy}, held by
+ *       {@link NodeGroupServerRegistry}) are socket-level links between two
  *       Servers. They carry {@link Message} objects (tasks, connection
  *       requests, job data). When an agent connects to the controller,
- *       a NodeProxy is added to this list.</li>
+ *       a NodeProxy is added to the registry.</li>
  *   <li><b>Peer connections</b> ({@link Connection}, stored in each
  *       {@code Node.peers}) are logical links between individual Nodes
  *       on different Servers. They wrap a NodeProxy and target a
@@ -73,7 +66,7 @@ import java.util.Properties;
  * <h2>Peer Connection Establishment</h2>
  * <p>Child Nodes request peer connections automatically through their
  * activity threads by calling {@link #getConnection(int)}, which picks
- * a random entry from {@code this.servers} and sends a
+ * a random entry from the server registry and sends a
  * {@link Message#ConnectionRequest}. The remote NodeGroup responds with
  * a {@link Message#ConnectionConfirmation}, establishing a peer
  * {@link Connection} on both sides.</p>
@@ -100,12 +93,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	private double activityO = -0.2;
 
 	/**
-	 * Maximum number of {@link NodeProxy} entries permitted for the same remote
-	 * endpoint before the oldest duplicate is forcibly dropped.
-	 */
-	private final int maxDuplicateConnections = 2;
-
-	/**
 	 * Legacy single-factory job source. Tasks are now managed via {@link #tasks}
 	 * together with {@link #addTask(JobFactory)}; this field is retained only for
 	 * backwards compatibility and may be {@code null}.
@@ -129,18 +116,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	private final Node relayNode;
 
 	/**
-	 * Live socket-level connections to remote servers, each wrapped in a
-	 * {@link NodeProxy} that handles message framing and optional encryption.
+	 * The server-connection layer of this group: the live socket-level links to
+	 * remote Servers, and the initialisation and teardown around them.
 	 */
-	private final List<NodeProxy> servers;
-
-	/**
-	 * Proxies currently being initialised inside {@link #addServer(NodeProxy)}.
-	 * A proxy is present in this list from the moment it enters that method until
-	 * initialisation completes, so that re-entrant callbacks (e.g.
-	 * {@link #connect(NodeProxy)}) can skip still-pending proxies.
-	 */
-	private final List connecting;
+	private final NodeGroupServerRegistry serverRegistry;
 
 	/**
 	 * Active {@link JobFactory} instances registered as tasks for this group.
@@ -157,12 +136,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	private final List cachedTasks;
 
 	/**
-	 * External {@link NodeProxy.EventListener} instances that must be notified
-	 * whenever a server connection is removed from this group.
-	 */
-	private final List plisteners;
-
-	/**
 	 * Number of {@link Job} objects to request from each {@link JobFactory} per
 	 * run-loop iteration, scaled by the factory's priority.
 	 */
@@ -173,18 +146,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * run-loop iteration.
 	 */
 	private int maxTasks = 10;
-
-	/**
-	 * Password used to authenticate and/or encrypt communication with remote
-	 * servers via {@link NodeProxy}. {@code null} means no authentication.
-	 */
-	private char[] passwd;
-
-	/**
-	 * Name of the symmetric encryption algorithm applied to server communication,
-	 * as understood by {@link NodeProxy}. {@code null} means no encryption.
-	 */
-	private final String crypt;
 
 	/**
 	 * Renders HTML status pages and maintains the activity and throughput
@@ -263,10 +224,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		this.setSleep(Integer.parseInt(p.getProperty("group.thread.sleep", "10000")));
 		
 		String pass = p.getProperty("group.proxy.password");
-		if (pass != null) this.passwd = pass.toCharArray();
-		
-		this.crypt = p.getProperty("group.proxy.crypt");
-		
+		char[] passwd = pass == null ? null : pass.toCharArray();
+
 		int nodeCount = Integer.parseInt(p.getProperty("nodes.initial", "1"));
 		int nodeMaxJobs = Integer.parseInt(p.getProperty("nodes.jobs.max", "4"));
 		int nodeMaxPeers = Integer.parseInt(p.getProperty("nodes.peers.max", "10"));
@@ -274,7 +233,6 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		
 		int serverCount = Integer.parseInt(p.getProperty("servers.total", "0"));
 		
-		this.connecting = new ArrayList();
 		this.tasks = new ArrayList();
 		this.nodes = new ArrayList(nodeCount);
 		this.cachedTasks = new ArrayList();
@@ -292,9 +250,12 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		this.relayNode.setLabel("role", "relay");
 		log("NodeGroup: Added relay node (index " + nodeCount + ")");
 
-		NodeGroupNodeConfig.applyNodeLabels(this, this.nodes, p);
+		NodeGroupNodeConfig.applyNodeLabels(this, p);
 
-		this.plisteners = new ArrayList();
+		for (AutomaticLabel label : AutomaticLabel.values()) {
+			label.applyTo(this);
+		}
+
 		super.sleepGraph = new Chart(Integer.MAX_VALUE - 1);
 
 		Chart activityChart = new Chart(Integer.MAX_VALUE - 1);
@@ -304,8 +265,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 		this.setParam(p);
 
-		this.servers = new ArrayList(serverCount);
-		NodeGroupNodeConfig.initServerConnections(this, p, serverCount);
+		this.serverRegistry = new NodeGroupServerRegistry(this, serverCount,
+				passwd, p.getProperty("group.proxy.crypt"));
+		this.serverRegistry.open(p, serverCount);
 
 		super.rssfile = p.getProperty("group.rss.file");
 		String rsslink = p.getProperty("group.rss.url");
@@ -572,12 +534,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * Adds the specified socket connection as a server for this NodeGroup to communicate with.
 	 *
 	 * @param s  Socket connection to server.
+	 * @return {@code true} if the connection was successfully registered.
 	 * @throws IOException  If an IO error occurs constructing a NodeProxy using the Socket.
-	 * @throws InvalidAlgorithmParameterException
-	 * @throws NoSuchPaddingException 
-	 * @throws InvalidKeySpecException 
-	 * @throws NoSuchAlgorithmException 
-	 * @throws InvalidKeyException 
 	 */
 	public synchronized boolean addServer(Socket s) throws IOException {
 		return this.addServer(s, false);
@@ -598,163 +556,51 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @throws IOException  If an I/O error occurs while constructing the proxy.
 	 */
 	public synchronized boolean addServer(Socket s, boolean server) throws IOException {
-		try {
-			return this.addServer(new NodeProxy(s, this.passwd, this.crypt, server));
-		} catch (InvalidKeyException e) {
-			warn("NodeGroup: Invalid key (" + e.getMessage() + ").");
-		} catch (NoSuchAlgorithmException e) {
-			warn("NodeGroup: Encryption algorithm not found (" + e.getMessage() + ").");
-		} catch (InvalidKeySpecException e) {
-			warn("NodeGroup: Invalid key spec (" + e.getMessage() + ").");
-		} catch (NoSuchPaddingException e) {
-			warn("NodeGroup: Encryption padding not found (" + e.getMessage() + ").");
-		} catch (InvalidAlgorithmParameterException e) {
-			warn("NodeGroup: Invalid encryption parameter (" + e.getMessage() + ").");
-		}
-		
-		return false;
+		return this.serverRegistry.addServer(s, server);
 	}
-	
+
 	/**
 	 * Registers a fully constructed {@link NodeProxy} as a live server connection.
-	 * If the same remote endpoint already has {@link #maxDuplicateConnections}
-	 * entries the oldest duplicate is removed first. All registered
-	 * {@link NodeProxy.EventListener}s (including task factories that implement
-	 * the interface) are wired to the new proxy, and the proxy's queued messages
-	 * are flushed immediately.
 	 *
 	 * @param pr  The proxy to register.
 	 * @return Always {@code true} once the proxy is successfully registered.
 	 */
 	public synchronized boolean addServer(NodeProxy pr) {
-		this.connecting.add(pr);
-		
-		Iterator itr = this.servers.iterator();
-		int d = 0;
-		NodeProxy p = null;
-		
-		while (itr.hasNext()) {
-			NodeProxy np = (NodeProxy) itr.next();
-			
-			if (np.equals(pr)) {
-				d++;
-				
-				if (d == 1) p = np;
-			}
-		}
-		
-		if (d >= this.maxDuplicateConnections) {
-			this.removeServer(p);
-			this.displayMessage("Removed duplicate server " + p);
-		}
-		
-		pr.addEventListener(this);
-		
-		synchronized (this.tasks) {
-			Iterator titr = this.tasks.iterator();
-			
-			while (titr.hasNext()) {
-				Object o = titr.next();
-				if (o instanceof NodeProxy.EventListener) {
-					pr.addEventListener((NodeProxy.EventListener) o);
-				}
-			}
-		}
-		
-		pr.fireConnect();
-		this.servers.add(pr);
-		
-		String msg = "Added server " + (this.servers.size() - 1);
-		this.displayMessage(msg + " - " + pr);
-		this.statusRenderer.addActivityMessage(msg);
-		
-		pr.flushQueue();
-		
-		this.connecting.remove(pr);
-		
-		return true;
+		return this.serverRegistry.addServer(pr);
 	}
-	
+
 	/**
 	 * Removes and disposes the connection between this node group and the peer
 	 * with the specified index.
-	 * 
+	 *
 	 * @param index  Index of peer to remove.
 	 * @return  The total number of node connections dropped due to the removal.
 	 */
 	public synchronized int removeServer(int index) {
-		return this.removeServer(this.servers.get(index));
+		return this.removeServer(this.serverRegistry.get(index));
 	}
-	
+
 	/**
 	 * Removes and disposes the connection maintained by the specified NodeProxy object.
-	 * 
+	 *
 	 * @param p  NodeProxy maintaing connection that is to be removed.
 	 * @return  The total number of node connections dropped due to the removal.
 	 */
 	public synchronized int removeServer(NodeProxy p) {
-		p.removeEventListener(this);
-		
-		int tot = 0;
-		
-		Iterator itr = NodeGroup.this.nodes.iterator();
-		while (itr.hasNext()) tot += ((Node)itr.next()).disconnect(p);
-		
-		boolean r = this.servers.remove(p);
-		
-		if (tot > 0)
-			this.displayMessage("Dropped " + tot + " connections to " + p);
-		else if (r)
-			this.displayMessage("Dropped server " + p);
-		
-		itr = this.plisteners.iterator();
-		while (itr.hasNext()) ((NodeProxy.EventListener)itr.next()).disconnect(p);
-		
-		if (p.isConnected()) p.close();
-		
-		return tot;
+		return this.serverRegistry.removeServer(p);
 	}
 
 	/**
-	 * Starts a background daemon thread that monitors the server list and
-	 * reconnects to the specified host whenever no active server connections
-	 * remain. The thread waits 30 seconds between each connection attempt to
-	 * avoid tight reconnect loops. This is the mechanism used when the
-	 * {@code FLOWTREE_ROOT_HOST} environment variable is set.
+	 * Starts a background daemon thread that reconnects to the specified host
+	 * whenever no active server connections remain.
 	 *
 	 * @param host  Hostname or IP address of the root server.
 	 * @param port  TCP port of the root server.
 	 */
-	public void startPersistentHost(String host, int port){
-		new Thread(() -> {
-			w: while (true) {
-				try {
-					Thread.sleep(30 * 1000L);
-				} catch (InterruptedException e) {
-					warn(e.getMessage(), e);
-					return;
-				}
-
-				if (getServers().length > 0)
-					continue w;
-
-				NodeGroup.this.log("NodeGroup: Connecting to root server...");
-
-				try {
-					addServer(new Socket(host, port));
-				} catch (UnknownHostException uh) {
-					NodeGroup.this.warn("NodeGroup: Server " + host + " is unknown host");
-				} catch (IOException ioe) {
-					NodeGroup.this.warn("NodeGroup: IO error while connecting to server " +
-							host + " -- " + ioe.getMessage());
-				} catch (SecurityException se) {
-					NodeGroup.this.warn("NodeGroup: Security exception while connecting to server " + host +
-							" (" + se.getMessage() + ")");
-				}
-			}
-		}, "Persistent Host Attempt").start();
+	public void startPersistentHost(String host, int port) {
+		this.serverRegistry.startPersistentHost(host, port);
 	}
-	
+
 	/**
 	 * Returns a snapshot of the job currently executing in each child node,
 	 * in index order. Entries are {@code null} for nodes that are idle.
@@ -789,11 +635,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @return  Array of active {@link NodeProxy} connections; never {@code null}.
 	 */
-	public NodeProxy[] getServers() {
-		synchronized (this.servers) {
-			return this.servers.toArray(new NodeProxy[0]);
-		}
-	}
+	public NodeProxy[] getServers() { return this.serverRegistry.getServers(); }
 	
 	/**
 	 * Pings the specified peer.
@@ -804,7 +646,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @return  The time, in milliseconds, to respond to the ping.
 	 */
 	public synchronized long ping(int peer, int size, int timeout) throws IOException {
-		return this.servers.get(peer).ping(size, timeout);
+		return this.serverRegistry.get(peer).ping(size, timeout);
 	}
 	
 	/**
@@ -815,36 +657,38 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @return  A Connection object that can be used to relay data bewteen a local node and a remote node.
 	 */
 	public synchronized Connection getConnection(int id) {
-		NodeProxy p = null;
-		
-		w: while (true) {
-			if (this.servers.size() < 1) return null;
-			
-			int s = (int)(Math.random() * this.servers.size());
-			p = this.servers.get(s);
-			
-			if (p.isConnected())
-				break;
-			else
-				this.removeServer(p);
-		}
-		
-		Connection c = null;
-		
-		try {
-			Message m = new Message(Message.ConnectionRequest, id, p);
-			Node localNode = id < this.nodes.size() ? this.nodes.get(id) : this.relayNode;
-			m.setLocalNode(localNode);
-			c = (Connection)m.send(-1);
-		} catch (SocketException se) {
-			this.displayMessage("Removing server " + p + " (" + se.getMessage() + ")");
-			this.removeServer(p);
-		} catch (IOException ioe) {
-			warn(String.valueOf(ioe));
-			return null;
-		}
+		return this.serverRegistry.getConnection(id);
+	}
 
-		return c;
+	/**
+	 * Returns the child {@link Node} with the specified id, or the relay Node
+	 * when the id lies beyond the worker Nodes.
+	 *
+	 * @param id  Id of the child node.
+	 * @return  The identified Node; never {@code null}.
+	 */
+	Node getNode(int id) {
+		return id < this.nodes.size() ? this.nodes.get(id) : this.relayNode;
+	}
+
+	/**
+	 * Assigns a capability label to this group and to every child {@link Node},
+	 * since a capability of the group is a capability of the Nodes that make it
+	 * up.  The relay Node is excluded: it advertises only {@code role=relay} and
+	 * never executes jobs, so capabilities do not apply to it.
+	 *
+	 * @param key    the label key (e.g. "platform")
+	 * @param value  the label value (e.g. "macos")
+	 */
+	@Override
+	public void setLabel(String key, String value) {
+		super.setLabel(key, value);
+
+		if (this.nodes == null) return;
+
+		for (Node n : this.nodes) {
+			n.setLabel(key, value);
+		}
 	}
 	
 	/**
@@ -915,13 +759,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @param server  Server index.
 	 */
 	public synchronized void sendTask(String data, int server) {
-		if (server < 0 || server >= this.servers.size()) {
+		if (server < 0 || server >= this.serverRegistry.size()) {
 			warn("NodeGroup: Server " + server + " is not connected");
 			return;
 		}
 
 		try {
-			Message m = new Message(Message.Task, -1, this.servers.get(server));
+			Message m = new Message(Message.Task, -1, this.serverRegistry.get(server));
 			m.setString(data);
 			m.send(-1);
 		} catch (IOException ioe) {
@@ -937,13 +781,13 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 * @param server  Server index.
 	 */
 	public synchronized void sendTask(JobFactory f, int server) {
-		if (server < 0 || server >= this.servers.size()) {
+		if (server < 0 || server >= this.serverRegistry.size()) {
 			warn("NodeGroup: Server " + server + " is not connected");
 			return;
 		}
 
 		try {
-			Message m = new Message(Message.Task, -1, this.servers.get(server));
+			Message m = new Message(Message.Task, -1, this.serverRegistry.get(server));
 			m.setString(f.encode());
 			m.send(-1);
 		} catch (IOException ioe) {
@@ -1334,7 +1178,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		while (!this.stop) {
 			this.iteration(this);
 			
-			int svrs = this.servers.size();
+			int svrs = this.serverRegistry.size();
 			
 			try {
 				int sleep = super.getSleep();
@@ -1449,14 +1293,14 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 *
 	 * @param l  Listener to register.
 	 */
-	public void addProxyEventListener(NodeProxy.EventListener l) { this.plisteners.add(l); }
+	public void addProxyEventListener(NodeProxy.EventListener l) { this.serverRegistry.addEventListener(l); }
 	
 	/**
 	 * @see NodeProxy.EventListener#connect(NodeProxy)
 	 */
 	@Override
 	public void connect(NodeProxy pr) {
-		if (this.connecting.contains(pr)) return;
+		if (this.serverRegistry.isConnecting(pr)) return;
 		this.addServer(pr);
 	}
 	
@@ -1499,7 +1343,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			b.append(" child");
 			if (nodes > 1) b.append("ren");
 		}
-		int servers = this.servers != null ? this.servers.size() : 0;
+		int servers = this.serverRegistry != null ? this.serverRegistry.size() : 0;
 		if (servers > 0) {
 			if (nodes > 0) b.append(" and ");
 			b.append(servers);

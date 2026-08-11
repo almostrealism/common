@@ -207,12 +207,18 @@ Each Node has a `Map<String, String>` of labels set via
 - Auto-detection: `platform` label is set to `macos` or `linux`
 - Auto-detection: `hostname` label identifies the machine (see below)
 
+Labels that describe the machine rather than the configuration are the
+`AutomaticLabel` constants. Each knows how to `detect()` its own value
+and to `applyTo(Node)` it, and detection never overwrites a configured
+value. A new machine-derived label is a new constant there, not a new
+branch wherever labels are applied.
+
 ### The `hostname` Label
 
 Some workloads must run at a specific place on the network rather than
 on any machine of a given platform. The `hostname` label exists to
 target those, and is auto-detected from the system host name by
-`NodeGroupNodeConfig.localHostLabel()`.
+`AutomaticLabel.HOSTNAME`.
 
 Detection lower-cases the name and discards any domain suffix, so a
 machine reporting `Mac-Studio.local` is labelled `hostname=mac-studio`.
