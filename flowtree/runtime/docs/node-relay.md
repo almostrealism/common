@@ -205,6 +205,32 @@ Each Node has a `Map<String, String>` of labels set via
 - Properties file: `nodes.labels.<key>=<value>`
 - Environment variable: `FLOWTREE_NODE_LABELS=key1:value1,key2:value2`
 - Auto-detection: `platform` label is set to `macos` or `linux`
+- Auto-detection: `hostname` label identifies the machine (see below)
+
+### The `hostname` Label
+
+Some workloads must run at a specific place on the network rather than
+on any machine of a given platform. The `hostname` label exists to
+target those, and is auto-detected from the system host name by
+`NodeGroupNodeConfig.localHostLabel()`.
+
+Detection lower-cases the name and discards any domain suffix, so a
+machine reporting `Mac-Studio.local` is labelled `hostname=mac-studio`.
+That short form is ordinarily also the machine's name on the private
+network overlay, which is the name operators use to refer to it. A job
+targets it with the requirement `hostname:mac-studio`.
+
+No label is assigned when the name does not identify a particular
+machine — an unresolved host (where the name is the literal IP
+address), or `localhost`. Labelling every node identically would let
+any of them satisfy a requirement meant for one. When no label is
+assigned, jobs requiring a `hostname` simply never match that node.
+
+When a machine's system host name differs from the name it is known by
+on the network overlay, configure the label explicitly with
+`nodes.labels.hostname=<name>` or
+`FLOWTREE_NODE_LABELS=hostname:<name>`. Both are applied before
+auto-detection and are left untouched by it.
 
 ### Job Requirements
 
