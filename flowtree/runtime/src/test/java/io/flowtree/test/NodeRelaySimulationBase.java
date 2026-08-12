@@ -42,6 +42,41 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Shared base for node-relay simulation tests, providing scenario infrastructure
  * and inner job types used by all simulation suites.
  *
+ * <h2>These scenarios are intermittently failing</h2>
+ * <p>Measured on {@code a10} (5 jobs, 20 second budget), 12 repetitions per
+ * configuration: it passes 83% of the time, taking a mean of 15.4 seconds with
+ * a minimum of 9.8 and a maximum that is simply the timeout.  The distribution
+ * is broad and presses against the budget rather than being bimodal, so
+ * failures are the tail of one distribution, not a distinct hang.  A run
+ * against the unmodified branch fails a different scenario than a run with
+ * changes, so an isolated failure here is not evidence about a change under
+ * review.</p>
+ *
+ * <p>What has been ruled out by measurement:</p>
+ * <ul>
+ *   <li><b>Submission pacing</b> — partially responsible, addressed by
+ *       {@link #JOBS_PER_ITERATION}, worth about 1.2 seconds of the mean.</li>
+ *   <li><b>Sleep growth.</b> A group multiplies its iteration interval by
+ *       {@code activitySleepC / (activityRating + activitySleepO)} each pass,
+ *       and a controller's own queue is always empty — jobs go straight to a
+ *       child or the relay node — so its rating sits at 1.0 and, with these
+ *       scenarios' {@code nodes.mjp=0.0}, the factor is a constant 1.2.  The
+ *       interval therefore grows 20% per iteration up to
+ *       {@code minSleep * 300}.  That is real, and capping it via
+ *       {@code group.msc} changes the failure rate not at all (15.46s mean
+ *       against a 15.45s baseline).  It is not what these scenarios are
+ *       waiting on.</li>
+ * </ul>
+ *
+ * <p>What remains unexplained: five jobs still take a floor of ten seconds to
+ * complete, roughly two seconds each, and that per-job cost is what the
+ * timeout is really spent on.  Both the group's dispatch and the relay node's
+ * forwarding handle one job per iteration, which at 400 ms accounts for under
+ * a second of it.  The next step is to instrument the wait itself — time until
+ * the controller's relay node first holds a peer {@link io.flowtree.msg.Connection},
+ * then per-job completion timestamps — rather than to reason further from the
+ * code.</p>
+ *
  * @author Michael Murray
  */
 public abstract class NodeRelaySimulationBase extends ServerTestBase {
@@ -56,6 +91,25 @@ public abstract class NodeRelaySimulationBase extends ServerTestBase {
 
     /** Port counter shared across all simulation test classes. */
     protected static final AtomicInteger NEXT_PORT = new AtomicInteger(19100);
+
+    /**
+     * Jobs a controller pulls from a {@link JobFactory} per run-loop iteration.
+     *
+     * <p>The default is 1, which serialises submission: a scenario's Nth job is
+     * not handed to the relay node until N iterations have elapsed.  Since
+     * {@link #speedUpNode(Node)} brings an iteration down to 400 ms, a
+     * twenty-job scenario spends eight seconds on submission alone before the
+     * relay behaviour it asserts on has been fully exercised.</p>
+     *
+     * <p>Set above the largest scenario's job count so that submission is a
+     * single burst.  A burst is also the more demanding input: every job is
+     * queued at once rather than arriving spaced out.</p>
+     *
+     * <p>Measured effect on {@code a10}, 12 repetitions each: mean 15.45s to
+     * 14.22s, median 15.57s to 14.51s.  This is a real but partial
+     * improvement — see the class documentation for what still dominates.</p>
+     */
+    protected static final int JOBS_PER_ITERATION = 32;
 
     /**
      * Runs a relay scenario end-to-end.
@@ -134,6 +188,7 @@ public abstract class NodeRelaySimulationBase extends ServerTestBase {
         p.setProperty("nodes.mjp", "0.0");
         p.setProperty("nodes.relay", "1.0");
         p.setProperty("group.thread.sleep", "100");
+        p.setProperty("group.taskjobs", String.valueOf(JOBS_PER_ITERATION));
         return p;
     }
 
