@@ -96,9 +96,11 @@ echo %AR_HARDWARE_LIBS%</code></pre>
                 <p>Best left unset to auto-detect the best available backend. Available overrides:</p>
                 <ul>
                     <li><strong>native:</strong> Standard JNI operations with runtime-generated native code</li>
-                    <li><strong>opencl:</strong> OpenCL acceleration for CPU/GPU (Linux, Windows)</li>
-                    <li><strong>metal:</strong> Metal GPU acceleration (Apple Silicon Macs)</li>
-                    <li><strong>external:</strong> Generated executable approach (experimental)</li>
+                    <li><strong>cl:</strong> OpenCL acceleration for CPU/GPU (Linux, Windows)</li>
+                    <li><strong>mtl:</strong> Metal GPU acceleration (Apple Silicon Macs)</li>
+                    <li><strong>gpu:</strong> Abstract GPU (auto-selects CL on x86, MTL on ARM)</li>
+                    <li><strong>cpu:</strong> Abstract CPU requirement</li>
+                    <li><strong>*</strong>: Wildcard — whatever the platform supports</li>
                 </ul>
             </section>
 
@@ -207,7 +209,7 @@ First result: 3.2156...</code></pre>
                     <li>✗ CPU-only (no GPU)</li>
                 </ul>
 
-                <h3>opencl (GPU Acceleration)</h3>
+                <h3>cl (OpenCL GPU Acceleration)</h3>
                 <ul>
                     <li>✓ GPU acceleration on NVIDIA, AMD, Intel</li>
                     <li>✓ Works on Linux and Windows</li>
@@ -215,15 +217,15 @@ First result: 3.2156...</code></pre>
                     <li>✗ Requires OpenCL drivers installed</li>
                     <li>✗ Setup can be complex</li>
                 </ul>
-                <pre><code class="language-bash">export AR_HARDWARE_DRIVER=opencl</code></pre>
+                <pre><code class="language-bash">export AR_HARDWARE_DRIVER=cl</code></pre>
 
-                <h3>metal (Apple Silicon)</h3>
+                <h3>mtl (Apple Silicon Metal)</h3>
                 <ul>
                     <li>✓ GPU acceleration on M1/M2/M3 Macs</li>
                     <li>✓ Excellent performance on Apple hardware</li>
                     <li>✗ Only works on macOS with Metal support</li>
                 </ul>
-                <pre><code class="language-bash">export AR_HARDWARE_DRIVER=metal</code></pre>
+                <pre><code class="language-bash">export AR_HARDWARE_DRIVER=mtl</code></pre>
             </section>
 
             <section>
@@ -309,7 +311,7 @@ Size: 1000000 | Time:  45.23 ms
                 <ul>
                     <li><strong>Always set variables first:</strong> Before starting any Java process</li>
                     <li><strong>Use persistent location:</strong> /tmp might be cleared on reboot; consider ~/.ar_libs/</li>
-                    <li><strong>Start with native:</strong> Most stable, then try opencl/metal for GPU</li>
+                    <li><strong>Start with native:</strong> Most stable, then try cl/mtl for GPU</li>
                     <li><strong>Verify in tests:</strong> Check env vars at start of test suites</li>
                     <li><strong>CI/CD:</strong> Set env vars in build scripts</li>
                     <li><strong>Monitor cache:</strong> AR_HARDWARE_LIBS directory can grow; clean periodically</li>
@@ -331,7 +333,7 @@ Size: 1000000 | Time:  45.23 ms
                 <ul>
                     <li>✓ Why hardware acceleration is critical for performance</li>
                     <li>✓ How to set AR_HARDWARE_LIBS and AR_HARDWARE_DRIVER</li>
-                    <li>✓ Difference between native, opencl, and metal drivers</li>
+                    <li>✓ Difference between native, cl, and mtl drivers</li>
                     <li>✓ How to make environment variables permanent</li>
                     <li>✓ Maven integration for tests</li>
                     <li>✓ Verifying acceleration is working</li>

@@ -694,7 +694,7 @@ export AR_HARDWARE_DRIVER=mtl     # Metal (Apple Silicon GPU)
 export AR_HARDWARE_DRIVER=gpu     # Abstract GPU (auto-selects)
 
 # Multi-Backend (optional override)
-export AR_HARDWARE_DRIVER=cl,native  # OpenCL + JNI fallback
+export AR_HARDWARE_DRIVER=cl,native  # OpenCL + JNI; both must initialize
 
 # Explicit auto-select
 export AR_HARDWARE_DRIVER=*

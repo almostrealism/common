@@ -56,8 +56,9 @@
             <div class="key-concepts">
                 <div class="concept-card">
                     <h4>Server Connections (NodeProxy)</h4>
-                    <p>Socket-level links between two Servers. Stored in
-                    <code>NodeGroup.servers</code>. Created when an agent Server
+                    <p>Socket-level links between two Servers. Held by
+                    <code>NodeGroupServerRegistry</code> associated with the
+                    <code>NodeGroup</code>. Created when an agent Server
                     connects to the controller. Carry <code>Message</code> objects
                     (tasks, connection requests, job data).</p>
                 </div>
@@ -83,7 +84,7 @@
             <ol>
                 <li>Node checks if it has fewer peers than <code>maxPeers</code></li>
                 <li>Calls <code>parent.getConnection(this.id)</code></li>
-                <li>NodeGroup picks a random entry from <code>servers</code> and
+                <li>NodeGroup picks a random entry from the server registry and
                     sends a <code>ConnectionRequest</code> message</li>
                 <li>Remote NodeGroup receives the request, creates a Connection,
                     responds with <code>ConnectionConfirmation</code></li>
@@ -156,7 +157,7 @@ relay Node activity thread
             <p>Each Node has a label map set via properties
             (<code>nodes.labels.&lt;key&gt;=&lt;value&gt;</code>), environment
             variable (<code>FLOWTREE_NODE_LABELS</code>), or auto-detection
-            (the <code>platform</code> label).</p>
+            (the <code>platform</code> and <code>hostname</code> labels).</p>
 
             <h3>Job Requirements</h3>
             <p>Each Job can declare required labels via
@@ -189,8 +190,9 @@ relay Node activity thread
                 <div class="class-item">
                     <h4>NodeGroup</h4>
                     <p>Collection of child Nodes. Manages server connections
-                    (NodeProxy list). Distributes jobs from factories to child
-                    Nodes. Brokers peer connection requests.</p>
+                    (NodeProxy list) via an associated
+                    <code>NodeGroupServerRegistry</code>. Distributes jobs from
+                    factories to child Nodes. Brokers peer connection requests.</p>
                 </div>
                 <div class="class-item">
                     <h4>Connection</h4>
@@ -336,7 +338,7 @@ relay Node activity thread
             </div>
             <div class="warning">
                 <strong>Server connections are not peer connections.</strong>
-                <code>NodeGroup.servers</code> (NodeProxy) and
+                The server registry (NodeProxy) and
                 <code>Node.peers</code> (Connection) are completely separate.
                 Code that confuses them will silently fail to route jobs.
             </div>

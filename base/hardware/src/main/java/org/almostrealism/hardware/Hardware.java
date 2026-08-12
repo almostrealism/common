@@ -105,14 +105,27 @@ import java.util.function.Consumer;
  *   </li>
  *   <li><strong>Multiple drivers:</strong> Comma-separated list: {@code cl,native}</li>
  * </ul>
+ * <p><strong>Initialization failures:</strong> The driver string is parsed by
+ * {@link DriverSelection}, which separates the backends the caller named
+ * explicitly from those the wildcard contributed. A backend the caller named
+ * that fails to initialize throws a {@link HardwareException} with the
+ * offending throwable as its cause — a missing native library surfaces as a
+ * {@link LinkageError} whose library path appears only on the cause. A
+ * wildcard-contributed backend that fails is logged and skipped; the next
+ * attempt in the preference order is taken. Combining a named backend with
+ * the wildcard — {@code cl,*} — expresses "cl is mandatory; the rest are
+ * best-effort".</p>
  *
  * <p><strong>Example:</strong></p>
  * <pre>
  * # Force OpenCL backend
  * export AR_HARDWARE_DRIVER=cl
  *
- * # Enable both OpenCL and JNI
+ * # Enable both OpenCL and JNI; either failing to initialize is a failure
  * export AR_HARDWARE_DRIVER=cl,native
+ *
+ * # OpenCL is mandatory; the rest of the wildcard is best-effort
+ * export AR_HARDWARE_DRIVER=cl,*
  *
  * # Use abstract GPU requirement (auto-selects best GPU backend)
  * export AR_HARDWARE_DRIVER=gpu
