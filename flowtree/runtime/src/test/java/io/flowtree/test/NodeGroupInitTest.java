@@ -18,6 +18,7 @@ package io.flowtree.test;
 
 import io.flowtree.Server;
 import io.flowtree.node.NodeGroupNodeConfig;
+import io.flowtree.node.NodeGroupServerRegistry;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -98,5 +99,44 @@ public class NodeGroupInitTest extends ServerTestBase {
 		Server server = new Server(p);
 		Assert.assertNotNull("Server should be constructed", server);
 		server.stop();
+	}
+
+	/**
+	 * Verifies that the persistent-host reconnect thread is a daemon.
+	 *
+	 * <p>Its loop never terminates on its own, so a non-daemon thread would
+	 * keep the JVM alive after everything else has stopped.</p>
+	 *
+	 * <p>The thread is interrupted before the test returns.  Its first action
+	 * is a 30 second sleep, so interrupting it here ends it before it ever
+	 * resolves a host name, leaving nothing running in the shared test JVM.</p>
+	 */
+	@Test(timeout = 10000)
+	public void persistentHostThreadIsDaemon() throws IOException {
+		Properties p = new Properties();
+		p.setProperty("server.port", "7723");
+		p.setProperty("nodes.initial", "1");
+		p.setProperty("servers.total", "0");
+
+		Server server = new Server(p);
+		Thread found = null;
+
+		try {
+			// .invalid is reserved by RFC 2606, so a lookup could never reach
+			// the network even if the thread outlived this test
+			server.getNodeGroup().startPersistentHost("root.invalid", Server.defaultPort);
+
+			for (Thread t : Thread.getAllStackTraces().keySet()) {
+				if (NodeGroupServerRegistry.PERSISTENT_HOST_THREAD.equals(t.getName())) {
+					found = t;
+				}
+			}
+
+			Assert.assertNotNull("Persistent host thread should have been started", found);
+			Assert.assertTrue("Persistent host thread must be a daemon", found.isDaemon());
+		} finally {
+			if (found != null) found.interrupt();
+			server.stop();
+		}
 	}
 }

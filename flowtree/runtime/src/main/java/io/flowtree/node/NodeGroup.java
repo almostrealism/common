@@ -265,8 +265,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 		this.setParam(p);
 
-		this.serverRegistry = new NodeGroupServerRegistry(this, serverCount,
-				passwd, p.getProperty("group.proxy.crypt"));
+		this.serverRegistry = new NodeGroupServerRegistry(this, passwd,
+				p.getProperty("group.proxy.crypt"));
 		this.serverRegistry.open(p, serverCount);
 
 		super.rssfile = p.getProperty("group.rss.file");

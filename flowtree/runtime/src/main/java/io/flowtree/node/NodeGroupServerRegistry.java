@@ -32,9 +32,9 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * The server-connection layer of a {@link NodeGroup}: the live socket-level
@@ -47,42 +47,69 @@ import java.util.Properties;
  * peer connection over it.</p>
  *
  * <h2>Locking</h2>
- * <p>Registry mutation runs under the monitor of the owning {@link NodeGroup},
- * not the registry's own.  The group's {@code synchronized} methods are the
- * entry points, and every path that leads back into the registry from a
- * callback or a background thread — the persistent-host thread, the initial
- * connections opened by {@link #open(Properties, int)} — re-enters through
- * those methods so that all of them contend for a single lock.  Do not add
- * {@code synchronized} here: it would introduce a second monitor and the two
- * would not exclude each other.</p>
+ * <p><b>Writes</b> run under the monitor of the owning {@link NodeGroup}, not
+ * the registry's own.  The group's {@code synchronized} methods are the entry
+ * points, and every path that leads back into the registry from a callback or
+ * a background thread — the persistent-host thread, the initial connections
+ * opened by {@link #open(Properties, int)} — re-enters through those methods
+ * so that all mutation contends for a single lock.  Do not add
+ * {@code synchronized} to the methods here: it would lock the registry's own
+ * monitor, which no writer holds, and the two would not exclude each other.</p>
+ *
+ * <p><b>Reads take no lock at all</b>, and must not.  The collections are
+ * copy-on-write, which is what makes an unlocked read consistent rather than
+ * racy.  Reading under the group's monitor instead would be a deadlock
+ * hazard: {@link NodeProxy#fireConnect()} and {@code fireDisconnect()} invoke
+ * listener callbacks while holding the proxy's listener monitor, and those
+ * callbacks are {@link NodeGroup#connect(NodeProxy)} and
+ * {@link NodeGroup#disconnect(NodeProxy)}, which want the group's monitor —
+ * while {@link #addServer(NodeProxy)} holds the group's monitor and calls
+ * back into the proxy for exactly that listener monitor.  Any read that
+ * acquired the group's monitor from a proxy callback thread would close that
+ * cycle.</p>
  *
  * @author  Michael Murray
  * @see NodeGroup
  * @see NodeProxy
  */
 public class NodeGroupServerRegistry implements ConsoleFeatures {
+	/**
+	 * Name of the thread started by {@link #startPersistentHost(String, int)},
+	 * which reconnects to the root server whenever no connections remain.
+	 */
+	public static final String PERSISTENT_HOST_THREAD = "Persistent Host Attempt";
+
 	/** The group that owns these connections. */
 	private final NodeGroup group;
 
 	/**
 	 * Live socket-level connections to remote servers, each wrapped in a
 	 * {@link NodeProxy} that handles message framing and optional encryption.
+	 *
+	 * <p>Copy-on-write: writers are already serialized by the group's monitor,
+	 * and readers reach this from threads that must not take that monitor.</p>
 	 */
-	private final List<NodeProxy> servers;
+	private final List<NodeProxy> servers = new CopyOnWriteArrayList<>();
 
 	/**
 	 * Proxies currently being initialised inside {@link #addServer(NodeProxy)}.
 	 * A proxy is present in this list from the moment it enters that method until
 	 * initialisation completes, so that re-entrant callbacks (e.g.
 	 * {@link NodeGroup#connect(NodeProxy)}) can skip still-pending proxies.
+	 *
+	 * <p>Copy-on-write: {@link NodeGroup#connect(NodeProxy)} reads it without
+	 * the group's monitor, which is the case this list exists to serve.</p>
 	 */
-	private final List<NodeProxy> connecting;
+	private final List<NodeProxy> connecting = new CopyOnWriteArrayList<>();
 
 	/**
 	 * External {@link NodeProxy.EventListener} instances that must be notified
 	 * whenever a server connection is removed from this group.
+	 *
+	 * <p>Copy-on-write: registration happens without the group's monitor while
+	 * {@link #removeServer(NodeProxy)} iterates under it.</p>
 	 */
-	private final List<NodeProxy.EventListener> listeners;
+	private final List<NodeProxy.EventListener> listeners = new CopyOnWriteArrayList<>();
 
 	/**
 	 * Password used to authenticate and/or encrypt communication with remote
@@ -103,18 +130,14 @@ public class NodeGroupServerRegistry implements ConsoleFeatures {
 	private final int maxDuplicateConnections = 2;
 
 	/**
-	 * @param group        The group that owns these connections.
-	 * @param serverCount  Expected number of connections, used to size the list.
-	 * @param passwd       Password for authenticating remote servers, or {@code null}.
-	 * @param crypt        Symmetric encryption algorithm name, or {@code null}.
+	 * @param group   The group that owns these connections.
+	 * @param passwd  Password for authenticating remote servers, or {@code null}.
+	 * @param crypt   Symmetric encryption algorithm name, or {@code null}.
 	 */
-	public NodeGroupServerRegistry(NodeGroup group, int serverCount, char[] passwd, String crypt) {
+	public NodeGroupServerRegistry(NodeGroup group, char[] passwd, String crypt) {
 		this.group = group;
 		this.passwd = passwd;
 		this.crypt = crypt;
-		this.servers = new ArrayList<>(serverCount);
-		this.connecting = new ArrayList<>();
-		this.listeners = new ArrayList<>();
 	}
 
 	/**
@@ -291,7 +314,7 @@ public class NodeGroupServerRegistry implements ConsoleFeatures {
 	 * @param port  TCP port of the root server.
 	 */
 	public void startPersistentHost(String host, int port) {
-		new Thread(() -> {
+		Thread t = new Thread(() -> {
 			w: while (true) {
 				try {
 					Thread.sleep(30 * 1000L);
@@ -317,24 +340,35 @@ public class NodeGroupServerRegistry implements ConsoleFeatures {
 							" (" + se.getMessage() + ")");
 				}
 			}
-		}, "Persistent Host Attempt").start();
+		}, PERSISTENT_HOST_THREAD);
+
+		// The loop never terminates on its own, so leaving the thread
+		// non-daemon would keep the JVM alive after everything else has stopped
+		t.setDaemon(true);
+		t.start();
 	}
 
 	/**
 	 * Returns a snapshot array of all currently registered server proxies.
-	 * The array is a copy, so it is safe to iterate without holding the
-	 * internal lock after the call returns.
+	 * The array is a copy, so it is safe to iterate after the call returns.
+	 *
+	 * <p>No lock is taken: the backing list is copy-on-write, so the snapshot
+	 * is consistent whatever a writer is doing concurrently.  See the class
+	 * documentation for why a read here must not take the group's monitor.</p>
 	 *
 	 * @return  Array of active {@link NodeProxy} connections; never {@code null}.
 	 */
 	public NodeProxy[] getServers() {
-		synchronized (this.servers) {
-			return this.servers.toArray(new NodeProxy[0]);
-		}
+		return this.servers.toArray(new NodeProxy[0]);
 	}
 
 	/**
 	 * Returns the proxy registered at the specified index.
+	 *
+	 * <p>An index is only meaningful for as long as the registry is unchanged,
+	 * so callers must hold the owning group's monitor across the bounds check
+	 * and this call.  Every caller reaches it through a {@code synchronized}
+	 * method of {@link NodeGroup}, which is what makes the pair atomic.</p>
 	 *
 	 * @param index  Index of the connection.
 	 * @return  The proxy maintaining that connection.
@@ -343,6 +377,11 @@ public class NodeGroupServerRegistry implements ConsoleFeatures {
 
 	/**
 	 * Returns the number of registered server connections.
+	 *
+	 * <p>Read without the group's monitor, so the count is advisory unless the
+	 * caller holds it: a connection may be added or dropped immediately after
+	 * the value is returned.  Callers that act on a specific index must hold
+	 * the monitor across both calls — see {@link #get(int)}.</p>
 	 *
 	 * @return  The connection count.
 	 */
