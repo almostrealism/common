@@ -114,6 +114,10 @@ workstreams:
     #   - "https://github.com/your-org/config-repo.git"
     # requiredLabels:                  # Node labels all jobs in this workstream must match.
     #   platform: "macos"              # Jobs run only on nodes labeled platform=macos.
+    #   hostname: "mac-studio"         # Pins jobs to one machine, for work that must run
+    #                                  # at a specific place on the network. Auto-detected
+    #                                  # from the system host name, lower cased with any
+    #                                  # domain suffix removed (Mac-Studio.local -> mac-studio).
     #   gpu: "true"                    # Combine multiple labels as needed.
     # agentEnv:                        # Env vars set on the agent subprocess for this
     #   MY_VAR: "value"                # workstream. Inherited by every process the agent
