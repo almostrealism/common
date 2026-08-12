@@ -61,7 +61,7 @@
                     </div>
                     <div class="concept-card">
                         <h4>📦 Multi-Backend</h4>
-                        <p>OpenCL for cross-platform GPU, Metal for Apple Silicon, JNI for native C execution. Automatic backend selection with fallback support.</p>
+                        <p>OpenCL for cross-platform GPU, Metal for Apple Silicon, JNI for native C execution. Backend selection is per-operation; a named backend that fails to initialize is a failure of the request rather than a silent swap.</p>
                     </div>
                     <div class="concept-card">
                         <h4>🔧 Zero Configuration</h4>
@@ -209,7 +209,7 @@ normalize(cp(vector)).into(vector).evaluate();</code></pre>
                 </div>
 
                 <div class="success">
-                    <strong>Performance Tip:</strong> <code>setFrom(MemoryData)</code> is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve <code>setMem(...)</code> for literal whole-content writes or single indexed literal updates.
+                    <strong>Performance Tip:</strong> <code>setFrom(MemoryData)</code> is significantly more efficient than element-by-element loops. Always use bulk region copies when copying between collections; reserve <code>setMem(int, double)</code> / <code>setMem(int, float)</code> for scalar indexed updates and <code>set(int, double...)</code> for whole-content literal writes.
                 </div>
 
                 <h3>Context Management</h3>
@@ -847,7 +847,7 @@ export AR_HARDWARE_MEMORY_LOCATION=host</pre>
                     <strong>Issue:</strong> Metal backend not working on macOS<br>
                     <strong>Requirements:</strong> macOS 10.13+, Metal-capable GPU<br>
                     <strong>Check:</strong> Verify with <code>system_profiler SPDisplaysDataType | grep Metal</code><br>
-                    <strong>Fallback:</strong> Use <code>AR_HARDWARE_DRIVER=cl,native</code>
+                    <strong>Alternative:</strong> Use <code>AR_HARDWARE_DRIVER=cl,native</code>
                 </div>
 
                 <div class="warning">
@@ -867,7 +867,7 @@ export AR_HARDWARE_MEMORY_LOCATION=host</pre>
                         <li>Metal-capable GPU (check: <code>system_profiler SPDisplaysDataType | grep Metal</code>)</li>
                         <li>Native library libMTL.dylib accessible on java.library.path</li>
                     </ul>
-                    <strong>Solution:</strong> Use <code>AR_HARDWARE_DRIVER=cl,native</code> for fallback
+                    <strong>Solution:</strong> Use <code>AR_HARDWARE_DRIVER=cl,native</code>; both must initialize, but if one fails the failure is loud rather than silently swapped
                 </div>
 
                 <div class="warning">
