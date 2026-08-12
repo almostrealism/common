@@ -98,7 +98,7 @@ echo %AR_HARDWARE_LIBS%</code></pre>
                     <li><strong>native:</strong> Standard JNI operations with runtime-generated native code</li>
                     <li><strong>cl:</strong> OpenCL acceleration for CPU/GPU (Linux, Windows)</li>
                     <li><strong>mtl:</strong> Metal GPU acceleration (Apple Silicon Macs)</li>
-                    <li><strong>gpu:</strong> Abstract GPU (auto-selects CL on x86, MTL on ARM)</li>
+                    <li><strong>gpu:</strong> Abstract GPU (auto-selects MTL on macOS, CL elsewhere)</li>
                     <li><strong>cpu:</strong> Abstract CPU requirement</li>
                     <li><strong>*</strong>: Wildcard — whatever the platform supports</li>
                 </ul>
@@ -232,20 +232,20 @@ First result: 3.2156...</code></pre>
                 <h2>Step 8: Troubleshooting Common Issues</h2>
 
                 <h3>Error: NoClassDefFoundError PackedCollection</h3>
-                <p><strong>Cause:</strong> Environment variables not set before JVM starts.</p>
+                <p><strong>Cause:</strong> Classpath issue — the hardware module is not on the classpath.</p>
                 <p><strong>Solution:</strong></p>
-                <pre><code class="language-bash"># Ensure AR_HARDWARE_LIBS is set BEFORE running Java
-# AR_HARDWARE_LIBS is auto-detected — do not set manually
-# THEN run your application
+                <pre><code class="language-bash"># AR_HARDWARE_LIBS is auto-detected — do not set it manually.
+# Rebuild from a clean checkout if classpath issues persist:
+mvn clean install -DskipTests
 java -jar myapp.jar</code></pre>
 
                 <h3>Error: UnsatisfiedLinkError</h3>
-                <p><strong>Cause:</strong> Cannot load native libraries.</p>
+                <p><strong>Cause:</strong> Cannot load native libraries from the auto-detected library directory.</p>
                 <p><strong>Solution:</strong></p>
                 <ul>
-                    <li>Verify AR_HARDWARE_LIBS points to a writable directory</li>
-                    <li>Check directory permissions: <code>chmod 755 /tmp/ar_libs/</code></li>
-                    <li>Try a different directory if /tmp has noexec flag</li>
+                    <li>Confirm <code>AR_HARDWARE_LIBS</code> is <em>unset</em>; the framework picks a writable directory automatically.</li>
+                    <li>If the auto-detected directory is on a noexec filesystem (some <code>/tmp</code> mounts), set <code>AR_HARDWARE_LIBS</code> to a writable, executable location such as <code>~/.ar_libs/</code>.</li>
+                    <li>Verify the chosen directory is writable by the user running the JVM.</li>
                 </ul>
 
                 <h3>Error: OpenCL platform not found</h3>

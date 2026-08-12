@@ -95,12 +95,13 @@ import java.util.function.Consumer;
  *   <li><strong>{@code native}</strong> - JNI backend with runtime-generated C code (default for CPU)</li>
  *   <li><strong>{@code cl}</strong> - OpenCL backend for GPU/CPU acceleration</li>
  *   <li><strong>{@code mtl}</strong> - Metal backend for Apple Silicon GPU</li>
- *   <li><strong>{@code cpu}</strong> - Abstract CPU requirement (maps to JNI on x86, JNI on ARM)</li>
- *   <li><strong>{@code gpu}</strong> - Abstract GPU requirement (maps to CL on x86, MTL on ARM)</li>
+ *   <li><strong>{@code cpu}</strong> - Abstract CPU requirement. Resolves to {@link ComputeRequirement#JNI JNI} on aarch64 hosts and to {@link ComputeRequirement#CL CL} on all others.</li>
+ *   <li><strong>{@code gpu}</strong> - Abstract GPU requirement. Resolves to {@link ComputeRequirement#MTL MTL} on macOS hosts and to {@link ComputeRequirement#CL CL} on all others (including non-macOS aarch64).</li>
  *   <li><strong>{@code *}</strong> - Automatic selection (default when unset):
  *     <ul>
- *       <li>ARM64 (Apple Silicon): JNI, MTL, CL</li>
- *       <li>x86/x64: CL, JNI (not on macOS)</li>
+ *       <li>macOS (aarch64): JNI, MTL, CL</li>
+ *       <li>macOS (non-aarch64): JNI, CL</li>
+ *       <li>non-macOS: CL, JNI</li>
  *     </ul>
  *   </li>
  *   <li><strong>Multiple drivers:</strong> Comma-separated list: {@code cl,native}</li>

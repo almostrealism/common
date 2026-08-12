@@ -383,7 +383,7 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | `native` | CPU with JNI acceleration |
 | `cl` | GPU via OpenCL |
 | `mtl` | Apple Silicon GPU via Metal |
-| `gpu` | Abstract GPU (auto-selects CL on x86, MTL on ARM) |
+| `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
 | `cpu` | Abstract CPU requirement |
 | `*` | Wildcard — whatever the platform supports |
 

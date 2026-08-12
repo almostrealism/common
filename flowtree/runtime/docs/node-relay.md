@@ -44,7 +44,8 @@ between Nodes.
 ```
 Controller Server              Agent Server
   NodeGroup                      NodeGroup
-    servers: [NodeProxy] ←TCP→ servers: [NodeProxy]
+    NodeGroupServerRegistry ←TCP→ NodeGroupServerRegistry
+      [NodeProxy, ...]            [NodeProxy, ...]
 
     Node 0                       Node 0
       peers: [Connection] ←→ peers: [Connection]

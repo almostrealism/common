@@ -73,7 +73,8 @@
 
             <div class="diagram">Controller Server              Agent Server
   NodeGroup                      NodeGroup
-    servers: [NodeProxy] &lt;-TCP-&gt; servers: [NodeProxy]
+    NodeGroupServerRegistry &lt;-TCP-&gt; NodeGroupServerRegistry
+      [NodeProxy, ...]            [NodeProxy, ...]
 
     Node 0 (relay)               Node 0
       peers: [Connection] &lt;---&gt; peers: [Connection]</div>
