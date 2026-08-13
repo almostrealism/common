@@ -41,7 +41,7 @@ mvn clean install -DskipTests
 # AR_HARDWARE_LIBS is auto-detected — do not set manually
 ```
 
-`AR_HARDWARE_DRIVER` is best left unset to auto-detect the best available backend. Available overrides: `native` (JNI), `opencl` (CPU/GPU), `metal` (Apple Silicon), `external` (generated executable).
+`AR_HARDWARE_DRIVER` is best left unset to auto-detect the best available backend. Available overrides: `native` (JNI), `cl` (OpenCL CPU/GPU), `mtl` (Apple Silicon Metal), `cpu` (abstract CPU), `gpu` (abstract GPU), `*` (wildcard). The tokens `opencl`, `metal`, and `external` are not recognized (see [base/hardware/README.md](../base/hardware/README.md) for the named-vs-wildcard contract).
 
 For large models or memory-intensive tests: `export AR_HARDWARE_MEMORY_SCALE=6` (~16GB) or `7` (~32GB). Default is `4` (~4GB). Formula: `precision.bytes() * 2^SCALE * 64MB`.
 
