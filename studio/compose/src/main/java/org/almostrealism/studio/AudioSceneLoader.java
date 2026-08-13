@@ -21,6 +21,8 @@ import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
+import com.fasterxml.jackson.databind.deser.ValueInstantiator;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.almostrealism.audio.AudioLibrary;
@@ -93,6 +95,14 @@ public class AudioSceneLoader {
 	 * scene settings. Includes custom deserializers for {@link KeyPosition} and
 	 * {@link WesternChromatic}.
 	 *
+	 * <p>An entry that names a type the reader cannot construct is skipped
+	 * rather than allowed to fail the read. Scene settings and pattern choices
+	 * are whole-file documents holding a user's entire configuration, and their
+	 * polymorphic entries are tagged with class names; without this, one entry
+	 * written by a version that could not read it back — or naming a class that
+	 * has since been removed — discards every other setting in the file. A
+	 * skipped entry is reported through the console so the loss is visible.</p>
+	 *
 	 * @return a configured {@link ObjectMapper}
 	 */
 	public static ObjectMapper defaultMapper() {
@@ -104,7 +114,53 @@ public class AudioSceneLoader {
 		module.addDeserializer(WesternChromatic.class, keyPositionDeserializer(WesternChromatic.class, s -> WesternChromatic.valueOf(s)));
 		mapper.registerModule(module);
 
+		mapper.addHandler(new DeserializationProblemHandler() {
+			@Override
+			public Object handleMissingInstantiator(DeserializationContext context,
+													Class<?> targetType,
+													ValueInstantiator instantiator,
+													JsonParser parser,
+													String message) throws IOException {
+				AudioScene.console.warn("Skipped a stored " + targetType.getName()
+						+ " that cannot be constructed (" + message + ")");
+				skipRemainderOfObject(parser);
+				return null;
+			}
+		});
+
 		return mapper;
+	}
+
+	/**
+	 * Consumes the remaining content of the object the parser is currently
+	 * reading, leaving it on that object's closing token.
+	 *
+	 * <p>A problem handler is invoked partway through an object — the type id
+	 * has already been read — so {@link JsonParser#skipChildren()} alone does
+	 * not apply: the parser is inside the object rather than on its opening
+	 * token, and returning from there leaves the remaining fields to be misread
+	 * as the next element. Nested objects and arrays are skipped wholesale so
+	 * only the enclosing object's own end is matched.</p>
+	 *
+	 * @param parser the parser positioned within the object to discard
+	 */
+	private static void skipRemainderOfObject(JsonParser parser) throws IOException {
+		JsonToken current = parser.currentToken();
+
+		if (current == JsonToken.START_OBJECT || current == JsonToken.START_ARRAY) {
+			parser.skipChildren();
+			return;
+		}
+
+		while (current != JsonToken.END_OBJECT) {
+			current = parser.nextToken();
+			if (current == null) return;
+
+			if (current == JsonToken.START_OBJECT || current == JsonToken.START_ARRAY) {
+				parser.skipChildren();
+				current = parser.currentToken();
+			}
+		}
 	}
 
 	/**
