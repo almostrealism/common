@@ -20,10 +20,12 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
 import com.fasterxml.jackson.databind.deser.ValueInstantiator;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.jsontype.TypeIdResolver;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
@@ -95,19 +97,36 @@ public class AudioSceneLoader {
 	 * scene settings. Includes custom deserializers for {@link KeyPosition} and
 	 * {@link WesternChromatic}.
 	 *
-	 * <p>An entry that names a type the reader cannot construct is skipped
-	 * rather than allowed to fail the read. Scene settings and pattern choices
-	 * are whole-file documents holding a user's entire configuration, and their
-	 * polymorphic entries are tagged with class names; without this, one entry
-	 * written by a version that could not read it back — or naming a class that
-	 * has since been removed — discards every other setting in the file. A
-	 * skipped entry is reported through the console so the loss is visible.</p>
+	 * <p>An entry the reader cannot turn into an object is skipped rather than
+	 * allowed to fail the read. Scene settings and pattern choices are
+	 * whole-file documents holding a user's entire configuration, and their
+	 * polymorphic entries are tagged with class names, so a single bad entry
+	 * would otherwise discard every other setting in the file. Two distinct
+	 * failures are covered, because a class name records both what to build and
+	 * how to find it:</p>
+	 *
+	 * <ul>
+	 *   <li>the named class exists but cannot be instantiated — written by a
+	 *       version that could not read it back;</li>
+	 *   <li>the named class cannot be resolved at all — renamed, moved, or
+	 *       removed since the file was written. This one arrives long after the
+	 *       change that caused it, in a file the user has no way to repair.</li>
+	 * </ul>
+	 *
+	 * <p>Either way the entry becomes {@code null} for its container to drop,
+	 * and is reported through the console so the loss is visible rather than
+	 * silent.</p>
 	 *
 	 * @return a configured {@link ObjectMapper}
 	 */
 	public static ObjectMapper defaultMapper() {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+		/* Consulted only after every problem handler declines to resolve the
+		   type id; disabling it turns an unresolvable entry into null instead
+		   of an exception that ends the read. */
+		mapper.configure(DeserializationFeature.FAIL_ON_INVALID_SUBTYPE, false);
 
 		SimpleModule module = new SimpleModule();
 		module.addDeserializer(KeyPosition.class, keyPositionDeserializer(KeyPosition.class, KeyPosition::of));
@@ -124,6 +143,17 @@ public class AudioSceneLoader {
 				AudioScene.console.warn("Skipped a stored " + targetType.getName()
 						+ " that cannot be constructed (" + message + ")");
 				skipRemainderOfObject(parser);
+				return null;
+			}
+
+			@Override
+			public JavaType handleUnknownTypeId(DeserializationContext context,
+												JavaType baseType,
+												String subTypeId,
+												TypeIdResolver idResolver,
+												String message) {
+				AudioScene.console.warn("Skipped a stored " + baseType.getRawClass().getName()
+						+ " naming the unknown type " + subTypeId + " (" + message + ")");
 				return null;
 			}
 		});

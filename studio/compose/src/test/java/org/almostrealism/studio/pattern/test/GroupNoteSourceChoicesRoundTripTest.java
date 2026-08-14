@@ -38,9 +38,9 @@ import java.util.List;
  * start. {@link org.almostrealism.music.notes.NoteAudioSource} is serialized
  * polymorphically by class name, so any source implementation that reaches a
  * choice must survive a write/read cycle through
- * {@link AudioSceneLoader#defaultMapper()}. A source that cannot fails the
- * whole file: the reader aborts on the first unreadable entry, and the caller
- * cannot recover the other choices from it.</p>
+ * {@link AudioSceneLoader#defaultMapper()}. A source that does not survive one
+ * takes the whole file with it: the reader aborts on the first unreadable
+ * entry, and the caller cannot recover the other choices from it.</p>
  */
 public class GroupNoteSourceChoicesRoundTripTest extends TestSuiteBase {
 
@@ -77,6 +77,34 @@ public class GroupNoteSourceChoicesRoundTripTest extends TestSuiteBase {
 				1, read.size());
 		Assert.assertEquals("Choice name changed across the round trip",
 				"Group Test", read.get(0).getName());
+	}
+
+	/**
+	 * A stored source naming a class that no longer exists must be skipped like
+	 * any other unreadable entry. Type ids are class names, so renaming or
+	 * removing a source implementation turns every file that mentions it into
+	 * one the reader would otherwise refuse in full — the failure arrives long
+	 * after the change that caused it, in a file the user cannot repair.
+	 */
+	@Test(timeout = 60000)
+	public void unknownTypeIdDoesNotDiscardTheFile() throws Exception {
+		String poisoned = "[{\"name\":\"Legacy\",\"sources\":["
+				+ "{\"@type\":\"org.almostrealism.music.notes.RemovedNoteSource\","
+				+ "\"origin\":\"old\"}"
+				+ "]}]";
+
+		File file = File.createTempFile("removed-type-choices", ".json");
+		file.deleteOnExit();
+		Files.writeString(file.toPath(), poisoned);
+
+		NoteAudioChoiceList read = AudioSceneLoader.defaultMapper()
+				.readValue(file, NoteAudioChoiceList.class);
+
+		Assert.assertEquals("A stored source naming a removed class discarded the file",
+				1, read.size());
+		Assert.assertEquals("Legacy", read.get(0).getName());
+		Assert.assertTrue("The unresolvable source was not dropped",
+				read.get(0).getSources().isEmpty());
 	}
 
 	/**
