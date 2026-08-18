@@ -331,6 +331,14 @@ PatternSystemManager.sum(context, channel)
                         <h4>TreeNoteSource</h4>
                         <p>Hierarchical note source from file tree. Implements lazy loading with path resolution.</p>
                     </div>
+                    <div class="class-item">
+                        <h4>FileNoteSource</h4>
+                        <p>Note source backed by a single audio file. Persists with the scene as a polymorphic entry tagged by class name.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4>GroupNoteSource</h4>
+                        <p>Note source backed by a saved audio group from the library. Rebuilds from the group store rather than being written with the scene — its durable record is the group's protobuf, so it reports <code>isPersistent() == false</code> and is omitted from the choices file.</p>
+                    </div>
                 </div>
 
                 <h3>org.almostrealism.music.arrange</h3>

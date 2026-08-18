@@ -46,6 +46,9 @@ WaveDetails details = library.get(identifier);
 // Resolve identifier to file path
 WaveDataProvider provider = library.find(identifier);
 String filePath = provider.getKey();
+
+// Or, equivalently, ask the library for the file backing the identifier
+File file = library.fileFor(identifier);
 ```
 
 **Internal data structures:**
@@ -117,6 +120,21 @@ library.allDetails().forEach(details -> {
         System.out.println(filePath + ": " + details.getFrameCount() + " frames");
     }
 });
+```
+
+### Resolving Identifiers to Files
+
+When only the backing file is needed, `AudioLibrary.fileFor(identifier)` returns
+it directly. The search goes by content identifier, not filename, so a sample
+can be renamed for display without anything that references it having to know
+the name. The result is `null` when the identifier is blank, unknown, or names
+a file that is no longer present.
+
+```java
+File file = library.fileFor(identifier);
+if (file != null) {
+    System.out.println("Backing file: " + file.getAbsolutePath());
+}
 ```
 
 ### Computing Similarities

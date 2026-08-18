@@ -69,6 +69,12 @@ library.allDetails().forEach(details -> {
         String filePath = provider.getKey();  // Actual file path!
         System.out.println("File: " + filePath);
     }
+
+    // Or, ask the library for the file backing the identifier directly:
+    File file = library.fileFor(identifier);
+    if (file != null) {
+        System.out.println("File: " + file.getAbsolutePath());
+    }
 });
 ```
 
@@ -93,7 +99,8 @@ To make PrototypeDiscovery display file paths instead of identifiers, you need t
 1. Accept an additional `--samples` argument for the audio files directory
 2. Create an `AudioLibrary` with that directory
 3. Load protobuf data into the library
-4. Use `library.find(identifier).getKey()` to get file paths
+4. Use `library.find(identifier).getKey()` (or, equivalently,
+   `library.fileFor(identifier)`) to get file paths
 
 ```java
 // In PrototypeDiscovery, to get the file path:
@@ -104,6 +111,10 @@ AudioLibraryPersistence.loadLibrary(library, dataPrefix);
 WaveDetails details = ...;
 WaveDataProvider provider = library.find(details.getIdentifier());
 String filePath = provider != null ? provider.getKey() : details.getIdentifier();
+
+// Or, when only the file is needed:
+File file = library.fileFor(details.getIdentifier());
+String filePath = file != null ? file.getAbsolutePath() : details.getIdentifier();
 ```
 
 ## AudioLibraryPersistence

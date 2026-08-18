@@ -228,6 +228,9 @@ AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
 // Resolve identifier to file path
 WaveDataProvider provider = library.find(identifier);
 String filePath = provider.getKey();  // Actual file path!
+
+// Or, ask the library for the file backing the identifier directly:
+File file = library.fileFor(identifier);
 ```
 
 ### Why This Matters
@@ -236,8 +239,12 @@ String filePath = provider.getKey();  // Actual file path!
 |---------------|--------|---------|
 | WaveDetails from protobuf | `details.getIdentifier()` | MD5 hash (e.g., `a1b2c3d4...`) |
 | WaveDataProvider from library | `provider.getKey()` | File path (e.g., `/samples/kick.wav`) |
+| Library file resolution | `library.fileFor(identifier)` | Backing `File` (or `null`), addressed by content |
 
-**To convert identifier → file path**: `library.find(identifier).getKey()`
+**To convert identifier → file path**: `library.find(identifier).getKey()` — or,
+when only the file is needed, `library.fileFor(identifier)`. The library searches
+the file tree by content identifier, not by filename, so a sample can be renamed
+for display without anything that references it having to know the name.
 
 ## Discovery Package
 
@@ -252,7 +259,7 @@ java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \
   --data ~/.almostrealism/library --clusters 5
 ```
 
-**Note**: To display file paths (not just identifiers), PrototypeDiscovery needs access to the original audio files directory. Use `AudioLibrary.find(identifier).getKey()` to resolve identifiers to paths.
+**Note**: To display file paths (not just identifiers), PrototypeDiscovery needs access to the original audio files directory. Use `AudioLibrary.find(identifier).getKey()` (or, equivalently, `AudioLibrary.fileFor(identifier)`) to resolve identifiers to paths.
 
 ## Usage Examples
 
