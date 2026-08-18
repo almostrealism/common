@@ -152,6 +152,13 @@ public class AudioLibraryPersistence {
 	 * Saves a single {@link WaveDetails} to the given file or directory.
 	 * If {@code destination} is a directory, the file is named using the details identifier.
 	 *
+	 * <p>The raw audio is not embedded. A file written this way sits beside the
+	 * audio it describes, so embedding the samples would store the same audio
+	 * twice in two formats — and anything that loads it back would then hold a
+	 * second copy of the whole recording in memory for as long as it kept the
+	 * details. Only the analysis, which cannot be recovered from the audio
+	 * file, is written here.</p>
+	 *
 	 * @param details     the wave details to serialize
 	 * @param destination file path or directory path
 	 * @throws IOException if writing fails
@@ -162,18 +169,29 @@ public class AudioLibraryPersistence {
 			f = new File(f, Objects.requireNonNull(details.getIdentifier()) + ".bin");
 		}
 
-		encode(details, true).writeTo(new FileOutputStream(f));
+		encode(details, false).writeTo(new FileOutputStream(f));
 	}
 
 	/**
-	 * Loads a single {@link WaveDetails} from the given protobuf file.
+	 * Loads a single {@link WaveDetails} from the given protobuf file, without
+	 * its raw audio.
+	 *
+	 * <p>Files written by {@link #saveWaveDetails(WaveDetails, String)} carry no
+	 * audio to begin with. Those written before that was true do, and the
+	 * samples are dropped here rather than retained: a decoded collection refers
+	 * directly into the message it was parsed from, so keeping one would keep
+	 * the entire recording on the heap for the lifetime of the details.</p>
 	 *
 	 * @param source path to the serialized wave detail file
-	 * @return the decoded WaveDetails
+	 * @return the decoded WaveDetails, whose {@link WaveDetails#getData()} is
+	 *         {@code null}
 	 * @throws IOException if reading or parsing fails
 	 */
 	public static WaveDetails loadWaveDetails(String source) throws IOException {
-		return decode(Audio.WaveDetailData.newBuilder().mergeFrom(new FileInputStream(source)).build());
+		WaveDetails details =
+				decode(Audio.WaveDetailData.newBuilder().mergeFrom(new FileInputStream(source)).build());
+		details.releaseData();
+		return details;
 	}
 
 	/**
