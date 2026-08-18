@@ -120,6 +120,37 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 */
 	public Optional<String> includeGroup(Audio.AudioLayerGroup group,
 										 Function<Audio.AudioLayer, File> wavSource) {
+		return includeGroup(group, wavSource, null);
+	}
+
+	/**
+	 * Saves a group as in {@link #includeGroup(Audio.AudioLayerGroup, Function)},
+	 * with the caller choosing the file each member is written to.
+	 *
+	 * <p>A member's identity is its MD5, carried in the layer's
+	 * {@code audio_ref} and resolved by searching the library for a matching
+	 * content identifier — never by filename. Names are therefore free, and a
+	 * caller that knows what the user called the capture should supply readable
+	 * ones: a library full of {@code a3f2…c1.wav} cannot be browsed, which is
+	 * half of what saving a group is for. Naming policy, including how clashes
+	 * are resolved, stays with the caller that owns the library's layout; this
+	 * method only copies to the file it is given.</p>
+	 *
+	 * <p>A member already present in the library is reused where it lies and is
+	 * not copied again, so {@code targetSource} is consulted only for members
+	 * being added.</p>
+	 *
+	 * @param group        the staged group to save
+	 * @param wavSource    resolves the source WAV file for an audio layer
+	 * @param targetSource resolves the file a newly added member is written to;
+	 *                     {@code null} (or a {@code null} result) falls back to
+	 *                     {@code <libraryRoot>/<md5>.wav}
+	 * @return the stored group key on success, or {@link Optional#empty()} on
+	 *         failure (after rollback)
+	 */
+	public Optional<String> includeGroup(Audio.AudioLayerGroup group,
+										 Function<Audio.AudioLayer, File> wavSource,
+										 Function<Audio.AudioLayer, File> targetSource) {
 		if (group == null || group.getKey().isBlank()) {
 			warn("Cannot save a group with no key");
 			return Optional.empty();
@@ -142,7 +173,8 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 				Audio.AudioLayer layer = group.getLayers(i);
 				if (!layer.hasAudio()) continue;
 
-				String md5 = stripAndStoreLayer(layer, wavSource, wavsWritten, idsAdded);
+				String md5 = stripAndStoreLayer(layer, wavSource, targetSource,
+						wavsWritten, idsAdded);
 				slim.setLayers(i, layer.toBuilder().setAudioRef(md5).build());
 			}
 
@@ -163,6 +195,8 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 *
 	 * @param layer        the audio layer to store
 	 * @param wavSource    per-layer source WAV resolver
+	 * @param targetSource per-layer destination resolver, or {@code null} to
+	 *                     write to {@code <libraryRoot>/<md5>.wav}
 	 * @param wavsWritten  accumulator for WAVs created by this call
 	 * @param idsAdded     accumulator for store ids added by this call
 	 * @return the member's MD5 identifier (its {@code audio_ref})
@@ -171,6 +205,7 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 */
 	private String stripAndStoreLayer(Audio.AudioLayer layer,
 									  Function<Audio.AudioLayer, File> wavSource,
+									  Function<Audio.AudioLayer, File> targetSource,
 									  List<File> wavsWritten, List<String> idsAdded) {
 		File source = wavSource == null ? null : wavSource.apply(layer);
 		if (source == null || !source.isFile()) {
@@ -182,20 +217,29 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 			throw new GroupSaveException("Could not compute identifier for " + source);
 		}
 
-		File target = new File(libraryRoot, md5 + ".wav");
 		boolean storeHadBefore = (library.getStore() != null)
 				? library.getStore().containsKey(md5)
 				: library.get(md5) != null;
-		if (target.exists()) {
-			String existing = identifierOf(target);
-			if (!md5.equals(existing)) {
-				throw new GroupSaveException("A different file already occupies "
-						+ target.getName() + " (expected " + md5 + ", found " + existing + ")");
+
+		/* A member already in the library is referenced where it lies: the
+		   content is identical by construction, and copying it again under a
+		   second name would add a duplicate the user never asked for. */
+		File target = library.fileFor(md5);
+
+		if (target == null) {
+			target = targetSource == null ? null : targetSource.apply(layer);
+			if (target == null) target = new File(libraryRoot, md5 + ".wav");
+
+			if (target.exists()) {
+				String existing = identifierOf(target);
+				if (!md5.equals(existing)) {
+					throw new GroupSaveException("A different file already occupies "
+							+ target.getName() + " (expected " + md5 + ", found " + existing + ")");
+				}
+			} else {
+				copyWav(source, target);
+				wavsWritten.add(target);
 			}
-			// Same MD5 already present: byte-equivalent, nothing to copy.
-		} else {
-			copyWav(source, target);
-			wavsWritten.add(target);
 		}
 
 		// Route through the existing single-sample analysis path so the member

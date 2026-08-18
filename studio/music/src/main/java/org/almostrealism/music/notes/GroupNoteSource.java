@@ -87,6 +87,22 @@ public class GroupNoteSource implements NoteAudioSource {
 	}
 
 	/**
+	 * A group source is rebuilt from the library's saved groups whenever a
+	 * choice is assembled, so it is never written with the scene.
+	 *
+	 * <p>The durable record of a group is its
+	 * {@link org.almostrealism.audio.api.Audio.AudioLayerGroup} in the group
+	 * store; this class is the render-side view of that record and holds live
+	 * member audio, which the scene has no business duplicating. It also has no
+	 * no-argument constructor, so a persisted entry could not be read back —
+	 * and one unreadable source aborts the read of every choice in the file.</p>
+	 *
+	 * @return {@code false}, always
+	 */
+	@Override
+	public boolean isPersistent() { return false; }
+
+	/**
 	 * A group source references no individual file path of its own; member files
 	 * are tracked as standalone library entries. Always returns {@code false}.
 	 *

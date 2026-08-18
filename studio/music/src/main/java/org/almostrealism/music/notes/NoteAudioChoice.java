@@ -17,7 +17,9 @@
 package org.almostrealism.music.notes;
 import org.almostrealism.audio.notes.NoteAudio;
 
+import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import io.almostrealism.relation.Validity;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.music.data.ParameterFunction;
@@ -35,6 +37,7 @@ import org.almostrealism.util.KeyUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -198,14 +201,58 @@ public class NoteAudioChoice implements ConsoleFeatures {
 		this.name = name;
 	}
 
-	/** Returns the list of audio sources in this choice. */
+	/**
+	 * Returns the live list of audio sources in this choice, including any that
+	 * are derived from the library rather than saved with the scene.
+	 *
+	 * <p>This is the list the render path uses. It is not the list that is
+	 * written — see {@link #getPersistentSources()}.</p>
+	 */
+	@JsonIgnore
 	public List<NoteAudioSource> getSources() {
 		return sources;
 	}
 
-	/** Sets the list of audio sources for this choice. */
+	/**
+	 * Returns the sources written with the scene: those reporting
+	 * {@link NoteAudioSource#isPersistent()}.
+	 *
+	 * <p>Sources are serialized polymorphically by class name, so an entry that
+	 * cannot be reconstructed on read aborts the read of the whole choices file
+	 * and every choice in it is lost. Filtering here keeps derived sources —
+	 * which the assembling code re-adds anyway — out of the file entirely.</p>
+	 *
+	 * @return the persistent subset of {@link #getSources()}
+	 */
+	@JsonGetter("sources")
+	public List<NoteAudioSource> getPersistentSources() {
+		if (sources == null) return null;
+
+		return sources.stream()
+				.filter(NoteAudioSource::isPersistent)
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * Sets the list of audio sources for this choice, dropping {@code null}
+	 * entries.
+	 *
+	 * <p>A null can arrive from the reader when a stored source could not be
+	 * constructed and was skipped rather than being allowed to fail the whole
+	 * file (see {@code AudioSceneLoader.defaultMapper()}). Dropping it here
+	 * means the rest of the choice survives instead of failing later on a null
+	 * element.</p>
+	 */
+	@JsonSetter("sources")
 	public void setSources(List<NoteAudioSource> sources) {
-		this.sources = sources;
+		if (sources == null) {
+			this.sources = null;
+			return;
+		}
+
+		this.sources = sources.stream()
+				.filter(Objects::nonNull)
+				.collect(Collectors.toCollection(ArrayList::new));
 	}
 
 	/** Returns {@code true} if this choice is melodic (pitched). */

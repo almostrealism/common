@@ -21,6 +21,7 @@ import org.almostrealism.audio.midi.MidiNotes;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.WesternChromatic;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
@@ -103,6 +104,29 @@ public final class AudioLayerPitch {
 
 		OptionalInt midi = MidiNotes.parseNoteName(trailingToken(layer.getLayerId()));
 		return midi.isPresent() ? midiToKeyPosition(midi.getAsInt()) : null;
+	}
+
+	/**
+	 * Returns the note name identifying a layer's captured pitch — {@code "C4"},
+	 * {@code "D#2"} — in the same form the capture flow already uses in stem
+	 * names.
+	 *
+	 * <p>This is the per-member half of a captured set's naming: a whole capture
+	 * is named once by the user, and each member is distinguished by the note it
+	 * was rendered at. It reads the same authoritative pitch as
+	 * {@link #capturedKeyPosition(Audio.AudioLayer)}, so a name and a rendered
+	 * pitch can never disagree.</p>
+	 *
+	 * @param layer the layer to name; may be {@code null}.
+	 * @return the note name, or empty when the layer carries no recoverable
+	 *         pitch — in which case the caller must supply its own distinguishing
+	 *         suffix, since names have to stay unique within a capture.
+	 */
+	public static Optional<String> capturedNoteName(Audio.AudioLayer layer) {
+		KeyPosition<?> position = capturedKeyPosition(layer);
+		if (position == null || position.position() < 0) return Optional.empty();
+
+		return Optional.of(MidiNotes.noteName(position.position() + MIDI_AT_POSITION_ZERO));
 	}
 
 	/**
