@@ -44,6 +44,7 @@ jobs:
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
       python_changed: ${{ steps.filter.outputs.python_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
+      images_changed: ${{ steps.filter.outputs.images_changed }}
     steps:
       - name: Record pipeline start time
         id: timing
@@ -62,6 +63,7 @@ jobs:
             done
             echo "python_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
+            echo "images_changed=true" >> "$GITHUB_OUTPUT"
           }
 
           # workflow_dispatch always runs the full pipeline
@@ -158,6 +160,24 @@ jobs:
             echo "::notice::Agent volume isolation inputs changed — running validation"
           else
             echo "agent_isolation_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Container image detection. The docker-build job builds the
+          # controller-stack images. Gate it on everything that goes INTO an
+          # image: the Dockerfiles and compose file, the Python sources they
+          # package, and the documentation corpus — ar-manager bakes the docs
+          # in, so a docs-only change really does produce a different image.
+          # This is a path-based flag, not a layer flag.
+          IMAGE_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '*/Dockerfile' 'Dockerfile' '.dockerignore' \
+            'flowtree/runtime/controller/docker-compose.yml' \
+            'tools/mcp/' 'tools/tracker/' 'docs/' 'CLAUDE.md' \
+            '.github/workflows/analysis.yaml' || true)
+          if [ -n "$IMAGE_FILES" ]; then
+            echo "images_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Container image inputs changed — running docker-build"
+          else
+            echo "images_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -792,6 +812,74 @@ jobs:
 
       - name: Validate agent volume isolation
         run: python tools/ci/validate_agent_volume_isolation.py
+
+  # ─── Container Image Build ─────────────────────────────────────────
+  # Builds the controller-stack images so a packaging break surfaces on the PR
+  # rather than at deploy time. Build only — nothing is pushed or started here;
+  # deployment lives in deploy.yaml, which runs only on master.
+  #
+  # This matters most for ar-manager, whose image bakes in the documentation
+  # corpus that grounds memory_recall. A corpus that fails to reach the image
+  # does not break startup — _get_docs degrades silently — so without this job
+  # the feature could ship disabled and look fine.
+  #
+  # Uploads no coverage, so per the analysis.needs rule it is NOT in that list.
+  docker-build:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true' && needs.changes.outputs.images_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Report build context size
+        run: |
+          # The ar-manager context is the repo root; .dockerignore is what
+          # keeps that affordable. A regression here is invisible until
+          # builds get slow, so make the number visible on every run.
+          echo "Context after .dockerignore:" >> "$GITHUB_STEP_SUMMARY"
+          du -sh --exclude=.git --exclude=target --exclude='*/target' . \
+            | awk '{print "- repo working tree: " $1}' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build ar-manager image
+        run: docker build -f tools/mcp/manager/Dockerfile -t ar-manager:ci .
+
+      - name: Verify the documentation corpus reached the image
+        run: |
+          # Assert the corpus is present and non-trivial. An empty or missing
+          # corpus would leave memory_recall's documentation grounding silently
+          # disabled, which no startup check would catch.
+          COUNT=$(docker run --rm --entrypoint sh ar-manager:ci -c \
+            'find "$AR_DOCS_DIR" -name "*.md" -o -name "*.html" | wc -l')
+          echo "Documentation files in image: $COUNT"
+          echo "- docs corpus files: $COUNT" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$COUNT" -lt 50 ]; then
+            echo "::error::Documentation corpus missing or truncated in the ar-manager image ($COUNT files)."
+            exit 1
+          fi
+          # The prune must have removed the Java sources it copied in.
+          LEAKED=$(docker run --rm --entrypoint sh ar-manager:ci -c \
+            'find /app/docs-root -name "*.java" | wc -l')
+          if [ "$LEAKED" -ne 0 ]; then
+            echo "::error::${LEAKED} Java sources leaked into the image docs corpus."
+            exit 1
+          fi
+
+      - name: Verify the server starts in the packaged layout
+        run: |
+          # Catches the ModuleNotFoundError class of packaging break that
+          # test_dockerfile_packaging.py guards statically.
+          docker run --rm --entrypoint python ar-manager:ci -c \
+            'import ast, sys; ast.parse(open("/app/server.py").read()); print("server.py present and parseable")'
+
+      - name: Build ar-memory image
+        run: docker build -f tools/mcp/memory/Dockerfile -t ar-memory:ci tools/mcp/memory
+
+      - name: Build ar-tracker image
+        run: docker build -f tools/tracker/Dockerfile -t ar-tracker:ci tools/tracker
 
   # ─── Flowtree Tests ────────────────────────────────────────────────
   # Runs in parallel with the test matrix after the validation gates.
@@ -2378,6 +2466,7 @@ jobs:
       - checkstyle
       - python-tests
       - agent-volume-isolation
+      - docker-build
       - test-flowtree
       - test
       - test-media
@@ -2402,6 +2491,7 @@ jobs:
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
           PYTHON_TESTS_RESULT: ${{ needs.python-tests.result }}
           AGENT_VOLUME_ISOLATION_RESULT: ${{ needs.agent-volume-isolation.result }}
+          DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
           TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
           TEST_RESULT: ${{ needs.test.result }}
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
@@ -2438,6 +2528,7 @@ jobs:
           check_job "duplicate-code-check"    "$DUPLICATE_CODE_RESULT"
           check_job "python-tests"            "$PYTHON_TESTS_RESULT"
           check_job "agent-volume-isolation"  "$AGENT_VOLUME_ISOLATION_RESULT"
+          check_job "docker-build"            "$DOCKER_BUILD_RESULT"
           check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
           check_job "test"                    "$TEST_RESULT"
           check_job "test-media"              "$TEST_MEDIA_RESULT"
@@ -2474,6 +2565,7 @@ jobs:
           echo "| checkstyle | ${{ needs.checkstyle.result }} (passed=${{ needs.checkstyle.outputs.passed }}) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| python-tests | ${{ needs.python-tests.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-volume-isolation | ${{ needs.agent-volume-isolation.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| docker-build | ${{ needs.docker-build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test | ${{ needs.test.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"

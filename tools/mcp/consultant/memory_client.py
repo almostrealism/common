@@ -22,7 +22,6 @@ if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 
 from memory_http_client import MemoryHTTPClient
-from memory_text import encode_dual_source
 
 
 class MemoryClient:
@@ -200,25 +199,27 @@ class MemoryClient:
         Returns:
             The created entry with both texts accessible.
         """
-        # Embed on the reformulated text (better search quality) but
-        # store a JSON payload that includes both versions.
-        dual_source = encode_dual_source(original, source)
+        # The dual encoding itself lives on MemoryHTTPClient.store_dual, so
+        # every writer of a reformulated memory produces the same shape.
+        # This wrapper adds only what is local to the Consultant: git-context
+        # auto-detection and degradation to an error dict.
+        if not repo_url or not branch:
+            detected_url, detected_branch = _detect_git_context_safe()
+            repo_url = repo_url or detected_url
+            branch = branch or detected_branch
 
-        entry = self.store(
-            content=reformulated,
-            namespace=namespace,
-            tags=tags,
-            source=dual_source,
-            repo_url=repo_url,
-            branch=branch,
-        )
-
-        if "error" not in entry:
-            # Augment the returned dict with both versions for the caller
-            entry["original"] = original
-            entry["reformulated"] = reformulated
-
-        return entry
+        client = self._get_client()
+        if client is None:
+            return {"error": "ar-memory server unavailable"}
+        try:
+            return client.store_dual(
+                original=original, reformulated=reformulated,
+                repo_url=repo_url or "", branch=branch or "",
+                namespace=namespace, tags=tags, source=source,
+            )
+        except ConnectionError as e:
+            log.warning("Memory store failed: %s", e)
+            return {"error": str(e)}
 
     def list_entries(
         self,

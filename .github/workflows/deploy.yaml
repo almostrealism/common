@@ -1,0 +1,142 @@
+name: "Deploy Controller Stack"
+
+# Rebuilds and restarts the FlowTree controller-stack containers on the host
+# that runs them.
+#
+# Why this is a separate workflow_run workflow:
+# The deployment is gated on a GitHub Environment. Any job that declares
+# `environment:` inside a pull_request run attaches a deployment status to the
+# PR head commit; a pending deployment that is later cancelled then surfaces as
+# a spurious "had a problem deploying" red X on the PR. This is the same reason
+# "Auto-Resolve Submit" was split out — see the comment at the top of
+# auto-resolve-submit.yaml. Running from workflow_run puts the deployment in the
+# default-branch context, where it belongs.
+#
+# Why deployment exists at all: the ar-manager image bakes in the documentation
+# corpus that grounds memory_recall. Under hand-run deploys that corpus drifts
+# from the repository with no signal — answers stay confident while going stale.
+#
+# Only master, and only after a green pipeline.
+
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      skip_drain:
+        description: 'Deploy without waiting for in-flight agent jobs to finish (they will lose their ar-manager connection)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# One deploy at a time. Do NOT cancel in progress: interrupting a half-finished
+# container rebuild is worse than queueing behind it.
+concurrency:
+  group: deploy-controller-stack
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.conclusion == 'success')
+    # Native macOS runner on the host that owns the stack, with Docker
+    # available to the runner user. The label is deliberately distinct from
+    # `ar-ci` (the same reasoning as `ar-ci-cl`): a deploy must not queue
+    # behind the macOS test lane, and the test lane must not pick up deploys.
+    runs-on: [self-hosted, macos, ar-deploy]
+    # Approval gate. Configure under: Settings -> Environments -> production
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          # workflow_run does not check out the triggering ref by default.
+          ref: master
+          fetch-depth: 0
+
+      - name: Stop accepting new agent jobs
+        id: quiesce
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+        run: |
+          # Close intake first so the set of in-flight jobs can only shrink
+          # while we wait for it below.
+          if curl -fsS -X POST "$CONTROLLER_URL/api/config/accept-automated-jobs" \
+               -H 'Content-Type: application/json' -d '{"accept":false}' >/dev/null; then
+            echo "reopen=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Job intake closed for the duration of the deploy"
+          else
+            # A controller that is already down needs no draining, and must not
+            # block a deploy that may be the thing that fixes it.
+            echo "reopen=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Controller unreachable — skipping drain"
+          fi
+
+      - name: Wait for in-flight agent jobs to finish
+        if: >-
+          steps.quiesce.outputs.reopen == 'true' &&
+          github.event.inputs.skip_drain != 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+          DRAIN_TIMEOUT_SECONDS: '1800'
+        run: ./tools/ci/drain-agent-jobs.sh
+
+      - name: Build Maven artifacts
+        # rebuild.sh builds the controller image from JARs produced here, so
+        # the Maven build has to happen before it, not inside it.
+        run: mvn -B clean install -DskipTests
+
+      - name: Rebuild and restart the controller stack
+        # --cache reuses Docker layers; a full --no-cache rebuild of four
+        # images on every master merge is not worth the wall-clock.
+        run: ./flowtree/runtime/rebuild.sh --cache
+
+      - name: Verify the stack came back up
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+          MANAGER_URL: ${{ vars.AR_MANAGER_LOCAL_URL || 'http://localhost:8010' }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$CONTROLLER_URL/api/health" >/dev/null \
+               && curl -fsS "$MANAGER_URL/_health" >/dev/null; then
+              echo "::notice::Controller and ar-manager healthy"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Stack did not become healthy within 300s"
+          exit 1
+
+      - name: Verify the documentation corpus is live
+        env:
+          MANAGER_URL: ${{ vars.AR_MANAGER_LOCAL_URL || 'http://localhost:8010' }}
+        run: |
+          # The corpus reaching the image is checked at build time; this
+          # confirms the container actually running is the one that has it.
+          COUNT=$(docker compose -f flowtree/runtime/controller/docker-compose.yml \
+            exec -T ar-manager sh -c 'find $AR_DOCS_DIR -name "*.md" | wc -l' || echo 0)
+          echo "::notice::Documentation files in the running ar-manager: $COUNT"
+          if [ "$COUNT" -lt 50 ]; then
+            echo "::error::Running ar-manager has no usable documentation corpus ($COUNT files)."
+            exit 1
+          fi
+
+      - name: Resume accepting agent jobs
+        # always(): intake must be reopened even when a step above failed,
+        # or a failed deploy leaves the controller permanently quiesced.
+        if: always() && steps.quiesce.outputs.reopen == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+        run: |
+          curl -fsS -X POST "$CONTROLLER_URL/api/config/accept-automated-jobs" \
+            -H 'Content-Type: application/json' -d '{"accept":true}' >/dev/null \
+            && echo "::notice::Job intake reopened" \
+            || echo "::error::FAILED to reopen job intake — do this manually: POST {\"accept\":true} to $CONTROLLER_URL/api/config/accept-automated-jobs"

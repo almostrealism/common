@@ -16,6 +16,11 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 try:
+    from .memory_text import encode_dual_source
+except ImportError:
+    from memory_text import encode_dual_source
+
+try:
     from .health import HealthCache
 except ImportError:
     # Loaded by path rather than as a package (see consultant/inference.py).
@@ -112,6 +117,53 @@ class MemoryHTTPClient:
             payload["source"] = source
 
         return self._post("/api/memory/store", payload)
+
+    def store_dual(
+        self,
+        original: str,
+        reformulated: str,
+        repo_url: str,
+        branch: str,
+        namespace: str = "default",
+        tags: Optional[list[str]] = None,
+        source: Optional[str] = None,
+    ) -> dict:
+        """Store a memory that carries both the author's text and a rewrite.
+
+        The rewrite becomes the entry's ``content`` (it is what gets embedded
+        and ranked) and the author's text is preserved in the ``source``
+        wrapper, so retrieval can return either. Every writer of a
+        reformulated memory goes through here, which is what keeps the dual
+        encoding identical across the servers that produce them.
+
+        Args:
+            original: The note as its author wrote it.
+            reformulated: The rewritten version to index on.
+            repo_url: Repository URL (required).
+            branch: Branch name (required).
+            namespace: Logical grouping.
+            tags: Optional tags for categorical filtering.
+            source: The caller's own source identifier, preserved inside
+                the wrapper alongside the original text.
+
+        Returns:
+            The created entry, augmented with ``original`` and
+            ``reformulated`` so the caller can echo both back.
+        """
+        entry = self.store(
+            content=reformulated,
+            repo_url=repo_url,
+            branch=branch,
+            namespace=namespace,
+            tags=tags,
+            source=encode_dual_source(original, source),
+        )
+
+        if isinstance(entry, dict) and "error" not in entry:
+            entry["original"] = original
+            entry["reformulated"] = reformulated
+
+        return entry
 
     def search(
         self,

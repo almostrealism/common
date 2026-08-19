@@ -124,16 +124,19 @@ class ResetOnStoreTests(unittest.TestCase):
             self.assertEqual(d6["action"], "allow")
             self.assertEqual(d6["new_state"]["calls_since_last_store"], 1)
 
-    def test_consultant_remember_also_resets(self):
+    def test_retired_consultant_remember_does_not_reset(self):
+        """``mcp__ar-consultant__remember`` was removed when memory
+        consolidated onto ar-manager. It used to reset the counter; a name
+        that no longer denotes a store must not, or an agent calling a dead
+        tool would silently stop being reminded to store anything."""
         with _with_env({"AR_MEMORY_REMIND_CALLS_THRESHOLD": "2"}):
             core = _load_core()
             state = _fresh_state()
             d1 = core.decide("Bash", 1000, state)
             d2 = core.decide("Bash", 1001, d1["new_state"])
             d3 = core.decide("mcp__ar-consultant__remember", 1002, d2["new_state"])
-            self.assertEqual(d3["action"], "allow")
-            self.assertEqual(d3["new_state"]["calls_since_last_store"], 0)
-            self.assertEqual(d3["new_state"]["last_store_ts"], 1002)
+            self.assertEqual(d3["new_state"]["calls_since_last_store"], 3)
+            self.assertEqual(d3["new_state"]["last_store_ts"], 0)
 
     def test_store_does_not_count_as_side_effect(self):
         # A memory_store should leave the counter at 0, not 1.

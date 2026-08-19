@@ -322,6 +322,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"project_commit_plan",
 			"project_read_plan",
 			"memory_recall",
+			"memory_namespaces",
 			"workstream_context",
 			"memory_store",
 			"send_message",
@@ -557,10 +558,22 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " and callers can only ever see the original memory text",
 			memoryRecallParams.contains("reformulated"));
 
+		List<String> memoryNamespacesParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "memory_namespaces");
+		assertTrue("memory_namespaces must declare scope in signature; without it"
+				+ " callers cannot widen past the current repository and the tool"
+				+ " cannot answer \"which namespace did that note land in\" across"
+				+ " repositories",
+			memoryNamespacesParams.contains("scope"));
+
 		List<String> memoryStoreParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_store");
 		assertTrue("memory_store must declare content in signature",
 			memoryStoreParams.contains("content"));
+		assertTrue("memory_store must declare reformulate in signature; without it"
+				+ " the per-call reformulation opt-in is absent from the MCP schema"
+				+ " and callers can only take the repository default",
+			memoryStoreParams.contains("reformulate"));
 
 		List<String> sendMessageParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "send_message");
