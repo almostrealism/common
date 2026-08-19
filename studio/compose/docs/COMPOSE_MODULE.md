@@ -7,6 +7,8 @@ This module provides audio persistence, discovery, and composition tools.
 | Class | Purpose |
 |-------|---------|
 | `AudioLibraryPersistence` | Save/load AudioLibrary data to/from Protocol Buffer format |
+| `AudioLayerGroupLibrary` | Persist `AudioLayerGroup`s as first-class library entries, content-addressed by MD5 |
+| `AudioLayerPitch` | Single, authoritative accessor for the captured pitch of an `AudioLayer` |
 | `LibraryDestination` | Manages batched protobuf file paths (PREFIX_0.bin, PREFIX_1.bin, etc.) |
 | `PrototypeDiscovery` | Console app and reusable API for finding representative samples using graph algorithms |
 
@@ -154,6 +156,67 @@ AudioLibrary library = AudioLibraryPersistence.loadLibrary(
 - Pre-computed similarity scores
 
 **NOT stored**: File paths (resolved at runtime via `AudioLibrary.find()`)
+
+### Layer Groups
+
+`AudioLayerGroupLibrary` persists `Audio.AudioLayerGroup`s as first-class
+library entries saved beside their member WAVs. Each inline-audio member
+is routed through the existing single-sample analysis path so it lands
+in the main details store, findable by similarity like any other sample;
+the layer is rewritten to carry its MD5 via `audio_ref` instead of the
+bulky inline payload. The save is all-or-nothing: a mid-group failure
+rolls back every WAV written and every index entry added.
+
+A member's identity is its MD5, not its filename, so the
+two-argument `includeGroup(group, wavSource)` writes members to
+`<libraryRoot>/<md5>.wav`. The three-argument overload
+`includeGroup(group, wavSource, targetSource)` lets the caller choose the
+file each member is written to — the right place to put readable names,
+since a library full of `a3f2…c1.wav` cannot be browsed. A member already
+present in the library is reused where it lies and is not copied again;
+`targetSource` is consulted only when the member is new.
+
+The `AudioLayerPitch` helper is the single, authoritative accessor for
+the captured pitch of an `AudioLayer`; it returns a `KeyPosition` (the
+project's internal pitch type, strictly more general than MIDI), and reads
+the live per-member name as `capturedNoteName(layer)` — used by stem
+naming so a name and a rendered pitch can never disagree.
+
+### Sidecar WaveDetails Files
+
+`AudioLibraryPersistence.saveWaveDetails` writes a sidecar file alongside
+the audio it describes. The raw audio is **not** embedded — only the
+analysis (frequency bins, feature vectors, similarity scores, metadata) —
+because the audio is already on disk in the file beside it. The matching
+`loadWaveDetails` accepts both modern files (no audio) and legacy files
+that still carry it, and returns a `WaveDetails` whose `getData()` is
+`null` either way. A `WaveDetails` that will only be read for display or
+metadata can additionally call `releaseData()` to drop the raw audio and
+free that memory.
+
+## Choices File Robustness
+
+Every scene save writes a whole-file JSON document (the `NoteAudioChoice`
+list, scene settings, etc.); every scene load reads it back. The polymorphic
+entries are tagged by class name, so a stored entry that cannot be
+reconstructed — the class was renamed, moved, or removed since the file
+was written, or the entry's no-arg constructor is unusable — would
+otherwise abort the whole read and discard every other choice in the file.
+
+`AudioSceneLoader.defaultMapper()` is configured to skip rather than fail
+on these entries:
+
+- Entries naming a class Jackson cannot resolve are dropped via a
+  `DeserializationProblemHandler` and reported through the console.
+- Entries naming a class that exists but cannot be instantiated fall
+  through the same handler and the same report.
+- The corresponding `setSources(...)` setter filters the `null`s out of
+  the materialized list, so the rest of the choice survives.
+
+Sources that are *derived* from library state — e.g. `GroupNoteSource`,
+which is rebuilt from the saved group store on every assemble — are
+excluded from the file entirely via `NoteAudioSource.isPersistent()` and
+the matching `NoteAudioChoice.getPersistentSources()` getter.
 
 ## See Also
 
