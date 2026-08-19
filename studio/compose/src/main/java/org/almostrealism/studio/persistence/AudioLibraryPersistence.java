@@ -169,7 +169,9 @@ public class AudioLibraryPersistence {
 			f = new File(f, Objects.requireNonNull(details.getIdentifier()) + ".bin");
 		}
 
-		encode(details, false).writeTo(new FileOutputStream(f));
+		try (FileOutputStream out = new FileOutputStream(f)) {
+			encode(details, false).writeTo(out);
+		}
 	}
 
 	/**
