@@ -259,7 +259,7 @@ java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \
   --data ~/.almostrealism/library --clusters 5
 ```
 
-**Note**: To display file paths (not just identifiers), PrototypeDiscovery needs access to the original audio files directory. Use `AudioLibrary.find(identifier).getKey()` (or, equivalently, `AudioLibrary.fileFor(identifier)`) to resolve identifiers to paths.
+**Note**: To display file paths (not just identifiers), PrototypeDiscovery needs access to the original audio files directory. Use `AudioLibrary.find(identifier).getKey()` when you specifically need the provider's path string. `AudioLibrary.fileFor(identifier)` is a related convenience that returns the backing `File` directly (or `null` when the identifier is blank, unknown, or names a file that is no longer present) &mdash; pick whichever result type matches what your code does with the path next.
 
 ## Usage Examples
 

@@ -99,8 +99,12 @@ To make PrototypeDiscovery display file paths instead of identifiers, you need t
 1. Accept an additional `--samples` argument for the audio files directory
 2. Create an `AudioLibrary` with that directory
 3. Load protobuf data into the library
-4. Use `library.find(identifier).getKey()` (or, equivalently,
-   `library.fileFor(identifier)`) to get file paths
+4. Use `library.find(identifier).getKey()` to get the provider's path string,
+   or `library.fileFor(identifier)` when you want the backing `File` directly.
+   Note that `fileFor` returns a nullable `File` (null when the identifier is
+   blank, unknown, or names a file that is no longer present), so it is not a
+   drop-in replacement for callers that need a string path or expect a
+   non-null result.
 
 ```java
 // In PrototypeDiscovery, to get the file path:

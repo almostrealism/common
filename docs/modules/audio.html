@@ -286,14 +286,19 @@ library.allDetails().forEach(details -> {
         String filePath = provider.getKey();  // Actual file path
         System.out.println(filePath + ": " + details.getFrameCount() + " frames");
     }
-});
 
-// Or ask the library for the file backing the identifier directly
-File file = library.fileFor(identifier);</pre>
+    // Or ask the library for the file backing the identifier directly.
+    // fileFor(...) returns a nullable File: null when the identifier is blank,
+    // unknown, or names a file that is no longer present.
+    File file = library.fileFor(identifier);
+    if (file != null) {
+        System.out.println("Backing file: " + file.getAbsolutePath());
+    }
+});</pre>
                 </div>
 
                 <div class="tip">
-                    <strong>Important:</strong> Protobuf persistence stores only the identifier (MD5 hash), not file paths. You need BOTH the protobuf data AND a file tree to resolve identifiers to paths using <code>library.find(identifier).getKey()</code> or, equivalently, <code>library.fileFor(identifier)</code>.
+                    <strong>Important:</strong> Protobuf persistence stores only the identifier (MD5 hash), not file paths. You need BOTH the protobuf data AND a file tree to resolve identifiers to paths using <code>library.find(identifier).getKey()</code>. <code>library.fileFor(identifier)</code> is a related convenience that returns the backing <code>File</code> directly (or <code>null</code> if the identifier is blank, unknown, or the file is gone) &mdash; use it when a <code>File</code> is what you actually want, not when you specifically need the provider's path string.
                 </div>
 
                 <h3>org.almostrealism.audio.tone</h3>
