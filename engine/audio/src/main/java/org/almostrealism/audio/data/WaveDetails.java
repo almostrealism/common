@@ -214,6 +214,33 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
+	 * Releases the raw audio sample data, leaving the derived frequency and
+	 * feature data intact.
+	 *
+	 * <p>Raw samples are by far the largest thing a WaveDetails carries, and
+	 * unlike the frequency and feature data they are not derived from anything:
+	 * the audio file they were read from is an equivalent copy. A WaveDetails
+	 * that was loaded to be <em>read</em> — for display, for its metadata, for
+	 * its analysis — can therefore drop them immediately and recover them from
+	 * that file if they are ever wanted again.</p>
+	 *
+	 * <p>The memory is destroyed rather than left for the collector. A
+	 * collection deserialized from a message commonly refers directly into that
+	 * message rather than copying out of it, so dropping the reference alone
+	 * keeps the whole parsed message alive until finalization runs.</p>
+	 *
+	 * <p>Call this only on a WaveDetails that is not shared with anything else.
+	 * Afterwards {@link #getData()} is {@code null}, and any collection it
+	 * previously returned can no longer be read.</p>
+	 */
+	public void releaseData() {
+		if (data == null) return;
+
+		data.destroy();
+		data = null;
+	}
+
+	/**
 	 * Returns whether this sample contains only silence.
 	 *
 	 * @return true if silent
