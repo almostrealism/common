@@ -190,8 +190,12 @@ public class AudioLibraryPersistence {
 	 * @throws IOException if reading or parsing fails
 	 */
 	public static WaveDetails loadWaveDetails(String source) throws IOException {
-		WaveDetails details =
-				decode(Audio.WaveDetailData.newBuilder().mergeFrom(new FileInputStream(source)).build());
+		WaveDetails details;
+
+		try (FileInputStream in = new FileInputStream(source)) {
+			details = decode(Audio.WaveDetailData.newBuilder().mergeFrom(in).build());
+		}
+
 		details.releaseData();
 		return details;
 	}
