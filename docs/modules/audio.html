@@ -261,7 +261,7 @@
                     </div>
                     <div class="class-item">
                         <h4>WaveDetails</h4>
-                        <p>Analyzed metadata for a sample: sample rate, channels, frame count, frequency analysis data (FFT), feature data, and pre-computed similarity scores.</p>
+                        <p>Analyzed metadata for a sample: sample rate, channels, frame count, frequency analysis data (FFT), feature data, and pre-computed similarity scores. The raw audio is held by <code>getData()</code> only when explicitly loaded; sidecar files written by <code>AudioLibraryPersistence.saveWaveDetails</code> do not embed audio, and <code>loadWaveDetails</code> returns a WaveDetails whose <code>getData()</code> is <code>null</code>. Call <code>releaseData()</code> to drop a loaded sample's raw audio when only the analysis is needed.</p>
                     </div>
                     <div class="class-item">
                         <h4>AudioSimilarityGraph</h4>
