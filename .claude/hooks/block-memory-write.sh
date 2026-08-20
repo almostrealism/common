@@ -8,8 +8,8 @@
 # to other sessions, to other agents (including FlowTree agents), and to
 # the ar-consultant docs corpus. For this project, memories MUST be
 # stored via the shared ar-memory service — use:
-#   mcp__ar-consultant__remember / mcp__ar-consultant__recall (interactive)
-#   mcp__ar-manager__memory_store / mcp__ar-manager__memory_recall (jobs)
+#   mcp__ar-manager__memory_store / mcp__ar-manager__memory_recall
+# for every session, interactive or job.
 #
 # Exit 0 → allow
 # Exit 2 → BLOCK (stderr shown to the model as reason)
@@ -77,20 +77,23 @@ session, agent, and tool in the project.
 
 The ONLY valid memory tools for this project are:
 
-  Interactive sessions (you, right now):
-    mcp__ar-consultant__remember   — store a memory (with namespace, tags)
-    mcp__ar-consultant__recall     — semantic search over memories
+    mcp__ar-manager__memory_store      — store a memory (namespace, tags)
+    mcp__ar-manager__memory_recall     — semantic search over memories
+    mcp__ar-manager__memory_namespaces — list namespaces and their activity
+    mcp__ar-manager__workstream_context — the full narrative of a branch
 
-  FlowTree job sessions (agent containers):
-    mcp__ar-manager__memory_store  — store a memory
-    mcp__ar-manager__memory_recall — semantic search over memories
+They are the same tools in every session, interactive or job. They
+persist to the shared ar-memory service, so other sessions / agents /
+tools can find what you stored. The built-in file-based system cannot
+do that.
 
-These tools persist to the shared ar-memory service, so other
-sessions / agents / tools can find what you stored. The built-in
-file-based system cannot do that.
+ar-manager runs remotely and cannot see this working directory, so it
+takes the repo_url and branch you send at face value. Read them from
+git — never from the harness gitStatus snapshot, which goes stale the
+moment it is captured.
 
 If you were about to store a user-profile, feedback, project, or
-reference memory: call mcp__ar-consultant__remember with an
+reference memory: call mcp__ar-manager__memory_store with an
 appropriate namespace instead.
 EOF
     exit 2

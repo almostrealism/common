@@ -1,9 +1,16 @@
 """
-Documentation retrieval for the AR Consultant.
+Documentation retrieval shared by the AR MCP servers.
 
 Reuses the search logic from the ar-docs MCP server to find relevant
 documentation sections. Operates directly on the filesystem rather than
-calling ar-docs over MCP, avoiding an extra process hop.
+calling ar-docs over MCP, avoiding an extra process hop. There is no
+precomputed index: files are globbed and scored per query, so the corpus
+is whatever is on disk at the time of the call.
+
+Originally part of ar-consultant; moved to tools/mcp/common/ so ar-manager
+can ground its memory retrieval in the same documentation. ar-manager runs
+from a container image rather than a checkout, which is what ``AR_DOCS_DIR``
+below exists for.
 """
 
 import os
@@ -12,9 +19,10 @@ from pathlib import Path
 from typing import Optional
 
 
-# Resolve project root: AR_DOCS_DIR env var takes priority (required
-# when running as a pushed tool outside the common repo), otherwise
-# fall back to the standard path relative to this script.
+# Resolve project root: AR_DOCS_DIR env var takes priority (required when
+# running outside a checkout of the common repo — notably the ar-manager
+# container, which bakes the corpus in at a fixed path), otherwise fall back
+# to the standard path relative to this script.
 SCRIPT_DIR = Path(__file__).parent
 _env_docs = os.environ.get("AR_DOCS_DIR", "").strip()
 if _env_docs:

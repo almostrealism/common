@@ -44,6 +44,8 @@ ar-compose
 | `AudioComposer` | `org.almostrealism.studio.ml` | ML-based audio generation |
 | `AudioLibraryPersistence` | `org.almostrealism.studio.persistence` | Save/load library to Protocol Buffer |
 | `LibraryDestination` | `org.almostrealism.studio.persistence` | Batched protobuf file management |
+| `AudioLayerGroupLibrary` | `org.almostrealism.studio.persistence` | Persist `AudioLayerGroup`s as first-class library entries |
+| `AudioLayerPitch` | `org.almostrealism.studio.persistence` | Single accessor for the captured pitch of an `AudioLayer` |
 | `PrototypeDiscovery` | `org.almostrealism.studio.discovery` | Find representative samples via graph algorithms |
 
 ## AudioScene: The Central Orchestrator

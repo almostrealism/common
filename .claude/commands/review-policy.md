@@ -10,7 +10,7 @@ Perform a full code policy review of changed files. Checks:
 
 ## Steps
 
-1. `mcp__ar-consultant__recall` with query "producer pattern enforcement policy violations"
+1. `mcp__ar-manager__memory_recall` with query "producer pattern enforcement policy violations"
 2. Run the build validator for all policy checks:
    ```
    mcp__ar-build-validator__start_validation checks:["checkstyle","code_policy","test_timeouts","duplicate_code"]
@@ -19,6 +19,6 @@ Perform a full code policy review of changed files. Checks:
    `mcp__ar-build-validator__get_validation_violations` for structured file:line results.
    Use `skip_build:true` if the project is already compiled.
 3. Report violations with specific file:line locations and suggested fixes
-4. Store findings in memory: `mcp__ar-consultant__remember`
+4. Store findings in memory: `mcp__ar-manager__memory_store`
 
 $ARGUMENTS

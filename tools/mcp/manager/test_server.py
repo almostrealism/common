@@ -2975,6 +2975,404 @@ class TestMemoryBranchContext(unittest.TestCase):
         self.assertNotIn("jobs", result)
 
 
+class TestDefaultBranch(unittest.TestCase):
+    """Resolution of a repository's default branch.
+
+    Assuming "master" when no workstream supplies a baseBranch makes every
+    Compare API call against a "main"-default repository 404, which surfaces
+    to the caller as "no commits" rather than as an error.
+    """
+
+    def setUp(self):
+        server.github_api._default_branch_cache.clear()
+        self.addCleanup(server.github_api._default_branch_cache.clear)
+
+    @patch.object(server.github_api, "_github_request")
+    def test_returns_reported_default(self, mock_request):
+        mock_request.return_value = {"default_branch": "main"}
+        self.assertEqual(
+            server.github_api.default_branch("org", "repo"), "main")
+
+    @patch.object(server.github_api, "_github_request")
+    def test_caches_successful_lookup(self, mock_request):
+        mock_request.return_value = {"default_branch": "main"}
+        server.github_api.default_branch("org", "repo")
+        server.github_api.default_branch("org", "repo")
+        mock_request.assert_called_once()
+
+    @patch.object(server.github_api, "_github_request")
+    def test_falls_back_when_github_errors(self, mock_request):
+        mock_request.return_value = {"ok": False, "error": "unreachable"}
+        self.assertEqual(
+            server.github_api.default_branch("org", "repo"), "master")
+
+    @patch.object(server.github_api, "_github_request")
+    def test_does_not_cache_a_failure(self, mock_request):
+        mock_request.return_value = {"ok": False, "error": "unreachable"}
+        server.github_api.default_branch("org", "repo")
+        mock_request.return_value = {"default_branch": "main"}
+        # A transient outage must not pin "master" for the whole TTL.
+        self.assertEqual(
+            server.github_api.default_branch("org", "repo"), "main")
+
+    @patch.object(server.github_api, "_github_request")
+    def test_honours_explicit_fallback(self, mock_request):
+        mock_request.return_value = {}
+        self.assertEqual(
+            server.github_api.default_branch("org", "repo", fallback="trunk"),
+            "trunk")
+
+
+class TestMemoryRecallDocBlending(unittest.TestCase):
+    """Documentation grounding on the memory read path.
+
+    This is what let the Consultant's ``recall`` be retired: it is the one
+    capability ar-manager's ``memory_recall`` lacked. Both the corpus and the
+    model are optional — losing either must cost part of the summary and never
+    the memories.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server.repo_config._cache = {}
+        server.repo_config._cache_expires = float("inf")
+
+    def tearDown(self):
+        server.repo_config._cache = None
+        server.repo_config._cache_expires = 0.0
+
+    def _memories(self):
+        client = MagicMock()
+        client.search.return_value = [
+            {"id": "m1", "content": "a note", "score": 0.1},
+        ]
+        return client
+
+    @patch.object(server, "_get_docs")
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_doc_context_reaches_the_prompt(
+            self, mock_client_fn, mock_llm_fn, mock_docs_fn):
+        mock_client_fn.return_value = self._memories()
+        docs = MagicMock()
+        docs.get_context_for_query.return_value = {
+            "context": "DOC CONTEXT HERE",
+            "markdown_results": [{"file": "docs/internals/thing.md"}],
+            "html_refs": ["docs/modules/graph.html"],
+        }
+        mock_docs_fn.return_value = docs
+        llm = MagicMock()
+        llm.synthesize.return_value = Synthesis("a summary", "fake")
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_recall(
+            query="how does X work", repo_url="https://github.com/org/repo")
+
+        prompt = llm.synthesize.call_args[0][0]
+        self.assertIn("DOC CONTEXT HERE", prompt)
+        self.assertIn("Relevant Documentation", prompt)
+        self.assertEqual(
+            result["doc_references"],
+            ["docs/internals/thing.md", "docs/modules/graph.html"])
+
+    @patch.object(server, "_get_docs", return_value=None)
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_summary_still_produced_without_a_corpus(
+            self, mock_client_fn, mock_llm_fn, _):
+        mock_client_fn.return_value = self._memories()
+        llm = MagicMock()
+        llm.synthesize.return_value = Synthesis("a summary", "fake")
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_recall(
+            query="q", repo_url="https://github.com/org/repo")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["summary"], "a summary")
+        self.assertNotIn("doc_references", result)
+        self.assertNotIn("Relevant Documentation",
+                         llm.synthesize.call_args[0][0])
+
+    @patch.object(server, "_get_docs")
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_memories_survive_when_only_the_model_is_gone(
+            self, mock_client_fn, _, mock_docs_fn):
+        mock_client_fn.return_value = self._memories()
+        docs = MagicMock()
+        docs.get_context_for_query.return_value = {
+            "context": "DOC", "markdown_results": [{"file": "docs/a.md"}],
+            "html_refs": [],
+        }
+        mock_docs_fn.return_value = docs
+
+        result = server.memory_recall(
+            query="q", repo_url="https://github.com/org/repo")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertTrue(result["degraded"])
+        # The corpus was still consulted, so the references remain useful.
+        self.assertEqual(result["doc_references"], ["docs/a.md"])
+
+    @patch.object(server, "_get_docs")
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_corpus_read_error_does_not_fail_the_call(
+            self, mock_client_fn, mock_llm_fn, mock_docs_fn):
+        mock_client_fn.return_value = self._memories()
+        docs = MagicMock()
+        docs.get_context_for_query.side_effect = OSError("corpus unreadable")
+        mock_docs_fn.return_value = docs
+        llm = MagicMock()
+        llm.synthesize.return_value = Synthesis("a summary", "fake")
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_recall(
+            query="q", repo_url="https://github.com/org/repo")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertNotIn("doc_references", result)
+
+
+class TestMemoryNamespaces(unittest.TestCase):
+    """Namespace enumeration — the ar-manager counterpart of the Consultant's
+    ``recall_namespaces``, without which Phase C would strand that tool."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_get_memory_client")
+    def test_lists_namespaces_scoped_to_repo(self, mock_client_fn):
+        client = MagicMock()
+        client.namespace_stats.return_value = [
+            {"namespace": "progress", "count": 3, "latest_created_at": "2026-08-18"},
+            {"namespace": "bugs", "count": 1, "latest_created_at": "2026-08-01"},
+        ]
+        mock_client_fn.return_value = client
+
+        result = server.memory_namespaces(
+            repo_url="https://github.com/org/repo", branch="feature/x")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["namespaces"][0]["namespace"], "progress")
+        kwargs = client.namespace_stats.call_args[1]
+        self.assertEqual(kwargs["repo_url"], "https://github.com/org/repo")
+        # Repo scope keeps an explicitly supplied branch; it only declines to
+        # infer one. This matches memory_recall, which shares the resolver.
+        self.assertEqual(kwargs["branch"], "feature/x")
+
+    @patch.object(server, "_get_memory_client")
+    def test_repo_scope_does_not_infer_a_branch(self, mock_client_fn):
+        client = MagicMock()
+        client.namespace_stats.return_value = []
+        mock_client_fn.return_value = client
+
+        server.memory_namespaces(repo_url="https://github.com/org/repo")
+
+        self.assertIsNone(client.namespace_stats.call_args[1]["branch"])
+
+    @patch.object(server, "_get_memory_client")
+    def test_branch_scope_narrows_to_branch(self, mock_client_fn):
+        client = MagicMock()
+        client.namespace_stats.return_value = []
+        mock_client_fn.return_value = client
+
+        server.memory_namespaces(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            scope="branch")
+
+        self.assertEqual(
+            client.namespace_stats.call_args[1]["branch"], "feature/x")
+
+    @patch.object(server, "_get_memory_client")
+    def test_all_scope_applies_no_filter(self, mock_client_fn):
+        client = MagicMock()
+        client.namespace_stats.return_value = []
+        mock_client_fn.return_value = client
+
+        server.memory_namespaces(scope="all")
+
+        kwargs = client.namespace_stats.call_args[1]
+        self.assertIsNone(kwargs["repo_url"])
+        self.assertIsNone(kwargs["branch"])
+
+    @patch.object(server, "_get_memory_client")
+    def test_rejects_unknown_scope(self, mock_client_fn):
+        client = MagicMock()
+        mock_client_fn.return_value = client
+        result = server.memory_namespaces(
+            repo_url="https://github.com/org/repo", scope="sideways")
+        self.assertFalse(result["ok"])
+        self.assertIn("sideways", result["error"])
+        client.namespace_stats.assert_not_called()
+
+    @patch.object(server, "_get_memory_client", return_value=None)
+    def test_memory_unavailable(self, _):
+        result = server.memory_namespaces(repo_url="https://github.com/org/repo")
+        self.assertFalse(result["ok"])
+
+    @patch.object(server, "_get_memory_client")
+    def test_connection_error_is_reported(self, mock_client_fn):
+        client = MagicMock()
+        client.namespace_stats.side_effect = ConnectionError("boom")
+        mock_client_fn.return_value = client
+        result = server.memory_namespaces(repo_url="https://github.com/org/repo")
+        self.assertFalse(result["ok"])
+        self.assertIn("boom", result["error"])
+
+
+class TestMemoryStoreReformulation(unittest.TestCase):
+    """Reformulation on the write path.
+
+    The contract that matters is that enabling reformulation never costs the
+    caller the memory: when no model is reachable the author's own text is
+    stored anyway. See docs/plans/MANAGER_CONSULTANT_CONSOLIDATION.md.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server.repo_config._cache = {}
+        server.repo_config._cache_expires = float("inf")
+
+    def tearDown(self):
+        server.repo_config._cache = None
+        server.repo_config._cache_expires = 0.0
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_reformulates_and_stores_both_versions(self, mock_client_fn, mock_llm_fn):
+        client = MagicMock()
+        client.store_dual.return_value = {"id": "dual-1"}
+        mock_client_fn.return_value = client
+        llm = MagicMock()
+        llm.reformulate.return_value = Synthesis("Rewritten note", "fake")
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        client.store_dual.assert_called_once()
+        kwargs = client.store_dual.call_args[1]
+        self.assertEqual(kwargs["original"], "raw note")
+        self.assertEqual(kwargs["reformulated"], "Rewritten note")
+        client.store.assert_not_called()
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["reformulated_stored"])
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_stores_original_when_backend_degraded(self, mock_client_fn, mock_llm_fn):
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-1"}
+        mock_client_fn.return_value = client
+        llm = MagicMock()
+        llm.reformulate.return_value = Synthesis(None, "fake", "model unreachable")
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        # The memory must survive the missing model.
+        client.store.assert_called_once()
+        self.assertEqual(client.store.call_args[1]["content"], "raw note")
+        client.store_dual.assert_not_called()
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["reformulated_stored"])
+        self.assertTrue(result["degraded"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_stores_original_when_no_backend_at_all(self, mock_client_fn, _):
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-2"}
+        mock_client_fn.return_value = client
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        client.store.assert_called_once()
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["reformulated_stored"])
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_disabled_by_default(self, mock_client_fn, mock_llm_fn):
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-3"}
+        mock_client_fn.return_value = client
+
+        server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+        )
+
+        client.store.assert_called_once()
+        client.store_dual.assert_not_called()
+        mock_llm_fn.assert_not_called()
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_repo_config_enables_without_an_explicit_argument(
+            self, mock_client_fn, mock_llm_fn):
+        server.repo_config._cache = {
+            "org/repo": {"reformulateOnStore": True},
+        }
+        client = MagicMock()
+        client.store_dual.return_value = {"id": "dual-2"}
+        mock_client_fn.return_value = client
+        llm = MagicMock()
+        llm.reformulate.return_value = Synthesis("Rewritten", "fake")
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="git@github.com:org/repo.git",
+            branch="feature/x",
+        )
+
+        client.store_dual.assert_called_once()
+        self.assertTrue(result["reformulated_stored"])
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_explicit_argument_overrides_repo_config(
+            self, mock_client_fn, mock_llm_fn):
+        server.repo_config._cache = {
+            "org/repo": {"reformulateOnStore": True},
+        }
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-4"}
+        mock_client_fn.return_value = client
+
+        server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=False,
+        )
+
+        client.store.assert_called_once()
+        client.store_dual.assert_not_called()
+        mock_llm_fn.assert_not_called()
+
+
 class TestMemoryStore(unittest.TestCase):
 
     @patch.object(server, "_get_memory_client")
@@ -4448,6 +4846,7 @@ class TestToolRegistration(unittest.TestCase):
             "project_commit_plan",
             "project_read_plan",
             "memory_recall",
+            "memory_namespaces",
             "workstream_context",
             "memory_store",
             "send_message",

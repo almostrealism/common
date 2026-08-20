@@ -81,6 +81,16 @@ Stores analyzed metadata for an audio sample:
 - Feature data (for similarity computation)
 - Pre-computed similarity scores to other samples
 
+The raw PCM audio is held by `WaveDetails.getData()` only when the sample
+was loaded or computed; for sidecar files written by
+`AudioLibraryPersistence.saveWaveDetails` the audio is *not* embedded (the
+file sits beside the WAV it describes), and `loadWaveDetails` returns a
+`WaveDetails` whose `getData()` is `null`. Call `releaseData()` to drop a
+loaded sample's raw audio when only the analysis is needed — the underlying
+memory is destroyed rather than left for the collector, since a decoded
+collection reads directly out of the parsed message and would otherwise
+keep the entire recording on the heap for the lifetime of the details.
+
 ### AudioLibraryPersistence
 
 Handles saving/loading library data to Protocol Buffer format.

@@ -87,6 +87,8 @@ from memory_text import prefers_reformulated, present, projected
 _memory_client = None
 _memory_init_failed = False
 _llm_backend = None
+_docs_retriever = None
+_docs_init_failed = False
 _init_lock = threading.Lock()
 
 
@@ -112,6 +114,40 @@ def _get_memory_client():
             print(f"ar-manager: ar-memory not available: {e}. Memory tools disabled.",
                   file=sys.stderr)
             _memory_init_failed = True
+            return None
+
+
+def _get_docs():
+    """Lazy-initialize the documentation retriever.
+
+    The corpus is baked into the container image (see ``AR_DOCS_DIR`` in the
+    Dockerfile). When it is absent — a source checkout without docs, or an
+    older image — retrieval is skipped rather than failed: documentation
+    grounding enriches a memory answer, it is not what the caller asked for.
+    """
+    global _docs_retriever, _docs_init_failed
+    if _docs_retriever is not None:
+        return _docs_retriever
+    if _docs_init_failed:
+        return None
+    with _init_lock:
+        if _docs_retriever is not None:
+            return _docs_retriever
+        if _docs_init_failed:
+            return None
+        try:
+            from docs_retriever import DocsRetriever
+            retriever = DocsRetriever()
+            if not retriever.docs_dir.is_dir():
+                raise FileNotFoundError(f"no docs corpus at {retriever.docs_dir}")
+            _docs_retriever = retriever
+            print(f"ar-manager: docs corpus at {retriever.docs_dir}",
+                  file=sys.stderr)
+            return _docs_retriever
+        except (ImportError, OSError) as e:
+            print(f"ar-manager: documentation retrieval unavailable: {e}",
+                  file=sys.stderr)
+            _docs_init_failed = True
             return None
 
 
@@ -219,6 +255,7 @@ from workspace_map import (
 # ---------------------------------------------------------------------------
 
 import github_api  # noqa: E402
+import repo_config  # noqa: E402
 
 # Re-export so existing call sites (pipeline tools, memory tools, tests) work unchanged.
 _github_request = github_api._github_request
@@ -2245,9 +2282,11 @@ def project_create_branch(
     _audit("project_create_branch", workstream_id=workstream_id,
            repo_url=repo_url, plan_title=plan_title)
 
-    # Resolve repository URL and base branch
+    # Resolve repository URL and base branch. The base is left empty here and
+    # resolved from GitHub below once owner/repo are known, so a repository
+    # whose default branch is not "master" branches from the right place.
     effective_repo = None
-    effective_base = "master"
+    effective_base = ""
 
     if repo_url:
         effective_repo = repo_url
@@ -2261,7 +2300,7 @@ def project_create_branch(
             }
         _set_github_org(ws)
         effective_repo = ws.get("repoUrl")
-        effective_base = ws.get("baseBranch", "master")
+        effective_base = ws.get("baseBranch", "")
 
     if not effective_repo:
         effective_repo = "https://github.com/almostrealism/common"
@@ -2275,6 +2314,9 @@ def project_create_branch(
         }
 
     owner, repo = owner_repo
+    if not effective_base:
+        effective_base = github_api.default_branch(owner, repo)
+
     inputs = {}
     if plan_title:
         inputs["plan_title"] = plan_title
@@ -2638,6 +2680,64 @@ def project_read_plan(
 # -- Tier 3: Memory tools ---------------------------------------------------
 
 
+def _resolve_scope_context(
+    scope: str = "repo",
+    repo_url: str = "",
+    branch: str = "",
+    workstream_id: str = "",
+) -> tuple[str, str, Optional[dict]]:
+    """Turn a ``scope`` selector into the repo/branch filters it implies.
+
+    The three scopes differ in how much they narrow, not in where the values
+    come from — that stays :func:`_resolve_branch_context`. Shared by every
+    memory tool that exposes ``scope`` so the selector cannot come to mean
+    different things in different tools.
+
+    Args:
+        scope: ``repo`` (current repository, every branch), ``branch``
+            (one branch of it), or ``all`` (no filtering).
+        repo_url: Explicit repository URL.
+        branch: Explicit branch name.
+        workstream_id: Workstream to resolve repo/branch from.
+
+    Returns:
+        ``(repo_url, branch, error_dict_or_None)``. Either filter may be
+        empty, which means "do not narrow on this".
+    """
+    if scope not in ("repo", "branch", "all"):
+        return ("", "", {
+            "ok": False,
+            "error": f"Invalid scope '{scope}'. Must be 'repo', 'branch', or 'all'.",
+        })
+
+    if scope == "all" and not repo_url and not workstream_id:
+        # Explicitly requested: search everything, no filtering.
+        return ("", "", None)
+
+    if scope == "branch":
+        # Need both repo and branch — use the strict resolver.
+        if workstream_id or not (repo_url and branch):
+            return _resolve_branch_context(
+                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+                require_branch=True,
+            )
+        return (repo_url, branch, None)
+
+    # scope == "repo" (or "all" with an explicit repo/workstream) — need at
+    # least repo_url, and do not narrow to a branch unless one was given.
+    effective_repo, effective_branch = repo_url, branch
+    if workstream_id or not repo_url:
+        effective_repo, effective_branch, err = _resolve_branch_context(
+            workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+            require_branch=False,
+        )
+        if err:
+            return ("", "", err)
+    if scope == "repo" and not branch:
+        effective_branch = ""
+    return (effective_repo, effective_branch, None)
+
+
 def _resolve_branch_context(
     workstream_id: str = "",
     repo_url: str = "",
@@ -2769,14 +2869,11 @@ def memory_recall(
 
     Returns:
         Dictionary with memories and optional summary. Each memory carries
-        ``text_source`` recording which version of the text is shown.
+        ``text_source`` recording which version of the text is shown. When a
+        documentation corpus is available the summary is grounded in it too,
+        and ``doc_references`` lists the documents consulted.
     """
     _require_scope("memory-read")
-    if scope not in ("repo", "branch", "all"):
-        return {
-            "ok": False,
-            "error": f"Invalid scope '{scope}'. Must be 'repo', 'branch', or 'all'.",
-        }
     err = _check_short_strings(
         query=query, namespace=namespace, repo_url=repo_url,
         branch=branch, workstream_id=workstream_id,
@@ -2796,35 +2893,12 @@ def memory_recall(
             ],
         }
 
-    # Resolve context based on scope
-    effective_repo = repo_url
-    effective_branch = branch
-
-    if scope == "all" and not repo_url and not workstream_id:
-        # Explicitly requested: search everything, no filtering
-        effective_repo = ""
-        effective_branch = ""
-    elif scope == "branch":
-        # Need both repo and branch — use the strict resolver
-        if workstream_id or not (repo_url and branch):
-            effective_repo, effective_branch, err = _resolve_branch_context(
-                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
-                require_branch=True,
-            )
-            if err:
-                return err
-    else:
-        # scope == "repo" (default) — need at least repo_url
-        if workstream_id or not repo_url:
-            effective_repo, effective_branch, err = _resolve_branch_context(
-                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
-                require_branch=False,
-            )
-            if err:
-                return err
-        # For repo scope, don't filter by branch unless explicitly provided
-        if scope == "repo" and not branch:
-            effective_branch = ""
+    effective_repo, effective_branch, err = _resolve_scope_context(
+        scope=scope, repo_url=repo_url, branch=branch,
+        workstream_id=workstream_id,
+    )
+    if err:
+        return err
 
     try:
         memories = client.search(
@@ -2865,8 +2939,30 @@ def memory_recall(
         }
 
     memories, notice = present(
-        memories, reformulated=reformulated or prefers_reformulated(),
+        memories,
+        reformulated=reformulated or repo_config.repo_setting(
+            effective_repo, "preferReformulatedOnRead", prefers_reformulated(),
+        ),
     )
+
+    # Ground the summary in documentation as well as memories, so a memory
+    # that has gone stale against the current docs can be spotted. Both the
+    # corpus and the model are optional: either being absent costs part of
+    # the summary, never the memories.
+    doc_context = ""
+    doc_refs = []
+    docs = _get_docs()
+    if docs is not None:
+        try:
+            doc_retrieval = docs.get_context_for_query(query)
+            doc_context = doc_retrieval.get("context", "")
+            doc_refs = sorted({
+                r["file"] for r in doc_retrieval.get("markdown_results", [])
+            })
+            doc_refs.extend(doc_retrieval.get("html_refs", []))
+        except OSError as e:
+            logging.getLogger("ar-manager").warning(
+                "Documentation retrieval failed for %r: %s", query, e)
 
     # Attempt LLM synthesis. The memories are the substance of the response
     # and are returned either way; synthesis is a convenience over them.
@@ -2884,12 +2980,18 @@ def memory_recall(
                 score = m.get("score", "?")
                 mem_text += f"### Memory {i} (similarity: {score})\n{m.get('content', '')}\n\n"
 
-            prompt = (
-                f"## Retrieved Memories\n\n{mem_text}\n\n"
+            sections = []
+            if doc_context:
+                sections.append(f"## Relevant Documentation\n\n{doc_context}")
+            sections.append(f"## Retrieved Memories\n\n{mem_text}")
+            sections.append(
                 f"## Task\n\nThe user searched for: \"{query}\"\n\n"
                 "Summarize the retrieved memories. Highlight key findings and "
-                "any decisions or progress notes. Be concise (2-4 sentences)."
+                "any decisions or progress notes. Where the documentation "
+                "above contradicts a memory, say so — a memory can be stale. "
+                "Be concise (2-4 sentences)."
             )
+            prompt = "\n\n".join(sections)
             # synthesize() reports an unreachable model as a value rather
             # than raising, and re-probes health so a recovered backend is
             # picked up without restarting this server.
@@ -2916,6 +3018,9 @@ def memory_recall(
             "Use memory_store to add new memories",
         ],
     }
+
+    if doc_refs:
+        result["doc_references"] = doc_refs
 
     if summary:
         result["summary"] = summary
@@ -3114,7 +3219,10 @@ def workstream_context(
     # also unwraps the dual-text JSON out of ``source``, so the entries that
     # went through Consultant reformulation look like every other entry.
     memories, notice = present(
-        memories, reformulated=reformulated or prefers_reformulated(),
+        memories,
+        reformulated=reformulated or repo_config.repo_setting(
+            effective_repo, "preferReformulatedOnRead", prefers_reformulated(),
+        ),
     )
 
     # Fetch commit history from GitHub Compare API if requested
@@ -3126,9 +3234,13 @@ def workstream_context(
         owner_repo = _extract_owner_repo(effective_repo)
         if owner_repo:
             owner, repo = owner_repo
-            # Determine the base branch from the workstream if available
+            # Determine the base branch from the workstream if available.
+            # Without one, ask GitHub what the repository's default branch is
+            # rather than assuming "master" — assuming it makes every compare
+            # against a "main"-default repo 404 and report no commits.
             ws = _find_workstream(workstream_id) if workstream_id else None
-            base = ws.get("baseBranch", "master") if ws else "master"
+            base = ((ws or {}).get("baseBranch", "")
+                    or github_api.default_branch(owner, repo))
 
             # Set GitHub org context so the proxy uses the correct per-org token
             if ws:
@@ -3295,6 +3407,7 @@ def memory_store(
     namespace: str = "default",
     tags: Optional[list[str]] = None,
     source: Optional[str] = None,
+    reformulate: Optional[bool] = None,
 ) -> dict:
     """Store a memory from an external client.
 
@@ -3304,6 +3417,14 @@ def memory_store(
     used — so a job-scoped agent call with only ``content`` succeeds and
     stores the memory against the job's workstream branch automatically.
 
+    When reformulation is enabled the note is rewritten to match project
+    terminology before storage, and **both** versions are kept: the rewrite
+    is what gets embedded and ranked, the text you wrote is preserved
+    alongside it and is what retrieval returns by default.
+
+    Reformulation never costs you the memory. If no inference backend is
+    reachable, your text is stored unreformulated and the response says so.
+
     Args:
         content: The text content to store.
         workstream_id: Resolves to repo_url/branch via workstream config.
@@ -3312,9 +3433,12 @@ def memory_store(
         namespace: Logical grouping.
         tags: Optional tags for categorization.
         source: Optional source identifier.
+        reformulate: Whether to rewrite the note before storing. Defaults to
+            the repository's ``reformulateOnStore`` setting.
 
     Returns:
-        Dictionary with the created entry.
+        Dictionary with the created entry. ``reformulated_stored`` reports
+        whether a rewrite was actually stored.
     """
     _require_scope("memory-write")
     err = _check_length(content, "content", MAX_PROMPT_LEN)
@@ -3344,24 +3468,138 @@ def memory_store(
             ],
         }
 
+    want_reformulation = (
+        reformulate if reformulate is not None
+        else repo_config.repo_setting(effective_repo, "reformulateOnStore")
+    )
+
+    rewrite = None
+    degraded_reason = None
+    if want_reformulation:
+        llm = _get_llm()
+        if llm is None:
+            degraded_reason = "no inference backend could be constructed"
+        else:
+            synthesis = llm.reformulate(content)
+            if synthesis.degraded:
+                degraded_reason = synthesis.reason
+            else:
+                rewrite = synthesis.text
+
     try:
-        entry = client.store(
-            content=content,
-            repo_url=effective_repo,
-            branch=effective_branch,
-            namespace=namespace,
-            tags=tags,
-            source=source,
-        )
+        if rewrite:
+            entry = client.store_dual(
+                original=content,
+                reformulated=rewrite,
+                repo_url=effective_repo,
+                branch=effective_branch,
+                namespace=namespace,
+                tags=tags,
+                source=source,
+            )
+        else:
+            # Storing the author's own words is always safe. The refusal the
+            # Consultant used to apply here was guarding against writing a
+            # backend-down passthrough dump into the corpus — model output,
+            # not author text — and MemoryStore.is_passthrough_dump rejects
+            # that shape at the store regardless.
+            entry = client.store(
+                content=content,
+                repo_url=effective_repo,
+                branch=effective_branch,
+                namespace=namespace,
+                tags=tags,
+                source=source,
+            )
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory store failed: {e}"}
 
     entry["ok"] = True
+    entry["reformulated_stored"] = rewrite is not None
+    if want_reformulation and degraded_reason:
+        entry["degraded"] = True
+        entry["note"] = (
+            f"Stored your original text unreformulated ({degraded_reason}). "
+            "The memory is saved and searchable; only the rewrite is missing."
+        )
     entry["next_steps"] = [
         "Use memory_recall to search for this and other memories",
         "Use workstream_context to see all memories for this branch",
     ]
     return entry
+
+
+@mcp.tool()
+def memory_namespaces(
+    repo_url: str = "",
+    branch: str = "",
+    workstream_id: str = "",
+    scope: str = "repo",
+) -> dict:
+    """List every memory namespace with its entry count and latest-write time.
+
+    Use this to discover where memories live and when each namespace was last
+    written — for example to find which namespace a recent hand-off note landed
+    in, without guessing namespace names and issuing a separate ``memory_recall``
+    for each. Namespaces are ordered most-recently-written first, so the
+    freshest activity is at the top.
+
+    Args:
+        repo_url: Optional repository URL filter.
+        branch: Optional branch name filter.
+        workstream_id: Optional workstream to resolve repo/branch from.
+        scope: Which memories to count — ``repo`` (default) covers the
+            current repository across all branches; ``branch`` narrows to
+            one branch of it; ``all`` counts every repository in the store.
+
+    Returns:
+        Dictionary with ``namespaces`` (a list of
+        ``{namespace, count, latest_created_at, latest_id}`` dicts, newest
+        first) and ``count`` (the number of namespaces).
+    """
+    _require_scope("memory-read")
+    err = _check_short_strings(
+        repo_url=repo_url, branch=branch, workstream_id=workstream_id,
+    )
+    if err:
+        return err
+    _audit("memory_namespaces", scope=scope, branch=branch)
+
+    client = _get_memory_client()
+    if client is None:
+        return {
+            "ok": False,
+            "error": "ar-memory server unavailable",
+            "next_steps": [
+                "Start ar-memory: python tools/mcp/memory/server.py --http-only",
+                "Or set AR_MEMORY_URL to point to a running instance",
+            ],
+        }
+
+    effective_repo, effective_branch, err = _resolve_scope_context(
+        scope=scope, repo_url=repo_url, branch=branch,
+        workstream_id=workstream_id,
+    )
+    if err:
+        return err
+
+    try:
+        stats = client.namespace_stats(
+            repo_url=effective_repo or None,
+            branch=effective_branch or None,
+        )
+    except ConnectionError as e:
+        return {"ok": False, "error": f"Namespace lookup failed: {e}"}
+
+    return {
+        "ok": True,
+        "namespaces": stats,
+        "count": len(stats),
+        "next_steps": [
+            "Use memory_recall with a namespace from this list to read it",
+            "Use workstream_context for the full narrative of a branch",
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3986,7 +4224,8 @@ def github_create_pr(
         title: PR title.
         body: PR description.
         workstream_id: Workstream to resolve repo from. Defaults to token context.
-        base: Base branch (default: workstream's baseBranch or "master").
+        base: Base branch (default: the workstream's baseBranch, else the
+            repository's default branch as GitHub reports it).
         head: Head branch (default: workstream's defaultBranch).
         request_copilot_review: If true, automatically request a Copilot review
             after creating the PR.
@@ -4008,7 +4247,8 @@ def github_create_pr(
 
     effective_ws = workstream_id or _get_token_workstream_id() or ""
     ws = _find_workstream(effective_ws) if effective_ws else None
-    effective_base = base or (ws.get("baseBranch", "master") if ws else "master")
+    effective_base = (base or (ws or {}).get("baseBranch", "")
+                      or github_api.default_branch(owner, repo))
     effective_head = head or default_branch
 
     if not effective_head:

@@ -197,7 +197,7 @@ The prompt reminds the agent that all branch references in user instructions ref
 
 **Branch Awareness and Anti-Loop Guidance:**
 The agent is told it is not the first to work on this branch and that previous agent sessions have made changes reflected in the git history. It is instructed to:
-- Use `branch_catchup` to understand prior work
+- Use `workstream_context` to understand prior work
 - Record decisions and discoveries via the memory system
 - Avoid add/revert loops where changes are made, CI fails, changes are reverted, and the cycle repeats
 
