@@ -89,15 +89,20 @@ jobs:
           DRAIN_TIMEOUT_SECONDS: '1800'
         run: ./tools/ci/drain-agent-jobs.sh
 
-      - name: Build Maven artifacts
-        # rebuild.sh builds the controller image from JARs produced here, so
-        # the Maven build has to happen before it, not inside it.
-        run: mvn -B clean install -DskipTests
-
       - name: Rebuild and restart the controller stack
-        # --cache reuses Docker layers; a full --no-cache rebuild of four
-        # images on every master merge is not worth the wall-clock.
-        run: ./flowtree/runtime/rebuild.sh --cache
+        # rebuild.sh owns the whole build: it runs `mvn install -pl
+        # flowtree/runtime -am -DskipTests` and then dependency:copy-dependencies,
+        # which the controller Dockerfile's COPY depends on. Do not add a
+        # separate Maven step here — a plain `install` does not produce
+        # target/dependency, and a full-reactor build would be redundant.
+        #
+        # No --cache. The script's own comment records why: cached COPY layers
+        # let a rebuild "succeed" while the running image is the previous one,
+        # which is exactly how stale bundled source shipped once before. That
+        # failure mode is the one this deployment exists to prevent — a cached
+        # docs layer would leave ar-manager answering from an old corpus while
+        # reporting a successful deploy.
+        run: ./flowtree/runtime/rebuild.sh
 
       - name: Verify the stack came back up
         env:
