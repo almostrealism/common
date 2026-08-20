@@ -24,7 +24,6 @@ import org.almostrealism.util.GradientTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
@@ -91,20 +90,19 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate(v);
-		log(Arrays.toString(out.toArray(0, count * dim)));
+		log(out.toArrayString(0, count * dim));
 
 		Evaluable<PackedCollection> dy = c.delta(x).get();
 		PackedCollection dout = dy.evaluate(v);
-		double[] d = dout.toArray(0, count * dim * dim);
-		log(Arrays.toString(d));
+		log(dout.toArrayString(0, count * dim * dim));
 
 		for (int i = 0; i < count; i++) {
 			for (int j = 0 ; j < dim; j++) {
 				for (int k = 0; k < dim; k++) {
 					if (j == k) {
-						assertEquals(w.toDouble(j), d[i * dim * dim + j * dim + k]);
+						assertEquals(w.toDouble(j), dout.toDouble(i * dim * dim + j * dim + k));
 					} else {
-						assertEquals(0.0, d[i * dim * dim + j * dim + k]);
+						assertEquals(0.0, dout.toDouble(i * dim * dim + j * dim + k));
 					}
 				}
 			}
@@ -128,23 +126,21 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate(v);
-		double[] l = out.toArray(0, count * dim);
-		log(Arrays.toString(l));
-		assertEquals(1.0, l[0]);
-		assertEquals(-2.0, l[1]);
+		log(out.toArrayString(0, count * dim));
+		assertEquals(1.0, out.toDouble(0));
+		assertEquals(-2.0, out.toDouble(1));
 
 		Evaluable<PackedCollection> dy = c.delta(x).get();
 		PackedCollection dout = dy.evaluate(v);
-		double[] d = dout.toArray(0, count * dim * dim);
-		log(Arrays.toString(d));
+		log(dout.toArrayString(0, count * dim * dim));
 
 		for (int i = 0; i < count; i++) {
 			for (int j = 0 ; j < dim; j++) {
 				for (int k = 0; k < dim; k++) {
 					if (j == k) {
-						assertEquals(w.toDouble(j), d[i * dim * dim + j * dim + k]);
+						assertEquals(w.toDouble(j), dout.toDouble(i * dim * dim + j * dim + k));
 					} else {
-						assertEquals(0.0, d[i * dim * dim + j * dim + k]);
+						assertEquals(0.0, dout.toDouble(i * dim * dim + j * dim + k));
 					}
 				}
 			}
@@ -203,7 +199,7 @@ public class TraversableDeltaComputationTests_Polynomial extends TestSuiteBase i
 
 		Evaluable<PackedCollection> y = c.get();
 		PackedCollection out = y.evaluate(v);
-		log(Arrays.toString(out.toArray(0, 4 * dim)));
+		log(out.toArrayString(0, 4 * dim));
 
 		Evaluable<PackedCollection> dy = c.delta(x).get();
 		PackedCollection dout = dy.evaluate(v);

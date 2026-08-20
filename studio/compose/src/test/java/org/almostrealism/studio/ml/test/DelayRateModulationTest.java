@@ -92,12 +92,12 @@ public class DelayRateModulationTest extends TestSuiteBase
 	 * @param firstIndex absolute index of the pass's first sample
 	 * @return the pass output
 	 */
-	private double[] forward(CompiledModel model, int signalSize, int firstIndex) {
+	private PackedCollection forward(CompiledModel model, int signalSize, int firstIndex) {
 		// The ramp continues the global sample count: the pass's first sample is
 		// firstIndex + 1, and each sample after it increases by one.
 		PackedCollection input = integers(0, signalSize).add(c(firstIndex + 1.0))
 				.evaluate().reshape(1, signalSize);
-		return model.forward(input).toArray(0, signalSize);
+		return model.forward(input);
 	}
 
 	/**
@@ -139,19 +139,14 @@ public class DelayRateModulationTest extends TestSuiteBase
 							.add(repeat(0, channels, integers(0, signalSize).reshape(1, signalSize)))
 							.add(c(1000.0 + first + 1))
 							.evaluate().reshape(channels, signalSize);
-			double[] out = model.forward(input).toArray(0, channels * signalSize);
+			PackedCollection out = model.forward(input);
 
-			for (int ch = 0; ch < channels; ch++) {
-				for (int i = 0; i < signalSize; i++) {
-					int t = first + i;
-					double expected = t - d >= 0
-							? (ch + 1) * 1000 + t - d + 1 : 0.0;
-					Assert.assertEquals("identity-routed flat trajectory must read"
-									+ " t - " + (int) d + " on channel " + ch
-									+ " at sample " + t,
-							expected, out[ch * signalSize + i], EPS);
-				}
-			}
+			Assert.assertEquals("identity-routed flat trajectory must read t - "
+							+ (int) d + " on every channel", 0.0,
+					largestDeviation(shape(channels, signalSize), pos -> {
+						int t = first + pos[1];
+						return t - d >= 0 ? (pos[0] + 1) * 1000 + t - d + 1 : 0.0;
+					}, out), EPS);
 		}
 	}
 
@@ -169,14 +164,14 @@ public class DelayRateModulationTest extends TestSuiteBase
 
 		for (int pass = 0; pass < 6; pass++) {
 			int first = pass * signalSize;
-			double[] out = forward(model, signalSize, first);
+			PackedCollection out = forward(model, signalSize, first);
 
-			for (int i = 0; i < signalSize; i++) {
-				int t = first + i;
-				double expected = t - d >= 0 ? t - d + 1 : 0.0;
-				Assert.assertEquals("flat trajectory must read t - " + (int) d
-						+ " exactly at sample " + t, expected, out[i], EPS);
-			}
+			Assert.assertEquals("flat trajectory must read t - " + (int) d
+							+ " exactly at every sample", 0.0,
+					largestDeviation(shape(signalSize), pos -> {
+						int t = first + pos[0];
+						return t - d >= 0 ? t - d + 1 : 0.0;
+					}, out), EPS);
 		}
 	}
 
@@ -202,32 +197,35 @@ public class DelayRateModulationTest extends TestSuiteBase
 		double lastFlat = 0.0;
 		int warmPasses = 6;
 		for (int pass = 0; pass < warmPasses; pass++) {
-			double[] out = forward(model, signalSize, pass * signalSize);
-			lastFlat = out[signalSize - 1];
+			lastFlat = forward(model, signalSize, pass * signalSize).toDouble(signalSize - 1);
 		}
 
 		delayPrev.fill(prev);
 		delay.fill(current);
 		int first = warmPasses * signalSize;
-		double[] out = forward(model, signalSize, first);
+		PackedCollection out = forward(model, signalSize, first);
 
-		for (int i = 0; i < signalSize; i++) {
-			double d = prev * (signalSize - 1 - i) / signalSize
-					+ current * (i + 1) / (double) signalSize;
-			double expected = first + i - d + 1;
-			Assert.assertEquals("ramped trajectory must read the interpolated"
-							+ " fractional position at sample " + (first + i),
-					expected, out[i], LERP_EPS);
-		}
+		Assert.assertEquals("ramped trajectory must read the interpolated"
+						+ " fractional position at every sample", 0.0,
+				largestDeviation(shape(signalSize), pos -> {
+					double d = prev * (signalSize - 1 - pos[0]) / signalSize
+							+ current * (pos[0] + 1) / (double) signalSize;
+					return first + pos[0] - d + 1;
+				}, out), LERP_EPS);
 
 		double ratio = 1.0 - (current - prev) / signalSize;
 		Assert.assertEquals("the moving segment must join the preceding flat frame"
 						+ " at the resample ratio, not with a positional splice",
-				lastFlat + ratio, out[0], LERP_EPS);
-		for (int i = 1; i < signalSize; i++) {
-			Assert.assertEquals("the read must advance at the resample ratio"
-							+ " within the segment", ratio, out[i] - out[i - 1],
-					LERP_EPS);
-		}
+				lastFlat + ratio, out.toDouble(0), LERP_EPS);
+
+		// Within the segment the read advances by a constant step, so the whole
+		// progression is settled by the largest departure from that step.
+		int steps = signalSize - 1;
+		PackedCollection advance = cp(out.range(shape(steps), 1))
+				.subtract(cp(out.range(shape(steps), 0))).evaluate();
+
+		Assert.assertEquals("the read must advance at the resample ratio"
+						+ " within the segment", 0.0,
+				largestDeviation(ratio, advance), LERP_EPS);
 	}
 }

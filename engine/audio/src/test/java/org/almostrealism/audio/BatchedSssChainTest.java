@@ -22,6 +22,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -36,7 +37,8 @@ import java.util.Random;
  * aligned reduction) and {@link BatchedPatternRenderer#buildBatchedSssChainPlaced}
  * (the fused offset-aware scatter placement into a wider window).
  */
-public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatures {
+public class BatchedSssChainTest extends TestSuiteBase
+		implements TemporalFeatures, FirFilterTestFeatures {
 
 	/** Number of notes in the synthetic workload. */
 	private static final int N = 4;
@@ -68,8 +70,8 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 		private PackedCollection filterCutoffs;
 		/** Per-note volume envelopes, shape {@code [N, TARGET_LENGTH]}. */
 		private PackedCollection volumeEnvelopes;
-		/** Per-note reference voiced output, shape {@code [N][TARGET_LENGTH]}. */
-		private final double[][] voiced = new double[N][TARGET_LENGTH];
+		/** Per-note reference voiced output, shape {@code [N, TARGET_LENGTH]}. */
+		private PackedCollection voiced;
 	}
 
 	/**
@@ -80,9 +82,9 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 	 */
 	private Workload buildWorkload(BatchedPatternRenderer renderer) {
 		Workload w = new Workload();
+		w.voiced = new PackedCollection(shape(N, TARGET_LENGTH));
 		Random rng = new Random(7L);
 
-		double[][] ratioValues = new double[LAYERS][N];
 		PackedCollection[][] sourceByLayerNote = new PackedCollection[LAYERS][N];
 
 		for (int l = 0; l < LAYERS; l++) {
@@ -94,8 +96,6 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 						rand(shape(SOURCE_LENGTH), rng).multiply(2.0).add(-1.0).evaluate();
 				w.sources[l].setFrom(n * SOURCE_LENGTH, sourceByLayerNote[l][n]);
 
-				// Ratios in [1.0, 1.45] — max source index < SOURCE_LENGTH.
-				ratioValues[l][n] = 1.0 + 0.1 * l + 0.05 * n;
 
 				double sustain = 0.5 + 0.1 * l + 0.02 * n;
 				w.layerEnvelopes[l].setFrom(n * TARGET_LENGTH,
@@ -126,7 +126,8 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 			CollectionProducer merged = null;
 			for (int l = 0; l < LAYERS; l++) {
 				PackedCollection resampled =
-						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
+						renderer.buildResampleProducer(sourceByLayerNote[l][n],
+								cp(w.ratios[l].get(n, shape(1))))
 								.get().evaluate();
 				CollectionProducer layer = cp(resampled)
 						.multiply(cp(w.layerEnvelopes[l].get(n, shape(TARGET_LENGTH))));
@@ -141,34 +142,11 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))
 							.reshape(shape(TARGET_LENGTH))
 							.get().evaluate();
-			PackedCollection voiced = cp(filtered).multiply(cp(volN)).get().evaluate();
-			for (int i = 0; i < TARGET_LENGTH; i++) {
-				w.voiced[n][i] = voiced.toDouble(i);
-			}
+			w.voiced.setFrom(n * TARGET_LENGTH,
+					cp(filtered).multiply(cp(volN)).get().evaluate());
 		}
 
 		return w;
-	}
-
-	/** Asserts the RMS difference between {@code expected} and {@code actual} is below {@code 1e-4}. */
-	private void assertRmsEquivalent(String label, double[] expected, PackedCollection actual) {
-		double sumSqDiff = 0.0;
-		double sumSqRef = 0.0;
-		for (int i = 0; i < expected.length; i++) {
-			double diff = expected[i] - actual.toDouble(i);
-			sumSqDiff += diff * diff;
-			sumSqRef += expected[i] * expected[i];
-		}
-		double rms = Math.sqrt(sumSqDiff / expected.length);
-		double refRms = Math.sqrt(sumSqRef / expected.length);
-
-		log(label + " acoustic equivalence:");
-		log(String.format("  Reference RMS: %.6f", refRms));
-		log(String.format("  Difference RMS: %.6f", rms));
-		if (refRms > 1e-10) {
-			log(String.format("  Relative difference: %.2e", rms / refRms));
-		}
-		Assert.assertTrue(label + " RMS difference exceeds 1e-4 (got " + rms + ")", rms < 1e-4);
 	}
 
 	/**
@@ -181,12 +159,10 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 				N, SOURCE_LENGTH, TARGET_LENGTH, SAMPLE_RATE, FILTER_ORDER);
 		Workload w = buildWorkload(renderer);
 
-		double[] expected = new double[TARGET_LENGTH];
-		for (int n = 0; n < N; n++) {
-			for (int i = 0; i < TARGET_LENGTH; i++) {
-				expected[i] += w.voiced[n][i];
-			}
-		}
+		// The aligned reference is the sum over notes, which is one row of ones
+		// against the per-note voiced rows.
+		PackedCollection expected = matmul(constant(shape(1, N), 1.0), cp(w.voiced))
+				.evaluate().reshape(shape(TARGET_LENGTH));
 
 		PackedCollection out = renderer.buildBatchedSssChain(
 				w.sources, w.ratios, w.layerEnvelopes, w.filterCutoffs, w.volumeEnvelopes)
@@ -209,18 +185,19 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 		Workload w = buildWorkload(renderer);
 
 		int windowWidth = 1536;
-		double[] destOffsetValues = { 0, 256, 512, 700 };
 		PackedCollection destOffsets = pack(0.0, 256.0, 512.0, 700.0);
 
-		double[] expected = new double[windowWidth];
+		// Each note's voiced row is added into the window at its own offset, clipped
+		// where the row would run past the end.
+		PackedCollection expected = new PackedCollection(windowWidth);
 		for (int n = 0; n < N; n++) {
-			int off = (int) destOffsetValues[n];
-			for (int k = 0; k < TARGET_LENGTH; k++) {
-				int f = off + k;
-				if (f < windowWidth) {
-					expected[f] += w.voiced[n][k];
-				}
-			}
+			int off = (int) destOffsets.toDouble(n);
+			int length = Math.min(TARGET_LENGTH, windowWidth - off);
+			if (length <= 0) continue;
+
+			PackedCollection slot = expected.range(shape(length), off);
+			slot.setFrom(0, add(cp(slot),
+					cp(w.voiced.range(shape(length), n * TARGET_LENGTH))).evaluate());
 		}
 
 		PackedCollection out = renderer.buildBatchedSssChainPlaced(

@@ -61,20 +61,13 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		op.get().run();
 
 		// Calculate expected output: f(x) = x + (1/alpha) * sin^2(alpha * x)
-		double[] inputArray = input.toArray(0, size);
-		double[] expectedOutput = new double[size];
-
+		// The expectation uses the host's own sine, which is an independent reference;
+		// computing it with the framework's would compare the operation against itself.
 		for (int i = 0; i < size; i++) {
-			double x = inputArray[i];
+			double x = input.toDouble(i);
 			double sinPart = Math.sin(alpha * x);
-			expectedOutput[i] = x + (1.0 / alpha) * sinPart * sinPart;
-		}
-
-		// Compare results
-		double[] actualArray = actualOutput.toArray(0, size);
-		for (int i = 0; i < size; i++) {
 			Assert.assertEquals("Snake mismatch at index " + i,
-					expectedOutput[i], actualArray[i], 1e-5);
+					x + (1.0 / alpha) * sinPart * sinPart, actualOutput.toDouble(i), 1e-5);
 		}
 	}
 
@@ -101,15 +94,11 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		OperationList op = (OperationList) snake.getForward().push(p(input));
 		op.get().run();
 
-		double[] inputArray = input.toArray(0, size);
-		double[] actualArray = actualOutput.toArray(0, size);
-
 		for (int i = 0; i < size; i++) {
-			double x = inputArray[i];
+			double x = input.toDouble(i);
 			double sinPart = Math.sin(alpha * x);
-			double expected = x + (1.0 / alpha) * sinPart * sinPart;
 			Assert.assertEquals("Snake alpha=0.5 mismatch at index " + i,
-					expected, actualArray[i], 1e-5);
+					x + (1.0 / alpha) * sinPart * sinPart, actualOutput.toDouble(i), 1e-5);
 		}
 	}
 
@@ -157,12 +146,8 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		// Expected: for kernel_size=1, each output = sum(inputs * weight) + bias
 		// input all 1s, weights all 0.5, so sum = inputChannels * 0.5 = 1.0, + bias 0.1 = 1.1
 		double expectedValue = inputChannels * 0.5 + 0.1;
-		double[] actualArray = actualOutput.toArray(0, batchSize * outputChannels * seqLength);
-
-		for (int i = 0; i < actualArray.length; i++) {
-			Assert.assertEquals("Conv1d k=1 mismatch at index " + i,
-					expectedValue, actualArray[i], 1e-4);
-		}
+		Assert.assertEquals("Conv1d k=1 must be uniform", 0.0,
+				largestDeviation(expectedValue, actualOutput), 1e-4);
 	}
 
 	/**
@@ -376,12 +361,8 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 
 		// Expected: sum(inputs * weight) = inputChannels * 0.5 = 1.0 (no bias)
 		double expectedValue = inputChannels * 0.5;
-		double[] actualArray = actualOutput.toArray(0, batchSize * outputChannels * seqLength);
-
-		for (int i = 0; i < actualArray.length; i++) {
-			Assert.assertEquals("Conv1d no bias mismatch at index " + i,
-					expectedValue, actualArray[i], 1e-4);
-		}
+		Assert.assertEquals("Conv1d no bias must be uniform", 0.0,
+				largestDeviation(expectedValue, actualOutput), 1e-4);
 	}
 
 	/**
@@ -512,17 +493,12 @@ public class Conv1dLayerTests extends TestSuiteBase implements LayerFeatures {
 		op.get().run();
 
 		// Print actual output for verification
-		double[] actual = actualOutput.toArray(0, batchSize * outputChannels * outLength);
-		warn("  Output values: ");
-		for (int i = 0; i < actual.length; i++) {
-			warn("    [" + i + "] = " + actual[i]);
-		}
+		int outputSize = batchSize * outputChannels * outLength;
+		warn("  Output values: " + actualOutput.toArrayString(0, outputSize));
 
 		// Verify at least one non-zero output
-		boolean hasNonZero = false;
-		for (double v : actual) {
-			if (Math.abs(v) > 1e-10) hasNonZero = true;
-		}
+		boolean hasNonZero = max(cp(actualOutput.range(shape(outputSize))).abs())
+				.evaluate().toDouble(0) > 1e-10;
 		Assert.assertTrue("Output should have non-zero values", hasNonZero);
 	}
 
