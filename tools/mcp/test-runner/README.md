@@ -16,6 +16,37 @@ An MCP server for running and managing Almost Realism test executions. This serv
   fail→install→retry cycle that pushed agents toward bash `mvn install`.
   Subsequent invocations skip the seed (idempotent).
 
+## Modules
+
+`server.py` owns the MCP surface and the lifecycle of a running Maven process —
+building the command, spawning it, watching it, retrying, timing it out. Each of
+the other concerns it used to carry inline is a collaborator:
+
+| Module | Concern |
+|--------|---------|
+| `project.py` | Which Maven project and module a run targets: root resolution, and the per-module CI test-group count read from the project's own workflow |
+| `run_store.py` | The on-disk record of runs: metadata, captured output, listing, retiring old runs, marking abandoned ones |
+| `reports.py` | Surefire XML: collecting reports out of the project, and reading counts, failures, and per-test times back |
+| `timing.py` | Statistics over a repeated run — duration spread and per-test pass rates |
+| `preflight.py` | What the upstream artifact state *is*: which are missing, how stale, how to seed them |
+| `preflight_runner.py` | Driving those preflight steps for one run and narrating them into its output |
+| `fork_discovery.py` | Locating the surefire-forked JVM so `ar-jmx` can attach |
+| `watcher.py` | A detached process that finalises a run's metadata if the parent dies mid-run |
+
+Two constraints govern where code may live, both learned the hard way:
+
+- **The `Tool(...)` definitions must stay in `server.py`.** `McpToolDiscovery`
+  (`flowtree/runtime`) scans that file by path and parses the entries out of the
+  `@server.list_tools()` handler; `McpToolDiscoveryTest` asserts it finds them.
+  Moving the schema elsewhere would silently empty the discovered tool list.
+- **Process execution stays in `server.py`.** The integration tests substitute
+  `server.subprocess` and `server.threading` to run without spawning Maven, so
+  those calls must resolve in the server module's namespace.
+
+Note that a constant's home is where it is *read*: patching `server.PROJECT_ROOT`
+no longer affects resolution, because `project.resolve_project_root` reads
+`project.PROJECT_ROOT`. Tests patch the owning module.
+
 ## Preflight Seeding
 
 Maven's `mvn test -pl <module>` (without `-am`) assumes the upstream
@@ -81,7 +112,8 @@ Start a new test run asynchronously.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `depth` | int (0-10) | No | AR_TEST_DEPTH value |
-| `module` | string | No | Maven module (default: "engine/utils") |
+| `project` | string | No | Root of the Maven project (default: this repository) |
+| `module` | string | No | Maven module, relative to the project root (default: "engine/utils") |
 | `test_classes` | string[] | No | Specific test class names |
 | `test_methods` | object[] | No | Specific methods: `[{"class": "...", "method": "..."}]` |
 | `timeout_minutes` | int | No | Max run time (default: 30) |
@@ -103,6 +135,33 @@ start_test_run(test_methods=[
 # Run with extra memory
 start_test_run(test_classes=["LargeModelTest"], jvm_args=["-Xmx8g"])
 ```
+
+#### Testing another Maven project
+
+The runner is not limited to the repository it ships in. `project` names the
+directory holding the reactor `pom.xml` of any Maven project — a sibling
+checkout, a downstream consumer, a worktree. A relative path is resolved
+against this repository, so a sibling is named the way a shell here would name
+it, and `module` is always relative to that root:
+
+```python
+start_test_run(project="../downstream", module="app",
+               test_classes=["SomeTest"])
+```
+
+This matters because direct `mvn test` is blocked for agents. Without
+`project`, work on a downstream consumer had no sanctioned way to run its
+tests at all. A path that does not exist, or that holds no `pom.xml`, is
+rejected when the run is requested rather than surfacing later as an opaque
+Maven failure.
+
+Everything else is unchanged by the target: `run_id`s, output, and copied
+surefire reports still live under this server's own `runs/` directory, so runs
+against different projects are tracked side by side. Two caveats follow from
+targeting a foreign project — `test_group` needs an explicit `test_groups`
+unless that project has its own `.github/workflows/analysis.yaml`, and the
+upstream-artifact preflight can only seed modules that are part of the target
+project's own reactor.
 
 ### get_run_status
 
