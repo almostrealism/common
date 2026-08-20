@@ -150,6 +150,14 @@ fi
 
 RUNNER_NAME="${RUNNER_NAME:-$(hostname)-macos}"
 RUNNER_GROUP="${RUNNER_GROUP:-Default}"
+
+# Labels decide which jobs this runner may pick up. GitHub schedules a job on a
+# runner whose label set is a SUPERSET of the job's `runs-on` list, so a runner
+# picks up every job whose labels it fully covers — including ones it was never
+# meant for. A single-purpose runner must therefore OMIT the labels of the jobs
+# it should ignore, not merely add its own. See "Dedicating a Runner to One Job"
+# in the README.
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,macos,ar-ci}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-${RUNNER_DIR}/_work}"
 
 mkdir -p "${RUNNER_WORKDIR}"
@@ -238,7 +246,7 @@ configure_runner() {
         --url "${CONFIG_URL}" \
         --token "${REG_TOKEN}" \
         --name "${RUNNER_NAME}" \
-        --labels "self-hosted,macos,ar-ci" \
+        --labels "${RUNNER_LABELS}" \
         --runnergroup "${RUNNER_GROUP}" \
         --work "${RUNNER_WORKDIR}" \
         --replace \
