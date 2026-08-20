@@ -60,10 +60,10 @@ Perform a full code policy review of changed files. Checks:
 
 ## Steps
 
-1. `mcp__ar-consultant__recall` with query "producer pattern enforcement policy violations"
+1. `mcp__ar-manager__memory_recall` with query "producer pattern enforcement policy violations"
 2. `mcp__ar-test-runner__start_test_run` to run `CodePolicyEnforcementTest` (all methods)
 3. Report violations with specific file:line locations and suggested fixes
-4. Store findings in memory: `mcp__ar-consultant__remember`
+4. Store findings in memory: `mcp__ar-manager__memory_store`
 
 $ARGUMENTS
 ```
@@ -199,8 +199,8 @@ that completed work meets ALL project standards before the task is considered do
 - [ ] `*Features` interfaces have only `default` methods
 
 ### Memory
-- [ ] `mcp__ar-consultant__remember` called with root cause + fix for any bug fixed
-- [ ] `mcp__ar-consultant__remember` called with design decisions for any non-trivial choice
+- [ ] `mcp__ar-manager__memory_store` called with root cause + fix for any bug fixed
+- [ ] `mcp__ar-manager__memory_store` called with design decisions for any non-trivial choice
 
 ## Process
 

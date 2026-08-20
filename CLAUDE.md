@@ -205,7 +205,7 @@ ONLY exception.
 
 ## Rule 2: STORE MEMORIES IMMEDIATELY
 
-Call `mcp__ar-consultant__remember` (interactive) or `mcp__ar-manager__memory_store` (FlowTree jobs) **immediately** when you:
+Call `mcp__ar-manager__memory_store` **immediately** when you:
 - Fix a bug (root cause + fix)
 - Complete a task (what changed and why)
 - Discover a non-obvious behavior or gotcha
@@ -216,12 +216,23 @@ Do NOT wait to be asked. Do NOT defer to end of session. Store **as it happens**
 
 Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. Include file paths, class names, and the "why."
 
+ar-manager runs remotely and cannot see your working directory, so it stores the
+`repo_url` and `branch` you send. Read them from `git`, never from the harness
+`gitStatus` snapshot — see the staleness rule above. A `PreToolUse` hook checks
+them against the live working tree and blocks a write that does not match.
+
 **Why this matters:** You lose all context between sessions. Without memories, every session starts from zero.
 
 
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
-Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+Call `mcp__ar-manager__memory_recall` at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
+`mcp__ar-manager__memory_namespaces` lists every namespace with its entry count
+and latest write, newest first — use it when you do not know which namespace a
+prior session's note landed in. `mcp__ar-manager__workstream_context` gives the
+full narrative of a branch (memories, commits, PR, jobs); it does not require a
+workstream, `repo_url` + `branch` is enough.
 
 
 ## Rule 3b: AR-PROFILE-ANALYZER FIRST FOR KERNEL BEHAVIOR
@@ -345,7 +356,7 @@ investigation before drawing any conclusion.
 ## Rule 12: STORE STRUCTURE DISCOVERIES BEFORE ACTING ON THEM
 
 As soon as you determine the dependency structure of any module or subsystem,
-call `mcp__ar-consultant__remember` with a complete structured description. Do
+call `mcp__ar-manager__memory_store` with a complete structured description. Do
 this **before** making any code or CI changes based on that structure. If the
 session ends before you finish, the next session will have the correct starting
 point.

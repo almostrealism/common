@@ -1,20 +1,20 @@
 # AR Consultant MCP Server
 
-A documentation-aware assistant that combines documentation retrieval, semantic memory, and local LLM inference into a single interface. It provides grounded answers about the AR codebase, contextualized memory recall, and terminology-consistent memory storage.
+A documentation-aware assistant that combines documentation retrieval, semantic memory, and local LLM inference into a single interface. It provides grounded answers about the AR codebase and documentation-contextualized memory recall. Memory writing lives in ar-manager.
 
 ## Architecture
 
 The consultant wraps three subsystems:
 
 - **DocsRetriever** -- searches the AR documentation corpus (module docs, internals, quick reference, source comments)
-- **MemoryClient** -- reads/writes the centralized ar-memory HTTP service via `MemoryHTTPClient` (from `tools/mcp/common/`)
+- **MemoryClient** -- reads the centralized ar-memory HTTP service via `MemoryHTTPClient` (from `tools/mcp/common/`); the only write left is an opt-in consultation summary
 - **InferenceBackend** -- a local LLM that synthesizes retrieved context into concise answers
 
-Only the third of these needs a model. When no LLM is reachable, retrieval keeps working and every tool returns what it retrieved, marked `degraded: true` with a `note` naming the fields that are still complete — so a consult still yields the matching documentation and memories, and a recall still yields the memories themselves. The one exception is `remember`, which refuses to store rather than write an unreformulated note into the corpus.
+Only the third of these needs a model. When no LLM is reachable, retrieval keeps working and every tool returns what it retrieved, marked `degraded: true` with a `note` naming the fields that are still complete — so a consult still yields the matching documentation and memories, and a recall still yields the memories themselves.
 
 Memory operations require the ar-memory HTTP server to be running (see `tools/mcp/memory/README.md`). When ar-memory is unavailable, memory tools degrade gracefully — returning empty results rather than errors.
 
-Git context (repo_url, branch) is auto-detected from the working directory when not explicitly provided to `remember` and `recall` tools.
+Git context (repo_url, branch) is auto-detected from the working directory when not explicitly provided to `recall`. ar-manager cannot do this — it runs remotely — so its memory tools take the values the caller sends, checked against live git by the `verify-git-context` hook.
 
 ## Inference Backends
 
@@ -187,7 +187,6 @@ backend that is unreachable degrades rather than falling back to another one.
 | `consult` | Ask a question, get a documentation-grounded answer |
 | `search_docs` | Search docs with consultant summary |
 | `recall` | Search memories contextualized with docs |
-| `remember` | Store a memory with consultant reformulation (beta) |
 | `start_consultation` | Begin a multi-turn session |
 | `continue_consultation` | Follow up in a session |
 | `end_consultation` | End session and optionally store summary |
@@ -195,18 +194,41 @@ backend that is unreachable degrades rather than falling back to another one.
 | `list_request_history` | List recent tool invocations |
 | `export_request_history` | Export full history for analysis |
 
+Memory **writing** is no longer here. `remember` and `recall_namespaces` were
+removed when memory consolidated onto ar-manager, which is reachable from every
+repository rather than only from a checkout of this one. Use
+`mcp__ar-manager__memory_store` and `mcp__ar-manager__memory_namespaces`
+instead.
+
+`recall` remains for now, but **not** because ar-manager lacks the capability:
+`mcp__ar-manager__memory_recall` already blends documentation context into its
+summary and returns `doc_references`. What is outstanding is operational
+confirmation that the corpus baked into the ar-manager image is present in the
+running container — the deploy workflow's corpus check is the signal. Until
+that has passed once, keeping `recall` means documentation-grounded retrieval
+is never absent from both servers at the same time. Prefer
+`mcp__ar-manager__memory_recall` for new work; it is available in every
+repository, where this tool is not.
+
 ## Memory Text: Original vs Reformulated
 
-`remember` rewrites a note before storing it so the wording matches project
-terminology. Both versions are kept: the rewrite becomes the entry's `content`
-(that is what gets embedded and ranked) and the text the agent actually wrote is
-preserved alongside it.
+ar-manager's `memory_store` can rewrite a note before storing it so the wording
+matches project terminology (enable it per repository with `reformulateOnStore`,
+or per call with `reformulate=true`). Both versions are kept: the rewrite becomes
+the entry's `content` (that is what gets embedded and ranked) and the text the
+agent actually wrote is preserved alongside it. When no inference backend is
+reachable the note is stored unreformulated rather than refused, and the response
+carries `degraded: true` — a missing model never costs you the memory.
+
+The reformulation itself lives on `InferenceBackend.reformulate` in
+`tools/mcp/common/inference.py`, and the dual encoding on
+`MemoryHTTPClient.store_dual`, so the Consultant's own consultation summaries and
+ar-manager's memories share one implementation.
 
 **Reformulation is a beta feature.** The rewrite runs on a small local model and
 can drop detail, collapse specifics, or state things the author did not. So every
-retrieval path — `recall`, `consult`, `branch_catchup`, and ar-manager's
-`memory_recall` and `workstream_context` — returns the **original text by
-default**. Each returned memory carries a `text_source` field (`original` or
+retrieval path — `consult` and ar-manager's `memory_recall` and
+`workstream_context` — returns the **original text by default**. Each returned memory carries a `text_source` field (`original` or
 `reformulated`) saying which version it holds.
 
 To read the rewrite instead — when evaluating reformulation quality, for example —
@@ -238,13 +260,6 @@ so with `degraded: true`. Check:
 
 No restart is needed after fixing it — the consultant re-probes and picks the
 backend up within `AR_INFERENCE_HEALTH_TTL` seconds.
-
-### `remember` returns `stored: false`
-
-Reformulation needs a model, and storing an unreformulated note would put a raw
-context dump into the corpus, where it leads recall for large queries. The tool
-refuses instead, returning the note as `original` so it can be re-sent once a
-backend is up. This is the only tool that fails closed on a backend outage.
 
 ### "memory_available: false" in consultant_status
 

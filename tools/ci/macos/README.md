@@ -1,8 +1,9 @@
 # AR CI macOS Runner
 
 Self-hosted GitHub Actions runner for macOS. Runs natively (no Docker)
-as a simple shell script loop, picking up jobs labelled
-`[self-hosted, macos, ar-ci]`.
+as a simple shell script loop, picking up jobs whose labels it covers —
+`[self-hosted, macos, ar-ci]` by default, configurable via `RUNNER_LABELS`
+(see "Dedicating a Runner to One Job").
 
 ## Architecture
 
@@ -221,7 +222,73 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `RUNNER_WORKDIR` | `~/actions-runner/_work` | Job working directory |
+| `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
+
+## Dedicating a Runner to One Job
+
+GitHub schedules a job on any runner whose labels are a **superset** of the
+job's `runs-on` list. Nothing else constrains it: a runner does not opt in to
+particular workflows, and there is no exclusion list. So what a runner refuses
+is decided entirely by the labels it **leaves out**.
+
+That makes the isolation rule simple: to serve one job and nothing else, drop
+the labels every other job asks for.
+
+The deploy runner is the worked example. `.github/workflows/deploy.yaml` asks
+for `[self-hosted, macos, ar-deploy]`, while every other macOS job in this repo
+asks for `[self-hosted, macos, ar-ci]`. Configure it with:
+
+```bash
+RUNNER_LABELS=self-hosted,macos,ar-deploy
+```
+
+It then covers the deploy job's three labels, and cannot cover any `ar-ci` job
+because it does not carry `ar-ci`. Deploys never queue behind a multi-hour test
+lane, and the test lane never picks up a deploy.
+
+**Do not add `ar-deploy` to an existing `ar-ci` runner instead.** Its labels
+would cover both lists and it would take test jobs as well — the opposite of
+what you want.
+
+### Running both roles on one machine
+
+The Mac that hosts the FlowTree controller stack may need to be both a test
+runner and the deploy runner. That is two wrapper processes, and each needs its
+own identity and its own directory — a second wrapper inheriting the default
+`RUNNER_NAME` would re-register over the first (`config.sh --replace`), leaving
+one runner where you wanted two.
+
+`runner.sh` takes an env file and a runner directory as arguments for exactly
+this:
+
+```bash
+# Test runner — the existing setup, unchanged.
+./runner.sh
+
+# Deploy runner — separate env file, separate directory, separate name.
+cat > ~/.runner-deploy.env <<'ENV'
+GITHUB_PAT=ghp_your_token_here
+GITHUB_OWNER=almostrealism
+GITHUB_REPO=common
+RUNNER_NAME=mac-studio-deploy
+RUNNER_LABELS=self-hosted,macos,ar-deploy
+ENV
+./runner.sh ~/.runner-deploy.env ~/actions-runner-deploy
+```
+
+Confirm the two registrations carry different labels before relying on it:
+
+```bash
+gh api repos/almostrealism/common/actions/runners \
+    --jq '.runners[] | {name, status, labels: [.labels[].name]}'
+```
+
+The deploy runner additionally needs **Docker** available to the runner user
+(`docker compose` v2), plus JDK 17 and Maven, because `rebuild.sh` builds the
+JARs and then composes the images on that host. `.env` is read once at wrapper
+start, so restart the wrapper after changing `RUNNER_LABELS` — re-registration
+between jobs does not re-read it.
 
 ## Sharing Runners Across Repositories (Org-Level)
 

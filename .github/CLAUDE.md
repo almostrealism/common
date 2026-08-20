@@ -98,6 +98,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `studio_changed`   | `studio/`                  | `test-media`                     |
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
 | `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
+| `images_changed`   | Dockerfiles, `.dockerignore`, compose, `tools/mcp/`, `tools/tracker/`, `docs/`, `CLAUDE.md` | `docker-build` |
 
 **No flag exists for `flowtree/` or `tools/` Java code.**
 Changes to those directories set `code_changed=true` (triggering the build) but
@@ -311,6 +312,59 @@ on the PR as independent checks; they just do not decide mergeability. Restore
 them to `all-checks` (needs + env + `check_job` + summary lines) once the CL
 backend is considered stable again.
 
+### What the `docker-build` job covers
+
+Builds the controller-stack images (`ar-manager`, `ar-memory`, `ar-tracker`) so
+a packaging break surfaces on the PR instead of at deploy time. Build only —
+nothing is pushed or started. Path-gated on `images_changed` **and nothing
+else** (see the flag-contract exception above), depends only on `changes` (no
+Maven build). Uploads no coverage, so it does **not** appear in
+`analysis`'s `needs`; it **is** part of `all-checks` (skipped → treated as
+passing), like `agent-volume-isolation`.
+
+The `images_changed` flag covers everything that goes *into* an image: the
+Dockerfiles, `.dockerignore`, the controller compose file, `tools/mcp/`,
+`tools/tracker/`, and — because ar-manager bakes the documentation corpus into
+its image — `docs/` and `CLAUDE.md`. A docs-only change genuinely produces a
+different image, so it is not treated as a docs-only skip here.
+
+The job asserts more than "the build exits 0": it counts the markdown/HTML
+files inside the built ar-manager image and fails if the corpus is missing or
+truncated, and fails if any `.java` file survived the pruning stage. This
+matters because `_get_docs()` in `server.py` degrades **silently** when the
+corpus is absent — a broken image would start cleanly and simply answer without
+documentation grounding, which no startup check would catch.
+
+### What the `Deploy Controller Stack` workflow does
+
+Lives in its own file (`.github/workflows/deploy.yaml`), triggered by
+`workflow_run` on a **successful master** run of "Build and Test", plus
+`workflow_dispatch` for manual deploys.
+
+**It is a separate `workflow_run` workflow for the same reason
+`auto-resolve-submit.yaml` is:** a job declaring `environment:` inside a
+`pull_request` run attaches a deployment status to the PR head, and a pending
+deployment later cancelled shows as a spurious "had a problem deploying" red X.
+Never move a deploy job into `analysis.yaml`, and never give a
+`pull_request`-reachable job an `environment:`.
+
+It runs on `[self-hosted, macos, ar-deploy]` — a **native** macOS runner on the
+host that owns the stack, with Docker available to the runner user. The label is
+deliberately distinct from `ar-ci` (same reasoning as `ar-ci-cl`): a deploy must
+not queue behind the macOS test lane, and the test lane must not pick up
+deploys.
+
+Restarting `ar-manager` drops the MCP connection of every in-flight coding-agent
+job, so the workflow drains first: it closes job intake via
+`POST /api/config/accept-automated-jobs {"accept": false}`, waits with
+`tools/ci/drain-agent-jobs.sh` until no job reports an active status, and
+**fails rather than forcing** when the wait expires (`skip_drain: true` on a
+manual run overrides this deliberately). Intake is reopened in an `always()`
+step so a failed deploy cannot leave the controller permanently quiesced.
+
+`concurrency` does **not** cancel in progress: interrupting a half-finished
+container rebuild is worse than queueing behind it.
+
 ### What the `analysis` job does
 
 Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`, and
@@ -362,6 +416,17 @@ when test jobs are skipped.
   contract: detection must run in the `pull_request` branch, `set_all_flags_true`
   must include the flag, and any job gated on the flag must AND it with
   `code_changed == 'true'` so docs-only PRs still skip everything.
+
+  **One sanctioned exception: `docker-build` is gated on `images_changed`
+  alone.** The `code_changed` conjunction exists so a docs-only PR skips the
+  *test* pipeline, and every other flag-gated job is a test job. `docker-build`
+  is not: it verifies a build artifact, and documentation is one of that
+  artifact's inputs, because ar-manager bakes the corpus into its image. ANDing
+  it with `code_changed` would skip the corpus check on precisely the change
+  that alters the corpus — `code_changed` is false for a docs-only PR, since
+  the detector excludes `docs/` and `*.md`. Do not "fix" this back to the
+  general rule. Any future job in the same position (verifying an artifact
+  whose inputs include documentation) belongs in this exception too.
 
 ---
 

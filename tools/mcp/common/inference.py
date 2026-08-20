@@ -239,6 +239,57 @@ class InferenceBackend(ABC):
             return Synthesis(None, self.name, "model returned an empty response")
         return Synthesis(text, self.name)
 
+    def reformulate(
+        self,
+        content: str,
+        doc_context: str = "",
+        max_tokens: int = 512,
+    ) -> Synthesis:
+        """Rewrite an agent-authored note to match project terminology.
+
+        Lives on the backend rather than in either MCP server because both
+        the Consultant's ``remember`` and ar-manager's ``memory_store`` write
+        to the same corpus and must produce the same rewrite for the same
+        note; a second copy of the prompt would let the two drift apart.
+
+        Degradation is reported, never substituted: a caller must not write
+        a backend-down passthrough dump into the corpus as if it were the
+        author's note (``MemoryStore.is_passthrough_dump`` rejects that shape
+        at the store, but the caller should not get that far). Check
+        :attr:`Synthesis.degraded` and fall back to the original text.
+
+        Args:
+            content: The note as its author wrote it.
+            doc_context: Optional documentation excerpt to ground terminology.
+            max_tokens: Generation cap; a reformulation is a few sentences.
+
+        Returns:
+            A :class:`Synthesis` holding the rewrite, or a degraded one.
+        """
+        parts = []
+        if doc_context:
+            parts.append(f"## Relevant Documentation\n\n{doc_context}")
+        parts.append(f"## Agent Note (Raw)\n\n{content}")
+        parts.append(
+            "## Task\n\n"
+            "Reformulate the agent's note to be consistent with AR project "
+            "terminology and documentation. Preserve the original intent but:\n"
+            "- Use correct class names, method names, and module names\n"
+            "- Add relevant context from the documentation\n"
+            "- Fix any inaccuracies based on the documentation\n"
+            "- Keep it concise (1-3 sentences)\n\n"
+            "Return ONLY the reformulated note, nothing else."
+        )
+
+        synthesis = self.synthesize(
+            "\n\n".join(parts), system=SYSTEM_PROMPT, max_tokens=max_tokens,
+        )
+        if synthesis.degraded:
+            return synthesis
+
+        # Models habitually wrap a single-value answer in quotes.
+        return Synthesis(synthesis.text.strip().strip('"').strip("'"), self.name)
+
 
 # ---------------------------------------------------------------------------
 # Ollama backend
