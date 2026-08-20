@@ -7,10 +7,16 @@
 # Patterns are anchored at the context root, so directories that occur at any
 # depth need a **/ prefix. Keep both forms for each.
 
-# Build output
+# Build output. Excluded to keep the context small — but the controller and
+# agent images COPY the flowtree runtime jars out of it, so those paths are
+# re-included. A blanket exclusion here broke both builds with
+#   lstat /flowtree/runtime/target: no such file or directory
+# and did so only at deploy time, because no CI job built those two images.
+# tools/tests/test_dockerignore_consistency.py now checks this invariant.
 target/
 **/target/
-*.jar
+!flowtree/runtime/target
+!flowtree/runtime/target/**
 *.class
 
 # VCS and IDE

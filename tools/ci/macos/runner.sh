@@ -42,6 +42,18 @@ fi
 # shellcheck source=/dev/null
 source "${ENV_FILE}"
 
+# Track the origin of each setting. A value that silently falls back to a
+# default is indistinguishable from one that was set — and because the shipped
+# example used `~`, a RUNNER_DIR "set" in .env expanded to the *invoking user's*
+# home, landing somewhere the operator never named. The summary below reports
+# the origin so that is visible instead of inferred.
+if [ -n "${2:-}" ]; then
+    RUNNER_DIR_SOURCE="command line"
+elif [ -n "${RUNNER_DIR:-}" ]; then
+    RUNNER_DIR_SOURCE="${ENV_FILE}"
+else
+    RUNNER_DIR_SOURCE="built-in default"
+fi
 RUNNER_DIR="${2:-${RUNNER_DIR:-${HOME}/actions-runner}}"
 
 for var in GITHUB_PAT GITHUB_OWNER; do
@@ -106,6 +118,98 @@ if [ -z "${JAVA_MAJOR}" ] || [ "${JAVA_MAJOR}" -lt 17 ]; then
     exit 1
 fi
 
+# ---------- Runner configuration ----------
+
+RUNNER_LABELS_SOURCE="${RUNNER_LABELS:+${ENV_FILE}}"
+RUNNER_NAME="${RUNNER_NAME:-$(hostname)-macos}"
+RUNNER_GROUP="${RUNNER_GROUP:-Default}"
+
+# Labels decide which jobs this runner may pick up. GitHub schedules a job on a
+# runner whose label set is a SUPERSET of the job's `runs-on` list, so a runner
+# picks up every job whose labels it fully covers — including ones it was never
+# meant for. A single-purpose runner must therefore OMIT the labels of the jobs
+# it should ignore, not merely add its own. See "Dedicating a Runner to One Job"
+# in the README.
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,macos,ar-ci}"
+RUNNER_WORKDIR="${RUNNER_WORKDIR:-${RUNNER_DIR}/_work}"
+
+# ---------- Resolved configuration ----------
+#
+# Printed before anything acts on it. This used to appear only once the runner
+# loop started — after the installer had already reported a directory nobody
+# had asked for.
+
+echo "Configuration"
+echo "  Config file:  ${ENV_FILE}"
+echo "  Scope:        ${RUNNER_SCOPE} (${SCOPE_LABEL})"
+echo "  Runner name:  ${RUNNER_NAME}"
+echo "  Runner dir:   ${RUNNER_DIR}   [from ${RUNNER_DIR_SOURCE}]"
+echo "  Work dir:     ${RUNNER_WORKDIR}"
+echo "  Labels:       ${RUNNER_LABELS}   [from ${RUNNER_LABELS_SOURCE:-built-in default}]"
+if [ -n "${RUNNER_CPU_LIMIT:-}" ]; then
+    echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs"
+fi
+echo ""
+
+# Created only after the summary, so a path the operator cannot write to is
+# reported against a directory they can see rather than failing blind.
+mkdir -p "${RUNNER_WORKDIR}"
+
+# ---------- Ownership preflight ----------
+#
+# The runner's own config.sh chmods files inside RUNNER_DIR (svc.sh among
+# them). chmod fails with EPERM — "Operation not permitted" — for any file the
+# caller does not OWN, whatever its mode bits are: only the owner or root may
+# change a file's mode. So a runner directory populated by a different account
+# breaks registration in a way no amount of chmod can repair, and the failure
+# arrives late, after "Settings Saved", where it reads as a registration
+# problem rather than an ownership one.
+#
+# Worse, it is unrecoverable by retrying: config.sh has already written
+# .runner by then, so the next attempt clears that, re-registers, and fails at
+# the same chmod, forever. Check up front instead.
+
+if [ -d "${RUNNER_DIR}" ]; then
+    CURRENT_USER="$(id -un)"
+    # No pipe to `head`: closing it early sends SIGPIPE to find, and under
+    # `set -o pipefail` that aborts this script with status 141 before it can
+    # report anything — which is guaranteed on a real runner directory, since
+    # it holds thousands of files. Collect, then take the first line in shell.
+    FOREIGN_FILES="$(find "${RUNNER_DIR}" ! -user "${CURRENT_USER}" -print 2>/dev/null || true)"
+    FOREIGN_FILE="${FOREIGN_FILES%%$'\n'*}"
+    if [ -n "${FOREIGN_FILE}" ]; then
+        # ls is used rather than stat because `stat -f` means "owner" on BSD
+        # and "filesystem status" on GNU, so the usual try-one-then-the-other
+        # fallback silently yields a filesystem dump on the wrong platform.
+        FOREIGN_OWNER="$(ls -ld "${FOREIGN_FILE}" 2>/dev/null | awk '{print $3}')"
+        echo "ERROR: ${RUNNER_DIR} contains files owned by '${FOREIGN_OWNER:-another user}', not '${CURRENT_USER}'."
+        echo "  First offender: ${FOREIGN_FILE}"
+        echo ""
+        echo "  Registration will fail partway through with"
+        echo "    chmod: Unable to change file mode on .../svc.sh: Operation not permitted"
+        echo "  because only a file's owner may change its mode. Permissions (the"
+        echo "  mode bits) are not the issue here — ownership is — so chmod cannot"
+        echo "  fix it and the runner would retry the same failure indefinitely."
+        echo ""
+        echo "  The runner directory must be owned by whoever runs this script."
+        echo "  Pick whichever matches the account the jobs should run as:"
+        echo ""
+        echo "    # run the runner as '${FOREIGN_OWNER:-the owning user}' (keeps the directory as-is)"
+        echo "    sudo -iu ${FOREIGN_OWNER:-<owner>} $(cd "$(dirname "$0")" && pwd)/runner.sh"
+        echo ""
+        echo "    # or take the directory over for '${CURRENT_USER}'"
+        echo "    sudo chown -R ${CURRENT_USER} ${RUNNER_DIR}"
+        echo ""
+        echo "  Prefer the first if this runner is meant to execute jobs as"
+        echo "  '${FOREIGN_OWNER:-that account}' — chowning to '${CURRENT_USER}' would make jobs run"
+        echo "  as '${CURRENT_USER}' instead, which is usually the opposite of the intent."
+        echo ""
+        echo "  Note the runner directory owner also determines which account"
+        echo "  executes job steps; it is not merely a file-permission detail."
+        exit 1
+    fi
+fi
+
 # ---------- Install runner if missing ----------
 
 if [ ! -f "${RUNNER_DIR}/config.sh" ]; then
@@ -145,22 +249,6 @@ if [ ! -f "${RUNNER_DIR}/config.sh" ]; then
 
     echo "Runner installed at ${RUNNER_DIR}"
 fi
-
-# ---------- Runner configuration ----------
-
-RUNNER_NAME="${RUNNER_NAME:-$(hostname)-macos}"
-RUNNER_GROUP="${RUNNER_GROUP:-Default}"
-
-# Labels decide which jobs this runner may pick up. GitHub schedules a job on a
-# runner whose label set is a SUPERSET of the job's `runs-on` list, so a runner
-# picks up every job whose labels it fully covers — including ones it was never
-# meant for. A single-purpose runner must therefore OMIT the labels of the jobs
-# it should ignore, not merely add its own. See "Dedicating a Runner to One Job"
-# in the README.
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,macos,ar-ci}"
-RUNNER_WORKDIR="${RUNNER_WORKDIR:-${RUNNER_DIR}/_work}"
-
-mkdir -p "${RUNNER_WORKDIR}"
 
 # ---------- Set AR environment variables ----------
 
@@ -290,14 +378,6 @@ trap cleanup SIGTERM SIGINT
 # ---------- Runner loop ----------
 
 echo "Starting macOS runner loop for ${SCOPE_LABEL}"
-echo "  Scope:        ${RUNNER_SCOPE}"
-echo "  Runner name:  ${RUNNER_NAME}"
-echo "  Runner dir:   ${RUNNER_DIR}"
-echo "  Work dir:     ${RUNNER_WORKDIR}"
-echo "  Labels:       ${RUNNER_LABELS}"
-if [ -n "${RUNNER_CPU_LIMIT:-}" ]; then
-    echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs"
-fi
 echo ""
 
 while ${RUNNING}; do

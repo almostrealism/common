@@ -330,7 +330,18 @@ different image, so it is not treated as a docs-only skip here.
 
 The job asserts more than "the build exits 0": it counts the markdown/HTML
 files inside the built ar-manager image and fails if the corpus is missing or
-truncated, and fails if any `.java` file survived the pruning stage. This
+truncated, and fails if any `.java` file survived the pruning stage.
+
+**It does not build `flowtree-controller` or the agent image.** Those need the
+Maven artifacts (`flowtree/runtime/target`) first, which would put a full
+reactor build on this job. The gap is real and has already cost one failed
+deploy: a root `.dockerignore` rule added for ar-manager excluded
+`**/target/`, which both of those images COPY from, and nothing caught it until
+the deploy ran. `tools/tests/test_dockerignore_consistency.py` now covers that
+specific class of break statically — it cross-references every Dockerfile's
+COPY sources against the ignore rules with no daemon required. A break that
+static analysis cannot see (a bad base image, a missing file) still surfaces
+only at deploy. This
 matters because `_get_docs()` in `server.py` degrades **silently** when the
 corpus is absent — a broken image would start cleanly and simply answer without
 documentation grounding, which no startup check would catch.

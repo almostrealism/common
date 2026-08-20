@@ -225,6 +225,71 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
 
+### "chmod: Unable to change file mode on .../svc.sh: Operation not permitted"
+
+Registration gets as far as `√ Settings Saved.` and then fails on a `chmod`,
+and the wrapper retries every 30s without ever succeeding.
+
+This is **ownership**, not permissions. `chmod` returns EPERM — "Operation not
+permitted" — for any file the caller does not own, whatever its mode bits say;
+only the owner or root may change a file's mode. Setting the directory 777
+therefore does not help, which is why it looks like the permissions were
+already correct.
+
+It is also unrecoverable by retrying: `config.sh` has already written `.runner`
+before it reaches the `chmod`, so each attempt clears that, re-registers, and
+fails at the same place.
+
+**The runner directory must be owned by whoever runs `runner.sh`.** There is no
+way around this and no reason to want one: the account running the agent is
+also the account that executes every job step, so "run as A against a directory
+owned by B" has no coherent meaning — B's ownership would be the only thing B
+contributed.
+
+So do not mix them. Run the script as the account the jobs should run as, and
+give that account the directory:
+
+```bash
+# as the service account
+sudo -iu worker /path/to/tools/ci/macos/runner.sh ~/.runner-deploy.env
+```
+
+Testing the deploy job from a personal account does **not** require the service
+account's directory. What routes the deploy job to a runner is its **labels**,
+not where it lives — so a throwaway runner in your own home with
+`RUNNER_LABELS=self-hosted,macos,ar-deploy` serves the same purpose:
+
+```bash
+RUNNER_DIR=/Users/<you>/actions-runner-deploytest
+RUNNER_LABELS=self-hosted,macos,ar-deploy
+```
+
+`runner.sh` checks ownership before registering and stops with this guidance
+rather than looping. If the other account still has a runner registered from
+that directory, remove it in GitHub first.
+
+### The runner installed into the wrong directory
+
+`RUNNER_DIR=~/actions-runner` in `.env` does **not** mean a fixed directory. A
+bare `~` is expanded by the shell to the home of whoever runs the script, so
+the same `.env` resolves differently per user — running it as one account to
+service another lands the runner in the wrong home, with no error. Use an
+absolute path.
+
+The startup summary now reports the resolved value and where it came from:
+
+```
+  Runner dir:   /Users/michael/actions-runner   [from /path/to/.env]
+```
+
+`[from ...env]` with an unexpected path means the value was set but expanded
+elsewhere — almost always a `~`. `[from built-in default]` means the variable
+was never set; check that the line is not still commented out.
+
+The same applies to `RUNNER_LABELS`: if the summary shows
+`[from built-in default]`, the runner is about to advertise the test-lane
+labels regardless of what you intended.
+
 ### "Cannot configure the runner because it is already configured"
 
 The runner directory holds a `.runner` file naming a registration that GitHub
