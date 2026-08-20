@@ -158,6 +158,14 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * optimizer is available from {@link #getOptimizer()} for configuration
 	 * before {@link #run()}.
 	 *
+	 * <p>Finally calls {@code optimizer.init()} to wire the master output file
+	 * and the per-channel stem files on the health computation. Without this
+	 * step every rendered arrangement reports no stems, because the stem
+	 * {@link org.almostrealism.audio.WaveOutput}s resolve to a null file and
+	 * never record a path for the health score to carry. The standalone runner
+	 * ({@link AudioSceneOptimizer#run}) calls this immediately after
+	 * {@link AudioSceneOptimizer#build} for the same reason.</p>
+	 *
 	 * @param scene  the scene to optimize (cloned; the original is untouched)
 	 * @param cycles the number of optimization cycles for {@link #run()}
 	 * @throws IOException if the records cannot be persisted
@@ -177,6 +185,7 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			if (completionListener != null) completionListener.run();
 		});
 
+		// TODO(review): duplicates the "Finally calls optimizer.init()" javadoc paragraph above; keep only one.
 		/* Builds the optimizer's output destinations. init() is the only place
 		   the master output file and the per-channel stem files are configured;
 		   without it every rendered arrangement reports no stems, because the

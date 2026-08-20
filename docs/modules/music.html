@@ -63,7 +63,7 @@
                     </div>
                     <div class="concept-card">
                         <h4>NoteAudioChoice</h4>
-                        <p>Configuration for audio samples that can be used in patterns with scale/granularity constraints.</p>
+                        <p>Configuration for audio samples that can be used in patterns with scale/granularity constraints. Persisted to the choices file by class name; sources that report <code>isPersistent() == false</code> (e.g. <code>GroupNoteSource</code>) are excluded from the saved list and re-added by the assembling code on load.</p>
                     </div>
                 </div>
             </section>
@@ -321,7 +321,7 @@ PatternSystemManager.sum(context, channel)
                     </div>
                     <div class="class-item">
                         <h4>NoteAudioChoice</h4>
-                        <p>Configuration for audio samples. Contains sources, scale constraints, seed patterns, and channel restrictions.</p>
+                        <p>Configuration for audio samples. Contains sources, scale constraints, seed patterns, and channel restrictions. The persistent sources (those reporting <code>isPersistent() == true</code>) are what gets serialized to the choices file; derived sources are omitted and re-added on read.</p>
                     </div>
                     <div class="class-item">
                         <h4>NoteAudioContext</h4>
