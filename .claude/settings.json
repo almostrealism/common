@@ -340,7 +340,7 @@
         ]
       },
       {
-        "matcher": "mcp__.*ar-manager__(memory_store|memory_recall|workstream_context)",
+        "matcher": "mcp__.*ar-manager__(memory_store|memory_recall|memory_namespaces|workstream_context)",
         "hooks": [
           {
             "type": "command",

@@ -82,8 +82,11 @@ READ_ONLY_TOOL_NAMES = frozenset({
     "list",
     "webfetch",
     "websearch",
-    # ar-consultant: every read tool. Memory retrieval moved to ar-manager.
+    # ar-consultant: every read tool. Memory *writing* moved to ar-manager;
+    # `recall` is still served here until its documentation grounding is
+    # confirmed live in ar-manager, and it reads, so it belongs in this set.
     "mcp__ar-consultant__consult",
+    "mcp__ar-consultant__recall",
     "mcp__ar-consultant__consultant_status",
     "mcp__ar-consultant__list_request_history",
     "mcp__ar-consultant__export_request_history",

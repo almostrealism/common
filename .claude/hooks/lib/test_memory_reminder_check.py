@@ -124,6 +124,21 @@ class ResetOnStoreTests(unittest.TestCase):
             self.assertEqual(d6["action"], "allow")
             self.assertEqual(d6["new_state"]["calls_since_last_store"], 1)
 
+    def test_surviving_consultant_recall_is_read_only(self):
+        """``mcp__ar-consultant__recall`` still exists and reads. It was
+        briefly dropped from the read-only set alongside the tools that were
+        actually removed, which made every recall count as a side-effect call
+        and fired memory reminders at an agent that was only reading context."""
+        state = _fresh_state()
+        d = self.core.decide("mcp__ar-consultant__recall", 3000, state)
+        self.assertEqual(d["new_state"]["calls_since_last_store"], 0)
+
+    def test_manager_memory_namespaces_is_read_only(self):
+        state = _fresh_state()
+        d = self.core.decide(
+            "mcp__ar-manager__memory_namespaces", 3001, state)
+        self.assertEqual(d["new_state"]["calls_since_last_store"], 0)
+
     def test_retired_consultant_remember_does_not_reset(self):
         """``mcp__ar-consultant__remember`` was removed when memory
         consolidated onto ar-manager. It used to reset the counter; a name

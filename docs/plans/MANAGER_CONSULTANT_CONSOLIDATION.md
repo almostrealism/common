@@ -313,11 +313,13 @@ spellings are equivalent.
 ar-consultant is down to nine tools, none of which writes a memory except the
 opt-in consultation summary in `end_consultation`.
 
-`recall` is the one deliberate hold-back. It blends `DocsRetriever` context into
-its summary, and ar-manager has no documentation corpus until §5 lands — removing
-it now would delete a capability with no replacement rather than move one. Rule 3
-in `CLAUDE.md` already points at `memory_recall` as the default, so the ordering
-costs nothing.
+`recall` is the one deliberate hold-back. At the time of the Phase C removals it
+was the only tool blending `DocsRetriever` context into a memory summary.
+**Phase D closed that gap in the code** — `memory_recall` now does the same and
+returns `doc_references` — so what keeps `recall` alive is no longer a missing
+capability but an unverified one: see §5's D7 on why it waits for a deploy to
+confirm the corpus is live in the running image. Rule 3 in `CLAUDE.md` already
+points at `memory_recall` as the default, so the ordering costs nothing.
 
 `recall_namespaces` had no manager counterpart, and the 2026-06-06 audit
 identified it as the correct way to enumerate namespaces — so removing consultant

@@ -11,8 +11,10 @@
 # ago. See docs/plans/MANAGER_CONSULTANT_CONSOLIDATION.md §4.1.
 #
 # Calibrated by consequence:
-#   memory_store          a write onto the wrong branch corrupts the corpus  → BLOCK
-#   reads (recall, etc.)  wrong branch returns the wrong context             → WARN
+#   memory_store                       a write onto the wrong branch
+#                                      corrupts the corpus              → BLOCK
+#   memory_recall, memory_namespaces,  wrong branch returns the wrong
+#   workstream_context                 context                          → WARN
 #
 # Reads are never blocked: asking about another repo or branch is legitimate
 # (scope="all" exists for it). The hook stays silent when the argument is
@@ -52,7 +54,7 @@ if not m:
 
 name = m.group(1)
 WRITES = {"memory_store"}
-READS = {"memory_recall", "workstream_context"}
+READS = {"memory_recall", "memory_namespaces", "workstream_context"}
 if name not in WRITES and name not in READS:
     print("ALLOW")
     sys.exit(0)

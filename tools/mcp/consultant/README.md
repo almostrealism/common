@@ -197,12 +197,18 @@ backend that is unreachable degrades rather than falling back to another one.
 Memory **writing** is no longer here. `remember` and `recall_namespaces` were
 removed when memory consolidated onto ar-manager, which is reachable from every
 repository rather than only from a checkout of this one. Use
-`mcp__ar-manager__memory_store` and `memory_namespaces` instead.
+`mcp__ar-manager__memory_store` and `mcp__ar-manager__memory_namespaces`
+instead.
 
-`recall` remains for now because it blends documentation context into its
-summary and ar-manager has no documentation corpus yet; it goes when that lands
-(see docs/plans/MANAGER_CONSULTANT_CONSOLIDATION.md §5). For plain memory search
-prefer `mcp__ar-manager__memory_recall`, which works in every repository.
+`recall` remains for now, but **not** because ar-manager lacks the capability:
+`mcp__ar-manager__memory_recall` already blends documentation context into its
+summary and returns `doc_references`. What is outstanding is operational
+confirmation that the corpus baked into the ar-manager image is present in the
+running container — the deploy workflow's corpus check is the signal. Until
+that has passed once, keeping `recall` means documentation-grounded retrieval
+is never absent from both servers at the same time. Prefer
+`mcp__ar-manager__memory_recall` for new work; it is available in every
+repository, where this tool is not.
 
 ## Memory Text: Original vs Reformulated
 

@@ -826,7 +826,12 @@ jobs:
   # Uploads no coverage, so per the analysis.needs rule it is NOT in that list.
   docker-build:
     needs: changes
-    if: needs.changes.outputs.code_changed == 'true' && needs.changes.outputs.images_changed == 'true'
+    # Deliberately NOT ANDed with code_changed. Documentation is a build
+    # input for this job — ar-manager bakes the corpus into its image — so a
+    # docs-only change genuinely produces a different image and must still be
+    # verified. See the flag contract in .github/CLAUDE.md, which records this
+    # as the one sanctioned exception.
+    if: needs.changes.outputs.images_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code

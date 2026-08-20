@@ -316,8 +316,9 @@ backend is considered stable again.
 
 Builds the controller-stack images (`ar-manager`, `ar-memory`, `ar-tracker`) so
 a packaging break surfaces on the PR instead of at deploy time. Build only —
-nothing is pushed or started. Path-gated on `images_changed`, depends only on
-`changes` (no Maven build). Uploads no coverage, so it does **not** appear in
+nothing is pushed or started. Path-gated on `images_changed` **and nothing
+else** (see the flag-contract exception above), depends only on `changes` (no
+Maven build). Uploads no coverage, so it does **not** appear in
 `analysis`'s `needs`; it **is** part of `all-checks` (skipped → treated as
 passing), like `agent-volume-isolation`.
 
@@ -415,6 +416,17 @@ when test jobs are skipped.
   contract: detection must run in the `pull_request` branch, `set_all_flags_true`
   must include the flag, and any job gated on the flag must AND it with
   `code_changed == 'true'` so docs-only PRs still skip everything.
+
+  **One sanctioned exception: `docker-build` is gated on `images_changed`
+  alone.** The `code_changed` conjunction exists so a docs-only PR skips the
+  *test* pipeline, and every other flag-gated job is a test job. `docker-build`
+  is not: it verifies a build artifact, and documentation is one of that
+  artifact's inputs, because ar-manager bakes the corpus into its image. ANDing
+  it with `code_changed` would skip the corpus check on precisely the change
+  that alters the corpus — `code_changed` is false for a docs-only PR, since
+  the detector excludes `docs/` and `*.md`. Do not "fix" this back to the
+  general rule. Any future job in the same position (verifying an artifact
+  whose inputs include documentation) belongs in this exception too.
 
 ---
 
