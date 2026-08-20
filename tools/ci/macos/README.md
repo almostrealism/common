@@ -225,6 +225,30 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
 
+### "Cannot configure the runner because it is already configured"
+
+The runner directory holds a `.runner` file naming a registration that GitHub
+no longer has. This is a normal end state, not corruption: the runner is
+registered `--ephemeral`, so it deregisters itself after every job, and a
+wrapper stopped mid-cycle leaves the local file behind. Deregistration then
+fails ("Not Found") and `config.sh` refuses to configure over the leftover.
+
+`runner.sh` now recovers from this by itself — it reports why the graceful
+removal failed and clears the local state before registering. If you hit it
+with an older copy of the script, or want to clear it by hand:
+
+```bash
+rm -f ~/actions-runner/.runner ~/actions-runner/.credentials*
+```
+
+Note that `config.sh` lives in the **runner directory** (`~/actions-runner` by
+default), not in `tools/ci/macos`. The tool's own advice to run `./config.sh
+remove` is relative to that directory, which is why it looks missing.
+
+Deleting those files is safe: they are local state, and registration passes
+`--replace`, so a registration that does still exist is taken over rather than
+duplicated.
+
 ## Dedicating a Runner to One Job
 
 GitHub schedules a job on any runner whose labels are a **superset** of the

@@ -223,11 +223,30 @@ remove_runner() {
     REMOVE_TOKEN=$(request_runner_token "runners/remove-token") || REMOVE_TOKEN=""
 
     if [ -n "${REMOVE_TOKEN}" ]; then
-        cd "${RUNNER_DIR}"
-        ./config.sh remove --token "${REMOVE_TOKEN}" 2>/dev/null || true
+        # Do not silence this. Hiding the reason turned a recoverable state
+        # into an unexplained "Cannot configure the runner because it is
+        # already configured" loop on the next line.
+        ( cd "${RUNNER_DIR}" && ./config.sh remove --token "${REMOVE_TOKEN}" ) \
+            || echo "  Graceful deregistration failed (reason above)."
     else
-        echo "WARNING: Could not obtain remove token. Cleaning config files manually."
-        rm -f "${RUNNER_DIR}/.runner" "${RUNNER_DIR}/.credentials" "${RUNNER_DIR}/.credentials_rsaparams"
+        echo "  No remove token, so deregistering with GitHub is not possible."
+    fi
+
+    # Whatever happened above, the local files must be gone before the next
+    # config.sh, which refuses outright if .runner is present. The graceful
+    # path deletes them itself, but it fails whenever the local config outlives
+    # the registration it names — and that is the normal end state here, since
+    # an ephemeral runner deregisters itself after every job, so a wrapper
+    # killed mid-cycle leaves a .runner naming a runner GitHub no longer has.
+    #
+    # Deleting them is safe: they are local state only, and configure_runner
+    # passes --replace, so a registration that genuinely still exists is taken
+    # over rather than duplicated.
+    if [ -f "${RUNNER_DIR}/.runner" ]; then
+        echo "  Clearing stale local runner state in ${RUNNER_DIR}."
+        rm -f "${RUNNER_DIR}/.runner" \
+              "${RUNNER_DIR}/.credentials" \
+              "${RUNNER_DIR}/.credentials_rsaparams"
     fi
 }
 
@@ -275,7 +294,7 @@ echo "  Scope:        ${RUNNER_SCOPE}"
 echo "  Runner name:  ${RUNNER_NAME}"
 echo "  Runner dir:   ${RUNNER_DIR}"
 echo "  Work dir:     ${RUNNER_WORKDIR}"
-echo "  Labels:       self-hosted, macos, ar-ci"
+echo "  Labels:       ${RUNNER_LABELS}"
 if [ -n "${RUNNER_CPU_LIMIT:-}" ]; then
     echo "  CPU limit:    ${RUNNER_CPU_LIMIT} CPUs"
 fi
@@ -288,6 +307,9 @@ while ${RUNNING}; do
 
     if ! configure_runner; then
         echo "Registration failed. Retrying in 30s..."
+        echo "  If this repeats with \"already configured\", clear the local"
+        echo "  state by hand:  rm -f ${RUNNER_DIR}/.runner ${RUNNER_DIR}/.credentials*"
+        echo "  (config.sh lives in ${RUNNER_DIR}, not in this script's directory.)"
         sleep 30
         continue
     fi
