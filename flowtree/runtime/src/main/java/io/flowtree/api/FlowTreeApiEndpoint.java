@@ -75,7 +75,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the workstream's channel</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
- *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"..."}}</td><td>Submit a job, resolving the workstream from the request body</td></tr>
+ *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"...","repoUrl":"...","createWorkstreamIfMissing":true}}</td><td>Submit a job, resolving the workstream from the request body and optionally creating it</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td><td>{@code {"channelId":"...","channelName":"..."}}</td><td>Update an existing workstream</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/archive|/unarchive|/delete</td><td>{@code {"archiveSlackChannel":true}} or {@code {"force":false}}</td><td>Archive, unarchive, or delete a workstream — see {@link WorkstreamLifecycleHandler}</td></tr>
@@ -537,7 +537,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Handles {@code POST /api/workstreams/{id}/submit} for programmatic job submission.
      *
      * <p>Workstream resolution: explicit {@code workstreamId} in body takes priority, then
-     * {@code targetBranch} match, then the URL path parameter. Supports optional per-job
+     * {@code targetBranch} match, then the URL path parameter. When nothing matches and the
+     * body sets {@code createWorkstreamIfMissing} to {@code true}, a workstream is registered
+     * for {@code targetBranch} and {@code repoUrl} (both required in that case) and the job
+     * proceeds on it; the response then carries {@code workstreamCreated: true}. This lets an
+     * automated caller such as a CI auto-resolve job work on any branch without a workstream
+     * having been registered by hand first. Supports optional per-job
      * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
      * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
@@ -580,42 +585,20 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json);
         }
 
-        // Workstream resolution: explicit ID wins, then branch/repo, then path ID.
+        // Workstream resolution: explicit ID wins, then branch/repo, then path
+        // ID, and finally — when the caller opted in with
+        // createWorkstreamIfMissing — registering the workstream this job
+        // needs. See WorkstreamRegistrationHandler#resolveOrRegister.
         String targetBranch = extractJsonField(body, "targetBranch");
-        String bodyWorkstreamId = extractJsonField(body, "workstreamId");
         String bodyRepoUrl = extractJsonField(body, "repoUrl");
-        Workstream workstream = null;
-        String resolvedWorkstreamId = pathWorkstreamId;
-        if (bodyWorkstreamId != null && !bodyWorkstreamId.isEmpty()) {
-            SlackNotifier n = notifiers.notifierFor(bodyWorkstreamId);
-            workstream = n != null ? n.getWorkstream(bodyWorkstreamId) : null;
-            if (workstream != null) {
-                resolvedWorkstreamId = bodyWorkstreamId;
-                log("Workstream resolved from request body: " + resolvedWorkstreamId);
-            }
-        }
-        if (workstream == null && targetBranch != null && !targetBranch.isEmpty()) {
-            NotifierRegistry.BranchResolution res = notifiers.resolveBranch(targetBranch, bodyRepoUrl);
-            if (res.error() != null) return errorResponse(res.error());
-            if (res.match() != null) {
-                workstream = res.match();
-                resolvedWorkstreamId = workstream.getWorkstreamId();
-                log("Workstream resolved by branch=" + targetBranch
-                    + (bodyRepoUrl != null && !bodyRepoUrl.isEmpty() ? "/repo=" + bodyRepoUrl : "")
-                    + ": " + resolvedWorkstreamId);
-            }
-        }
-        if (workstream == null && pathWorkstreamId != null) {
-            SlackNotifier n = notifiers.notifierFor(pathWorkstreamId);
-            workstream = n != null ? n.getWorkstream(pathWorkstreamId) : null;
-        }
+        WorkstreamRegistrationHandler.Registration resolution = workstreamRegistrationHandler()
+                .resolveOrRegister(body, targetBranch, bodyRepoUrl, pathWorkstreamId,
+                        extractJsonBooleanField(body, "createWorkstreamIfMissing"));
+        if (resolution.failure() != null) return resolution.failure();
 
-        if (workstream == null) {
-            String detail = pathWorkstreamId != null
-                ? "Unknown workstream: " + pathWorkstreamId
-                : "No workstream found for branch: " + targetBranch;
-            return errorResponse(detail);
-        }
+        Workstream workstream = resolution.workstream();
+        boolean workstreamCreated = !resolution.existing();
+        String workstreamId = workstream.getWorkstreamId();
 
         // Validate git identity before submitting - commits will fail without it.
         // Shell-command jobs never commit, so git identity is not required.
@@ -625,36 +608,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if (gitUserName == null || gitUserName.isEmpty()
                     || gitUserEmail == null || gitUserEmail.isEmpty()) {
                 return errorResponse("Git identity not configured for workstream "
-                    + resolvedWorkstreamId + ". Set gitUserName and gitUserEmail "
+                    + workstreamId + ". Set gitUserName and gitUserEmail "
                     + "in the workstream config or via /flowtree config.");
             }
         }
 
-        String workstreamId = resolvedWorkstreamId;
-
-        // Retry channel creation if the workstream has a channel name but
-        // no channel ID.  This handles the case where the initial channel
-        // creation at registration time failed (e.g., due to permissions)
-        // and has since been resolved.
-        if ((workstream.getChannelId() == null || workstream.getChannelId().isEmpty())
-                && workstream.getChannelName() != null && !workstream.getChannelName().isEmpty()) {
-            String name = workstream.getChannelName();
-            if (name.startsWith("#")) {
-                name = name.substring(1);
-            }
-            log("Workstream " + workstreamId + " has no channel ID; retrying channel creation for " + name);
-            String channelId = notifiers.notifierFor(workstreamId).createChannel(name);
-            if (channelId != null) {
-                workstream.setChannelId(channelId);
-                log("Channel resolved for workstream " + workstreamId + ": " + channelId);
-                // Re-register so channelToWorkstream picks up the new channelId,
-                // then persist so the YAML reflects it too.
-                if (listener != null) {
-                    listener.registerWorkstream(workstream);
-                    listener.persistConfig();
-                }
-            }
-        }
+        workstreamRegistrationHandler().backfillChannel(workstream);
 
         // Timestamp guard: skip submission if a newer job already exists
         // on this workstream. This prevents stale auto-resolve jobs from
@@ -953,6 +912,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(factory.isFalsificationEnabled());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
+        // Report an auto-created workstream so a caller that submitted with
+        // createWorkstreamIfMissing can tell a first run on a new branch from
+        // a run on a workstream someone had already registered.
+        if (workstreamCreated) {
+            json.append(",\"workstreamCreated\":true");
+        }
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
