@@ -58,6 +58,38 @@ import java.util.stream.Collectors;
  * naming function.</p>
  */
 public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyable {
+
+	/**
+	 * How far the current optimization cycle has got: how many health
+	 * evaluations it has delivered, out of how many it will deliver.
+	 *
+	 * <p>Both numbers describe the cycle in progress, not the run: a cycle
+	 * evaluates the whole population, so a new cycle starts over at zero.</p>
+	 *
+	 * @param completed evaluations delivered so far this cycle
+	 * @param total     evaluations the cycle will deliver in all
+	 */
+	public record Progress(int completed, int total) {
+		/** Returns the evaluations this cycle has yet to deliver. */
+		public int remaining() { return Math.max(0, total - completed); }
+
+		/**
+		 * Returns progress as a fraction of the cycle, or {@code 0.0} before
+		 * the size of the cycle is known.
+		 *
+		 * <p>Capped at one. {@link #completed()} and {@link #total()} are left
+		 * as they are, so a count that has outrun its total stays visible to
+		 * anyone reading the numbers even though the fraction cannot show
+		 * it.</p>
+		 */
+		public double fraction() {
+			return total <= 0 ? 0.0 : Math.min(1.0, completed / (double) total);
+		}
+
+		/** Returns whether the size of the cycle is known yet. */
+		public boolean isKnown() { return total > 0; }
+	}
+
 	/** Destination for persisted population records. */
 	private final String networksFile;
 
@@ -72,6 +104,9 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 
 	/** Number of completed optimization cycles. */
 	private int iterationCount;
+
+	/** Health evaluations delivered so far in the current cycle. */
+	private volatile int completedThisCycle;
 
 	/** Produces display names for records (used for their audio nodes). */
 	private Function<GenomicNetwork, String> networkNaming;
@@ -136,6 +171,39 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	public List<GenomicNetwork> getNetworks() { return networks; }
 
 	/**
+	 * Returns how far the current cycle has got.
+	 *
+	 * <p>Read this rather than counting scored records. The two are not the
+	 * same number: a delivered score attaches to every record carrying its
+	 * signature, and the record list is replaced outright whenever it falls out
+	 * of step with the population, so a caller holding an earlier list would be
+	 * counting something no longer being written to.</p>
+	 *
+	 * @return the progress of the cycle in progress
+	 */
+	public Progress getProgress() {
+		return new Progress(completedThisCycle, cycleSize());
+	}
+
+	/**
+	 * Returns how many health evaluations a cycle delivers, which is one per
+	 * member of the population being optimized.
+	 *
+	 * <p>Falls back to the number of records before a run has been prepared,
+	 * when there is no population to ask, and reports zero when neither is
+	 * known rather than inventing a total.</p>
+	 *
+	 * @return the number of evaluations in a cycle
+	 */
+	private int cycleSize() {
+		if (optimizer != null && optimizer.getPopulation() != null) {
+			return optimizer.getPopulation().size();
+		}
+
+		return networks.size();
+	}
+
+	/**
 	 * Replaces the population records, for callers that manage the record list
 	 * directly (trimming, reordering).
 	 *
@@ -171,7 +239,10 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			optimizer.setWaveDetailsProcessor(waveDetailsProcessor);
 		optimizer.setHealthListener(this::attachScore);
 		if (errorListener != null) optimizer.setErrorListener(errorListener);
-		if (cycleListener != null) optimizer.setCycleListener(cycleListener);
+		optimizer.setCycleListener(() -> {
+			completedThisCycle = 0;
+			if (cycleListener != null) cycleListener.run();
+		});
 		optimizer.setCompletionListener(() -> {
 			iterationCount++;
 			if (completionListener != null) completionListener.run();
@@ -222,8 +293,19 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * @param score     the delivered health score
 	 */
 	protected void attachScore(String signature, AudioHealthScore score) {
+		// Counted per delivery rather than per scored record. One evaluation is
+		// one unit of the cycle's work; a scored record is not. Records carry
+		// the previous cycle's scores until refreshNetworks rebuilds the list
+		// against the new population, and that rebuild replaces the list rather
+		// than updating it, so counting records means counting whichever list
+		// the counter happens to hold -- which for the cycle just finished is
+		// every record scored, and reads as a finished cycle before this one
+		// has begun.
+		completedThisCycle++;
+
 		log("scoreStems=" + (score.getStems() == null ?
-				"null" : score.getStems().size()) + " signature=" + signature);
+				"null" : score.getStems().size()) + " signature=" + signature
+				+ " completed=" + completedThisCycle + "/" + cycleSize());
 
 		boolean sync = networks.stream().map(GenomicNetwork::getGenome)
 				.filter(Objects::nonNull)
