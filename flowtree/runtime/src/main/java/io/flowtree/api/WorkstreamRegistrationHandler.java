@@ -133,17 +133,324 @@ final class WorkstreamRegistrationHandler {
             return errorResponse.apply("Missing required field: defaultBranch");
         }
 
+        Registration registration = register(body, defaultBranch);
+        if (registration.failure() != null) return registration.failure();
+
+        Workstream workstream = registration.workstream();
+        if (registration.existing()) {
+            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
+                    "{\"ok\":true,\"existing\":true,\"workstreamId\":\""
+                    + JsonFieldExtractor.escapeJson(workstream.getWorkstreamId()) + "\"}");
+        }
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true");
+        json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstream.getWorkstreamId())).append("\"");
+        if (registration.channelId() != null) {
+            json.append(",\"channelId\":\"").append(JsonFieldExtractor.escapeJson(registration.channelId())).append("\"");
+        }
+        if (registration.channelName() != null) {
+            json.append(",\"channelName\":\"").append(JsonFieldExtractor.escapeJson(registration.channelName())).append("\"");
+        }
+        PhaseConfigBundle registeredBundle = workstream.getPhaseConfigBundle();
+        PhaseConfigResolver.appendBundleJson(json, registeredBundle);
+        json.append("}");
+
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+                "application/json", json.toString());
+    }
+
+    /**
+     * Outcome of {@link #register(String, String)}: the workstream that now
+     * exists for the requested branch, or the HTTP failure that stopped it
+     * from being created.
+     *
+     * <p>Failures are carried as a ready-made {@link Response} rather than a
+     * message because registration fails in three distinct ways — a 400 for a
+     * malformed or unroutable request, and two 500s for a record that did not
+     * reach disk or is not readable back afterwards — and every caller should
+     * report the same status the registration endpoint would.</p>
+     */
+    static final class Registration {
+
+        /** The registered or already-registered workstream; {@code null} on failure. */
+        private final Workstream workstream;
+        /** The Slack channel created for a new workstream, or {@code null}. */
+        private final String channelId;
+        /** The Slack channel name used for a new workstream, or {@code null}. */
+        private final String channelName;
+        /** Whether the workstream already existed rather than being created here. */
+        private final boolean existing;
+        /** The failure response, or {@code null} when registration succeeded. */
+        private final Response failure;
+
+        /**
+         * Creates a registration outcome. Callers should use the static
+         * factory methods rather than this constructor.
+         *
+         * @param workstream  the resolved workstream, or {@code null} on failure
+         * @param channelId   the created Slack channel ID, or {@code null}
+         * @param channelName the Slack channel name, or {@code null}
+         * @param existing    whether the workstream already existed
+         * @param failure     the failure response, or {@code null} on success
+         */
+        private Registration(Workstream workstream, String channelId, String channelName,
+                             boolean existing, Response failure) {
+            this.workstream = workstream;
+            this.channelId = channelId;
+            this.channelName = channelName;
+            this.existing = existing;
+            this.failure = failure;
+        }
+
+        /** Returns the registered workstream, or {@code null} when registration failed. */
+        Workstream workstream() { return workstream; }
+
+        /** Returns the Slack channel ID created for a new workstream, or {@code null}. */
+        String channelId() { return channelId; }
+
+        /** Returns the Slack channel name used for a new workstream, or {@code null}. */
+        String channelName() { return channelName; }
+
+        /** Returns whether the workstream already existed rather than being created. */
+        boolean existing() { return existing; }
+
+        /** Returns the failure response, or {@code null} when registration succeeded. */
+        Response failure() { return failure; }
+
+        /**
+         * Returns an outcome describing a workstream created by this call.
+         *
+         * @param workstream  the newly registered workstream
+         * @param channelId   the created Slack channel ID, or {@code null}
+         * @param channelName the Slack channel name, or {@code null}
+         * @return the success outcome
+         */
+        static Registration created(Workstream workstream, String channelId, String channelName) {
+            return new Registration(workstream, channelId, channelName, false, null);
+        }
+
+        /**
+         * Returns an outcome describing a workstream that was already
+         * registered for the requested branch and repository.
+         *
+         * @param workstream the existing workstream
+         * @return the success outcome
+         */
+        static Registration alreadyRegistered(Workstream workstream) {
+            return new Registration(workstream, null, null, true, null);
+        }
+
+        /**
+         * Returns an outcome describing a registration that failed.
+         *
+         * @param failure the response to return to the caller
+         * @return the failure outcome
+         */
+        static Registration failed(Response failure) {
+            return new Registration(null, null, null, false, failure);
+        }
+    }
+
+    /**
+     * Resolves the workstream a job submission targets, registering one when
+     * the request asks for that and nothing matches.
+     *
+     * <p>The resolution ladder is: an explicit {@code workstreamId} in the
+     * body, then the {@code targetBranch} (disambiguated by {@code repoUrl}
+     * when several workstreams share the branch), then the workstream named
+     * in the request path. When every rung misses and {@code createIfMissing}
+     * is set, the workstream is registered here — so a branch nobody
+     * registered in advance still gets its job — and the result reports
+     * {@link Registration#existing()} as {@code false}.</p>
+     *
+     * <p>An ambiguous branch is an error rather than a reason to create:
+     * two workstreams already share the branch, and adding a third would
+     * make the ambiguity permanent.</p>
+     *
+     * @param body             the raw submission body JSON
+     * @param targetBranch     the branch named by the submission; may be {@code null}
+     * @param repoUrl          the repository named by the submission; may be {@code null}
+     * @param pathWorkstreamId the workstream from the request path; may be {@code null}
+     * @param createIfMissing  whether to register a workstream when none matches
+     * @return the resolved, created, or failed {@link Registration}
+     */
+    Registration resolveOrRegister(String body, String targetBranch, String repoUrl,
+                                   String pathWorkstreamId, boolean createIfMissing) {
+        String bodyWorkstreamId = JsonFieldExtractor.extractString(body, "workstreamId");
+        if (bodyWorkstreamId != null && !bodyWorkstreamId.isEmpty()) {
+            Workstream match = workstreamById(bodyWorkstreamId);
+            if (match != null) {
+                log.accept("Workstream resolved from request body: " + bodyWorkstreamId);
+                return Registration.alreadyRegistered(match);
+            }
+        }
+
+        if (targetBranch != null && !targetBranch.isEmpty()) {
+            NotifierRegistry.BranchResolution res = notifiers.resolveBranch(targetBranch, repoUrl);
+            if (res.error() != null) return Registration.failed(errorResponse.apply(res.error()));
+            if (res.match() != null) {
+                log.accept("Workstream resolved by branch=" + targetBranch
+                    + (repoUrl != null && !repoUrl.isEmpty() ? "/repo=" + repoUrl : "")
+                    + ": " + res.match().getWorkstreamId());
+                return Registration.alreadyRegistered(res.match());
+            }
+        }
+
+        if (pathWorkstreamId != null) {
+            Workstream match = workstreamById(pathWorkstreamId);
+            if (match != null) return Registration.alreadyRegistered(match);
+        }
+
+        if (!createIfMissing) {
+            String detail = pathWorkstreamId != null
+                ? "Unknown workstream: " + pathWorkstreamId
+                : "No workstream found for branch: " + targetBranch
+                    + ". Register a workstream for this branch, or submit with"
+                    + " createWorkstreamIfMissing and a repoUrl to have one created.";
+            return Registration.failed(errorResponse.apply(detail));
+        }
+
+        // A workstream is identified by repository and branch together, so
+        // creating one without either would produce a record that cannot be
+        // matched again on the next submission — and, without a repository,
+        // nothing for the agent to check out.
+        if (targetBranch == null || targetBranch.isEmpty()) {
+            return Registration.failed(errorResponse.apply("createWorkstreamIfMissing requires"
+                + " targetBranch — a workstream cannot be created without the branch it tracks."));
+        }
+        if (repoUrl == null || repoUrl.isEmpty()) {
+            return Registration.failed(errorResponse.apply("createWorkstreamIfMissing requires"
+                + " repoUrl — a workstream is identified by repository and branch together, and"
+                + " one created without a repository would have nothing to check out."));
+        }
+
+        Registration created = register(
+                registrationRequest(targetBranch, repoUrl,
+                        JsonFieldExtractor.extractString(body, "baseBranch")),
+                targetBranch);
+        if (created.failure() == null) {
+            log.accept("Workstream " + (created.existing() ? "resolved" : "created")
+                + " on submit for branch=" + targetBranch + "/repo=" + repoUrl
+                + ": " + created.workstream().getWorkstreamId());
+        }
+        return created;
+    }
+
+    /**
+     * Builds the registration request for a workstream created during a job
+     * submission.
+     *
+     * <p>Only the fields that describe the workstream itself carry over. The
+     * submission body is deliberately not forwarded: fields such as
+     * {@code requiredLabels} and {@code phaseConfigs} mean "for this job"
+     * there and "for every job on this workstream" in a registration, and a
+     * one-off job constraint must not silently become a permanent default of
+     * the workstream it created. Everything else — the Slack channel name,
+     * the planning document, runner configuration — takes the same defaults a
+     * bare {@code POST /api/workstreams} would produce, and can be set
+     * afterwards through the update endpoint or {@code /flowtree config}.</p>
+     *
+     * @param targetBranch the branch the workstream tracks
+     * @param repoUrl      the repository the workstream tracks
+     * @param baseBranch   the base branch, or {@code null} for the default
+     * @return the registration request JSON
+     */
+    private static String registrationRequest(String targetBranch, String repoUrl,
+                                              String baseBranch) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"defaultBranch\":\"")
+            .append(JsonFieldExtractor.escapeJson(targetBranch)).append("\"");
+        json.append(",\"repoUrl\":\"")
+            .append(JsonFieldExtractor.escapeJson(repoUrl)).append("\"");
+        if (baseBranch != null && !baseBranch.isEmpty()) {
+            json.append(",\"baseBranch\":\"")
+                .append(JsonFieldExtractor.escapeJson(baseBranch)).append("\"");
+        }
+        json.append("}");
+        return json.toString();
+    }
+
+    /**
+     * Returns the workstream with the given identifier, or {@code null} when
+     * no workspace knows it.
+     *
+     * @param workstreamId the workstream identifier
+     * @return the workstream, or {@code null}
+     */
+    private Workstream workstreamById(String workstreamId) {
+        SlackNotifier notifier = notifiers.notifierFor(workstreamId);
+        return notifier != null ? notifier.getWorkstream(workstreamId) : null;
+    }
+
+    /**
+     * Creates the Slack channel for a workstream that has a channel name but
+     * no channel ID, and persists the result.
+     *
+     * <p>Channel creation at registration time can fail — most often for lack
+     * of permission — leaving the workstream with a name and no channel. This
+     * retries it, so a workstream registered before the permission was
+     * granted starts reporting into Slack without being re-registered.</p>
+     *
+     * @param workstream the workstream to backfill; may be {@code null}
+     */
+    void backfillChannel(Workstream workstream) {
+        if (workstream == null) return;
+        if (workstream.getChannelId() != null && !workstream.getChannelId().isEmpty()) return;
+        if (workstream.getChannelName() == null || workstream.getChannelName().isEmpty()) return;
+
+        String workstreamId = workstream.getWorkstreamId();
+        String name = workstream.getChannelName();
+        if (name.startsWith("#")) {
+            name = name.substring(1);
+        }
+        log.accept("Workstream " + workstreamId
+            + " has no channel ID; retrying channel creation for " + name);
+        String channelId = notifiers.notifierFor(workstreamId).createChannel(name);
+        if (channelId == null) return;
+
+        workstream.setChannelId(channelId);
+        log.accept("Channel resolved for workstream " + workstreamId + ": " + channelId);
+        // Re-register so channelToWorkstream picks up the new channelId,
+        // then persist so the YAML reflects it too.
+        if (listener != null) {
+            listener.registerWorkstream(workstream);
+            listener.persistConfig();
+        }
+    }
+
+    /**
+     * Registers a workstream for {@code defaultBranch}, or returns the one
+     * already registered for that branch and repository.
+     *
+     * <p>This is the shared body of {@code POST /api/workstreams} and of the
+     * {@code createWorkstreamIfMissing} path of {@code POST /api/submit}: a
+     * job submitted for a branch nobody registered in advance creates the
+     * workstream it needs instead of failing. Every optional field is read
+     * from {@code body} under the names the registration endpoint uses
+     * ({@code baseBranch}, {@code repoUrl}, {@code channelName}, …); the
+     * branch is a separate parameter because a submission names it
+     * {@code targetBranch}. The submission path supplies a request built by
+     * {@link #registrationRequest(String, String, String)} rather than its own
+     * body, so job-level fields never become workstream defaults.</p>
+     *
+     * @param body          the raw request body JSON
+     * @param defaultBranch the branch the workstream tracks; must be non-empty
+     * @return the resulting {@link Registration}
+     */
+    Registration register(String body, String defaultBranch) {
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String repoUrl = JsonFieldExtractor.extractString(body, "repoUrl");
         String planningDocument = JsonFieldExtractor.extractString(body, "planningDocument");
         String channelName = JsonFieldExtractor.extractString(body, "channelName");
         if (channelName == null || channelName.isEmpty()) {
             if (defaultBranch.endsWith("/")) {
-                return errorResponse.apply("defaultBranch is malformed: ends with '/'");
+                return Registration.failed(errorResponse.apply("defaultBranch is malformed: ends with '/'"));
             }
             channelName = SlackNotifier.autoChannelName(defaultBranch, notifiers.allWorkstreams().values());
             if (channelName == null) {
-                return errorResponse.apply("Could not derive a valid channel name from defaultBranch: " + defaultBranch);
+                return Registration.failed(errorResponse.apply(
+                    "Could not derive a valid channel name from defaultBranch: " + defaultBranch));
             }
         }
         String explicitWorkspaceId = JsonFieldExtractor.extractString(body, "workspaceId");
@@ -171,14 +478,14 @@ final class WorkstreamRegistrationHandler {
         }
         if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty())
                 && notifiers.isMultiWorkspace()) {
-            return errorResponse.apply("Could not determine target Slack workspace. Supply"
-                    + " slackWorkspaceId in the request body, or a repoUrl whose"
-                    + " GitHub org matches a workspace in the controller config.");
+            return Registration.failed(errorResponse.apply("Could not determine target Slack"
+                    + " workspace. Supply slackWorkspaceId in the request body, or a repoUrl"
+                    + " whose GitHub org matches a workspace in the controller config."));
         }
         if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()
                 && notifiers.isMultiWorkspace()
                 && !notifiers.notifiersByWorkspace().containsKey(targetWorkspaceId)) {
-            return errorResponse.apply("Unknown Slack workspace: " + targetWorkspaceId);
+            return Registration.failed(errorResponse.apply("Unknown Slack workspace: " + targetWorkspaceId));
         }
 
         SlackNotifier targetNotifier = notifiers.notifierForWorkspace(targetWorkspaceId);
@@ -190,14 +497,7 @@ final class WorkstreamRegistrationHandler {
         if (existing != null) {
             log.accept("Workstream already exists for branch " + defaultBranch
                 + ": " + existing.getWorkstreamId() + " — returning existing");
-
-            StringBuilder json = new StringBuilder();
-            json.append("{\"ok\":true,\"existing\":true");
-            json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(existing.getWorkstreamId())).append("\"");
-            json.append("}");
-
-            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
-                    "application/json", json.toString());
+            return Registration.alreadyRegistered(existing);
         }
 
         // Auto-create Slack channel if a name is provided — must be created
@@ -237,7 +537,7 @@ final class WorkstreamRegistrationHandler {
             workstream.setDependentRepos(dependentRepos);
         }
         String phaseConfigErr = PhaseConfigResolver.applyToWorkstream(workstream, body);
-        if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
+        if (phaseConfigErr != null) return Registration.failed(errorResponse.apply(phaseConfigErr));
 
         workstream.setPushToOrigin(true);
 
@@ -253,7 +553,7 @@ final class WorkstreamRegistrationHandler {
         // rejected with a 400; the error message names the offending
         // path so the operator can correct the registration.
         String cycleErr = checkListenerCycle(workstream, completionListeners);
-        if (cycleErr != null) return errorResponse.apply(cycleErr);
+        if (cycleErr != null) return Registration.failed(errorResponse.apply(cycleErr));
         workstream.setCompletionListeners(completionListeners);
         // Dispatch capability: the default is false; only opt-in workstreams
         // can register or update child workstreams. The flag is purely a
@@ -283,7 +583,7 @@ final class WorkstreamRegistrationHandler {
         if (!persisted) {
             log.accept("Registration persist failed for " + workstream.getWorkstreamId()
                 + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
-            return FlowTreeApiEndpoint.persistFailureResponse("Registration");
+            return Registration.failed(FlowTreeApiEndpoint.persistFailureResponse("Registration"));
         }
 
         // Read the workstream back through the same view the list and context
@@ -296,30 +596,16 @@ final class WorkstreamRegistrationHandler {
             log.accept("Registration read-back failed for " + workstream.getWorkstreamId()
                 + " (branch=" + defaultBranch + ", channel=" + channelName + ")"
                 + " — workstream not resolvable after register");
-            return NanoHTTPD.newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                "application/json",
+            return Registration.failed(NanoHTTPD.newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR, "application/json",
                 "{\"ok\":false,\"error\":\"Workstream registered but not resolvable after"
-                + " persistence; registration is not durable. Retry.\"}");
+                + " persistence; registration is not durable. Retry.\"}"));
         }
 
         log.accept("Registered workstream via API: " + workstream.getWorkstreamId()
             + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
 
-        StringBuilder json = new StringBuilder();
-        json.append("{\"ok\":true");
-        json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstream.getWorkstreamId())).append("\"");
-        if (channelId != null) {
-            json.append(",\"channelId\":\"").append(JsonFieldExtractor.escapeJson(channelId)).append("\"");
-        }
-        if (channelName != null) {
-            json.append(",\"channelName\":\"").append(JsonFieldExtractor.escapeJson(channelName)).append("\"");
-        }
-        PhaseConfigBundle registeredBundle = workstream.getPhaseConfigBundle();
-        PhaseConfigResolver.appendBundleJson(json, registeredBundle);
-        json.append("}");
-
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
-                "application/json", json.toString());
+        return Registration.created(workstream, channelId, channelName);
     }
 
     /**

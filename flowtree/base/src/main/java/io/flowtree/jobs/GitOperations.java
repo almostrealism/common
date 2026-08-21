@@ -888,4 +888,78 @@ public class GitOperations implements ConsoleFeatures {
         }
         return files;
     }
+
+    /**
+     * Pattern matching the {@code owner/repo} path of an SSH-form repository
+     * URL ({@code git@host:owner/repo.git}), with the optional {@code .git}
+     * suffix excluded from the capture.
+     */
+    private static final Pattern SSH_REPO_PATTERN =
+            Pattern.compile("^[^/@]+@[^:/]+:([^/]+/[^/]+?)(?:\\.git)?/?$");
+
+    /**
+     * Pattern matching the {@code owner/repo} path of an HTTP(S)-form or
+     * {@code git://} repository URL, with the optional {@code .git} suffix
+     * excluded from the capture.
+     */
+    private static final Pattern HTTP_REPO_PATTERN =
+            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?[^/]+/([^/]+/[^/]+?)(?:\\.git)?/?$");
+
+    /**
+     * Reduces a repository URL to its canonical {@code owner/repo} slug so
+     * that URLs naming the same repository in different forms compare equal.
+     *
+     * <p>The same repository is routinely written several ways — an SSH
+     * remote ({@code git@github.com:owner/repo.git}), an HTTPS clone URL
+     * ({@code https://github.com/owner/repo.git}), and the browser URL a CI
+     * system reports ({@code https://github.com/owner/repo}) — so comparing
+     * the raw strings reports "different repository" for what is in fact one
+     * repository. Comparing slugs instead avoids that.</p>
+     *
+     * <p>Host and scheme are deliberately not part of the slug: the same
+     * repository reached over SSH and HTTPS is one repository.</p>
+     *
+     * @param repoUrl the repository URL in SSH, HTTP(S), or {@code git://}
+     *                form; may be {@code null}
+     * @return the {@code owner/repo} slug with its original case, or
+     *         {@code null} when
+     *         {@code repoUrl} is {@code null}, blank, or not a recognised
+     *         repository URL
+     */
+    public static String repositorySlug(String repoUrl) {
+        if (repoUrl == null) return null;
+        String trimmed = repoUrl.trim();
+        if (trimmed.isEmpty()) return null;
+
+        Matcher ssh = SSH_REPO_PATTERN.matcher(trimmed);
+        if (ssh.matches()) return ssh.group(1);
+
+        Matcher http = HTTP_REPO_PATTERN.matcher(trimmed);
+        if (http.matches()) return http.group(1);
+
+        return null;
+    }
+
+    /**
+     * Determines whether two repository URLs name the same repository,
+     * comparing them by {@link #repositorySlug(String) slug} so that SSH,
+     * HTTPS, and suffix-less forms of one repository match each other.
+     *
+     * <p>Slugs are compared ignoring case, since a repository is reachable
+     * under any capitalisation of its owner and name. URLs that cannot be
+     * parsed into a slug fall back to an exact (case-sensitive) string
+     * comparison rather than being reported as a match — an unrecognised URL
+     * form matches only itself.</p>
+     *
+     * @param repoUrl      the first repository URL; may be {@code null}
+     * @param otherRepoUrl the second repository URL; may be {@code null}
+     * @return {@code true} when both URLs name the same repository
+     */
+    public static boolean isSameRepository(String repoUrl, String otherRepoUrl) {
+        if (repoUrl == null || otherRepoUrl == null) return false;
+        String slug = repositorySlug(repoUrl);
+        String otherSlug = repositorySlug(otherRepoUrl);
+        if (slug != null && otherSlug != null) return slug.equalsIgnoreCase(otherSlug);
+        return repoUrl.equals(otherRepoUrl);
+    }
 }

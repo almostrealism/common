@@ -21,6 +21,7 @@ import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Method;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.jobs.GitOperations;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -288,18 +289,15 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * Extracts the GitHub {@code owner/repo} path from a repository URL.
      *
      * <p>Supports both HTTPS ({@code https://github.com/owner/repo.git})
-     * and SSH ({@code git@github.com:owner/repo.git}) formats.</p>
+     * and SSH ({@code git@github.com:owner/repo.git}) formats; the parsing
+     * itself is {@link GitOperations#repositorySlug(String)}, shared with
+     * repository-identity comparison elsewhere.</p>
      *
      * @param repoUrl the repository URL
      * @return the {@code owner/repo} string, or {@code null} if not recognised
      */
     public static String extractOwnerRepo(String repoUrl) {
-        if (repoUrl == null) return null;
-        Matcher ssh = Pattern.compile("git@github\\.com:([^/]+/[^/]+?)(?:\\.git)?$").matcher(repoUrl);
-        if (ssh.find()) return ssh.group(1);
-        Matcher https = Pattern.compile("github\\.com/([^/]+/[^/]+?)(?:\\.git)?$").matcher(repoUrl);
-        if (https.find()) return https.group(1);
-        return null;
+        return GitOperations.repositorySlug(repoUrl);
     }
 
     /**

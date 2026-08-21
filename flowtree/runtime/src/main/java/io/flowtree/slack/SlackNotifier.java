@@ -484,6 +484,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * both match the given values. If {@code repoUrl} is null, falls back
      * to matching on branch alone.
      *
+     * <p>The repository comparison is by identity rather than string
+     * equality (see {@link Workstream#matchesRepo(String)}), so a caller
+     * naming the repository in a different but equivalent form — SSH
+     * instead of HTTPS, or without the {@code .git} suffix — still resolves
+     * to the workstream that tracks it. A workstream that names no
+     * repository matches any repository, but only when no workstream on the
+     * branch names the requested one.</p>
+     *
      * @param branch  the branch name to match
      * @param repoUrl the repository URL to match (may be null)
      * @return the matching workstream, or null if no match is found
@@ -497,14 +505,23 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             return findWorkstreamByBranch(branch);
         }
 
+        Workstream unscoped = null;
         for (Workstream ws : workstreams.values()) {
-            if (branch.equals(ws.getDefaultBranch())
-                    && repoUrl.equals(ws.getRepoUrl())) {
-                return ws;
+            if (!branch.equals(ws.getDefaultBranch())) continue;
+            if (ws.matchesRepo(repoUrl)) return ws;
+            // A workstream with no repoUrl is not scoped to a repository and
+            // so cannot be excluded on repository grounds. It is a weaker
+            // match than one naming this repository, so it is only used when
+            // no workstream names the repository at all — which is what
+            // callers that pass a repoUrl to a config predating the field
+            // depend on.
+            if (unscoped == null
+                    && (ws.getRepoUrl() == null || ws.getRepoUrl().isEmpty())) {
+                unscoped = ws;
             }
         }
 
-        return null;
+        return unscoped;
     }
 
     /**

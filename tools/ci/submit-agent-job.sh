@@ -3,7 +3,9 @@
 #
 # Reads a prompt from a file and POSTs it to the FlowTree controller's
 # submission endpoint. The workstream is resolved server-side from the
-# target branch.
+# repository and target branch; when no workstream is registered for that
+# combination the controller creates one (see CREATE_WORKSTREAM below), so a
+# project gets auto-resolve runs on a branch nobody registered by hand.
 #
 # Usage:
 #   submit-agent-job.sh <prompt-file>
@@ -26,6 +28,19 @@
 #                             sent as CF-Access-Client-Id header when set
 #   CF_ACCESS_CLIENT_SECRET - Cloudflare Access service token client secret;
 #                             sent as CF-Access-Client-Secret header when set
+#   REPO_URL          - repository the branch belongs to. Defaults to
+#                       "git@github.com:$GITHUB_REPOSITORY.git" when running in
+#                       GitHub Actions, so no project needs to set it; set it
+#                       explicitly for a host other than github.com. Sent as
+#                       repoUrl: it disambiguates the workstream lookup, and a
+#                       workstream created on demand is both identified by it
+#                       and cloned from it — hence the SSH form, matching
+#                       register-workstream.sh, so the agent clones with the
+#                       same credentials it uses everywhere else. Lookup itself
+#                       is insensitive to the URL form.
+#   CREATE_WORKSTREAM - create a workstream when none is registered for this
+#                       repository and branch (default: true). Set to false to
+#                       have the controller reject such a submission instead.
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
@@ -71,6 +86,23 @@ fi
 
 PROMPT=$(cat "$PROMPT_FILE")
 
+# The repository is half of the (repository, branch) pair that identifies a
+# workstream. GITHUB_REPOSITORY is always exported inside a workflow, so this
+# default covers every caller running in GitHub Actions with no per-project
+# setup at all.
+if [ -z "${REPO_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    REPO_URL="git@github.com:${GITHUB_REPOSITORY}.git"
+fi
+
+CREATE_WORKSTREAM="${CREATE_WORKSTREAM:-true}"
+case "$CREATE_WORKSTREAM" in
+    true|false) ;;
+    *)
+        echo "ERROR: CREATE_WORKSTREAM must be true or false (got: $CREATE_WORKSTREAM)" >&2
+        exit 1
+        ;;
+esac
+
 ENDPOINT="${CONTROLLER_BASE}/api/submit"
 
 # Build the JSON payload; maxTurns and maxBudgetUsd are omitted by default
@@ -84,6 +116,7 @@ PAYLOAD=$(jq -n \
     --argjson enforce "${ENFORCE_CHANGES:-false}" \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
     --argjson automated true \
+    --argjson createws "$CREATE_WORKSTREAM" \
     '{
         prompt: $prompt,
         targetBranch: $branch,
@@ -91,8 +124,13 @@ PAYLOAD=$(jq -n \
         protectTestFiles: $protect,
         enforceChanges: $enforce,
         autoCreatePr: $autopr,
-        automated: $automated
+        automated: $automated,
+        createWorkstreamIfMissing: $createws
     }')
+
+if [ -n "${REPO_URL:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg r "$REPO_URL" '. + {repoUrl: $r}')
+fi
 
 if [ -n "${DESCRIPTION:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg d "$DESCRIPTION" '. + {description: $d}')
@@ -157,3 +195,8 @@ fi
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
 echo "job_id=$JOB_ID"
 echo "Agent job submitted: $JOB_ID"
+
+if [ "$(echo "$BODY" | jq -r '.workstreamCreated // empty')" = "true" ]; then
+    WS_ID=$(echo "$BODY" | jq -r '.workstreamId // "unknown"')
+    echo "::notice::Created workstream $WS_ID for ${REPO_URL:-this repository} on branch $BRANCH"
+fi

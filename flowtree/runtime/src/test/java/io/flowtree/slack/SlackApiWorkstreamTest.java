@@ -580,6 +580,250 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Submits a POST to {@code /api/submit} on a freshly started endpoint and
+     * returns the response body. Submission always stops at the "No FlowTree
+     * server configured" check in these tests — nothing is wired to run a job
+     * — so the body reports how far resolution got, which is what the
+     * workstream-creation tests assert on.
+     *
+     * @param port the endpoint's listening port
+     * @param body the request body JSON
+     * @return the response body, from the error stream for a non-200
+     * @throws IOException if the request fails
+     */
+    private String postSubmit(int port, String body) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(
+                "http://localhost:" + port + "/api/submit").openConnection();
+        conn.setRequestMethod("POST");
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Content-Type", "application/json");
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+        return new String((conn.getResponseCode() == 200
+                ? conn.getInputStream() : conn.getErrorStream()).readAllBytes(),
+                StandardCharsets.UTF_8);
+    }
+
+    /**
+     * A submission for a branch with no registered workstream creates one when
+     * {@code createWorkstreamIfMissing} is set, so a contributor who never
+     * registered a workstream still gets an automated run on their branch.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitCreatesWorkstreamWhenMissing() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            String response = postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/unregistered\","
+                    + "\"baseBranch\":\"master\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\","
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            assertTrue("Resolution should have succeeded and reached the server check; got: "
+                    + response, response.contains("No FlowTree server"));
+
+            Workstream created = notifier.findWorkstreamByBranch("feature/unregistered");
+            assertNotNull("Submission should have created the missing workstream", created);
+            assertEquals("git@github.com:almostrealism/common.git", created.getRepoUrl());
+            assertEquals("master", created.getBaseBranch());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * A workstream created by a submission takes the branch, base branch, and
+     * repository from it — and nothing else. {@code requiredLabels} on a
+     * submission constrains that one job; it must not become a permanent
+     * agent-selection default of the workstream the job created.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitCreatedWorkstreamDoesNotInheritJobFields() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/labelled\","
+                    + "\"baseBranch\":\"master\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\","
+                    + "\"requiredLabels\":{\"gpu\":\"true\"},"
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            Workstream created = notifier.findWorkstreamByBranch("feature/labelled");
+            assertNotNull("Submission should have created the workstream", created);
+            assertEquals("master", created.getBaseBranch());
+            assertTrue("Job-level requiredLabels must not become a workstream default,"
+                    + " but the workstream has: " + created.getRequiredLabels(),
+                    created.getRequiredLabels() == null || created.getRequiredLabels().isEmpty());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Without the flag, a submission for an unregistered branch is still
+     * rejected — workstream creation is opt-in, and the error says how to opt
+     * in.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitWithoutCreateFlagStillRejectsUnknownBranch() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            String response = postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/unregistered\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\"}");
+
+            assertTrue("Should report no workstream found; got: " + response,
+                    response.contains("No workstream found for branch"));
+            assertTrue("Error should name the opt-in; got: " + response,
+                    response.contains("createWorkstreamIfMissing"));
+            assertNull("Nothing should have been created",
+                    notifier.findWorkstreamByBranch("feature/unregistered"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Creation needs a repository: a workstream created without one could not
+     * be matched again on the next submission, and would have nothing to
+     * check out.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitCreateRequiresRepoUrl() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            String response = postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/unregistered\","
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            assertTrue("Error should name the missing field; got: " + response,
+                    response.contains("repoUrl"));
+            assertNull("Nothing should have been created without a repository",
+                    notifier.findWorkstreamByBranch("feature/unregistered"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * A repository named in a different but equivalent form — HTTPS without
+     * the {@code .git} suffix, as a CI system reports it, against a workstream
+     * registered from the SSH clone URL — resolves to the existing workstream
+     * rather than creating a duplicate.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitCreateReusesWorkstreamRegisteredUnderOtherUrlForm() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream existing = new Workstream("C_COMMON", "#w-audio-prototypes");
+        existing.setDefaultBranch("feature/audio-prototypes");
+        existing.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(existing);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            String response = postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\","
+                    + "\"repoUrl\":\"https://github.com/almostrealism/common\","
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            assertTrue("Should have resolved to the existing workstream; got: " + response,
+                    response.contains("No FlowTree server"));
+            assertEquals("No duplicate workstream should have been created", 1,
+                    notifier.findWorkstreamsByBranch("feature/audio-prototypes").size());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * A workstream registered before repositories were recorded names no
+     * repository, and so must still match a submission that names one —
+     * otherwise every such workstream would be shadowed by a duplicate on the
+     * first submission that carries a repoUrl.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitMatchesWorkstreamWithoutRepoUrl() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream existing = new Workstream("C_LEGACY", "#w-legacy");
+        existing.setDefaultBranch("feature/legacy");
+        notifier.registerWorkstream(existing);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            String response = postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/legacy\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\","
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            assertTrue("Should have resolved to the repository-less workstream; got: "
+                    + response, response.contains("No FlowTree server"));
+            assertEquals("No duplicate workstream should have been created", 1,
+                    notifier.findWorkstreamsByBranch("feature/legacy").size());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * An ambiguous branch is an error even with the creation flag set: two
+     * workstreams already share the branch, and creating a third would make
+     * the ambiguity permanent.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitCreateDoesNotResolveAmbiguity() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-audio-prototypes");
+        wsCommon.setDefaultBranch("feature/audio-prototypes");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        Workstream wsOther = new Workstream("C_OTHER", "#w-audio-prototypes-other");
+        wsOther.setDefaultBranch("feature/audio-prototypes");
+        wsOther.setRepoUrl("git@github.com:almostrealism/other.git");
+        notifier.registerWorkstream(wsOther);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            String response = postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\","
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            assertTrue("Ambiguity should be reported, not resolved by creating; got: "
+                    + response, response.contains("Ambiguous"));
+            assertEquals("No third workstream should have been created", 2,
+                    notifier.findWorkstreamsByBranch("feature/audio-prototypes").size());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
     /** POST /api/workstreams with a branch ending in {@code /} is rejected as malformed. */
     @Test(timeout = 10000)
     public void testApiRegisterWorkstreamMalformedBranch() throws Exception {
