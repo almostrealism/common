@@ -684,28 +684,49 @@ def _parse_activities_param(include_activities) -> str:
 # Each entry is (compiled_pattern, human_readable_reason).  Patterns are
 # checked case-insensitively against each line of the submitted prompt.
 # re is already imported at the top of this file.
+# Verbs that make a commit reference a READ rather than an instruction to
+# produce one. "diff commit 123 against its parent" names an existing commit;
+# "Commit 1: add the parser" plans a new one. The bare commit-number pattern
+# below cannot tell them apart on its own, and rejecting the read case sent
+# operators hunting for the allow_commit_language escape hatch.
+# Kept deliberately narrow. Generic words that merely often appear near a
+# commit reference — "before", "after", "since", "check" — would exempt
+# instructions too ("commit this before running the tests"), turning a
+# narrowed heuristic into a disabled one. Only verbs that make the commit the
+# OBJECT OF AN INSPECTION belong here.
+_COMMIT_READ_CONTEXT = re.compile(
+    r"\b(?:diff|compare|revert|reverting|inspect|examine|review|reviewing|"
+    r"cherry-?pick|analyse|analyze|look\s+at|refer\s+to|based\s+on)\b",
+    re.IGNORECASE)
+
+# Each entry is (pattern, reason, exemption). A line matching `pattern` is a
+# violation unless `exemption` also matches it — which is how a read-only
+# reference to an existing commit is distinguished from an instruction to
+# create commits. Most patterns need no exemption because their wording is
+# already imperative.
 _COMMIT_SEQUENCING_PATTERNS = [
     (re.compile(r"\bcommit\s+\d+\b", re.IGNORECASE),
-     "commit-number phrase (e.g. \"Commit 1\", \"commit 2\")"),
+     "commit-number phrase (e.g. \"Commit 1\", \"commit 2\")",
+     _COMMIT_READ_CONTEXT),
     (re.compile(r"\bfirst\s+commit\b", re.IGNORECASE),
-     '"first commit" phrase'),
+     '"first commit" phrase', None),
     (re.compile(r"\bnext\s+commit\b", re.IGNORECASE),
-     '"next commit" phrase'),
+     '"next commit" phrase', None),
     (re.compile(r"\bfinal\s+commit\b", re.IGNORECASE),
-     '"final commit" phrase'),
+     '"final commit" phrase', None),
     (re.compile(r"\bas\s+(?:its\s+own|separate|individual)\s+commits?\b", re.IGNORECASE),
-     '"as separate/individual commits" phrase'),
+     '"as separate/individual commits" phrase', None),
     (re.compile(r"\b(?:in|across|over)\s+\d+\s+commits?\b", re.IGNORECASE),
-     '"in/across/over N commits" phrase'),
+     '"in/across/over N commits" phrase', None),
     (re.compile(
         r"\b(?:your|the)\s+commit\s+message\s+(?:should|will|must)\b", re.IGNORECASE),
-     '"commit message should/will/must" phrase'),
+     '"commit message should/will/must" phrase', None),
     (re.compile(
         r"\bcommit\s+(?:this|that|each|the)\s+(?:as|with|before)\b", re.IGNORECASE),
-     '"commit this/that/each/the as/with/before" phrase'),
+     '"commit this/that/each/the as/with/before" phrase', None),
     (re.compile(
         r"\bcommit\s+(?:between|after|before)\s+(?:each|every)\b", re.IGNORECASE),
-     '"commit between/after/before each/every" phrase'),
+     '"commit between/after/before each/every" phrase', None),
 ]
 
 # Minimum prompt length below which the linter is skipped (false-positive
@@ -731,8 +752,10 @@ def _lint_prompt_for_commit_sequencing(prompt: str) -> list:
         return []
     violations = []
     for lineno, line in enumerate(prompt.splitlines(), 1):
-        for pattern, reason in _COMMIT_SEQUENCING_PATTERNS:
+        for pattern, reason, exemption in _COMMIT_SEQUENCING_PATTERNS:
             if pattern.search(line):
+                if exemption is not None and exemption.search(line):
+                    continue
                 snippet = line.strip()[:120]
                 violations.append((lineno, snippet, reason))
                 break  # one violation entry per line, first pattern wins
@@ -1348,7 +1371,10 @@ def workstream_register(
         plan_path: File path for the plan document in the repo. Optional —
             if omitted, the controller auto-generates a path under
             ``docs/plans/``. Used by both the direct-commit and job-submit
-            paths.
+            paths. Also becomes the workstream's ``planningDocument`` when
+            ``planning_document`` is not given, so ``project_read_plan``
+            works without a follow-up config call; an explicit
+            ``planning_document`` always wins.
         plan_commit_message: Git commit message for the direct-commit path.
             Ignored when ``plan_instructions`` is used. Auto-generated if
             omitted.
@@ -1480,6 +1506,13 @@ def workstream_register(
         payload["repoUrl"] = repo_url
     if planning_document:
         payload["planningDocument"] = planning_document
+    elif plan_path:
+        # A caller who names the file the plan job will write has told us
+        # where the planning document lives. Not recording it left the
+        # workstream with no planningDocument, so project_read_plan failed
+        # against a document that demonstrably existed until a second
+        # workstream_update_config call was made to say so.
+        payload["planningDocument"] = plan_path
     if channel_name:
         payload["channelName"] = channel_name
     if workspace_id:
@@ -2133,6 +2166,118 @@ def workstream_unarchive(workstream_id: str) -> dict:
         f"/api/workstreams/{quote(workstream_id, safe='')}/unarchive",
         {},
     )
+
+
+def _archive_many(workstream_ids, archive_slack_channel: bool,
+                  archive: bool) -> dict:
+    """Apply archive or unarchive to each id, reporting per-id outcomes.
+
+    Sequential and independent: one workstream that refuses to archive — the
+    usual cause being a job still running on it — must not decide the fate of
+    the others in the batch. The caller wants to know which moved and which
+    did not, which is why a partial failure is still a successful call.
+
+    Args:
+        workstream_ids: Ids in any shape :func:`_parse_completion_listeners`
+            accepts — a list, a comma-separated string, or a JSON array.
+        archive_slack_channel: Passed through to the archive path; ignored
+            when unarchiving.
+        archive: True to archive, False to unarchive.
+
+    Returns:
+        Dictionary with ``results`` (one entry per id, in the order given),
+        ``succeeded`` and ``failed`` counts.
+    """
+    ids = _parse_completion_listeners(workstream_ids)
+    if not ids:
+        return {
+            "ok": False,
+            "error": "No workstream ids supplied.",
+            "next_steps": ["Pass a list, a comma-separated string, or a JSON array"],
+        }
+
+    seen = set()
+    results = []
+    for workstream_id in ids:
+        if workstream_id in seen:
+            # A repeated id would otherwise archive once and then report a
+            # confusing second outcome for the same workstream.
+            continue
+        seen.add(workstream_id)
+
+        if archive:
+            outcome = workstream_archive(
+                workstream_id=workstream_id,
+                archive_slack_channel=archive_slack_channel,
+            )
+        else:
+            outcome = workstream_unarchive(workstream_id=workstream_id)
+
+        entry = {"workstream_id": workstream_id,
+                 "ok": bool(outcome.get("ok", True))}
+        for field in ("error", "archivedAt", "activeJobIds",
+                      "slackChannelArchived", "slackChannelArchiveError"):
+            if isinstance(outcome, dict) and field in outcome:
+                entry[field] = outcome[field]
+        results.append(entry)
+
+    succeeded = sum(1 for r in results if r["ok"])
+    return {
+        "ok": True,
+        "results": results,
+        "succeeded": succeeded,
+        "failed": len(results) - succeeded,
+    }
+
+
+@mcp.tool()
+def workstream_archive_many(
+    workstream_ids: "list[str] | str" = "",
+    archive_slack_channel: bool = True,
+) -> dict:
+    """Archive several workstreams in one call.
+
+    Each is archived independently and the response reports what happened to
+    each, so one workstream that cannot be archived — most often because a
+    job is still running on it — does not block the rest. A batch with some
+    failures is still ``ok``; read ``results`` to see which.
+
+    Archiving is reversible, which is why it is offered in bulk. Deletion is
+    not, and is deliberately available one workstream at a time only.
+
+    Args:
+        workstream_ids: The workstreams to archive. Accepts a list, a
+            comma-separated string, or a JSON array string. Repeated ids are
+            processed once.
+        archive_slack_channel: When ``True`` (default), also archive each
+            bound Slack channel.
+
+    Returns:
+        Dictionary with ``results`` (per-workstream outcomes in the order
+        given), ``succeeded`` and ``failed`` counts.
+    """
+    return _archive_many(workstream_ids, archive_slack_channel, archive=True)
+
+
+@mcp.tool()
+def workstream_unarchive_many(
+    workstream_ids: "list[str] | str" = "",
+) -> dict:
+    """Restore several archived workstreams in one call.
+
+    The inverse of :func:`workstream_archive_many`, with the same per-id
+    reporting: one failure does not decide the batch.
+
+    Args:
+        workstream_ids: The workstreams to restore. Accepts a list, a
+            comma-separated string, or a JSON array string. Repeated ids are
+            processed once.
+
+    Returns:
+        Dictionary with ``results`` (per-workstream outcomes in the order
+        given), ``succeeded`` and ``failed`` counts.
+    """
+    return _archive_many(workstream_ids, False, archive=False)
 
 
 @mcp.tool()

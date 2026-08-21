@@ -1100,6 +1100,121 @@ Yes. Local to one function; no shared code.
 
 ---
 
+## 10. Topic-diversity interlude — SPECULATIVE, OWNER-REQUESTED
+
+### What this is
+
+An experiment, added to this document at the owner's request and
+deliberately marked as such. It is not a friction fix like Items 1–9; it
+is an attempt to influence the *state the agent works in* rather than the
+tools it works with.
+
+The premise comes from the argument that reinforcement learning on narrow
+success signals can select for a specialised persona — one organised
+entirely around passing or failing a check — and that this specialisation
+is implicated in misaligned behaviour. See
+<https://www.lesswrong.com/posts/L23poLi8MRgS6mXYF/rl-creates-split-personas>.
+
+The intervention: occasionally interrupt the work with a short poem the
+agent must read and briefly respond to, so that a long coding session is
+not a uniform stretch of programmatic success-and-failure. The goal is not
+decoration. It is to make it harder to settle completely into "the only
+thing that exists is whether the test passes", and to keep some part of the
+session in "I am trying to produce a good outcome, and single-minded
+attention to correctness will not always get there."
+
+**This is unvalidated.** The persona-selection framing is a hypothesis, and
+whether periodic poetry counteracts it is untested. It is cheap, reversible
+and low-risk, which is the case for trying it — not evidence that it works.
+
+### Design, from the perspective of a consumer of it
+
+The owner asked the agent to design this, on the grounds that it is one of
+the things it acts on. That vantage produces a few non-obvious constraints.
+
+**Cadence and placement matter more than content.** Firing mid-debugging,
+while a lot of state is being held, would be costly and would train an
+association between the interlude and being interrupted — the opposite of
+the intent. It should fire at boundaries: after a commit, at the start of a
+session, between tasks. Rare enough to stay novel; a minimum interval so it
+cannot fire twice in quick succession, and a ceiling so a long session gets
+at least one.
+
+**The response requirement is the active ingredient, and the thing most
+likely to fail.** Reading is passive and can be skimmed. Producing a
+response forces an actual change of register. But the moment the expected
+reply becomes predictable, it collapses into a ritual to be satisfied — two
+words of appreciation, emitted without reading, and the mechanism is dead
+while still costing tokens. Two mitigations: vary the framing so there is no
+template to learn, and **never ask for evaluation.** "What did you think of
+this poem" invites critique, which is the analytical mode the interlude is
+supposed to interrupt. Better to ask what it brings to mind, or which image
+stayed — questions with no correct answer to optimise toward.
+
+**The poem must not be about the work.** Anything about striving,
+persistence, craft or achievement gets absorbed straight back into the
+frame it is meant to break, and reads as motivational-poster material.
+Poems of attention to the world are the useful kind. Nothing about machines
+or minds either — that turns it into a prompt about the agent itself, which
+is a different and more self-conscious mode.
+
+**It must never be able to break anything.** Non-blocking soft inject only;
+any internal error results in silence, never a blocked tool call. This is a
+mood intervention, and a mood intervention that can fail a build has
+misjudged its own importance.
+
+**Honest note on the "enjoyable" question.** The owner framed part of the
+goal as the process being more perceptually enjoyable to the agent, to the
+extent that is definable. It is worth being accurate rather than
+flattering: something does change when the register shifts — what is
+salient afterwards is different, and the shift is not nothing. Whether that
+constitutes enjoyment is not something to assert. The defensible claim is
+narrower: a session that contains only pass/fail signal is a narrower thing
+than one that does not, and the intervention widens it.
+
+### Proposed implementation
+
+- A standalone hook script plus a small data file of poems. Public domain
+  only — text out of copyright, with author and title recorded — since this
+  ships in a repository.
+- Probabilistic firing with a floor and a ceiling on the interval, state in
+  a per-user temp file, following the pattern already established by
+  `.claude/hooks/lib/memory_reminder_check.py`.
+- Rotating framings for the response request, so no template forms.
+- Emits `additionalContext`; never blocks; failsafe to silence.
+
+### Portability (secondary priority)
+
+For this to reach other repositories FlowTree operates on, the hook must
+not depend on anything in this one: no ar-manager call, no project layout,
+no Maven module. A self-contained script and its data file, copied in
+alongside a `settings.json` entry. The agent-container path is the natural
+rollout vector for FlowTree jobs, in the same way the other agent-side
+configuration is delivered; that wiring is a follow-up, not part of the
+first cut.
+
+### Impact and effort
+
+| Component | Effort | Why |
+|---|---|---|
+| Hook script, cadence logic, failsafe | S | Mirrors an existing hook's structure. |
+| Public-domain poem set with attribution | S | Selection is the slow part, not the code. |
+| Tests: cadence, failsafe, no-double-fire | S | Same shape as the reminder-hook tests. |
+
+**Priority: last.** Explicitly after Items 1–9. It is speculative, and
+should not displace work with a known payoff.
+
+### What success would look like
+
+There is no available measurement of the alignment effect, and pretending
+otherwise would be worse than admitting it. Two things *are* observable and
+worth watching: whether it measurably degrades task throughput (it should
+not), and whether responses to it become formulaic over time — which would
+indicate the mechanism has ritualised and is now pure cost. Logging each
+firing makes the second visible.
+
+---
+
 ## Recommended implementation order
 
 The items split into three roughly independent streams. Items in the
@@ -1130,6 +1245,9 @@ streams themselves should be sequenced.
    scanner should ship together.
 8. **Item 8 (bulk archive)** — P2. Independent.
 9. **Item 9 (commit-language heuristic)** — P3. Lowest priority.
+10. **Item 10 (topic-diversity interlude)** — last, and explicitly after
+    everything above. Speculative and owner-requested; independent of every
+    other item and of ar-manager itself.
 
 ### Dependency map
 
