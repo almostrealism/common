@@ -1,9 +1,16 @@
 """
-Documentation retrieval for the AR Consultant.
+Documentation retrieval shared by the AR MCP servers.
 
 Reuses the search logic from the ar-docs MCP server to find relevant
 documentation sections. Operates directly on the filesystem rather than
-calling ar-docs over MCP, avoiding an extra process hop.
+calling ar-docs over MCP, avoiding an extra process hop. There is no
+precomputed index: files are globbed and scored per query, so the corpus
+is whatever is on disk at the time of the call.
+
+Originally part of ar-consultant; moved to tools/mcp/common/ so ar-manager
+can ground its memory retrieval in the same documentation. ar-manager runs
+from a container image rather than a checkout, which is what ``AR_DOCS_DIR``
+below exists for.
 """
 
 import os
@@ -12,9 +19,10 @@ from pathlib import Path
 from typing import Optional
 
 
-# Resolve project root: AR_DOCS_DIR env var takes priority (required
-# when running as a pushed tool outside the common repo), otherwise
-# fall back to the standard path relative to this script.
+# Resolve project root: AR_DOCS_DIR env var takes priority (required when
+# running outside a checkout of the common repo — notably the ar-manager
+# container, which bakes the corpus in at a fixed path), otherwise fall back
+# to the standard path relative to this script.
 SCRIPT_DIR = Path(__file__).parent
 _env_docs = os.environ.get("AR_DOCS_DIR", "").strip()
 if _env_docs:
@@ -895,3 +903,55 @@ class DocsRetriever:
             "html_refs": html_refs,
             "markdown_results": md_results,
         }
+
+
+# Words that match too many documents to narrow a search usefully.
+_GENERIC_KEYWORDS = {
+    "default", "interface", "class", "method", "pattern",
+    "type", "module", "use", "create", "build", "make",
+}
+
+
+def keyword_guidance(keywords: Optional[list[str]] = None) -> str:
+    """Advice to append when a search returned little of use.
+
+    Poor keywords are the usual cause of an empty documentation result, and
+    the two failure modes are consistent enough to name: no keywords at all,
+    and a list of individual common words where a phrase was needed.
+
+    Args:
+        keywords: The keywords a caller supplied, if any. Each is compared
+            case-insensitively and tested for embedded spaces, so they must
+            be strings.
+
+    Returns:
+        A leading-space-prefixed sentence to append to a note, or the empty
+        string when the keywords look reasonable.
+    """
+    hints = []
+
+    if not keywords:
+        hints.append(
+            "Tip: Provide explicit keywords for better results. "
+            "Example: keywords=[\"StateDictionary\", \"weight loading\"]"
+        )
+    else:
+        all_single = all(" " not in kw for kw in keywords)
+        has_generic = any(kw.lower() in _GENERIC_KEYWORDS for kw in keywords)
+        if all_single and len(keywords) > 2:
+            hints.append(
+                "Tip: Use multi-word phrases as keywords instead of "
+                "individual words. For example, [\"Features mixin\", "
+                "\"CollectionFeatures\"] works better than "
+                "[\"Features\", \"mixin\", \"CollectionFeatures\", "
+                "\"default\", \"interface\"] because single common words "
+                "match too many documents."
+            )
+        elif has_generic:
+            hints.append(
+                "Tip: Avoid generic keywords like 'default', 'interface', "
+                "'pattern'. Use domain-specific terms or multi-word phrases "
+                "that match documentation headings."
+            )
+
+    return (" " + " ".join(hints)) if hints else ""

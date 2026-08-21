@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import sys
+import time
 from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -249,6 +250,49 @@ def _detect_local_github_repo() -> Optional[tuple[str, str, str]]:
         return parsed[0], parsed[1], branch
     except Exception:
         return None
+
+
+# Default-branch lookups are cached because they change almost never and are
+# consulted on every branch-narrative call. Only successful lookups are cached:
+# caching a failure would pin an incorrect fallback for the whole TTL after a
+# transient proxy outage.
+_DEFAULT_BRANCH_TTL = 300.0
+_default_branch_cache: dict = {}
+
+
+def default_branch(owner: str, repo: str, fallback: str = "master") -> str:
+    """Return the branch GitHub reports as the repository's default.
+
+    Callers that have a workstream should prefer its ``baseBranch``; this is
+    for the paths where no workstream supplies one. Assuming ``master`` there
+    is wrong for any repository that defaults to ``main`` — the Compare API
+    call built from it 404s, and the caller reports "no commits" rather than
+    the real history.
+
+    Args:
+        owner: GitHub owner or organization.
+        repo: Repository name.
+        fallback: Branch to assume when the lookup cannot be completed.
+
+    Returns:
+        The default branch name, or *fallback* when GitHub cannot be reached
+        or does not report one.
+    """
+    key = (owner, repo)
+    cached = _default_branch_cache.get(key)
+    if cached and cached[1] > time.monotonic():
+        return cached[0]
+
+    result = _github_request("GET", f"/repos/{owner}/{repo}")
+    branch = result.get("default_branch") if isinstance(result, dict) else None
+    if not branch:
+        logging.getLogger("ar-manager").warning(
+            "Could not resolve default branch for %s/%s; assuming %s",
+            owner, repo, fallback)
+        return fallback
+
+    _default_branch_cache[key] = (branch, time.monotonic() + _DEFAULT_BRANCH_TTL)
+    return branch
 
 
 def _resolve_github_repo(workstream_id: str = "", branch: str = "",

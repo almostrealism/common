@@ -46,6 +46,9 @@ WaveDetails details = library.get(identifier);
 // Resolve identifier to file path
 WaveDataProvider provider = library.find(identifier);
 String filePath = provider.getKey();
+
+// Or, equivalently, ask the library for the file backing the identifier
+File file = library.fileFor(identifier);
 ```
 
 **Internal data structures:**
@@ -77,6 +80,16 @@ Stores analyzed metadata for an audio sample:
 - Frequency analysis data (FFT results)
 - Feature data (for similarity computation)
 - Pre-computed similarity scores to other samples
+
+The raw PCM audio is held by `WaveDetails.getData()` only when the sample
+was loaded or computed; for sidecar files written by
+`AudioLibraryPersistence.saveWaveDetails` the audio is *not* embedded (the
+file sits beside the WAV it describes), and `loadWaveDetails` returns a
+`WaveDetails` whose `getData()` is `null`. Call `releaseData()` to drop a
+loaded sample's raw audio when only the analysis is needed — the underlying
+memory is destroyed rather than left for the collector, since a decoded
+collection reads directly out of the parsed message and would otherwise
+keep the entire recording on the heap for the lifetime of the details.
 
 ### AudioLibraryPersistence
 
@@ -117,6 +130,21 @@ library.allDetails().forEach(details -> {
         System.out.println(filePath + ": " + details.getFrameCount() + " frames");
     }
 });
+```
+
+### Resolving Identifiers to Files
+
+When only the backing file is needed, `AudioLibrary.fileFor(identifier)` returns
+it directly. The search goes by content identifier, not filename, so a sample
+can be renamed for display without anything that references it having to know
+the name. The result is `null` when the identifier is blank, unknown, or names
+a file that is no longer present.
+
+```java
+File file = library.fileFor(identifier);
+if (file != null) {
+    System.out.println("Backing file: " + file.getAbsolutePath());
+}
 ```
 
 ### Computing Similarities

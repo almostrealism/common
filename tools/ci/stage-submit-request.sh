@@ -22,7 +22,12 @@
 #   BASE_BRANCH   - base branch for comparison
 #
 # Optional environment variables (forwarded verbatim to submit-agent-job.sh):
-#   STARTED_AFTER, DESCRIPTION, PROTECT_TEST_FILES, ENFORCE_CHANGES
+#   STARTED_AFTER, DESCRIPTION, PROTECT_TEST_FILES, ENFORCE_CHANGES,
+#   REPO_URL, CREATE_WORKSTREAM
+#
+# REPO_URL and CREATE_WORKSTREAM are only worth staging to override the
+# defaults submit-agent-job.sh applies: it derives the repository from
+# GITHUB_REPOSITORY and creates a missing workstream unless told otherwise.
 #
 # Output:
 #   <output-dir>/agent-prompt.txt  - copy of the prompt
@@ -51,6 +56,8 @@ cp "$PROMPT_FILE" "$OUT_DIR/agent-prompt.txt"
     [ -n "${DESCRIPTION:-}" ] && printf 'DESCRIPTION=%s\n' "$DESCRIPTION"
     [ -n "${PROTECT_TEST_FILES:-}" ] && printf 'PROTECT_TEST_FILES=%s\n' "$PROTECT_TEST_FILES"
     [ -n "${ENFORCE_CHANGES:-}" ] && printf 'ENFORCE_CHANGES=%s\n' "$ENFORCE_CHANGES"
+    [ -n "${REPO_URL:-}" ] && printf 'REPO_URL=%s\n' "$REPO_URL"
+    [ -n "${CREATE_WORKSTREAM:-}" ] && printf 'CREATE_WORKSTREAM=%s\n' "$CREATE_WORKSTREAM"
 } > "$OUT_DIR/submit.env"
 
 echo "::notice::Staged auto-resolve request: ${DESCRIPTION:-(no description)}"

@@ -20,7 +20,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 |---|---|
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller |
-| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller |
+| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Agent Protection (`agent-protection/`)

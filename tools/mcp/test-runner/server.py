@@ -13,17 +13,13 @@ import asyncio
 import atexit
 import json
 import os
-import re
-import shutil
 import signal
-import statistics
 import subprocess
 import sys
 import threading
 import time
 import uuid
-import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -43,62 +39,19 @@ from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
 # so the import is cheap and unambiguous regardless of where python is launched
 # from. See preflight.py for the full rationale.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import preflight  # noqa: E402
+import preflight_runner  # noqa: E402
+import reports  # noqa: E402
+import run_store  # noqa: E402
+import timing  # noqa: E402
 import fork_discovery  # noqa: E402
 
-# Configuration - derive project root from script location (tools/mcp/test-runner/server.py -> project root)
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+# The target Maven project. Re-exported here because the MCP dispatch below
+# resolves the caller's `project` argument, and because tests and other
+# collaborators address these through the server module.
+from project import resolve_ci_test_groups, resolve_project_root  # noqa: E402
+
 RUNS_DIR = Path(__file__).parent / "runs"
-# The CI workflow definition, which is the single source of truth for the
-# test-matrix group count (AR_TEST_GROUPS). The value is read from this file
-# on demand rather than duplicated in tool descriptions, where it would rot.
-CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "analysis.yaml"
 
-
-def resolve_ci_test_groups(module: str) -> int:
-    """Read the AR_TEST_GROUPS value the CI pipeline currently uses for a module.
-
-    Different CI jobs partition their modules into different group counts
-    (e.g. the media jobs use a different count than the main test jobs), so
-    the value is resolved per module: each AR_TEST_GROUPS declaration in the
-    workflow is associated with the ``-pl`` module of the mvn command it
-    belongs to, and comment lines are ignored. Raises ValueError when the
-    workflow cannot be read, never runs the module with test groups, or
-    declares conflicting counts for it -- in which case the caller must
-    supply test_groups explicitly.
-    """
-    try:
-        lines = CI_WORKFLOW.read_text().splitlines()
-    except OSError as e:
-        raise ValueError(
-            f"Cannot read {CI_WORKFLOW} to determine the CI group count; "
-            f"pass test_groups explicitly ({e})")
-
-    values = set()
-    for i, line in enumerate(lines):
-        if line.strip().startswith("#"):
-            continue
-
-        m = re.search(r"AR_TEST_GROUPS=(\d+)", line)
-        if not m:
-            continue
-
-        # The -pl flag of the mvn command this declaration belongs to appears
-        # on the same or an earlier continuation line of the command.
-        for back in range(i, max(-1, i - 15), -1):
-            pl = re.search(r"-pl\s+([\w/\-]+)", lines[back])
-            if pl:
-                if pl.group(1) == module:
-                    values.add(int(m.group(1)))
-                break
-
-    if len(values) != 1:
-        detail = f"never runs module {module} with AR_TEST_GROUPS" if not values else \
-            f"declares conflicting AR_TEST_GROUPS values {sorted(values)} for module {module}"
-        raise ValueError(
-            f"{CI_WORKFLOW} {detail}; pass test_groups explicitly")
-
-    return values.pop()
 # External watcher process script — spawned in a detached session so it
 # survives the python parent's death and can update metadata even when the
 # in-process daemon thread cannot run (e.g., claude exits cleanly while a run
@@ -113,8 +66,10 @@ DEFAULT_MODULE = "engine/utils"
 # inactivity kill (which is a confusing failure mode for the agent). Callers
 # may pass a higher value, but values >20 are unsafe under the harness.
 DEFAULT_TIMEOUT = 15
-DEFAULT_OUTPUT_LINES = 200  # Default max lines for get_run_output
-DEFAULT_STACKTRACE_LINES = 30  # Max lines per stacktrace
+# Output and stacktrace limits are owned by the collaborators that apply them;
+# named here because the tool descriptions below quote them to callers.
+DEFAULT_OUTPUT_LINES = run_store.DEFAULT_OUTPUT_LINES
+DEFAULT_STACKTRACE_LINES = reports.DEFAULT_STACKTRACE_LINES
 MAX_OUTPUT_BYTES = 50000  # ~50KB max response size
 FORK_FAILURE_PATTERNS = [
     "Error occurred in starting fork",
@@ -134,6 +89,7 @@ RUNS_DIR.mkdir(parents=True, exist_ok=True)
 class RunConfig:
     """Configuration for a test run."""
     depth: Optional[int] = None
+    project: str = ""
     module: str = DEFAULT_MODULE
     test_classes: list = field(default_factory=list)
     test_methods: list = field(default_factory=list)
@@ -145,6 +101,25 @@ class RunConfig:
     repetitions: int = 1
     test_group: Optional[int] = None
     test_groups: Optional[int] = None
+
+    def project_root(self) -> Path:
+        """Return the resolved Maven project this run targets."""
+        return resolve_project_root(self.project)
+
+    def without_jmx(self) -> "RunConfig":
+        """Return this configuration with JMX monitoring turned off.
+
+        Used to retry a run whose forked JVM refused to start under the JMX
+        arguments. Everything else is carried across, including the project the
+        run targets — losing that would leave Maven running in one checkout
+        while its generated output was directed at another. Copying the whole
+        configuration rather than restating it field by field also means a
+        field added later is carried without anyone having to remember to.
+        """
+        return replace(self, jmx_monitoring=False,
+                       test_classes=list(self.test_classes),
+                       test_methods=list(self.test_methods),
+                       jvm_args=list(self.jvm_args))
 
 
 @dataclass
@@ -172,162 +147,17 @@ class TestRunner:
     def __init__(self):
         self.active_runs: dict[str, subprocess.Popen] = {}
         self.timeout_timers: dict[str, threading.Timer] = {}
+        # Bound at construction so a test that redirects RUNS_DIR gets a runner
+        # whose records land in the redirected directory.
+        self.store = run_store.RunStore(RUNS_DIR)
 
     def generate_run_id(self) -> str:
         """Generate a short unique run ID."""
         return uuid.uuid4().hex[:8]
 
-    def _write_preflight_section(self, output_file: Path, header: str,
-                                  body: str = "") -> None:
-        """Write a clearly-delimited preflight section to the run's output file.
-
-        The banner mirrors the section markers used by ar-build-validator
-        so an agent scrolling through ``output.txt`` can immediately see
-        which steps are preflight vs. test execution.
-        """
-        with open(output_file, "a") as handle:
-            handle.write(f"\n{'=' * 60}\n")
-            handle.write(f"[ar-test-runner] PREFLIGHT: {header}\n")
-            handle.write(f"{'=' * 60}\n")
-            if body:
-                if not body.endswith("\n"):
-                    body = body + "\n"
-                handle.write(body)
-            handle.write("\n")
-
-    def _run_preflight(self, run_id: str, run_dir: Path,
-                       module: str) -> "preflight.PreflightResult":
-        """Run the upstream-artifact preflight and persist its output.
-
-        Returns the :class:`preflight.PreflightResult` produced by
-        :func:`preflight.seed_upstream_artifacts`. Output emitted by
-        Maven during the seed is appended to ``run_dir/output.txt`` so
-        ``get_run_output`` shows it alongside (and before) the test run
-        output.
-
-        Failures inside the preflight helper itself (for example, a
-        ``pom.xml`` that fails to parse for a reason the helper does
-        not already swallow) are reported as a synthetic ``"failed"``
-        result so the caller can short-circuit cleanly without
-        spawning Maven on a broken setup.
-        """
-        output_file = run_dir / "output.txt"
-
-        # Always surface installed-artifact ages first: `mvn test -pl <module>`
-        # recompiles only <module>, so a dependency edited but not reinstalled
-        # runs stale. This banner makes that obvious before the test launches.
-        try:
-            age_report = preflight.format_artifact_age_report(
-                PROJECT_ROOT, module)
-            self._write_preflight_section(
-                output_file, "dependency artifact ages (~/.m2)", age_report)
-        except Exception as exc:  # noqa: BLE001 - a reporting error must never break a run
-            self._write_preflight_section(
-                output_file,
-                "dependency artifact ages (~/.m2)",
-                f"Artifact-age report unavailable: {exc}")
-
-        try:
-            missing = preflight.find_missing_upstream_artifacts(
-                PROJECT_ROOT, module)
-        except Exception as exc:  # noqa: BLE001
-            # Inspection failures short-circuit the run (action="failed"), mirroring seed failures.
-            # find_missing_upstream_artifacts already returns [] on expected filesystem errors, so this
-            # branch should only fire on truly unexpected exceptions.
-            # If that behavior is undesirable, consider letting the test invocation proceed instead.
-            result = preflight.PreflightResult(
-                action="failed",
-                exit_code=1,
-                reason=f"preflight inspection failed: {exc}",
-            )
-            self._write_preflight_section(
-                output_file,
-                "INSPECTION FAILED",
-                f"Could not determine upstream dependencies: {exc}\n"
-                "The test invocation is aborted due to this inspection error.",
-            )
-            return result
-
-        if not missing:
-            self._write_preflight_section(
-                output_file,
-                "skipped (upstream artifacts present)",
-                f"All direct org.almostrealism dependencies of {module}\n"
-                "are already installed in ~/.m2; no seed needed.",
-            )
-            return preflight.PreflightResult(
-                action="skipped",
-                reason="All direct org.almostrealism dependencies already installed",
-            )
-
-        missing_summary = ", ".join(
-            f"{m.artifact_id}:{m.version}" for m in missing[:8])
-        if len(missing) > 8:
-            missing_summary += f", ... (+{len(missing) - 8} more)"
-        self._write_preflight_section(
-            output_file,
-            f"seeding {len(missing)} upstream artifact(s)",
-            f"Missing direct dependencies for {module}: {missing_summary}\n"
-            f"Running: {' '.join(preflight.build_seed_command(module))}\n"
-            "(This makes the FIRST ar-test-runner call in a fresh worktree "
-            "self-sufficient — subsequent calls skip this step.)",
-        )
-
-        def _writer(chunk: str) -> None:
-            try:
-                with open(output_file, "a") as handle:
-                    handle.write(chunk)
-            except OSError:
-                # An output-write failure must never break the preflight.
-                pass
-
-        result = preflight.seed_upstream_artifacts(
-            PROJECT_ROOT, module, output_writer=_writer)
-
-        if result.action == "seeded":
-            self._write_preflight_section(
-                output_file,
-                f"seeded {len(result.missing)} artifact(s) in "
-                f"{result.duration_seconds:.1f}s",
-                "Test invocation will now proceed.",
-            )
-        elif result.action == "failed":
-            self._write_preflight_section(
-                output_file,
-                f"FAILED (mvn install exited {result.exit_code})",
-                "The upstream artifacts could not be installed. The test "
-                "invocation is skipped because Maven would fail with the "
-                "same dependency-resolution error.",
-            )
-        return result
-
     def cleanup_old_runs(self):
         """Remove oldest runs if we exceed MAX_RUNS."""
-        if not RUNS_DIR.exists():
-            return
-
-        runs = []
-        for run_dir in RUNS_DIR.iterdir():
-            if run_dir.is_dir():
-                metadata_file = run_dir / "metadata.json"
-                if metadata_file.exists():
-                    try:
-                        with open(metadata_file) as f:
-                            meta = json.load(f)
-                            runs.append((run_dir, meta.get("started_at", "")))
-                    except Exception:
-                        runs.append((run_dir, ""))
-
-        # Sort by started_at (oldest first)
-        runs.sort(key=lambda x: x[1])
-
-        # Remove oldest runs if we exceed MAX_RUNS
-        while len(runs) >= MAX_RUNS:
-            old_run_dir, _ = runs.pop(0)
-            try:
-                shutil.rmtree(old_run_dir)
-            except Exception:
-                pass
+        self.store.cleanup(MAX_RUNS)
 
     def build_maven_command(self, config: RunConfig,
                             run_dir: Optional[Path] = None,
@@ -397,7 +227,8 @@ class TestRunner:
             has_output_dir = any("AR_INSTRUCTION_SET_OUTPUT_DIR" in arg
                                  for arg in config.jvm_args)
             if not has_output_dir:
-                output_dir = str(PROJECT_ROOT / config.module / "results" / run_id)
+                output_dir = str(config.project_root() / config.module
+                                 / "results" / run_id)
                 cmd.append(f"-DAR_INSTRUCTION_SET_OUTPUT_DIR={output_dir}")
 
         # Add test class/method filters. A -Dtest filter is mutually exclusive with a
@@ -466,7 +297,8 @@ class TestRunner:
         # it must finish before the test process launches against the same
         # module. Skipped path is a few-millisecond pom scan; only the
         # genuinely-uninstalled case blocks for the duration of mvn install.
-        preflight_result = self._run_preflight(run_id, run_dir, config.module)
+        preflight_result = preflight_runner.run(
+            run_dir, config.module, config.project_root())
         if preflight_result.action == "failed":
             # Short-circuit: mark the run failed and return early. The
             # preflight banner already explains the failure in output.txt.
@@ -543,7 +375,7 @@ class TestRunner:
                 stdout=f,
                 stderr=subprocess.STDOUT,
                 env=env,
-                cwd=PROJECT_ROOT,
+                cwd=config.project_root(),
                 preexec_fn=os.setsid  # Create new process group for cleanup
             )
 
@@ -558,7 +390,8 @@ class TestRunner:
         # mid-run (e.g., claude exits cleanly and reaps its MCP children),
         # the daemon thread cannot run, but the watcher subprocess is in a
         # separate session and survives to write terminal metadata.
-        self._spawn_watcher_subprocess(run_id, process.pid, config.module, run_dir)
+        self._spawn_watcher_subprocess(run_id, process.pid, config.module, run_dir,
+                                       config.project_root())
 
         # Start completion watcher
         watcher = threading.Thread(
@@ -590,7 +423,7 @@ class TestRunner:
         return run_id, cmd_str
 
     def _spawn_watcher_subprocess(self, run_id: str, maven_pid: int, module: str,
-                                  run_dir: Path) -> None:
+                                  run_dir: Path, project_root: Path) -> None:
         """Spawn the external watcher.py as a session-detached subprocess.
 
         The watcher polls the maven PID via `os.kill(pid, 0)`, then writes
@@ -612,7 +445,7 @@ class TestRunner:
             subprocess.Popen(
                 [sys.executable, str(WATCHER_SCRIPT),
                  str(maven_pid), str(metadata_path), str(output_path),
-                 str(reports_dst), str(PROJECT_ROOT), module],
+                 str(reports_dst), str(project_root), module],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL,
@@ -624,15 +457,21 @@ class TestRunner:
                 f"[ar-test-runner] failed to spawn watcher subprocess: {exc}\n")
 
     def _watch_completion(self, run_id: str, process: subprocess.Popen, module: str,
-                          config: RunConfig = None, run_dir: Path = None):
-        """Watch for process completion and update metadata."""
+                          config: RunConfig, run_dir: Path):
+        """Watch for process completion and update metadata.
+
+        The config is required because finalising a run reads the project it
+        targeted; a caller that omitted it would only fail at the very end,
+        after the tests had already run.
+        """
         start_time = datetime.now()
         exit_code = process.wait()
         elapsed_seconds = (datetime.now() - start_time).total_seconds()
 
-        # Detect JMX-induced fork failure: early exit + non-zero + jmx enabled
-        if (config is not None
-                and config.jmx_monitoring
+        # Detect JMX-induced fork failure: early exit + non-zero + jmx enabled.
+        # A retry is itself watched with jmx_monitoring off, so it cannot
+        # re-enter this branch.
+        if (config.jmx_monitoring
                 and exit_code != 0
                 and elapsed_seconds < EARLY_EXIT_THRESHOLD_SECONDS
                 and self._is_fork_failure(run_id)):
@@ -657,7 +496,7 @@ class TestRunner:
             self._save_metadata_dict(run_id, metadata)
 
             # Copy surefire reports
-            self._copy_surefire_reports(run_id, module)
+            self._copy_surefire_reports(run_id, module, config.project_root())
 
     def _is_fork_failure(self, run_id: str) -> bool:
         """Check output.txt for Surefire fork failure patterns."""
@@ -674,19 +513,8 @@ class TestRunner:
     def _retry_without_jmx_args(self, run_id: str, config: RunConfig,
                                  run_dir: Path, module: str):
         """Retry a test run without JFR/NMT JVM arguments after a fork failure."""
-        # Create degraded config (jmx_monitoring=False skips JFR/NMT in build_maven_command)
-        degraded_config = RunConfig(
-            depth=config.depth,
-            module=config.module,
-            test_classes=list(config.test_classes),
-            test_methods=list(config.test_methods),
-            timeout_minutes=config.timeout_minutes,
-            jvm_args=list(config.jvm_args),
-            profile=config.profile,
-            jmx_monitoring=False,
-            test_group=config.test_group,
-            test_groups=config.test_groups,
-        )
+        # jmx_monitoring=False skips JFR/NMT in build_maven_command
+        degraded_config = config.without_jmx()
         cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
         # Log to output.txt
@@ -701,7 +529,7 @@ class TestRunner:
         with open(output_file, "a") as f:
             new_process = subprocess.Popen(
                 cmd, stdout=f, stderr=subprocess.STDOUT,
-                env=env, cwd=PROJECT_ROOT, preexec_fn=os.setsid)
+                env=env, cwd=config.project_root(), preexec_fn=os.setsid)
 
         self.active_runs[run_id] = new_process
 
@@ -715,11 +543,15 @@ class TestRunner:
             self._save_metadata_dict(run_id, metadata)
 
         # Spawn detached watcher subprocess for the retry's maven PID.
-        self._spawn_watcher_subprocess(run_id, new_process.pid, module, run_dir)
+        self._spawn_watcher_subprocess(run_id, new_process.pid, module, run_dir,
+                                       config.project_root())
 
-        # New watcher (config=None prevents infinite retry)
+        # The degraded config is what the watcher needs: it names the project
+        # whose reports are to be collected, and its jmx_monitoring is already
+        # off, which is what stops this retry from retrying itself.
         threading.Thread(target=self._watch_completion,
-                         args=(run_id, new_process, module),
+                         args=(run_id, new_process, module,
+                               degraded_config, run_dir),
                          daemon=True).start()
 
         # PID discovery for jstat-based monitoring
@@ -798,31 +630,19 @@ class TestRunner:
             metadata["forked_pid_discovery_failed"] = True
         self._save_metadata_dict(run_id, metadata)
 
-    def _copy_surefire_reports(self, run_id: str, module: str):
-        """Copy surefire reports to run directory, only those modified after run started."""
-        reports_src = PROJECT_ROOT / module / "target" / "surefire-reports"
-        reports_dst = RUNS_DIR / run_id / "reports"
+    def _copy_surefire_reports(self, run_id: str, module: str, project_root: Path):
+        """Copy this run's surefire reports into its run directory.
 
-        if not reports_src.exists():
-            return
-
-        # Get run start time
+        Reports older than the run's start belong to a previous run that left
+        them in the module's target directory, so they are left behind.
+        """
         metadata = self._load_metadata(run_id)
         if not metadata:
             return
-        run_start = datetime.fromisoformat(metadata["started_at"])
 
-        # Create destination directory
-        reports_dst.mkdir(parents=True, exist_ok=True)
-
-        # Copy only reports modified after run started
-        for xml_file in reports_src.glob("TEST-*.xml"):
-            try:
-                file_mtime = datetime.fromtimestamp(xml_file.stat().st_mtime)
-                if file_mtime >= run_start:
-                    shutil.copy2(xml_file, reports_dst / xml_file.name)
-            except Exception:
-                pass
+        self._reports(run_id).collect_from(
+            reports.module_output(project_root, module),
+            modified_since=datetime.fromisoformat(metadata["started_at"]))
 
     def _watch_repetitions(self, run_id: str, config: RunConfig, run_dir: Path):
         """Run the same test N times sequentially, collecting per-invocation results."""
@@ -856,7 +676,7 @@ class TestRunner:
                     stdout=f,
                     stderr=subprocess.STDOUT,
                     env=env,
-                    cwd=PROJECT_ROOT,
+                    cwd=config.project_root(),
                     preexec_fn=os.setsid
                 )
 
@@ -883,19 +703,7 @@ class TestRunner:
                     and inv_duration < EARLY_EXIT_THRESHOLD_SECONDS
                     and self._is_fork_failure(run_id)):
                 # Rebuild command without JMX args for remaining invocations
-                degraded_config = RunConfig(
-                    depth=config.depth,
-                    module=config.module,
-                    test_classes=list(config.test_classes),
-                    test_methods=list(config.test_methods),
-                    timeout_minutes=config.timeout_minutes,
-                    jvm_args=list(config.jvm_args),
-                    profile=config.profile,
-                    jmx_monitoring=False,
-                    repetitions=config.repetitions,
-                    test_group=config.test_group,
-                    test_groups=config.test_groups
-                )
+                degraded_config = config.without_jmx()
                 cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
                 with open(output_file, "a") as f:
@@ -917,7 +725,7 @@ class TestRunner:
                 with open(output_file, "a") as f:
                     process = subprocess.Popen(
                         cmd, stdout=f, stderr=subprocess.STDOUT,
-                        env=env, cwd=PROJECT_ROOT, preexec_fn=os.setsid)
+                        env=env, cwd=config.project_root(), preexec_fn=os.setsid)
 
                 self.active_runs[run_id] = process
                 inv_start = time.monotonic()
@@ -925,11 +733,12 @@ class TestRunner:
                 inv_duration = time.monotonic() - inv_start
 
             # Copy surefire reports for this invocation
-            self._copy_surefire_reports_to_invocation(run_id, config.module, invocation_num)
+            self._copy_surefire_reports_to_invocation(
+                run_id, config.module, invocation_num, config.project_root())
 
             # Parse test counts from this invocation's reports
-            inv_reports_dir = run_dir / "reports" / f"invocation_{invocation_num}"
-            inv_counts = self._parse_test_counts(inv_reports_dir) if inv_reports_dir.exists() else {}
+            inv_reports = self._reports(run_id).invocation(invocation_num)
+            inv_counts = inv_reports.counts() if inv_reports.exists() else {}
 
             # Record invocation result
             inv_status = "completed" if exit_code == 0 else "failed"
@@ -965,50 +774,15 @@ class TestRunner:
             metadata["status"] = "failed" if any_failed else "completed"
             self._save_metadata_dict(run_id, metadata)
 
-    def _copy_surefire_reports_to_invocation(self, run_id: str, module: str, invocation_num: int):
+    def _copy_surefire_reports_to_invocation(self, run_id: str, module: str,
+                                             invocation_num: int, project_root: Path):
         """Copy surefire reports to an invocation-specific subdirectory.
 
         Since invocations are sequential and Maven overwrites reports each time,
         no time filtering is needed.
         """
-        reports_src = PROJECT_ROOT / module / "target" / "surefire-reports"
-        reports_dst = RUNS_DIR / run_id / "reports" / f"invocation_{invocation_num}"
-
-        if not reports_src.exists():
-            return
-
-        reports_dst.mkdir(parents=True, exist_ok=True)
-
-        for xml_file in reports_src.glob("TEST-*.xml"):
-            try:
-                shutil.copy2(xml_file, reports_dst / xml_file.name)
-            except Exception:
-                pass
-
-    @staticmethod
-    def _compute_stats(values: list[float]) -> dict:
-        """Compute statistical summary of a list of values.
-
-        Returns dict with count, mean, median, std_dev, min, max, cv (coefficient of variation %).
-        """
-        if not values:
-            return {"count": 0, "mean": 0, "median": 0, "std_dev": 0, "min": 0, "max": 0, "cv": 0}
-
-        n = len(values)
-        mean = statistics.mean(values)
-        median = statistics.median(values)
-        std_dev = statistics.stdev(values) if n >= 2 else 0
-        cv = (std_dev / mean * 100) if mean > 0 else 0
-
-        return {
-            "count": n,
-            "mean": round(mean, 3),
-            "median": round(median, 3),
-            "std_dev": round(std_dev, 3),
-            "min": round(min(values), 3),
-            "max": round(max(values), 3),
-            "cv": round(cv, 1)
-        }
+        self._reports(run_id).invocation(invocation_num).collect_from(
+            reports.module_output(project_root, module))
 
     def get_run_timing(self, run_id: str) -> Optional[dict]:
         """Get timing analysis for a multi-invocation run.
@@ -1019,101 +793,19 @@ class TestRunner:
         if not metadata:
             return None
 
-        repetitions = metadata.get("repetitions", 1)
-        if repetitions <= 1:
-            return {"error": "get_run_timing is only available for multi-invocation runs (repetitions > 1). "
-                             "Use get_run_status for single-invocation timing."}
-
-        invocations = metadata.get("invocations", [])
-
-        # Per-invocation summary
-        inv_durations = [inv["duration_seconds"] for inv in invocations if "duration_seconds" in inv]
-        invocation_stats = self._compute_stats(inv_durations)
-
-        # Per-test-method stats across invocations
-        reports_base = RUNS_DIR / run_id / "reports"
-        test_method_times: dict[str, list[dict]] = {}  # key -> list of {time, status, invocation}
-
-        for inv_dir in sorted(reports_base.glob("invocation_*")):
-            inv_match = re.match(r"invocation_(\d+)", inv_dir.name)
-            if not inv_match:
-                continue
-            inv_num = int(inv_match.group(1))
-
-            for xml_file in inv_dir.glob("TEST-*.xml"):
-                try:
-                    tree = ET.parse(xml_file)
-                    root = tree.getroot()
-                    for testcase in root.findall("testcase"):
-                        classname = testcase.get("classname", "")
-                        method_name = testcase.get("name", "")
-                        time_sec = float(testcase.get("time", 0))
-                        key = f"{classname}#{method_name}"
-
-                        status = "passed"
-                        if testcase.find("failure") is not None:
-                            status = "failed"
-                        elif testcase.find("error") is not None:
-                            status = "error"
-                        elif testcase.find("skipped") is not None:
-                            status = "skipped"
-
-                        test_method_times.setdefault(key, []).append({
-                            "time": time_sec,
-                            "status": status,
-                            "invocation": inv_num
-                        })
-                except Exception:
-                    pass
-
-        # Compute per-method stats
-        test_method_stats = []
-        for key, entries in test_method_times.items():
-            times = [e["time"] for e in entries]
-            failure_count = sum(1 for e in entries if e["status"] in ("failed", "error"))
-            pass_count = sum(1 for e in entries if e["status"] == "passed")
-            total = len(entries)
-            pass_rate = round(pass_count / total * 100, 1) if total > 0 else 0
-
-            test_method_stats.append({
-                "test": key,
-                "timing": self._compute_stats(times),
-                "pass_rate": pass_rate,
-                "failure_count": failure_count,
-                "invocation_count": total
-            })
-
-        # Sort by mean time descending (slowest first)
-        test_method_stats.sort(key=lambda x: x["timing"]["mean"], reverse=True)
-
-        return {
-            "run_id": run_id,
-            "repetitions": repetitions,
-            "invocations_completed": len(invocations),
-            "invocation_stats": invocation_stats,
-            "invocations": invocations,
-            "test_method_stats": test_method_stats
-        }
+        return timing.analyze(run_id, metadata, self._reports(run_id))
 
     def _save_metadata(self, run_id: str, metadata: RunMetadata):
         """Save run metadata."""
-        metadata_file = RUNS_DIR / run_id / "metadata.json"
-        with open(metadata_file, "w") as f:
-            json.dump(asdict(metadata), f, indent=2)
+        self.store.save(run_id, asdict(metadata))
 
     def _save_metadata_dict(self, run_id: str, metadata: dict):
         """Save run metadata from dict."""
-        metadata_file = RUNS_DIR / run_id / "metadata.json"
-        with open(metadata_file, "w") as f:
-            json.dump(metadata, f, indent=2)
+        self.store.save(run_id, metadata)
 
     def _load_metadata(self, run_id: str) -> Optional[dict]:
         """Load run metadata."""
-        metadata_file = RUNS_DIR / run_id / "metadata.json"
-        if metadata_file.exists():
-            with open(metadata_file) as f:
-                return json.load(f)
-        return None
+        return self.store.load(run_id)
 
     def get_run_status(self, run_id: str) -> Optional[dict]:
         """Get status of a run including test counts from reports."""
@@ -1136,41 +828,20 @@ class TestRunner:
             metadata["duration_seconds"] = (datetime.now() - started).total_seconds()
 
         # Parse surefire reports for test counts
-        reports_dir = RUNS_DIR / run_id / "reports"
+        collected = self._reports(run_id)
         repetitions = metadata.get("repetitions", 1)
 
-        if repetitions > 1 and reports_dir.exists():
-            # Aggregate counts across all invocation subdirectories
-            counts = {"tests_run": 0, "failures": 0, "errors": 0, "skipped": 0}
-            for inv_dir in sorted(reports_dir.glob("invocation_*")):
-                inv_counts = self._parse_test_counts(inv_dir)
-                for k in counts:
-                    counts[k] += inv_counts.get(k, 0)
-            metadata.update(counts)
-            metadata["invocations_completed"] = len(metadata.get("invocations", []))
-            metadata["invocations_total"] = repetitions
-        elif reports_dir.exists():
-            counts = self._parse_test_counts(reports_dir)
-            metadata.update(counts)
+        if collected.exists():
+            metadata.update(collected.total_counts(repetitions))
+            if repetitions > 1:
+                metadata["invocations_completed"] = len(metadata.get("invocations", []))
+                metadata["invocations_total"] = repetitions
 
         return metadata
 
-    def _parse_test_counts(self, reports_dir: Path) -> dict:
-        """Parse surefire reports for test counts."""
-        counts = {"tests_run": 0, "failures": 0, "errors": 0, "skipped": 0}
-
-        for xml_file in reports_dir.glob("TEST-*.xml"):
-            try:
-                tree = ET.parse(xml_file)
-                root = tree.getroot()
-                counts["tests_run"] += int(root.get("tests", 0))
-                counts["failures"] += int(root.get("failures", 0))
-                counts["errors"] += int(root.get("errors", 0))
-                counts["skipped"] += int(root.get("skipped", 0))
-            except Exception:
-                pass
-
-        return counts
+    def _reports(self, run_id: str) -> reports.SurefireReports:
+        """Return the surefire reports collected for a run."""
+        return reports.SurefireReports(RUNS_DIR / run_id / "reports")
 
     def get_run_output(self, run_id: str, tail: Optional[int] = None,
                        filter_pattern: Optional[str] = None,
@@ -1184,166 +855,7 @@ class TestRunner:
             max_lines: Max lines to return (default: DEFAULT_OUTPUT_LINES)
                        Set to 0 for unlimited (not recommended)
         """
-        output_file = RUNS_DIR / run_id / "output.txt"
-        if not output_file.exists():
-            return None
-
-        with open(output_file) as f:
-            lines = f.readlines()
-
-        total_lines = len(lines)
-
-        # Apply filter if specified
-        if filter_pattern:
-            try:
-                pattern = re.compile(filter_pattern)
-                lines = [l for l in lines if pattern.search(l)]
-            except re.error:
-                pass
-
-        filtered_lines = len(lines)
-        truncated = False
-
-        # Apply tail if specified (takes precedence)
-        if tail and len(lines) > tail:
-            lines = lines[-tail:]
-            truncated = True
-        elif max_lines is None:
-            # Apply default limit - show head and tail
-            max_lines = DEFAULT_OUTPUT_LINES
-            if len(lines) > max_lines:
-                head_lines = max_lines // 2
-                tail_lines = max_lines - head_lines
-                lines = (
-                    lines[:head_lines] +
-                    [f"\n... ({len(lines) - max_lines} lines truncated) ...\n\n"] +
-                    lines[-tail_lines:]
-                )
-                truncated = True
-        elif max_lines > 0 and len(lines) > max_lines:
-            # Explicit limit requested
-            head_lines = max_lines // 2
-            tail_lines = max_lines - head_lines
-            lines = (
-                lines[:head_lines] +
-                [f"\n... ({len(lines) - max_lines} lines truncated) ...\n\n"] +
-                lines[-tail_lines:]
-            )
-            truncated = True
-
-        return {
-            "run_id": run_id,
-            "output": "".join(lines),
-            "truncated": truncated,
-            "total_lines": total_lines,
-            "filtered_lines": filtered_lines if filter_pattern else None
-        }
-
-    def _truncate_stacktrace(self, stacktrace: str, max_lines: int = DEFAULT_STACKTRACE_LINES) -> str:
-        """Truncate a stacktrace to max_lines, keeping head and tail."""
-        if not stacktrace:
-            return ""
-        lines = stacktrace.split('\n')
-        if len(lines) <= max_lines:
-            return stacktrace
-        head = max_lines // 2
-        tail = max_lines - head
-        truncated_lines = (
-            lines[:head] +
-            [f"    ... ({len(lines) - max_lines} lines truncated) ..."] +
-            lines[-tail:]
-        )
-        return '\n'.join(truncated_lines)
-
-    def _parse_reports_dir(self, reports_dir: Path, include_all_tests: bool = False,
-                           truncate_stacktraces: bool = True,
-                           invocation: Optional[int] = None) -> tuple[list, list, dict]:
-        """Parse surefire XML reports from a directory.
-
-        Args:
-            reports_dir: Directory containing TEST-*.xml files.
-            include_all_tests: Whether to collect all test entries.
-            truncate_stacktraces: Whether to truncate long stacktraces.
-            invocation: If set, adds an 'invocation' field to each entry.
-
-        Returns:
-            Tuple of (failures, all_tests_or_empty, summary_dict).
-        """
-        failures = []
-        all_tests = []
-        summary = {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}
-
-        for xml_file in reports_dir.glob("TEST-*.xml"):
-            try:
-                tree = ET.parse(xml_file)
-                root = tree.getroot()
-
-                for testcase in root.findall("testcase"):
-                    classname = testcase.get("classname", "")
-                    name = testcase.get("name", "")
-                    time_sec = float(testcase.get("time", 0))
-                    summary["total"] += 1
-
-                    test_info = {
-                        "class": classname,
-                        "method": name,
-                        "time_seconds": time_sec,
-                        "status": "passed"
-                    }
-                    if invocation is not None:
-                        test_info["invocation"] = invocation
-
-                    # Check for failure
-                    failure = testcase.find("failure")
-                    error = testcase.find("error")
-                    skipped = testcase.find("skipped")
-
-                    if failure is not None:
-                        test_info["status"] = "failed"
-                        summary["failed"] += 1
-                        stacktrace = failure.text or ""
-                        if truncate_stacktraces:
-                            stacktrace = self._truncate_stacktrace(stacktrace)
-                        fail_entry = {
-                            "class": classname,
-                            "method": name,
-                            "time_seconds": time_sec,
-                            "type": failure.get("type", ""),
-                            "message": failure.get("message", ""),
-                            "stacktrace": stacktrace
-                        }
-                        if invocation is not None:
-                            fail_entry["invocation"] = invocation
-                        failures.append(fail_entry)
-                    elif error is not None:
-                        test_info["status"] = "error"
-                        summary["error"] += 1
-                        stacktrace = error.text or ""
-                        if truncate_stacktraces:
-                            stacktrace = self._truncate_stacktrace(stacktrace)
-                        fail_entry = {
-                            "class": classname,
-                            "method": name,
-                            "time_seconds": time_sec,
-                            "type": error.get("type", ""),
-                            "message": error.get("message", ""),
-                            "stacktrace": stacktrace
-                        }
-                        if invocation is not None:
-                            fail_entry["invocation"] = invocation
-                        failures.append(fail_entry)
-                    elif skipped is not None:
-                        test_info["status"] = "skipped"
-                        summary["skipped"] += 1
-                    else:
-                        summary["passed"] += 1
-
-                    if include_all_tests:
-                        all_tests.append(test_info)
-            except Exception:
-                pass
-
-        return failures, all_tests, summary
+        return self.store.output(run_id, tail, filter_pattern, max_lines)
 
     def get_run_failures(self, run_id: str, include_all_tests: bool = False,
                          truncate_stacktraces: bool = True) -> Optional[dict]:
@@ -1354,123 +866,44 @@ class TestRunner:
             include_all_tests: Include all test results, not just failures (default: False)
             truncate_stacktraces: Truncate long stacktraces (default: True)
         """
-        reports_dir = RUNS_DIR / run_id / "reports"
-        empty_result = {"run_id": run_id, "failures": [], "summary": {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}}
-
-        if not reports_dir.exists():
-            return empty_result
+        collected = self._reports(run_id)
+        if not collected.exists():
+            return reports.empty_failures(run_id)
 
         metadata = self._load_metadata(run_id)
         repetitions = metadata.get("repetitions", 1) if metadata else 1
 
-        if repetitions > 1:
-            # Multi-invocation: iterate invocation subdirectories
-            all_failures = []
-            all_tests_list = []
-            total_summary = {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0}
-
-            for inv_dir in sorted(reports_dir.glob("invocation_*")):
-                inv_match = re.match(r"invocation_(\d+)", inv_dir.name)
-                if not inv_match:
-                    continue
-                inv_num = int(inv_match.group(1))
-
-                failures, tests, summary = self._parse_reports_dir(
-                    inv_dir, include_all_tests, truncate_stacktraces, invocation=inv_num)
-                all_failures.extend(failures)
-                all_tests_list.extend(tests)
-                for k in total_summary:
-                    total_summary[k] += summary[k]
-
-            result = {
-                "run_id": run_id,
-                "failures": all_failures,
-                "summary": total_summary
-            }
-            if include_all_tests:
-                result["all_tests"] = all_tests_list
-            return result
-        else:
-            # Single-invocation: parse reports directly
-            failures, all_tests_list, summary = self._parse_reports_dir(
-                reports_dir, include_all_tests, truncate_stacktraces)
-
-            result = {
-                "run_id": run_id,
-                "failures": failures,
-                "summary": summary
-            }
-            if include_all_tests:
-                result["all_tests"] = all_tests_list
-            return result
+        return {"run_id": run_id, **collected.collect_failures(
+            include_all_tests, truncate_stacktraces, repetitions)}
 
     def abandon_running_runs(self) -> list[str]:
-        """Mark every active run with ``status="abandoned"`` and return their IDs.
-
-        Used as an atexit safety net: when the python parent (ar-test-runner)
-        is shutting down, any run still in ``status="running"`` is marked
-        ``abandoned`` so that the next inspector can distinguish "actually in
-        progress" from "stranded by parent death". This is a complement to
-        the detached watcher subprocess (which infers terminal status from
-        output.txt); the watcher catches the case where maven completes after
-        the parent dies, while this handler catches the inverse case where
-        maven is still mid-run when the parent dies.
-        """
-        abandoned: list[str] = []
-        if not RUNS_DIR.exists():
-            return abandoned
-        try:
-            run_dirs = list(RUNS_DIR.iterdir())
-        except OSError:
-            return abandoned
-        for run_dir in run_dirs:
-            if not run_dir.is_dir():
-                continue
-            metadata_path = run_dir / "metadata.json"
-            if not metadata_path.exists():
-                continue
-            try:
-                with open(metadata_path) as f:
-                    metadata = json.load(f)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if metadata.get("status") not in ("running", "pending"):
-                continue
-            metadata["status"] = "abandoned"
-            metadata["abandoned_at"] = datetime.now().isoformat()
-            metadata["abandoned_reason"] = (
-                "ar-test-runner process exited while this run was still in progress")
-            try:
-                with open(metadata_path, "w") as f:
-                    json.dump(metadata, f, indent=2)
-                abandoned.append(run_dir.name)
-            except OSError:
-                pass
-        return abandoned
+        """Mark every active run ``abandoned`` and return their IDs."""
+        return self.store.abandon_running()
 
     def list_runs(self, limit: int = 10, status_filter: Optional[str] = None) -> list[dict]:
         """List recent runs."""
         runs = []
 
-        for run_dir in RUNS_DIR.iterdir():
-            if run_dir.is_dir():
-                metadata = self._load_metadata(run_dir.name)
-                if metadata:
-                    # Check if process is still running
-                    if run_dir.name in self.active_runs:
-                        process = self.active_runs[run_dir.name]
-                        if process.poll() is None:
-                            metadata["status"] = "running"
+        for run_id in self.store.run_ids():
+            metadata = self._load_metadata(run_id)
+            if not metadata:
+                continue
 
-                    if status_filter and metadata.get("status") != status_filter:
-                        continue
+            # A run this process is still driving is running whatever the
+            # stored record says, which may predate the process finishing.
+            process = self.active_runs.get(run_id)
+            if process is not None and process.poll() is None:
+                metadata["status"] = "running"
 
-                    runs.append({
-                        "run_id": metadata["run_id"],
-                        "status": metadata["status"],
-                        "started_at": metadata["started_at"],
-                        "config": metadata.get("config", {})
-                    })
+            if status_filter and metadata.get("status") != status_filter:
+                continue
+
+            runs.append({
+                "run_id": metadata["run_id"],
+                "status": metadata["status"],
+                "started_at": metadata["started_at"],
+                "config": metadata.get("config", {})
+            })
 
         # Sort by started_at (newest first)
         runs.sort(key=lambda x: x["started_at"], reverse=True)
@@ -1548,9 +981,23 @@ async def list_tools():
                         "maximum": 10,
                         "description": "AR_TEST_DEPTH value (0-10). Omit for no limit."
                     },
+                    "project": {
+                        "type": "string",
+                        "description": (
+                            "Root of the Maven project to test — the directory holding "
+                            "the reactor pom.xml. Defaults to this repository. Use it to "
+                            "test any other Maven project, such as a sibling checkout of "
+                            "a downstream consumer: a relative path is resolved against "
+                            "this repository, so \"../downstream\" names a sibling. "
+                            "module is always relative to this root."
+                        )
+                    },
                     "module": {
                         "type": "string",
-                        "description": f"Maven module to test (default: {DEFAULT_MODULE})"
+                        "description": (
+                            f"Maven module to test, relative to the project root "
+                            f"(default: {DEFAULT_MODULE}, which assumes the default project)"
+                        )
                     },
                     "test_classes": {
                         "type": "array",
@@ -1757,6 +1204,7 @@ async def call_tool(name: str, arguments: dict):
         if name == "start_test_run":
             config = RunConfig(
                 depth=arguments.get("depth"),
+                project=arguments.get("project", ""),
                 module=arguments.get("module", DEFAULT_MODULE),
                 test_classes=arguments.get("test_classes", []),
                 test_methods=arguments.get("test_methods", []),
@@ -1769,12 +1217,17 @@ async def call_tool(name: str, arguments: dict):
                 test_group=arguments.get("test_group"),
                 test_groups=arguments.get("test_groups")
             )
+            # Resolve eagerly so a bad path is reported as a tool error rather
+            # than surfacing later as an opaque Maven failure inside a run.
+            project_root = config.project_root()
+
             if config.test_group is not None and config.test_groups is None:
-                config.test_groups = resolve_ci_test_groups(config.module)
+                config.test_groups = resolve_ci_test_groups(config.module, project_root)
             run_id, command = runner.start_run(config)
             response = {
                 "run_id": run_id,
                 "status": "started",
+                "project": str(project_root),
                 "command": command
             }
             # Include instruction set output directory if it was auto-injected

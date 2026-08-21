@@ -985,7 +985,7 @@ If a violation is found, do NOT add the dependency — stop and report the probl
 
 #### Step 7: Store the update in memory
 
-After completing the document update, call `mcp__ar-consultant__remember` to store
+After completing the document update, call `mcp__ar-manager__memory_store` to store
 a memory entry:
 
 ```

@@ -570,6 +570,28 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
+	 * Resolves a content identifier to the file backing it, searching the file
+	 * tree by identifier rather than assuming any particular filename.
+	 *
+	 * <p>This is what makes library filenames a presentation concern: content
+	 * is addressed by what it is, so a sample can be named for the user without
+	 * anything that references it needing to know the name.</p>
+	 *
+	 * @param identifier the content identifier to resolve
+	 * @return the existing file backing the identifier, or {@code null} if the
+	 *         identifier is blank, unknown, or names a file that is gone
+	 */
+	public File fileFor(String identifier) {
+		if (identifier == null || identifier.isBlank()) return null;
+
+		WaveDataProvider provider = find(identifier);
+		if (provider == null) return null;
+
+		File file = new File(provider.getKey());
+		return file.isFile() ? file : null;
+	}
+
+	/**
 	 * Adds pre-computed {@link WaveDetails} to this library.
 	 *
 	 * <p>The details are indexed by their content identifier. This method is

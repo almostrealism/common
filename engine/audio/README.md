@@ -487,6 +487,14 @@ library.allDetails().forEach(details -> {
         String filePath = provider.getKey();  // Actual file path!
         System.out.println("File: " + filePath);
     }
+
+    // Or, ask the library for the file backing the identifier directly.
+    // fileFor(...) returns a nullable File: null when the identifier is blank,
+    // unknown, or names a file that is no longer present.
+    File file = library.fileFor(identifier);
+    if (file != null) {
+        System.out.println("Backing file: " + file.getAbsolutePath());
+    }
 });
 ```
 

@@ -29,10 +29,11 @@ These are two distinct networking layers and confusing them is a
 common source of bugs.
 
 **Server connections** (`NodeProxy`) are socket-level links between
-two Servers. They live on the `NodeGroup.servers` list. When an agent
-Server starts, it connects outbound to the controller Server,
-creating a `NodeProxy` on each side. Server connections carry
-`Message` objects (tasks, connection requests, job data).
+two Servers. They live on the `NodeGroupServerRegistry` associated with
+this `NodeGroup`. When an agent Server starts, it connects outbound to
+the controller Server, creating a `NodeProxy` on each side. Server
+connections carry `Message` objects (tasks, connection requests, job
+data).
 
 **Peer connections** (`Connection`) are logical links between two
 individual Nodes on different Servers. They live in each `Node.peers`
@@ -43,7 +44,8 @@ between Nodes.
 ```
 Controller Server              Agent Server
   NodeGroup                      NodeGroup
-    servers: [NodeProxy] ←TCP→ servers: [NodeProxy]
+    NodeGroupServerRegistry ←TCP→ NodeGroupServerRegistry
+      [NodeProxy, ...]            [NodeProxy, ...]
 
     Node 0                       Node 0
       peers: [Connection] ←→ peers: [Connection]
@@ -59,7 +61,7 @@ automatically through the activity thread:
 2. If the Node has fewer peers than `maxPeers`, it calls
    `this.parent.getConnection(this.id)`.
 3. The `NodeGroup.getConnection()` method picks a random entry from
-   `this.servers` and sends a `Message.ConnectionRequest` through
+   the server registry and sends a `Message.ConnectionRequest` through
    that `NodeProxy`.
 4. The remote `NodeGroup` receives the request, finds its least
    connected child Node, creates a `Connection`, and sends back a

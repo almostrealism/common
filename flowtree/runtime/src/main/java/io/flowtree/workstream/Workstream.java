@@ -16,6 +16,7 @@
 
 package io.flowtree.workstream;
 
+import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -434,6 +435,25 @@ public class Workstream {
      */
     public String getRepoUrl() {
         return repoUrl;
+    }
+
+    /**
+     * Determines whether this workstream tracks the repository named by
+     * {@code repoUrl}.
+     *
+     * <p>The comparison is by repository identity rather than by string
+     * equality: a workstream configured with
+     * {@code https://github.com/owner/repo.git} matches a caller that names
+     * the same repository as {@code git@github.com:owner/repo} or as the
+     * browser URL a CI system reports. See
+     * {@link GitOperations#isSameRepository(String, String)}.</p>
+     *
+     * @param repoUrl the repository URL to test; may be {@code null}
+     * @return {@code true} when both name the same repository; {@code false}
+     *         when either side is absent
+     */
+    public boolean matchesRepo(String repoUrl) {
+        return GitOperations.isSameRepository(this.repoUrl, repoUrl);
     }
 
     /**
