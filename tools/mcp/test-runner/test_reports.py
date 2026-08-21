@@ -175,6 +175,34 @@ class RepeatedRunTests(ReportsTestCase):
 
         self.assertEqual([1, 2], [n for n, _ in found.invocations()])
 
+    def test_invocations_past_nine_are_ordered_numerically(self):
+        """Ordering must follow the invocation number, not the directory name.
+
+        Two invocations cannot tell these apart, because "invocation_1" and
+        "invocation_2" sort the same either way. From ten onwards they diverge:
+        as text, "invocation_10" comes before "invocation_2". A run may repeat
+        up to a hundred times, so this is reachable.
+        """
+        root = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+
+        expected = list(range(1, 13))
+        for number in expected:
+            directory = root / f"invocation_{number}"
+            directory.mkdir()
+            (directory / "TEST-a.xml").write_text(_suite(PASSED, tests=1))
+
+        found = reports.SurefireReports(root)
+
+        self.assertEqual(expected, [n for n, _ in found.invocations()])
+
+    def test_directory_that_only_starts_like_an_invocation_is_ignored(self):
+        """A trailing suffix makes it a different directory, not invocation 2."""
+        found = self._repeated()
+        (found.directory / "invocation_2_backup").mkdir()
+
+        self.assertEqual([1, 2], [n for n, _ in found.invocations()])
+
     def test_counts_are_summed_across_invocations(self):
         self.assertEqual(2, self._repeated().total_counts(repetitions=2)["tests_run"])
 

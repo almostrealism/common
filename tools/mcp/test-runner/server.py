@@ -19,7 +19,7 @@ import sys
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -105,6 +105,21 @@ class RunConfig:
     def project_root(self) -> Path:
         """Return the resolved Maven project this run targets."""
         return resolve_project_root(self.project)
+
+    def without_jmx(self) -> "RunConfig":
+        """Return this configuration with JMX monitoring turned off.
+
+        Used to retry a run whose forked JVM refused to start under the JMX
+        arguments. Everything else is carried across, including the project the
+        run targets — losing that would leave Maven running in one checkout
+        while its generated output was directed at another. Copying the whole
+        configuration rather than restating it field by field also means a
+        field added later is carried without anyone having to remember to.
+        """
+        return replace(self, jmx_monitoring=False,
+                       test_classes=list(self.test_classes),
+                       test_methods=list(self.test_methods),
+                       jvm_args=list(self.jvm_args))
 
 
 @dataclass
@@ -442,15 +457,21 @@ class TestRunner:
                 f"[ar-test-runner] failed to spawn watcher subprocess: {exc}\n")
 
     def _watch_completion(self, run_id: str, process: subprocess.Popen, module: str,
-                          config: RunConfig = None, run_dir: Path = None):
-        """Watch for process completion and update metadata."""
+                          config: RunConfig, run_dir: Path):
+        """Watch for process completion and update metadata.
+
+        The config is required because finalising a run reads the project it
+        targeted; a caller that omitted it would only fail at the very end,
+        after the tests had already run.
+        """
         start_time = datetime.now()
         exit_code = process.wait()
         elapsed_seconds = (datetime.now() - start_time).total_seconds()
 
-        # Detect JMX-induced fork failure: early exit + non-zero + jmx enabled
-        if (config is not None
-                and config.jmx_monitoring
+        # Detect JMX-induced fork failure: early exit + non-zero + jmx enabled.
+        # A retry is itself watched with jmx_monitoring off, so it cannot
+        # re-enter this branch.
+        if (config.jmx_monitoring
                 and exit_code != 0
                 and elapsed_seconds < EARLY_EXIT_THRESHOLD_SECONDS
                 and self._is_fork_failure(run_id)):
@@ -492,20 +513,8 @@ class TestRunner:
     def _retry_without_jmx_args(self, run_id: str, config: RunConfig,
                                  run_dir: Path, module: str):
         """Retry a test run without JFR/NMT JVM arguments after a fork failure."""
-        # Create degraded config (jmx_monitoring=False skips JFR/NMT in build_maven_command)
-        degraded_config = RunConfig(
-            depth=config.depth,
-            project=config.project,
-            module=config.module,
-            test_classes=list(config.test_classes),
-            test_methods=list(config.test_methods),
-            timeout_minutes=config.timeout_minutes,
-            jvm_args=list(config.jvm_args),
-            profile=config.profile,
-            jmx_monitoring=False,
-            test_group=config.test_group,
-            test_groups=config.test_groups,
-        )
+        # jmx_monitoring=False skips JFR/NMT in build_maven_command
+        degraded_config = config.without_jmx()
         cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
         # Log to output.txt
@@ -537,9 +546,12 @@ class TestRunner:
         self._spawn_watcher_subprocess(run_id, new_process.pid, module, run_dir,
                                        config.project_root())
 
-        # New watcher (config=None prevents infinite retry)
+        # The degraded config is what the watcher needs: it names the project
+        # whose reports are to be collected, and its jmx_monitoring is already
+        # off, which is what stops this retry from retrying itself.
         threading.Thread(target=self._watch_completion,
-                         args=(run_id, new_process, module),
+                         args=(run_id, new_process, module,
+                               degraded_config, run_dir),
                          daemon=True).start()
 
         # PID discovery for jstat-based monitoring
@@ -691,19 +703,7 @@ class TestRunner:
                     and inv_duration < EARLY_EXIT_THRESHOLD_SECONDS
                     and self._is_fork_failure(run_id)):
                 # Rebuild command without JMX args for remaining invocations
-                degraded_config = RunConfig(
-                    depth=config.depth,
-                    module=config.module,
-                    test_classes=list(config.test_classes),
-                    test_methods=list(config.test_methods),
-                    timeout_minutes=config.timeout_minutes,
-                    jvm_args=list(config.jvm_args),
-                    profile=config.profile,
-                    jmx_monitoring=False,
-                    repetitions=config.repetitions,
-                    test_group=config.test_group,
-                    test_groups=config.test_groups
-                )
+                degraded_config = config.without_jmx()
                 cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
                 with open(output_file, "a") as f:

@@ -87,15 +87,24 @@ class SurefireReports:
     def invocations(self) -> list:
         """Return ``(number, reports)`` for each invocation subdirectory, in order.
 
+        Ordered by the invocation number itself rather than by directory name,
+        which are not the same order once a run reaches ten repetitions:
+        ``invocation_10`` sorts before ``invocation_2`` as text. A run may
+        repeat up to a hundred times, so callers reading per-invocation timings
+        or failures would otherwise be handed them shuffled.
+
         Directories that do not carry an invocation number are ignored rather
         than guessed at, so an unrelated subdirectory cannot be counted as a
-        repetition.
+        repetition. The whole name must be the number, so a neighbouring
+        directory that merely starts like one is not mistaken for it.
         """
         found = []
-        for path in sorted(self.directory.glob("invocation_*")):
-            match = re.match(r"invocation_(\d+)", path.name)
+        for path in self.directory.glob("invocation_*"):
+            match = re.fullmatch(r"invocation_(\d+)", path.name)
             if match:
                 found.append((int(match.group(1)), SurefireReports(path)))
+
+        found.sort(key=lambda entry: entry[0])
         return found
 
     def collect_from(self, source: Path,
