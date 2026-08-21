@@ -3660,6 +3660,12 @@ def consult(
     err = _check_length(question, "question", MAX_PROMPT_LEN)
     if err:
         return err
+    # context is concatenated into the prompt alongside the question, so it
+    # carries the same bound; an unbounded snippet would push the retrieved
+    # documentation out of the model's window rather than fail outright.
+    err = _check_length(context, "context", MAX_PROMPT_LEN)
+    if err:
+        return err
     err = _check_short_strings(
         repo_url=repo_url, branch=branch, workstream_id=workstream_id,
     )

@@ -3187,6 +3187,32 @@ class TestConsult(unittest.TestCase):
         self.assertEqual(result["answer"], "A.")
         self.assertEqual(result["related_memories"], [])
 
+    @patch.object(server, "_get_docs")
+    def test_oversized_context_is_rejected(self, mock_docs):
+        # context is concatenated into the prompt, so it carries the same
+        # bound as the question. Rejecting it beats letting it displace the
+        # retrieved documentation inside the model's window.
+        result = server.consult(
+            question="q", context="x" * (server.MAX_PROMPT_LEN + 1))
+        self.assertFalse(result["ok"])
+        self.assertIn("context", result["error"])
+        mock_docs.assert_not_called()
+
+    @patch.object(server, "_get_memory_client", return_value=None)
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_docs")
+    def test_context_within_the_bound_reaches_the_prompt(
+            self, mock_docs, mock_llm, _):
+        mock_docs.return_value = self._docs()
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis("A.", "fake")
+        mock_llm.return_value = llm
+
+        server.consult(question="q", context="a code snippet")
+
+        self.assertEqual(
+            llm.consult.call_args[1]["extra_context"], "a code snippet")
+
     @patch.object(server, "_get_docs", return_value=None)
     def test_no_corpus_is_reported_not_guessed_at(self, _):
         result = server.consult(question="q")

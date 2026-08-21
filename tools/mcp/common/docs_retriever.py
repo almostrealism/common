@@ -912,7 +912,7 @@ _GENERIC_KEYWORDS = {
 }
 
 
-def keyword_guidance(keywords: Optional[list] = None) -> str:
+def keyword_guidance(keywords: Optional[list[str]] = None) -> str:
     """Advice to append when a search returned little of use.
 
     Poor keywords are the usual cause of an empty documentation result, and
@@ -920,7 +920,9 @@ def keyword_guidance(keywords: Optional[list] = None) -> str:
     and a list of individual common words where a phrase was needed.
 
     Args:
-        keywords: The keywords a caller supplied, if any.
+        keywords: The keywords a caller supplied, if any. Each is compared
+            case-insensitively and tested for embedded spaces, so they must
+            be strings.
 
     Returns:
         A leading-space-prefixed sentence to append to a note, or the empty
