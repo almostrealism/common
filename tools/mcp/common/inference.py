@@ -139,6 +139,76 @@ CollectionFeatures` to a class gives it 40+ factory methods like `cp()`, \
 # Abstract backend
 # ---------------------------------------------------------------------------
 
+def build_consult_prompt(
+    question: str,
+    doc_context: str = "",
+    memory_context: str = "",
+    extra_context: Optional[str] = None,
+) -> str:
+    """Assemble the prompt for a documentation-grounded question.
+
+    Module-level rather than a backend method because callers differ in how
+    they invoke the model — ar-consultant routes synthesis through its
+    request-history recorder — while the wording must not differ at all. Two
+    servers answering from one corpus have to ask the same question.
+
+    The framing of the memory section is deliberate. Notes are agent-authored
+    records of particular past work, not documentation, and presented as bare
+    text they read with the same authority — so the prompt states their scope
+    explicitly rather than trusting the model to infer it.
+
+    Args:
+        question: What the caller asked.
+        doc_context: Documentation chunks retrieved for the question.
+        memory_context: Prior notes, already formatted for display.
+        extra_context: Anything supplied alongside the question, such as a
+            code snippet or an error message.
+
+    Returns:
+        The assembled prompt.
+    """
+    parts = []
+
+    # The question goes first so the model knows what to look for while
+    # reading the documentation that follows.
+    parts.append(f"## Question\n\n{question}")
+
+    if extra_context:
+        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
+
+    if doc_context:
+        parts.append(
+            "## Relevant Documentation\n\nRead these chunks carefully — "
+            f"the answer is in here.\n\n{doc_context}"
+        )
+    else:
+        parts.append(
+            "## Relevant Documentation\n\n"
+            "(No documentation found for this query)"
+        )
+
+    if memory_context:
+        parts.append(
+            "## Notes From Prior Sessions\n\n"
+            "These are notes agents wrote about particular past work. They "
+            "are not documentation and carry no authority beyond the classes "
+            "and files they name. Use a note only for the subject it "
+            "explicitly names; never carry its details across to a class, "
+            "file or module it does not mention, and never let its wording "
+            "supply a fact the documentation does not state.\n\n"
+            f"{memory_context}"
+        )
+
+    parts.append(
+        "## Instructions\n\n"
+        "Answer the question above using the documentation chunks. "
+        "Include a code example if the docs provide one. "
+        "Cite the source file and line number."
+    )
+
+    return "\n\n".join(parts)
+
+
 class InferenceBackend(ABC):
     """Abstract interface for LLM inference.
 
@@ -238,6 +308,43 @@ class InferenceBackend(ABC):
         if not text or not text.strip():
             return Synthesis(None, self.name, "model returned an empty response")
         return Synthesis(text, self.name)
+
+    def consult(
+        self,
+        question: str,
+        doc_context: str = "",
+        memory_context: str = "",
+        extra_context: Optional[str] = None,
+    ) -> Synthesis:
+        """Answer a question from documentation, grounded by prior notes.
+
+        Lives on the backend for the same reason :meth:`reformulate` does:
+        both MCP servers answer questions over one documentation corpus, and a
+        second copy of this prompt would let the two give different answers to
+        the same question.
+
+        The framing of the memory section is deliberate. Notes are agent-
+        authored records of particular past work, not documentation, and
+        presented as bare text they read with the same authority — so the
+        prompt states their scope explicitly rather than trusting the model to
+        infer it.
+
+        Args:
+            question: What the caller asked.
+            doc_context: Documentation chunks retrieved for the question.
+            memory_context: Prior notes, already formatted for display.
+            extra_context: Anything the caller supplied alongside the
+                question, such as a code snippet or an error message.
+
+        Returns:
+            A :class:`Synthesis`; check :attr:`Synthesis.degraded`.
+        """
+        return self.synthesize(
+            build_consult_prompt(
+                question, doc_context, memory_context, extra_context,
+            ),
+            system=SYSTEM_PROMPT,
+        )
 
     def reformulate(
         self,

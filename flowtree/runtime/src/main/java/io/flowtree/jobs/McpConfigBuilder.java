@@ -98,6 +98,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "send_message",
             "memory_recall",
             "memory_namespaces",
+            "consult",
             "memory_store",
             "workstream_context",
             "workstream_list",
