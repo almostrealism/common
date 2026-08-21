@@ -1,0 +1,62 @@
+# The ar-manager image builds from the repo root, because it needs the
+# documentation corpus and that lives outside tools/mcp. Everything the image
+# does not need is excluded here — otherwise the whole repo (build output, git
+# history, test artifacts, sample media) is uploaded to the daemon on every
+# build, and anything not excluded can end up baked into a published image.
+#
+# Patterns are anchored at the context root, so directories that occur at any
+# depth need a **/ prefix. Keep both forms for each.
+
+# Build output. Excluded to keep the context small — but the controller and
+# agent images COPY the flowtree runtime jars out of it, so those paths are
+# re-included. A blanket exclusion here broke both builds with
+#   lstat /flowtree/runtime/target: no such file or directory
+# and did so only at deploy time, because no CI job built those two images.
+# tools/tests/test_dockerignore_consistency.py now checks this invariant.
+target/
+**/target/
+!flowtree/runtime/target
+!flowtree/runtime/target/**
+*.class
+
+# VCS and IDE
+.git/
+.gitignore
+.idea/
+**/*.iml
+.vscode/
+
+# Python bytecode and caches
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+
+# Test and profiling artifacts — the bulk of the repo by size
+results/
+**/results/
+runs/
+**/runs/
+**/surefire-reports/
+**/*.log
+
+# Local state that must never reach an image
+**/data/*.db
+**/data/*.faiss
+
+# Media and model weights (large, never needed by a service image)
+assets/
+**/assets/
+**/*.wav
+**/*.aiff
+**/*.mp3
+**/*.gguf
+**/*.onnx
+**/*.safetensors
+**/*.bin
+**/*.pt
+**/*.ckpt
+
+# Native libraries built per-host
+**/*.dylib
+**/*.so

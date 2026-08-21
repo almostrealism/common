@@ -153,13 +153,13 @@ calls, not clock ticks).
 ### 2.3 Detecting `memory_store` and resetting
 
 The two harnesses name the tool identically: `mcp__ar-manager__memory_store`.
-The `ar-consultant` analogue is `mcp__ar-consultant__remember`. Both
-produce durable memory entries; both should reset the "since last
-store" counters.
+It is now the only tool that produces a durable memory entry, so it is
+the only one that resets the "since last store" counters.
+(`mcp__ar-consultant__remember` was an analogue until memory consolidated
+onto ar-manager — see MANAGER_CONSULTANT_CONSOLIDATION.md.)
 
-`mcp__ar-manager__memory_recall` and `mcp__ar-consultant__recall` /
-`consult` do **not** reset — they don't store anything new, they
-read. The motivation is to checkpoint *stored* findings, not
+`mcp__ar-manager__memory_recall`, `memory_namespaces`, and `consult`
+do **not** reset — they don't store anything new, they read. The motivation is to checkpoint *stored* findings, not
 *consulted* findings (a recall is itself a check of the consultant /
 memory store, and is observable in the transcript even without a
 memory entry).
@@ -279,7 +279,7 @@ hook." The asymmetry favors the latter.
 |---|---|
 | Trigger metric | Hybrid: count of side-effect tool calls (Bash/Edit/Write/…) + wall-clock time, whichever first. |
 | State model | Stateless shared core. Per-harness state: opencode in-memory `Map<sessionID, …>`; Claude Code on-disk JSON in `/tmp/.ar_memory_state_${USER}.json`. |
-| `memory_store` detection | Exact match on `mcp__ar-manager__memory_store` or `mcp__ar-consultant__remember`. `memory_recall` and `consult` do **not** reset. |
+| `memory_store` detection | Exact match on `mcp__ar-manager__memory_store`. `memory_recall`, `memory_namespaces`, and `consult` do **not** reset. |
 | Delivery | Soft-inject (JSON `additionalContext` for Claude Code; `output.output` mutation for opencode). |
 | Forcefulness | Soft, with backoff (8 calls or 10 minutes between reminders), warmup (5 calls at start), cooldown (3 calls after a store). |
 | Tuning | Env vars (see §2.5). Defaults favor under-nudging. |

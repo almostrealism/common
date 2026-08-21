@@ -374,7 +374,7 @@ from going down the same wrong path.]
 [Was documentation updated? Was a check added? Was a hook updated?]
 ```
 
-Store the post-mortem as a memory using `mcp__ar-consultant__remember` with namespace `bugs`
+Store the post-mortem as a memory using `mcp__ar-manager__memory_store` with namespace `bugs`
 and tags `["CI", "pipeline", "post-mortem"]`.
 
 ---

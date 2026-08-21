@@ -17,12 +17,17 @@ existing ``python-tests`` CI job.
 
 import ast
 import fnmatch
+import glob
 import os
 import re
 import unittest
 
 _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
 _DOCKERFILE = os.path.join(_MANAGER_DIR, "Dockerfile")
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_MANAGER_DIR)))
+
+# COPY sources are relative to the build context, which is the repo root.
+_MANAGER_COPY_PREFIX = "tools/mcp/manager/"
 
 
 def _local_module_files():
@@ -86,9 +91,12 @@ def _packaged_root_files():
             if dest not in ("./", ".", "/app", "/app/"):
                 continue
             for src in sources:
-                if not src.startswith("manager/"):
+                # The build context is the repo root (the image bakes in the
+                # documentation corpus, which lives outside tools/mcp), so
+                # manager sources are addressed by their full repo path.
+                if not src.startswith(_MANAGER_COPY_PREFIX):
                     continue
-                pattern = src[len("manager/"):]
+                pattern = src[len(_MANAGER_COPY_PREFIX):]
                 for name in all_files:
                     if fnmatch.fnmatch(name, pattern):
                         packaged.add(name)
@@ -99,6 +107,66 @@ def _packaged_root_files():
                     if fnmatch.fnmatch(name, match):
                         packaged.discard(name)
     return packaged
+
+
+def _dockerfile_text():
+    with open(_DOCKERFILE) as handle:
+        return handle.read()
+
+
+class DocsCorpusPackagingTests(unittest.TestCase):
+    """Guard: the documentation corpus must reach the image.
+
+    ar-manager grounds memory answers in the docs (``memory_recall`` blends
+    them into its summary). A container has no checkout, so a corpus that is
+    not baked in leaves the feature silently disabled — ``_get_docs`` degrades
+    rather than failing, which is right at runtime and invisible in CI.
+    """
+
+    def test_ar_docs_dir_is_set(self):
+        self.assertIn("ENV AR_DOCS_DIR=", _dockerfile_text())
+
+    def test_ar_docs_dir_names_a_docs_directory(self):
+        # DocsRetriever treats the PARENT of AR_DOCS_DIR as the repo root, so
+        # the variable must point at the "docs" directory itself.
+        match = re.search(r"ENV AR_DOCS_DIR=(\S+)", _dockerfile_text())
+        self.assertIsNotNone(match)
+        self.assertTrue(
+            match.group(1).endswith("/docs"),
+            f"AR_DOCS_DIR must end in /docs, got {match.group(1)!r}",
+        )
+
+    def test_corpus_is_copied_into_the_image(self):
+        text = _dockerfile_text()
+        match = re.search(r"ENV AR_DOCS_DIR=(\S+)", text)
+        corpus_root = os.path.dirname(match.group(1))
+        self.assertIn(f"COPY --from=docs /src {corpus_root}", text)
+
+    def test_every_module_with_docs_is_staged(self):
+        """The docs stage must copy every top-level directory that holds
+        documentation DocsRetriever indexes. A new top-level module whose
+        README is not staged would be silently missing from the corpus."""
+        text = _dockerfile_text()
+        staged = set(re.findall(r"^COPY (\S+)/ \./\S+/$", text, re.MULTILINE))
+        expected = {
+            name for name in os.listdir(_REPO_ROOT)
+            if os.path.isdir(os.path.join(_REPO_ROOT, name))
+            and not name.startswith(".")
+            and glob.glob(os.path.join(_REPO_ROOT, name, "**", "*.md"),
+                          recursive=True)
+        }
+        missing = expected - staged
+        self.assertEqual(
+            missing, set(),
+            f"these top-level directories contain markdown the corpus should "
+            f"index but are not staged in the docs stage of "
+            f"tools/mcp/manager/Dockerfile: {sorted(missing)}",
+        )
+
+    def test_only_docs_survive_the_prune(self):
+        # The prune is what keeps the Java source tree out of the image.
+        self.assertIn("! -name '*.md' ! -name '*.html' -delete",
+                      _dockerfile_text())
 
 
 class DockerfilePackagingTests(unittest.TestCase):
