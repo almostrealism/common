@@ -623,6 +623,32 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("repoUrl", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_create_workstream_if_missing(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-c1",
+                                  "workstreamId": "ws-new",
+                                  "workstreamCreated": True}
+        result = server.workstream_submit_task(
+            prompt="Task",
+            target_branch="feature/unregistered",
+            repo_url="git@github.com:almostrealism/common.git",
+            create_workstream_if_missing=True,
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertTrue(payload["createWorkstreamIfMissing"])
+        self.assertEqual(result["created_workstream"], "ws-new")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_create_workstream_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-c2"}
+        result = server.workstream_submit_task(
+            prompt="Task", target_branch="feature/x")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("createWorkstreamIfMissing", payload)
+        self.assertNotIn("created_workstream", result)
+
+    @patch.object(server, "_controller_post")
     def test_submit_required_labels(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-3"}

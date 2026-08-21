@@ -747,6 +747,7 @@ def workstream_submit_task(
     workstream_id: str = "",
     target_branch: str = "",
     repo_url: str = "",
+    create_workstream_if_missing: bool = False,
     description: str = "",
     max_turns: int = 0,
     max_budget_usd: float = 0.0,
@@ -819,7 +820,17 @@ def workstream_submit_task(
         repo_url: Repository URL used to disambiguate ``target_branch`` when
             several workstreams share the same branch name across different
             repositories. Optional when ``workstream_id`` is given or when
-            ``target_branch`` is unique across all workstreams.
+            ``target_branch`` is unique across all workstreams. Required with
+            ``create_workstream_if_missing``. The form does not matter for
+            lookup (SSH, HTTPS, and suffix-less URLs for one repository all
+            match), but a workstream created from it is cloned from it, so
+            pass the URL the agent can clone.
+        create_workstream_if_missing: Register a workstream for
+            ``target_branch`` and ``repo_url`` when none exists, instead of
+            rejecting the submission. Use it for automated submissions on
+            branches nobody registered by hand — a CI auto-resolve job, for
+            instance. The result reports ``workstreamCreated`` when a
+            workstream was created.
         description: Short human-readable description of the task (shown
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
@@ -1125,6 +1136,7 @@ def workstream_submit_task(
     _require_workstream_in_scope(workstream_id)
     _audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, repo_url=repo_url,
+           create_workstream_if_missing=create_workstream_if_missing,
            prompt_len=len(prompt))
 
     # In-flight agent guard for sensitive-file protection. When this
@@ -1171,6 +1183,8 @@ def workstream_submit_task(
         payload["targetBranch"] = target_branch
     if repo_url:
         payload["repoUrl"] = repo_url
+    if create_workstream_if_missing:
+        payload["createWorkstreamIfMissing"] = True
     if description:
         payload["description"] = description
     if max_turns > 0:
@@ -1233,6 +1247,8 @@ def workstream_submit_task(
     if result.get("ok"):
         job_id = result.get("jobId", "")
         ws_id = result.get("workstreamId", workstream_id)
+        if result.get("workstreamCreated"):
+            result["created_workstream"] = ws_id
         result["next_steps"] = [
             f"Use workstream_get_status with workstream_id='{ws_id}' to check progress",
             "The agent will push commits to the configured branch",

@@ -24,6 +24,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Verifies the contract of {@link AudioSceneOptimizer#defaultBreeder}: every parameter of
  * the offspring moves from the first parent toward the second, by the breeding scale or by
@@ -74,6 +77,71 @@ public class DefaultBreederTest extends TestSuiteBase implements CollectionFeatu
 			Assert.assertTrue("parameter " + i + " must move toward its counterpart",
 					Math.abs(o - b) <= Math.abs(a - b) + EPS);
 		}
+	}
+
+	/**
+	 * The same pair must not keep producing the same child.
+	 *
+	 * <p>The scale is drawn per call, so breeding is a sampling of the space
+	 * between two parents rather than a function of them. A pair that always
+	 * bred the same offspring would make a population converge on whatever it
+	 * started with, and would make repeated pairings of the good performers
+	 * pointless.</p>
+	 */
+	@Test(timeout = 60000)
+	public void theSamePairBreedsDifferentOffspring() {
+		PackedCollection first = linear(0.0, 0.6, PARAMETERS).evaluate().reshape(PARAMETERS);
+		PackedCollection second = linear(0.9, 0.3, PARAMETERS).evaluate().reshape(PARAMETERS);
+
+		ProjectedGenome a = new ProjectedGenome(first);
+		ProjectedGenome b = new ProjectedGenome(second);
+
+		Set<String> signatures = new HashSet<>();
+		for (int i = 0; i < 16; i++) {
+			signatures.add(AudioSceneOptimizer.defaultBreeder(MAGNITUDE)
+					.combine(a, b).signature());
+		}
+
+		Assert.assertTrue("Breeding one pair 16 times produced only "
+						+ signatures.size() + " distinct offspring",
+				signatures.size() > 1);
+	}
+
+	/**
+	 * Parents closer together than the breeding scale breed the second parent
+	 * exactly, and go on doing so however many times they are paired.
+	 *
+	 * <p>This is the one case where breeding is a function of its parents: the
+	 * move is bounded by the distance between them, so once that distance is
+	 * within reach of any scale the draw stops mattering. It is pinned here
+	 * because it is the point at which a pairing stops contributing anything
+	 * new, and because the identical signatures it produces are indistinguishable
+	 * from a fault elsewhere.</p>
+	 */
+	@Test(timeout = 60000)
+	public void parentsWithinTheScaleBreedTheSecondParentExactly() {
+		// Every parameter differs by less than MAGNITUDE / 2, the smallest
+		// scale that can be drawn, so every move is bounded by the distance.
+		PackedCollection first = linear(0.40, 0.50, PARAMETERS).evaluate().reshape(PARAMETERS);
+		PackedCollection second = linear(0.404, 0.504, PARAMETERS).evaluate().reshape(PARAMETERS);
+
+		ProjectedGenome a = new ProjectedGenome(first);
+		ProjectedGenome b = new ProjectedGenome(second);
+
+		Set<String> signatures = new HashSet<>();
+		for (int i = 0; i < 4; i++) {
+			PackedCollection offspring = ((ProjectedGenome) AudioSceneOptimizer
+					.defaultBreeder(MAGNITUDE).combine(a, b)).getParameters();
+			signatures.add(new ProjectedGenome(offspring).signature());
+
+			for (int j = 0; j < PARAMETERS; j++) {
+				Assert.assertEquals("parameter " + j + " must arrive at the second parent",
+						second.toDouble(j), offspring.toDouble(j), EPS);
+			}
+		}
+
+		Assert.assertEquals("Converged parents breed one offspring, not several",
+				1, signatures.size());
 	}
 
 	/** Identical parents must breed an offspring identical to them. */

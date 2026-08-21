@@ -280,4 +280,60 @@ public class GitOperationsTest extends TestSuiteBase {
             // best-effort
         }
     }
+
+    /**
+     * The same repository written as an SSH remote, an HTTPS clone URL, and
+     * the suffix-less browser URL a CI system reports must reduce to one
+     * slug — this is what keeps a submission from creating a duplicate
+     * workstream for a repository that already has one.
+     */
+    @Test(timeout = 10000)
+    public void repositorySlugNormalizesUrlForms() {
+        Assert.assertEquals("almostrealism/common",
+                GitOperations.repositorySlug("git@github.com:almostrealism/common.git"));
+        Assert.assertEquals("almostrealism/common",
+                GitOperations.repositorySlug("https://github.com/almostrealism/common.git"));
+        Assert.assertEquals("almostrealism/common",
+                GitOperations.repositorySlug("https://github.com/almostrealism/common"));
+        Assert.assertEquals("almostrealism/common",
+                GitOperations.repositorySlug("ssh://git@github.com/almostrealism/common.git"));
+        Assert.assertEquals("almostrealism/common",
+                GitOperations.repositorySlug("  https://github.com/almostrealism/common/  "));
+    }
+
+    /** A URL that is not a repository URL has no slug. */
+    @Test(timeout = 10000)
+    public void repositorySlugRejectsUnrecognisedInput() {
+        Assert.assertNull(GitOperations.repositorySlug(null));
+        Assert.assertNull(GitOperations.repositorySlug(""));
+        Assert.assertNull(GitOperations.repositorySlug("   "));
+        Assert.assertNull(GitOperations.repositorySlug("not-a-url"));
+        Assert.assertNull(GitOperations.repositorySlug("https://github.com/almostrealism"));
+    }
+
+    /** Equivalent forms of one repository are the same repository. */
+    @Test(timeout = 10000)
+    public void sameRepositoryAcrossUrlForms() {
+        assertTrue(GitOperations.isSameRepository(
+                "git@github.com:almostrealism/common.git",
+                "https://github.com/almostrealism/common"));
+        assertTrue(GitOperations.isSameRepository(
+                "https://github.com/AlmostRealism/Common.git",
+                "git@github.com:almostrealism/common"));
+    }
+
+    /** Different repositories, absent URLs, and unparseable URLs do not match. */
+    @Test(timeout = 10000)
+    public void differentRepositoriesDoNotMatch() {
+        assertFalse(GitOperations.isSameRepository(
+                "git@github.com:almostrealism/common.git",
+                "git@github.com:almostrealism/other.git"));
+        assertFalse(GitOperations.isSameRepository(
+                null, "git@github.com:almostrealism/common.git"));
+        assertFalse(GitOperations.isSameRepository(
+                "git@github.com:almostrealism/common.git", null));
+        assertFalse(GitOperations.isSameRepository("not-a-url", "also-not-a-url"));
+        assertTrue("An unparseable URL still matches itself",
+                GitOperations.isSameRepository("not-a-url", "not-a-url"));
+    }
 }
