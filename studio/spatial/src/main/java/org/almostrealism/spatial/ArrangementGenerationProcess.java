@@ -256,14 +256,6 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			if (completionListener != null) completionListener.run();
 		});
 
-		// TODO(review): duplicates the "Finally calls optimizer.init()" javadoc paragraph above; keep only one.
-		/* Builds the optimizer's output destinations. init() is the only place
-		   the master output file and the per-channel stem files are configured;
-		   without it every rendered arrangement reports no stems, because the
-		   stem WaveOutputs resolve to a null file and never record a path for
-		   the health score to carry. The standalone runner
-		   (AudioSceneOptimizer.run) calls this immediately after build() for the
-		   same reason. */
 		optimizer.init();
 	}
 
