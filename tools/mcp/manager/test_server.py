@@ -3023,6 +3023,151 @@ class TestDefaultBranch(unittest.TestCase):
             "trunk")
 
 
+class TestConsult(unittest.TestCase):
+    """Documentation-grounded Q&A — the capability that kept ar-consultant
+    alive. The contract that matters is that a missing model costs the
+    synthesized answer and nothing that was retrieved."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _docs(self, context="DOC CONTEXT"):
+        docs = MagicMock()
+        docs.get_context_for_query.return_value = {
+            "context": context,
+            "markdown_results": [{"file": "docs/internals/a.md"}],
+            "html_refs": ["docs/modules/graph.html"],
+        }
+        docs.get_context_for_keywords.return_value = {
+            "context": context,
+            "markdown_results": [{"file": "docs/internals/kw.md"}],
+            "html_refs": [],
+        }
+        return docs
+
+    @patch.object(server, "_get_memory_client", return_value=None)
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_docs")
+    def test_answers_from_documentation(self, mock_docs, mock_llm, _):
+        mock_docs.return_value = self._docs()
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis("The answer.", "fake")
+        mock_llm.return_value = llm
+
+        result = server.consult(question="how does X work")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["answer"], "The answer.")
+        self.assertEqual(result["sources"], ["docs/internals/a.md"])
+        self.assertEqual(result["html_refs"], ["docs/modules/graph.html"])
+        self.assertEqual(llm.consult.call_args[1]["doc_context"], "DOC CONTEXT")
+
+    @patch.object(server, "_get_memory_client", return_value=None)
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_docs")
+    def test_keywords_take_precedence_over_the_question(
+            self, mock_docs, mock_llm, _):
+        docs = self._docs()
+        mock_docs.return_value = docs
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis("A.", "fake")
+        mock_llm.return_value = llm
+
+        server.consult(question="q", keywords=["Features mixin"])
+
+        docs.get_context_for_keywords.assert_called_once_with(["Features mixin"])
+        docs.get_context_for_query.assert_not_called()
+
+    @patch.object(server, "_get_memory_client", return_value=None)
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_docs")
+    def test_retrieval_survives_a_missing_model(self, mock_docs, *_):
+        mock_docs.return_value = self._docs()
+
+        result = server.consult(question="q")
+
+        # The search results are the substance; only the answer is lost.
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["degraded"])
+        self.assertNotIn("answer", result)
+        self.assertEqual(result["sources"], ["docs/internals/a.md"])
+        self.assertIn("read them directly", result["note"])
+
+    @patch.object(server, "_get_memory_client", return_value=None)
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_docs")
+    def test_degraded_note_advises_on_keywords(self, mock_docs, mock_llm, _):
+        mock_docs.return_value = self._docs()
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis(None, "fake", "model unreachable")
+        mock_llm.return_value = llm
+
+        result = server.consult(question="q")
+
+        self.assertIn("keywords", result["note"])
+
+    @patch.object(server, "_get_memory_client", return_value=None)
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_docs")
+    def test_not_documented_is_not_presented_as_an_answer(
+            self, mock_docs, mock_llm, _):
+        mock_docs.return_value = self._docs()
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis("Not documented.", "fake")
+        mock_llm.return_value = llm
+
+        result = server.consult(question="q")
+
+        self.assertNotIn("answer", result)
+        self.assertIn("worth exploring", result["note"])
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_docs")
+    @patch.object(server, "_get_memory_client")
+    def test_prior_notes_are_included_and_scoped(
+            self, mock_client, mock_docs, mock_llm):
+        mock_docs.return_value = self._docs()
+        client = MagicMock()
+        client.search.return_value = [{"content": "a prior note", "score": 0.2}]
+        mock_client.return_value = client
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis("A.", "fake")
+        mock_llm.return_value = llm
+
+        result = server.consult(
+            question="q", repo_url="https://github.com/org/repo")
+
+        self.assertEqual(result["related_memories"][0]["content"], "a prior note")
+        self.assertEqual(
+            client.search.call_args[1]["repo_url"], "https://github.com/org/repo")
+        self.assertIn("a prior note", llm.consult.call_args[1]["memory_context"])
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_docs")
+    @patch.object(server, "_get_memory_client")
+    def test_unreachable_memory_service_does_not_fail_the_call(
+            self, mock_client, mock_docs, mock_llm):
+        mock_docs.return_value = self._docs()
+        client = MagicMock()
+        client.search.side_effect = ConnectionError("down")
+        mock_client.return_value = client
+        llm = MagicMock()
+        llm.consult.return_value = Synthesis("A.", "fake")
+        mock_llm.return_value = llm
+
+        result = server.consult(question="q")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["answer"], "A.")
+        self.assertEqual(result["related_memories"], [])
+
+    @patch.object(server, "_get_docs", return_value=None)
+    def test_no_corpus_is_reported_not_guessed_at(self, _):
+        result = server.consult(question="q")
+        self.assertFalse(result["ok"])
+        self.assertIn("documentation corpus", result["error"])
+
+
 class TestMemoryRecallDocBlending(unittest.TestCase):
     """Documentation grounding on the memory read path.
 
@@ -4847,6 +4992,7 @@ class TestToolRegistration(unittest.TestCase):
             "project_read_plan",
             "memory_recall",
             "memory_namespaces",
+            "consult",
             "workstream_context",
             "memory_store",
             "send_message",

@@ -48,12 +48,15 @@ if _COMMON_DIR not in sys.path:
 
 from mcp.server.fastmcp import FastMCP
 
-from docs_retriever import DocsRetriever
+from docs_retriever import DocsRetriever, keyword_guidance
 from history import HistoryStore, _current_request, tracked_synthesize, tracked_tool
-from inference import SYSTEM_PROMPT, Synthesis, create_backend
+from inference import (
+    SYSTEM_PROMPT, Synthesis, build_consult_prompt, create_backend,
+)
 from memory_client import MemoryClient
 from memory_text import (
-    prefers_reformulated, present, presented_entries, projected,
+    format_memory_context, prefers_reformulated, present,
+    presented_entries, projected,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
@@ -89,43 +92,6 @@ def _cleanup_sessions():
 # Prompt construction helpers
 # ---------------------------------------------------------------------------
 
-def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
-                          extra_context: Optional[str] = None) -> str:
-    """Build the prompt for a consultation question."""
-    parts = []
-
-    # Put the question FIRST so the model knows what to look for in the docs
-    parts.append(f"## Question\n\n{question}")
-
-    if extra_context:
-        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
-
-    if doc_context:
-        parts.append(f"## Relevant Documentation\n\nRead these chunks carefully — the answer is in here.\n\n{doc_context}")
-    else:
-        parts.append("## Relevant Documentation\n\n(No documentation found for this query)")
-
-    if memory_context:
-        parts.append(
-            "## Notes From Prior Sessions\n\n"
-            "These are notes agents wrote about particular past work. They are not "
-            "documentation and carry no authority beyond the classes and files they "
-            "name. Use a note only for the subject it explicitly names; never carry "
-            "its details across to a class, file or module it does not mention, and "
-            "never let its wording supply a fact the documentation does not state.\n\n"
-            f"{memory_context}"
-        )
-
-    parts.append(
-        "## Instructions\n\n"
-        "Answer the question above using the documentation chunks. "
-        "Include a code example if the docs provide one. "
-        "Cite the source file and line number."
-    )
-
-    return "\n\n".join(parts)
-
-
 def _build_recall_prompt(query: str, memories: list[dict], doc_context: str) -> str:
     """Build the prompt for memory recall summarization."""
     mem_text = ""
@@ -144,70 +110,6 @@ def _build_recall_prompt(query: str, memories: list[dict], doc_context: str) -> 
 
     return "\n\n".join(parts)
 
-
-def _keyword_guidance(keywords: Optional[list[str]]) -> str:
-    """Generate guidance about keyword usage when results are poor."""
-    hints = []
-
-    if not keywords:
-        hints.append(
-            "Tip: Provide explicit keywords for better results. "
-            "Example: keywords=[\"StateDictionary\", \"weight loading\"]"
-        )
-    else:
-        # Check if keywords are all single words (common issue)
-        all_single = all(" " not in kw for kw in keywords)
-        has_generic = any(
-            kw.lower() in {
-                "default", "interface", "class", "method", "pattern",
-                "type", "module", "use", "create", "build", "make",
-            }
-            for kw in keywords
-        )
-        if all_single and len(keywords) > 2:
-            hints.append(
-                "Tip: Use multi-word phrases as keywords instead of "
-                "individual words. For example, [\"Features mixin\", "
-                "\"CollectionFeatures\"] works better than "
-                "[\"Features\", \"mixin\", \"CollectionFeatures\", "
-                "\"default\", \"interface\"] because single common words "
-                "match too many documents."
-            )
-        elif has_generic:
-            hints.append(
-                "Tip: Avoid generic keywords like 'default', 'interface', "
-                "'pattern'. Use domain-specific terms or multi-word phrases "
-                "that match documentation headings."
-            )
-
-    return (" " + " ".join(hints)) if hints else ""
-
-
-def _format_memory_context(memories: list[dict], max_entries: int = 3) -> str:
-    """Format memory entries into a context string.
-
-    Each note is labelled with the work it was written about, so that a record of
-    one class's internals reads as what it is rather than as a statement about the
-    framework. Presented as bare text it reads with the same authority as
-    documentation, and its specifics get attached to whatever the question happens
-    to ask about — a note describing one class's flat scalar layout becomes, for a
-    question naming several unrelated classes, an assertion about the one whose
-    name sounds nearest.
-    """
-    if not memories:
-        return ""
-    parts = []
-    for i, m in enumerate(memories[:max_entries], 1):
-        source = m.get("source") or "unspecified"
-        parts.append(
-            f"### Note {i} — written by an agent about: {source}\n\n{m['content']}"
-        )
-    return "\n\n".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# History-logging helpers
-# ---------------------------------------------------------------------------
 
 def _log_doc_results(query: str, results: list[dict]) -> None:
     """Record doc retrieval results on the active request record."""
@@ -319,14 +221,16 @@ def consult(
         memory.search(query=question, namespace="default", limit=3),
         reformulated=prefers_reformulated(),
     )
-    mem_context = _format_memory_context(memories)
+    mem_context = format_memory_context(memories)
 
     # Log retrieval results
     _log_doc_results(question, doc_results)
     _log_memory_results(question, memories)
 
-    # Build prompt and generate
-    prompt = _build_consult_prompt(question, doc_context, mem_context, context)
+    # The prompt is shared with ar-manager's consult so the two cannot answer
+    # the same question differently; synthesis stays on the tracked path so
+    # the request history still records it.
+    prompt = build_consult_prompt(question, doc_context, mem_context, context)
     synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     # Source references: markdown files used in context + HTML for exploration
@@ -351,7 +255,7 @@ def consult(
             "retrieved successfully and contain the documentation matching "
             "this question — read them directly.",
         )
-        result["note"] += _keyword_guidance(keywords)
+        result["note"] += keyword_guidance(keywords)
         return result
 
     answer = synthesis.text
@@ -364,11 +268,11 @@ def consult(
                 "No direct answer was synthesized, but the sources and "
                 "html_refs fields contain related documentation worth exploring."
             )
-            note += _keyword_guidance(keywords)
+            note += keyword_guidance(keywords)
             result["note"] = note
         else:
             note = "No documentation found for this query."
-            note += _keyword_guidance(keywords)
+            note += keyword_guidance(keywords)
             result["note"] = note
     else:
         result["answer"] = answer
@@ -570,13 +474,13 @@ def start_consultation(topic: str) -> dict:
         memory.search(query=topic, namespace="default", limit=3),
         reformulated=prefers_reformulated(),
     )
-    mem_context = _format_memory_context(memories)
+    mem_context = format_memory_context(memories)
 
     # Log retrieval results
     _log_doc_results(topic, doc_results)
     _log_memory_results(topic, memories)
 
-    prompt = _build_consult_prompt(topic, doc_context, mem_context)
+    prompt = build_consult_prompt(topic, doc_context, mem_context)
     synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     # A degraded turn is not part of the conversation. Recording the
@@ -808,10 +712,10 @@ def consultant_status() -> dict:
             "No inference model is reachable. Documentation search, memory "
             "recall and history remain fully functional; only synthesized "
             "answers and summaries are unavailable, and every tool reports "
-            "degraded=true while that is so. remember is the exception: it "
-            "refuses to store rather than write an unreformulated note. "
-            "Start a llama.cpp server (llama-server -m model.gguf --host "
-            "0.0.0.0 --port 8084) to restore synthesis; no restart is needed."
+            "degraded=true while that is so. No tool fails or withholds data "
+            "because of this. Start a llama.cpp server (llama-server -m "
+            "model.gguf --host 0.0.0.0 --port 8084) to restore synthesis; no "
+            "restart is needed."
         )
 
     return status

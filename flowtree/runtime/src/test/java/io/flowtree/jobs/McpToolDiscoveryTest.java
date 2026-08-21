@@ -323,6 +323,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"project_read_plan",
 			"memory_recall",
 			"memory_namespaces",
+			"consult",
 			"workstream_context",
 			"memory_store",
 			"send_message",
@@ -557,6 +558,14 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " the beta reformulated-text opt-in is absent from the MCP schema"
 				+ " and callers can only ever see the original memory text",
 			memoryRecallParams.contains("reformulated"));
+
+		List<String> consultParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "consult");
+		assertTrue("consult must declare keywords in signature; without it the"
+				+ " caller cannot steer documentation search, and keyword"
+				+ " quality is the main determinant of whether the answer is"
+				+ " grounded in the right documents",
+			consultParams.contains("keywords"));
 
 		List<String> memoryNamespacesParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_namespaces");

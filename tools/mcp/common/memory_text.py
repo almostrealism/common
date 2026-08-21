@@ -270,3 +270,32 @@ def text_notice(entries: list, reformulated: bool = False) -> Optional[str]:
     if not any(is_reformulated(e) for e in entries):
         return None
     return BETA_NOTICE if reformulated else AVAILABILITY_HINT
+
+
+def format_memory_context(memories: list, max_entries: int = 3) -> str:
+    """Render memory entries as prompt context.
+
+    Each note is labelled with the work it was written about, so that a record
+    of one class's internals reads as what it is rather than as a statement
+    about the framework. Presented as bare text it carries the same apparent
+    authority as documentation, and its specifics get attached to whatever the
+    question happens to ask about — a note describing one class's flat scalar
+    layout becomes, for a question naming several unrelated classes, an
+    assertion about the one whose name sounds nearest.
+
+    Args:
+        memories: Entries as returned by a memory search.
+        max_entries: How many to include.
+
+    Returns:
+        A markdown block, or the empty string when there is nothing to show.
+    """
+    if not memories:
+        return ""
+    parts = []
+    for i, m in enumerate(memories[:max_entries], 1):
+        source = m.get("source") or "unspecified"
+        parts.append(
+            f"### Note {i} — written by an agent about: {source}\n\n{m['content']}"
+        )
+    return "\n\n".join(parts)

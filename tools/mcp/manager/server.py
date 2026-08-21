@@ -3602,6 +3602,149 @@ def memory_namespaces(
     }
 
 
+@mcp.tool()
+def consult(
+    question: str,
+    context: str = "",
+    keywords: Optional[list[str]] = None,
+    repo_url: str = "",
+    branch: str = "",
+    workstream_id: str = "",
+) -> dict:
+    """Ask a question about the codebase, answered from its documentation.
+
+    Searches the documentation corpus, retrieves related notes from prior
+    sessions, and returns an answer grounded in what it found. The corpus
+    ships inside this server, so this works from any repository rather than
+    only from a checkout.
+
+    A missing inference backend costs the synthesized answer and nothing else:
+    ``sources``, ``html_refs`` and ``related_memories`` are the search results
+    themselves and are returned either way. Read them directly when
+    ``degraded`` is set.
+
+    Args:
+        question: The question to ask.
+        context: Optional extra context — a code snippet, an error message.
+        keywords: Optional search terms, used instead of extracting them from
+            the question. Multi-word phrases work far better than individual
+            common words: ["Features mixin", "CollectionFeatures"] rather than
+            ["Features", "mixin", "default", "interface"], which match too
+            many documents to narrow anything.
+        repo_url: Repository whose notes to draw on. Defaults to the caller's
+            workstream context.
+        branch: Optional branch filter for those notes.
+        workstream_id: Optional workstream to resolve repo/branch from.
+
+    Returns:
+        Dictionary with ``answer`` (or ``note`` when nothing could be
+        synthesized), ``sources``, ``html_refs`` and ``related_memories``.
+    """
+    _require_scope("memory-read")
+    err = _check_length(question, "question", MAX_PROMPT_LEN)
+    if err:
+        return err
+    err = _check_short_strings(
+        repo_url=repo_url, branch=branch, workstream_id=workstream_id,
+    )
+    if err:
+        return err
+    _audit("consult", question=question)
+
+    docs = _get_docs()
+    if docs is None:
+        return {
+            "ok": False,
+            "error": "No documentation corpus is available to this server.",
+            "next_steps": [
+                "Confirm AR_DOCS_DIR points at the corpus baked into the image",
+                "Use memory_recall if you only need prior notes",
+            ],
+        }
+
+    from docs_retriever import keyword_guidance
+    from memory_text import format_memory_context
+
+    try:
+        retrieval = (docs.get_context_for_keywords(keywords) if keywords
+                     else docs.get_context_for_query(question))
+    except OSError as e:
+        return {"ok": False, "error": f"Documentation search failed: {e}"}
+
+    doc_context = retrieval.get("context", "")
+    doc_results = retrieval.get("markdown_results", [])
+    html_refs = retrieval.get("html_refs", [])
+
+    # Prior notes, scoped to the caller's repository. Their absence is not an
+    # error — documentation alone answers most questions.
+    memories = []
+    client = _get_memory_client()
+    if client is not None:
+        effective_repo, effective_branch, _ = _resolve_scope_context(
+            scope="repo", repo_url=repo_url, branch=branch,
+            workstream_id=workstream_id,
+        )
+        try:
+            memories = client.search(
+                query=question, namespace="default", limit=3,
+                repo_url=effective_repo or None,
+                branch=effective_branch or None,
+            )
+        except ConnectionError as e:
+            logging.getLogger("ar-manager").warning(
+                "Memory search failed during consult: %s", e)
+
+    memories, _ = present(memories, reformulated=prefers_reformulated())
+
+    result = {
+        "ok": True,
+        "sources": sorted({r["file"] for r in doc_results}),
+        "html_refs": html_refs,
+        "related_memories": [
+            {"content": m.get("content", ""), "score": m.get("score")}
+            for m in memories
+        ],
+    }
+
+    llm = _get_llm()
+    if llm is None:
+        synthesis = None
+        reason = "no inference backend could be constructed"
+    else:
+        synthesis = llm.consult(
+            question,
+            doc_context=doc_context,
+            memory_context=format_memory_context(memories),
+            extra_context=context or None,
+        )
+        reason = synthesis.reason if synthesis.degraded else None
+
+    if synthesis is None or synthesis.degraded:
+        result["degraded"] = True
+        result["note"] = (
+            f"No answer was synthesized ({reason}). The sources, html_refs "
+            "and related_memories fields were retrieved successfully and hold "
+            "the documentation matching this question — read them directly."
+            + keyword_guidance(keywords)
+        )
+        return result
+
+    answer = synthesis.text
+    if answer.strip().lower().rstrip(".") == "not documented":
+        # The model read the corpus and found nothing. Say so, rather than
+        # presenting "not documented" as though it were the answer.
+        result["note"] = (
+            "No direct answer was synthesized, but the sources and html_refs "
+            "fields contain related documentation worth exploring."
+            if result["sources"] or html_refs
+            else "No documentation found for this query."
+        ) + keyword_guidance(keywords)
+    else:
+        result["answer"] = answer
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Messaging tools
 # ---------------------------------------------------------------------------
