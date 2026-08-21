@@ -16,7 +16,7 @@ and .ts adapters.
 
 Coverage:
   - 6 decide() reset cases (mcp__ar-manager__memory_store,
-    mcp__ar-consultant__remember, no-store read, no-store Bash,
+    a retired store-tool name, no-store read, no-store Bash,
     no-store side-effect counts).
   - 5 read-only cases (consultant consult/recall, manager
     memory_recall/workstream_list, opencode read).
@@ -124,13 +124,12 @@ class ResetOnStoreTests(unittest.TestCase):
             self.assertEqual(d6["action"], "allow")
             self.assertEqual(d6["new_state"]["calls_since_last_store"], 1)
 
-    def test_surviving_consultant_recall_is_read_only(self):
-        """``mcp__ar-consultant__recall`` still exists and reads. It was
-        briefly dropped from the read-only set alongside the tools that were
-        actually removed, which made every recall count as a side-effect call
-        and fired memory reminders at an agent that was only reading context."""
+    def test_manager_consult_is_read_only(self):
+        """consult reads documentation and memories; it stores nothing, so it
+        must not count toward the side-effect tally that triggers reminders.
+        The equivalent assertion previously named ar-consultant's copy."""
         state = _fresh_state()
-        d = self.core.decide("mcp__ar-consultant__recall", 3000, state)
+        d = self.core.decide("mcp__ar-manager__consult", 3000, state)
         self.assertEqual(d["new_state"]["calls_since_last_store"], 0)
 
     def test_manager_memory_namespaces_is_read_only(self):
@@ -175,11 +174,11 @@ class ReadsDoNotResetTests(unittest.TestCase):
         self.assertEqual(d["new_state"]["calls_since_last_store"], 7)
         self.assertEqual(d["new_state"]["last_store_ts"], 1000)
 
-    def test_consultant_consult_does_not_reset(self):
+    def test_consult_does_not_reset(self):
         state = _fresh_state()
         state["calls_since_last_store"] = 4
         state["last_store_ts"] = 1000
-        d = self.core.decide("mcp__ar-consultant__consult", 1600, state)
+        d = self.core.decide("mcp__ar-manager__consult", 1600, state)
         self.assertEqual(d["action"], "allow")
         self.assertEqual(d["new_state"]["calls_since_last_store"], 4)
         self.assertEqual(d["new_state"]["last_store_ts"], 1000)

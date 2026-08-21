@@ -3065,7 +3065,10 @@ def workstream_context(
     commit_limit: int = 30,
     job_limit: int = 20,
     include_activities: "list[str] | str" = "primary",
+    include_memories: bool = True,
     reformulated: bool = False,
+    max_memories: int = -1,
+    max_activities: str = "",
 ) -> dict:
     """Reconstruct the narrative of a workstream — what agents have been
     thinking about and doing on a branch. This is the primary tool for
@@ -3119,6 +3122,15 @@ def workstream_context(
         commit_limit: Maximum number of commits to include (default 30).
         job_limit: Maximum number of jobs to include in the timeline
             (default 20). Pass 0 to omit jobs entirely.
+        include_memories: When false, skip the memory search entirely. The
+            memories are the bulk of this response, so a caller that only
+            wants the branch's pull request or commit list should turn them
+            off rather than receive and discard them.
+        max_memories: Not a parameter — rejected with a pointer to ``limit``.
+            Declared only so the mistake reports itself instead of being
+            dropped silently by the schema layer.
+        max_activities: Not a parameter — rejected with a pointer to
+            ``include_activities``, for the same reason.
         include_activities: Activity filter — accepts a Python list of strings,
             a JSON-array string (``["deduplication","primary"]``), or a plain
             comma-separated string.  Defaults to ``"primary"``, which returns
@@ -3142,6 +3154,24 @@ def workstream_context(
         version of the text is shown.
     """
     _require_scope("memory-read")
+    # These two names have never been parameters of this tool, but callers
+    # reach for them and the schema layer drops unknown keys silently — so the
+    # call appeared to succeed while quietly using the defaults. Declaring
+    # them makes that a corrective error instead. They are deliberately not
+    # aliases: a second permanent name for one concept is worse than being
+    # told the right one once.
+    if max_memories != -1:
+        return {
+            "ok": False,
+            "error": "max_memories is not a parameter of workstream_context; "
+                     "use limit instead.",
+        }
+    if max_activities:
+        return {
+            "ok": False,
+            "error": "max_activities is not a parameter of "
+                     "workstream_context; use include_activities instead.",
+        }
     err = _check_short_strings(
         workstream_id=workstream_id, repo_url=repo_url,
         branch=branch, namespace=namespace,
@@ -3172,20 +3202,27 @@ def workstream_context(
     # namespace by recency — the include_messages flag becomes a no-op
     # in that mode.
     lookup_namespace = namespace if namespace else None
-    try:
-        memories = client.search_by_branch(
-            repo_url=effective_repo,
-            branch=effective_branch,
-            namespace=lookup_namespace,
-            limit=limit,
-        )
-    except ConnectionError as e:
-        return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
+
+    # The memory payload dominates this response — tens of KB of agent prose
+    # for a branch with any history. A caller asking only "what PR is on this
+    # branch?" should not have to receive and pay for all of it, so skip the
+    # search entirely rather than fetching and discarding.
+    memories = []
+    if include_memories:
+        try:
+            memories = client.search_by_branch(
+                repo_url=effective_repo,
+                branch=effective_branch,
+                namespace=lookup_namespace,
+                limit=limit,
+            )
+        except ConnectionError as e:
+            return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
 
     # When the caller narrowed to a specific namespace and also asked for
     # messages, merge in a second stream. Messages are capped at ``limit``
     # and re-sorted by recency; primary memories are not displaced.
-    if namespace and include_messages and namespace != "messages":
+    if include_memories and namespace and include_messages and namespace != "messages":
         try:
             msg_memories = client.search_by_branch(
                 repo_url=effective_repo,
@@ -4015,58 +4052,57 @@ def send_message(
 # ---------------------------------------------------------------------------
 
 
-def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
-    """Look up the first open pull request for ``branch`` on ``owner/repo``.
+# GitHub has no `state=merged`: a merged pull request is a closed one that also
+# carries `merged_at`. Everything else maps straight onto the wire value.
+# Only `merged` needs a full page: it asks GitHub for closed pull requests and
+# filters locally, so the merged one may not be the most recent closure. The
+# others take the first result, so a single-item page is all they need.
+_PR_STATE_QUERIES = {
+    "open": "state=open",
+    "closed": "state=closed&sort=updated&direction=desc&per_page=1",
+    "merged": "state=closed&sort=updated&direction=desc&per_page=100",
+    "all": "state=all&sort=updated&direction=desc&per_page=1",
+}
 
-    Returns a dict with ``ok=True`` and ``pr`` (the raw GitHub PR object)
-    on success, ``ok=True`` with ``found=False`` when no open PR exists
-    for the branch, or an ``ok=False`` error dict when the GitHub call
-    fails or returns an unexpected payload. Centralising this lookup
-    avoids drift between tools that need to resolve a PR by branch
-    (e.g. ``github_pr_find``, ``github_request_copilot_review``,
-    ``github_pr_check_status``).
-    """
-    head = f"{owner}:{branch}"
-    pr_list = _github_request(
-        "GET",
-        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
-    )
-    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
-        return pr_list
-    if not isinstance(pr_list, list):
-        return {
-            "ok": False,
-            "error": "Unexpected response listing pull requests",
-        }
-    if not pr_list:
-        return {"ok": True, "found": False, "branch": branch}
-    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
+PR_STATES = tuple(_PR_STATE_QUERIES)
 
 
-def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
-    """Look up the most recent pull request for ``branch`` on ``owner/repo``.
+def _find_pr_by_branch(owner: str, repo: str, branch: str,
+                       state: str = "open") -> dict:
+    """Look up a pull request for ``branch`` on ``owner/repo``.
 
-    Unlike ``_find_open_pr_by_branch``, this searches across all PR states
-    (open, closed, merged) using the GitHub Pulls list API with ``state=all``
-    and returns the most recently updated PR for the branch. Returns a dict
-    with ``ok=True`` and ``pr`` (the raw GitHub PR object) on success,
-    ``ok=True`` with ``found=False`` when no PR exists for the branch, or
-    an ``ok=False`` error dict when the GitHub call fails.
+    Centralising this avoids drift between the tools that resolve a PR by
+    branch (``github_pr_find``, ``github_request_copilot_review``,
+    ``github_pr_check_status``, ``workstream_context``), which is why the
+    open-only and any-state variants are one function rather than two
+    near-identical ones.
 
     Args:
         owner: GitHub org (owner).
         repo: Repository name.
-        branch: Branch name to search for.
+        branch: Branch to search for.
+        state: One of :data:`PR_STATES`. ``closed`` follows GitHub and
+            includes merged pull requests; ``merged`` is the subset of those
+            that were actually merged rather than abandoned.
 
     Returns:
-        Dict with ``ok=True``, ``found=True``, ``pr`` (raw GitHub PR object),
-        and ``branch`` on success; ``ok=True``, ``found=False`` when no PR
-        exists; or ``ok=False`` with error message on failure.
+        ``ok=True`` with ``found=True`` and ``pr`` (the raw GitHub object) on
+        success; ``ok=True`` with ``found=False`` when the branch has no
+        matching pull request; ``ok=False`` with an error when the call fails
+        or returns something unexpected.
     """
+    query = _PR_STATE_QUERIES.get(state)
+    if query is None:
+        return {
+            "ok": False,
+            "error": f"Invalid state '{state}'. Must be one of: "
+                     + ", ".join(PR_STATES),
+        }
+
     head = f"{owner}:{branch}"
     pr_list = _github_request(
         "GET",
-        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=all&sort=updated&direction=desc&per_page=1",
+        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&{query}",
     )
     if isinstance(pr_list, dict) and pr_list.get("ok") is False:
         return pr_list
@@ -4075,9 +4111,25 @@ def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
             "ok": False,
             "error": "Unexpected response listing pull requests",
         }
+
+    if state == "merged":
+        pr_list = [pr for pr in pr_list if pr.get("merged_at")]
+
     if not pr_list:
         return {"ok": True, "found": False, "branch": branch}
     return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
+
+
+def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the first open pull request for ``branch``."""
+    return _find_pr_by_branch(owner, repo, branch, state="open")
+
+
+def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the most recently updated pull request for ``branch``,
+    whatever its state."""
+    return _find_pr_by_branch(owner, repo, branch, state="all")
+
 
 
 @mcp.tool()
@@ -4086,8 +4138,14 @@ def github_pr_find(
     branch: str = "",
     org: str = "",
     repo: str = "",
+    state: str = "open",
 ) -> dict:
-    """Find an open pull request for a branch.
+    """Find a pull request for a branch.
+
+    Defaults to open pull requests. Asking whether a branch's work has
+    already landed needs ``state="merged"`` or ``state="all"`` — a merged
+    pull request is invisible to the default, which is why a finished
+    workstream can look as though it never had one.
 
     Args:
         workstream_id: Workstream to resolve repo from. Defaults to token context.
@@ -4097,9 +4155,16 @@ def github_pr_find(
             when no workstream exists for the repo. Scoped tokens are
             checked against this org via the workspace scope gate.
         repo: GitHub repository name. Must be passed together with ``org``.
+        state: Which pull requests to consider — ``open`` (default),
+            ``closed``, ``merged``, or ``all``. ``closed`` follows GitHub and
+            includes merged ones; ``merged`` narrows to those actually merged
+            rather than abandoned. ``all`` returns the most recently updated
+            regardless of state.
 
     Returns:
-        PR details if found, or error.
+        PR details if found, or error. The returned ``state`` is GitHub's own
+        value, so a merged pull request reports ``closed``; ``merged`` and
+        ``merged_at`` distinguish it.
     """
     _require_scope("github")
     if org and repo:
@@ -4109,13 +4174,15 @@ def github_pr_find(
     if err:
         return err
 
-    _audit("github_pr_find", workstream_id=workstream_id, branch=effective_branch)
+    _audit("github_pr_find", workstream_id=workstream_id,
+           branch=effective_branch, state=state)
 
-    lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+    lookup = _find_pr_by_branch(owner, repo, effective_branch, state=state)
     if not lookup.get("ok"):
         return lookup
     if not lookup.get("found"):
-        return {"ok": True, "found": False, "branch": effective_branch}
+        return {"ok": True, "found": False, "branch": effective_branch,
+                "searched_state": state}
     pr = lookup["pr"]
     return {
         "ok": True,
@@ -4124,7 +4191,12 @@ def github_pr_find(
         "title": pr.get("title"),
         "url": pr.get("html_url"),
         "state": pr.get("state"),
+        # Merged is not a GitHub state, so surface it explicitly rather than
+        # making every caller re-derive it from merged_at.
+        "merged": bool(pr.get("merged_at")),
+        "merged_at": pr.get("merged_at"),
         "branch": effective_branch,
+        "searched_state": state,
     }
 
 

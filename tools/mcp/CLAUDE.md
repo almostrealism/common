@@ -293,7 +293,7 @@ payloads.
 | Directory | Server name | Tool registration pattern |
 |-----------|-------------|---------------------------|
 | `manager/` | ar-manager | `@mcp.tool()` decorator on each function |
-| `consultant/` | ar-consultant | `@mcp.tool()` decorator on each function |
+| `consultant/` | ~~ar-consultant~~ (retired, not registered) | `@mcp.tool()` decorator on each function |
 | `build-validator/` | ar-build-validator | `@mcp.tool()` decorator on each function |
 | `test-runner/` | ar-test-runner | `@server.list_tools()` handler returning `Tool(name=...)` entries |
 | `jmx/` | ar-jmx | `@server.list_tools()` handler returning `Tool(name=...)` entries |

@@ -20,11 +20,6 @@
       "args": ["tools/mcp/profile-analyzer/server.py"],
       "description": "Performance profile analysis server"
     },
-    "ar-consultant": {
-      "command": "python3",
-      "args": ["tools/mcp/consultant/server.py"],
-      "description": "Documentation-aware consultant combining docs, memory, and local LLM inference"
-    },
     "ar-jmx": {
       "command": "python3",
       "args": ["tools/mcp/jmx/server.py"],

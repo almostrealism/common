@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li><b>Decorator pattern:</b> {@code @mcp.tool()} decorating individual
  *       {@code def function_name()} definitions (used by ar-manager, ar-memory,
- *       ar-consultant, ar-profile-analyzer, ar-secrets)</li>
+ *       ar-profile-analyzer, ar-secrets)</li>
  *   <li><b>List-tools pattern:</b> {@code @server.list_tools()} returning a
  *       list of {@code Tool(name="tool_name", ...)} entries (used by
  *       ar-test-runner, ar-jmx, ar-docs)</li>

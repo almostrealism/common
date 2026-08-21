@@ -3049,6 +3049,163 @@ class TestDefaultBranch(unittest.TestCase):
             "trunk")
 
 
+class TestWorkstreamContextMemoryOptOut(unittest.TestCase):
+    """Opting out of the memory payload, and the two names callers reach for.
+
+    The memories dominate this response, so "what PR is on this branch?"
+    should not have to carry tens of KB of agent prose to get an answer.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server.repo_config._cache = {}
+        server.repo_config._cache_expires = float("inf")
+
+    def tearDown(self):
+        server.repo_config._cache = None
+        server.repo_config._cache_expires = 0.0
+
+    @patch.object(server, "_github_request", return_value=[])
+    @patch.object(server, "_get_memory_client")
+    def test_include_memories_false_skips_the_search(self, mock_client, _):
+        client = MagicMock()
+        mock_client.return_value = client
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            include_memories=False, include_commits=False)
+
+        # Not fetched-and-discarded — not fetched.
+        client.search_by_branch.assert_not_called()
+        self.assertEqual(result["memories"], [])
+
+    @patch.object(server, "_github_request", return_value=[])
+    @patch.object(server, "_get_memory_client")
+    def test_memories_are_returned_by_default(self, mock_client, _):
+        client = MagicMock()
+        client.search_by_branch.return_value = [
+            {"id": "m1", "content": "a note", "created_at": "2026-08-01"},
+        ]
+        mock_client.return_value = client
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            include_commits=False)
+
+        client.search_by_branch.assert_called()
+        self.assertEqual(len(result["memories"]), 1)
+
+    def test_max_memories_is_rejected_with_the_real_name(self):
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_memories=1)
+        self.assertFalse(result["ok"])
+        self.assertIn("use limit", result["error"])
+
+    def test_max_activities_is_rejected_with_the_real_name(self):
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_activities="primary")
+        self.assertFalse(result["ok"])
+        self.assertIn("use include_activities", result["error"])
+
+    @patch.object(server, "_github_request", return_value=[])
+    @patch.object(server, "_get_memory_client")
+    def test_the_rejected_names_are_inert_when_unused(self, mock_client, _):
+        # Their sentinel defaults must not look like a caller supplying them.
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client.return_value = client
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            include_commits=False)
+
+        self.assertTrue(result["ok"])
+
+
+class TestGithubPrFindState(unittest.TestCase):
+    """PR lookup across states.
+
+    The default finding only open pull requests is what made a finished
+    workstream look as though it never had one: the PR was merged, and merged
+    is invisible to state=open.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _pr(self, number=7, state="closed", merged_at=None):
+        return {"number": number, "title": "T", "html_url": "u",
+                "state": state, "merged_at": merged_at}
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_default_state_is_open(self, mock_request, _):
+        mock_request.return_value = [self._pr(state="open")]
+        result = server.github_pr_find(branch="feature/x")
+        self.assertIn("state=open", mock_request.call_args[0][1])
+        self.assertEqual(result["searched_state"], "open")
+        self.assertFalse(result["merged"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_merged_filters_closed_to_actually_merged(self, mock_request, _):
+        # GitHub has no state=merged; it returns closed PRs and the merged
+        # ones are those carrying merged_at.
+        mock_request.return_value = [
+            self._pr(number=1, merged_at=None),
+            self._pr(number=2, merged_at="2026-08-01T00:00:00Z"),
+        ]
+        result = server.github_pr_find(branch="feature/x", state="merged")
+        self.assertIn("state=closed", mock_request.call_args[0][1])
+        self.assertEqual(result["number"], 2)
+        self.assertTrue(result["merged"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_merged_reports_not_found_when_only_abandoned(
+            self, mock_request, _):
+        mock_request.return_value = [self._pr(number=1, merged_at=None)]
+        result = server.github_pr_find(branch="feature/x", state="merged")
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["found"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_all_searches_every_state(self, mock_request, _):
+        mock_request.return_value = [self._pr(merged_at="2026-08-01T00:00:00Z")]
+        result = server.github_pr_find(branch="feature/x", state="all")
+        self.assertIn("state=all", mock_request.call_args[0][1])
+        self.assertTrue(result["merged"])
+        self.assertEqual(result["merged_at"], "2026-08-01T00:00:00Z")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_invalid_state_is_rejected(self, mock_request, _):
+        result = server.github_pr_find(branch="feature/x", state="sideways")
+        self.assertFalse(result["ok"])
+        self.assertIn("sideways", result["error"])
+        mock_request.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_only_merged_pages_deeply(self, mock_request, _):
+        # The other states take the first result, so a one-item page suffices;
+        # merged filters locally and would miss a merge behind newer closures.
+        mock_request.return_value = []
+        server.github_pr_find(branch="feature/x", state="all")
+        self.assertIn("per_page=1", mock_request.call_args[0][1])
+        server.github_pr_find(branch="feature/x", state="merged")
+        self.assertIn("per_page=100", mock_request.call_args[0][1])
+
+
 class TestConsult(unittest.TestCase):
     """Documentation-grounded Q&A — the capability that kept ar-consultant
     alive. The contract that matters is that a missing model costs the

@@ -162,7 +162,7 @@ MODULES = {
 
 # Standalone (non-layer) documentation paths included in every
 # unfiltered search_ar_docs call. The list mirrors STANDALONE_MD_ROOTS in
-# ar-consultant's docs_retriever.py and is kept in sync by hand. Entries
+# tools/mcp/common/docs_retriever.py and is kept in sync by hand. Entries
 # are paths relative to COMMON_DIR; directories are globbed for *.md or
 # *.html, individual files are appended directly. Non-existent paths are
 # silently skipped so a partial checkout doesn't fail the tool.

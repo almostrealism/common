@@ -81,7 +81,7 @@ For agents working on **this repo** (almostrealism/common), additional project-l
 
 | MCP Tool | Description |
 |---|---|
-| **ar-consultant** | Documentation-aware assistant with LLM inference and memory |
+| ~~ar-consultant~~ | **Retired** — `consult` now lives in ar-manager, which carries the documentation corpus and so works from any repository |
 | **ar-build-validator** | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | Async test execution with structured result parsing |
 | **ar-jmx** | JVM memory diagnostics via JDK tools |
@@ -107,7 +107,7 @@ See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full conf
 |--------|-----------|-------------|
 | **ar-manager** | [manager/](manager/) | Centralized MCP endpoint for messaging, memory, GitHub, and workstream management |
 | **ar-secrets** | [secrets/](secrets/) | Auto-pushed stdio server (delivered by the controller to every agent container) that renders workspace secrets into files on the agent's filesystem (see [SECRETS.md](SECRETS.md)) |
-| **ar-consultant** | [consultant/](consultant/) | Documentation-aware assistant with local LLM inference, memory, and doc retrieval |
+| ~~ar-consultant~~ | [consultant/](consultant/) | **Retired.** Source retained for reference; not registered in `.mcp.json`. Its memory, documentation and Q&A tools moved to ar-manager |
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
 | **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | [test-runner/](test-runner/) | Async test execution with structured result parsing |
@@ -118,7 +118,7 @@ See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full conf
 
 | Directory | Description |
 |-----------|-------------|
-| **common/** | `MemoryHTTPClient`, `InferenceBackend`, `git_context` — shared by ar-consultant and ar-manager |
+| **common/** | `MemoryHTTPClient`, `InferenceBackend`, `DocsRetriever`, `git_context` — the shared substrate ar-manager is built on |
 
 ## Docker Infrastructure
 
@@ -173,9 +173,9 @@ flat namespace. Two rules keep that workable, both asserted by
   wrong module. Load the directory's own `server.py` by explicit path
   instead — `test-runner/server_under_test.py` is the pattern to copy.
 
-## LLM Backend Setup (ar-consultant)
+## LLM Backend Setup
 
-The `ar-consultant` server uses a local LLM to synthesize documentation into answers. It is not required to run: without one, documentation search, memory recall and history all keep working, and the tools return their retrieval results marked `degraded: true` instead of failing. Backend health is re-probed rather than fixed at startup, so starting or stopping a model takes effect without restarting the MCP server.
+ar-manager uses a local LLM to synthesize documentation into answers. It is not required to run: without one, documentation search, memory recall and history all keep working, and the tools return their retrieval results marked `degraded: true` instead of failing. Backend health is re-probed rather than fixed at startup, so starting or stopping a model takes effect without restarting the MCP server.
 
 **See [consultant/README.md](consultant/README.md) for detailed backend setup instructions.**
 
@@ -184,7 +184,7 @@ The `ar-consultant` server uses a local LLM to synthesize documentation into ans
 Each server has its own README with tool reference and configuration:
 
 - [ar-manager](manager/README.md) -- authentication, deployment, tool tiers
-- [ar-consultant](consultant/README.md) -- backend setup, environment variables, troubleshooting
+- [ar-consultant](consultant/README.md) -- retired; retained for backend setup and environment-variable reference
 - [ar-memory](memory/README.md) -- HTTP API reference, Docker deployment, URL normalization
 - [ar-test-runner](test-runner/README.md) -- test parameters, depth filtering, result parsing
 - [ar-jmx](jmx/README.md) -- JVM attachment, heap analysis, JFR recording workflows

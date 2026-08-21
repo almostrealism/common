@@ -4,7 +4,7 @@
 # Default mode (one server):
 #   :8084  Qwen3-Coder-Next (unsloth UD-Q6_K_XL, ~73 GB split GGUF, MoE
 #          coder model) — serves BOTH the flowtree OpencodeRunner (which
-#          calls it as `mac-studio:8084`) AND ar-consultant (the
+#          calls it as `mac-studio:8084`) AND ar-manager (the
 #          AR_CONSULTANT_LLAMACPP_URL in the agent .env points at the same
 #          endpoint). One model, one server, two callers.
 #

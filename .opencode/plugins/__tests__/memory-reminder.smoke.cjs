@@ -117,16 +117,31 @@ console.log("== mcp__ar-manager__memory_recall does NOT reset ==")
   expect(d.new_state.last_store_ts === 0, "memory_recall does not stamp last_store_ts")
 }
 
-console.log("== mcp__ar-consultant__remember resets ==")
+console.log("== a retired store-tool name does NOT reset ==")
 {
+  // mcp__ar-consultant__remember was removed when memory consolidated onto
+  // ar-manager. A name that no longer denotes a store must not reset the
+  // counter, or an agent calling a dead tool would silently stop being
+  // reminded to store anything. Mirrors the Python assertion in
+  // .claude/hooks/lib/test_memory_reminder_check.py.
   let state = freshState()
   for (let i = 0; i < 3; i++) {
     const d = callCoreWithEnv("Bash", 1000 + i, state, envFastFire)
     state = d.new_state
   }
   const d = callCoreWithEnv("mcp__ar-consultant__remember", 1003, state, envFastFire)
-  expect(d.new_state.calls_since_last_store === 0, "consultant remember resets counter")
-  expect(d.new_state.last_store_ts === 1003, "consultant remember stamps last_store_ts")
+  // Three Bash calls, then the retired name itself counts as a fourth
+  // side effect rather than resetting to zero.
+  expect(d.new_state.calls_since_last_store === 4, "retired name does not reset counter")
+  expect(d.new_state.last_store_ts === 0, "retired name does not stamp last_store_ts")
+}
+
+console.log("== mcp__ar-manager__consult does NOT reset ==")
+{
+  let state = freshState()
+  state.calls_since_last_store = 2
+  const d = callCoreWithEnv("mcp__ar-manager__consult", 2000, state, envFastFire)
+  expect(d.new_state.calls_since_last_store === 2, "consult is read-only")
 }
 
 console.log("== AR_MEMORY_REMIND_DISABLED=1 suppresses everything ==")

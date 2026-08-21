@@ -7,9 +7,9 @@ Almost Realism codebase. Entries are persisted in SQLite with FAISS vector
 indices for similarity search and exposed over a REST API.
 
 This process is the backing service for the centralized ar-memory deployment
-that ``ar-consultant`` and ``ar-manager`` reach over HTTP (see
+that ``ar-manager`` reaches over HTTP (see
 ``tools/mcp/common/memory_http_client.py``). Agents do NOT talk to this server
-over MCP/stdio — memory is accessed exclusively through ``ar-consultant``
+over MCP/stdio — memory is accessed exclusively through ``ar-manager``
 (interactive: ``remember``/``recall``) and ``ar-manager`` (jobs:
 ``memory_store``/``memory_recall``). The legacy MCP/stdio transport, which bound
 a separate host-local SQLite and diverged from the central store, has been

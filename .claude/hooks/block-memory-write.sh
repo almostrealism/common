@@ -6,7 +6,7 @@
 #
 # The built-in memory system is local to one conversation and invisible
 # to other sessions, to other agents (including FlowTree agents), and to
-# the ar-consultant docs corpus. For this project, memories MUST be
+# the shared documentation corpus. For this project, memories MUST be
 # stored via the shared ar-memory service — use:
 #   mcp__ar-manager__memory_store / mcp__ar-manager__memory_recall
 # for every session, interactive or job.

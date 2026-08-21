@@ -1,7 +1,22 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **PROPOSAL — awaiting triage**
-Author: planning session, 2026-08-12
+Status: **TRIAGED — implementing all nine items in one effort**
+Author: planning session, 2026-08-12; triaged 2026-08-21
+
+> **Line numbers in this document have drifted.** It was written against a
+> tree that predates the ar-manager consolidation, which added roughly 700
+> lines to `tools/mcp/manager/server.py`. Every reference into that file is
+> now 40–400 lines low — `workstream_list` 365→403, `workstream_context`
+> 2936→3057, `github_pr_find` 3680→4084, `workstream_register` 1214→1267,
+> `workstream_archive` 2014→2067. References into `workspace_map.py` and the
+> Java sources are still accurate. **Locate symbols by name, not by line.**
+> That file is the most-edited in the repository, so any line number written
+> down here is wrong by the time it is read.
+
+> **On the implementation order below.** Triage decided to take all nine items
+> in a single effort, so the stream sequencing is advisory — it records which
+> items depend on which, not a release schedule. The dependency map is still
+> the useful part.
 
 This document investigates nine concrete friction points in the ar-manager MCP
 tool surface that an operator encountered while answering a single
@@ -251,13 +266,24 @@ prose.
 
 ### Proposed design
 
-**For Issue A (parameter name mismatch):** Accept `max_memories` and
-`max_activities` as **deprecated aliases** of `limit` and
-`include_activities`. They are documented in the docstring as legacy,
-log a deprecation warning when used, and forward to the same logic. A
-caller passing both `max_memories` and `limit` gets an explicit
-`{"ok": False, "error": "max_memories is a deprecated alias for limit;
-pass limit instead"}`. Cheap to implement, removes the friction.
+**For Issue A (parameter name mismatch):** **Reject** `max_memories` and
+`max_activities` with an error that names the correct parameter —
+`{"ok": False, "error": "max_memories is not a parameter of
+workstream_context; use limit"}`.
+
+This revises the original recommendation, which was to accept them as
+forwarding aliases. The argument against forwarding: nothing has ever
+accepted these names, so there is no legacy caller to keep working. An
+alias would create two permanent names for one concept, and — since this
+document itself allows that the names may have been invented by a model —
+it would reward guessing at a parameter name with silent success. An
+error fixes the caller once and teaches the right name; an alias means
+every future reader sees two.
+
+There is a schema cost too. `tools/mcp/CLAUDE.md` requires every parameter
+to be declared in the signature, so aliases are not private compatibility
+shims — they appear in the advertised MCP schema of a tool that already
+takes eleven parameters.
 
 **For Issue B (heavy response):** Add a new boolean parameter
 `include_memories` (default `true` to preserve current behaviour) that
@@ -282,7 +308,7 @@ they want: a fast, small answer to "what PR is on this branch?"
 
 | Component | Effort | Why |
 |---|---|---|
-| Accept `max_memories` / `max_activities` aliases with a deprecation warning | S | One-line mapping plus a log line. |
+| Reject `max_memories` / `max_activities` with a message naming the real parameter | S | A guard at the top of the tool. |
 | Add `include_memories=False` opt-out | S | A short-circuit at the top of `workstream_context` before the `client.search_by_branch` call. |
 | Tests for both | S | One test for alias, one test for opt-out, one test for the `pull_request`-only happy path. |
 
@@ -1181,8 +1207,8 @@ non-issue, rather than invent work:
 
 ## Appendix: file / function index
 
-Quick lookup for the review. Line numbers refer to the current
-branch tip (`feature/ar-manager-tool-ergonomics`).
+Quick lookup for the review. **The line numbers are stale** (see the note at
+the top of this document); the file and symbol columns are what to search on.
 
 | Item | File | Function / line |
 |---|---|---|
