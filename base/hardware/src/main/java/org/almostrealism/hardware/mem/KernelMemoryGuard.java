@@ -53,7 +53,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>The deallocation pipeline in {@link HardwareMemoryProvider} checks
  * {@link #canDeallocate(long)} before freeing native memory. If the address
- * is guarded, the deallocation is deferred.</p>
+ * is guarded, the release is held back and reconsidered until the kernels
+ * using it have finished, rather than being carried out under them.</p>
+ *
+ * <p>Guarding only covers memory the guard can resolve to a {@link RAM}. An
+ * argument it cannot resolve is reported when the kernel takes it, because
+ * nothing later can report it: every check downstream is keyed by the address
+ * that resolution would have produced.</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -98,7 +104,18 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 			if (arg == null) continue;
 
 			RAM ram = resolveRAM(arg);
-			if (ram == null) continue;
+			if (ram == null) {
+				// An argument that cannot be resolved is not merely unguarded:
+				// nothing downstream can report it either, because every later
+				// check is keyed by the address this would have produced. A
+				// kernel reading released memory would then crash the process
+				// with no preceding warning of any kind, which is precisely the
+				// shape of failure this class exists to make visible.
+				warn("Kernel argument " + arg.getClass().getSimpleName() +
+						" has no resolvable memory and cannot be guarded; a" +
+						" kernel using it will not be protected from release");
+				continue;
+			}
 
 			long address = ram.getContentPointer();
 

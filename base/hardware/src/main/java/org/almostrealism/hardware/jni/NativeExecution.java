@@ -31,8 +31,10 @@ import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.TimingMetric;
 
 import java.lang.ref.Reference;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.Executors;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -319,7 +321,7 @@ public class NativeExecution extends HardwareOperator {
 	 */
 	private void coordinate(MemoryData[] data, Object[] args, Semaphore dependsOn,
 							KernelMemoryGuard guard, DefaultLatchSemaphore latch, int p) {
-		int submitted = 0;
+		List<Future<?>> workers = new ArrayList<>(p);
 
 		try {
 			if (dependsOn != null) dependsOn.waitFor();
@@ -328,7 +330,7 @@ public class NativeExecution extends HardwareOperator {
 				for (int i = 0; i < p; i++) {
 					int id = i;
 
-					executor.submit(() -> {
+					workers.add(executor.submit(() -> {
 						try {
 							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
 						} catch (Exception e) {
@@ -337,13 +339,11 @@ public class NativeExecution extends HardwareOperator {
 						} finally {
 							latch.countDown();
 						}
-					});
+					}));
 				}
 
 				latch.waitFor();
 			});
-
-			submitted = p;
 
 			if (enableVerboseLog) {
 				log(getName() + " result0=" + data[0].toDouble(0));
@@ -351,7 +351,17 @@ public class NativeExecution extends HardwareOperator {
 		} catch (Exception e) {
 			warn(getName() + " dispatch failed", e);
 		} finally {
-			for (int i = submitted; i < p; i++) {
+			// Every worker that was submitted has to be finished with before
+			// the guard comes off, including on the failure path. Releasing the
+			// guard is what permits this dispatch's memory to be freed, and a
+			// worker still inside the kernel would then be reading a block that
+			// has gone. Waiting on the tasks rather than the latch is what makes
+			// that true: the latch can reach zero without the workers having
+			// returned, because the counts for tasks that were never submitted
+			// are made up below.
+			awaitWorkers(workers);
+
+			for (int i = workers.size(); i < p; i++) {
 				latch.countDown();
 			}
 
@@ -360,5 +370,29 @@ public class NativeExecution extends HardwareOperator {
 
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
+	}
+
+	/**
+	 * Waits for every submitted worker to finish, whatever became of it.
+	 *
+	 * <p>A worker that failed has already reported its own failure, and one
+	 * that was cancelled has nothing to report; what matters here is only that
+	 * none of them is still running. An interruption is honored by restoring
+	 * the flag and returning, since continuing to wait would ignore a request
+	 * to stop.</p>
+	 *
+	 * @param workers the futures of the submitted workers
+	 */
+	private void awaitWorkers(List<Future<?>> workers) {
+		for (Future<?> worker : workers) {
+			try {
+				worker.get();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return;
+			} catch (Exception e) {
+				// Already reported by the worker itself
+			}
+		}
 	}
 }

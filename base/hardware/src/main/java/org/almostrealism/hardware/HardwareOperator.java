@@ -374,6 +374,20 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			}
 
 			data[i] = (MemoryData) args[i];
+
+			// Checked before anything is done with the memory, because
+			// everything past this point deals in bare addresses. A compiled
+			// kernel receives a number and dereferences it; released memory
+			// reaches it as an address that no longer maps to anything, and the
+			// process is gone with no indication of which operation or which
+			// argument was responsible. Refusing here costs the operation and
+			// reports both. Migrating it would be no better: there is nothing
+			// to copy out of a block that has been freed.
+			if (!data[i].isAvailable()) {
+				throw new HardwareException("argument " + i + " to function " +
+						getName() + " refers to memory that has already been released");
+			}
+
 			reassignMemory(data[i]);
 		}
 

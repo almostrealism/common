@@ -196,4 +196,20 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	 * their own storage override this.</p>
 	 */
 	default void destroy() { }
+
+	/**
+	 * Returns whether the given memory has already been released by this
+	 * provider, making it unusable.
+	 *
+	 * <p>A provider that tracks the lifetime of what it hands out can answer
+	 * this; one that does not reports {@code false}, which is the answer that
+	 * keeps a caller behaving as it did before the question could be asked. It
+	 * exists so that a caller about to hand memory to something that cannot
+	 * check for itself — a compiled kernel, which receives a bare address and
+	 * will dereference whatever it is given — can find out first.</p>
+	 *
+	 * @param mem the memory to test
+	 * @return {@code true} if the memory has been released
+	 */
+	default boolean isReleased(Memory mem) { return false; }
 }
