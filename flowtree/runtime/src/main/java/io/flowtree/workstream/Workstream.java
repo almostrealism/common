@@ -253,6 +253,15 @@ public class Workstream {
     private boolean useTmux;
 
     /**
+     * Workstream-level ceiling on a job's total elapsed wall-clock time, in
+     * hours, or {@code null} when jobs inherit
+     * {@link io.flowtree.jobs.RestartGovernor#DEFAULT_MAX_WALL_CLOCK}. Zero
+     * disables the ceiling. A per-job override supplied at submission wins
+     * over this value.
+     */
+    private Integer maxWallClockHours;
+
+    /**
      * Listener-side dormancy flag for the completion-listener wake-up
      * cascade. When {@code true}, the {@link
      * io.flowtree.jobs.CompletionListenerFanout} drops every wake-up
@@ -794,6 +803,27 @@ public class Workstream {
     }
 
     /**
+     * Returns the workstream's ceiling on job wall-clock time.
+     *
+     * @return the ceiling in hours, {@code 0} when the ceiling is disabled for
+     *         this workstream, or {@code null} when jobs inherit the default
+     */
+    public Integer getMaxWallClockHours() {
+        return maxWallClockHours;
+    }
+
+    /**
+     * Sets the workstream's ceiling on job wall-clock time. A job submitted
+     * with its own ceiling overrides this one.
+     *
+     * @param maxWallClockHours the ceiling in hours, {@code 0} to disable the
+     *                          ceiling, or {@code null} to inherit the default
+     */
+    public void setMaxWallClockHours(Integer maxWallClockHours) {
+        this.maxWallClockHours = maxWallClockHours;
+    }
+
+    /**
      * Returns {@code true} when this workstream is in the
      * listener-dormant state: the completion-listener fan-out drops
      * every wake-up it would otherwise submit to this workstream. The
@@ -989,6 +1019,9 @@ public class Workstream {
         }
         if (dispatchCapable) {
             json.append(",\"dispatchCapable\":true");
+        }
+        if (maxWallClockHours != null) {
+            json.append(",\"maxWallClockHours\":").append(maxWallClockHours.intValue());
         }
         if (useTmux) {
             json.append(",\"useTmux\":true");

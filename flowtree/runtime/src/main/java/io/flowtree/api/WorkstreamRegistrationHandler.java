@@ -463,6 +463,9 @@ final class WorkstreamRegistrationHandler {
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
+        boolean hasMaxWallClockHours = JsonFieldExtractor.hasField(body, "maxWallClockHours");
+        int maxWallClockHours = hasMaxWallClockHours
+                ? JsonFieldExtractor.extractInt(body, "maxWallClockHours") : 0;
         boolean defaultUseTmux = JsonFieldExtractor.extractBoolean(body, "defaultUseTmux");
         boolean dormantForCompletionListeners = JsonFieldExtractor.extractBoolean(body, "dormantForCompletionListeners");
 
@@ -569,6 +572,12 @@ final class WorkstreamRegistrationHandler {
         // use_tmux flag still wins on a per-job basis, so individual jobs
         // can opt in or out of tmux even when the workstream default is on.
         workstream.setUseTmux(defaultUseTmux);
+        // Workstream-level wall-clock ceiling. Left null unless the caller
+        // supplied one, so an unset workstream inherits the governor default
+        // rather than pinning today's default into its persisted config.
+        if (hasMaxWallClockHours) {
+            workstream.setMaxWallClockHours(Integer.valueOf(maxWallClockHours));
+        }
         // Listener-side dormancy flag for the completion-listener
         // cascade. Default false on register; mutable on update so
         // the orchestrator can flip its own state mid-run.
@@ -708,6 +717,14 @@ final class WorkstreamRegistrationHandler {
         if (JsonFieldExtractor.hasField(body, "defaultUseTmux")) {
             workstream.setUseTmux(
                     JsonFieldExtractor.extractBoolean(body, "defaultUseTmux"));
+        }
+        // Workstream-level wall-clock ceiling: same presence-signal pattern.
+        // A negative value clears the override so the workstream returns to
+        // inheriting the default; zero is retained as "no ceiling", which is
+        // a different thing and must stay expressible.
+        if (JsonFieldExtractor.hasField(body, "maxWallClockHours")) {
+            int hours = JsonFieldExtractor.extractInt(body, "maxWallClockHours");
+            workstream.setMaxWallClockHours(hours < 0 ? null : Integer.valueOf(hours));
         }
         // Listener-side dormancy flag for the completion-listener
         // cascade. Same presence-signal pattern as useTmux above:

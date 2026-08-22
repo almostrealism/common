@@ -68,6 +68,29 @@ class TestWorkstreamListFilters(unittest.TestCase):
         self.assertIn("includeArchived=true", mock_get.call_args[0][0])
 
     @patch.object(server, "_controller_get", return_value=[])
+    def test_status_enrichment_is_off_by_default(self, mock_get):
+        # The enrichment costs a job-history read per workstream returned, so
+        # the default listing must not pay for it.
+        server.workstream_list()
+        path = mock_get.call_args[0][0]
+        self.assertNotIn("includeStatus", path)
+        self.assertNotIn("includePullRequest", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_status_enrichment_reaches_the_controller(self, mock_get):
+        server.workstream_list(include_status=True, include_pull_request=True)
+        path = mock_get.call_args[0][0]
+        self.assertIn("includeStatus=true", path)
+        self.assertIn("includePullRequest=true", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_enrichment_composes_with_filters(self, mock_get):
+        server.workstream_list(workspace_id="ws-a", include_status=True)
+        path = mock_get.call_args[0][0]
+        self.assertIn("workspaceId=ws-a", path)
+        self.assertIn("includeStatus=true", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
     def test_scope_filtering_still_applies(self, mock_get):
         # The server-side filters narrow further; they do not replace the
         # token-scope filter, which is a security boundary rather than a

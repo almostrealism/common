@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Per-container holder for a {@link PhaseConfig} default plus per-phase
@@ -229,6 +230,40 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
             }
         }
         return bundle;
+    }
+
+    /**
+     * Writes this bundle into a container's {@code defaultPhaseConfig} /
+     * {@code phaseConfigs} fields through the supplied setters.
+     *
+     * <p>Every non-empty per-phase entry is emitted, keyed by
+     * {@link Phase#wireName()}; the default is written when non-empty and
+     * cleared otherwise. A bundle carrying only a default — a model-only
+     * workstream, say, or a {@code defaultRunner}-only workspace with no
+     * per-phase overrides — still has that default persisted. That matters
+     * under write-only legacy serialization: the default is the only place a
+     * migrated {@code model} / {@code effort} / {@code defaultRunner} survives
+     * once the legacy fields stop being written.</p>
+     *
+     * <p>Lives here rather than on the persistence types because it reads only
+     * this bundle's own state; the setters are how it reaches whatever
+     * container is being written.</p>
+     *
+     * @param setDefault      receives the default, or {@code null} when empty
+     * @param setPhaseConfigs receives the per-phase map (never {@code null})
+     */
+    public void applyTo(Consumer<PhaseConfig> setDefault,
+                        Consumer<Map<String, PhaseConfig>> setPhaseConfigs) {
+        Map<String, PhaseConfig> byWireName = new LinkedHashMap<>();
+        for (Map.Entry<Phase, PhaseConfig> e : phaseConfigs.entrySet()) {
+            PhaseConfig pc = e.getValue();
+            if (!pc.isEmpty()) {
+                byWireName.put(e.getKey().wireName(), pc);
+            }
+        }
+        setPhaseConfigs.accept(byWireName);
+        setDefault.accept(defaultPhaseConfig != null && !defaultPhaseConfig.isEmpty()
+                ? defaultPhaseConfig : null);
     }
 
     /**

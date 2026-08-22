@@ -16,10 +16,14 @@
 
 package io.flowtree.api;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
+import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.GitOperations;
+import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.workstream.Workstream;
 
 /**
@@ -56,17 +60,39 @@ final class WorkstreamListing {
      * <p>An empty parameter value counts as absent, so a caller assembling a
      * query from optional values need not omit the keys it has no value for.</p>
      *
+     * <p>Two further parameters enrich each surviving entry rather than
+     * selecting between them:</p>
+     *
+     * <ul>
+     *   <li>{@code includeStatus} — adds {@code lastJobId},
+     *       {@code lastJobStatus} and {@code lastJobAt}.</li>
+     *   <li>{@code includePullRequest} — adds {@code pullRequest}, read from
+     *       the most recent job that recorded one.</li>
+     * </ul>
+     *
+     * <p>Both default to off, so the cost of the listing is unchanged for a
+     * caller that does not ask for them. Each costs one job-store read per
+     * surviving workstream, which is why they are opt-in rather than always
+     * present: the filters above are what keep that count small.</p>
+     *
      * @param session     the request, whose query parameters carry the filters
      * @param workstreams every registered workstream, keyed by id
+     * @param statsStore  supplies the job history; {@code null} leaves the
+     *                    status and pull-request fields absent
      * @return a JSON array of the workstreams that pass every filter
      */
-static String toJson(IHTTPSession session, Map<String, Workstream> workstreams) {
+    static String toJson(IHTTPSession session, Map<String, Workstream> workstreams,
+            JobStatsStore statsStore) {
         String workspaceId = RequestParameters.first(session, "workspaceId", null);
         String repoUrl = RequestParameters.first(session, "repoUrl", null);
         String dispatchCapable = RequestParameters.first(session, "dispatchCapable", null);
         String archived = RequestParameters.first(session, "archived", null);
         boolean includeArchived = "true".equalsIgnoreCase(
                 RequestParameters.first(session, "includeArchived", "false"));
+        boolean includeStatus = "true".equalsIgnoreCase(
+                RequestParameters.first(session, "includeStatus", "false"));
+        boolean includePullRequest = "true".equalsIgnoreCase(
+                RequestParameters.first(session, "includePullRequest", "false"));
 
         // `archived` is the explicit selector; `includeArchived` is the older
         // parameter it generalises. Both are honoured: archived=true means
@@ -93,9 +119,94 @@ static String toJson(IHTTPSession session, Map<String, Workstream> workstreams) 
             }
             if (!first) json.append(",");
             first = false;
-            json.append(ws.toSummaryJson());
+            String summary = ws.toSummaryJson();
+            String enrichment = (includeStatus || includePullRequest) && statsStore != null
+                    ? statusFields(ws, statsStore, includeStatus, includePullRequest) : "";
+            if (enrichment.isEmpty()) {
+                json.append(summary);
+            } else {
+                json.append(summary, 0, summary.length() - 1).append(enrichment).append("}");
+            }
         }
         json.append("]");
         return json.toString();
+    }
+
+    /**
+     * Renders the requested status and pull-request fields for one workstream
+     * as JSON object members, each with a leading comma so the caller can
+     * splice them into the summary object.
+     *
+     * <p>Both requests are served from a single job-history read. The
+     * pull-request URL is taken from the most recent job that recorded one
+     * rather than from the newest job alone, because a workstream's PR does
+     * not stop existing when a later job runs without touching it.</p>
+     *
+     * <p>Timestamps are ISO-8601, matching how the rest of the tool surface
+     * renders them; {@code toSummaryJson} itself carries no timestamps to
+     * follow.</p>
+     *
+     * @param ws                 the workstream to describe
+     * @param statsStore         the job history to read
+     * @param includeStatus      whether to emit the last-job fields
+     * @param includePullRequest whether to emit the pull-request field
+     * @return the members to splice in, or an empty string when there is
+     *         nothing to add
+     */
+    private static String statusFields(Workstream ws, JobStatsStore statsStore,
+            boolean includeStatus, boolean includePullRequest) {
+        List<JobCompletionEvent> recent =
+                statsStore.getRecentJobs(ws.getWorkstreamId(), PR_SEARCH_DEPTH);
+        if (recent.isEmpty()) return "";
+
+        StringBuilder json = new StringBuilder();
+        if (includeStatus) {
+            JobCompletionEvent latest = recent.get(0);
+            if (latest.getJobId() != null) {
+                json.append(",\"lastJobId\":\"").append(latest.getJobId()).append("\"");
+            }
+            if (latest.getStatus() != null) {
+                json.append(",\"lastJobStatus\":\"").append(latest.getStatus()).append("\"");
+            }
+            Instant at = latest.getTimestamp();
+            if (at != null) {
+                json.append(",\"lastJobAt\":\"").append(at).append("\"");
+            }
+        }
+        if (includePullRequest) {
+            for (JobCompletionEvent event : recent) {
+                String url = event.getPullRequestUrl();
+                if (url == null || url.isEmpty()) continue;
+                json.append(",\"pullRequest\":{\"url\":\"").append(url).append("\"");
+                int number = pullRequestNumber(url);
+                if (number > 0) json.append(",\"number\":").append(number);
+                json.append("}");
+                break;
+            }
+        }
+        return json.toString();
+    }
+
+    /**
+     * How far back to look for a recorded pull request. Deep enough that a run
+     * of follow-up jobs does not hide the PR they belong to, shallow enough
+     * that the read stays a single indexed query per workstream.
+     */
+    private static final int PR_SEARCH_DEPTH = 20;
+
+    /**
+     * Extracts the pull-request number from a GitHub pull-request URL.
+     *
+     * @param url the URL, expected to end in {@code /pull/{number}}
+     * @return the number, or {@code -1} when the URL does not carry one
+     */
+    private static int pullRequestNumber(String url) {
+        int slash = url.lastIndexOf('/');
+        if (slash < 0 || slash == url.length() - 1) return -1;
+        try {
+            return Integer.parseInt(url.substring(slash + 1));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 }

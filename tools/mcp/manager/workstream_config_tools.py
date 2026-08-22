@@ -35,6 +35,7 @@ def workstream_register(
     phase_configs: str = "",
     dispatch_capable: bool = False,
     default_use_tmux: bool = False,
+    max_wall_clock_hours: int = -1,
     slack_workspace_id: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
@@ -145,6 +146,15 @@ def workstream_register(
             opt in explicitly. The runner additionally honours the
             ``AR_AGENT_USE_TMUX`` environment variable as an independent
             enable, which is unaffected by this flag.
+        max_wall_clock_hours: Ceiling on how long a single job on this
+            workstream may run, in hours, before the controller stops
+            launching further agent sessions for it. This is the ceiling
+            that catches a worker which has stopped making progress: the
+            session, turn and dollar ceilings all bound how much a job
+            *does*, and none of them bounds a job wedged on a network call.
+            ``0`` disables the ceiling for this workstream. Omitted (the
+            default) inherits the controller default of six hours. A job
+            submitted with its own ``max_wall_clock_hours`` overrides this.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -283,6 +293,13 @@ def workstream_register(
     # every job on this workstream that does not set the per-job
     # use_tmux flag explicitly.
     payload["defaultUseTmux"] = bool(default_use_tmux)
+    # Unlike the booleans above, this one is only forwarded when the caller
+    # supplied it. Zero disables the ceiling and is a real choice, so the
+    # sentinel for "not supplied" has to sit outside the valid range rather
+    # than reuse zero — otherwise every registration would silently pin the
+    # workstream to "no ceiling".
+    if max_wall_clock_hours >= 0:
+        payload["maxWallClockHours"] = int(max_wall_clock_hours)
 
     result = server._controller_post("/api/workstreams", payload)
 
@@ -346,6 +363,7 @@ def workstream_update_config(
     phase_configs: str = "",
     dispatch_capable: Optional[bool] = None,
     default_use_tmux: Optional[bool] = None,
+    max_wall_clock_hours: Optional[int] = None,
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -410,6 +428,12 @@ def workstream_update_config(
             workstream's existing default unchanged; an explicit
             ``False`` clears the opt-in. Defaults to ``None``
             (no change).
+        max_wall_clock_hours: Ceiling on how long a single job on this
+            workstream may run, in hours, before the controller stops
+            launching further agent sessions for it. ``0`` disables the
+            ceiling; a negative value clears the workstream's override so
+            it returns to inheriting the controller default of six hours.
+            Omitted (the default) leaves the existing setting unchanged.
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -491,6 +515,8 @@ def workstream_update_config(
     # this presence signal: when the field is omitted the workstream's
     # existing value is preserved; when the field is present the body
     # value (true or false) wins.
+    if max_wall_clock_hours is not None:
+        payload["maxWallClockHours"] = int(max_wall_clock_hours)
     if dispatch_capable is not None:
         payload["dispatchCapable"] = bool(dispatch_capable)
     # default_use_tmux follows the same Optional-presence pattern as

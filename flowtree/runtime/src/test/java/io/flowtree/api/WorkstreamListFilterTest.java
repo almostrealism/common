@@ -173,6 +173,50 @@ public class WorkstreamListFilterTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Enrichment is off by default, so an ordinary listing is unchanged by the
+	 * status fields existing. This is what keeps the common call cheap.
+	 *
+	 * @throws Exception if the request fails
+	 */
+	@Test(timeout = 10000)
+	public void statusFieldsAreAbsentUnlessRequested() throws Exception {
+		String body = get("");
+		assertFalse("lastJobStatus must not appear unless include_status asked",
+			body.contains("lastJobStatus"));
+		assertFalse("pullRequest must not appear unless include_pull_request asked",
+			body.contains("pullRequest"));
+	}
+
+	/**
+	 * Asking for enrichment when no job store is configured yields the plain
+	 * listing rather than an error. A controller without job stats is a
+	 * supported configuration, and the filters must keep working there.
+	 *
+	 * @throws Exception if the request fails
+	 */
+	@Test(timeout = 10000)
+	public void enrichmentWithoutAStoreDegradesQuietly() throws Exception {
+		String body = get("?includeStatus=true&includePullRequest=true");
+		assertTrue("the listing itself must still be returned", body.contains("ws-live"));
+		assertFalse("no status field can be invented without a store",
+			body.contains("lastJobStatus"));
+	}
+
+	/**
+	 * Enrichment composes with the filters: the caller narrows first and pays
+	 * the per-workstream read only for what survives.
+	 *
+	 * @throws Exception if the request fails
+	 */
+	@Test(timeout = 10000)
+	public void enrichmentComposesWithFilters() throws Exception {
+		String body = get("?workspaceId=space-b&includeStatus=true");
+		assertTrue(body.contains("ws-other"));
+		assertFalse("the filter still applies when enrichment is on",
+			body.contains("ws-live"));
+	}
+
+	/**
 	 * Issues a GET against the workstream listing.
 	 *
 	 * @param query the query string, including its leading {@code ?}, or empty

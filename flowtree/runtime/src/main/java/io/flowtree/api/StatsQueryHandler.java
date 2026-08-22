@@ -21,6 +21,7 @@ import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
 
+import java.time.Instant;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -60,6 +61,63 @@ class StatsQueryHandler {
      */
     StatsQueryHandler(JobStatsStore statsStore) {
         this.statsStore = statsStore;
+    }
+
+    /**
+     * Returns the backing store, for callers that read job history directly.
+     *
+     * @return the store, or {@code null} when stats are not configured
+     */
+    JobStatsStore store() {
+        return statsStore;
+    }
+
+    /**
+     * Records a liveness heartbeat for a running job.
+     *
+     * <p>No-op when no store is configured, so a controller running without
+     * job stats behaves exactly as it did before rather than failing the
+     * request that carried the signal.</p>
+     *
+     * @param jobId       the job reporting itself alive
+     * @param heartbeatAt the moment it reported
+     */
+    void recordHeartbeat(String jobId, Instant heartbeatAt) {
+        if (statsStore == null) return;
+        statsStore.recordHeartbeat(jobId, heartbeatAt);
+    }
+
+    /**
+     * Handles a {@code GET /api/workstreams/{id}/jobs/active} request.
+     *
+     * <p>Each entry carries the job's age and how long it has been since its
+     * last liveness signal, which is what distinguishes a job running slowly
+     * from one that has stopped. An entry with a large
+     * {@code sinceHeartbeatSeconds} is a candidate for
+     * {@link io.flowtree.controller.StuckJobScanner} and is worth an
+     * operator's attention before the scanner reaches it.</p>
+     *
+     * @param workstreamId the workstream whose active jobs to list, or
+     *                     {@code null} for every workstream
+     * @return an HTTP response carrying a JSON array, empty when nothing is
+     *         running or no store is configured
+     */
+    Response handleActiveJobs(String workstreamId) {
+        if (statsStore == null) {
+            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+                "application/json", "[]");
+        }
+        Instant now = Instant.now();
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+        for (JobStatsStore.ActiveJob job : statsStore.getActiveJobs(workstreamId)) {
+            if (!first) json.append(",");
+            first = false;
+            json.append(job.toJson(now));
+        }
+        json.append("]");
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+            "application/json", json.toString());
     }
 
     /**

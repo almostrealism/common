@@ -75,7 +75,7 @@ import java.util.function.IntFunction;
  * @see CodingAgentJob#executeSingleRun()
  * @see EnforcementRunner
  */
-class RestartGovernor {
+public class RestartGovernor {
 
     /**
      * Default hard ceiling on the total number of agent sessions a single job
@@ -116,7 +116,7 @@ class RestartGovernor {
      * per job. The override is the part that carries the weight, so the
      * default only has to be safe for the common case.</p>
      */
-    static final Duration DEFAULT_MAX_WALL_CLOCK = Duration.ofHours(6);
+    public static final Duration DEFAULT_MAX_WALL_CLOCK = Duration.ofHours(6);
 
     /** The job whose session launches this governor authorizes and counts. */
     private final CodingAgentJob job;

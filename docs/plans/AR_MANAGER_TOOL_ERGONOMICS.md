@@ -1,6 +1,6 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **IN PROGRESS — eight of eleven done (2, 3, 4, 6, 7, 8, 9, 11); 1 and 5 partially done; 10 outstanding**
+Status: **IN PROGRESS — ten of eleven done (1, 2, 3, 4, 5, 6, 7, 8, 9, 11); 10 outstanding**
 Author: planning session, 2026-08-12; triaged 2026-08-21
 
 > **Line numbers in this document have drifted.** It was written against a
@@ -83,10 +83,23 @@ constraints.
 > "which workstreams match P?" is one call. Repository matching is on identity,
 > so URL spelling does not matter.
 >
-> **Still outstanding: the status fields** (`lastJobAt`, `lastJobStatus`,
-> `pullRequest`) from design (b), and the pagination decision in open question 4.
-> Filtering was the larger half of the operator's blocker; enriching each entry
-> is the rest.
+> **DONE.** The status fields from design (b) are in, behind
+> `include_status` (adds `lastJobId` / `lastJobStatus` / `lastJobAt`) and
+> `include_pull_request` (adds `pullRequest`). Both default to off, so a caller
+> that does not ask for them pays exactly what it paid before; each costs one
+> job-history read per workstream returned, which is what the filters are for.
+>
+> The pull request is read controller-side from the job history rather than
+> from GitHub. `JobCompletionEvent` already persists `pullRequestUrl`, so the
+> data was there for free — no GitHub round trip, no per-caller N+1, and it
+> stays correct across a controller restart. The search walks back through
+> recent jobs rather than reading the newest alone, because a workstream's PR
+> does not stop existing when a later job runs without touching it.
+>
+> `lastJobAt` is ISO-8601. `toSummaryJson` carried no timestamp to follow, so
+> the choice went to the convention the rest of the tool surface already uses.
+>
+> Pagination is deliberately not shipped — see open question 4.
 
 ### What we found
 
@@ -186,10 +199,8 @@ trip per workstream for the PR.
 **(c) Pagination.** Not strictly part of the operator's question but
 adjacent. Today the response is a flat array of every workstream; for
 multi-workspace deployments this could grow. A `limit`/`offset` pair
-keeps the response bounded. **Defer this unless the operator fleet
-actually exceeds the practical size** — 51 workstreams is fine in a
-single response, and adding pagination now adds parameter surface area
-without solving a problem.
+keeps the response bounded. **Deferred** — see open question 4, which
+records the decision and what it will cost to reverse.
 
 ### A dedicated `workstream_query` tool?
 
@@ -556,12 +567,56 @@ Partially. (a) is independent. (b) depends on (a) being correct.
 
 ## 5. Silent worker hangs break dependent automation with no signal — REAL, HARD
 
-> **PARTIALLY DONE.** The wall-clock ceiling is in `RestartGovernor` beside the
-> session, turn and dollar ceilings: six hours, overridable per job, disabled by
-> a non-positive value. That is design (a).
+> **DONE.** All three pieces.
 >
-> **Still outstanding: (b) the heartbeat field and (c) the stuck-job scanner**,
-> which share a model and want the controller-side work.
+> **(a)** The wall-clock ceiling sits in `RestartGovernor` beside the session,
+> turn and dollar ceilings: six hours by default, disabled by a non-positive
+> value. It had shipped as a package-private setter only — reachable from Java
+> and nowhere else — which left the "configurable per workstream" half of the
+> triage answer unimplemented. It now runs the full path:
+> `WorkstreamConfig` (persisted YAML) → `Workstream` → registration and update
+> handlers → `CodingAgentJobFactory.resolveMaxWallClockHours` →
+> `CodingAgentJobCodec` (so it survives the worker hop) →
+> `CodingAgentJobConfigurer`. Exposed as `max_wall_clock_hours` on
+> `workstream_register`, `workstream_update_config` and
+> `workstream_submit_task`, with per-job winning over per-workstream winning
+> over the default.
+>
+> Zero is a real value there — it disables the ceiling — so "not configured"
+> and "configured to zero" are kept distinguishable throughout. A plain `int`
+> default of zero would have silently pinned every workstream to "no ceiling",
+> which is the opposite of what this item is for.
+>
+> **(b)** `JobStatsStore` gained a `heartbeat_at` column (via the existing
+> `SCHEMA_MIGRATIONS` mechanism), `recordHeartbeat`, `getActiveJobs`, and an
+> `ActiveJob` record that owns the age arithmetic — `age`, `sinceHeartbeat`,
+> `isStale` — so the scanner, the endpoint and the status tool cannot disagree
+> about whether a job is stuck. Persisted rather than in-memory because the
+> failure this exists to catch includes a controller restart with jobs in
+> flight; an in-memory heartbeat disappears in exactly that case.
+>
+> Heartbeats are written on **any** status event the controller already
+> receives, so liveness needed no agent-side change. `sinceHeartbeat` falls
+> back to the start time, which is what makes a job that died before its first
+> heartbeat detectable instead of permanently fresh.
+> `GET /api/workstreams/{id}/jobs/active` exposes the list, and
+> `workstream_get_status` carries `active_jobs` plus an `active_jobs_warning`
+> when something has been silent too long.
+>
+> **(c)** `StuckJobScanner` fails a job silent for more than twice the
+> wall-clock ceiling, firing the ordinary completion path so the dependent
+> chain is released. `scanOnce(Instant)` is separate from the timer so the
+> decision is testable without waiting on a schedule; termination is
+> idempotent; and a scan that throws is swallowed, because
+> `scheduleAtFixedRate` stops repeating after an uncaught exception and would
+> otherwise disable stall recovery permanently — reintroducing this item's own
+> failure mode one level up.
+>
+> The synthesized event goes through the new
+> `FlowTreeApiEndpoint.completeJob`, extracted from the status-event handler so
+> a scanner-generated failure travels the same notifier-and-fan-out path as a
+> real one. A synthesized completion that skipped the fan-out would record the
+> failure and still leave the chain blocked.
 
 ### What we found
 
@@ -1491,9 +1546,19 @@ non-issue, rather than invent work:
    An agent diagnosing its own permission denial could benefit from
    it. Counter-argument: agents should not need to know about the
    harness layer; the controller side is enough.
-4. **Item 1 pagination.** Defer unless real fleet exceeds the
-   practical size — but worth a one-line decision so the filter
-   parameters don't ship without pagination in a later re-design.
+4. **Item 1 pagination.** **ANSWERED (owner, 2026-08-22): defer.**
+   `limit`/`offset` is not shipping with the filters. The decision,
+   recorded so a later redesign is not surprised by it: at ~51
+   workstreams the full array is a rounding error next to the
+   `include_status` / `include_pull_request` reads, and the filters
+   are what actually bound the response. Revisit around ~200
+   workstreams, or sooner if a caller starts paging client-side.
+
+   The cost of deferring is known and accepted: adding pagination
+   later turns the bare JSON array into an envelope
+   (`{workstreams, total, offset}`), which is a breaking change for
+   every reader. Doing it now would spend that break on a problem
+   nobody has.
 
 ---
 

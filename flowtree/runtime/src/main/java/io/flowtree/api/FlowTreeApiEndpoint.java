@@ -140,8 +140,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Handles all {@code /api/secrets/*} endpoint requests and token generation. */
     private final SecretsRequestHandler secretsHandler;
 
-    /** Handles all {@code /api/stats} requests. */
-    private StatsQueryHandler statsQueryHandler;
+    /**
+     * Handles {@code /api/stats}, the active-job listing, and heartbeat
+     * recording.
+     *
+     * <p>Initialised to a store-less handler rather than left null: every
+     * caller would otherwise need its own null check, and a controller
+     * configured without job stats is a supported configuration, not an error.
+     * The store-less handler answers each of those requests with its
+     * documented "not configured" result.</p>
+     */
+    private StatsQueryHandler statsQueryHandler = new StatsQueryHandler(null);
 
     /** Handles {@code GET /api/agents} metadata requests. */
     private final AgentsQueryHandler agentsQueryHandler = new AgentsQueryHandler();
@@ -410,7 +419,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
             return newFixedLengthResponse(Response.Status.OK, "application/json",
-                    WorkstreamListing.toJson(session, notifiers.allWorkstreams()));
+                    WorkstreamListing.toJson(session, notifiers.allWorkstreams(),
+                            statsQueryHandler.store()));
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
+                && uri.endsWith("/jobs/active")) {
+            String workstreamId = uri.substring("/api/workstreams/".length(),
+                    uri.length() - "/jobs/active".length());
+            return statsQueryHandler.handleActiveJobs(workstreamId);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/") && uri.endsWith("/jobs")) {
@@ -763,6 +780,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 ? extractJsonBooleanField(body, "useTmux") : false;
         CodingAgentJobFactory.resolveUseTmux(factory, perJobHasUseTmux,
                 perJobUseTmux, workstream);
+        // Wall-clock ceiling, same precedence and same reason for reading the
+        // body here rather than inside the resolver: the schema-alignment
+        // scanner tracks body consumption at this level. Zero is meaningful
+        // (it disables the ceiling), so presence is what distinguishes an
+        // override from an absent field.
+        boolean perJobHasWallClock = extractJsonHasField(body, "maxWallClockHours");
+        int perJobWallClockHours = perJobHasWallClock
+                ? extractJsonIntField(body, "maxWallClockHours") : 0;
+        CodingAgentJobFactory.resolveMaxWallClockHours(factory, perJobHasWallClock,
+                perJobWallClockHours, workstream);
         // Sensitive-file protections — enabled by default; only forwarded
         // when the operator has explicitly disabled them for this job. The
         // bypass signature is controller-computed from AR_AGENT_BYPASS_SECRET
@@ -1120,35 +1147,48 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             autoCreatePrJobs.remove(jobId);
         }
 
-        SlackNotifier targetNotifier = notifiers.notifierFor(workstreamId);
+        // Every status event is also a liveness signal, so the stuck-job
+        // scanner sees progress without the agent posting anything extra.
+        if (jobId != null) {
+            statsQueryHandler.recordHeartbeat(jobId, Instant.now());
+        }
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
-            targetNotifier.onJobStarted(workstreamId, event);
+            notifiers.notifierFor(workstreamId).onJobStarted(workstreamId, event);
         } else {
-            targetNotifier.onJobCompleted(workstreamId, event);
-            // Wake-up completion: clear the listener's debounce so a
-            // fast-completing wake-up does not artificially extend the
-            // window (over-debouncing would defeat the "genuinely new
-            // event still wakes the orchestrator" property). The fan-out
-            // inspects the description and only acts on wake-up completions.
-            if (completionListenerFanout != null) {
-                completionListenerFanout.notifyListenerWakeUpCompleted(
-                        workstreamId, event.getDescription());
-            }
-            // Fan the terminal completion out to every listener of the
-            // source workstream; never throws, so a misbehaving listener
-            // cannot poison the source job's completion recording. No-op
-            // when the workstream has no listeners (the inert default).
-            if (completionListenerFanout != null) {
-                try {
-                    completionListenerFanout.fanout(workstreamId, event);
-                } catch (RuntimeException ex) {
-                    log("Completion-listener fanout failed for workstream "
-                            + workstreamId + ": " + ex.getMessage());
-                }
-            }
+            completeJob(workstreamId, event);
         }
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", "{\"ok\":true}");
+    }
+
+    /**
+     * Dispatches a terminal job event: notifies the workstream's workspace and
+     * fans the completion out to every listener waiting on it.
+     *
+     * <p>Shared by the status-event endpoint and by
+     * {@link io.flowtree.controller.StuckJobScanner}, which synthesizes a
+     * terminal event for a job that stopped reporting. Both must travel the
+     * same path — a synthesized completion that skipped the fan-out would
+     * record the failure while leaving the dependent chain blocked, which is
+     * the situation the scanner exists to resolve.</p>
+     *
+     * @param workstreamId the workstream the job belongs to
+     * @param event        the terminal event to dispatch
+     */
+    public void completeJob(String workstreamId, JobCompletionEvent event) {
+        notifiers.notifierFor(workstreamId).onJobCompleted(workstreamId, event);
+        if (completionListenerFanout == null) return;
+        // Clearing the debounce keeps a fast-completing wake-up from
+        // extending the window, which would defeat the property that a
+        // genuinely new event still wakes the orchestrator.
+        completionListenerFanout.notifyListenerWakeUpCompleted(
+                workstreamId, event.getDescription());
+        try {
+            completionListenerFanout.fanout(workstreamId, event);
+        } catch (RuntimeException ex) {
+            log("Completion-listener fanout failed for workstream "
+                    + workstreamId + ": " + ex.getMessage());
+        }
     }
 
     /**
@@ -1519,9 +1559,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @return an HTTP response containing weekly stats JSON
      */
     private Response handleStatsQuery(IHTTPSession session) {
-        StatsQueryHandler handler = statsQueryHandler != null
-            ? statsQueryHandler : new StatsQueryHandler(null);
-        return handler.handle(session, this::errorResponse);
+        return statsQueryHandler.handle(session, this::errorResponse);
     }
 
     /**

@@ -130,6 +130,14 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean useTmux = false;
 
     /**
+     * Job-wide wall-clock ceiling in hours, or {@code null} when the job
+     * inherits {@link RestartGovernor#DEFAULT_MAX_WALL_CLOCK}. Zero disables
+     * the ceiling. Resolved from the per-job value and the workstream default
+     * by {@link #resolveMaxWallClockHours}.
+     */
+    private Integer maxWallClockHours = null;
+
+    /**
      * When {@code true} (the default), jobs created by this factory activate the
      * {@link ReviewRule} (second-pass sanity check by a separate runner).
      */
@@ -817,6 +825,58 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns the job-wide wall-clock ceiling in hours.
+     *
+     * @return the ceiling in hours, {@code 0} when disabled, or {@code null}
+     *         when the job inherits the default
+     */
+    public Integer getMaxWallClockHours() {
+        return maxWallClockHours;
+    }
+
+    /**
+     * Sets the job-wide wall-clock ceiling in hours.
+     *
+     * @param maxWallClockHours the ceiling in hours, {@code 0} to disable the
+     *                          ceiling, or {@code null} to inherit the default
+     */
+    public void setMaxWallClockHours(Integer maxWallClockHours) {
+        this.maxWallClockHours = maxWallClockHours;
+        if (maxWallClockHours == null) {
+            set("maxWallClockHours", "");
+        } else {
+            set("maxWallClockHours", String.valueOf(maxWallClockHours.intValue()));
+        }
+    }
+
+    /**
+     * Resolves the per-job wall-clock ceiling against the workstream default
+     * and applies the result to the factory.
+     *
+     * <p>Same precedence as {@link #resolveUseTmux}: an explicit per-job value
+     * wins, otherwise the workstream's
+     * {@link Workstream#getMaxWallClockHours()} applies, otherwise the job
+     * inherits {@link RestartGovernor#DEFAULT_MAX_WALL_CLOCK}. Zero is a
+     * meaningful value at either level and disables the ceiling, so it is
+     * carried rather than treated as absent.</p>
+     *
+     * @param factory        the factory to mutate; must not be {@code null}
+     * @param hasPerJobValue whether the per-job field was present on the body
+     * @param perJobHours    the per-job value (only when {@code hasPerJobValue})
+     * @param workstream     the workstream supplying the default; may be {@code null}
+     */
+    public static void resolveMaxWallClockHours(CodingAgentJobFactory factory,
+                                                boolean hasPerJobValue, int perJobHours,
+                                                Workstream workstream) {
+        if (factory == null) return;
+        if (hasPerJobValue) {
+            factory.setMaxWallClockHours(perJobHours);
+        } else if (workstream != null && workstream.getMaxWallClockHours() != null) {
+            factory.setMaxWallClockHours(workstream.getMaxWallClockHours());
+        }
+    }
+
+    /**
      * Resolves the per-job {@code use_tmux} flag against the workstream
      * default and applies the result to the factory. An explicit per-job
      * value (with the body field actually present) always wins;
@@ -1472,6 +1532,10 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "useTmux":
                 this.useTmux = Boolean.parseBoolean(value);
+                return;
+            case "maxWallClockHours":
+                this.maxWallClockHours = value == null || value.isEmpty()
+                        ? null : Integer.valueOf(Integer.parseInt(value));
                 return;
             case "reviewEnabled":
                 this.reviewEnabled = Boolean.parseBoolean(value);
