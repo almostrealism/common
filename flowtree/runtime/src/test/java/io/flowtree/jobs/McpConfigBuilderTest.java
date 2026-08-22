@@ -241,11 +241,12 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void allowlistCoversEveryArManagerTool() {
 		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
-		assertNotNull(
-			"Could not locate tools/mcp/manager/server.py from working directory " +
+		assertFalse(
+			"Could not locate the ar-manager tool sources from working directory " +
 				Path.of("").toAbsolutePath() +
-				". The allowlist coverage check cannot run without it.",
-			managerSources);
+				". The allowlist coverage check cannot run without them, and would" +
+				" otherwise pass by having no tools to check.",
+			managerSources.isEmpty());
 
 		List<String> discovered = McpToolDiscovery.discoverToolNames(managerSources);
 		assertFalse("Should discover at least one ar-manager tool", discovered.isEmpty());

@@ -1,6 +1,6 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **TRIAGED — implementing all nine items in one effort**
+Status: **IN PROGRESS — five of ten done (2, 3, 7, 8, 9); items 1, 4, 5, 6, 10 outstanding**
 Author: planning session, 2026-08-12; triaged 2026-08-21
 
 > **Line numbers in this document have drifted.** It was written against a
@@ -77,6 +77,10 @@ constraints.
 ---
 
 ## 1. No fleet-level query capability — REAL, HIGHEST VALUE
+
+> **OUTSTANDING.** Needs controller-side Java changes (`Workstream.toSummaryJson`,
+> `FlowTreeApiEndpoint.handleListWorkstreams`) plus the `workstream_list` filters,
+> and a deploy. Still the operator's original blocker.
 
 ### What we found
 
@@ -211,6 +215,9 @@ Yes. Pure additive; does not touch any other tool.
 
 ## 2. `max_memories` / `max_activities` on `workstream_context` appear to be ignored — REAL, WRONG PARAMETER NAMES
 
+> **DONE.** `include_memories` skips the memory search; the two mistaken names are
+> declared solely to reject themselves with a pointer to the real ones.
+
 ### What we found
 
 The operator reports that calls passing `max_memories=0, max_activities=0`
@@ -322,6 +329,9 @@ Yes. Both pieces are additive; neither touches another tool.
 
 ## 3. `github_pr_find` only finds OPEN pull requests — REAL
 
+> **DONE.** `state` accepts open/closed/merged/all; the two lookup helpers were
+> unified, and `merged` is reported explicitly.
+
 ### What we found
 
 `github_pr_find` at `tools/mcp/manager/server.py:3680` calls
@@ -397,6 +407,10 @@ Yes. No shared state with any other tool.
 ---
 
 ## 4. Job status reports SUCCESS when PRIMARY hard-failed — PARTIALLY ADDRESSED, P1 GAP REMAINS
+
+> **OUTSTANDING.** Java-side; the remaining gap is the COMMIT-MESSAGE phase
+> committing a corrupted tree when PRIMARY hard-fails. Open question 1 in §"Open
+> questions" still needs an answer before implementing.
 
 ### What we found
 
@@ -532,6 +546,9 @@ Partially. (a) is independent. (b) depends on (a) being correct.
 ---
 
 ## 5. Silent worker hangs break dependent automation with no signal — REAL, HARD
+
+> **OUTSTANDING.** Java-side and the hardest item. Open question 2 (the wall-clock
+> default) is unresolved.
 
 ### What we found
 
@@ -670,6 +687,10 @@ together or in close succession.
 ---
 
 ## 6. Capability / permission state is not introspectable — REAL, DESIGN QUESTION
+
+> **OUTSTANDING.** Python-only and self-contained, so the cheapest of the five left.
+> Open question 3 — whether the tool is agent-callable read-only — still needs a
+> decision.
 
 ### What we found
 
@@ -821,6 +842,9 @@ error-message touch.
 
 ## 7. `workstream_register` does not persist the planning-document path supplied for the plan job — REAL
 
+> **DONE.** `plan_path` becomes the workstream's `planningDocument` when no explicit
+> one is given.
+
 ### What we found
 
 `workstream_register` at `tools/mcp/manager/server.py:1214` accepts
@@ -903,6 +927,9 @@ Yes. Pure additive. No shared code with any other item.
 ---
 
 ## 8. No bulk operations — REAL, NARROW SCOPE
+
+> **DONE.** `workstream_archive_many` / `workstream_unarchive_many`, per-id results,
+> deletion deliberately not batched.
 
 ### What we found
 
@@ -992,6 +1019,9 @@ Yes. Pure additive; independent of all other items.
 ---
 
 ## 9. Prompt validation rejects legitimate read-only references to existing commits — REAL, NARROW HEURISTIC
+
+> **DONE**, though not as proposed — the recommendation here would have stopped
+> catching numbered plans. Read verbs are exempted instead. See the commit.
 
 ### What we found
 
@@ -1101,6 +1131,8 @@ Yes. Local to one function; no shared code.
 ---
 
 ## 10. Topic-diversity interlude — SPECULATIVE, OWNER-REQUESTED
+
+> **OUTSTANDING.** Deliberately last.
 
 ### What this is
 

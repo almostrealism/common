@@ -731,8 +731,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void submitTaskPayloadKeysAreAllConsumedByController() {
 		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
-		assertNotNull("manager server.py must be locatable for the submit parity guard to run",
-			managerSources);
+		assertFalse("the ar-manager tool sources must be locatable for the submit parity"
+			+ " guard to run", managerSources.isEmpty());
 
 		List<String> toolKeys =
 			McpToolDiscovery.discoverToolPayloadKeys(managerSources, "workstream_submit_task");

@@ -200,9 +200,10 @@ public class FalsificationWireTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void submitTaskDeclaresFalsificationEnabledParam() {
         List<Path> managerSources = McpToolDiscovery.locateManagerSources();
-        assertNotNull("Could not locate tools/mcp/manager/server.py from working directory "
+        assertFalse("Could not locate the ar-manager tool sources from working directory "
                 + Path.of("").toAbsolutePath()
-                + "; the falsification MCP-param check cannot run without it.", managerSources);
+                + "; the falsification MCP-param check cannot run without them.",
+                managerSources.isEmpty());
 
         List<String> submitParams =
                 McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");

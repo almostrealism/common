@@ -36,17 +36,17 @@ class TestTrackerTools(unittest.TestCase):
 
     @patch.object(server, "_tracker_get")
     def test_tracker_list_projects(self, mock_get):
-        mock_get.return_value = {"ok": True, "projects": [{"id": "p1", "name": "Rings"}]}
+        mock_get.return_value = {"ok": True, "projects": [{"id": "p1", "name": "Renderer"}]}
         result = server.tracker_list_projects()
         self.assertTrue(result["ok"])
         mock_get.assert_called_once_with("/v1/projects")
 
     @patch.object(server, "_tracker_post")
     def test_tracker_create_project(self, mock_post):
-        mock_post.return_value = {"ok": True, "project": {"id": "p1", "name": "Rings"}}
-        result = server.tracker_create_project("Rings")
+        mock_post.return_value = {"ok": True, "project": {"id": "p1", "name": "Renderer"}}
+        result = server.tracker_create_project("Renderer")
         self.assertTrue(result["ok"])
-        mock_post.assert_called_once_with("/v1/projects", {"name": "Rings"})
+        mock_post.assert_called_once_with("/v1/projects", {"name": "Renderer"})
 
     @patch.object(server, "_tracker_put")
     def test_tracker_update_project(self, mock_put):

@@ -45,7 +45,7 @@ def tracker_create_project(name: str) -> dict:
     """Create a new tracker project.
 
     Args:
-        name: Human-readable project name (e.g., "Rings").
+        name: Human-readable project name (e.g., "Renderer").
 
     Returns:
         dict with ok=True and the created project record.
@@ -113,7 +113,7 @@ def tracker_create_release(name: str, project_id: str = "") -> dict:
     """Create a new tracker release.
 
     Args:
-        name: Release name (e.g., "Rings 0.38").
+        name: Release name (e.g., "Renderer 0.38").
         project_id: Optional UUID of the associated project.
 
     Returns:
