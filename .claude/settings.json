@@ -8,7 +8,6 @@
     "ar-test-runner",
     "ar-build-validator",
     "ar-profile-analyzer",
-    "ar-consultant",
     "ar-jmx",
     "ar-manager",
     "onyx"
@@ -20,8 +19,7 @@
       "Bash(mvn install:*)",
       "Bash(mvn test:*)",
       "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)",
-      "mcp__ar-manager",
-      "mcp__ar-consultant"
+      "mcp__ar-manager"
     ],
     "deny": [],
     "ask": []
@@ -120,7 +118,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block shell writes into ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+            "description": "Block shell writes into ~/.claude/projects/*/memory/ \u2014 use ar-manager"
           },
           {
             "type": "command",
@@ -175,7 +173,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-consultant-first.sh",
-            "description": "Warn if ar-consultant not called before editing computation-layer Java"
+            "description": "Warn if consult not called before editing computation-layer Java"
           },
           {
             "type": "command",
@@ -200,7 +198,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block edits to ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+            "description": "Block edits to ~/.claude/projects/*/memory/ \u2014 use ar-manager"
           },
           {
             "type": "command",
@@ -230,7 +228,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block MultiEdit in ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+            "description": "Block MultiEdit in ~/.claude/projects/*/memory/ \u2014 use ar-manager"
           },
           {
             "type": "command",
@@ -260,7 +258,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block NotebookEdit in ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+            "description": "Block NotebookEdit in ~/.claude/projects/*/memory/ \u2014 use ar-manager"
           }
         ]
       },
@@ -285,7 +283,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-consultant-first.sh",
-            "description": "Warn if ar-consultant not called before writing computation-layer Java"
+            "description": "Warn if consult not called before writing computation-layer Java"
           },
           {
             "type": "command",
@@ -310,7 +308,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block writes to ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+            "description": "Block writes to ~/.claude/projects/*/memory/ \u2014 use ar-manager"
           },
           {
             "type": "command",
@@ -341,6 +339,16 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-interface-bypass.py\"",
             "description": "Detect interface-contract bypass in Java edits: BLOCK new members that re-expose a concrete class the constructor adapts behind an interface (the getStemOutput pattern), warn on abstraction-level forks (getStemOutput beside getStem) and new instanceof checks against repo classes — an API that traffics in an interface must stay correct for every implementation"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*ar-manager__(memory_store|memory_recall|memory_namespaces|workstream_context)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/verify-git-context.sh",
+            "description": "Check repo_url/branch arguments to ar-manager against live git \u2014 block writes on mismatch, warn on reads. ar-manager runs remotely and cannot verify the caller's working tree itself."
           }
         ]
       }
@@ -407,7 +415,7 @@
         ]
       },
       {
-        "matcher": "mcp__ar-consultant__consult",
+        "matcher": "mcp__.*ar-manager__consult",
         "hooks": [
           {
             "type": "command",

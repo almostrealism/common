@@ -21,11 +21,6 @@
       "command": ["python3", "tools/mcp/profile-analyzer/server.py"],
       "enabled": true
     },
-    "ar-consultant": {
-      "type": "local",
-      "command": ["python3", "tools/mcp/consultant/server.py"],
-      "enabled": true
-    },
     "ar-jmx": {
       "type": "local",
       "command": ["python3", "tools/mcp/jmx/server.py"],

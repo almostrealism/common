@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Decide whether to remind the agent to call `memory_store` (or the
-`ar-consultant` analogue `remember`).
+a retired ar-consultant analogue).
 
 This module is the single source of truth for the "memory reminder
 This module is the single source of truth for the "memory reminder
@@ -46,9 +46,8 @@ design):
   - Trigger: hybrid of side-effect-call count and wall-clock time,
     whichever first crosses its threshold.
   - "Side-effect" = any tool that is not in the read-only set.
-  - Reset: exact match on `mcp__ar-manager__memory_store` or
-    `mcp__ar-consultant__remember`. Reads (`memory_recall`,
-    `consult`, `recall`, etc.) do NOT reset.
+  - Reset: exact match on `mcp__ar-manager__memory_store`. Reads
+    (`memory_recall`, `memory_namespaces`, `consult`, etc.) do NOT reset.
   - Force: soft-inject only. Backoff so we don't nag.
   - Failsafe: any internal error returns `action: "allow"` with
     `new_state: null`. A hook malfunction must never block
@@ -83,13 +82,6 @@ READ_ONLY_TOOL_NAMES = frozenset({
     "list",
     "webfetch",
     "websearch",
-    # ar-consultant: every read tool.
-    "mcp__ar-consultant__consult",
-    "mcp__ar-consultant__recall",
-    "mcp__ar-consultant__consultant_status",
-    "mcp__ar-consultant__recall_namespaces",
-    "mcp__ar-consultant__list_request_history",
-    "mcp__ar-consultant__export_request_history",
 })
 
 READ_ONLY_TOOL_PREFIXES = (
@@ -97,6 +89,8 @@ READ_ONLY_TOOL_PREFIXES = (
     "mcp__ar-docs__",
     # ar-manager: read-only tool name patterns.
     "mcp__ar-manager__memory_recall",
+    "mcp__ar-manager__memory_namespaces",
+    "mcp__ar-manager__consult",
     "mcp__ar-manager__workstream_list",
     "mcp__ar-manager__workstream_get_",
     "mcp__ar-manager__workstream_context",
@@ -133,7 +127,6 @@ READ_ONLY_TOOL_PREFIXES = (
 # Tools that RESET the counter (the agent just stored a memory).
 STORE_TOOL_NAMES = frozenset({
     "mcp__ar-manager__memory_store",
-    "mcp__ar-consultant__remember",
 })
 
 
@@ -145,8 +138,7 @@ REMINDER_TEXT = (
     "memory. Cross-session continuity depends on durable memories, not "
     "transcripts. If you've made a non-obvious decision, hit a dead end, "
     "learned a project-specific gotcha, or changed direction, store it "
-    "now via `mcp__ar-manager__memory_store` (or "
-    "`mcp__ar-consultant__remember` for personal notes). This is a soft "
+    "now via `mcp__ar-manager__memory_store`. This is a soft "
     "nudge; the threshold is tuned to fire on long dry spells, not to "
     "nag. See docs/plans/MEMORY_REMINDER_HOOK.md for the design."
 )

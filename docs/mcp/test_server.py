@@ -1,6 +1,6 @@
 """Tests for the ar-docs MCP server's documentation index.
 
-Mirrors the assertions in ar-consultant's test_docs_retriever — both
+Mirrors the assertions in tools/mcp/common's test_docs_retriever — both
 servers index the same standalone (non-Maven-layer) doc roots and both
 need a guard that catches accidental removal of those roots. The
 specific failure mode this prevents: a future refactor of MODULES drops

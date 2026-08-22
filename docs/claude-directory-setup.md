@@ -16,7 +16,7 @@ orchestration language, not the execution language.
 
 ## Steps
 
-1. Call `mcp__ar-consultant__consult` with question about the file or change in question
+1. Call `mcp__ar-manager__consult` with question about the file or change in question
    and keywords like `["ProducerPatternDetector", "evaluate in computation"]`
 
 2. Use `mcp__ar-test-runner__start_test_run` to run:
@@ -60,10 +60,10 @@ Perform a full code policy review of changed files. Checks:
 
 ## Steps
 
-1. `mcp__ar-consultant__recall` with query "producer pattern enforcement policy violations"
+1. `mcp__ar-manager__memory_recall` with query "producer pattern enforcement policy violations"
 2. `mcp__ar-test-runner__start_test_run` to run `CodePolicyEnforcementTest` (all methods)
 3. Report violations with specific file:line locations and suggested fixes
-4. Store findings in memory: `mcp__ar-consultant__remember`
+4. Store findings in memory: `mcp__ar-manager__memory_store`
 
 $ARGUMENTS
 ```
@@ -112,7 +112,7 @@ Java is orchestration, NOT execution. All computation must be expressed as
 
 ## Process
 
-1. Call `mcp__ar-consultant__consult` with the specific class name as a keyword
+1. Call `mcp__ar-manager__consult` with the specific class name as a keyword
 2. Run `mcp__ar-test-runner__start_test_run` for `CodePolicyEnforcementTest`
 3. Report violations with file:line, rule code, and the specific fix required
 4. Do NOT suggest suppression annotations — violations must be fixed
@@ -142,8 +142,8 @@ they must be refactored. Three similar lines in one file — refactor before pro
 ## Process
 
 1. When asked to review a class or method for duplication:
-   a. Use `mcp__ar-consultant__search_docs` or `Grep` to search for similar method signatures
-   b. Use `mcp__ar-consultant__consult` with the class/method name as keywords
+   a. Use `mcp__ar-docs__search_ar_docs` or `Grep` to search for similar method signatures
+   b. Use `mcp__ar-manager__consult` with the class/method name as keywords
    c. Check `DuplicateCodeDetector` output if available
 
 2. Run `mcp__ar-test-runner__start_test_run` for `CodePolicyEnforcementTest#enforceNoDuplicateCode`
@@ -199,8 +199,8 @@ that completed work meets ALL project standards before the task is considered do
 - [ ] `*Features` interfaces have only `default` methods
 
 ### Memory
-- [ ] `mcp__ar-consultant__remember` called with root cause + fix for any bug fixed
-- [ ] `mcp__ar-consultant__remember` called with design decisions for any non-trivial choice
+- [ ] `mcp__ar-manager__memory_store` called with root cause + fix for any bug fixed
+- [ ] `mcp__ar-manager__memory_store` called with design decisions for any non-trivial choice
 
 ## Process
 

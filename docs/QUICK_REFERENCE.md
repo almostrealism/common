@@ -7,7 +7,7 @@
 ```bash
 # AR_HARDWARE_LIBS is auto-detected — do not set it manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
-# Override options: native|opencl|metal|external
+# Override options: native|cl|mtl|cpu|gpu|*
 ```
 
 ---
@@ -383,9 +383,11 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | Driver | Use Case |
 |--------|----------|
 | `native` | CPU with JNI acceleration |
-| `opencl` | GPU via OpenCL |
-| `metal` | Apple Silicon GPU |
-| `external` | External executable |
+| `cl` | GPU via OpenCL |
+| `mtl` | Apple Silicon GPU via Metal |
+| `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
+| `cpu` | Abstract CPU requirement |
+| `*` | Wildcard — whatever the platform supports |
 
 ### Hardware Context
 ```java

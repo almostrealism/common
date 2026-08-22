@@ -30,6 +30,7 @@ if str(_SERVER_DIR) not in sys.path:
 # Not `import server`: that name is claimed by several MCP server
 # directories at once. See server_under_test for why.
 from server_under_test import server  # noqa: E402
+import reports  # noqa: E402
 import watcher  # noqa: E402
 
 
@@ -137,6 +138,108 @@ class JmxMonitoringJvmArgsTest(unittest.TestCase):
         cmd = self._runner.build_maven_command(
             config, run_dir=Path(self._tmpdir), run_id="g3")
         self.assertFalse(any("AR_TEST_GROUP" in part for part in cmd))
+
+
+class DegradedConfigTest(unittest.TestCase):
+    """Retrying without JMX must change only whether JMX is on.
+
+    The retry runs Maven in the project the caller asked for, so a rebuilt
+    configuration that lost the project would direct generated output into a
+    different checkout than the one being built. That is what happened while
+    the two retry paths each restated the configuration by hand.
+    """
+
+    def setUp(self):
+        self._runner = server.TestRunner()
+        self._tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _config(self):
+        return server.RunConfig(
+            depth=3,
+            project="../elsewhere",
+            module="app",
+            test_classes=["FooTest"],
+            test_methods=[{"class": "FooTest", "method": "bar"}],
+            timeout_minutes=7,
+            jvm_args=["-Xmx4g"],
+            profile="pipeline",
+            jmx_monitoring=True,
+            jfr_settings="profile",
+            repetitions=4,
+            test_group=2,
+            test_groups=8,
+        )
+
+    def test_only_jmx_monitoring_differs(self):
+        original = self._config()
+        degraded = original.without_jmx()
+
+        self.assertFalse(degraded.jmx_monitoring)
+        self.assertTrue(original.jmx_monitoring, "the original must not be mutated")
+
+        for field_name in ("depth", "project", "module", "test_classes",
+                           "test_methods", "timeout_minutes", "jvm_args",
+                           "profile", "jfr_settings", "repetitions",
+                           "test_group", "test_groups"):
+            self.assertEqual(getattr(original, field_name),
+                             getattr(degraded, field_name),
+                             f"{field_name} was not carried across")
+
+    def test_mutable_fields_are_copied(self):
+        """The retry must not be able to alter the configuration it came from."""
+        original = self._config()
+        degraded = original.without_jmx()
+
+        degraded.test_classes.append("BarTest")
+        degraded.jvm_args.append("-Xms1g")
+
+        self.assertEqual(["FooTest"], original.test_classes)
+        self.assertEqual(["-Xmx4g"], original.jvm_args)
+
+    def test_retry_command_targets_the_original_project(self):
+        """The generated-output directory must sit under the project being built.
+
+        A root that is resolved rather than invented, because resolution
+        rejects a directory that holds no pom.xml.
+        """
+        elsewhere = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, elsewhere, True)
+        (elsewhere / "pom.xml").write_text("<project/>")
+
+        original = server.RunConfig(project=str(elsewhere), module="app",
+                                    jmx_monitoring=True)
+        degraded = original.without_jmx()
+        cmd = self._runner.build_maven_command(
+            degraded, run_dir=Path(self._tmpdir), run_id="d1")
+
+        output_dir = next(part for part in cmd
+                          if part.startswith("-DAR_INSTRUCTION_SET_OUTPUT_DIR="))
+
+        self.assertEqual(
+            "-DAR_INSTRUCTION_SET_OUTPUT_DIR="
+            + str(elsewhere.resolve() / "app" / "results" / "d1"),
+            output_dir)
+
+
+class WatchCompletionSignatureTest(unittest.TestCase):
+    """Finalising a run reads the project it targeted, so the config is required.
+
+    The JMX retry previously started its watcher without one. Nothing failed
+    until the retried tests had finished and the watcher went to collect their
+    reports, at which point it raised and the reports were never gathered.
+    """
+
+    def test_config_and_run_dir_are_required(self):
+        import inspect
+
+        parameters = inspect.signature(server.TestRunner._watch_completion).parameters
+
+        for name in ("config", "run_dir"):
+            self.assertIs(parameters[name].default, inspect.Parameter.empty,
+                          f"{name} must be required so a caller cannot omit it")
 
 
 class WatcherInferStatusTest(unittest.TestCase):
@@ -402,13 +505,13 @@ class InvocationReportCopyTest(unittest.TestCase):
         tmp = Path(self._tmp)
 
         self.module = "engine/utils"
+        self.project_root = tmp
         self.reports_src = tmp / self.module / "target" / "surefire-reports"
         self.reports_src.mkdir(parents=True)
         self.runs_dir = tmp / "runs"
         self.runs_dir.mkdir()
 
         self._patches = [
-            patch.object(server, "PROJECT_ROOT", tmp),
             patch.object(server, "RUNS_DIR", self.runs_dir),
         ]
         for p in self._patches:
@@ -440,13 +543,13 @@ class InvocationReportCopyTest(unittest.TestCase):
         self._write_report("com.example.TargetTest", 44, invocation_start.timestamp() + 1)
 
         server.runner._copy_surefire_reports_to_invocation(
-                "run1", self.module, 1, invocation_start)
+                "run1", self.module, 1, self.project_root, invocation_start)
 
         inv_dir = self.runs_dir / "run1" / "reports" / "invocation_1"
         copied = sorted(p.name for p in inv_dir.glob("TEST-*.xml"))
         self.assertEqual(["TEST-com.example.TargetTest.xml"], copied)
 
-        counts = server.runner._parse_test_counts(inv_dir)
+        counts = reports.SurefireReports(inv_dir).counts()
         self.assertEqual(44, counts["tests_run"],
                          "stale reports from other classes must not inflate the count")
 
@@ -460,10 +563,10 @@ class InvocationReportCopyTest(unittest.TestCase):
         self._write_report("com.example.OldTest", 99, invocation_start.timestamp() - 600)
 
         server.runner._copy_surefire_reports_to_invocation(
-                "run2", self.module, 2, invocation_start)
+                "run2", self.module, 2, self.project_root, invocation_start)
 
         inv_dir = self.runs_dir / "run2" / "reports" / "invocation_2"
-        counts = server.runner._parse_test_counts(inv_dir)
+        counts = reports.SurefireReports(inv_dir).counts()
         self.assertEqual(10, counts["tests_run"])
 
 

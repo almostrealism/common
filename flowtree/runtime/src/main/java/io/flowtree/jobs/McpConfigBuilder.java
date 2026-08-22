@@ -97,6 +97,8 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "agent_options",
             "send_message",
             "memory_recall",
+            "memory_namespaces",
+            "consult",
             "memory_store",
             "workstream_context",
             "workstream_list",
@@ -163,6 +165,10 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "workspace_update_config",
             "workstream_archive",
             "workstream_unarchive",
+            // Batch variants of the two above: strictly more reach, same
+            // admin classification.
+            "workstream_archive_many",
+            "workstream_unarchive_many",
             "workstream_delete",
             // Project orchestration / mutations
             "project_create_branch",

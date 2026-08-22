@@ -20,8 +20,12 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler;
+import com.fasterxml.jackson.databind.deser.ValueInstantiator;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.jsontype.TypeIdResolver;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
@@ -93,18 +97,100 @@ public class AudioSceneLoader {
 	 * scene settings. Includes custom deserializers for {@link KeyPosition} and
 	 * {@link WesternChromatic}.
 	 *
+	 * <p>An entry the reader cannot turn into an object is skipped rather than
+	 * allowed to fail the read. Scene settings and pattern choices are
+	 * whole-file documents holding a user's entire configuration, and their
+	 * polymorphic entries are tagged with class names, so a single bad entry
+	 * would otherwise discard every other setting in the file. Two distinct
+	 * failures are covered, because a class name records both what to build and
+	 * how to find it:</p>
+	 *
+	 * <ul>
+	 *   <li>the named class exists but cannot be instantiated — written by a
+	 *       version that could not read it back;</li>
+	 *   <li>the named class cannot be resolved at all — renamed, moved, or
+	 *       removed since the file was written. This one arrives long after the
+	 *       change that caused it, in a file the user has no way to repair.</li>
+	 * </ul>
+	 *
+	 * <p>Either way the entry becomes {@code null} for its container to drop,
+	 * and is reported through the console so the loss is visible rather than
+	 * silent.</p>
+	 *
 	 * @return a configured {@link ObjectMapper}
 	 */
 	public static ObjectMapper defaultMapper() {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
+		/* Consulted only after every problem handler declines to resolve the
+		   type id; disabling it turns an unresolvable entry into null instead
+		   of an exception that ends the read. */
+		mapper.configure(DeserializationFeature.FAIL_ON_INVALID_SUBTYPE, false);
+
 		SimpleModule module = new SimpleModule();
 		module.addDeserializer(KeyPosition.class, keyPositionDeserializer(KeyPosition.class, KeyPosition::of));
 		module.addDeserializer(WesternChromatic.class, keyPositionDeserializer(WesternChromatic.class, s -> WesternChromatic.valueOf(s)));
 		mapper.registerModule(module);
 
+		mapper.addHandler(new DeserializationProblemHandler() {
+			@Override
+			public Object handleMissingInstantiator(DeserializationContext context,
+													Class<?> targetType,
+													ValueInstantiator instantiator,
+													JsonParser parser,
+													String message) throws IOException {
+				AudioScene.console.warn("Skipped a stored " + targetType.getName()
+						+ " that cannot be constructed (" + message + ")");
+				skipRemainderOfObject(parser);
+				return null;
+			}
+
+			@Override
+			public JavaType handleUnknownTypeId(DeserializationContext context,
+												JavaType baseType,
+												String subTypeId,
+												TypeIdResolver idResolver,
+												String message) {
+				AudioScene.console.warn("Skipped a stored " + baseType.getRawClass().getName()
+						+ " naming the unknown type " + subTypeId + " (" + message + ")");
+				return null;
+			}
+		});
+
 		return mapper;
+	}
+
+	/**
+	 * Consumes the remaining content of the object the parser is currently
+	 * reading, leaving it on that object's closing token.
+	 *
+	 * <p>A problem handler is invoked partway through an object — the type id
+	 * has already been read — so {@link JsonParser#skipChildren()} alone does
+	 * not apply: the parser is inside the object rather than on its opening
+	 * token, and returning from there leaves the remaining fields to be misread
+	 * as the next element. Nested objects and arrays are skipped wholesale so
+	 * only the enclosing object's own end is matched.</p>
+	 *
+	 * @param parser the parser positioned within the object to discard
+	 */
+	private static void skipRemainderOfObject(JsonParser parser) throws IOException {
+		JsonToken current = parser.currentToken();
+
+		if (current == JsonToken.START_OBJECT || current == JsonToken.START_ARRAY) {
+			parser.skipChildren();
+			return;
+		}
+
+		while (current != JsonToken.END_OBJECT) {
+			current = parser.nextToken();
+			if (current == null) return;
+
+			if (current == JsonToken.START_OBJECT || current == JsonToken.START_ARRAY) {
+				parser.skipChildren();
+				current = parser.currentToken();
+			}
+		}
 	}
 
 	/**

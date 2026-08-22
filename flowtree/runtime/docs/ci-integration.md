@@ -197,7 +197,7 @@ The prompt reminds the agent that all branch references in user instructions ref
 
 **Branch Awareness and Anti-Loop Guidance:**
 The agent is told it is not the first to work on this branch and that previous agent sessions have made changes reflected in the git history. It is instructed to:
-- Use `branch_catchup` to understand prior work
+- Use `workstream_context` to understand prior work
 - Record decisions and discoveries via the memory system
 - Avoid add/revert loops where changes are made, CI fails, changes are reverted, and the cycle repeats
 
@@ -242,6 +242,8 @@ Content-Type: application/json
 | `baseBranch` | `string` | No | The base branch for new branch creation (default: workstream's configured default) |
 | `protectTestFiles` | `boolean` | No | Whether to enable test file protection (default: workstream's configured default) |
 | `workstreamId` | `string` | No | Explicit workstream ID override. When present, takes priority over URL path and branch resolution |
+| `repoUrl` | `string` | No | Repository the branch belongs to. Disambiguates branch resolution, and identifies a workstream created by `createWorkstreamIfMissing`. Required with that flag |
+| `createWorkstreamIfMissing` | `boolean` | No | Register a workstream for `targetBranch` + `repoUrl` when none matches, instead of rejecting the submission (default: `false`) |
 | `maxTurns` | `integer` | No | Maximum turns for the Claude Code session |
 | `maxBudgetUsd` | `number` | No | Maximum budget in USD for the session |
 | `allowedTools` | `string` | No | Comma-separated allowed tools override |
@@ -275,7 +277,54 @@ The submit endpoint resolves the target workstream through a multi-step process:
 
 3. **URL path fallback**: The `{workstreamId}` from the URL path is used if neither of the above resolves to a valid workstream.
 
+4. **Creation on demand**: If nothing matches and the body sets `createWorkstreamIfMissing`, the controller registers a workstream for `targetBranch` and `repoUrl` — deriving the Slack channel name from the branch, exactly as `POST /api/workstreams` does — and runs the job on it. The response then carries `"workstreamCreated": true`.
+
 This multi-step resolution ensures that auto-resolve jobs from CI pipelines (which typically know only the branch name) are routed to the correct workstream with the right agent pool and configuration.
+
+#### Creating a workstream on submission
+
+Auto-resolve only runs on branches that have a workstream. Requiring one to be
+registered in advance means a contributor who simply pushes a branch gets no
+automated run — the common case for work that did not start from a plan
+document. `createWorkstreamIfMissing` closes that gap: a project's auto-resolve
+job submits with the flag, and the controller creates whatever workstream the
+branch needs on first use.
+
+Two properties make this safe to leave on:
+
+- **Repository identity, not URL equality.** A repository is written several
+  ways — `git@github.com:owner/repo.git`, `https://github.com/owner/repo.git`,
+  and the suffix-less URL a CI system reports. Resolution compares
+  `owner/repo` slugs (`GitOperations.repositorySlug`), so a submission that
+  names the repository differently than the registration did still finds the
+  existing workstream instead of creating a second one. A workstream that names
+  no repository at all — registered before the field existed — matches any
+  repository, but only when no workstream on that branch names the requested
+  one.
+- **Ambiguity is still an error.** When two workstreams already share the
+  branch on different repositories, the submission is rejected as ambiguous
+  rather than resolved by creating a third.
+
+A workstream created this way takes only the branch, base branch, and
+repository from the submission. Job-level fields such as `requiredLabels` and
+`phaseConfigs` are *not* copied onto it — they mean "for this job" on a
+submission and "for every job on this workstream" in a registration, and a
+one-off constraint must not silently become a permanent default. Everything
+else takes the defaults a bare `POST /api/workstreams` would produce and can be
+changed afterwards through the update endpoint or `/flowtree config`.
+
+`repoUrl` is required with the flag: a workstream is identified by repository
+and branch together, and one created without a repository would neither match
+the next submission nor have anything to check out. The URL is also what the
+agent clones, so pass a URL it can clone from — `tools/ci/submit-agent-job.sh`
+defaults to `git@github.com:$GITHUB_REPOSITORY.git`, matching
+`register-workstream.sh`.
+
+For CI, no per-project configuration is needed: `submit-agent-job.sh` sends the
+flag by default and derives `repoUrl` from `GITHUB_REPOSITORY`. Set
+`CREATE_WORKSTREAM=false` to restore the previous behaviour of rejecting
+submissions for unregistered branches. Callers going through ar-manager pass
+`create_workstream_if_missing=True` to `workstream_submit_task`.
 
 ### Messages Endpoint
 

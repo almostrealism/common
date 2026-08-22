@@ -21,11 +21,11 @@ based on real failures and their root causes.
 Do not skip this step. The CI pipeline has subtle invariants that are easy to violate if
 you are not aware of them.
 
-### Step 0b: Run ar-consultant first
+### Step 0b: Run consult first
 
 Before any investigation:
 ```
-mcp__ar-consultant__consult question:"<your question about the failing CI>" keywords:["ComponentName", "JobName", "artifact"]
+mcp__ar-manager__consult question:"<your question about the failing CI>" keywords:["ComponentName", "JobName", "artifact"]
 ```
 
 The consultant may have memory of this exact failure from a previous session. Check before
@@ -329,7 +329,7 @@ If `flowtree` uses `flowtreeapi`, then:
 
 ### Mistake: Assuming the consultant is wrong
 
-The ar-consultant MCP has architectural knowledge from many prior sessions. If the
+`consult` draws on architectural knowledge from many prior sessions. If the
 consultant says something contradicts your current belief, **trust the consultant**. Read
 the evidence it cites. Your current belief may be wrong.
 
@@ -374,7 +374,7 @@ from going down the same wrong path.]
 [Was documentation updated? Was a check added? Was a hook updated?]
 ```
 
-Store the post-mortem as a memory using `mcp__ar-consultant__remember` with namespace `bugs`
+Store the post-mortem as a memory using `mcp__ar-manager__memory_store` with namespace `bugs`
 and tags `["CI", "pipeline", "post-mortem"]`.
 
 ---

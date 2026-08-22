@@ -159,22 +159,22 @@ public class WorkstreamConfigSchemaAlignmentTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void registerPayloadParamsAndHandlerAreAligned() {
-		Path serverPy = McpToolDiscovery.locateManagerServerPy();
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
 		Path handlerJava = locateRegistrationHandler();
 		Path resolverJava = locatePhaseConfigResolver();
 
-		assertNotNull(
-				"Cannot locate tools/mcp/manager/server.py from working directory "
+		assertFalse(
+				"Cannot locate the ar-manager tool sources from working directory "
 						+ Path.of("").toAbsolutePath() + ". Skipping schema-alignment check.",
-				serverPy);
+				managerSources.isEmpty());
 		assertNotNull(
 				"Cannot locate WorkstreamRegistrationHandler.java from working directory "
 						+ Path.of("").toAbsolutePath() + ". Skipping schema-alignment check.",
 				handlerJava);
 
-		Set<String> payloadKeys = pythonPayloadKeys(serverPy, "workstream_register");
+		Set<String> payloadKeys = pythonPayloadKeys(managerSources, "workstream_register");
 		Set<String> mcpParams = new HashSet<>(
-				McpToolDiscovery.discoverToolParameters(serverPy, "workstream_register"));
+				McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register"));
 		Set<String> javaReads = javaHandlerReads(handlerJava);
 		if (resolverJava != null) {
 			javaReads.addAll(phaseResolverFields(resolverJava));
@@ -202,22 +202,22 @@ public class WorkstreamConfigSchemaAlignmentTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void updateConfigPayloadParamsAndHandlerAreAligned() {
-		Path serverPy = McpToolDiscovery.locateManagerServerPy();
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
 		Path handlerJava = locateRegistrationHandler();
 		Path resolverJava = locatePhaseConfigResolver();
 
-		assertNotNull(
-				"Cannot locate tools/mcp/manager/server.py from working directory "
+		assertFalse(
+				"Cannot locate the ar-manager tool sources from working directory "
 						+ Path.of("").toAbsolutePath() + ". Skipping schema-alignment check.",
-				serverPy);
+				managerSources.isEmpty());
 		assertNotNull(
 				"Cannot locate WorkstreamRegistrationHandler.java from working directory "
 						+ Path.of("").toAbsolutePath() + ". Skipping schema-alignment check.",
 				handlerJava);
 
-		Set<String> payloadKeys = pythonPayloadKeys(serverPy, "workstream_update_config");
+		Set<String> payloadKeys = pythonPayloadKeys(managerSources, "workstream_update_config");
 		Set<String> mcpParams = new HashSet<>(
-				McpToolDiscovery.discoverToolParameters(serverPy, "workstream_update_config"));
+				McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config"));
 		Set<String> javaReads = javaHandlerReads(handlerJava);
 		if (resolverJava != null) {
 			javaReads.addAll(phaseResolverFields(resolverJava));
@@ -356,6 +356,36 @@ public class WorkstreamConfigSchemaAlignmentTest extends TestSuiteBase {
 	 *       {@code \{"defaultBranch": default_branch\}})</li>
 	 * </ul>
 	 */
+	/**
+	 * Finds a tool's payload keys in whichever manager source defines it.
+	 *
+	 * <p>The tools were one file until it outgrew the length limit and the
+	 * groups moved into per-domain modules beside it. Scanning only
+	 * {@code server.py} would report a moved tool's payload as empty — which
+	 * the emptiness assertions above deliberately treat as a failure rather
+	 * than as "nothing to check".</p>
+	 *
+	 * @param sources  the manager tool sources
+	 * @param funcName the tool function whose payload to read
+	 * @return the payload keys, empty when no source defines the tool
+	 */
+	private static Set<String> pythonPayloadKeys(List<Path> sources, String funcName) {
+		for (Path source : sources) {
+			Set<String> keys = pythonPayloadKeys(source, funcName);
+			if (!keys.isEmpty()) return keys;
+		}
+		return Collections.emptySet();
+	}
+
+	/**
+	 * Collects the {@code payload["X"] = ...} keys a tool assigns, scanning one
+	 * source file from the tool's {@code def} line to the next module-level
+	 * construct.
+	 *
+	 * @param serverPy the Python source to read
+	 * @param funcName the tool function whose payload to read
+	 * @return the payload keys, empty when this file does not define the tool
+	 */
 	private static Set<String> pythonPayloadKeys(Path serverPy, String funcName) {
 		List<String> lines = readLines(serverPy);
 		if (lines.isEmpty()) return Collections.emptySet();
@@ -408,18 +438,48 @@ public class WorkstreamConfigSchemaAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Scans the entire {@code WorkstreamRegistrationHandler.java} file for
+	 * Scans {@code WorkstreamRegistrationHandler.java} for
 	 * {@code JsonFieldExtractor.extract*(body, "X")} and
-	 * {@code JsonFieldExtractor.hasField(body, "X")} calls (including those
-	 * in private helper methods such as {@code extractCompletionListeners})
-	 * and returns the set of camelCase field names found.
+	 * {@code JsonFieldExtractor.hasField(body, "X")} calls and returns the set
+	 * of camelCase field names found.
+	 *
+	 * <p>The scan is file-wide on purpose, so that reads performed in private
+	 * helpers such as {@code extractCompletionListeners} still count — those
+	 * helpers serve the register and update endpoints this test is about.
+	 *
+	 * <p>{@code resolveOrRegister} is the exception and is skipped. It belongs
+	 * to the <em>submit</em> endpoint, and it reads {@code workstreamId} from
+	 * the request body because a submitted job may name its workstream that
+	 * way. The register and update endpoints take that id from the URL path
+	 * instead, so counting the submit path's read made this test demand that
+	 * {@code workstream_update_config} forward a value it correctly puts in
+	 * the path — a field the update handler never looks for in the body.
 	 */
 	private static Set<String> javaHandlerReads(Path handlerJava) {
 		List<String> lines = readLines(handlerJava);
 		if (lines.isEmpty()) return Collections.emptySet();
 
+		Pattern submitPathMethod = Pattern.compile("\\bresolveOrRegister\\s*\\(");
 		Set<String> fields = new LinkedHashSet<>();
+		boolean inSubmitPathMethod = false;
+		int braceDepth = 0;
+		boolean bodyStarted = false;
+
 		for (String line : lines) {
+			if (!inSubmitPathMethod && submitPathMethod.matcher(line).find()) {
+				inSubmitPathMethod = true;
+				braceDepth = 0;
+				bodyStarted = false;
+			}
+			if (inSubmitPathMethod) {
+				for (char c : line.toCharArray()) {
+					if (c == '{') { braceDepth++; bodyStarted = true; }
+					else if (c == '}') braceDepth--;
+				}
+				if (bodyStarted && braceDepth == 0) inSubmitPathMethod = false;
+				continue;
+			}
+
 			Matcher m1 = JAVA_EXTRACT.matcher(line);
 			while (m1.find()) fields.add(m1.group(1));
 

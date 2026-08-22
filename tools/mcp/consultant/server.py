@@ -48,12 +48,15 @@ if _COMMON_DIR not in sys.path:
 
 from mcp.server.fastmcp import FastMCP
 
-from docs_retriever import DocsRetriever
+from docs_retriever import DocsRetriever, keyword_guidance
 from history import HistoryStore, _current_request, tracked_synthesize, tracked_tool
-from inference import SYSTEM_PROMPT, Synthesis, create_backend
+from inference import (
+    SYSTEM_PROMPT, Synthesis, build_consult_prompt, create_backend,
+)
 from memory_client import MemoryClient
 from memory_text import (
-    BETA_NOTICE, prefers_reformulated, present, presented_entries, projected,
+    format_memory_context, prefers_reformulated, present,
+    presented_entries, projected,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
@@ -89,43 +92,6 @@ def _cleanup_sessions():
 # Prompt construction helpers
 # ---------------------------------------------------------------------------
 
-def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
-                          extra_context: Optional[str] = None) -> str:
-    """Build the prompt for a consultation question."""
-    parts = []
-
-    # Put the question FIRST so the model knows what to look for in the docs
-    parts.append(f"## Question\n\n{question}")
-
-    if extra_context:
-        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
-
-    if doc_context:
-        parts.append(f"## Relevant Documentation\n\nRead these chunks carefully — the answer is in here.\n\n{doc_context}")
-    else:
-        parts.append("## Relevant Documentation\n\n(No documentation found for this query)")
-
-    if memory_context:
-        parts.append(
-            "## Notes From Prior Sessions\n\n"
-            "These are notes agents wrote about particular past work. They are not "
-            "documentation and carry no authority beyond the classes and files they "
-            "name. Use a note only for the subject it explicitly names; never carry "
-            "its details across to a class, file or module it does not mention, and "
-            "never let its wording supply a fact the documentation does not state.\n\n"
-            f"{memory_context}"
-        )
-
-    parts.append(
-        "## Instructions\n\n"
-        "Answer the question above using the documentation chunks. "
-        "Include a code example if the docs provide one. "
-        "Cite the source file and line number."
-    )
-
-    return "\n\n".join(parts)
-
-
 def _build_recall_prompt(query: str, memories: list[dict], doc_context: str) -> str:
     """Build the prompt for memory recall summarization."""
     mem_text = ""
@@ -144,91 +110,6 @@ def _build_recall_prompt(query: str, memories: list[dict], doc_context: str) -> 
 
     return "\n\n".join(parts)
 
-
-def _build_reformulate_prompt(raw_note: str, doc_context: str) -> str:
-    """Build the prompt for memory reformulation."""
-    parts = []
-    if doc_context:
-        parts.append(f"## Relevant Documentation\n\n{doc_context}")
-
-    parts.append(f"## Agent Note (Raw)\n\n{raw_note}")
-    parts.append(
-        "## Task\n\n"
-        "Reformulate the agent's note to be consistent with AR project "
-        "terminology and documentation. Preserve the original intent but:\n"
-        "- Use correct class names, method names, and module names\n"
-        "- Add relevant context from the documentation\n"
-        "- Fix any inaccuracies based on the documentation\n"
-        "- Keep it concise (1-3 sentences)\n\n"
-        "Return ONLY the reformulated note, nothing else."
-    )
-
-    return "\n\n".join(parts)
-
-
-def _keyword_guidance(keywords: Optional[list[str]]) -> str:
-    """Generate guidance about keyword usage when results are poor."""
-    hints = []
-
-    if not keywords:
-        hints.append(
-            "Tip: Provide explicit keywords for better results. "
-            "Example: keywords=[\"StateDictionary\", \"weight loading\"]"
-        )
-    else:
-        # Check if keywords are all single words (common issue)
-        all_single = all(" " not in kw for kw in keywords)
-        has_generic = any(
-            kw.lower() in {
-                "default", "interface", "class", "method", "pattern",
-                "type", "module", "use", "create", "build", "make",
-            }
-            for kw in keywords
-        )
-        if all_single and len(keywords) > 2:
-            hints.append(
-                "Tip: Use multi-word phrases as keywords instead of "
-                "individual words. For example, [\"Features mixin\", "
-                "\"CollectionFeatures\"] works better than "
-                "[\"Features\", \"mixin\", \"CollectionFeatures\", "
-                "\"default\", \"interface\"] because single common words "
-                "match too many documents."
-            )
-        elif has_generic:
-            hints.append(
-                "Tip: Avoid generic keywords like 'default', 'interface', "
-                "'pattern'. Use domain-specific terms or multi-word phrases "
-                "that match documentation headings."
-            )
-
-    return (" " + " ".join(hints)) if hints else ""
-
-
-def _format_memory_context(memories: list[dict], max_entries: int = 3) -> str:
-    """Format memory entries into a context string.
-
-    Each note is labelled with the work it was written about, so that a record of
-    one class's internals reads as what it is rather than as a statement about the
-    framework. Presented as bare text it reads with the same authority as
-    documentation, and its specifics get attached to whatever the question happens
-    to ask about — a note describing one class's flat scalar layout becomes, for a
-    question naming several unrelated classes, an assertion about the one whose
-    name sounds nearest.
-    """
-    if not memories:
-        return ""
-    parts = []
-    for i, m in enumerate(memories[:max_entries], 1):
-        source = m.get("source") or "unspecified"
-        parts.append(
-            f"### Note {i} — written by an agent about: {source}\n\n{m['content']}"
-        )
-    return "\n\n".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# History-logging helpers
-# ---------------------------------------------------------------------------
 
 def _log_doc_results(query: str, results: list[dict]) -> None:
     """Record doc retrieval results on the active request record."""
@@ -340,14 +221,16 @@ def consult(
         memory.search(query=question, namespace="default", limit=3),
         reformulated=prefers_reformulated(),
     )
-    mem_context = _format_memory_context(memories)
+    mem_context = format_memory_context(memories)
 
     # Log retrieval results
     _log_doc_results(question, doc_results)
     _log_memory_results(question, memories)
 
-    # Build prompt and generate
-    prompt = _build_consult_prompt(question, doc_context, mem_context, context)
+    # The prompt is shared with ar-manager's consult so the two cannot answer
+    # the same question differently; synthesis stays on the tracked path so
+    # the request history still records it.
+    prompt = build_consult_prompt(question, doc_context, mem_context, context)
     synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     # Source references: markdown files used in context + HTML for exploration
@@ -372,7 +255,7 @@ def consult(
             "retrieved successfully and contain the documentation matching "
             "this question — read them directly.",
         )
-        result["note"] += _keyword_guidance(keywords)
+        result["note"] += keyword_guidance(keywords)
         return result
 
     answer = synthesis.text
@@ -385,11 +268,11 @@ def consult(
                 "No direct answer was synthesized, but the sources and "
                 "html_refs fields contain related documentation worth exploring."
             )
-            note += _keyword_guidance(keywords)
+            note += keyword_guidance(keywords)
             result["note"] = note
         else:
             note = "No documentation found for this query."
-            note += _keyword_guidance(keywords)
+            note += keyword_guidance(keywords)
             result["note"] = note
     else:
         result["answer"] = answer
@@ -502,160 +385,6 @@ def recall(
 
 
 @mcp.tool()
-@tracked_tool(history, "recall_namespaces")
-def recall_namespaces(branch: str = "", all_repos: bool = False) -> dict:
-    """List every memory namespace with its entry count and latest-write time.
-
-    Use this to discover where memories live and when each namespace was last
-    written — for example to find which namespace a recent hand-off note landed
-    in, without guessing namespace names and issuing a separate ``recall`` for
-    each. Namespaces are ordered most-recently-written first, so the freshest
-    activity is at the top.
-
-    By default results are scoped to the current repository (best-effort git
-    detection), matching ``recall``'s scoping. This avoids mixing in namespaces
-    from unrelated projects that share the store.
-
-    Args:
-        branch: Optional branch name to further restrict the counts. Empty
-            (default) counts every branch in the repository.
-        all_repos: When true, do not scope to the current repository — report
-            namespaces across every repository in the store.
-
-    Returns:
-        Dictionary with ``namespaces`` (a list of
-        ``{namespace, count, latest_created_at, latest_id}`` dicts, newest
-        first) and ``count`` (the number of namespaces).
-    """
-    detected_repo_url = None
-    if not all_repos:
-        try:
-            _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
-            if _common_dir not in sys.path:
-                sys.path.insert(0, _common_dir)
-            from git_context import detect_git_context
-            detected_repo_url, _ = detect_git_context()
-        except (ValueError, ImportError):
-            pass  # Git detection is best-effort
-
-    stats = memory.namespace_stats(
-        repo_url=detected_repo_url,
-        branch=branch or None,
-    )
-    return {"namespaces": stats, "count": len(stats)}
-
-
-@mcp.tool()
-@tracked_tool(history, "remember")
-def remember(
-    content: str,
-    namespace: str = "default",
-    tags: Optional[list[str]] = None,
-    source: Optional[str] = None,
-    repo_url: Optional[str] = None,
-    branch: Optional[str] = None,
-) -> dict:
-    """Store a memory after Consultant reformulation.
-
-    The Consultant rewrites the content to be consistent with project
-    terminology and documentation before storing. Both the original text
-    and the reformulated version are persisted, preserving the agent's
-    intent while adding documentation context.
-
-    Reformulation is a beta feature whose quality is still under
-    development, so ``recall`` and the other retrieval tools return the
-    original text by default; nothing is lost when the rewrite is poor.
-
-    If repo_url/branch are not provided, they are auto-detected from
-    the current git working directory.
-
-    Args:
-        content: The raw note to store.
-        namespace: Memory namespace.
-        tags: Optional tags for categorization.
-        source: Optional source identifier (e.g., file path).
-        repo_url: Optional repository URL to associate with this memory.
-        branch: Optional branch name to associate with this memory.
-
-    Returns:
-        Dictionary with both versions of the text and the entry ID.
-    """
-    # Auto-detect git context if not provided
-    if not repo_url or not branch:
-        try:
-            _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
-            if _common_dir not in sys.path:
-                sys.path.insert(0, _common_dir)
-            from git_context import detect_git_context
-            detected_url, detected_branch = detect_git_context()
-            repo_url = repo_url or detected_url
-            branch = branch or detected_branch
-        except (ValueError, ImportError):
-            pass  # Git detection is best-effort
-
-    # Get documentation context for the note's subject matter
-    doc_retrieval = docs.get_context_for_query(content)
-    doc_context = doc_retrieval["context"]
-
-    # Log doc retrieval (remember doesn't search memories, it stores)
-    doc_results = docs.search(content, max_results=5)
-    _log_doc_results(content, doc_results)
-
-    # Reformulate with the model
-    prompt = _build_reformulate_prompt(content, doc_context)
-    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT, max_tokens=512)
-
-    # Reformulation is the one path that must NOT degrade to storing
-    # something: a context dump written into the corpus pollutes every
-    # later recall (a census found 36 such dumps already). Refuse before
-    # embedding. The ar-memory store guards this too, but catching it here
-    # avoids a wasted embed and a round trip.
-    if synthesis.degraded:
-        return {
-            "stored": False,
-            "degraded": True,
-            "error": "inference backend unavailable; memory not stored "
-                     f"({synthesis.reason}). Retry once a model is reachable — "
-                     "the note below is returned unchanged so it is not lost.",
-            "original": content,
-            "namespace": namespace,
-            "backend": llm.name,
-        }
-
-    # Strip any wrapping the model might add
-    reformulated = synthesis.text.strip().strip('"').strip("'")
-
-    # Store both versions
-    entry = memory.store_dual(
-        original=content,
-        reformulated=reformulated,
-        namespace=namespace,
-        tags=tags,
-        source=source,
-        repo_url=repo_url,
-        branch=branch,
-    )
-
-    result = {
-        "reformulated": reformulated,
-        "original": content,
-        "namespace": namespace,
-        "tags": tags,
-        "repo_url": repo_url,
-        "branch": branch,
-        "backend": llm.name,
-        "notice": BETA_NOTICE,
-    }
-
-    if "error" in entry:
-        result["error"] = entry["error"]
-    else:
-        result["entry_id"] = entry["id"]
-
-    return result
-
-
-@mcp.tool()
 @tracked_tool(history, "search_docs")
 def search_docs(query: str, module: Optional[str] = None) -> dict:
     """Search project documentation with a Consultant-generated summary.
@@ -745,13 +474,13 @@ def start_consultation(topic: str) -> dict:
         memory.search(query=topic, namespace="default", limit=3),
         reformulated=prefers_reformulated(),
     )
-    mem_context = _format_memory_context(memories)
+    mem_context = format_memory_context(memories)
 
     # Log retrieval results
     _log_doc_results(topic, doc_results)
     _log_memory_results(topic, memories)
 
-    prompt = _build_consult_prompt(topic, doc_context, mem_context)
+    prompt = build_consult_prompt(topic, doc_context, mem_context)
     synthesis = _synthesize(prompt, system=SYSTEM_PROMPT)
 
     # A degraded turn is not part of the conversation. Recording the
@@ -954,176 +683,6 @@ def end_consultation(
 
 
 @mcp.tool()
-@tracked_tool(history, "branch_catchup")
-def branch_catchup(
-    repo_url: str,
-    branch: str,
-    namespace: str = "default",
-    memory_limit: int = 20,
-    commit_limit: int = 30,
-    working_directory: Optional[str] = None,
-    reformulated: bool = False,
-) -> dict:
-    """Catch up on recent branch activity by combining memories and git history.
-
-    This tool is designed for coding agents that are starting a new session
-    on a branch where previous agent sessions have already done work. It
-    combines two sources of context:
-
-    1. **Branch memories**: All memories tagged with this repo_url and branch,
-       ordered by creation time (newest first). These capture decisions,
-       progress notes, bugs found, and other insights from prior sessions.
-
-    2. **Git commit timeline**: Recent commits on the branch (relative to
-       the base branch), showing what code changes have been made and in
-       what order.
-
-    The Consultant synthesizes both into a briefing that highlights:
-    - What work has been done on this branch
-    - Key decisions and findings from prior sessions
-    - Any patterns that suggest the agent may be stuck in a loop
-      (e.g., adding then reverting the same changes repeatedly)
-    - Recommended next steps
-
-    Args:
-        repo_url: The repository URL (e.g., from ``git remote get-url origin``).
-        branch: The branch name to catch up on.
-        namespace: Memory namespace to search (default: "default").
-        memory_limit: Maximum number of branch memories to retrieve.
-        commit_limit: Maximum number of recent commits to include.
-        working_directory: Optional path to the git working directory.
-            If provided, git log is read from this directory.
-        reformulated: When true, brief from the Consultant's rewrite of each
-            memory instead of the text its author wrote. Beta — off by
-            default, because the rewrite can drop the specifics a catch-up
-            briefing depends on.
-
-    Returns:
-        Dictionary with the synthesized briefing, raw memories, and commit log.
-    """
-    import subprocess
-
-    # 1. Retrieve branch-specific memories
-    branch_memories = memory.search_by_branch(
-        repo_url=repo_url, branch=branch,
-        namespace=namespace, limit=memory_limit,
-    )
-
-    # Also do a semantic search for the branch name to catch any
-    # memories that were stored without the repo_url/branch fields
-    semantic_memories = memory.search(
-        query=f"branch {branch} work progress", namespace=namespace, limit=5,
-        repo_url=repo_url,
-    )
-    # Deduplicate by ID
-    seen_ids = {m["id"] for m in branch_memories}
-    for m in semantic_memories:
-        if m.get("id") and m["id"] not in seen_ids:
-            branch_memories.append(m)
-            seen_ids.add(m["id"])
-
-    branch_memories, notice = present(
-        branch_memories, reformulated=reformulated or prefers_reformulated(),
-    )
-
-    # 2. Get git commit log for the branch
-    commit_log = ""
-    try:
-        cmd = [
-            "git", "log",
-            f"--max-count={commit_limit}",
-            "--format=%h|%ai|%s",
-            branch,
-        ]
-
-        cwd = working_directory or os.getcwd()
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=cwd, timeout=15,
-        )
-        if result.returncode == 0:
-            commit_log = result.stdout.strip()
-    except Exception as e:
-        commit_log = f"(Could not retrieve git log: {e})"
-
-    # 3. Build synthesis prompt
-    mem_text = ""
-    if branch_memories:
-        for i, m in enumerate(branch_memories, 1):
-            created = m.get("created_at", "unknown")
-            tags = m.get("tags", [])
-            tag_str = f" [{', '.join(tags)}]" if tags else ""
-            mem_text += f"### Memory {i} ({created}){tag_str}\n{m['content']}\n\n"
-    else:
-        mem_text = "(No branch-specific memories found)\n"
-
-    commit_text = ""
-    if commit_log and not commit_log.startswith("("):
-        commit_text = "```\n"
-        for line in commit_log.split("\n"):
-            parts = line.split("|", 2)
-            if len(parts) == 3:
-                commit_text += f"{parts[0]}  {parts[1]}  {parts[2]}\n"
-            else:
-                commit_text += line + "\n"
-        commit_text += "```"
-    else:
-        commit_text = commit_log or "(No commits found)"
-
-    prompt_parts = [
-        f"## Branch: {branch}",
-        f"## Repository: {repo_url}",
-        f"\n## Memories from Prior Agent Sessions\n\n{mem_text}",
-        f"\n## Git Commit Timeline\n\n{commit_text}",
-        "\n## Task\n\n"
-        "You are briefing a coding agent that is about to start working on this branch. "
-        "Synthesize the memories and commit history into a concise briefing that covers:\n\n"
-        "1. **Summary of work done**: What has been accomplished on this branch so far?\n"
-        "2. **Key decisions and findings**: Important architectural decisions, bugs found, "
-        "or constraints discovered by prior sessions.\n"
-        "3. **Loop detection**: Look carefully at the commit history and memories for signs "
-        "that the agent has been stuck in a cycle of adding features, then reverting them "
-        "due to CI failures, then re-adding them. If you detect such patterns, call them "
-        "out explicitly and recommend how to break the cycle.\n"
-        "4. **Current state and next steps**: What is the branch's current state and what "
-        "should the agent focus on?\n\n"
-        "Be specific and reference commit hashes and memory timestamps where relevant.",
-    ]
-
-    prompt = "\n".join(prompt_parts)
-    synthesis = _synthesize(prompt, system=SYSTEM_PROMPT, max_tokens=2048)
-
-    result = {
-        "branch": branch,
-        "repo_url": repo_url,
-        "memory_count": len(branch_memories),
-        "memories": [
-            projected(m, ("id", "content", "tags", "created_at"))
-            for m in branch_memories
-        ],
-        "commit_log": commit_log,
-        "backend": llm.name,
-    }
-
-    # The briefing is a synthesis of the memories and commit log, both of
-    # which are already in the response. A dead model costs the narrative,
-    # not the underlying material.
-    if synthesis.degraded:
-        _degrade(
-            synthesis, result,
-            "The memories and commit_log fields below hold the raw material "
-            "the briefing would have summarized — read them in order to catch "
-            "up on this branch.",
-        )
-    else:
-        result["briefing"] = synthesis.text
-
-    if notice:
-        result["notice"] = notice
-
-    return result
-
-
-@mcp.tool()
 @tracked_tool(history, "consultant_status")
 def consultant_status() -> dict:
     """Check the Consultant's status and backend configuration.
@@ -1153,10 +712,10 @@ def consultant_status() -> dict:
             "No inference model is reachable. Documentation search, memory "
             "recall and history remain fully functional; only synthesized "
             "answers and summaries are unavailable, and every tool reports "
-            "degraded=true while that is so. remember is the exception: it "
-            "refuses to store rather than write an unreformulated note. "
-            "Start a llama.cpp server (llama-server -m model.gguf --host "
-            "0.0.0.0 --port 8084) to restore synthesis; no restart is needed."
+            "degraded=true while that is so. No tool fails or withholds data "
+            "because of this. Start a llama.cpp server (llama-server -m "
+            "model.gguf --host 0.0.0.0 --port 8084) to restore synthesis; no "
+            "restart is needed."
         )
 
     return status

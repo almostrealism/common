@@ -22,9 +22,6 @@ import io.flowtree.msg.Message;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.io.IOException;
-import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Optional;
@@ -250,24 +247,21 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 * Applies node labels to the given group and all its child nodes from the
 	 * supplied {@link Properties} (keys with prefix {@code nodes.labels.}) and
 	 * from the {@code FLOWTREE_NODE_LABELS} environment variable
-	 * ({@code key:value} pairs separated by commas).  Auto-detects the
-	 * {@code platform} label when it is not explicitly configured.
+	 * ({@code key:value} pairs separated by commas).
+	 *
+	 * <p>Labels that describe the machine itself rather than the configuration
+	 * are assigned separately by {@link AutomaticLabel}, which runs afterwards
+	 * and leaves anything applied here in place.</p>
 	 *
 	 * @param group  The owning {@link NodeGroup} to label.
-	 * @param nodes  The child nodes that should receive the same labels.
 	 * @param p      The properties containing optional label entries.
 	 */
-	static void applyNodeLabels(NodeGroup group, Collection<Node> nodes, Properties p) {
+	static void applyNodeLabels(NodeGroup group, Properties p) {
 		String labelPrefix = "nodes.labels.";
 		for (Object keyObj : p.keySet()) {
 			String key = (String) keyObj;
 			if (key.startsWith(labelPrefix)) {
-				String labelKey = key.substring(labelPrefix.length());
-				String labelValue = p.getProperty(key);
-				group.setLabel(labelKey, labelValue);
-				for (Node n : nodes) {
-					n.setLabel(labelKey, labelValue);
-				}
+				group.setLabel(key.substring(labelPrefix.length()), p.getProperty(key));
 			}
 		}
 
@@ -277,21 +271,8 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 				String[] parts = pair.split(":", 2);
 				if (parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty()) {
 					group.setLabel(parts[0].trim(), parts[1].trim());
-					for (Node n : nodes) {
-						n.setLabel(parts[0].trim(), parts[1].trim());
-					}
 				}
 			}
-		}
-
-		if (group.getLabels().get("platform") == null) {
-			String os = System.getProperty("os.name", "").toLowerCase();
-			String platform = os.contains("mac") ? "macos" : "linux";
-			group.setLabel("platform", platform);
-			for (Node n : nodes) {
-				n.setLabel("platform", platform);
-			}
-			Console.root().println("NodeGroup: Auto-detected platform label: platform=" + platform);
 		}
 	}
 
@@ -329,55 +310,6 @@ public class NodeGroupNodeConfig implements ConsoleFeatures {
 	 */
 	public static boolean isOfflineMode() {
 		return Boolean.getBoolean(OFFLINE_MODE_PROPERTY);
-	}
-
-	/**
-	 * Opens the initial server connections specified in {@code p} and wires up
-	 * the persistent-host reconnect thread when the {@code FLOWTREE_ROOT_HOST}
-	 * environment variable is set.
-	 *
-	 * <p>When {@link #OFFLINE_MODE_PROPERTY} ({@code flowtree.offline}) is
-	 * {@code true} the {@code FLOWTREE_ROOT_HOST} connection is suppressed so
-	 * that tests cannot accidentally contact a live production controller.
-	 * Explicitly configured {@code servers.N.host} entries are still opened;
-	 * they are test-internal peers, not production endpoints.</p>
-	 *
-	 * @param group        The {@link NodeGroup} to register new server connections on.
-	 * @param p            Properties to read server host/port entries from.
-	 * @param serverCount  Number of server entries to open.
-	 */
-	static void initServerConnections(NodeGroup group, Properties p, int serverCount) {
-		if (isOfflineMode()) {
-			Console.root().println("NodeGroup: Offline mode active — skipping environment-provided root-host connection.");
-		} else {
-			String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-			String rootPort = System.getenv("FLOWTREE_ROOT_PORT");
-
-			if (rootHost != null) {
-				if (rootPort == null) rootPort = String.valueOf(Server.defaultPort);
-				group.startPersistentHost(rootHost, Integer.parseInt(rootPort));
-			}
-		}
-
-		if (serverCount > 0) Console.root().println("NodeGroup: Opening server connections...");
-
-		for (int i = 0; i < serverCount; i++) {
-			String host = p.getProperty("servers." + i + ".host", "localhost");
-			int port = Integer.parseInt(p.getProperty("servers." + i + ".port", "7777"));
-
-			try {
-				Console.root().println("NodeGroup: Connecting to server " + i + " (" + host + ":" + port + ")...");
-				group.addServer(new Socket(host, port));
-			} catch (UnknownHostException uh) {
-				Console.root().warn("NodeGroup: Server " + i + " is unknown host", null);
-			} catch (IOException ioe) {
-				Console.root().warn("NodeGroup: IO error while connecting to server " +
-						i + " -- " + ioe.getMessage(), ioe);
-			} catch (SecurityException se) {
-				Console.root().warn("NodeGroup: Security exception while connecting to server " + i +
-						" (" + se.getMessage() + ")", se);
-			}
-		}
 	}
 
 	/**

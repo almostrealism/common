@@ -18,9 +18,9 @@ package io.flowtree.test;
 
 import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
+import io.flowtree.node.AutomaticLabel;
 import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
-import java.lang.reflect.Field;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>Jobs with no label requirements run on any Node</li>
  *   <li>{@link NodeGroup#findNodeForJob(Job)} selects only qualified Nodes</li>
  *   <li>Mismatched jobs are relayed, not silently dropped</li>
+ *   <li>The auto-detected {@code hostname} label targets a specific machine</li>
  * </ul>
  *
  * @author Michael Murray
@@ -268,6 +269,107 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
         Assert.assertNull(
                 "findNodeForJob should not return a relay Node",
                 result);
+    }
+
+    /**
+     * Verifies that a system host name is reduced to the short, lower case
+     * form used as the {@code hostname} label, with any domain suffix removed.
+     */
+    @Test(timeout = 15000)
+    public void hostLabelStripsDomainAndCase() {
+        Assert.assertEquals("mac-studio",
+                AutomaticLabel.HOSTNAME.normalize("Mac-Studio.local"));
+        Assert.assertEquals("mac-studio",
+                AutomaticLabel.HOSTNAME.normalize("mac-studio.example.ts.net"));
+        Assert.assertEquals("mac-studio",
+                AutomaticLabel.HOSTNAME.normalize("  MAC-STUDIO  "));
+    }
+
+    /**
+     * Verifies that host names which do not identify a particular machine
+     * produce no label, since labelling every node identically would let any
+     * node satisfy a requirement meant for one of them.
+     */
+    @Test(timeout = 15000)
+    public void ambiguousHostNamesProduceNoLabel() {
+        Assert.assertNull(AutomaticLabel.HOSTNAME.normalize(null));
+        Assert.assertNull(AutomaticLabel.HOSTNAME.normalize(""));
+        Assert.assertNull(AutomaticLabel.HOSTNAME.normalize("localhost"));
+        Assert.assertNull(AutomaticLabel.HOSTNAME.normalize("localhost.localdomain"));
+        Assert.assertNull(AutomaticLabel.HOSTNAME.normalize(".example.com"));
+    }
+
+    /**
+     * Verifies that a {@link NodeGroup} and its child Nodes receive the
+     * auto-detected {@code hostname} label, and that a job requiring that
+     * value is satisfied while a job naming another machine is not.
+     */
+    @Test(timeout = 15000)
+    public void autoDetectedHostLabelRoutesByMachine() throws Exception {
+        if (testProfileIs(TestUtils.PIPELINE)) return;
+
+        String expected = AutomaticLabel.HOSTNAME.detect();
+        if (expected == null) return;
+
+        NodeGroup group = new NodeGroup(nodeGroupProperties(), new NoOpFactory());
+
+        Assert.assertEquals(expected,
+                group.getLabels().get(AutomaticLabel.HOSTNAME.key()));
+
+        Node child = getChildNode(group);
+        Assert.assertEquals(expected,
+                child.getLabels().get(AutomaticLabel.HOSTNAME.key()));
+
+        Assert.assertTrue("Node should satisfy a requirement naming its own machine",
+                child.satisfies(Collections.singletonMap(
+                        AutomaticLabel.HOSTNAME.key(), expected)));
+        Assert.assertFalse("Node should not satisfy a requirement naming another machine",
+                child.satisfies(Collections.singletonMap(
+                        AutomaticLabel.HOSTNAME.key(), expected + "-other")));
+    }
+
+    /**
+     * Verifies that an explicitly configured {@code hostname} label is not
+     * overwritten by auto-detection, which is how a machine whose system host
+     * name differs from its network overlay name is targeted.
+     */
+    @Test(timeout = 15000)
+    public void configuredHostLabelOverridesDetection() throws Exception {
+        if (testProfileIs(TestUtils.PIPELINE)) return;
+
+        Properties p = nodeGroupProperties();
+        p.setProperty("nodes.labels." + AutomaticLabel.HOSTNAME.key(), "build-box");
+
+        NodeGroup group = new NodeGroup(p, new NoOpFactory());
+
+        Assert.assertEquals("build-box",
+                group.getLabels().get(AutomaticLabel.HOSTNAME.key()));
+        Assert.assertEquals("build-box",
+                getChildNode(group).getLabels().get(AutomaticLabel.HOSTNAME.key()));
+    }
+
+    /**
+     * Verifies that labelling a {@link NodeGroup} labels its child Nodes, since
+     * a capability of the group is a capability of the Nodes that make it up.
+     */
+    @Test(timeout = 15000)
+    public void groupLabelReachesChildNodes() throws Exception {
+        if (testProfileIs(TestUtils.PIPELINE)) return;
+
+        Properties p = nodeGroupProperties();
+        p.setProperty("nodes.initial", "3");
+
+        NodeGroup group = new NodeGroup(p, new NoOpFactory());
+        group.setLabel("gpu", "true");
+
+        Assert.assertEquals("true", group.getLabels().get("gpu"));
+
+        List<Node> children = getChildNodes(group);
+        Assert.assertEquals(3, children.size());
+
+        for (Node child : children) {
+            Assert.assertEquals("true", child.getLabels().get("gpu"));
+        }
     }
 
     // ==================== Helpers ====================

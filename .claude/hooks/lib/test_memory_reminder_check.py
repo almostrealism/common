@@ -16,7 +16,7 @@ and .ts adapters.
 
 Coverage:
   - 6 decide() reset cases (mcp__ar-manager__memory_store,
-    mcp__ar-consultant__remember, no-store read, no-store Bash,
+    a retired store-tool name, no-store read, no-store Bash,
     no-store side-effect counts).
   - 5 read-only cases (consultant consult/recall, manager
     memory_recall/workstream_list, opencode read).
@@ -124,16 +124,33 @@ class ResetOnStoreTests(unittest.TestCase):
             self.assertEqual(d6["action"], "allow")
             self.assertEqual(d6["new_state"]["calls_since_last_store"], 1)
 
-    def test_consultant_remember_also_resets(self):
+    def test_manager_consult_is_read_only(self):
+        """consult reads documentation and memories; it stores nothing, so it
+        must not count toward the side-effect tally that triggers reminders.
+        The equivalent assertion previously named ar-consultant's copy."""
+        state = _fresh_state()
+        d = self.core.decide("mcp__ar-manager__consult", 3000, state)
+        self.assertEqual(d["new_state"]["calls_since_last_store"], 0)
+
+    def test_manager_memory_namespaces_is_read_only(self):
+        state = _fresh_state()
+        d = self.core.decide(
+            "mcp__ar-manager__memory_namespaces", 3001, state)
+        self.assertEqual(d["new_state"]["calls_since_last_store"], 0)
+
+    def test_retired_consultant_remember_does_not_reset(self):
+        """``mcp__ar-consultant__remember`` was removed when memory
+        consolidated onto ar-manager. It used to reset the counter; a name
+        that no longer denotes a store must not, or an agent calling a dead
+        tool would silently stop being reminded to store anything."""
         with _with_env({"AR_MEMORY_REMIND_CALLS_THRESHOLD": "2"}):
             core = _load_core()
             state = _fresh_state()
             d1 = core.decide("Bash", 1000, state)
             d2 = core.decide("Bash", 1001, d1["new_state"])
             d3 = core.decide("mcp__ar-consultant__remember", 1002, d2["new_state"])
-            self.assertEqual(d3["action"], "allow")
-            self.assertEqual(d3["new_state"]["calls_since_last_store"], 0)
-            self.assertEqual(d3["new_state"]["last_store_ts"], 1002)
+            self.assertEqual(d3["new_state"]["calls_since_last_store"], 3)
+            self.assertEqual(d3["new_state"]["last_store_ts"], 0)
 
     def test_store_does_not_count_as_side_effect(self):
         # A memory_store should leave the counter at 0, not 1.
@@ -157,11 +174,11 @@ class ReadsDoNotResetTests(unittest.TestCase):
         self.assertEqual(d["new_state"]["calls_since_last_store"], 7)
         self.assertEqual(d["new_state"]["last_store_ts"], 1000)
 
-    def test_consultant_consult_does_not_reset(self):
+    def test_consult_does_not_reset(self):
         state = _fresh_state()
         state["calls_since_last_store"] = 4
         state["last_store_ts"] = 1000
-        d = self.core.decide("mcp__ar-consultant__consult", 1600, state)
+        d = self.core.decide("mcp__ar-manager__consult", 1600, state)
         self.assertEqual(d["action"], "allow")
         self.assertEqual(d["new_state"]["calls_since_last_store"], 4)
         self.assertEqual(d["new_state"]["last_store_ts"], 1000)

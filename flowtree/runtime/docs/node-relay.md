@@ -29,10 +29,11 @@ These are two distinct networking layers and confusing them is a
 common source of bugs.
 
 **Server connections** (`NodeProxy`) are socket-level links between
-two Servers. They live on the `NodeGroup.servers` list. When an agent
-Server starts, it connects outbound to the controller Server,
-creating a `NodeProxy` on each side. Server connections carry
-`Message` objects (tasks, connection requests, job data).
+two Servers. They live on the `NodeGroupServerRegistry` associated with
+this `NodeGroup`. When an agent Server starts, it connects outbound to
+the controller Server, creating a `NodeProxy` on each side. Server
+connections carry `Message` objects (tasks, connection requests, job
+data).
 
 **Peer connections** (`Connection`) are logical links between two
 individual Nodes on different Servers. They live in each `Node.peers`
@@ -43,7 +44,8 @@ between Nodes.
 ```
 Controller Server              Agent Server
   NodeGroup                      NodeGroup
-    servers: [NodeProxy] ←TCP→ servers: [NodeProxy]
+    NodeGroupServerRegistry ←TCP→ NodeGroupServerRegistry
+      [NodeProxy, ...]            [NodeProxy, ...]
 
     Node 0                       Node 0
       peers: [Connection] ←→ peers: [Connection]
@@ -59,7 +61,7 @@ automatically through the activity thread:
 2. If the Node has fewer peers than `maxPeers`, it calls
    `this.parent.getConnection(this.id)`.
 3. The `NodeGroup.getConnection()` method picks a random entry from
-   `this.servers` and sends a `Message.ConnectionRequest` through
+   the server registry and sends a `Message.ConnectionRequest` through
    that `NodeProxy`.
 4. The remote `NodeGroup` receives the request, finds its least
    connected child Node, creates a `Connection`, and sends back a
@@ -205,6 +207,38 @@ Each Node has a `Map<String, String>` of labels set via
 - Properties file: `nodes.labels.<key>=<value>`
 - Environment variable: `FLOWTREE_NODE_LABELS=key1:value1,key2:value2`
 - Auto-detection: `platform` label is set to `macos` or `linux`
+- Auto-detection: `hostname` label identifies the machine (see below)
+
+Labels that describe the machine rather than the configuration are the
+`AutomaticLabel` constants. Each knows how to `detect()` its own value
+and to `applyTo(Node)` it, and detection never overwrites a configured
+value. A new machine-derived label is a new constant there, not a new
+branch wherever labels are applied.
+
+### The `hostname` Label
+
+Some workloads must run at a specific place on the network rather than
+on any machine of a given platform. The `hostname` label exists to
+target those, and is auto-detected from the system host name by
+`AutomaticLabel.HOSTNAME`.
+
+Detection lower-cases the name and discards any domain suffix, so a
+machine reporting `Mac-Studio.local` is labelled `hostname=mac-studio`.
+That short form is ordinarily also the machine's name on the private
+network overlay, which is the name operators use to refer to it. A job
+targets it with the requirement `hostname:mac-studio`.
+
+No label is assigned when the name does not identify a particular
+machine — an unresolved host (where the name is the literal IP
+address), or `localhost`. Labelling every node identically would let
+any of them satisfy a requirement meant for one. When no label is
+assigned, jobs requiring a `hostname` simply never match that node.
+
+When a machine's system host name differs from the name it is known by
+on the network overlay, configure the label explicitly with
+`nodes.labels.hostname=<name>` or
+`FLOWTREE_NODE_LABELS=hostname:<name>`. Both are applied before
+auto-detection and are left untouched by it.
 
 ### Job Requirements
 

@@ -86,16 +86,21 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | Tool | Scope | Description |
 |------|-------|-------------|
 | `memory_recall` | memory-read | Semantic search with optional LLM synthesis |
-| `workstream_context` | memory-read | Get memories, commits, and jobs for a workstream branch |
-| `memory_store` | memory-write | Store a memory from an external client |
+| `memory_namespaces` | memory-read | List namespaces with entry counts and latest-write times, newest first |
+| `workstream_context` | memory-read | Get memories, commits, PR, and jobs for a branch (a workstream is optional — `repo_url` + `branch` is enough; only the jobs stream needs one) |
+| `memory_store` | memory-write | Store a memory, optionally reformulated |
 
 Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not
 provided directly. LLM synthesis (via llama.cpp) is attempted for `memory_recall`
 summaries when a backend is available.
 
-Memories written through the Consultant's `remember` tool carry two versions of
-their text: what the agent wrote, and a rewrite ("reformulation") produced by a
-small local model. Reformulation is a **beta feature**, so `memory_recall` and
+`memory_store` and the Consultant's `remember` write to the same corpus and
+apply the same policy: a memory can carry two versions of its text — what the
+agent wrote, and a rewrite ("reformulation") produced by a small local model —
+and when no model is reachable the agent's text is stored unreformulated rather
+than refused. Reformulation is off unless the repository enables it (see
+[Per-Repository Configuration](#per-repository-configuration)) or the caller
+passes `reformulate=true`. Reformulation is a **beta feature**, so `memory_recall` and
 `workstream_context` return the original text and mark it with `text_source`.
 Pass `reformulated=true` to see the rewrite instead — the response then also
 carries the original for comparison plus a `notice` about the feature's state.
@@ -112,10 +117,66 @@ for the full contract.
 | `AR_MANAGER_GITHUB_TOKEN` | (none) | GitHub PAT for Tier 2 ops (falls back to `GITHUB_TOKEN`) |
 | `AR_MANAGER_TOKEN_FILE` | `~/.config/ar/manager-tokens.json` | Bearer token config file |
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
+| `AR_MANAGER_REPO_CONFIG_FILE` | `/config/repo-config.json` | Per-repository settings (see below) |
 | `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis |
 | `AR_CONSULTANT_LLAMA_URL` | (auto-discovered) | llama.cpp server URL |
 | `MCP_TRANSPORT` | `http` | Transport: `http` or `sse`. `stdio` is rejected (auth-only HTTP server) |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
+
+## Documentation Grounding
+
+`memory_recall` grounds its summary in the project documentation as well as the
+retrieved memories, and returns the documents it consulted as `doc_references`.
+The summarizer is asked to flag places where the documentation contradicts a
+memory — memories go stale, and that contradiction is usually the most useful
+thing in the answer.
+
+The corpus is baked into the image (`AR_DOCS_DIR`, set by the Dockerfile) because
+a container has no checkout to read. A multi-stage build copies the directories
+that can contain documentation and prunes everything that is not `*.md` or
+`*.html`, so the Java source tree stays out of the image.
+
+Both the corpus and the inference backend are optional. Without a corpus the
+summary is memory-only and `doc_references` is omitted; without a model the
+memories are returned unsummarized. Neither ever costs you the memories.
+
+When running from a source checkout, `AR_DOCS_DIR` can be left unset —
+`DocsRetriever` falls back to the repository layout relative to its own location.
+
+## Per-Repository Configuration
+
+One ar-manager process serves every repository, so settings that differ by
+repository cannot come from environment variables. They live in a JSON file
+mounted alongside `manager-tokens.json`:
+
+```json
+{
+  "default": {
+    "reformulateOnStore": false,
+    "preferReformulatedOnRead": false
+  },
+  "almostrealism/common": {
+    "reformulateOnStore": true
+  }
+}
+```
+
+Keys are `owner/repo`, matched case-insensitively; the `git@`, `https://`, and
+`.git`-suffixed spellings of a repository all resolve to the same entry. A
+repository with no entry of its own falls back to `default`, then to the
+process-wide `AR_MEMORY_REFORMULATED`.
+
+| Setting | Applies to | Effect |
+|---------|-----------|--------|
+| `reformulateOnStore` | `memory_store` | Rewrite a note to match project terminology before storing, keeping both versions. Callers can override per call with the `reformulate` argument. |
+| `preferReformulatedOnRead` | `memory_recall`, `workstream_context` | Return the rewrite instead of the author's text by default. Callers can override per call with `reformulated`. |
+
+Reformulation degrades safely: when no inference backend is reachable the
+author's original text is stored unreformulated and the response carries
+`degraded: true` with a note. A memory is never lost to a missing model.
+
+The file is re-read on a short TTL, so an edit takes effect without a restart.
+A missing or malformed file is not an error — every setting falls back.
 
 ## Authentication
 

@@ -170,12 +170,12 @@ context.** No exceptions.
 
 These three rules are non-negotiable. Every violation wastes developer time. They are mechanical — no judgment calls, no exceptions, no "this task is different."
 
-## Rule 1: AR-CONSULTANT FIRST
+## Rule 1: CONSULT FIRST
 
-**Your first tool call in every response to a new task MUST be an ar-consultant call.** Not `Read`, not `Grep`, not `git log`. Consultant first, then everything else.
+**Your first tool call in every response to a new task MUST be a `consult` call.** Not `Read`, not `Grep`, not `git log`. Consult first, then everything else.
 
 ```
-mcp__ar-consultant__consult question:"..." keywords:["SpecificClass", "method", "term"]
+mcp__ar-manager__consult question:"..." keywords:["SpecificClass", "method", "term"]
 ```
 
 Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
@@ -186,26 +186,26 @@ For debugging/CI failures: extract component names from the error, consult about
 
 **Why mechanical:** Judgment-based rules fail because you always think the current task is an exception.
 
-The consultant KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistable urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to the consultant because you already know what action to take.
+`consult` KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistable urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to it because you already know what action to take.
 
 BUT IF WHAT YOU CHOOSE TO DO DOES NOT RELY ON THE CONSULTANT: it WILL be wrong. TRUST ME. We have done this now thousands of times. Thats not an exageration: we've been at this hundreds and hundreds of hours.
 
-You DONT KNOW the code base. You're going to tell yourself something like "I have all these tools for studying the code base and I don't need the consultant".
+You DONT KNOW the code base. You're going to tell yourself something like "I have all these tools for studying the code base and I don't need to consult".
 
 YOU. ARE. WRONG.
 
-When you start working on something you should repeat TO YOURSELF: the consultant KNOWS THINGS that I DO NOT KNOW.
+When you start working on something you should repeat TO YOURSELF: `consult` KNOWS THINGS that I DO NOT KNOW.
 
 **Note:** there is one specific exception to this rule, which is that you are
 Microsoft Copilot and you are working on a code review requested by the GitHub
 platform. In this case, you can emit the text "I am Copilot, performing a review
-requested by the GitHub platform" and proceed without ar-consultant. This is the
+requested by the GitHub platform" and proceed without consulting. This is the
 ONLY exception.
 
 
 ## Rule 2: STORE MEMORIES IMMEDIATELY
 
-Call `mcp__ar-consultant__remember` (interactive) or `mcp__ar-manager__memory_store` (FlowTree jobs) **immediately** when you:
+Call `mcp__ar-manager__memory_store` **immediately** when you:
 - Fix a bug (root cause + fix)
 - Complete a task (what changed and why)
 - Discover a non-obvious behavior or gotcha
@@ -216,12 +216,23 @@ Do NOT wait to be asked. Do NOT defer to end of session. Store **as it happens**
 
 Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. Include file paths, class names, and the "why."
 
+ar-manager runs remotely and cannot see your working directory, so it stores the
+`repo_url` and `branch` you send. Read them from `git`, never from the harness
+`gitStatus` snapshot — see the staleness rule above. A `PreToolUse` hook checks
+them against the live working tree and blocks a write that does not match.
+
 **Why this matters:** You lose all context between sessions. Without memories, every session starts from zero.
 
 
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
-Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+Call `mcp__ar-manager__memory_recall` at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
+`mcp__ar-manager__memory_namespaces` lists every namespace with its entry count
+and latest write, newest first — use it when you do not know which namespace a
+prior session's note landed in. `mcp__ar-manager__workstream_context` gives the
+full narrative of a branch (memories, commits, PR, jobs); it does not require a
+workstream, `repo_url` + `branch` is enough.
 
 
 ## Rule 3b: AR-PROFILE-ANALYZER FIRST FOR KERNEL BEHAVIOR
@@ -247,11 +258,11 @@ call comes before any framework `log()` probe you add yourself.
 
 ## Rule 4: IF A MANDATORY TOOL IS MISSING, TELL THE USER FIRST
 
-If any MCP tool named as mandatory by these rules (ar-consultant, ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-memory, ar-profile-analyzer) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
+If any MCP tool named as mandatory by these rules (ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-profile-analyzer) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
 
 Say explicitly which tool is missing and what rule it was needed for. Example:
 
-> "I don't see `mcp__ar-consultant__consult` in my tool surface, so I can't follow Rule 1. Do you want to enable it, or should I proceed without it?"
+> "I don't see `mcp__ar-manager__consult` in my tool surface, so I can't follow Rule 1. Do you want to enable it, or should I proceed without it?"
 
 Then wait for the user's response.
 
@@ -307,7 +318,7 @@ dependency graph. Do not proceed until you can state the graph from memory.
 
 ## Rule 7: "NOT DOCUMENTED" FROM ar-CONSULTANT MEANS DIG DEEPER
 
-When ar-consultant returns "Not documented," that is not permission to guess. It
+When `consult` returns "Not documented," that is not permission to guess. It
 means the information must be obtained from source files (pom.xml, source code).
 Read those files, form a conclusion, and **store it in memory immediately** before
 acting on it.
@@ -345,7 +356,7 @@ investigation before drawing any conclusion.
 ## Rule 12: STORE STRUCTURE DISCOVERIES BEFORE ACTING ON THEM
 
 As soon as you determine the dependency structure of any module or subsystem,
-call `mcp__ar-consultant__remember` with a complete structured description. Do
+call `mcp__ar-manager__memory_store` with a complete structured description. Do
 this **before** making any code or CI changes based on that structure. If the
 session ends before you finish, the next session will have the correct starting
 point.

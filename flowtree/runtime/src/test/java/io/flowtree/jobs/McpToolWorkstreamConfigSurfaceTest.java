@@ -47,11 +47,12 @@ import static org.junit.Assert.assertTrue;
  * without asserting anything. Every {@code assertTrue} inside those
  * methods was a no-op — a green proxy for broken reality.</p>
  *
- * <p>This test locates the file by walking up ancestor directories from
- * the current working directory (the same pattern as
- * {@code McpConfigBuilderTest.locateManagerServerPy}). When the file is
- * not found, the test fails with a clear message naming the working
- * directory, rather than silently passing. The test then asserts that
+ * <p>This test locates the tool sources via
+ * {@link io.flowtree.jobs.McpToolDiscovery#locateManagerSources()}, which
+ * covers {@code server.py} and the per-domain {@code *_tools.py} modules
+ * beside it. When nothing is found, the test fails rather than silently
+ * passing — an empty source list would otherwise satisfy every assertion
+ * below by having no tools to check. The test then asserts that
  * every name in {@link #REQUIRED_ON_BOTH_REGISTER_AND_UPDATE} and
  * {@link #REQUIRED_ON_REGISTER_ONLY} is declared in the tool signature,
  * with a diff message that names exactly which controller field has no
@@ -135,15 +136,15 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void workstreamRegisterExposesAllRequiredWorkstreamConfigParams() {
-		Path serverFile = locateManagerServerPy();
-		assertNotNull(
-			"Could not locate tools/mcp/manager/server.py from working directory " +
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse(
+			"Could not locate the ar-manager tool sources from working directory " +
 				Path.of("").toAbsolutePath() +
-				". The workstream-register signature check cannot run without it.",
-			serverFile);
+				". The workstream-register signature check cannot run without them.",
+			managerSources.isEmpty());
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		Set<String> required = new HashSet<>(REQUIRED_ON_BOTH_REGISTER_AND_UPDATE);
 		required.addAll(REQUIRED_ON_REGISTER_ONLY);
 		Set<String> missing = new TreeSet<>(required);
@@ -166,15 +167,15 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void workstreamUpdateConfigExposesAllRequiredWorkstreamConfigParams() {
-		Path serverFile = locateManagerServerPy();
-		assertNotNull(
-			"Could not locate tools/mcp/manager/server.py from working directory " +
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse(
+			"Could not locate the ar-manager tool sources from working directory " +
 				Path.of("").toAbsolutePath() +
-				". The workstream-update-config signature check cannot run without it.",
-			serverFile);
+				". The workstream-update-config signature check cannot run without them.",
+			managerSources.isEmpty());
 
 		List<String> updateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		Set<String> missing = new TreeSet<>(REQUIRED_ON_BOTH_REGISTER_AND_UPDATE);
 		missing.removeAll(updateParams);
 		assertTrue(
@@ -198,22 +199,22 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void completionListenersParamIsDeclaredOnBothRegisterAndUpdateTools() {
-		Path serverFile = locateManagerServerPy();
-		assertNotNull(
-			"Could not locate tools/mcp/manager/server.py from working directory " +
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse(
+			"Could not locate the ar-manager tool sources from working directory " +
 				Path.of("").toAbsolutePath() +
-				". The completion-listener param check cannot run without it.",
-			serverFile);
+				". The completion-listener param check cannot run without them.",
+			managerSources.isEmpty());
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		assertTrue(
 			"workstream_register must declare the completion_listeners parameter so" +
 				" operators can configure a workstream's completion-listener list via MCP.",
 			registerParams.contains("completion_listeners"));
 
 		List<String> updateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue(
 			"workstream_update_config must declare the completion_listeners parameter so" +
 				" operators can update a workstream's completion-listener list via MCP.",
@@ -235,15 +236,15 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void dispatchCapableParamIsDeclaredOnBothRegisterAndUpdateTools() {
-		Path serverFile = locateManagerServerPy();
-		assertNotNull(
-			"Could not locate tools/mcp/manager/server.py from working directory " +
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse(
+			"Could not locate the ar-manager tool sources from working directory " +
 				Path.of("").toAbsolutePath() +
-				". The dispatch-capable param check cannot run without it.",
-			serverFile);
+				". The dispatch-capable param check cannot run without them.",
+			managerSources.isEmpty());
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		assertTrue(
 			"workstream_register must declare the dispatch_capable parameter so" +
 				" operators can opt a workstream into the dispatch / orchestration" +
@@ -251,7 +252,7 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 			registerParams.contains("dispatch_capable"));
 
 		List<String> updateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue(
 			"workstream_update_config must declare the dispatch_capable parameter so" +
 				" operators can flip the dispatch-capable flag on an existing" +
@@ -274,15 +275,15 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void defaultUseTmuxParamIsDeclaredOnBothRegisterAndUpdateTools() {
-		Path serverFile = locateManagerServerPy();
-		assertNotNull(
-			"Could not locate tools/mcp/manager/server.py from working directory " +
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse(
+			"Could not locate the ar-manager tool sources from working directory " +
 				Path.of("").toAbsolutePath() +
-				". The default-use-tmux param check cannot run without it.",
-			serverFile);
+				". The default-use-tmux param check cannot run without them.",
+			managerSources.isEmpty());
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		assertTrue(
 			"workstream_register must declare the default_use_tmux parameter so" +
 				" operators can opt a workstream into tmux-backed agent launches" +
@@ -290,7 +291,7 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 			registerParams.contains("default_use_tmux"));
 
 		List<String> updateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue(
 			"workstream_update_config must declare the default_use_tmux parameter" +
 				" so operators can flip the workstream's tmux default on an existing" +
@@ -298,26 +299,4 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 			updateParams.contains("default_use_tmux"));
 	}
 
-	/**
-	 * Walks up from the current working directory looking for
-	 * {@code tools/mcp/manager/server.py}. Maven Surefire defaults the working
-	 * directory to the module's basedir ({@code flowtree/runtime/}) so a
-	 * single relative path like {@code tools/...} only resolves when the
-	 * test is launched from the project root.
-	 *
-	 * <p>Delegates to
-	 * {@link io.flowtree.jobs.McpToolDiscovery#locateManagerServerPy()} so
-	 * the resolution path stays in a single place; a copy of this helper
-	 * still exists in {@code McpConfigBuilderTest} because that test
-	 * file is on the base branch and the agent write-lock prevents
-	 * editing it. Once the duplication can be removed the
-	 * {@code McpConfigBuilderTest} caller can switch to the same
-	 * production helper without changing the resolution semantics.</p>
-	 *
-	 * @return the resolved path, or {@code null} if not found within the
-	 *         helper's search budget
-	 */
-	private static Path locateManagerServerPy() {
-		return McpToolDiscovery.locateManagerServerPy();
 	}
-}

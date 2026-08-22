@@ -124,10 +124,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void discoverFromActualTestRunner() {
-		Path serverFile = Path.of("tools/mcp/test-runner/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path otherServerFile = Path.of("tools/mcp/test-runner/server.py");
+		if (!Files.exists(otherServerFile)) return;
 
-		List<String> tools = McpToolDiscovery.discoverToolNames(serverFile);
+		List<String> tools = McpToolDiscovery.discoverToolNames(otherServerFile);
 		assertTrue("Expected at least 5 tools from test-runner, got " + tools.size(),
 			tools.size() >= 5);
 		assertTrue("Expected start_test_run", tools.contains("start_test_run"));
@@ -143,10 +143,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void discoverFromActualDocs() {
-		Path serverFile = Path.of("docs/mcp/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path otherServerFile = Path.of("docs/mcp/server.py");
+		if (!Files.exists(otherServerFile)) return;
 
-		List<String> tools = McpToolDiscovery.discoverToolNames(serverFile);
+		List<String> tools = McpToolDiscovery.discoverToolNames(otherServerFile);
 		assertTrue("Expected at least 5 tools from ar-docs, got " + tools.size(),
 			tools.size() >= 5);
 		assertTrue("Expected search_ar_docs", tools.contains("search_ar_docs"));
@@ -157,10 +157,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void discoverFromActualJmx() {
-		Path serverFile = Path.of("tools/mcp/jmx/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path otherServerFile = Path.of("tools/mcp/jmx/server.py");
+		if (!Files.exists(otherServerFile)) return;
 
-		List<String> tools = McpToolDiscovery.discoverToolNames(serverFile);
+		List<String> tools = McpToolDiscovery.discoverToolNames(otherServerFile);
 		assertTrue("Expected at least 5 tools from ar-jmx, got " + tools.size(),
 			tools.size() >= 5);
 		assertTrue("Expected attach_to_run", tools.contains("attach_to_run"));
@@ -228,7 +228,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void nullFileReturnsEmpty() {
-		List<String> tools = McpToolDiscovery.discoverToolNames(null);
+		List<String> tools = McpToolDiscovery.discoverToolNames((Path) null);
 		assertTrue(tools.isEmpty());
 	}
 
@@ -299,9 +299,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerAllExpectedToolsAreRegisteredInServerPy() {
-		Path serverFile = McpToolDiscovery.locateManagerServerPy();
-		assertNotNull("manager server.py must be locatable from the test working directory;"
-			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
 
 		Set<String> expected = new HashSet<>(Arrays.asList(
 			"controller_health",
@@ -315,6 +316,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_update_config",
 			"workspace_update_config",
 			"workstream_archive",
+			"workstream_archive_many",
+			"workstream_unarchive_many",
 			"workstream_unarchive",
 			"workstream_delete",
 			"project_create_branch",
@@ -322,6 +325,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"project_commit_plan",
 			"project_read_plan",
 			"memory_recall",
+			"memory_namespaces",
+			"consult",
 			"workstream_context",
 			"memory_store",
 			"send_message",
@@ -355,7 +360,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workspace_secret_render_file"
 		));
 
-		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
+		List<String> discovered = McpToolDiscovery.discoverToolNames(managerSources);
 		Set<String> discoveredSet = new HashSet<>(discovered);
 
 		Set<String> missing = new HashSet<>(expected);
@@ -382,12 +387,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerToolParametersAreProperlyDeclaredInSignatures() {
-		Path serverFile = McpToolDiscovery.locateManagerServerPy();
-		assertNotNull("manager server.py must be locatable from the test working directory;"
-			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
 
 		List<String> copilotParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "github_request_copilot_review");
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_request_copilot_review");
 		assertTrue("github_request_copilot_review must declare pr_number in signature",
 			copilotParams.contains("pr_number"));
 		assertTrue("github_request_copilot_review must declare workstream_id in signature",
@@ -396,7 +402,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			copilotParams.contains("branch"));
 
 		List<String> createPrParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "github_create_pr");
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_create_pr");
 		assertTrue("github_create_pr must declare title in signature",
 			createPrParams.contains("title"));
 		assertTrue("github_create_pr must declare body in signature",
@@ -405,7 +411,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			createPrParams.contains("request_copilot_review"));
 
 		List<String> submitParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_submit_task");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");
 		assertTrue("workstream_submit_task must declare prompt in signature",
 			submitParams.contains("prompt"));
 		assertTrue("workstream_submit_task must declare workstream_id in signature",
@@ -470,7 +476,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("command"));
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		assertFalse("workstream_register must NOT declare the dropped legacy model param",
 			registerParams.contains("model"));
 		assertFalse("workstream_register must NOT declare the dropped legacy effort param",
@@ -491,7 +497,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			registerParams.contains("phase_configs"));
 
 		List<String> updateConfigParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertFalse("workstream_update_config must NOT declare the dropped legacy model param",
 			updateConfigParams.contains("model"));
 		assertFalse("workstream_update_config must NOT declare the dropped legacy effort param",
@@ -511,7 +517,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			updateConfigParams.contains("phase_configs"));
 
 		List<String> workspaceUpdateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workspace_update_config");
 		assertTrue("workspace_update_config must declare workspace_id in signature",
 			workspaceUpdateParams.contains("workspace_id"));
 		assertTrue("workspace_update_config must declare slack_workspace_id in signature"
@@ -549,7 +555,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			registerParams.contains("slack_workspace_id"));
 
 		List<String> memoryRecallParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");
+			McpToolDiscovery.discoverToolParameters(managerSources, "memory_recall");
 		assertTrue("memory_recall must declare query in signature",
 			memoryRecallParams.contains("query"));
 		assertTrue("memory_recall must declare reformulated in signature; without it"
@@ -557,13 +563,33 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " and callers can only ever see the original memory text",
 			memoryRecallParams.contains("reformulated"));
 
+		List<String> consultParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "consult");
+		assertTrue("consult must declare keywords in signature; without it the"
+				+ " caller cannot steer documentation search, and keyword"
+				+ " quality is the main determinant of whether the answer is"
+				+ " grounded in the right documents",
+			consultParams.contains("keywords"));
+
+		List<String> memoryNamespacesParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "memory_namespaces");
+		assertTrue("memory_namespaces must declare scope in signature; without it"
+				+ " callers cannot widen past the current repository and the tool"
+				+ " cannot answer \"which namespace did that note land in\" across"
+				+ " repositories",
+			memoryNamespacesParams.contains("scope"));
+
 		List<String> memoryStoreParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "memory_store");
+			McpToolDiscovery.discoverToolParameters(managerSources, "memory_store");
 		assertTrue("memory_store must declare content in signature",
 			memoryStoreParams.contains("content"));
+		assertTrue("memory_store must declare reformulate in signature; without it"
+				+ " the per-call reformulation opt-in is absent from the MCP schema"
+				+ " and callers can only take the repository default",
+			memoryStoreParams.contains("reformulate"));
 
 		List<String> sendMessageParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "send_message");
+			McpToolDiscovery.discoverToolParameters(managerSources, "send_message");
 		assertTrue("send_message must declare text in signature",
 			sendMessageParams.contains("text"));
 		assertTrue("send_message must declare activity in signature",
@@ -585,18 +611,18 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("send_message workstream_id must be optional (default value"
 				+ " present) so job-scoped agents can call with only {text, activity}",
 			McpToolDiscovery.isOptionalToolParameter(
-				serverFile, "send_message", "workstream_id"));
+				managerSources, "send_message", "workstream_id"));
 		assertTrue("send_message job_id must be optional (default value"
 				+ " present) so job-scoped agents do not have to supply it",
 			McpToolDiscovery.isOptionalToolParameter(
-				serverFile, "send_message", "job_id"));
+				managerSources, "send_message", "job_id"));
 		assertTrue("send_message activity must be optional (default value"
 				+ " present) — primary-phase calls omit it",
 			McpToolDiscovery.isOptionalToolParameter(
-				serverFile, "send_message", "activity"));
+				managerSources, "send_message", "activity"));
 
 		List<String> workstreamContextParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_context");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_context");
 		assertTrue("workstream_context must declare include_activities in signature",
 			workstreamContextParams.contains("include_activities"));
 		assertTrue("workstream_context must declare reformulated in signature; without"
@@ -604,7 +630,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			workstreamContextParams.contains("reformulated"));
 
 		List<String> readFileParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "github_read_file");
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_read_file");
 		assertTrue("github_read_file must declare path in signature",
 			readFileParams.contains("path"));
 		assertTrue("github_read_file must declare workstream_id in signature",
@@ -617,7 +643,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			readFileParams.contains("ref"));
 
 		List<String> prCheckParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "github_pr_check_status");
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_pr_check_status");
 		assertTrue("github_pr_check_status must declare pr_number in signature",
 			prCheckParams.contains("pr_number"));
 		assertTrue("github_pr_check_status must declare workstream_id in signature",
@@ -626,7 +652,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			prCheckParams.contains("branch"));
 
 		List<String> listRunsParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "github_list_workflow_runs");
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_list_workflow_runs");
 		assertTrue("github_list_workflow_runs must declare workflow in signature",
 			listRunsParams.contains("workflow"));
 		assertTrue("github_list_workflow_runs must declare status in signature",
@@ -635,22 +661,22 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			listRunsParams.contains("limit"));
 
 		List<String> runStatusParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "github_workflow_run_status");
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_workflow_run_status");
 		assertTrue("github_workflow_run_status must declare run_id in signature",
 			runStatusParams.contains("run_id"));
 
 		List<String> trackerCreateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_create_task");
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");
 		assertTrue("tracker_create_task must declare priority in signature",
 			trackerCreateParams.contains("priority"));
 
 		List<String> trackerUpdateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_update_task");
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_update_task");
 		assertTrue("tracker_update_task must declare priority in signature",
 			trackerUpdateParams.contains("priority"));
 
 		List<String> trackerListParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_list_tasks");
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_list_tasks");
 		assertTrue("tracker_list_tasks must declare sort in signature",
 			trackerListParams.contains("sort"));
 		assertTrue("tracker_list_tasks must declare order in signature",
@@ -659,22 +685,22 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			trackerListParams.contains("fields"));
 
 		List<String> trackerSearchParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_search_tasks");
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_search_tasks");
 		assertTrue("tracker_search_tasks must declare fields in signature",
 			trackerSearchParams.contains("fields"));
 
 		List<String> trackerSummaryParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_project_summary");
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_project_summary");
 		assertTrue("tracker_project_summary must declare project_id in signature",
 			trackerSummaryParams.contains("project_id"));
 
 		List<String> secretListParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_secret_list_names");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workspace_secret_list_names");
 		assertTrue("workspace_secret_list_names must declare workstream_id in signature",
 			secretListParams.contains("workstream_id"));
 
 		List<String> secretRenderParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_secret_render_file");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workspace_secret_render_file");
 		assertTrue("workspace_secret_render_file must declare workstream_id in signature",
 			secretRenderParams.contains("workstream_id"));
 		assertTrue("workspace_secret_render_file must declare secret_name in signature",
@@ -704,12 +730,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void submitTaskPayloadKeysAreAllConsumedByController() {
-		Path serverFile = McpToolDiscovery.locateManagerServerPy();
-		assertNotNull("manager server.py must be locatable for the submit parity guard to run",
-			serverFile);
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("the ar-manager tool sources must be locatable for the submit parity"
+			+ " guard to run", managerSources.isEmpty());
 
 		List<String> toolKeys =
-			McpToolDiscovery.discoverToolPayloadKeys(serverFile, "workstream_submit_task");
+			McpToolDiscovery.discoverToolPayloadKeys(managerSources, "workstream_submit_task");
 		assertTrue("workstream_submit_task must emit payload keys; none were discovered, which"
 			+ " means the payload parser is broken (it should find at least useTmux)",
 			toolKeys.contains("useTmux"));
@@ -720,10 +746,19 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		Path resolver = locateModuleSource("src/main/java/io/flowtree/submission/PhaseConfigResolver.java");
 		assertNotNull("PhaseConfigResolver.java must be locatable for the submit parity guard",
 			resolver);
+		// handleSubmit delegates workstream resolution to this handler, which
+		// reads its own keys off the body (workstreamId among them). Scanning
+		// only the two files above reported those keys as unconsumed — a false
+		// positive, since the submit path plainly does consume them.
+		Path registration = locateModuleSource(
+			"src/main/java/io/flowtree/api/WorkstreamRegistrationHandler.java");
+		assertNotNull("WorkstreamRegistrationHandler.java must be locatable for the"
+			+ " submit parity guard", registration);
 
 		Set<String> consumed = new HashSet<>();
 		consumed.addAll(controllerConsumedKeys(endpoint));
 		consumed.addAll(controllerConsumedKeys(resolver));
+		consumed.addAll(controllerConsumedKeys(registration));
 
 		List<String> missing = new ArrayList<>();
 		for (String key : toolKeys) {
@@ -732,6 +767,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task emits payload key(s) the controller /api/submit path"
 			+ " never consumes: " + missing + ". Wire each one in"
 			+ " FlowTreeApiEndpoint.handleSubmit (extractJson*(body, \"key\") -> factory setter),"
+			+ " in WorkstreamRegistrationHandler for workstream-resolution keys,"
 			+ " or in PhaseConfigResolver for phase-config keys. A tool key the controller"
 			+ " ignores is a silent no-op.",
 			missing.isEmpty());
@@ -789,19 +825,20 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos() {
-		Path serverFile = McpToolDiscovery.locateManagerServerPy();
-		assertNotNull("manager server.py must be locatable from the test working directory;"
-			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		assertTrue("workstream_register must declare required_labels parameter",
 			registerParams.contains("required_labels"));
 		assertTrue("workstream_register must declare dependent_repos parameter",
 			registerParams.contains("dependent_repos"));
 
 		List<String> updateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue("workstream_update_config must declare required_labels parameter",
 			updateParams.contains("required_labels"));
 		assertTrue("workstream_update_config must declare dependent_repos parameter",
@@ -816,17 +853,18 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveCompletionListeners() {
-		Path serverFile = McpToolDiscovery.locateManagerServerPy();
-		assertNotNull("manager server.py must be locatable from the test working directory;"
-			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		assertTrue("workstream_register must declare completion_listeners parameter",
 			registerParams.contains("completion_listeners"));
 
 		List<String> updateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue("workstream_update_config must declare completion_listeners parameter",
 			updateParams.contains("completion_listeners"));
 	}
@@ -915,17 +953,18 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveDispatchCapable() {
-		Path serverFile = McpToolDiscovery.locateManagerServerPy();
-		assertNotNull("manager server.py must be locatable from the test working directory;"
-			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
 
 		List<String> registerParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_register");
 		assertTrue("workstream_register must declare dispatch_capable parameter",
 			registerParams.contains("dispatch_capable"));
 
 		List<String> updateParams =
-			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue("workstream_update_config must declare dispatch_capable parameter",
 			updateParams.contains("dispatch_capable"));
 	}

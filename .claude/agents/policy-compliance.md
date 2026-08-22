@@ -33,8 +33,8 @@ that completed work meets ALL project standards before the task is considered do
 - [ ] `*Features` interfaces have only `default` methods
 
 ### Memory
-- [ ] `mcp__ar-consultant__remember` called with root cause + fix for any bug fixed
-- [ ] `mcp__ar-consultant__remember` called with design decisions for any non-trivial choice
+- [ ] `mcp__ar-manager__memory_store` called with root cause + fix for any bug fixed
+- [ ] `mcp__ar-manager__memory_store` called with design decisions for any non-trivial choice
 
 ## Process
 

@@ -44,6 +44,8 @@ ar-compose
 | `AudioComposer` | `org.almostrealism.studio.ml` | ML-based audio generation |
 | `AudioLibraryPersistence` | `org.almostrealism.studio.persistence` | Save/load library to Protocol Buffer |
 | `LibraryDestination` | `org.almostrealism.studio.persistence` | Batched protobuf file management |
+| `AudioLayerGroupLibrary` | `org.almostrealism.studio.persistence` | Persist `AudioLayerGroup`s as first-class library entries |
+| `AudioLayerPitch` | `org.almostrealism.studio.persistence` | Single accessor for the captured pitch of an `AudioLayer` |
 | `PrototypeDiscovery` | `org.almostrealism.studio.discovery` | Find representative samples via graph algorithms |
 
 ## AudioScene: The Central Orchestrator
@@ -228,6 +230,9 @@ AudioLibraryPersistence.loadLibrary(library, "/path/to/library");
 // Resolve identifier to file path
 WaveDataProvider provider = library.find(identifier);
 String filePath = provider.getKey();  // Actual file path!
+
+// Or, ask the library for the file backing the identifier directly:
+File file = library.fileFor(identifier);
 ```
 
 ### Why This Matters
@@ -236,8 +241,12 @@ String filePath = provider.getKey();  // Actual file path!
 |---------------|--------|---------|
 | WaveDetails from protobuf | `details.getIdentifier()` | MD5 hash (e.g., `a1b2c3d4...`) |
 | WaveDataProvider from library | `provider.getKey()` | File path (e.g., `/samples/kick.wav`) |
+| Library file resolution | `library.fileFor(identifier)` | Backing `File` (or `null`), addressed by content |
 
-**To convert identifier → file path**: `library.find(identifier).getKey()`
+**To convert identifier → file path**: `library.find(identifier).getKey()` — or,
+when only the file is needed, `library.fileFor(identifier)`. The library searches
+the file tree by content identifier, not by filename, so a sample can be renamed
+for display without anything that references it having to know the name.
 
 ## Discovery Package
 
@@ -252,7 +261,7 @@ java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \
   --data ~/.almostrealism/library --clusters 5
 ```
 
-**Note**: To display file paths (not just identifiers), PrototypeDiscovery needs access to the original audio files directory. Use `AudioLibrary.find(identifier).getKey()` to resolve identifiers to paths.
+**Note**: To display file paths (not just identifiers), PrototypeDiscovery needs access to the original audio files directory. Use `AudioLibrary.find(identifier).getKey()` when you specifically need the provider's path string. `AudioLibrary.fileFor(identifier)` is a related convenience that returns the backing `File` directly (or `null` when the identifier is blank, unknown, or names a file that is no longer present) &mdash; pick whichever result type matches what your code does with the path next.
 
 ## Usage Examples
 

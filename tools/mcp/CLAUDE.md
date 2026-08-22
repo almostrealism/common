@@ -288,12 +288,27 @@ payloads.
 
 ---
 
+## File Length
+
+Python sources are capped at 1600 lines, the same limit Checkstyle applies to
+Java. There is no Checkstyle equivalent for Python here, so
+`scripts/check-python-file-lengths.sh` enforces it and fails the build.
+
+Files above the cap are listed in that script with the size they had when the
+exemption was granted. That size is a ceiling: an exempt file may shrink freely
+and may never grow. Adding to one means splitting it first.
+
+This is why the ar-manager tools live in per-domain `*_tools.py` modules beside
+`server.py` rather than inside it. That suffix is also what makes a module part
+of the tool surface — see the note on `McpToolDiscovery.locateManagerSources`
+before adding a new one.
+
 ## Server Directory Map
 
 | Directory | Server name | Tool registration pattern |
 |-----------|-------------|---------------------------|
 | `manager/` | ar-manager | `@mcp.tool()` decorator on each function |
-| `consultant/` | ar-consultant | `@mcp.tool()` decorator on each function |
+| `consultant/` | ~~ar-consultant~~ (retired, not registered) | `@mcp.tool()` decorator on each function |
 | `build-validator/` | ar-build-validator | `@mcp.tool()` decorator on each function |
 | `test-runner/` | ar-test-runner | `@server.list_tools()` handler returning `Tool(name=...)` entries |
 | `jmx/` | ar-jmx | `@server.list_tools()` handler returning `Tool(name=...)` entries |

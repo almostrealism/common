@@ -527,7 +527,7 @@ See `DiffusionTransformer.prependConditioning()` for implementation.
 
 ## Environment Configuration
 
-`AR_HARDWARE_LIBS` is auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `opencl`, or `metal`.
+`AR_HARDWARE_LIBS` is auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` is optional and best left unset to auto-detect the best available backend. To force a specific backend, set it to `native`, `cl`, or `mtl` (see [base/hardware/README.md](../../base/hardware/README.md) for the full list and the named-vs-wildcard contract).
 
 ## Performance Features
 
