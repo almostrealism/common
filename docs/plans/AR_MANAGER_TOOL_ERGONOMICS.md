@@ -1,6 +1,6 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **IN PROGRESS — six of ten done (2, 3, 6, 7, 8, 9); items 1, 4, 5, 10 outstanding**
+Status: **IN PROGRESS — seven of eleven done (2, 3, 4, 6, 7, 8, 9); 1 and 5 partially done; 10 and 11 outstanding**
 Author: planning session, 2026-08-12; triaged 2026-08-21
 
 > **Line numbers in this document have drifted.** It was written against a
@@ -78,9 +78,15 @@ constraints.
 
 ## 1. No fleet-level query capability — REAL, HIGHEST VALUE
 
-> **OUTSTANDING.** Needs controller-side Java changes (`Workstream.toSummaryJson`,
-> `FlowTreeApiEndpoint.handleListWorkstreams`) plus the `workstream_list` filters,
-> and a deploy. Still the operator's original blocker.
+> **PARTIALLY DONE.** The filters are in: `workstream_list` takes `workspace_id`,
+> `repo_url`, `dispatch_capable` and `archived`, applied controller-side, so
+> "which workstreams match P?" is one call. Repository matching is on identity,
+> so URL spelling does not matter.
+>
+> **Still outstanding: the status fields** (`lastJobAt`, `lastJobStatus`,
+> `pullRequest`) from design (b), and the pagination decision in open question 4.
+> Filtering was the larger half of the operator's blocker; enriching each entry
+> is the rest.
 
 ### What we found
 
@@ -408,9 +414,12 @@ Yes. No shared state with any other tool.
 
 ## 4. Job status reports SUCCESS when PRIMARY hard-failed — PARTIALLY ADDRESSED, P1 GAP REMAINS
 
-> **OUTSTANDING.** Java-side; the remaining gap is the COMMIT-MESSAGE phase
-> committing a corrupted tree when PRIMARY hard-fails. Open question 1 in §"Open
-> questions" still needs an answer before implementing.
+> **DONE.** The commit-message fallback no longer fires after a hard primary
+> failure: it builds its message from the job prompt, which describes what was
+> asked rather than what was done, so writing it would label a tree the agent
+> never worked on. Review was found already ungated on failure — only the status
+> rollup and this fallback read the flag — so the owner's push-viability rule
+> holds today, and is now recorded at the rule-selection site.
 
 ### What we found
 
@@ -547,8 +556,12 @@ Partially. (a) is independent. (b) depends on (a) being correct.
 
 ## 5. Silent worker hangs break dependent automation with no signal — REAL, HARD
 
-> **OUTSTANDING.** Java-side and the hardest item. Open question 2 (the wall-clock
-> default) is unresolved.
+> **PARTIALLY DONE.** The wall-clock ceiling is in `RestartGovernor` beside the
+> session, turn and dollar ceilings: six hours, overridable per job, disabled by
+> a non-positive value. That is design (a).
+>
+> **Still outstanding: (b) the heartbeat field and (c) the stuck-job scanner**,
+> which share a model and want the controller-side work.
 
 ### What we found
 
@@ -1139,6 +1152,76 @@ Yes. Local to one function; no shared code.
 
 ---
 
+## 11. Slack naming leaks into the workspace identity API — REAL, OWNER-RAISED
+
+> **OUTSTANDING.** Added 2026-08-22. Surface cleanup, not a data migration —
+> see below.
+
+### What we found
+
+A workspace is a core concept: the operator's organisational unit, with its own
+operator-chosen id. Slack is one optional integration a workspace may have. The
+public surface does not say that. `slackWorkspaceId` appears 149 times across
+24 files, and a reader encountering it reasonably concludes that a workspace
+*is* a Slack workspace and that Slack is mandatory. It is not, and it should be
+possible to run a workspace with no Slack connection at all without the API
+implying otherwise.
+
+That a workspace currently maps one-to-one onto a Slack workspace is a fact
+about one deployment, not a definition. The mapping does not make Slack the
+source of truth for workspace identity.
+
+### The good news: the model is already right
+
+`Workstream` holds exactly one field — `workspaceId` (line 194) — and
+`toSummaryJson` emits `slackWorkspaceId` as a **duplicate of the same value**,
+labelled in the source as a legacy alias to be removed in a future release.
+There is no second identity, no migration, and no data to move. `slackTeamId`
+on the workspace entry is the genuine Slack-side identifier and is correctly
+named: that one *should* say Slack, because it is Slack's.
+
+So this is removing an alias and the parameters that mirror it, not
+restructuring anything.
+
+### Proposed design
+
+1. **Stop emitting the alias.** Drop `slackWorkspaceId` from `toSummaryJson`.
+   Any consumer reading it is reading a copy of `workspaceId`.
+2. **Retire the mirrored parameters.** `slack_workspace_id` on
+   `workstream_register` and `workspace_update_config` is a deprecated alias
+   for `workspace_id`. Reject it with a pointer to the real name, following the
+   precedent set for `max_memories` in Item 2 — a rejection that names the
+   right parameter teaches the caller once, where an alias creates a second
+   permanent name.
+3. **Fix the prose.** Docstrings and docs that describe workspaces in terms of
+   Slack should describe them in terms of workspaces, and mention Slack where
+   Slack is genuinely involved.
+4. **Leave `slackTeamId`, the `slack/` package and the notifier alone.** Those
+   are the Slack integration, correctly named.
+
+### Impact and effort
+
+| Component | Effort | Why |
+|---|---|---|
+| Drop the alias from `toSummaryJson` | XS | One line, plus the Java tests that assert it. |
+| Reject `slack_workspace_id` on the two tools | S | Same shape as the Item 2 rejections. |
+| Update tests that assert on the alias | M | The count is large but mechanical; most are fixtures naming the field. |
+| Prose pass | S | Docstrings and docs. |
+
+**Priority: P2.** No behaviour is wrong today; what is wrong is what the API
+teaches. That makes it worth doing and worth doing deliberately, rather than
+urgently.
+
+### Risk
+
+The alias is a published field. Dropping it is a breaking change for any
+consumer still reading it, so it wants a scan of known consumers first — the
+Python side is in this repository and easy to check; anything outside it is
+not. Retiring the *parameters* is lower risk, since a rejection is visible
+immediately rather than silently returning the wrong shape.
+
+---
+
 ## 10. Topic-diversity interlude — SPECULATIVE, OWNER-REQUESTED
 
 > **OUTSTANDING.** Deliberately last.
@@ -1348,11 +1431,31 @@ non-issue, rather than invent work:
 ## Open questions for triage
 
 1. **Item 4 (b) — should REVIEW run after a hard primary fail?**
-   Currently it does. The minimal fix (a) keeps REVIEW but blocks
-   the COMMIT-MESSAGE fallback. A stronger fix (b) skips REVIEW
-   entirely. Both have operator consequences.
-2. **Item 5 (a) default cap.** 4 hours is a guess. Real fleet data
-   should inform the default. Keep it configurable per-workstream?
+   **ANSWERED (owner, 2026-08-22): keep running it.** Neither of the
+   two options as posed. The question assumed the choice was about
+   how bad the primary failure was; it is not. The rule is:
+
+   > Skip REVIEW only when the run has no prospect of pushing —
+   > because it does not intend to, or because it cannot (merge
+   > conflict, git failure). In every other case run it.
+
+   The reasoning is that review has been observed to *recover* runs
+   whose primary phase reported failure, so skipping it on the
+   strength of that report discards work that would have landed. What
+   makes review pointless is not a bad primary result but an
+   unpushable tree — there is nothing for the review to save.
+
+   Note this reframes item 4 (b) rather than choosing between its
+   options: the condition to test is push-viability, not failure
+   severity. Fix (a) — blocking the COMMIT-MESSAGE fallback from
+   committing a corrupted tree — is unaffected and still wanted.
+
+2. **Item 5 (a) default cap.** **ANSWERED (owner, 2026-08-22): six
+   hours, and configurable per workstream.** The per-workstream
+   override is the part that matters; the default only has to be safe
+   for the common case, and a run that legitimately exceeds six hours
+   can carry its own value. Fleet data would still be worth gathering
+   to refine it, but it is no longer blocking.
 3. **Item 6 — should the introspection tool be agent-callable in
    read-only form?** Right now it is in `EXCLUDED_AR_MANAGER_TOOLS`.
    An agent diagnosing its own permission denial could benefit from

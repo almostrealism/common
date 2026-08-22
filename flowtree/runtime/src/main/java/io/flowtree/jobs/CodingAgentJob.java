@@ -747,6 +747,19 @@ public class CodingAgentJob extends GitManagedJob {
     boolean isPostCompletionCapHit() { return postCompletionCapHit; }
     /** Returns the instant at which {@link #doWork()} began. Package-private for event population. */
     Instant getSessionStartedAt() { return sessionStartedAt; }
+
+    /**
+     * Overrides the job's start instant.
+     *
+     * <p>Exists so a test can age a job past the wall-clock ceiling without
+     * waiting for real time to pass; {@link #doWork()} stamps this itself in
+     * normal operation.</p>
+     *
+     * @param sessionStartedAt the instant to treat as the job's start
+     */
+    void setSessionStartedAt(Instant sessionStartedAt) {
+        this.sessionStartedAt = sessionStartedAt;
+    }
     /** Returns the retrospective phase collaborator, which owns its own telemetry. Package-private for event population. */
     RetrospectivePhase retrospectivePhase() { return retrospective; }
     /** Returns the falsification phase collaborator, which owns its own telemetry. Package-private for event population. */

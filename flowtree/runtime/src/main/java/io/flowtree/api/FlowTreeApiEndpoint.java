@@ -20,6 +20,7 @@ import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.CompletionListenerFanout;
@@ -408,10 +409,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
-            boolean includeArchived = "true".equalsIgnoreCase(
-                    session.getParameters().getOrDefault("includeArchived",
-                            List.of("false")).get(0));
-            return handleListWorkstreams(includeArchived);
+            return newFixedLengthResponse(Response.Status.OK, "application/json",
+                    WorkstreamListing.toJson(session, notifiers.allWorkstreams()));
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/") && uri.endsWith("/jobs")) {
@@ -1472,31 +1471,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 "application/json", jobEventToJson(event, workstreamId));
     }
 
-    /**
-     * Handles {@code GET /api/workstreams}. Returns a JSON array of all
-     * registered workstreams with their configuration and capabilities.
-     *
-     * <p>By default, workstreams flagged as archived are omitted. Pass
-     * {@code ?includeArchived=true} to include them; archived entries
-     * carry an {@code "archived": true} field in the response.</p>
-     *
-     * @param includeArchived when {@code false} archived workstreams are skipped
-     * @return an HTTP 200 response containing a JSON array of workstream objects
-     */
-    private Response handleListWorkstreams(boolean includeArchived) {
-        Map<String, Workstream> workstreams = notifiers.allWorkstreams();
-        StringBuilder json = new StringBuilder("[");
-        boolean first = true;
-        for (Workstream ws : workstreams.values()) {
-            if (!includeArchived && ws.isArchived()) continue;
-            if (!first) json.append(",");
-            first = false;
-            json.append(ws.toSummaryJson());
-        }
-        json.append("]");
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", json.toString());
-    }
+
 
     /**
      * Builds the archive/unarchive/delete handler bound to this endpoint's

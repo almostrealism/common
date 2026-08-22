@@ -25,7 +25,13 @@ from server import mcp
 
 
 @mcp.tool()
-def workstream_list(include_archived: bool = False) -> dict:
+def workstream_list(
+    include_archived: bool = False,
+    workspace_id: str = "",
+    repo_url: str = "",
+    dispatch_capable: Optional[bool] = None,
+    archived: Optional[bool] = None,
+) -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
     Each workstream entry includes:
@@ -45,19 +51,52 @@ def workstream_list(include_archived: bool = False) -> dict:
     Use this to discover workstreams and determine which tools are
     available for each one.
 
+    The filters are applied by the controller, so a question like "which
+    workstreams on this repository have dispatch enabled?" is one call rather
+    than a listing plus a client-side scan.
+
     Args:
         include_archived: When ``False`` (default) archived workstreams
             are omitted from the response. Set ``True`` to include them;
             each archived entry carries ``archived=true``.
+        workspace_id: Only workstreams in this workspace. Distinct from the
+            scope filter the caller's token already imposes — this is an
+            explicit narrowing a multi-workspace caller can ask for.
+        repo_url: Only workstreams on this repository. Matched on the
+            repository identity, so the ``git@``/``https``/``.git`` spellings
+            of one repository are equivalent.
+        dispatch_capable: Only workstreams whose dispatch flag matches.
+        archived: Explicit archived selector — ``True`` for archived only,
+            ``False`` for live only. Supersedes ``include_archived`` when
+            given; that parameter is the older, coarser form.
 
     Returns:
         Dictionary with list of workstream summaries.
     """
     server._require_scope("read")
-    server._audit("workstream_list", include_archived=include_archived)
-    path = "/api/workstreams"
+    err = server._check_short_strings(
+        workspace_id=workspace_id, repo_url=repo_url,
+    )
+    if err:
+        return err
+    server._audit("workstream_list", include_archived=include_archived,
+                  workspace_id=workspace_id, repo_url=repo_url)
+
+    params = {}
     if include_archived:
-        path += "?includeArchived=true"
+        params["includeArchived"] = "true"
+    if workspace_id:
+        params["workspaceId"] = workspace_id
+    if repo_url:
+        params["repoUrl"] = repo_url
+    if dispatch_capable is not None:
+        params["dispatchCapable"] = "true" if dispatch_capable else "false"
+    if archived is not None:
+        params["archived"] = "true" if archived else "false"
+
+    path = "/api/workstreams"
+    if params:
+        path += "?" + urlencode(params)
     result = server._controller_get(path)
 
     if isinstance(result, list):

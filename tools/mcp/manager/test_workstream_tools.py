@@ -24,6 +24,60 @@ from manager_test_support import (  # noqa: E402
 )
 
 
+class TestWorkstreamListFilters(unittest.TestCase):
+    """Server-side filtering on workstream_list.
+
+    The filters exist so "which workstreams match P?" is one call. Answering it
+    by listing everything and scanning client-side was the operator's original
+    blocker, and each entry is expensive enough that the scan is not free.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_no_filters_sends_no_query(self, mock_get):
+        server.workstream_list()
+        self.assertEqual(mock_get.call_args[0][0], "/api/workstreams")
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_filters_reach_the_controller(self, mock_get):
+        server.workstream_list(
+            workspace_id="ws-a", repo_url="https://github.com/org/repo",
+            dispatch_capable=True)
+        path = mock_get.call_args[0][0]
+        self.assertIn("workspaceId=ws-a", path)
+        self.assertIn("repoUrl=", path)
+        self.assertIn("dispatchCapable=true", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_dispatch_capable_false_is_sent_not_dropped(self, mock_get):
+        # False is a filter, not an absent value; treating it as absent would
+        # silently return dispatch-capable workstreams too.
+        server.workstream_list(dispatch_capable=False)
+        self.assertIn("dispatchCapable=false", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_archived_selector_is_sent(self, mock_get):
+        server.workstream_list(archived=True)
+        self.assertIn("archived=true", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_include_archived_still_works(self, mock_get):
+        server.workstream_list(include_archived=True)
+        self.assertIn("includeArchived=true", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_scope_filtering_still_applies(self, mock_get):
+        # The server-side filters narrow further; they do not replace the
+        # token-scope filter, which is a security boundary rather than a
+        # convenience.
+        with patch.object(server, "_filter_workstreams_by_scope",
+                          return_value=[]) as mock_scope:
+            server.workstream_list(workspace_id="ws-a")
+            mock_scope.assert_called_once()
+
+
 class TestWorkstreamList(unittest.TestCase):
 
     @patch.object(server, "_controller_get")

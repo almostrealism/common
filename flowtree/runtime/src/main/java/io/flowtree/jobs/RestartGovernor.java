@@ -18,6 +18,9 @@ package io.flowtree.jobs;
 
 import io.flowtree.jobs.agent.AgentRunResult;
 
+import java.time.Duration;
+import java.time.Instant;
+
 import java.util.function.IntFunction;
 
 /**
@@ -99,6 +102,22 @@ class RestartGovernor {
      */
     static final int DEFAULT_MAX_INACTIVITY_RESTARTS = 3;
 
+    /**
+     * Default ceiling on a job's total elapsed wall-clock time.
+     *
+     * <p>The session, turn and dollar ceilings all bound how much a job
+     * <em>does</em>. None of them bounds a job that has stopped doing anything
+     * — a worker wedged on a network call burns no turns and costs nothing
+     * while whatever waits on it waits indefinitely. This is the ceiling that
+     * catches that case.</p>
+     *
+     * <p>Six hours is chosen to sit well clear of legitimate long runs rather
+     * than to be tight; a workstream with genuinely longer work overrides it
+     * per job. The override is the part that carries the weight, so the
+     * default only has to be safe for the common case.</p>
+     */
+    static final Duration DEFAULT_MAX_WALL_CLOCK = Duration.ofHours(6);
+
     /** The job whose session launches this governor authorizes and counts. */
     private final CodingAgentJob job;
 
@@ -110,6 +129,12 @@ class RestartGovernor {
 
     /** Maximum inactivity-triggered relaunches within one logical session. */
     private int maxInactivityRestarts = DEFAULT_MAX_INACTIVITY_RESTARTS;
+
+    /**
+     * Job-wide elapsed-time ceiling. A non-positive duration disables the
+     * check, matching how {@code maxTotalTurns} treats zero.
+     */
+    private Duration maxWallClock = DEFAULT_MAX_WALL_CLOCK;
 
     /** Number of logical sessions launched so far for this job. */
     private int sessionsLaunched;
@@ -161,7 +186,47 @@ class RestartGovernor {
             lastBlockReason = "turn budget (" + maxTotalTurns + ") reached: used " + turns + " turns";
             return false;
         }
+        Duration elapsed = elapsed();
+        if (elapsed != null && !maxWallClock.isNegative() && !maxWallClock.isZero()
+                && elapsed.compareTo(maxWallClock) >= 0) {
+            lastBlockReason = "wall-clock ceiling (" + maxWallClock.toHours()
+                    + "h) reached: " + elapsed.toMinutes() + " minutes elapsed";
+            return false;
+        }
         return true;
+    }
+
+    /**
+     * Returns how long the job has been running, or {@code null} before the
+     * first session records a start time.
+     *
+     * @return elapsed wall-clock time, or {@code null} when not yet started
+     */
+    private Duration elapsed() {
+        Instant started = job.getSessionStartedAt();
+        return started == null ? null : Duration.between(started, Instant.now());
+    }
+
+    /**
+     * Returns the job-wide elapsed-time ceiling.
+     *
+     * @return the ceiling; non-positive when the check is disabled
+     */
+    Duration getMaxWallClock() {
+        return maxWallClock;
+    }
+
+    /**
+     * Overrides the elapsed-time ceiling for this job.
+     *
+     * <p>A workstream whose work legitimately runs longer than the default
+     * raises it here. A non-positive duration disables the check, which is the
+     * escape hatch for a job that must not be time-bounded at all.</p>
+     *
+     * @param maxWallClock the ceiling; {@code null} restores the default
+     */
+    void setMaxWallClock(Duration maxWallClock) {
+        this.maxWallClock = maxWallClock == null ? DEFAULT_MAX_WALL_CLOCK : maxWallClock;
     }
 
     /**
