@@ -408,18 +408,48 @@ public class WorkstreamConfigSchemaAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Scans the entire {@code WorkstreamRegistrationHandler.java} file for
+	 * Scans {@code WorkstreamRegistrationHandler.java} for
 	 * {@code JsonFieldExtractor.extract*(body, "X")} and
-	 * {@code JsonFieldExtractor.hasField(body, "X")} calls (including those
-	 * in private helper methods such as {@code extractCompletionListeners})
-	 * and returns the set of camelCase field names found.
+	 * {@code JsonFieldExtractor.hasField(body, "X")} calls and returns the set
+	 * of camelCase field names found.
+	 *
+	 * <p>The scan is file-wide on purpose, so that reads performed in private
+	 * helpers such as {@code extractCompletionListeners} still count — those
+	 * helpers serve the register and update endpoints this test is about.
+	 *
+	 * <p>{@code resolveOrRegister} is the exception and is skipped. It belongs
+	 * to the <em>submit</em> endpoint, and it reads {@code workstreamId} from
+	 * the request body because a submitted job may name its workstream that
+	 * way. The register and update endpoints take that id from the URL path
+	 * instead, so counting the submit path's read made this test demand that
+	 * {@code workstream_update_config} forward a value it correctly puts in
+	 * the path — a field the update handler never looks for in the body.
 	 */
 	private static Set<String> javaHandlerReads(Path handlerJava) {
 		List<String> lines = readLines(handlerJava);
 		if (lines.isEmpty()) return Collections.emptySet();
 
+		Pattern submitPathMethod = Pattern.compile("\\bresolveOrRegister\\s*\\(");
 		Set<String> fields = new LinkedHashSet<>();
+		boolean inSubmitPathMethod = false;
+		int braceDepth = 0;
+		boolean bodyStarted = false;
+
 		for (String line : lines) {
+			if (!inSubmitPathMethod && submitPathMethod.matcher(line).find()) {
+				inSubmitPathMethod = true;
+				braceDepth = 0;
+				bodyStarted = false;
+			}
+			if (inSubmitPathMethod) {
+				for (char c : line.toCharArray()) {
+					if (c == '{') { braceDepth++; bodyStarted = true; }
+					else if (c == '}') braceDepth--;
+				}
+				if (bodyStarted && braceDepth == 0) inSubmitPathMethod = false;
+				continue;
+			}
+
 			Matcher m1 = JAVA_EXTRACT.matcher(line);
 			while (m1.find()) fields.add(m1.group(1));
 
