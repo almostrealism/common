@@ -3146,6 +3146,22 @@ class TestWorkstreamContextMemoryOptOut(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("use include_activities", result["error"])
 
+    def test_falsey_misuse_is_still_rejected(self):
+        """A truthiness guard would wave through exactly the mistaken calls
+        these parameters exist to intercept — max_memories=0 reads as "give me
+        no memories", which is a caller trying to use the parameter."""
+        zero = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_memories=0)
+        self.assertFalse(zero["ok"])
+        self.assertIn("use limit", zero["error"])
+
+        empty = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_activities="")
+        self.assertFalse(empty["ok"])
+        self.assertIn("use include_activities", empty["error"])
+
     @patch.object(server, "_github_request", return_value=[])
     @patch.object(server, "_get_memory_client")
     def test_the_rejected_names_are_inert_when_unused(self, mock_client, _):

@@ -3212,8 +3212,8 @@ def workstream_context(
     include_activities: "list[str] | str" = "primary",
     include_memories: bool = True,
     reformulated: bool = False,
-    max_memories: int = -1,
-    max_activities: str = "",
+    max_memories: Optional[int] = None,
+    max_activities: Optional[str] = None,
 ) -> dict:
     """Reconstruct the narrative of a workstream — what agents have been
     thinking about and doing on a branch. This is the primary tool for
@@ -3271,11 +3271,13 @@ def workstream_context(
             memories are the bulk of this response, so a caller that only
             wants the branch's pull request or commit list should turn them
             off rather than receive and discard them.
-        max_memories: Not a parameter — rejected with a pointer to ``limit``.
-            Declared only so the mistake reports itself instead of being
-            dropped silently by the schema layer.
-        max_activities: Not a parameter — rejected with a pointer to
-            ``include_activities``, for the same reason.
+        max_memories: Not a parameter — any value, including ``0``, is
+            rejected with a pointer to ``limit``. Declared only so the
+            mistake reports itself instead of being dropped silently by the
+            schema layer.
+        max_activities: Not a parameter — any value, including ``""``, is
+            rejected with a pointer to ``include_activities``, for the same
+            reason.
         include_activities: Activity filter — accepts a Python list of strings,
             a JSON-array string (``["deduplication","primary"]``), or a plain
             comma-separated string.  Defaults to ``"primary"``, which returns
@@ -3305,13 +3307,18 @@ def workstream_context(
     # them makes that a corrective error instead. They are deliberately not
     # aliases: a second permanent name for one concept is worse than being
     # told the right one once.
-    if max_memories != -1:
+    #
+    # The sentinel is None, and the test is "is not None", so that a falsey
+    # value supplied by a caller — max_activities="" or max_memories=0 — is
+    # still caught. A truthiness test would wave through exactly the mistaken
+    # calls these parameters exist to intercept.
+    if max_memories is not None:
         return {
             "ok": False,
             "error": "max_memories is not a parameter of workstream_context; "
                      "use limit instead.",
         }
-    if max_activities:
+    if max_activities is not None:
         return {
             "ok": False,
             "error": "max_activities is not a parameter of "
