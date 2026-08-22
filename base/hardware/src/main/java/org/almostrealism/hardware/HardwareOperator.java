@@ -389,6 +389,18 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			}
 
 			reassignMemory(data[i]);
+
+			// Checked after migration, since that is what decides the
+			// allocation the range will finally be read against. A range that
+			// overruns its allocation is not caught by anything further on: the
+			// kernel is handed an address, an offset and a length, and reads
+			// wherever the arithmetic lands.
+			if (!data[i].isWithinBounds()) {
+				throw new HardwareException("argument " + i + " to function " +
+						getName() + " describes " + data[i].getAtomicMemLength() +
+						" values from offset " + data[i].getOffset() +
+						", which does not fit within its memory");
+			}
 		}
 
 		prepareArgumentsMetric.addEntry(System.nanoTime() - start);

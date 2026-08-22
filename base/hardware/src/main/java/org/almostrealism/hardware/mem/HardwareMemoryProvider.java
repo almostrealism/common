@@ -517,6 +517,44 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 * @return Native reference for the memory block
 	 * @throws IllegalArgumentException if the RAM does not belong to this provider
 	 */
+	/**
+	 * Returns whether the given range lies within the allocation it names.
+	 *
+	 * <p>Sizes are compared in bytes, because that is what an allocation is
+	 * measured in here while a range is measured in elements.</p>
+	 *
+	 * <p>A {@link RAM} that does not report its size cannot be checked, and is
+	 * reported as fitting rather than as failing: refusing work over a question
+	 * that could not be asked would be worse than the risk it guards against.</p>
+	 *
+	 * @param mem    the memory the range is within
+	 * @param offset the start of the range, in elements
+	 * @param length the length of the range, in elements
+	 * @return {@code true} if the range fits, or if the size is unknown
+	 */
+	@Override
+	public boolean isWithinBounds(Memory mem, int offset, int length) {
+		if (!(mem instanceof RAM ram)) return true;
+		if (offset < 0 || length < 0) return false;
+
+		long size;
+
+		try {
+			size = ram.getSize();
+		} catch (UnsupportedOperationException e) {
+			return true;
+		}
+
+		return ((long) offset + length) * getNumberSize() <= size;
+	}
+
+	/**
+	 * Returns the native reference for the given memory block, validating that it belongs to this provider.
+	 *
+	 * @param ram Memory block to look up
+	 * @return Native reference for the memory block
+	 * @throws IllegalArgumentException if the RAM does not belong to this provider
+	 */
 	protected NativeRef<T> getNativeRef(T ram) {
 		if (ram.getProvider() != this)
 			throw new IllegalArgumentException("RAM does not belong to this provider");

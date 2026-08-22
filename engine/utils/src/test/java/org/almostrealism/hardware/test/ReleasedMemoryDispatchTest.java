@@ -60,7 +60,16 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 		/** What this provider reports about memory it handed out. */
 		private boolean released;
 
+		/** How many elements the memory it handed out holds. */
+		private int capacity = Integer.MAX_VALUE;
+
 		TestProvider(boolean released) { this.released = released; }
+
+		/** Creates a provider whose memory holds the given number of elements. */
+		TestProvider(boolean released, int capacity) {
+			this.released = released;
+			this.capacity = capacity;
+		}
 
 		@Override
 		public String getName() { return "test"; }
@@ -76,6 +85,11 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 
 		@Override
 		public boolean isReleased(Memory mem) { return released; }
+
+		@Override
+		public boolean isWithinBounds(Memory mem, int offset, int length) {
+			return (long) offset + length <= capacity;
+		}
 	}
 
 	/** Data over one {@link Memory}, or over none once destroyed. */
@@ -83,7 +97,20 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 		/** The memory this data points at, or {@code null} once destroyed. */
 		private Memory mem;
 
-		TestData(Memory mem) { this.mem = mem; }
+		/** The start of the range this data describes. */
+		private final int offset;
+
+		/** The length of the range this data describes. */
+		private final int length;
+
+		TestData(Memory mem) { this(mem, 0, 1); }
+
+		/** Creates data describing the given range of the given memory. */
+		TestData(Memory mem, int offset, int length) {
+			this.mem = mem;
+			this.offset = offset;
+			this.length = length;
+		}
 
 		@Override
 		public Memory getMem() { return mem; }
@@ -92,10 +119,10 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 		public void reassign(Memory mem) { this.mem = mem; }
 
 		@Override
-		public int getOffset() { return 0; }
+		public int getOffset() { return offset; }
 
 		@Override
-		public int getMemLength() { return 1; }
+		public int getMemLength() { return length; }
 
 		@Override
 		public MemoryData getDelegate() { return null; }
@@ -223,6 +250,48 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 			Assert.fail("A destroyed argument must not be prepared for dispatch");
 		} catch (HardwareException expected) {
 			// the dispatch was refused, which is the point
+		}
+	}
+
+	/** A range that fits inside its memory is within bounds. */
+	@Test(timeout = 30000)
+	public void aRangeThatFitsIsWithinBounds() {
+		TestProvider provider = new TestProvider(false, 64);
+
+		Assert.assertTrue(new TestData(new TestMemory(provider), 0, 64).isWithinBounds());
+		Assert.assertTrue(new TestData(new TestMemory(provider), 60, 4).isWithinBounds());
+	}
+
+	/** A range that runs past the end of its memory is not. */
+	@Test(timeout = 30000)
+	public void aRangeThatOverrunsIsNotWithinBounds() {
+		TestProvider provider = new TestProvider(false, 64);
+
+		Assert.assertFalse(new TestData(new TestMemory(provider), 0, 65).isWithinBounds());
+		Assert.assertFalse(new TestData(new TestMemory(provider), 60, 8).isWithinBounds());
+	}
+
+	/**
+	 * Preparing an argument whose range overruns its memory must fail.
+	 *
+	 * <p>This is the shape that ends a process: the pointer is valid and the
+	 * memory is live, so nothing else objects, and the kernel reads past the
+	 * end of the allocation onto whatever follows it.</p>
+	 */
+	@Test(timeout = 30000)
+	public void dispatchRefusesARangeThatOverrunsItsMemory() {
+		TestProvider provider = new TestProvider(false, 64);
+		TestOperator operator = new TestOperator(provider);
+		TestData data = new TestData(new TestMemory(provider), 0, 128);
+
+		try {
+			operator.prepare(new Object[] { data });
+			Assert.fail("A range past the end of its memory must not be dispatched");
+		} catch (HardwareException e) {
+			Assert.assertTrue("The failure must name the argument: " + e.getMessage(),
+					e.getMessage().contains("argument 0"));
+			Assert.assertTrue("The failure must give the range: " + e.getMessage(),
+					e.getMessage().contains("128"));
 		}
 	}
 

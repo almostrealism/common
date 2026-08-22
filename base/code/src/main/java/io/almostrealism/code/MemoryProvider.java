@@ -212,4 +212,25 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	 * @return {@code true} if the memory has been released
 	 */
 	default boolean isReleased(Memory mem) { return false; }
+
+	/**
+	 * Returns whether the given range lies within the memory it names.
+	 *
+	 * <p>Asked for the same reason as {@link #isReleased(Memory)}: a compiled
+	 * kernel is handed an address, an offset and a length, and reads whatever
+	 * the arithmetic produces. A range that runs past the end of its allocation
+	 * is not caught by anything downstream — the read simply lands on whatever
+	 * follows, and the process ends without saying which operation or argument
+	 * was responsible.</p>
+	 *
+	 * <p>A provider that does not know the size of what it handed out reports
+	 * {@code true}, which is the answer that leaves a caller behaving as it did
+	 * before the question could be asked.</p>
+	 *
+	 * @param mem    the memory the range is within
+	 * @param offset the start of the range, in elements
+	 * @param length the length of the range, in elements
+	 * @return {@code true} if the range fits
+	 */
+	default boolean isWithinBounds(Memory mem, int offset, int length) { return true; }
 }
