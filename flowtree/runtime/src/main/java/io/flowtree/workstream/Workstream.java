@@ -976,9 +976,6 @@ public class Workstream {
         }
         if (workspaceId != null) {
             json.append(",\"workspaceId\":\"").append(escapeForJson(workspaceId)).append("\"");
-            // Legacy alias retained so older clients that read this field by
-            // its previous name continue to work; remove in a future release.
-            json.append(",\"slackWorkspaceId\":\"").append(escapeForJson(workspaceId)).append("\"");
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             json.append(",\"planningDocument\":\"").append(escapeForJson(planningDocument)).append("\"");

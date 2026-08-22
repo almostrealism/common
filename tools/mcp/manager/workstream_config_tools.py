@@ -84,8 +84,8 @@ def workstream_register(
             target workspace from the GitHub org in ``repo_url``.
             Callers using tokens scoped to specific workspaces must
             pass this parameter explicitly.
-        slack_workspace_id: Deprecated alias for ``workspace_id``;
-            accepted for backward compatibility with older callers.
+        slack_workspace_id: Not a parameter — rejected with a pointer to
+            ``workspace_id``, for the same reason as on ``workstream_register``.
         plan_content: Literal markdown content of a planning document to
             commit directly to the new workstream's branch immediately after
             registration. Mutually exclusive with ``plan_instructions``.
@@ -175,12 +175,19 @@ def workstream_register(
     # ``OpencodeConfigBuilder.translateAllowlist``). Admin / operator
     # callers (no caller workstream bound) are always permitted.
     server._require_dispatch_capable()
-    # slack_workspace_id is the legacy name; the new canonical name is
-    # workspace_id. Accept either, preferring the new name.
-    if not workspace_id and slack_workspace_id:
-        server.audit_log.debug("workstream_register: slack_workspace_id is a "
-                        "deprecated alias for workspace_id")
-        workspace_id = slack_workspace_id
+    # Rejected rather than forwarded. Nothing about workspace identity is
+    # Slack's: a workspace is the operator's organisational unit, and Slack is
+    # one optional integration it may or may not have. Forwarding the name
+    # would keep teaching callers otherwise, and would leave two permanent
+    # names for one concept. The genuinely Slack-side identifier is
+    # slackTeamId on the workspace entry, which is correctly named.
+    if slack_workspace_id:
+        return {
+            "ok": False,
+            "error": "slack_workspace_id is not a parameter; use workspace_id "
+                     "instead. Workspace identity is not Slack's — Slack is an "
+                     "optional integration, not the source of truth.",
+        }
     err = server._reject_removed_config_params(
         model=model, effort=effort, default_runner=default_runner, runners=runners)
     if err:
@@ -246,11 +253,7 @@ def workstream_register(
     if channel_name:
         payload["channelName"] = channel_name
     if workspace_id:
-        # Send both names: the controller accepts either, and the legacy
-        # field name is kept so older controllers without the rename
-        # continue to honour the registration.
         payload["workspaceId"] = workspace_id
-        payload["slackWorkspaceId"] = workspace_id
     if required_labels:
         labels_map = server._parse_required_labels(required_labels)
         if labels_map:

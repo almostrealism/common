@@ -1,6 +1,6 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **IN PROGRESS — seven of eleven done (2, 3, 4, 6, 7, 8, 9); 1 and 5 partially done; 10 and 11 outstanding**
+Status: **IN PROGRESS — eight of eleven done (2, 3, 4, 6, 7, 8, 9, 11); 1 and 5 partially done; 10 outstanding**
 Author: planning session, 2026-08-12; triaged 2026-08-21
 
 > **Line numbers in this document have drifted.** It was written against a
@@ -1211,6 +1211,36 @@ restructuring anything.
 **Priority: P2.** No behaviour is wrong today; what is wrong is what the API
 teaches. That makes it worth doing and worth doing deliberately, rather than
 urgently.
+
+### Implemented
+
+Done as designed, with one addition the design did not anticipate.
+
+- `toSummaryJson` no longer emits `slackWorkspaceId`.
+- `slack_workspace_id` on `workstream_register` and `workspace_update_config`
+  is rejected with a pointer to `workspace_id`; the outbound payload no longer
+  carries the alias. The parameter stays *declared* deliberately — the MCP
+  schema layer drops undeclared keys silently, so removing it from the
+  signature would turn a caller's mistake into a silent success rather than a
+  correction.
+- The registration handler's 400 told the caller to "Supply slackWorkspaceId";
+  it now names `workspaceId`. `Unknown Slack workspace:` became
+  `Unknown workspace:`.
+- Prose pass over `AGENT_RUNNERS.md`, `RECIPES.md`, and the affected javadoc.
+- Kept, each for its own reason: the `@JsonAlias` on `WorkstreamConfig`
+  (on-disk YAML), the handler's body-alias read (unowned HTTP clients),
+  `workspace_map.py`'s read fallbacks (an older controller may still be the
+  peer), and everything named `slackTeamId`.
+
+The addition: rejecting a parameter breaks
+`WorkstreamConfigSchemaAlignmentTest`, which flags any typed parameter the
+Java handler reads but the Python payload does not forward — exactly what a
+rejection looks like from the outside. The guard now derives the set of
+rejected parameters from each tool's own body rather than carrying a list, so
+the same pattern in Item 2 and any future rejection is covered without
+another edit. Mutation-checked in both directions: dropping a genuinely
+forwarded key still fails, and removing a rejection re-arms the guard rather
+than disarming it.
 
 ### Risk
 

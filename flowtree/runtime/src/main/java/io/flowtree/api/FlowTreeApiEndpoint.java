@@ -262,12 +262,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Sets the GitHub-org → Slack-workspace mapping used by
+     * Sets the GitHub-org → workspace mapping used by
      * {@link WorkstreamRegistrationHandler#handleRegister} to derive the target workspace from
-     * the submitted {@code repoUrl} when no explicit {@code slackWorkspaceId}
+     * the submitted {@code repoUrl} when no explicit {@code workspaceId}
      * is provided.
      *
-     * @param orgToWorkspaceId map of org name to Slack workspace ID
+     * @param orgToWorkspaceId map of org name to workspace ID
      */
     public void setOrgToWorkspaceId(Map<String, String> orgToWorkspaceId) {
         this.orgToWorkspaceId = orgToWorkspaceId != null

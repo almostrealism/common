@@ -114,7 +114,7 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True}
         result = server.workspace_update_config(
-            slack_workspace_id="T0123456789",
+            workspace_id="T0123456789",
             name="Acme Inc",
             default_channel="C9999",
         )
@@ -130,7 +130,7 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         """The dropped `runners` map is rejected with a 400-style error."""
         _grant_all_scopes()
         result = server.workspace_update_config(
-            slack_workspace_id="T0123456789",
+            workspace_id="T0123456789",
             runners='{"primary":"opencode"}',
         )
         self.assertFalse(result["ok"])
@@ -142,7 +142,7 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         """The dropped `default_runner` shortcut is rejected."""
         _grant_all_scopes()
         result = server.workspace_update_config(
-            slack_workspace_id="T0123456789",
+            workspace_id="T0123456789",
             default_runner="opencode",
         )
         self.assertFalse(result["ok"])
@@ -152,7 +152,7 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
 
     def test_no_fields_returns_error(self):
         _grant_all_scopes()
-        result = server.workspace_update_config(slack_workspace_id="T0123456789")
+        result = server.workspace_update_config(workspace_id="T0123456789")
         self.assertFalse(result["ok"])
         self.assertIn("No fields to update", result["error"])
 
@@ -162,7 +162,7 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True}
         server.workspace_update_config(
-            slack_workspace_id="T0123456789",
+            workspace_id="T0123456789",
             name="Acme",
             default_channel="",
             default_runner="",
@@ -238,7 +238,7 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         self.assertNotIn("slackTeamId", payload)
 
     def test_missing_workspace_id_returns_error(self):
-        """Calling with neither workspace_id nor slack_workspace_id returns an error."""
+        """Calling with no workspace identifier returns an error."""
         _grant_all_scopes()
         result = server.workspace_update_config(name="Acme")
         self.assertFalse(result["ok"])

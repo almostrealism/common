@@ -103,7 +103,9 @@ def workspace_update_config(
             (``""``) to clear the Slack connection so channel/notifier
             operations skip cleanly. Omit the argument entirely to leave
             the existing value unchanged.
-        slack_workspace_id: Deprecated alias for ``workspace_id``.
+        slack_workspace_id: Not a parameter — rejected with a pointer to
+            ``workspace_id``. Workspace identity is the operator's, not
+            Slack's; the Slack-side identifier is ``slack_team_id``.
             Accepted for backward compatibility with older callers.
 
     Returns:
@@ -112,10 +114,14 @@ def workspace_update_config(
     """
     server._require_scope("write")
     # Resolve the workspace identifier, accepting the legacy alias.
-    if not workspace_id and slack_workspace_id:
-        server.audit_log.debug("workspace_update_config: slack_workspace_id is a "
-                        "deprecated alias for workspace_id")
-        workspace_id = slack_workspace_id
+    if slack_workspace_id:
+        return {
+            "ok": False,
+            "error": "slack_workspace_id is not a parameter; use workspace_id "
+                     "instead. Workspace identity is not Slack's — Slack is an "
+                     "optional integration, not the source of truth. The "
+                     "Slack-side identifier is slack_team_id.",
+        }
     if not workspace_id:
         return {
             "ok": False,

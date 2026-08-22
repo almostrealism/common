@@ -987,7 +987,7 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
         _reset_workspace_cache()
 
     @patch.object(server, "_controller_post")
-    def test_scoped_requires_slack_workspace_id(self, mock_post):
+    def test_scoped_requires_workspace_id(self, mock_post):
         _set_workspaces("TAAA")
         with self.assertRaises(PermissionError):
             server.workstream_register(default_branch="feature/x")
@@ -998,18 +998,18 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
         _set_workspaces("TAAA")
         with self.assertRaises(PermissionError):
             server.workstream_register(
-                default_branch="feature/x", slack_workspace_id="TBBB")
+                default_branch="feature/x", workspace_id="TBBB")
         mock_post.assert_not_called()
 
     @patch.object(server, "_controller_post")
-    def test_scoped_passes_slack_workspace_to_controller(self, mock_post):
+    def test_scoped_passes_workspace_to_controller(self, mock_post):
         mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
         _set_workspaces("TAAA")
         server.workstream_register(
-            default_branch="feature/x", slack_workspace_id="TAAA")
+            default_branch="feature/x", workspace_id="TAAA")
         args, _ = mock_post.call_args
         self.assertEqual("/api/workstreams", args[0])
-        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
+        self.assertEqual("TAAA", args[1]["workspaceId"])
 
     @patch.object(server, "_controller_post")
     def test_unscoped_need_not_pass_slack_workspace(self, mock_post):
@@ -1030,19 +1030,25 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
             default_branch="feature/x", workspace_id="almostrealism")
         args, _ = mock_post.call_args
         self.assertEqual("/api/workstreams", args[0])
-        # Both names go on the wire for cross-version compatibility.
         self.assertEqual("almostrealism", args[1]["workspaceId"])
-        self.assertEqual("almostrealism", args[1]["slackWorkspaceId"])
+        self.assertNotIn("slackWorkspaceId", args[1],
+                         "the wire payload carries one name for one concept")
 
     @patch.object(server, "_controller_post")
-    def test_legacy_slack_workspace_id_alias_still_accepted(self, mock_post):
-        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+    def test_slack_workspace_id_is_rejected(self, mock_post):
+        """The alias is refused rather than forwarded.
+
+        Workspace identity is the operator's, not Slack's — Slack is an
+        optional integration a workspace may have. Accepting the name would
+        keep teaching callers otherwise and leave two permanent names for one
+        concept, so the caller is told the real one instead.
+        """
         _set_workspaces("TAAA")
-        server.workstream_register(
+        result = server.workstream_register(
             default_branch="feature/x", slack_workspace_id="TAAA")
-        args, _ = mock_post.call_args
-        self.assertEqual("TAAA", args[1]["workspaceId"])
-        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
+        self.assertFalse(result["ok"])
+        self.assertIn("use workspace_id", result["error"])
+        mock_post.assert_not_called()
 
 class TestWorkstreamRegisterPlanFollowup(unittest.TestCase):
 

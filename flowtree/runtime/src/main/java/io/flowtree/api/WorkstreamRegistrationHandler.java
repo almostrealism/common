@@ -48,10 +48,12 @@ import java.util.Map;
  * {@code baseBranch}, {@code repoUrl}, {@code planningDocument},
  * {@code channelName}, {@code requiredLabels}, {@code dependentRepos},
  * {@code defaultPhaseConfig}, {@code phaseConfigs}).
- * Registration additionally derives the target Slack workspace from
- * {@code slackWorkspaceId}, the GitHub org of {@code repoUrl}, or the
+ * Registration additionally derives the target workspace from
+ * {@code workspaceId}, the GitHub org of {@code repoUrl}, or the
  * primary notifier in single-workspace mode, then auto-creates a Slack
- * channel on that workspace.</p>
+ * channel on that workspace when the workspace has Slack configured.
+ * {@code slackWorkspaceId} is read as a legacy body alias for
+ * {@code workspaceId} and is not part of the documented surface.</p>
  *
  * <p>Runner / model / effort configuration is supplied exclusively through
  * the per-phase shape ({@code defaultPhaseConfig} / {@code phaseConfigs}),
@@ -464,11 +466,11 @@ final class WorkstreamRegistrationHandler {
         boolean defaultUseTmux = JsonFieldExtractor.extractBoolean(body, "defaultUseTmux");
         boolean dormantForCompletionListeners = JsonFieldExtractor.extractBoolean(body, "dormantForCompletionListeners");
 
-        // Resolve the target Slack workspace: explicit slackWorkspaceId wins,
-        // then a workspace derived from the repoUrl's GitHub org, then (in
-        // legacy single-workspace mode) null / the primary notifier. In
+        // Resolve the target workspace: an explicit workspaceId wins, then a
+        // workspace derived from the repoUrl's GitHub org, then (in legacy
+        // single-workspace mode) null / the primary notifier. In
         // multi-workspace mode failing to resolve a workspace is a 400 — the
-        // alternative is silently placing the workstream in the wrong Slack.
+        // alternative is silently placing the workstream in the wrong one.
         String targetWorkspaceId = explicitWorkspaceId;
         if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty()) && repoUrl != null) {
             String org = GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl);
@@ -478,14 +480,14 @@ final class WorkstreamRegistrationHandler {
         }
         if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty())
                 && notifiers.isMultiWorkspace()) {
-            return Registration.failed(errorResponse.apply("Could not determine target Slack"
-                    + " workspace. Supply slackWorkspaceId in the request body, or a repoUrl"
+            return Registration.failed(errorResponse.apply("Could not determine target"
+                    + " workspace. Supply workspaceId in the request body, or a repoUrl"
                     + " whose GitHub org matches a workspace in the controller config."));
         }
         if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()
                 && notifiers.isMultiWorkspace()
                 && !notifiers.notifiersByWorkspace().containsKey(targetWorkspaceId)) {
-            return Registration.failed(errorResponse.apply("Unknown Slack workspace: " + targetWorkspaceId));
+            return Registration.failed(errorResponse.apply("Unknown workspace: " + targetWorkspaceId));
         }
 
         SlackNotifier targetNotifier = notifiers.notifierForWorkspace(targetWorkspaceId);
