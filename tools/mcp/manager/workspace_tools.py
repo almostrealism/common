@@ -12,6 +12,8 @@ the suite's patches still apply. Helpers and constants stay in ``server.py``.
 from urllib.parse import quote
 
 import server
+import tool_capabilities
+import workspace_map
 from server import mcp
 
 
@@ -376,3 +378,100 @@ def workspace_secret_render_file(
         secret_name, workstream_id, expanded,
     )
     return {"ok": True, "output_path": expanded}
+
+@mcp.tool()
+def workstream_introspect(workstream_id: str = "") -> dict:
+    """Report which ar-manager tools an agent on this workstream can invoke.
+
+    Enabling an orchestrator takes two independent grants, and setting one
+    without the other produces a denial that names neither. This shows both:
+
+    * ``controller`` — the ``dispatchCapable`` flag the server checks. This is
+      the real gate, and the only one an opencode session has, because that
+      harness filters by server rather than by tool.
+    * ``harness`` — the ``--allowedTools`` list a Claude Code session is
+      launched with. Claude Code filters per tool, so a tool absent here is
+      denied even when the controller would permit it.
+
+    When a tool is denied, compare the two blocks: a tool the controller allows
+    but the harness omits is a harness-side gap, and the reverse is a missing
+    ``dispatch_capable``.
+
+    Args:
+        workstream_id: The workstream to report on. Defaults to the workstream
+            bound to the calling token.
+
+    Returns:
+        Dictionary with ``controller``, ``harness`` and ``next_steps``.
+    """
+    server._require_scope("read")
+    err = server._check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+
+    effective_id = workstream_id or server._get_token_workstream_id()
+    if not effective_id:
+        return {
+            "ok": False,
+            "error": "No workstream to introspect.",
+            "next_steps": [
+                "Pass workstream_id explicitly",
+                "Use workstream_list to find valid workstream IDs",
+            ],
+        }
+    server._audit("workstream_introspect", workstream_id=effective_id)
+
+    ws = server._find_workstream(effective_id)
+    if ws is None:
+        return {
+            "ok": False,
+            "error": f"Workstream '{effective_id}' not found",
+            "next_steps": ["Use workstream_list to find valid workstream IDs"],
+        }
+
+    # Read the live dispatch set rather than the workstream record: it is what
+    # the enforcement path consults, so a stale record cannot make this report
+    # disagree with the decision it is explaining.
+    dispatch_capable = effective_id in workspace_map._get_dispatch_capable_ids()
+    granted = tool_capabilities.allowed_tools(dispatch_capable)
+    withheld = [t for t in tool_capabilities.EXCLUDED_TOOLS if t not in granted]
+
+    result = {
+        "ok": True,
+        "workstream_id": effective_id,
+        "controller": {
+            "dispatch_capable": dispatch_capable,
+            "gates": {
+                name: dispatch_capable
+                for name in tool_capabilities.DISPATCH_TOOLS
+            },
+        },
+        "harness": {
+            "claude_code": {
+                "filters": "per tool",
+                "allowlist_csv": tool_capabilities.allowlist_csv(dispatch_capable),
+                "tools_granted": granted,
+                "tools_withheld": withheld,
+            },
+            "opencode": {
+                "filters": "per server",
+                "note": "This harness cannot filter individual tools, so the "
+                        "controller block above is the whole answer for an "
+                        "opencode session.",
+            },
+        },
+    }
+
+    if dispatch_capable:
+        result["next_steps"] = [
+            "This workstream is dispatch-capable; the orchestration tools are "
+            "granted on both sides.",
+        ]
+    else:
+        result["next_steps"] = [
+            "To grant orchestration: workstream_update_config("
+            f"workstream_id='{effective_id}', dispatch_capable=True)",
+            "The grant takes effect once the dispatch cache refreshes, and "
+            "applies to agent sessions started after that.",
+        ]
+    return result

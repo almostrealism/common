@@ -24,6 +24,89 @@ from manager_test_support import (  # noqa: E402
 )
 
 
+class TestWorkstreamIntrospect(unittest.TestCase):
+    """Reporting which tools an agent on a workstream can actually invoke.
+
+    The tool exists because enabling an orchestrator needs two independent
+    grants and a denial names neither, so the report has to show both sides
+    and has to agree with what is enforced.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_find_workstream")
+    @patch("workspace_map._get_dispatch_capable_ids")
+    def test_reports_both_sides_when_dispatch_capable(self, mock_ids, mock_ws):
+        mock_ws.return_value = {"workstreamId": "ws-orch"}
+        mock_ids.return_value = {"ws-orch"}
+
+        result = server.workstream_introspect(workstream_id="ws-orch")
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["controller"]["dispatch_capable"])
+        self.assertTrue(all(result["controller"]["gates"].values()))
+        # The orchestration tools must appear on the harness side too, or the
+        # report would claim a grant the agent cannot use.
+        self.assertIn("workstream_register",
+                      result["harness"]["claude_code"]["tools_granted"])
+        self.assertIn("mcp__ar-manager__workstream_register",
+                      result["harness"]["claude_code"]["allowlist_csv"])
+
+    @patch.object(server, "_find_workstream")
+    @patch("workspace_map._get_dispatch_capable_ids")
+    def test_reports_the_withheld_tools_when_not_dispatch_capable(
+            self, mock_ids, mock_ws):
+        mock_ws.return_value = {"workstreamId": "ws-plain"}
+        mock_ids.return_value = set()
+
+        result = server.workstream_introspect(workstream_id="ws-plain")
+
+        self.assertFalse(result["controller"]["dispatch_capable"])
+        self.assertFalse(any(result["controller"]["gates"].values()))
+        granted = result["harness"]["claude_code"]["tools_granted"]
+        self.assertNotIn("workstream_register", granted)
+        self.assertIn("workstream_register",
+                      result["harness"]["claude_code"]["tools_withheld"])
+        self.assertIn("dispatch_capable=True", " ".join(result["next_steps"]))
+
+    @patch.object(server, "_find_workstream")
+    @patch("workspace_map._get_dispatch_capable_ids")
+    def test_reads_the_live_gate_not_the_workstream_record(
+            self, mock_ids, mock_ws):
+        # The record can be stale; the enforcement path reads the dispatch set,
+        # so a report sourced from the record could contradict the decision it
+        # is meant to explain.
+        mock_ws.return_value = {"workstreamId": "ws-x", "dispatchCapable": True}
+        mock_ids.return_value = set()
+
+        result = server.workstream_introspect(workstream_id="ws-x")
+
+        self.assertFalse(result["controller"]["dispatch_capable"])
+
+    @patch.object(server, "_find_workstream", return_value=None)
+    def test_unknown_workstream_is_reported(self, _):
+        result = server.workstream_introspect(workstream_id="ws-missing")
+        self.assertFalse(result["ok"])
+        self.assertIn("not found", result["error"])
+
+    @patch.object(server, "_get_token_workstream_id", return_value="")
+    def test_no_workstream_to_introspect(self, _):
+        result = server.workstream_introspect()
+        self.assertFalse(result["ok"])
+        self.assertIn("No workstream", result["error"])
+
+    @patch.object(server, "_find_workstream")
+    @patch("workspace_map._get_dispatch_capable_ids")
+    def test_defaults_to_the_calling_workstream(self, mock_ids, mock_ws):
+        mock_ws.return_value = {"workstreamId": "ws-token"}
+        mock_ids.return_value = set()
+        with patch.object(server, "_get_token_workstream_id",
+                          return_value="ws-token"):
+            result = server.workstream_introspect()
+        self.assertEqual(result["workstream_id"], "ws-token")
+
+
 class TestWorkspaceUpdateConfig(unittest.TestCase):
 
     @patch.object(server, "_controller_post")

@@ -1,6 +1,6 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **IN PROGRESS — five of ten done (2, 3, 7, 8, 9); items 1, 4, 5, 6, 10 outstanding**
+Status: **IN PROGRESS — six of ten done (2, 3, 6, 7, 8, 9); items 1, 4, 5, 10 outstanding**
 Author: planning session, 2026-08-12; triaged 2026-08-21
 
 > **Line numbers in this document have drifted.** It was written against a
@@ -688,9 +688,18 @@ together or in close succession.
 
 ## 6. Capability / permission state is not introspectable — REAL, DESIGN QUESTION
 
-> **OUTSTANDING.** Python-only and self-contained, so the cheapest of the five left.
-> Open question 3 — whether the tool is agent-callable read-only — still needs a
-> decision.
+> **DONE.** `workstream_introspect` reports both the controller flag and the
+> harness allowlist, and the dispatch denial now names it. Open question 3 is
+> resolved as **excluded from agents**: it is read-only, but its audience is an
+> operator diagnosing a denial, and an agent that hits one should report it
+> rather than investigate the harness layer itself.
+>
+> The plan anticipated the risk in duplicating the Java classification and asked
+> for a test that both sides agree. That is `McpToolClassificationParityTest`,
+> which reads the sets out of both source files — the Python side is written as
+> plain literals so it can be parsed — and fails naming the offending tool. A
+> report that disagreed with enforcement would be worse than no report, since it
+> is consulted exactly when something has been denied.
 
 ### What we found
 
