@@ -21,15 +21,16 @@ if _MANAGER_DIR not in sys.path:
     sys.path.insert(0, _MANAGER_DIR)
 
 import test_server  # noqa: E402  (path tweaked above)
+import test_workstream_tools  # noqa: E402
 
 # Re-export the test classes that match the post-completion command's
 # keyword filter so pytest picks them up from tests/ without
 # duplicating any assertions. Class names prefixed with ``Test`` are
 # auto-collected by pytest's unittest integration.
-TestWorkstreamRegister = test_server.TestWorkstreamRegister
-TestWorkstreamUpdateConfig = test_server.TestWorkstreamUpdateConfig
-TestWorkstreamRegisterScope = test_server.TestWorkstreamRegisterScope
-TestWorkstreamRegisterPlanFollowup = test_server.TestWorkstreamRegisterPlanFollowup
+TestWorkstreamRegister = test_workstream_tools.TestWorkstreamRegister
+TestWorkstreamUpdateConfig = test_workstream_tools.TestWorkstreamUpdateConfig
+TestWorkstreamRegisterScope = test_workstream_tools.TestWorkstreamRegisterScope
+TestWorkstreamRegisterPlanFollowup = test_workstream_tools.TestWorkstreamRegisterPlanFollowup
 TestToolRegistration = test_server.TestToolRegistration
 
 

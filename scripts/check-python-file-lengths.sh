@@ -25,26 +25,16 @@ LIMIT=1600
 # "path-relative-to-repo-root|max-allowed-line-count".
 # A parallel list rather than an associative array, so this runs on the bash 3.x
 # that ships with macOS — matching check-exempt-file-lengths.sh.
-EXEMPT_FILES=(
-    # The ar-manager MCP tool suite. server.py was 6392 lines before its tool
-    # groups were split into per-domain *_tools.py modules; these two are what
-    # remains above the cap. Both are on a downward path: server.py still holds
-    # helpers that could move, and workstream_tools.py holds the largest tool
-    # group, which could split again along register/update versus lifecycle.
-    "tools/mcp/manager/server.py|1633"
-    "tools/mcp/manager/workstream_tools.py|1833"
-
-    # The ar-manager test suite. Far and away the largest offender, and the one
-    # most worth splitting: it mirrors a server file that has since become eight
-    # modules, so the natural split follows those seams.
-    "tools/mcp/manager/test_server.py|7204"
-)
+# Empty, and worth keeping that way. Every Python file in the repository is
+# under the cap; an entry here is a promise to split something later, which is
+# a promise this project has learned to distrust.
+EXEMPT_FILES=()
 
 FAILED=0
 
 is_exempt() {
     local candidate="$1"
-    for entry in "${EXEMPT_FILES[@]}"; do
+    for entry in ${EXEMPT_FILES[@]+"${EXEMPT_FILES[@]}"}; do
         [ "${entry%%|*}" = "$candidate" ] && return 0
     done
     return 1
@@ -52,7 +42,7 @@ is_exempt() {
 
 # ---- Exempt files: must not grow beyond their recorded size ----------------
 
-for ENTRY in "${EXEMPT_FILES[@]}"; do
+for ENTRY in ${EXEMPT_FILES[@]+"${EXEMPT_FILES[@]}"}; do
     REL_PATH="${ENTRY%%|*}"
     MAX="${ENTRY##*|}"
     ABS_PATH="$REPO_ROOT/$REL_PATH"
