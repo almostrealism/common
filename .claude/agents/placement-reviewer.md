@@ -19,7 +19,7 @@ For each NEW method, class, registered primitive, or shared constant in the
 diff, determine the highest rung where it still makes sense — that is the
 required location:
 
-1. **It already exists.** Search (`Grep`, `mcp__ar-consultant__consult` with
+1. **It already exists.** Search (`Grep`, `mcp__ar-manager__consult` with
    the concept as keywords) for an equivalent before accepting any new
    implementation. The second implementation of anything is a defect.
 2. **It reads another type's state.** A method whose logic examines a `Foo`

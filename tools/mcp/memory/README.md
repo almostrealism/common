@@ -5,7 +5,7 @@ working on the Almost Realism codebase. Entries are stored in SQLite with FAISS
 vector indices for embedding-based similarity search.
 
 ar-memory runs as a standalone HTTP server (typically via Docker) and is
-accessed by ar-consultant and ar-manager through the shared
+accessed by ar-manager through the shared
 `MemoryHTTPClient` in `tools/mcp/common/`.
 
 ## Architecture
@@ -24,13 +24,13 @@ accessed by ar-consultant and ar-manager through the shared
 │    GET  /api/health           Health check      │
 │                                                 │
 │  SQLite + FAISS (single authoritative store)    │
-└────────────┬───────────────────┬────────────────┘
-             │ HTTP              │ HTTP
-             │                  │
-     ┌───────┴───────┐  ┌──────┴────────┐
-     │ ar-consultant │  │  ar-manager   │
-     │   (agents)    │  │  (external)   │
-     └───────────────┘  └───────────────┘
+└──────────────────────┬──────────────────────────┘
+                       │ HTTP
+                       │
+              ┌────────┴────────┐
+              │    ar-manager   │
+              │ (agents + MCP)  │
+              └─────────────────┘
 ```
 
 ## Running

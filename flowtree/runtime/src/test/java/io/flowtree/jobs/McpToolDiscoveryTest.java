@@ -315,6 +315,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_update_config",
 			"workspace_update_config",
 			"workstream_archive",
+			"workstream_archive_many",
+			"workstream_unarchive_many",
 			"workstream_unarchive",
 			"workstream_delete",
 			"project_create_branch",
@@ -742,10 +744,19 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		Path resolver = locateModuleSource("src/main/java/io/flowtree/submission/PhaseConfigResolver.java");
 		assertNotNull("PhaseConfigResolver.java must be locatable for the submit parity guard",
 			resolver);
+		// handleSubmit delegates workstream resolution to this handler, which
+		// reads its own keys off the body (workstreamId among them). Scanning
+		// only the two files above reported those keys as unconsumed — a false
+		// positive, since the submit path plainly does consume them.
+		Path registration = locateModuleSource(
+			"src/main/java/io/flowtree/api/WorkstreamRegistrationHandler.java");
+		assertNotNull("WorkstreamRegistrationHandler.java must be locatable for the"
+			+ " submit parity guard", registration);
 
 		Set<String> consumed = new HashSet<>();
 		consumed.addAll(controllerConsumedKeys(endpoint));
 		consumed.addAll(controllerConsumedKeys(resolver));
+		consumed.addAll(controllerConsumedKeys(registration));
 
 		List<String> missing = new ArrayList<>();
 		for (String key : toolKeys) {
@@ -754,6 +765,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task emits payload key(s) the controller /api/submit path"
 			+ " never consumes: " + missing + ". Wire each one in"
 			+ " FlowTreeApiEndpoint.handleSubmit (extractJson*(body, \"key\") -> factory setter),"
+			+ " in WorkstreamRegistrationHandler for workstream-resolution keys,"
 			+ " or in PhaseConfigResolver for phase-config keys. A tool key the controller"
 			+ " ignores is a silent no-op.",
 			missing.isEmpty());

@@ -684,28 +684,49 @@ def _parse_activities_param(include_activities) -> str:
 # Each entry is (compiled_pattern, human_readable_reason).  Patterns are
 # checked case-insensitively against each line of the submitted prompt.
 # re is already imported at the top of this file.
+# Verbs that make a commit reference a READ rather than an instruction to
+# produce one. "diff commit 123 against its parent" names an existing commit;
+# "Commit 1: add the parser" plans a new one. The bare commit-number pattern
+# below cannot tell them apart on its own, and rejecting the read case sent
+# operators hunting for the allow_commit_language escape hatch.
+# Kept deliberately narrow. Generic words that merely often appear near a
+# commit reference — "before", "after", "since", "check" — would exempt
+# instructions too ("commit this before running the tests"), turning a
+# narrowed heuristic into a disabled one. Only verbs that make the commit the
+# OBJECT OF AN INSPECTION belong here.
+_COMMIT_READ_CONTEXT = re.compile(
+    r"\b(?:diff|compare|revert|reverting|inspect|examine|review|reviewing|"
+    r"cherry-?pick|analyse|analyze|look\s+at|refer\s+to|based\s+on)\b",
+    re.IGNORECASE)
+
+# Each entry is (pattern, reason, exemption). A line matching `pattern` is a
+# violation unless `exemption` also matches it — which is how a read-only
+# reference to an existing commit is distinguished from an instruction to
+# create commits. Most patterns need no exemption because their wording is
+# already imperative.
 _COMMIT_SEQUENCING_PATTERNS = [
     (re.compile(r"\bcommit\s+\d+\b", re.IGNORECASE),
-     "commit-number phrase (e.g. \"Commit 1\", \"commit 2\")"),
+     "commit-number phrase (e.g. \"Commit 1\", \"commit 2\")",
+     _COMMIT_READ_CONTEXT),
     (re.compile(r"\bfirst\s+commit\b", re.IGNORECASE),
-     '"first commit" phrase'),
+     '"first commit" phrase', None),
     (re.compile(r"\bnext\s+commit\b", re.IGNORECASE),
-     '"next commit" phrase'),
+     '"next commit" phrase', None),
     (re.compile(r"\bfinal\s+commit\b", re.IGNORECASE),
-     '"final commit" phrase'),
+     '"final commit" phrase', None),
     (re.compile(r"\bas\s+(?:its\s+own|separate|individual)\s+commits?\b", re.IGNORECASE),
-     '"as separate/individual commits" phrase'),
+     '"as separate/individual commits" phrase', None),
     (re.compile(r"\b(?:in|across|over)\s+\d+\s+commits?\b", re.IGNORECASE),
-     '"in/across/over N commits" phrase'),
+     '"in/across/over N commits" phrase', None),
     (re.compile(
         r"\b(?:your|the)\s+commit\s+message\s+(?:should|will|must)\b", re.IGNORECASE),
-     '"commit message should/will/must" phrase'),
+     '"commit message should/will/must" phrase', None),
     (re.compile(
         r"\bcommit\s+(?:this|that|each|the)\s+(?:as|with|before)\b", re.IGNORECASE),
-     '"commit this/that/each/the as/with/before" phrase'),
+     '"commit this/that/each/the as/with/before" phrase', None),
     (re.compile(
         r"\bcommit\s+(?:between|after|before)\s+(?:each|every)\b", re.IGNORECASE),
-     '"commit between/after/before each/every" phrase'),
+     '"commit between/after/before each/every" phrase', None),
 ]
 
 # Minimum prompt length below which the linter is skipped (false-positive
@@ -731,8 +752,10 @@ def _lint_prompt_for_commit_sequencing(prompt: str) -> list:
         return []
     violations = []
     for lineno, line in enumerate(prompt.splitlines(), 1):
-        for pattern, reason in _COMMIT_SEQUENCING_PATTERNS:
+        for pattern, reason, exemption in _COMMIT_SEQUENCING_PATTERNS:
             if pattern.search(line):
+                if exemption is not None and exemption.search(line):
+                    continue
                 snippet = line.strip()[:120]
                 violations.append((lineno, snippet, reason))
                 break  # one violation entry per line, first pattern wins
@@ -1348,7 +1371,10 @@ def workstream_register(
         plan_path: File path for the plan document in the repo. Optional —
             if omitted, the controller auto-generates a path under
             ``docs/plans/``. Used by both the direct-commit and job-submit
-            paths.
+            paths. Also becomes the workstream's ``planningDocument`` when
+            ``planning_document`` is not given, so ``project_read_plan``
+            works without a follow-up config call; an explicit
+            ``planning_document`` always wins.
         plan_commit_message: Git commit message for the direct-commit path.
             Ignored when ``plan_instructions`` is used. Auto-generated if
             omitted.
@@ -1480,6 +1506,13 @@ def workstream_register(
         payload["repoUrl"] = repo_url
     if planning_document:
         payload["planningDocument"] = planning_document
+    elif plan_path:
+        # A caller who names the file the plan job will write has told us
+        # where the planning document lives. Not recording it left the
+        # workstream with no planningDocument, so project_read_plan failed
+        # against a document that demonstrably existed until a second
+        # workstream_update_config call was made to say so.
+        payload["planningDocument"] = plan_path
     if channel_name:
         payload["channelName"] = channel_name
     if workspace_id:
@@ -2133,6 +2166,118 @@ def workstream_unarchive(workstream_id: str) -> dict:
         f"/api/workstreams/{quote(workstream_id, safe='')}/unarchive",
         {},
     )
+
+
+def _archive_many(workstream_ids, archive_slack_channel: bool,
+                  archive: bool) -> dict:
+    """Apply archive or unarchive to each id, reporting per-id outcomes.
+
+    Sequential and independent: one workstream that refuses to archive — the
+    usual cause being a job still running on it — must not decide the fate of
+    the others in the batch. The caller wants to know which moved and which
+    did not, which is why a partial failure is still a successful call.
+
+    Args:
+        workstream_ids: Ids in any shape :func:`_parse_completion_listeners`
+            accepts — a list, a comma-separated string, or a JSON array.
+        archive_slack_channel: Passed through to the archive path; ignored
+            when unarchiving.
+        archive: True to archive, False to unarchive.
+
+    Returns:
+        Dictionary with ``results`` (one entry per id, in the order given),
+        ``succeeded`` and ``failed`` counts.
+    """
+    ids = _parse_completion_listeners(workstream_ids)
+    if not ids:
+        return {
+            "ok": False,
+            "error": "No workstream ids supplied.",
+            "next_steps": ["Pass a list, a comma-separated string, or a JSON array"],
+        }
+
+    seen = set()
+    results = []
+    for workstream_id in ids:
+        if workstream_id in seen:
+            # A repeated id would otherwise archive once and then report a
+            # confusing second outcome for the same workstream.
+            continue
+        seen.add(workstream_id)
+
+        if archive:
+            outcome = workstream_archive(
+                workstream_id=workstream_id,
+                archive_slack_channel=archive_slack_channel,
+            )
+        else:
+            outcome = workstream_unarchive(workstream_id=workstream_id)
+
+        entry = {"workstream_id": workstream_id,
+                 "ok": bool(outcome.get("ok", True))}
+        for field in ("error", "archivedAt", "activeJobIds",
+                      "slackChannelArchived", "slackChannelArchiveError"):
+            if isinstance(outcome, dict) and field in outcome:
+                entry[field] = outcome[field]
+        results.append(entry)
+
+    succeeded = sum(1 for r in results if r["ok"])
+    return {
+        "ok": True,
+        "results": results,
+        "succeeded": succeeded,
+        "failed": len(results) - succeeded,
+    }
+
+
+@mcp.tool()
+def workstream_archive_many(
+    workstream_ids: "list[str] | str" = "",
+    archive_slack_channel: bool = True,
+) -> dict:
+    """Archive several workstreams in one call.
+
+    Each is archived independently and the response reports what happened to
+    each, so one workstream that cannot be archived — most often because a
+    job is still running on it — does not block the rest. A batch with some
+    failures is still ``ok``; read ``results`` to see which.
+
+    Archiving is reversible, which is why it is offered in bulk. Deletion is
+    not, and is deliberately available one workstream at a time only.
+
+    Args:
+        workstream_ids: The workstreams to archive. Accepts a list, a
+            comma-separated string, or a JSON array string. Repeated ids are
+            processed once.
+        archive_slack_channel: When ``True`` (default), also archive each
+            bound Slack channel.
+
+    Returns:
+        Dictionary with ``results`` (per-workstream outcomes in the order
+        given), ``succeeded`` and ``failed`` counts.
+    """
+    return _archive_many(workstream_ids, archive_slack_channel, archive=True)
+
+
+@mcp.tool()
+def workstream_unarchive_many(
+    workstream_ids: "list[str] | str" = "",
+) -> dict:
+    """Restore several archived workstreams in one call.
+
+    The inverse of :func:`workstream_archive_many`, with the same per-id
+    reporting: one failure does not decide the batch.
+
+    Args:
+        workstream_ids: The workstreams to restore. Accepts a list, a
+            comma-separated string, or a JSON array string. Repeated ids are
+            processed once.
+
+    Returns:
+        Dictionary with ``results`` (per-workstream outcomes in the order
+        given), ``succeeded`` and ``failed`` counts.
+    """
+    return _archive_many(workstream_ids, False, archive=False)
 
 
 @mcp.tool()
@@ -3065,7 +3210,10 @@ def workstream_context(
     commit_limit: int = 30,
     job_limit: int = 20,
     include_activities: "list[str] | str" = "primary",
+    include_memories: bool = True,
     reformulated: bool = False,
+    max_memories: Optional[int] = None,
+    max_activities: Optional[str] = None,
 ) -> dict:
     """Reconstruct the narrative of a workstream — what agents have been
     thinking about and doing on a branch. This is the primary tool for
@@ -3119,6 +3267,17 @@ def workstream_context(
         commit_limit: Maximum number of commits to include (default 30).
         job_limit: Maximum number of jobs to include in the timeline
             (default 20). Pass 0 to omit jobs entirely.
+        include_memories: When false, skip the memory search entirely. The
+            memories are the bulk of this response, so a caller that only
+            wants the branch's pull request or commit list should turn them
+            off rather than receive and discard them.
+        max_memories: Not a parameter — any value, including ``0``, is
+            rejected with a pointer to ``limit``. Declared only so the
+            mistake reports itself instead of being dropped silently by the
+            schema layer.
+        max_activities: Not a parameter — any value, including ``""``, is
+            rejected with a pointer to ``include_activities``, for the same
+            reason.
         include_activities: Activity filter — accepts a Python list of strings,
             a JSON-array string (``["deduplication","primary"]``), or a plain
             comma-separated string.  Defaults to ``"primary"``, which returns
@@ -3142,6 +3301,29 @@ def workstream_context(
         version of the text is shown.
     """
     _require_scope("memory-read")
+    # These two names have never been parameters of this tool, but callers
+    # reach for them and the schema layer drops unknown keys silently — so the
+    # call appeared to succeed while quietly using the defaults. Declaring
+    # them makes that a corrective error instead. They are deliberately not
+    # aliases: a second permanent name for one concept is worse than being
+    # told the right one once.
+    #
+    # The sentinel is None, and the test is "is not None", so that a falsey
+    # value supplied by a caller — max_activities="" or max_memories=0 — is
+    # still caught. A truthiness test would wave through exactly the mistaken
+    # calls these parameters exist to intercept.
+    if max_memories is not None:
+        return {
+            "ok": False,
+            "error": "max_memories is not a parameter of workstream_context; "
+                     "use limit instead.",
+        }
+    if max_activities is not None:
+        return {
+            "ok": False,
+            "error": "max_activities is not a parameter of "
+                     "workstream_context; use include_activities instead.",
+        }
     err = _check_short_strings(
         workstream_id=workstream_id, repo_url=repo_url,
         branch=branch, namespace=namespace,
@@ -3172,20 +3354,27 @@ def workstream_context(
     # namespace by recency — the include_messages flag becomes a no-op
     # in that mode.
     lookup_namespace = namespace if namespace else None
-    try:
-        memories = client.search_by_branch(
-            repo_url=effective_repo,
-            branch=effective_branch,
-            namespace=lookup_namespace,
-            limit=limit,
-        )
-    except ConnectionError as e:
-        return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
+
+    # The memory payload dominates this response — tens of KB of agent prose
+    # for a branch with any history. A caller asking only "what PR is on this
+    # branch?" should not have to receive and pay for all of it, so skip the
+    # search entirely rather than fetching and discarding.
+    memories = []
+    if include_memories:
+        try:
+            memories = client.search_by_branch(
+                repo_url=effective_repo,
+                branch=effective_branch,
+                namespace=lookup_namespace,
+                limit=limit,
+            )
+        except ConnectionError as e:
+            return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
 
     # When the caller narrowed to a specific namespace and also asked for
     # messages, merge in a second stream. Messages are capped at ``limit``
     # and re-sorted by recency; primary memories are not displaced.
-    if namespace and include_messages and namespace != "messages":
+    if include_memories and namespace and include_messages and namespace != "messages":
         try:
             msg_memories = client.search_by_branch(
                 repo_url=effective_repo,
@@ -4015,58 +4204,57 @@ def send_message(
 # ---------------------------------------------------------------------------
 
 
-def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
-    """Look up the first open pull request for ``branch`` on ``owner/repo``.
+# GitHub has no `state=merged`: a merged pull request is a closed one that also
+# carries `merged_at`. Everything else maps straight onto the wire value.
+# Only `merged` needs a full page: it asks GitHub for closed pull requests and
+# filters locally, so the merged one may not be the most recent closure. The
+# others take the first result, so a single-item page is all they need.
+_PR_STATE_QUERIES = {
+    "open": "state=open",
+    "closed": "state=closed&sort=updated&direction=desc&per_page=1",
+    "merged": "state=closed&sort=updated&direction=desc&per_page=100",
+    "all": "state=all&sort=updated&direction=desc&per_page=1",
+}
 
-    Returns a dict with ``ok=True`` and ``pr`` (the raw GitHub PR object)
-    on success, ``ok=True`` with ``found=False`` when no open PR exists
-    for the branch, or an ``ok=False`` error dict when the GitHub call
-    fails or returns an unexpected payload. Centralising this lookup
-    avoids drift between tools that need to resolve a PR by branch
-    (e.g. ``github_pr_find``, ``github_request_copilot_review``,
-    ``github_pr_check_status``).
-    """
-    head = f"{owner}:{branch}"
-    pr_list = _github_request(
-        "GET",
-        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
-    )
-    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
-        return pr_list
-    if not isinstance(pr_list, list):
-        return {
-            "ok": False,
-            "error": "Unexpected response listing pull requests",
-        }
-    if not pr_list:
-        return {"ok": True, "found": False, "branch": branch}
-    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
+PR_STATES = tuple(_PR_STATE_QUERIES)
 
 
-def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
-    """Look up the most recent pull request for ``branch`` on ``owner/repo``.
+def _find_pr_by_branch(owner: str, repo: str, branch: str,
+                       state: str = "open") -> dict:
+    """Look up a pull request for ``branch`` on ``owner/repo``.
 
-    Unlike ``_find_open_pr_by_branch``, this searches across all PR states
-    (open, closed, merged) using the GitHub Pulls list API with ``state=all``
-    and returns the most recently updated PR for the branch. Returns a dict
-    with ``ok=True`` and ``pr`` (the raw GitHub PR object) on success,
-    ``ok=True`` with ``found=False`` when no PR exists for the branch, or
-    an ``ok=False`` error dict when the GitHub call fails.
+    Centralising this avoids drift between the tools that resolve a PR by
+    branch (``github_pr_find``, ``github_request_copilot_review``,
+    ``github_pr_check_status``, ``workstream_context``), which is why the
+    open-only and any-state variants are one function rather than two
+    near-identical ones.
 
     Args:
         owner: GitHub org (owner).
         repo: Repository name.
-        branch: Branch name to search for.
+        branch: Branch to search for.
+        state: One of :data:`PR_STATES`. ``closed`` follows GitHub and
+            includes merged pull requests; ``merged`` is the subset of those
+            that were actually merged rather than abandoned.
 
     Returns:
-        Dict with ``ok=True``, ``found=True``, ``pr`` (raw GitHub PR object),
-        and ``branch`` on success; ``ok=True``, ``found=False`` when no PR
-        exists; or ``ok=False`` with error message on failure.
+        ``ok=True`` with ``found=True`` and ``pr`` (the raw GitHub object) on
+        success; ``ok=True`` with ``found=False`` when the branch has no
+        matching pull request; ``ok=False`` with an error when the call fails
+        or returns something unexpected.
     """
+    query = _PR_STATE_QUERIES.get(state)
+    if query is None:
+        return {
+            "ok": False,
+            "error": f"Invalid state '{state}'. Must be one of: "
+                     + ", ".join(PR_STATES),
+        }
+
     head = f"{owner}:{branch}"
     pr_list = _github_request(
         "GET",
-        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=all&sort=updated&direction=desc&per_page=1",
+        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&{query}",
     )
     if isinstance(pr_list, dict) and pr_list.get("ok") is False:
         return pr_list
@@ -4075,9 +4263,25 @@ def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
             "ok": False,
             "error": "Unexpected response listing pull requests",
         }
+
+    if state == "merged":
+        pr_list = [pr for pr in pr_list if pr.get("merged_at")]
+
     if not pr_list:
         return {"ok": True, "found": False, "branch": branch}
     return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
+
+
+def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the first open pull request for ``branch``."""
+    return _find_pr_by_branch(owner, repo, branch, state="open")
+
+
+def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the most recently updated pull request for ``branch``,
+    whatever its state."""
+    return _find_pr_by_branch(owner, repo, branch, state="all")
+
 
 
 @mcp.tool()
@@ -4086,8 +4290,14 @@ def github_pr_find(
     branch: str = "",
     org: str = "",
     repo: str = "",
+    state: str = "open",
 ) -> dict:
-    """Find an open pull request for a branch.
+    """Find a pull request for a branch.
+
+    Defaults to open pull requests. Asking whether a branch's work has
+    already landed needs ``state="merged"`` or ``state="all"`` — a merged
+    pull request is invisible to the default, which is why a finished
+    workstream can look as though it never had one.
 
     Args:
         workstream_id: Workstream to resolve repo from. Defaults to token context.
@@ -4097,9 +4307,16 @@ def github_pr_find(
             when no workstream exists for the repo. Scoped tokens are
             checked against this org via the workspace scope gate.
         repo: GitHub repository name. Must be passed together with ``org``.
+        state: Which pull requests to consider — ``open`` (default),
+            ``closed``, ``merged``, or ``all``. ``closed`` follows GitHub and
+            includes merged ones; ``merged`` narrows to those actually merged
+            rather than abandoned. ``all`` returns the most recently updated
+            regardless of state.
 
     Returns:
-        PR details if found, or error.
+        PR details if found, or error. The returned ``state`` is GitHub's own
+        value, so a merged pull request reports ``closed``; ``merged`` and
+        ``merged_at`` distinguish it.
     """
     _require_scope("github")
     if org and repo:
@@ -4109,13 +4326,15 @@ def github_pr_find(
     if err:
         return err
 
-    _audit("github_pr_find", workstream_id=workstream_id, branch=effective_branch)
+    _audit("github_pr_find", workstream_id=workstream_id,
+           branch=effective_branch, state=state)
 
-    lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+    lookup = _find_pr_by_branch(owner, repo, effective_branch, state=state)
     if not lookup.get("ok"):
         return lookup
     if not lookup.get("found"):
-        return {"ok": True, "found": False, "branch": effective_branch}
+        return {"ok": True, "found": False, "branch": effective_branch,
+                "searched_state": state}
     pr = lookup["pr"]
     return {
         "ok": True,
@@ -4124,7 +4343,12 @@ def github_pr_find(
         "title": pr.get("title"),
         "url": pr.get("html_url"),
         "state": pr.get("state"),
+        # Merged is not a GitHub state, so surface it explicitly rather than
+        # making every caller re-derive it from merged_at.
+        "merged": bool(pr.get("merged_at")),
+        "merged_at": pr.get("merged_at"),
         "branch": effective_branch,
+        "searched_state": state,
     }
 
 

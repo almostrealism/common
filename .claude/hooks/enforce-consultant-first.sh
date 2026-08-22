@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# PreToolUse — Write/Edit: warn if ar-consultant has not been called recently
+# PreToolUse — Write/Edit: warn if consult has not been called recently.
+#
+# The tool moved to ar-manager, which carries the documentation corpus in
+# its image and so answers from any repository rather than only from a
+# checkout of this one. The marker path is unchanged so an in-flight
+# session keeps its timestamp across the switch.
 # before writing Java source files in computation-layer paths.
 #
 # This is a soft guard (exit 0) — it injects a reminder but does not block.
@@ -40,7 +45,7 @@ if [[ ! -f "$MARKER" ]]; then
 ║  CLAUDE.md Rule 1: Your FIRST tool call for every new task       ║
 ║  MUST be:                                                        ║
 ║                                                                  ║
-║    mcp__ar-consultant__consult                                   ║
+║    mcp__ar-manager__consult                                   ║
 ║      question:"..."                                              ║
 ║      keywords:["SpecificClass", "method"]                        ║
 ║                                                                  ║
@@ -59,9 +64,9 @@ AGE=$((NOW - LAST))
 if [[ "$AGE" -gt "$THRESHOLD" ]]; then
     MINUTES=$((AGE / 60))
     echo ""
-    echo "⚠  ar-consultant was last called ${MINUTES} minutes ago."
-    echo "   If this is a new task or a new code area, call ar-consultant first."
-    echo "   mcp__ar-consultant__consult question:\"...\" keywords:[\"SpecificClass\"]"
+    echo "⚠  consult was last called ${MINUTES} minutes ago."
+    echo "   If this is a new task or a new code area, call consult first."
+    echo "   mcp__ar-manager__consult question:\"...\" keywords:[\"SpecificClass\"]"
     echo ""
 fi
 

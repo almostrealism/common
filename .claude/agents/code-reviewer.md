@@ -35,7 +35,7 @@ Java is orchestration, NOT execution. All computation must be expressed as
 
 ## Process
 
-1. Call `mcp__ar-consultant__consult` with the specific class name as a keyword
+1. Call `mcp__ar-manager__consult` with the specific class name as a keyword
 2. Run the build validator to check all policy rules:
    ```
    mcp__ar-build-validator__start_validation checks:["checkstyle","code_policy","test_timeouts","duplicate_code"]

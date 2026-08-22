@@ -1718,6 +1718,43 @@ class TestWorkstreamRegister(unittest.TestCase):
         self.assertEqual(payload["channelName"], "#w-full")
 
     @patch.object(server, "_controller_post")
+    def test_plan_path_becomes_the_planning_document(self, mock_post):
+        """A caller who names the file the plan job will write has said where
+        the planning document lives. Not recording it left project_read_plan
+        failing against a document that existed, until a second
+        workstream_update_config call was made to say so."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-plan"}
+        server.workstream_register(
+            default_branch="feature/x",
+            plan_path="docs/plans/X.md",
+            plan_instructions="Write the plan",
+        )
+        payload = mock_post.call_args_list[0][0][1]
+        self.assertEqual(payload["planningDocument"], "docs/plans/X.md")
+
+    @patch.object(server, "_controller_post")
+    def test_explicit_planning_document_wins_over_plan_path(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-both"}
+        server.workstream_register(
+            default_branch="feature/x",
+            planning_document="docs/plans/EXPLICIT.md",
+            plan_path="docs/plans/X.md",
+            plan_instructions="Write the plan",
+        )
+        payload = mock_post.call_args_list[0][0][1]
+        self.assertEqual(payload["planningDocument"], "docs/plans/EXPLICIT.md")
+
+    @patch.object(server, "_controller_post")
+    def test_no_planning_document_when_neither_is_given(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-none"}
+        server.workstream_register(default_branch="feature/x")
+        payload = mock_post.call_args_list[0][0][1]
+        self.assertNotIn("planningDocument", payload)
+
+    @patch.object(server, "_controller_post")
     def test_register_suggests_repo_url(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "workstreamId": "ws-no-repo"}
@@ -3047,6 +3084,298 @@ class TestDefaultBranch(unittest.TestCase):
         self.assertEqual(
             server.github_api.default_branch("org", "repo", fallback="trunk"),
             "trunk")
+
+
+class TestWorkstreamContextMemoryOptOut(unittest.TestCase):
+    """Opting out of the memory payload, and the two names callers reach for.
+
+    The memories dominate this response, so "what PR is on this branch?"
+    should not have to carry tens of KB of agent prose to get an answer.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server.repo_config._cache = {}
+        server.repo_config._cache_expires = float("inf")
+
+    def tearDown(self):
+        server.repo_config._cache = None
+        server.repo_config._cache_expires = 0.0
+
+    @patch.object(server, "_github_request", return_value=[])
+    @patch.object(server, "_get_memory_client")
+    def test_include_memories_false_skips_the_search(self, mock_client, _):
+        client = MagicMock()
+        mock_client.return_value = client
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            include_memories=False, include_commits=False)
+
+        # Not fetched-and-discarded — not fetched.
+        client.search_by_branch.assert_not_called()
+        self.assertEqual(result["memories"], [])
+
+    @patch.object(server, "_github_request", return_value=[])
+    @patch.object(server, "_get_memory_client")
+    def test_memories_are_returned_by_default(self, mock_client, _):
+        client = MagicMock()
+        client.search_by_branch.return_value = [
+            {"id": "m1", "content": "a note", "created_at": "2026-08-01"},
+        ]
+        mock_client.return_value = client
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            include_commits=False)
+
+        client.search_by_branch.assert_called()
+        self.assertEqual(len(result["memories"]), 1)
+
+    def test_max_memories_is_rejected_with_the_real_name(self):
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_memories=1)
+        self.assertFalse(result["ok"])
+        self.assertIn("use limit", result["error"])
+
+    def test_max_activities_is_rejected_with_the_real_name(self):
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_activities="primary")
+        self.assertFalse(result["ok"])
+        self.assertIn("use include_activities", result["error"])
+
+    def test_falsey_misuse_is_still_rejected(self):
+        """A truthiness guard would wave through exactly the mistaken calls
+        these parameters exist to intercept — max_memories=0 reads as "give me
+        no memories", which is a caller trying to use the parameter."""
+        zero = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_memories=0)
+        self.assertFalse(zero["ok"])
+        self.assertIn("use limit", zero["error"])
+
+        empty = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            max_activities="")
+        self.assertFalse(empty["ok"])
+        self.assertIn("use include_activities", empty["error"])
+
+    @patch.object(server, "_github_request", return_value=[])
+    @patch.object(server, "_get_memory_client")
+    def test_the_rejected_names_are_inert_when_unused(self, mock_client, _):
+        # Their sentinel defaults must not look like a caller supplying them.
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client.return_value = client
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo", branch="feature/x",
+            include_commits=False)
+
+        self.assertTrue(result["ok"])
+
+
+class TestGithubPrFindState(unittest.TestCase):
+    """PR lookup across states.
+
+    The default finding only open pull requests is what made a finished
+    workstream look as though it never had one: the PR was merged, and merged
+    is invisible to state=open.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _pr(self, number=7, state="closed", merged_at=None):
+        return {"number": number, "title": "T", "html_url": "u",
+                "state": state, "merged_at": merged_at}
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_default_state_is_open(self, mock_request, _):
+        mock_request.return_value = [self._pr(state="open")]
+        result = server.github_pr_find(branch="feature/x")
+        self.assertIn("state=open", mock_request.call_args[0][1])
+        self.assertEqual(result["searched_state"], "open")
+        self.assertFalse(result["merged"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_merged_filters_closed_to_actually_merged(self, mock_request, _):
+        # GitHub has no state=merged; it returns closed PRs and the merged
+        # ones are those carrying merged_at.
+        mock_request.return_value = [
+            self._pr(number=1, merged_at=None),
+            self._pr(number=2, merged_at="2026-08-01T00:00:00Z"),
+        ]
+        result = server.github_pr_find(branch="feature/x", state="merged")
+        self.assertIn("state=closed", mock_request.call_args[0][1])
+        self.assertEqual(result["number"], 2)
+        self.assertTrue(result["merged"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_merged_reports_not_found_when_only_abandoned(
+            self, mock_request, _):
+        mock_request.return_value = [self._pr(number=1, merged_at=None)]
+        result = server.github_pr_find(branch="feature/x", state="merged")
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["found"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_all_searches_every_state(self, mock_request, _):
+        mock_request.return_value = [self._pr(merged_at="2026-08-01T00:00:00Z")]
+        result = server.github_pr_find(branch="feature/x", state="all")
+        self.assertIn("state=all", mock_request.call_args[0][1])
+        self.assertTrue(result["merged"])
+        self.assertEqual(result["merged_at"], "2026-08-01T00:00:00Z")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_invalid_state_is_rejected(self, mock_request, _):
+        result = server.github_pr_find(branch="feature/x", state="sideways")
+        self.assertFalse(result["ok"])
+        self.assertIn("sideways", result["error"])
+        mock_request.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("org", "repo", "feature/x", None))
+    @patch.object(server, "_github_request")
+    def test_only_merged_pages_deeply(self, mock_request, _):
+        # The other states take the first result, so a one-item page suffices;
+        # merged filters locally and would miss a merge behind newer closures.
+        mock_request.return_value = []
+        server.github_pr_find(branch="feature/x", state="all")
+        self.assertIn("per_page=1", mock_request.call_args[0][1])
+        server.github_pr_find(branch="feature/x", state="merged")
+        self.assertIn("per_page=100", mock_request.call_args[0][1])
+
+
+class TestWorkstreamArchiveMany(unittest.TestCase):
+    """Batch archive/unarchive.
+
+    Archiving six workstreams took six calls. Only the reversible operations
+    are batched — deletion stays one at a time on purpose.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_require_workstream_in_scope")
+    @patch.object(server, "_controller_post")
+    def test_archives_each_id(self, mock_post, _):
+        mock_post.return_value = {"ok": True, "archivedAt": "2026-08-21"}
+        result = server.workstream_archive_many(workstream_ids=["ws-a", "ws-b"])
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["succeeded"], 2)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual([r["workstream_id"] for r in result["results"]],
+                         ["ws-a", "ws-b"])
+
+    @patch.object(server, "_require_workstream_in_scope")
+    @patch.object(server, "_controller_post")
+    def test_one_failure_does_not_decide_the_batch(self, mock_post, _):
+        # The realistic case: a workstream with a job still running refuses,
+        # and the operator still wants the other five archived.
+        mock_post.side_effect = [
+            {"ok": True, "archivedAt": "2026-08-21"},
+            {"ok": False, "error": "active jobs: job-1"},
+            {"ok": True, "archivedAt": "2026-08-21"},
+        ]
+        result = server.workstream_archive_many(
+            workstream_ids="ws-a,ws-b,ws-c")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["succeeded"], 2)
+        self.assertEqual(result["failed"], 1)
+        self.assertIn("active jobs", result["results"][1]["error"])
+
+    @patch.object(server, "_require_workstream_in_scope")
+    @patch.object(server, "_controller_post")
+    def test_accepts_a_json_array_string(self, mock_post, _):
+        mock_post.return_value = {"ok": True}
+        result = server.workstream_archive_many(
+            workstream_ids='["ws-a","ws-b"]')
+        self.assertEqual(result["succeeded"], 2)
+
+    @patch.object(server, "_require_workstream_in_scope")
+    @patch.object(server, "_controller_post")
+    def test_repeated_ids_are_processed_once(self, mock_post, _):
+        mock_post.return_value = {"ok": True}
+        result = server.workstream_archive_many(
+            workstream_ids="ws-a,ws-a,ws-b")
+        self.assertEqual(len(result["results"]), 2)
+        self.assertEqual(mock_post.call_count, 2)
+
+    def test_empty_input_is_rejected(self):
+        result = server.workstream_archive_many(workstream_ids="")
+        self.assertFalse(result["ok"])
+        self.assertIn("No workstream ids", result["error"])
+
+    @patch.object(server, "_require_workstream_in_scope")
+    @patch.object(server, "_controller_post")
+    def test_unarchive_many_uses_the_unarchive_path(self, mock_post, _):
+        mock_post.return_value = {"ok": True}
+        server.workstream_unarchive_many(workstream_ids=["ws-a"])
+        called = mock_post.call_args[0][0]
+        self.assertIn("/unarchive", called)
+
+    @patch.object(server, "_require_workstream_in_scope")
+    @patch.object(server, "_controller_post")
+    def test_slack_flag_reaches_the_archive_call(self, mock_post, _):
+        mock_post.return_value = {"ok": True}
+        server.workstream_archive_many(
+            workstream_ids=["ws-a"], archive_slack_channel=False)
+        self.assertFalse(mock_post.call_args[0][1]["archiveSlackChannel"])
+
+
+class TestCommitLanguageReadContext(unittest.TestCase):
+    """The commit-sequencing linter must not reject reading history.
+
+    "diff commit 123 against its parent" names an existing commit; it is not
+    an instruction to produce commits. Rejecting it sent operators looking for
+    the allow_commit_language escape hatch to do something legitimate.
+    """
+
+    # Deliberately free of any word the read-context exemption matches; an
+    # exemption word hiding in the padding would make every case pass.
+    PAD = (" Additional prompt text of sufficient length that the linter's "
+           "minimum-length guard does not short-circuit the whole scan.")
+
+    def _flagged(self, text):
+        return bool(server._lint_prompt_for_commit_sequencing(text + self.PAD))
+
+    def test_read_only_references_are_allowed(self):
+        for text in (
+            "diff commit 123 against its parent to find the regression",
+            "Look at commit 42 to understand the bug",
+            "Revert commit 7 and re-apply the change by hand",
+            "Compare commit 9 with master and report what differs",
+            "Reviewing commit 15 first",
+        ):
+            self.assertFalse(self._flagged(text), text)
+
+    def test_numbered_plans_are_still_rejected(self):
+        # The reason the rule exists. An exemption broad enough to cover this
+        # would have removed the safety net rather than narrowed it.
+        self.assertTrue(self._flagged(
+            "Commit 1: add the parser. Commit 2: wire it up."))
+
+    def test_instructions_to_create_commits_are_still_rejected(self):
+        for text in (
+            "Make commit 1 the parser change and stop there",
+            "Split the work across 3 commits please",
+            "Land this as separate commits for reviewability",
+            "Your commit message should mention the ticket",
+        ):
+            self.assertTrue(self._flagged(text), text)
 
 
 class TestConsult(unittest.TestCase):
@@ -5036,6 +5365,8 @@ class TestToolRegistration(unittest.TestCase):
             "workstream_update_config",
             "workspace_update_config",
             "workstream_archive",
+            "workstream_archive_many",
+            "workstream_unarchive_many",
             "workstream_unarchive",
             "workstream_delete",
             "project_create_branch",

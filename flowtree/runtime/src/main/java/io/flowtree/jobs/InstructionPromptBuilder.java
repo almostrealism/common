@@ -651,7 +651,7 @@ public class InstructionPromptBuilder {
             sb.append("Permission denials should never happen in this environment. ");
             sb.append("Reporting them is critical for diagnosing configuration issues.\n\n");
 
-            sb.append("## Using MCP Tools (ar-build-validator, ar-test-runner, ar-consultant, ...)\n");
+            sb.append("## Using MCP Tools (ar-build-validator, ar-test-runner, ar-manager, ...)\n");
             sb.append("MCP tools are stdio subprocesses, NOT HTTP endpoints. There is no ");
             sb.append("`http://localhost:<port>/api/...` for any of them. To poll a run, call its ");
             sb.append("`get_*_status` tool with the `run_id`; if it reports `running`, call again. ");

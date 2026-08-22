@@ -6,7 +6,7 @@ orchestration language, not the execution language.
 
 ## Steps
 
-1. Call `mcp__ar-consultant__consult` with question about the file or change in question
+1. Call `mcp__ar-manager__consult` with question about the file or change in question
    and keywords like `["ProducerPatternDetector", "evaluate in computation"]`
 
 2. Run the build validator to check code policy:

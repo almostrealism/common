@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Decide whether to remind the agent to call `memory_store` (or the
-`ar-consultant` analogue `remember`).
+a retired ar-consultant analogue).
 
 This module is the single source of truth for the "memory reminder
 This module is the single source of truth for the "memory reminder
@@ -82,14 +82,6 @@ READ_ONLY_TOOL_NAMES = frozenset({
     "list",
     "webfetch",
     "websearch",
-    # ar-consultant: every read tool. Memory *writing* moved to ar-manager;
-    # `recall` is still served here until its documentation grounding is
-    # confirmed live in ar-manager, and it reads, so it belongs in this set.
-    "mcp__ar-consultant__consult",
-    "mcp__ar-consultant__recall",
-    "mcp__ar-consultant__consultant_status",
-    "mcp__ar-consultant__list_request_history",
-    "mcp__ar-consultant__export_request_history",
 })
 
 READ_ONLY_TOOL_PREFIXES = (
@@ -98,6 +90,7 @@ READ_ONLY_TOOL_PREFIXES = (
     # ar-manager: read-only tool name patterns.
     "mcp__ar-manager__memory_recall",
     "mcp__ar-manager__memory_namespaces",
+    "mcp__ar-manager__consult",
     "mcp__ar-manager__workstream_list",
     "mcp__ar-manager__workstream_get_",
     "mcp__ar-manager__workstream_context",
