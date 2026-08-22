@@ -699,6 +699,11 @@ jobs:
       - name: Check exempt file lengths
         run: bash scripts/check-exempt-file-lengths.sh
 
+      # Python has no Checkstyle equivalent in this build, so the same
+      # 1600-line cap Java gets from FileLength is enforced by a script.
+      - name: Check Python file lengths
+        run: bash scripts/check-python-file-lengths.sh
+
       - name: Check for PDSL code in Java string literals
         run: python3 scripts/check-pdsl-in-strings.py
 
