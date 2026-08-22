@@ -240,14 +240,15 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void allowlistCoversEveryArManagerTool() {
-		Path serverFile = locateManagerServerPy();
-		assertNotNull(
-			"Could not locate tools/mcp/manager/server.py from working directory " +
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse(
+			"Could not locate the ar-manager tool sources from working directory " +
 				Path.of("").toAbsolutePath() +
-				". The allowlist coverage check cannot run without it.",
-			serverFile);
+				". The allowlist coverage check cannot run without them, and would" +
+				" otherwise pass by having no tools to check.",
+			managerSources.isEmpty());
 
-		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
+		List<String> discovered = McpToolDiscovery.discoverToolNames(managerSources);
 		assertFalse("Should discover at least one ar-manager tool", discovered.isEmpty());
 
 		Set<String> classified = new HashSet<>(McpConfigBuilder.AR_MANAGER_TOOL_NAMES);
@@ -356,26 +357,7 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 		assertFalse(McpConfigBuilder.isValidToolName(null));
 	}
 
-	/**
-	 * Walks up from the current working directory looking for
-	 * {@code tools/mcp/manager/server.py}. Maven Surefire defaults the
-	 * working directory to the module's basedir ({@code flowtree/}) so a
-	 * single relative path like {@code tools/...} only resolves when the
-	 * test is launched from the project root.
-	 *
-	 * @return the resolved path, or {@code null} if not found within five
-	 *         levels of ancestor directories
-	 */
-	private static Path locateManagerServerPy() {
-		Path cwd = Path.of("").toAbsolutePath();
-		for (int i = 0; i < 5 && cwd != null; i++) {
-			Path candidate = cwd.resolve("tools/mcp/manager/server.py");
-			if (Files.exists(candidate)) return candidate;
-			cwd = cwd.getParent();
-		}
-		return null;
-	}
-
+	
 	/**
 	 * Verifies that {@link McpConfigBuilder#AR_MANAGER_TOOL_NAMES} and
 	 * {@link McpConfigBuilder#EXCLUDED_AR_MANAGER_TOOLS} are disjoint.

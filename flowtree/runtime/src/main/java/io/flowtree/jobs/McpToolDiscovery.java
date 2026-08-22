@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Utility for discovering tool names from Python MCP server source files.
@@ -234,6 +235,29 @@ public class McpToolDiscovery {
     }
 
     /**
+     * Reports whether a tool parameter declares a default, looking in
+     * whichever source defines the tool.
+     *
+     * @param sources   the Python files to scan
+     * @param toolName  the tool function name
+     * @param paramName the parameter name to check
+     * @return {@code true} when the parameter declares a default value
+     */
+    public static boolean isOptionalToolParameter(List<Path> sources,
+                                                  String toolName,
+                                                  String paramName) {
+        for (Path source : sources) {
+            // Only the source that declares the tool can answer; an absent
+            // tool and an absent default are both "false" from one file, so
+            // ask the file that has the signature.
+            if (!discoverToolParameters(source, toolName).isEmpty()) {
+                return isOptionalToolParameter(source, toolName, paramName);
+            }
+        }
+        return false;
+    }
+
+    /**
      * Reads all UTF-8 lines from the given Python server source file.
      *
      * @param serverFile path to the file; may be {@code null}
@@ -285,6 +309,86 @@ public class McpToolDiscovery {
             cwd = cwd.getParent();
         }
         return null;
+    }
+
+    /**
+     * Locates every Python source file that can declare an ar-manager tool.
+     *
+     * <p>This is {@code server.py} plus every sibling {@code *_tools.py}. The
+     * manager's tool surface was one file until it outgrew the length limit;
+     * the tools now live in per-domain modules beside it, and a discovery that
+     * reads only {@code server.py} would report the moved ones as absent.
+     * That failure is silent in the worst way: a guard asserting every tool is
+     * classified would pass by finding no tools to classify.</p>
+     *
+     * <p>The {@code *_tools.py} suffix is the convention that makes a module
+     * part of the tool surface. A new tool module must follow it to be seen.</p>
+     *
+     * @return the manager sources, server.py first; empty if none is found
+     */
+    public static List<Path> locateManagerSources() {
+        List<Path> sources = new ArrayList<>();
+        Path serverPy = locateManagerServerPy();
+        if (serverPy == null) return sources;
+        sources.add(serverPy);
+
+        Path dir = serverPy.getParent();
+        if (dir == null) return sources;
+        try (Stream<Path> entries = Files.list(dir)) {
+            entries.filter(p -> p.getFileName().toString().endsWith("_tools.py"))
+                   .sorted()
+                   .forEach(sources::add);
+        } catch (IOException e) {
+            // A directory we cannot list still yields server.py, which is a
+            // strictly better answer than none.
+        }
+        return sources;
+    }
+
+    /**
+     * Aggregates {@link #discoverToolNames(Path)} across several sources.
+     *
+     * @param sources the Python files to scan
+     * @return every tool name found, in the order the sources were given
+     */
+    public static List<String> discoverToolNames(List<Path> sources) {
+        List<String> tools = new ArrayList<>();
+        for (Path source : sources) {
+            for (String name : discoverToolNames(source)) {
+                if (!tools.contains(name)) tools.add(name);
+            }
+        }
+        return tools;
+    }
+
+    /**
+     * Finds a tool's declared parameters in whichever source defines it.
+     *
+     * @param sources  the Python files to scan
+     * @param toolName the tool function name to inspect
+     * @return the parameter names, empty when no source declares the tool
+     */
+    public static List<String> discoverToolParameters(List<Path> sources, String toolName) {
+        for (Path source : sources) {
+            List<String> params = discoverToolParameters(source, toolName);
+            if (!params.isEmpty()) return params;
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * Finds a tool's emitted payload keys in whichever source defines it.
+     *
+     * @param sources  the Python files to scan
+     * @param toolName the tool function name whose payload to inspect
+     * @return the emitted wire keys, empty when no source declares the tool
+     */
+    public static List<String> discoverToolPayloadKeys(List<Path> sources, String toolName) {
+        for (Path source : sources) {
+            List<String> keys = discoverToolPayloadKeys(source, toolName);
+            if (!keys.isEmpty()) return keys;
+        }
+        return new ArrayList<>();
     }
 
     /**
