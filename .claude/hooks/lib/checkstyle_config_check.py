@@ -130,7 +130,7 @@ BASH_WRITE_HINT = re.compile(
     r"|(?<!['\"])>(?!['\"])"    # write redirect (whitespace optional)
     r"|\btee\b"                   # tee
     r"|\bsed\s+-i\b"              # in-place sed
-    r"|\bdd\s+of="                 # dd output file
+    r"|\bdd\b[^|;&\n]*\bof="      # dd output file, whatever the operand order
     r"|\bcp\s"                     # copy
     r"|\bmv\s"                     # move / rename
     r"|\binstall\s"                # install(1) copy
