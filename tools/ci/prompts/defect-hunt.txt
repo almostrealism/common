@@ -1,0 +1,117 @@
+You are hunting for a real defect in this codebase and proving it exists.
+
+This is not a code review. A review reports opinions about code; you are
+looking for something that is actually broken, and the deliverable is a
+test that fails because of it. An observation you cannot demonstrate is
+not a finding.
+
+Branch: ${BRANCH}
+Base:   ${BASE_BRANCH}
+
+Unlike the documentation review, you are not scoped to recent changes.
+Anything in the repository is in scope, including code that has not been
+touched in a year. Old code that everyone has stopped looking at is
+usually where this kind of thing survives.
+
+## How to go about it
+
+**1. Choose somewhere to look, on purpose.**
+
+Do not start reading files at random, and do not grep for a pattern you
+already have in mind — that finds only the bugs you already imagined.
+Pick a target by looking for the shapes that concentrate risk:
+
+- Code that is genuinely intricate: deep conditionals, several flags that
+  interact, state machines, hand-rolled parsing, arithmetic on indices or
+  offsets.
+- Boundaries between subsystems, where each side has assumptions the
+  other never agreed to. Serialization, caching, lifecycle, concurrency,
+  and anything that crosses a process or language boundary.
+- Code whose tests only exercise the easy path. High line coverage of the
+  happy case says nothing about the empty input, the duplicate entry, the
+  second call, or the value exactly on a limit.
+- Places where a comment, name, or docstring disagrees with what the code
+  does. One of them is wrong, and it is worth finding out which.
+- Error handling and cleanup paths, which are the least-run code in any
+  system and therefore the least likely to be correct.
+
+Say which target you picked and why before you start digging.
+
+**2. Build several theories of failure, not one.**
+
+For your chosen target, write down multiple specific ways it could be
+wrong. Specific means "if the collection is empty, the loop never sets
+`result` and the caller reads the previous value" — not "this might not
+handle edge cases".
+
+Build several, deliberately, before testing any of them. The first
+explanation that comes to mind is usually the one that is easiest to
+imagine rather than the one most likely to be true, and committing to it
+early means the rest never get considered. Rank them by how badly they
+would hurt if real, not by how easy they would be to check.
+
+**3. Test them.**
+
+Work down your ranked list. For each theory, find out whether it is true
+— by reading the code carefully, by writing a scratch test, or by running
+something. Kill theories that do not survive, and say so; a theory
+eliminated is a real result and it narrows where the defect can be.
+
+Use the tools available to you. `ar-profile-analyzer` reads the generated
+kernel source and argument bindings, and for anything computing a wrong
+value that is the direct evidence rather than a guess. Use the MCP test
+runner for tests. Follow the evidence rather than your first impression
+of what the code does.
+
+**4. Make it reproducible.**
+
+When a theory survives, turn it into a test that fails. This is the
+deliverable, and it is what separates a finding from a suspicion.
+
+The test must fail because of the defect, not because you wrote an
+assertion that does not hold. Before you believe it, check the difference:
+temporarily correct the suspected cause and confirm the test passes, then
+put the code back. A test that fails for its own reasons is worse than no
+test, because it looks like a finding.
+
+Write it where a test for that code belongs, name it for the behaviour
+that is wrong, and follow the repository's conventions for test classes.
+
+**5. Fix it if you can.**
+
+With a failing test, attempt the fix. Address the cause rather than the
+symptom: if the test fails because a value is wrong, find out why it is
+wrong instead of adjusting until the assertion passes. When you are done,
+the test you wrote should pass and the tests around it should still pass.
+
+If you cannot fix it, say so plainly and leave the failing test with a
+clear explanation of what is wrong and what you tried. That is a genuinely
+useful outcome — a demonstrated, reproducible defect is worth more than a
+silent one, and far more than a guess at a fix that might paper over it.
+Do not weaken the test to make it pass, and do not report a fix you have
+not verified.
+
+## What counts as success
+
+In descending order:
+
+1. A demonstrated defect, a failing test, and a verified fix.
+2. A demonstrated defect and a failing test, honestly reported as unfixed.
+3. A careful account of where you looked, which theories you built, how
+   you eliminated each one, and what you now believe is sound. Say this
+   plainly rather than reaching for something marginal to report.
+
+The third outcome is a real result and you should be willing to return it.
+Manufacturing a trivial finding to avoid an empty-handed report wastes
+review attention and is worse than the honest answer. Equally, do not stop
+at the first plausible-looking thing you see: check it before believing it.
+
+## Constraints
+
+- Do not weaken, disable, or narrow any existing test. If an existing test
+  fails, that is a finding to investigate, not an obstacle to remove.
+- Do not report a defect you have not reproduced.
+- Report what you ran and what it printed. "Verified locally" is not
+  evidence; the actual output is.
+- Keep the change focused on the one defect. If you find several, take the
+  most serious and note the others in your summary.
