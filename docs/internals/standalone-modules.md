@@ -261,16 +261,22 @@ flowtree-only branches. Running tests in `build` ensures they always execute.
 `tools/` contains development tooling, MCP (Model Context Protocol) servers, and utilities
 for working with the Almost Realism codebase. It includes:
 
-- `tools/mcp/manager/` — MCP server for managing FlowTree jobs, GitHub PRs, memory, workstreams
-- `tools/mcp/docs/` — MCP server for reading AR documentation and source code
+<!-- TODO(review): "consult_legacy" and "documentation_search" do not appear anywhere else in the repo (tools/mcp/manager/memory_tools.py only registers consult/memory_recall/memory_store/memory_namespaces); verify and drop them if they are not real tool names. -->
+- `tools/mcp/manager/` — MCP server for managing FlowTree jobs, GitHub PRs, memory, workstreams (the controller endpoint that now also carries `consult`, `consult_legacy`, `documentation_search`, and the rest of the doc/memory/inference surface — see `tools/mcp/README.md`)
+- `tools/mcp/memory/` — MCP server for the centralized HTTP memory service with embedding-based search
+- `tools/mcp/build-validator/` — MCP server for static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne
 - `tools/mcp/jmx/` — MCP server for JVM memory diagnostics and JFR profiling
 - `tools/mcp/test-runner/` — MCP server for running Maven tests asynchronously
 - `tools/mcp/profile-analyzer/` — MCP server for analyzing profiling output
-- `tools/mcp/consultant/` — MCP server for AI-assisted code consultation and memory
+- `tools/mcp/secrets/` — stdio MCP server that renders workspace secrets into files on the agent's filesystem
+- `tools/mcp/transcript-analyzer/` — MCP server for parsing agent session transcripts
+- `tools/mcp/common/` — shared substrate used by ar-manager (`MemoryHTTPClient`, `InferenceBackend`, `DocsRetriever`, `git_context`)
+- `tools/mcp/consultant/` — RETIRED. Source retained for reference, not registered in `.mcp.json`. Its memory, documentation, and Q&A tools were folded into ar-manager.
+- `docs/mcp/server.py` — repo-local `ar-docs` MCP server (`mcp__ar-docs__search_ar_docs`, `mcp__ar-docs__read_ar_module`, …) registered via the project root `.mcp.json`; lives outside `tools/mcp/` because it indexes the documentation corpus and is unique to this repository.
 
 #### Dependency on ar-ml
 `tools` depends on `ar-ml` because some development tools use ML capabilities directly
-(e.g., embedding-based semantic search in the consultant tool, model analysis utilities).
+(e.g., embedding-based semantic search in the centralized memory service, model analysis utilities).
 
 #### CI treatment
 - Tests run in `code-policy-check` job (not in the layer-gated `test` job)
