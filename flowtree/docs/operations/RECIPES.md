@@ -202,8 +202,7 @@ The preferred path to set these defaults is the `workspace_update_config`
 MCP tool (parallel tools exist for workstreams: `workstream_register`,
 `workstream_update_config`, and per-job `workstream_submit_task`).
 Discover the workspace ID via the `workspaceId` field on each
-`workstream_list` entry (the legacy `slackWorkspaceId` field is still
-emitted for backward compatibility):
+`workstream_list` entry:
 
 ```python
 workspace_update_config(

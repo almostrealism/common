@@ -18,6 +18,9 @@ package io.flowtree.jobs;
 
 import io.flowtree.jobs.agent.AgentRunResult;
 import org.almostrealism.util.TestSuiteBase;
+import java.time.Duration;
+import java.time.Instant;
+
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -296,6 +299,71 @@ public class RestartGovernorTest extends TestSuiteBase {
         gov.beginSession();
         job.absorbResult(result(0.0, 20, false));
         assertFalse(gov.canLaunchSession());
+    }
+
+    /**
+     * A job that has run past the wall-clock ceiling launches no more sessions.
+     *
+     * <p>This is the ceiling the others cannot supply. A worker wedged on a
+     * network call spends no turns and costs nothing, so the turn and dollar
+     * budgets never trip, and whatever waits on the job waits indefinitely.</p>
+     */
+    @Test(timeout = 30000)
+    public void wallClockCeilingBlocksAnOverrunningJob() {
+        CodingAgentJob job = newJob();
+        RestartGovernor gov = job.restartGovernor();
+        gov.beginSession();
+        job.setSessionStartedAt(Instant.now().minus(Duration.ofHours(7)));
+        assertFalse(gov.canLaunchSession());
+        assertTrue("The block reason must name the ceiling that stopped it",
+                gov.blockReason().contains("wall-clock"));
+    }
+
+    /** A job inside the ceiling is unaffected. */
+    @Test(timeout = 30000)
+    public void wallClockCeilingAllowsAJobWithinIt() {
+        CodingAgentJob job = newJob();
+        RestartGovernor gov = job.restartGovernor();
+        gov.beginSession();
+        job.setSessionStartedAt(Instant.now().minus(Duration.ofHours(2)));
+        assertTrue(gov.canLaunchSession());
+    }
+
+    /**
+     * The ceiling is per job, so a workstream whose work legitimately runs
+     * longer than the default can raise it.
+     */
+    @Test(timeout = 30000)
+    public void wallClockCeilingIsOverridable() {
+        CodingAgentJob job = newJob();
+        RestartGovernor gov = job.restartGovernor();
+        gov.setMaxWallClock(Duration.ofHours(12));
+        gov.beginSession();
+        job.setSessionStartedAt(Instant.now().minus(Duration.ofHours(7)));
+        assertTrue("A raised ceiling must admit a job the default would block",
+                gov.canLaunchSession());
+    }
+
+    /** A non-positive ceiling disables the check, matching the turn budget. */
+    @Test(timeout = 30000)
+    public void wallClockCeilingCanBeDisabled() {
+        CodingAgentJob job = newJob();
+        RestartGovernor gov = job.restartGovernor();
+        gov.setMaxWallClock(Duration.ZERO);
+        gov.beginSession();
+        job.setSessionStartedAt(Instant.now().minus(Duration.ofDays(3)));
+        assertTrue(gov.canLaunchSession());
+    }
+
+    /** The default is six hours, so a five-hour job still runs. */
+    @Test(timeout = 30000)
+    public void wallClockDefaultIsSixHours() {
+        assertEquals(6, RestartGovernor.DEFAULT_MAX_WALL_CLOCK.toHours());
+        CodingAgentJob job = newJob();
+        RestartGovernor gov = job.restartGovernor();
+        gov.beginSession();
+        job.setSessionStartedAt(Instant.now().minus(Duration.ofHours(5)));
+        assertTrue(gov.canLaunchSession());
     }
 
     /** Staying under the turn budget permits further sessions. */

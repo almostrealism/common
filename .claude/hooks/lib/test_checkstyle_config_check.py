@@ -218,6 +218,27 @@ class BashWritesCheckstyleTests(unittest.TestCase):
             )
         )
 
+    def test_dd_of_blocks_whatever_the_operand_order(self):
+        # dd operands are order-independent, so a detector that only
+        # recognised `dd of=` missed the ordinary `dd if=... of=...`
+        # spelling — which is the one anybody would actually type.
+        for command in (
+            "dd of=checkstyle.xml if=/dev/zero",
+            "dd bs=1 if=/dev/zero of=checkstyle.xml",
+            "dd if=/dev/null of=config/checkstyle/checkstyle.xml",
+        ):
+            self.assertTrue(
+                self.core.bash_command_writes_checkstyle(command), command)
+
+    def test_dd_mentioned_across_a_separator_does_not_block(self):
+        # The write hint has to stay inside one command. `of=` appearing
+        # in a later pipeline stage says nothing about what dd wrote.
+        self.assertFalse(
+            self.core.bash_command_writes_checkstyle(
+                "grep dd checkstyle.xml | grep of="
+            )
+        )
+
     def test_redirect_append_blocks(self):
         self.assertTrue(
             self.core.bash_command_writes_checkstyle(

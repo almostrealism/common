@@ -187,6 +187,13 @@ public class FlowTreeController implements ConsoleFeatures {
     /** Persistent store for per-workstream job statistics. */
     private JobStatsStore statsStore;
 
+    /**
+     * Terminates jobs that stop reporting, so a dependent chain waiting on a
+     * completion event is released instead of stalling indefinitely. Started
+     * alongside the API endpoint and stopped with the controller.
+     */
+    private StuckJobScanner stuckJobScanner;
+
     /** Managed MCP server subprocesses started by the controller (legacy, currently unused). */
     private List<Process> mcpProcesses = new ArrayList<>();
 
@@ -1204,8 +1211,9 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
-            CompletionListenerFanoutWiring.wire(apiEndpoint, flowtreeServer, statsStore,
-                    listener, primaryNotifier, notifiersByWorkspace);
+            stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,
+                    flowtreeServer, statsStore, listener, primaryNotifier,
+                    notifiersByWorkspace);
 
             // Populate per-org GitHub tokens: global githubOrgs merged with per-workspace
             // overrides via WorkstreamConfig.mergedGithubOrgTokens().
@@ -1306,6 +1314,11 @@ public class FlowTreeController implements ConsoleFeatures {
         if (apiEndpoint != null) {
             apiEndpoint.stop();
             apiEndpoint = null;
+        }
+
+        if (stuckJobScanner != null) {
+            stuckJobScanner.stop();
+            stuckJobScanner = null;
         }
 
         if (statsStore != null) {

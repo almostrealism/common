@@ -95,15 +95,101 @@ class BlockGitCommitTests(unittest.TestCase):
         d = self.core.decide("   ", "block-git-commit")
         self.assertEqual(d["action"], "allow")
 
-    def test_echo_with_commit_text_blocks(self):
-        # The original inline-grep .sh also matched the substring
-        # `git commit` inside a quoted argument to echo (it was a
-        # substring match, not a parsed-CLI match). The shared core
-        # preserves that bit-for-bit — false positives in echo
-        # output are an acceptable cost for keeping the grep
-        # behavior identical.
-        d = self.core.decide('echo "git commit"', "block-git-commit")
+    def test_naming_the_command_in_a_quoted_argument_allows(self):
+        # Changed deliberately, with the repository owner's approval.
+        #
+        # The original inline-grep .sh matched the substring anywhere in
+        # the command line, and the extraction into this core preserved
+        # that bit-for-bit. The cost turned out to be higher than "false
+        # positives in echo output": it blocked `grep` for the phrase and
+        # any heredoc writing documentation that mentions the rule, so
+        # the guard fired on reading and writing prose *about* itself.
+        #
+        # The replacement requires `git` in command position. The tests
+        # below pin the other half of the bargain — every spelling that
+        # can actually execute still blocks.
+        for command in ('echo "git commit"',
+                        "grep -rn 'git commit' docs/",
+                        "rg 'git commit' --files-with-matches"):
+            d = self.core.decide(command, "block-git-commit")
+            self.assertEqual(d["action"], "allow", command)
+
+    def test_shell_wrapper_around_the_command_still_blocks(self):
+        # The narrowing must not open an evasion. A command string handed
+        # to a shell wrapper is followed and examined in its own right.
+        for command in ('bash -c "git commit -m x"',
+                        "sh -c 'git commit'",
+                        'eval "git commit"',
+                        'bash -c "bash -c \'git commit\'"'):
+            d = self.core.decide(command, "block-git-commit")
+            self.assertEqual(d["action"], "block", command)
+
+    def test_command_position_variants_still_block(self):
+        for command in ("git add -A && git commit -m x",
+                        "cd /tmp; git commit",
+                        "/usr/bin/git commit",
+                        "true | git commit"):
+            d = self.core.decide(command, "block-git-commit")
+            self.assertEqual(d["action"], "block", command)
+
+    def test_unparseable_quoting_falls_back_to_the_substring_pattern(self):
+        # Nothing reliable to tokenize, so the guard fails closed rather
+        # than letting the command through unread.
+        d = self.core.decide('git commit -m "unterminated', "block-git-commit")
         self.assertEqual(d["action"], "block")
+
+    def test_commit_tree_plumbing_still_blocks(self):
+        # `commit-tree` creates a commit object. The substring pattern
+        # blocked it because `git commit` is a prefix of it; matching the
+        # subcommand exactly released it, and a prior session is on record
+        # using exactly this route to commit while the guard was in force.
+        d = self.core.decide("git commit-tree $T -p $P -m msg", "block-git-commit")
+        self.assertEqual(d["action"], "block")
+
+    def test_commit_graph_is_allowed(self):
+        # Writes a cache file and creates no commit. The substring pattern
+        # blocked it; that was a false positive, not a property to keep.
+        d = self.core.decide("git commit-graph write", "block-git-commit")
+        self.assertEqual(d["action"], "allow")
+
+    def test_separator_inside_a_quoted_argument_is_not_a_separator(self):
+        # Splitting the raw text on `&&` treats the one inside this
+        # argument as a pipeline boundary, which turns a string
+        # *describing* a command into a command. Separators are therefore
+        # recognised on the token stream, where quoting still applies.
+        d = self.core.decide('echo "cd /repo && git commit -m x"',
+                             "block-git-commit")
+        self.assertEqual(d["action"], "allow")
+
+    def test_heredoc_documenting_the_command_allows(self):
+        # The shape that blocked this guard's own test file being written.
+        command = (
+            "python3 - <<'PY'\n"
+            "cases = ('bash -c \"git commit\"', \"cd /r && git commit\")\n"
+            "PY"
+        )
+        d = self.core.decide(command, "block-git-commit")
+        self.assertEqual(d["action"], "allow")
+
+    def test_heredoc_prose_with_an_apostrophe_allows(self):
+        # shlex has no notion of a heredoc and tokenizes the body as
+        # arguments, so one apostrophe in an ordinary English word made
+        # the whole command unparseable and sent it to the substring
+        # fallback. Writing prose about the guard tripped the guard.
+        command = (
+            "cat > notes.md <<'EOF'\n"
+            "Don't run git commit here; the developer's the one who does.\n"
+            "EOF"
+        )
+        d = self.core.decide(command, "block-git-commit")
+        self.assertEqual(d["action"], "allow")
+
+    def test_heredoc_piped_into_a_shell_still_blocks(self):
+        # The body is data right up until something executes it.
+        for invoker in ("bash", "sh"):
+            command = "cat <<'EOF' | " + invoker + "\ngit commit -m x\nEOF"
+            d = self.core.decide(command, "block-git-commit")
+            self.assertEqual(d["action"], "block", invoker)
 
 
 class BlockGitWorktreeTests(unittest.TestCase):
@@ -137,6 +223,51 @@ class BlockGitWorktreeTests(unittest.TestCase):
     def test_worktree_with_short_flag_add_blocks(self):
         d = self.core.decide("git worktree -d add /tmp/wt", "block-git-worktree")
         self.assertEqual(d["action"], "block")
+
+    def test_naming_the_command_in_a_quoted_argument_allows(self):
+        # Same deliberate change as block-git-commit: naming the command
+        # is not running it, and matching the mention blocked searching
+        # and documenting the rule.
+        for command in ('echo "git worktree add"',
+                        "grep -rn 'git worktree add' docs/"):
+            d = self.core.decide(command, "block-git-worktree")
+            self.assertEqual(d["action"], "allow", command)
+
+    def test_bare_worktree_add_without_git_allows(self):
+        # The legacy pattern was not anchored on `git`, so a bare
+        # `worktree add` blocked. `worktree` is not an executable, so
+        # without `git` in front of it nothing creates a worktree.
+        d = self.core.decide("worktree add /tmp/wt", "block-git-worktree")
+        self.assertEqual(d["action"], "allow")
+
+    def test_shell_wrapper_around_worktree_add_still_blocks(self):
+        for command in ('bash -c "git worktree add /tmp/wt"',
+                        "sh -c 'git worktree add /tmp/wt'"):
+            d = self.core.decide(command, "block-git-worktree")
+            self.assertEqual(d["action"], "block", command)
+
+    def test_worktree_command_position_variants_still_block(self):
+        for command in ("cd /repo && git worktree add /tmp/wt",
+                        "cd /repo; git worktree add /tmp/wt",
+                        "/usr/bin/git worktree add /tmp/wt",
+                        "git --git-dir=/repo/.git worktree add /tmp/wt"):
+            d = self.core.decide(command, "block-git-worktree")
+            self.assertEqual(d["action"], "block", command)
+
+    def test_worktree_unparseable_quoting_falls_back(self):
+        d = self.core.decide('git worktree add "/tmp/unterminated',
+                             "block-git-worktree")
+        self.assertEqual(d["action"], "block")
+
+    def test_worktree_list_still_allows_alongside_the_narrowing(self):
+        # The read-only subcommand is the one the rule explicitly permits;
+        # `follow="add"` is what keeps it out of the block.
+        for command in ("git worktree list",
+                        "git worktree list --porcelain",
+                        "git worktree remove /tmp/wt",
+                        "git worktree prune"):
+            d = self.core.decide(command, "block-git-worktree")
+            self.assertEqual(d["action"], "allow", command)
 
     def test_git_status_allows(self):
         d = self.core.decide("git status", "block-git-worktree")
@@ -506,6 +637,15 @@ class BitForBitEquivalenceTests(unittest.TestCase):
     patterns on a sample of representative commands. This is the
     load-bearing regression test for the extraction from the three
     .sh scripts into a shared core.
+
+    One documented exception, approved by the repository owner: for the
+    two block-* git policies, a command that merely *names* the
+    subcommand in a quoted argument no longer blocks, and for
+    `block-git-worktree` the subcommand must now be reached through
+    `git`. See the two `*_diverges_from_inline_grep_*` tests below for
+    the exact boundaries. Equivalence still holds for every command that
+    can actually execute the subcommand, which is the property the guards
+    exist to enforce.
     """
 
     def setUp(self):
@@ -538,7 +678,6 @@ class BitForBitEquivalenceTests(unittest.TestCase):
             ("ls -la", "allow"),
             ("", "allow"),
             ("   ", "allow"),
-            ('echo "git commit"', "block"),
         ]
         for cmd, _ in sample:
             with self.subTest(cmd=cmd):
@@ -547,6 +686,30 @@ class BitForBitEquivalenceTests(unittest.TestCase):
                 actual_action = self.core.decide(cmd, "block-git-commit")["action"]
                 self.assertEqual(actual_action, expected_action,
                                  f"block-git-commit: {cmd!r}: expected {expected_action!r}, got {actual_action!r}")
+
+    def test_block_git_commit_diverges_from_inline_grep_on_mentions(self):
+        """The one approved divergence, pinned so it stays exactly this size.
+
+        A mention no longer blocks; anything that can execute still does.
+        Asserting the legacy pattern would have blocked these is the point
+        — it documents that the change is intentional rather than a
+        regression that happened to go unnoticed.
+        """
+        mentions = ('echo "git commit"', "grep -rn 'git commit' docs/")
+        for cmd in mentions:
+            with self.subTest(cmd=cmd):
+                self.assertTrue(self._legacy_grep(cmd, "block-git-commit"),
+                                "sample no longer exercises the divergence")
+                self.assertEqual(
+                    "allow", self.core.decide(cmd, "block-git-commit")["action"])
+
+        executable = ('bash -c "git commit"', "git add -A && git commit")
+        for cmd in executable:
+            with self.subTest(cmd=cmd):
+                self.assertTrue(self._legacy_grep(cmd, "block-git-commit"))
+                self.assertEqual(
+                    "block", self.core.decide(cmd, "block-git-commit")["action"],
+                    "narrowing must not release a command that can execute")
 
     def test_block_git_worktree_sample_matches_inline_grep(self):
         sample = [
@@ -567,6 +730,30 @@ class BitForBitEquivalenceTests(unittest.TestCase):
                 actual_action = self.core.decide(cmd, "block-git-worktree")["action"]
                 self.assertEqual(actual_action, expected_action,
                                  f"block-git-worktree: {cmd!r}: expected {expected_action!r}, got {actual_action!r}")
+
+    def test_block_git_worktree_diverges_from_inline_grep_on_mentions(self):
+        """The approved worktree divergences, pinned so they stay this size.
+
+        Asserting the legacy pattern would have blocked these documents
+        that the change is intentional rather than an unnoticed
+        regression.
+        """
+        released = ('echo "git worktree add /tmp/wt"', "worktree add /tmp/wt")
+        for cmd in released:
+            with self.subTest(cmd=cmd):
+                self.assertTrue(self._legacy_grep(cmd, "block-git-worktree"),
+                                "sample no longer exercises the divergence")
+                self.assertEqual(
+                    "allow", self.core.decide(cmd, "block-git-worktree")["action"])
+
+        executable = ('bash -c "git worktree add /tmp/wt"',
+                      "cd /repo && git worktree add /tmp/wt")
+        for cmd in executable:
+            with self.subTest(cmd=cmd):
+                self.assertTrue(self._legacy_grep(cmd, "block-git-worktree"))
+                self.assertEqual(
+                    "block", self.core.decide(cmd, "block-git-worktree")["action"],
+                    "narrowing must not release a command that can execute")
 
     def test_warn_git_log_sample_matches_inline_grep(self):
         sample = [

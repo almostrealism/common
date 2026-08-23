@@ -1513,6 +1513,7 @@ from workspace_tools import (  # noqa: E402
     workspace_update_config,
     workspace_secret_list_names,
     workspace_secret_render_file,
+    workstream_introspect,
 )
 from messaging_tools import (  # noqa: E402
     send_message,

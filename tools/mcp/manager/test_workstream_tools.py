@@ -24,6 +24,83 @@ from manager_test_support import (  # noqa: E402
 )
 
 
+class TestWorkstreamListFilters(unittest.TestCase):
+    """Server-side filtering on workstream_list.
+
+    The filters exist so "which workstreams match P?" is one call. Answering it
+    by listing everything and scanning client-side was the operator's original
+    blocker, and each entry is expensive enough that the scan is not free.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_no_filters_sends_no_query(self, mock_get):
+        server.workstream_list()
+        self.assertEqual(mock_get.call_args[0][0], "/api/workstreams")
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_filters_reach_the_controller(self, mock_get):
+        server.workstream_list(
+            workspace_id="ws-a", repo_url="https://github.com/org/repo",
+            dispatch_capable=True)
+        path = mock_get.call_args[0][0]
+        self.assertIn("workspaceId=ws-a", path)
+        self.assertIn("repoUrl=", path)
+        self.assertIn("dispatchCapable=true", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_dispatch_capable_false_is_sent_not_dropped(self, mock_get):
+        # False is a filter, not an absent value; treating it as absent would
+        # silently return dispatch-capable workstreams too.
+        server.workstream_list(dispatch_capable=False)
+        self.assertIn("dispatchCapable=false", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_archived_selector_is_sent(self, mock_get):
+        server.workstream_list(archived=True)
+        self.assertIn("archived=true", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_include_archived_still_works(self, mock_get):
+        server.workstream_list(include_archived=True)
+        self.assertIn("includeArchived=true", mock_get.call_args[0][0])
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_status_enrichment_is_off_by_default(self, mock_get):
+        # The enrichment costs a job-history read per workstream returned, so
+        # the default listing must not pay for it.
+        server.workstream_list()
+        path = mock_get.call_args[0][0]
+        self.assertNotIn("includeStatus", path)
+        self.assertNotIn("includePullRequest", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_status_enrichment_reaches_the_controller(self, mock_get):
+        server.workstream_list(include_status=True, include_pull_request=True)
+        path = mock_get.call_args[0][0]
+        self.assertIn("includeStatus=true", path)
+        self.assertIn("includePullRequest=true", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_enrichment_composes_with_filters(self, mock_get):
+        server.workstream_list(workspace_id="ws-a", include_status=True)
+        path = mock_get.call_args[0][0]
+        self.assertIn("workspaceId=ws-a", path)
+        self.assertIn("includeStatus=true", path)
+
+    @patch.object(server, "_controller_get", return_value=[])
+    def test_scope_filtering_still_applies(self, mock_get):
+        # The server-side filters narrow further; they do not replace the
+        # token-scope filter, which is a security boundary rather than a
+        # convenience.
+        with patch.object(server, "_filter_workstreams_by_scope",
+                          return_value=[]) as mock_scope:
+            server.workstream_list(workspace_id="ws-a")
+            mock_scope.assert_called_once()
+
+
 class TestWorkstreamList(unittest.TestCase):
 
     @patch.object(server, "_controller_get")
@@ -933,7 +1010,7 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
         _reset_workspace_cache()
 
     @patch.object(server, "_controller_post")
-    def test_scoped_requires_slack_workspace_id(self, mock_post):
+    def test_scoped_requires_workspace_id(self, mock_post):
         _set_workspaces("TAAA")
         with self.assertRaises(PermissionError):
             server.workstream_register(default_branch="feature/x")
@@ -944,18 +1021,18 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
         _set_workspaces("TAAA")
         with self.assertRaises(PermissionError):
             server.workstream_register(
-                default_branch="feature/x", slack_workspace_id="TBBB")
+                default_branch="feature/x", workspace_id="TBBB")
         mock_post.assert_not_called()
 
     @patch.object(server, "_controller_post")
-    def test_scoped_passes_slack_workspace_to_controller(self, mock_post):
+    def test_scoped_passes_workspace_to_controller(self, mock_post):
         mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
         _set_workspaces("TAAA")
         server.workstream_register(
-            default_branch="feature/x", slack_workspace_id="TAAA")
+            default_branch="feature/x", workspace_id="TAAA")
         args, _ = mock_post.call_args
         self.assertEqual("/api/workstreams", args[0])
-        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
+        self.assertEqual("TAAA", args[1]["workspaceId"])
 
     @patch.object(server, "_controller_post")
     def test_unscoped_need_not_pass_slack_workspace(self, mock_post):
@@ -976,19 +1053,25 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
             default_branch="feature/x", workspace_id="almostrealism")
         args, _ = mock_post.call_args
         self.assertEqual("/api/workstreams", args[0])
-        # Both names go on the wire for cross-version compatibility.
         self.assertEqual("almostrealism", args[1]["workspaceId"])
-        self.assertEqual("almostrealism", args[1]["slackWorkspaceId"])
+        self.assertNotIn("slackWorkspaceId", args[1],
+                         "the wire payload carries one name for one concept")
 
     @patch.object(server, "_controller_post")
-    def test_legacy_slack_workspace_id_alias_still_accepted(self, mock_post):
-        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+    def test_slack_workspace_id_is_rejected(self, mock_post):
+        """The alias is refused rather than forwarded.
+
+        Workspace identity is the operator's, not Slack's — Slack is an
+        optional integration a workspace may have. Accepting the name would
+        keep teaching callers otherwise and leave two permanent names for one
+        concept, so the caller is told the real one instead.
+        """
         _set_workspaces("TAAA")
-        server.workstream_register(
+        result = server.workstream_register(
             default_branch="feature/x", slack_workspace_id="TAAA")
-        args, _ = mock_post.call_args
-        self.assertEqual("TAAA", args[1]["workspaceId"])
-        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
+        self.assertFalse(result["ok"])
+        self.assertIn("use workspace_id", result["error"])
+        mock_post.assert_not_called()
 
 class TestWorkstreamRegisterPlanFollowup(unittest.TestCase):
 

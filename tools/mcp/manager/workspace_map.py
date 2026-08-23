@@ -348,7 +348,10 @@ def _require_dispatch_capable() -> None:
         " workstream ('" + caller_ws_id + "') has dispatchCapable=false"
         " in the controller config. Operators enable this flag per"
         " workstream with workstream_update_config(...,"
-        " dispatch_capable=True)."
+        " dispatch_capable=True). Call workstream_introspect to see"
+        " which grants are missing — the controller flag and the"
+        " harness allowlist are separate, and a denial can come from"
+        " either."
     )
 
 

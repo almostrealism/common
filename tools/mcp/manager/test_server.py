@@ -1028,6 +1028,7 @@ class TestToolRegistration(unittest.TestCase):
             "workspace_update_config",
             "workstream_archive",
             "workstream_archive_many",
+            "workstream_introspect",
             "workstream_unarchive_many",
             "workstream_unarchive",
             "workstream_delete",

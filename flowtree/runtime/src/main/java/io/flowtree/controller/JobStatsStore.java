@@ -27,6 +27,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -76,7 +77,8 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    commit_hash    VARCHAR(64),"
         + "    pull_request_url VARCHAR(1000),"
         + "    error_message  VARCHAR(2000),"
-        + "    trigger_reason VARCHAR(64) DEFAULT 'manual'"
+        + "    trigger_reason VARCHAR(64) DEFAULT 'manual',"
+        + "    heartbeat_at   TIMESTAMP"
         + ")";
 
     /** DDL statement that creates an index on {@code (workstream_id, started_at)} for efficient queries. */
@@ -125,7 +127,8 @@ public class JobStatsStore implements ConsoleFeatures {
         "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
         "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
         "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)",
-        "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'"
+        "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'",
+        "ALTER TABLE job_timing ADD COLUMN heartbeat_at TIMESTAMP"
     };
 
     /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
@@ -488,6 +491,80 @@ public class JobStatsStore implements ConsoleFeatures {
         } catch (SQLException e) {
             warn("Failed to record costs for job " + jobId + " in " + table + ": " + e.getMessage());
         }
+    }
+
+    /**
+     * Records a liveness heartbeat for a running job.
+     *
+     * <p>Distinct from the inactivity watchdog, which watches the agent
+     * subprocess for stdout silence. A job can log steadily and still be
+     * making no progress, and it can also die in a way that never posts a
+     * terminal event at all. The heartbeat is what separates "running but
+     * slow" from "gone": it is written on a timer by the job itself, so its
+     * absence is evidence rather than inference.</p>
+     *
+     * <p>Written to the same durable store as the rest of the job row on
+     * purpose. A heartbeat held only in controller memory disappears in the
+     * one failure this is meant to catch — a controller or container restart
+     * with jobs in flight — leaving the orphaned job invisible to the scanner
+     * rather than terminated by it.</p>
+     *
+     * @param jobId       the job identifier
+     * @param heartbeatAt the moment the job reported itself alive
+     */
+    public synchronized void recordHeartbeat(String jobId, Instant heartbeatAt) {
+        if (jobId == null || jobId.isEmpty() || connection == null) return;
+        if (heartbeatAt == null) return;
+
+        String sql = "UPDATE job_timing SET heartbeat_at = ? WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(heartbeatAt));
+            ps.setString(2, jobId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to record heartbeat: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Returns every job still recorded as running, newest first.
+     *
+     * <p>A job qualifies when its status is {@code STARTED} and it has no
+     * completion timestamp. Both conditions are checked rather than just the
+     * status so a row left inconsistent by a crash mid-write is still
+     * reported.</p>
+     *
+     * @param workstreamId restrict to one workstream, or {@code null} for all
+     * @return the active jobs, or an empty list when none or the store is
+     *         unavailable
+     */
+    public synchronized List<ActiveJob> getActiveJobs(String workstreamId) {
+        if (connection == null) return Collections.emptyList();
+
+        String sql = "SELECT job_id, workstream_id, started_at, heartbeat_at, description "
+            + "FROM job_timing WHERE status = 'STARTED' AND completed_at IS NULL"
+            + (workstreamId == null ? "" : " AND workstream_id = ?")
+            + " ORDER BY started_at DESC";
+
+        List<ActiveJob> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            if (workstreamId != null) ps.setString(1, workstreamId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp started = rs.getTimestamp("started_at");
+                    Timestamp beat = rs.getTimestamp("heartbeat_at");
+                    result.add(new ActiveJob(
+                            rs.getString("job_id"),
+                            rs.getString("workstream_id"),
+                            started == null ? null : started.toInstant(),
+                            beat == null ? null : beat.toInstant(),
+                            rs.getString("description")));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query active jobs: " + e.getMessage());
+        }
+        return result;
     }
 
     /**
@@ -1082,6 +1159,106 @@ public class JobStatsStore implements ConsoleFeatures {
     private static String truncate(String s, int maxLength) {
         if (s == null) return null;
         return s.length() <= maxLength ? s : s.substring(0, maxLength);
+    }
+
+    /**
+     * A job the store still records as running, with the timestamps that say
+     * whether it is alive.
+     *
+     * <p>Carries the age arithmetic rather than leaving it to each caller: the
+     * scanner, the API endpoint and the operator-facing status tool all ask
+     * the same two questions, and a job that is "stuck" by one caller's
+     * arithmetic and "running" by another's would be worse than either
+     * answer.</p>
+     *
+     * @param jobId        the job identifier
+     * @param workstreamId the workstream the job belongs to
+     * @param startedAt    when the job was recorded as started
+     * @param heartbeatAt  the last heartbeat, or {@code null} if none yet
+     * @param description  the job's human-readable description
+     */
+    public record ActiveJob(String jobId, String workstreamId, Instant startedAt,
+                            Instant heartbeatAt, String description) {
+
+        /**
+         * Returns how long the job has been running.
+         *
+         * @param now the reference instant
+         * @return elapsed time since the job started, or {@link Duration#ZERO}
+         *         when no start time was recorded
+         */
+        public Duration age(Instant now) {
+            return startedAt == null ? Duration.ZERO : Duration.between(startedAt, now);
+        }
+
+        /**
+         * Returns how long it has been since the job last reported itself
+         * alive, falling back to the start time when it has not yet sent a
+         * heartbeat.
+         *
+         * <p>The fallback is what makes a job that died before its first
+         * heartbeat detectable; without it such a job would look permanently
+         * fresh.</p>
+         *
+         * @param now the reference instant
+         * @return elapsed time since the last liveness signal
+         */
+        public Duration sinceHeartbeat(Instant now) {
+            Instant last = heartbeatAt != null ? heartbeatAt : startedAt;
+            return last == null ? Duration.ZERO : Duration.between(last, now);
+        }
+
+        /**
+         * Returns whether the job has been silent for longer than
+         * {@code threshold}.
+         *
+         * @param threshold the silence a job may accumulate before it counts
+         *                  as stuck; non-positive disables the check
+         * @param now       the reference instant
+         * @return {@code true} when the job should be treated as stuck
+         */
+        public boolean isStale(Duration threshold, Instant now) {
+            if (threshold == null || threshold.isNegative() || threshold.isZero()) {
+                return false;
+            }
+            return sinceHeartbeat(now).compareTo(threshold) > 0;
+        }
+
+        /**
+         * Renders this job as a JSON object for the API listing.
+         *
+         * @param now the reference instant for the derived ages
+         * @return a JSON object carrying the identifiers and derived ages
+         */
+        public String toJson(Instant now) {
+            StringBuilder json = new StringBuilder("{");
+            json.append("\"jobId\":\"").append(escapeForJson(jobId)).append("\"");
+            json.append(",\"workstreamId\":\"").append(escapeForJson(workstreamId)).append("\"");
+            if (startedAt != null) {
+                json.append(",\"startedAt\":\"").append(startedAt).append("\"");
+            }
+            if (heartbeatAt != null) {
+                json.append(",\"heartbeatAt\":\"").append(heartbeatAt).append("\"");
+            }
+            json.append(",\"ageSeconds\":").append(age(now).getSeconds());
+            json.append(",\"sinceHeartbeatSeconds\":").append(sinceHeartbeat(now).getSeconds());
+            if (description != null) {
+                json.append(",\"description\":\"").append(escapeForJson(description)).append("\"");
+            }
+            return json.append("}").toString();
+        }
+
+        /**
+         * Escapes a value for embedding in the JSON rendered above.
+         *
+         * @param value the raw value; may be {@code null}
+         * @return the escaped value, or an empty string when {@code null}
+         */
+        private static String escapeForJson(String value) {
+            if (value == null) return "";
+            return value.replace("\\", "\\\\").replace("\"", "\\\"")
+                    .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+        }
     }
 
     /**

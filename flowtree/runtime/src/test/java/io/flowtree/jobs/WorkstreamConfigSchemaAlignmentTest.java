@@ -295,8 +295,16 @@ public class WorkstreamConfigSchemaAlignmentTest extends TestSuiteBase {
 		// Only check params the controller actually reads; MCP-layer-only and
 		// URL-path params are automatically excluded because they have no
 		// corresponding Java body-read entry.
+		//
+		// A parameter the tool declares in order to REJECT is excluded too. The
+		// MCP schema layer drops unknown keys silently, so a name a caller
+		// reaches for has to be declared before it can be answered with a
+		// correction rather than ignored — declaring it is what makes the
+		// rejection possible, and not forwarding it is the entire point.
+		Set<String> rejected = rejectedParams(toolName);
 		Set<String> missing = new TreeSet<>();
 		for (String param : mcpParams) {
+			if (rejected.contains(param)) continue;
 			String camel = snakeToCamel(param);
 			if (javaReads.contains(camel) && !payloadKeys.contains(camel)) {
 				missing.add(param);
@@ -356,6 +364,43 @@ public class WorkstreamConfigSchemaAlignmentTest extends TestSuiteBase {
 	 *       {@code \{"defaultBranch": default_branch\}})</li>
 	 * </ul>
 	 */
+	/**
+	 * Returns the parameters a tool declares only in order to reject.
+	 *
+	 * <p>Read out of the tool's own body rather than listed here, so a
+	 * rejection added or removed later does not leave this guard asserting
+	 * something the code no longer does.</p>
+	 *
+	 * @param toolName the tool to inspect
+	 * @return the rejected parameter names, empty when the tool rejects none
+	 */
+	private static Set<String> rejectedParams(String toolName) {
+		Set<String> rejected = new TreeSet<>();
+		for (Path source : McpToolDiscovery.locateManagerSources()) {
+			List<String> lines = readLines(source);
+			if (lines.isEmpty()) continue;
+			Pattern start = Pattern.compile("^def\\s+" + Pattern.quote(toolName) + "\\s*\\(");
+			Pattern topLevel = Pattern.compile("^(@mcp\\.tool\\(\\)|def\\s+\\w+|class\\s+\\w+)");
+			Pattern refusal = Pattern.compile(
+					"\"([a-z_]+) is not a parameter");
+			boolean inFunc = false;
+			for (String line : lines) {
+				if (!inFunc) {
+					if (start.matcher(line).find()) inFunc = true;
+					continue;
+				}
+				if (!line.isEmpty() && !Character.isWhitespace(line.charAt(0))
+						&& topLevel.matcher(line).find()) {
+					break;
+				}
+				Matcher m = refusal.matcher(line);
+				while (m.find()) rejected.add(m.group(1));
+			}
+			if (inFunc) break;
+		}
+		return rejected;
+	}
+
 	/**
 	 * Finds a tool's payload keys in whichever manager source defines it.
 	 *

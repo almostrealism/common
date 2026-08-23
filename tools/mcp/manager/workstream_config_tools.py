@@ -35,6 +35,7 @@ def workstream_register(
     phase_configs: str = "",
     dispatch_capable: bool = False,
     default_use_tmux: bool = False,
+    max_wall_clock_hours: int = -1,
     slack_workspace_id: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
@@ -84,8 +85,13 @@ def workstream_register(
             target workspace from the GitHub org in ``repo_url``.
             Callers using tokens scoped to specific workspaces must
             pass this parameter explicitly.
-        slack_workspace_id: Deprecated alias for ``workspace_id``;
-            accepted for backward compatibility with older callers.
+        slack_workspace_id: Not a parameter — rejected with a pointer to
+            ``workspace_id``. Workspace identity is the operator's, not
+            Slack's; Slack is an optional integration configured on a
+            workspace, and its own identifier is ``slack_team_id``. The
+            name is still declared so passing it is answered with that
+            correction: an undeclared parameter is dropped silently, which
+            would look like a workspace that took effect.
         plan_content: Literal markdown content of a planning document to
             commit directly to the new workstream's branch immediately after
             registration. Mutually exclusive with ``plan_instructions``.
@@ -145,6 +151,15 @@ def workstream_register(
             opt in explicitly. The runner additionally honours the
             ``AR_AGENT_USE_TMUX`` environment variable as an independent
             enable, which is unaffected by this flag.
+        max_wall_clock_hours: Ceiling on how long a single job on this
+            workstream may run, in hours, before the controller stops
+            launching further agent sessions for it. This is the ceiling
+            that catches a worker which has stopped making progress: the
+            session, turn and dollar ceilings all bound how much a job
+            *does*, and none of them bounds a job wedged on a network call.
+            ``0`` disables the ceiling for this workstream. Omitted (the
+            default) inherits the controller default of six hours. A job
+            submitted with its own ``max_wall_clock_hours`` overrides this.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -175,12 +190,19 @@ def workstream_register(
     # ``OpencodeConfigBuilder.translateAllowlist``). Admin / operator
     # callers (no caller workstream bound) are always permitted.
     server._require_dispatch_capable()
-    # slack_workspace_id is the legacy name; the new canonical name is
-    # workspace_id. Accept either, preferring the new name.
-    if not workspace_id and slack_workspace_id:
-        server.audit_log.debug("workstream_register: slack_workspace_id is a "
-                        "deprecated alias for workspace_id")
-        workspace_id = slack_workspace_id
+    # Rejected rather than forwarded. Nothing about workspace identity is
+    # Slack's: a workspace is the operator's organisational unit, and Slack is
+    # one optional integration it may or may not have. Forwarding the name
+    # would keep teaching callers otherwise, and would leave two permanent
+    # names for one concept. The genuinely Slack-side identifier is
+    # slackTeamId on the workspace entry, which is correctly named.
+    if slack_workspace_id:
+        return {
+            "ok": False,
+            "error": "slack_workspace_id is not a parameter; use workspace_id "
+                     "instead. Workspace identity is not Slack's — Slack is an "
+                     "optional integration, not the source of truth.",
+        }
     err = server._reject_removed_config_params(
         model=model, effort=effort, default_runner=default_runner, runners=runners)
     if err:
@@ -246,11 +268,7 @@ def workstream_register(
     if channel_name:
         payload["channelName"] = channel_name
     if workspace_id:
-        # Send both names: the controller accepts either, and the legacy
-        # field name is kept so older controllers without the rename
-        # continue to honour the registration.
         payload["workspaceId"] = workspace_id
-        payload["slackWorkspaceId"] = workspace_id
     if required_labels:
         labels_map = server._parse_required_labels(required_labels)
         if labels_map:
@@ -280,6 +298,13 @@ def workstream_register(
     # every job on this workstream that does not set the per-job
     # use_tmux flag explicitly.
     payload["defaultUseTmux"] = bool(default_use_tmux)
+    # Unlike the booleans above, this one is only forwarded when the caller
+    # supplied it. Zero disables the ceiling and is a real choice, so the
+    # sentinel for "not supplied" has to sit outside the valid range rather
+    # than reuse zero — otherwise every registration would silently pin the
+    # workstream to "no ceiling".
+    if max_wall_clock_hours >= 0:
+        payload["maxWallClockHours"] = int(max_wall_clock_hours)
 
     result = server._controller_post("/api/workstreams", payload)
 
@@ -343,6 +368,7 @@ def workstream_update_config(
     phase_configs: str = "",
     dispatch_capable: Optional[bool] = None,
     default_use_tmux: Optional[bool] = None,
+    max_wall_clock_hours: Optional[int] = None,
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -407,6 +433,12 @@ def workstream_update_config(
             workstream's existing default unchanged; an explicit
             ``False`` clears the opt-in. Defaults to ``None``
             (no change).
+        max_wall_clock_hours: Ceiling on how long a single job on this
+            workstream may run, in hours, before the controller stops
+            launching further agent sessions for it. ``0`` disables the
+            ceiling; a negative value clears the workstream's override so
+            it returns to inheriting the controller default of six hours.
+            Omitted (the default) leaves the existing setting unchanged.
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -488,6 +520,8 @@ def workstream_update_config(
     # this presence signal: when the field is omitted the workstream's
     # existing value is preserved; when the field is present the body
     # value (true or false) wins.
+    if max_wall_clock_hours is not None:
+        payload["maxWallClockHours"] = int(max_wall_clock_hours)
     if dispatch_capable is not None:
         payload["dispatchCapable"] = bool(dispatch_capable)
     # default_use_tmux follows the same Optional-presence pattern as

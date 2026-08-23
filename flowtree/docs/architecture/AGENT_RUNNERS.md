@@ -378,8 +378,7 @@ default.
 **Preferred path: `workspace_update_config` MCP tool.** Mirrors
 `workstream_update_config` in shape but is keyed on the workspace's
 operator-chosen `id`. Discover IDs via the `workspaceId` field returned
-by `workstream_list` (the legacy `slackWorkspaceId` alias is still
-emitted for backward compatibility). The change is persisted back to
+by `workstream_list`. The change is persisted back to
 `workstreams.yaml` so it survives a controller restart.
 
 ```python
@@ -392,8 +391,9 @@ workspace_update_config(
 )
 ```
 
-The legacy parameter name `slack_workspace_id` is still accepted as a
-deprecated alias for `workspace_id`.
+`slack_workspace_id` is not a parameter. Passing it is rejected with a
+pointer to `workspace_id`: a workspace is identified by its own ID, and
+Slack is an optional integration on top of that, not the identity itself.
 
 The tool exposes `default_phase_config`, `phase_configs`, `name`,
 `default_channel`, `new_id`, and `slack_team_id`. **Credential and ACL fields**
