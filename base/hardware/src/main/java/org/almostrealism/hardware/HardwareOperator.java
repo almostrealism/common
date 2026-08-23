@@ -384,8 +384,15 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			// reports both. Migrating it would be no better: there is nothing
 			// to copy out of a block that has been freed.
 			if (!data[i].isAvailable()) {
+				// The two ways of being unusable are worth telling apart: data
+				// that no longer holds any memory was destroyed by whoever owned
+				// it, while data still holding memory that has been released
+				// points at a block someone else freed. They are found in
+				// different places.
 				throw new HardwareException("argument " + i + " to function " +
-						getName() + " refers to memory that has already been released");
+						getName() + (data[i].isDestroyed()
+								? " has been destroyed"
+								: " refers to memory that has already been released"));
 			}
 
 			reassignMemory(data[i]);

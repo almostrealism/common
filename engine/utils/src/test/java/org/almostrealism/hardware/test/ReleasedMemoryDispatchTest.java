@@ -92,6 +92,24 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A provider that overrides neither question, standing in for one that does
+	 * not track what it hands out.
+	 */
+	private static class UntrackingProvider implements MemoryProvider<TestMemory> {
+		@Override
+		public String getName() { return "untracking"; }
+
+		@Override
+		public int getNumberSize() { return 8; }
+
+		@Override
+		public void deallocate(int size, TestMemory mem) { }
+
+		@Override
+		public void getMem(TestMemory mem, int sOffset, double[] out, int oOffset, int length) { }
+	}
+
 	/** Data over one {@link Memory}, or over none once destroyed. */
 	private static class TestData implements MemoryData {
 		/** The memory this data points at, or {@code null} once destroyed. */
@@ -213,10 +231,23 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 				data.isAvailable());
 	}
 
-	/** A provider that does not track what it hands out cannot object. */
+	/**
+	 * A provider that answers neither question leaves its memory usable.
+	 *
+	 * <p>Both checks were added to an interface that others already implement,
+	 * so their defaults decide what happens to every provider that has not been
+	 * taught to answer. Both must default to permitting the work, or adding the
+	 * questions would have stopped callers that were previously fine.</p>
+	 */
 	@Test(timeout = 30000)
-	public void memoryFromAnUntrackedProviderIsAssumedAvailable() {
-		Assert.assertFalse(new TestProvider(false).isReleased(null));
+	public void memoryFromAProviderThatTracksNothingStaysUsable() {
+		UntrackingProvider provider = new UntrackingProvider();
+		TestData data = new TestData(new TestMemory(provider), 0, 4096);
+
+		Assert.assertFalse(provider.isReleased(null));
+		Assert.assertTrue(provider.isWithinBounds(null, 0, Integer.MAX_VALUE));
+		Assert.assertTrue(data.isAvailable());
+		Assert.assertTrue(data.isWithinBounds());
 	}
 
 	/** Preparing a released argument must fail rather than reach the kernel. */
@@ -234,12 +265,24 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 					e.getMessage().contains("argument 0"));
 			Assert.assertTrue("The failure must name the operation: " + e.getMessage(),
 					e.getMessage().contains("testOperation"));
+			Assert.assertTrue("The failure must report a release: " + e.getMessage(),
+					e.getMessage().contains("released"));
+			Assert.assertFalse("and must not report it as destruction: " + e.getMessage(),
+					e.getMessage().contains("destroyed"));
 		}
 	}
 
-	/** Preparing a destroyed argument must fail the same way. */
+	/**
+	 * Preparing a destroyed argument must fail, and must say so.
+	 *
+	 * <p>Destroyed and released are both unusable but are not the same fault:
+	 * data that holds no memory was discarded by whoever owned it, while data
+	 * still holding memory that has been released points at a block someone
+	 * else freed. Reporting either as the other sends the reader looking in the
+	 * wrong place.</p>
+	 */
 	@Test(timeout = 30000)
-	public void dispatchRefusesDestroyedMemory() {
+	public void dispatchRefusesDestroyedMemoryAndSaysSo() {
 		TestProvider provider = new TestProvider(false);
 		TestOperator operator = new TestOperator(provider);
 		TestData data = new TestData(new TestMemory(provider));
@@ -248,8 +291,11 @@ public class ReleasedMemoryDispatchTest extends TestSuiteBase {
 		try {
 			operator.prepare(new Object[] { data });
 			Assert.fail("A destroyed argument must not be prepared for dispatch");
-		} catch (HardwareException expected) {
-			// the dispatch was refused, which is the point
+		} catch (HardwareException e) {
+			Assert.assertTrue("The failure must report destruction: " + e.getMessage(),
+					e.getMessage().contains("destroyed"));
+			Assert.assertFalse("and must not report it as a release: " + e.getMessage(),
+					e.getMessage().contains("released"));
 		}
 	}
 

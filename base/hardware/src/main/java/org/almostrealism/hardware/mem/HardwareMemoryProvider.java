@@ -186,7 +186,6 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 	/** Tracks all currently allocated memory blocks by their native pointer. */
 	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
-	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	/**
 	 * How long a release may be held back waiting for the kernels using that
 	 * memory to finish. Past this the memory is released anyway: a reference
@@ -480,13 +479,6 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	}
 
 	/**
-	 * Returns the native reference for the given memory block, validating that it belongs to this provider.
-	 *
-	 * @param ram Memory block to look up
-	 * @return Native reference for the memory block
-	 * @throws IllegalArgumentException if the RAM does not belong to this provider
-	 */
-	/**
 	 * Returns whether the given memory has been released, and so must not be
 	 * handed to anything that would read from it.
 	 *
@@ -510,13 +502,6 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return ref == null || ref.isFreed();
 	}
 
-	/**
-	 * Returns the native reference for the given memory block, validating that it belongs to this provider.
-	 *
-	 * @param ram Memory block to look up
-	 * @return Native reference for the memory block
-	 * @throws IllegalArgumentException if the RAM does not belong to this provider
-	 */
 	/**
 	 * Returns whether the given range lies within the allocation it names.
 	 *
