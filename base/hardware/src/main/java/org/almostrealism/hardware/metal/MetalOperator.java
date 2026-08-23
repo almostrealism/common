@@ -224,7 +224,7 @@ public class MetalOperator extends HardwareOperator {
 
 		MetalCommandRunner runner = context.getCommandRunner();
 
-		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
 
 		// Encode this kernel into the runner's command buffer, ordered after dependsOn (the
 		// runner handles both same-runner and foreign dependencies without blocking here). The
@@ -288,7 +288,7 @@ public class MetalOperator extends HardwareOperator {
 				encoder.endEncoding();
 			});
 		}, dependsOn, () -> {
-			KernelMemoryGuard.releaseFor(guard, data);
+			KernelMemoryGuard.releaseFor(guard);
 			Reference.reachabilityFence(data);
 			Reference.reachabilityFence(args);
 		});

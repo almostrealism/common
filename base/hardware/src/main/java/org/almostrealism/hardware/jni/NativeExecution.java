@@ -278,7 +278,7 @@ public class NativeExecution extends HardwareOperator {
 
 		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
 
-		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
 
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
@@ -295,7 +295,7 @@ public class NativeExecution extends HardwareOperator {
 					}
 				});
 			} finally {
-				KernelMemoryGuard.releaseFor(guard, data);
+				KernelMemoryGuard.releaseFor(guard);
 			}
 
 			Reference.reachabilityFence(data);
@@ -320,7 +320,7 @@ public class NativeExecution extends HardwareOperator {
 	 * @param p         the number of parallel worker tasks
 	 */
 	private void coordinate(MemoryData[] data, Object[] args, Semaphore dependsOn,
-							KernelMemoryGuard guard, DefaultLatchSemaphore latch, int p) {
+							KernelMemoryGuard.Reservation guard, DefaultLatchSemaphore latch, int p) {
 		List<Future<?>> workers = new ArrayList<>(p);
 
 		try {
@@ -365,7 +365,7 @@ public class NativeExecution extends HardwareOperator {
 				latch.countDown();
 			}
 
-			KernelMemoryGuard.releaseFor(guard, data);
+			KernelMemoryGuard.releaseFor(guard);
 		}
 
 		Reference.reachabilityFence(data);
