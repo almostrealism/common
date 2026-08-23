@@ -19,7 +19,9 @@ package io.flowtree.controller;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -93,8 +95,15 @@ public class StuckJobScanner implements ConsoleFeatures {
 	/** Multiplier applied to {@link #wallClockCeiling}. */
 	private int stalenessMultiplier = DEFAULT_STALENESS_MULTIPLIER;
 
-	/** Job IDs already failed by this scanner; makes termination idempotent. */
-	private final List<String> terminated = new ArrayList<>();
+	/**
+	 * Job IDs already failed by this scanner; makes termination idempotent.
+	 *
+	 * <p>A set rather than a list because the only operations are membership
+	 * and insert, and it grows for the lifetime of the controller — every
+	 * stalled job ever terminated stays in it. A linear membership check
+	 * would make each scan cost more as that history accumulates.</p>
+	 */
+	private final Set<String> terminated = new HashSet<>();
 
 	/** The timer driving {@link #scanOnce}; {@code null} until started. */
 	private ScheduledExecutorService executor;

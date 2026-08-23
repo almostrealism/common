@@ -20,7 +20,6 @@ import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.jobs.CodingAgentJob;
-import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.CompletionListenerFanout;

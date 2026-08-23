@@ -86,6 +86,14 @@ BLOCK_GIT_WORKTREE = re.compile(r"worktree(?:\s+-\S+)*\s+add(?:\s|$)")
 #       `git/log` (path) and `git log.txt` (file) are not false positives.
 WARN_GIT_LOG = re.compile(r"(?:^|[\s|;&])git(?:\s+--[a-z-]+)*\s+log(?:\s|$)")
 
+# Subcommands that create a commit object. `commit-tree` is plumbing, and
+# is the documented route a previous session used to commit while this
+# guard was in force, so an exact match on "commit" alone is not enough.
+# `commit-graph` is deliberately NOT here: it writes a cache file and
+# creates no commit. The substring pattern blocked it; that was a false
+# positive rather than a property worth keeping.
+COMMIT_CREATING_SUBCOMMANDS = frozenset({"commit", "commit-tree"})
+
 # Opening marker of a heredoc, with the delimiter word that ends its body.
 _HEREDOC_START = re.compile(r"<<-?\s*(?P<q>['\"]?)(?P<word>[A-Za-z_][A-Za-z0-9_]*)(?P=q)")
 
@@ -297,7 +305,8 @@ def git_subcommand_invoked(command, verb, fallback, follow=None, depth=0):
     blocks.
 
     :param command: the shell command to examine
-    :param verb: the git subcommand to detect, e.g. ``"commit"``
+    :param verb: the git subcommand to detect, e.g. ``"commit"``, or a
+        collection of subcommands any one of which counts
     :param fallback: pattern applied when the command cannot be tokenized
     :param follow: when set, the first non-option argument the subcommand
         must carry for this to count, e.g. ``"add"`` for ``worktree``.
@@ -310,6 +319,7 @@ def git_subcommand_invoked(command, verb, fallback, follow=None, depth=0):
     if depth > MAX_NESTING_DEPTH:
         return True
 
+    verbs = frozenset([verb]) if isinstance(verb, str) else frozenset(verb)
     stripped, bodies = _strip_heredoc_bodies(command)
     tokens = _tokenize(stripped)
     if tokens is None:
@@ -318,7 +328,7 @@ def git_subcommand_invoked(command, verb, fallback, follow=None, depth=0):
         # rather than letting the command through unread.
         return bool(fallback.search(command))
 
-    if _tokens_run_git_verb(tokens, verb, follow):
+    if _tokens_run_git_verb(tokens, verbs, follow):
         return True
     if _nested_invocation_runs(tokens, verb, fallback, follow, depth):
         return True
@@ -387,7 +397,7 @@ def _strip_heredoc_bodies(command):
     return "\n".join(kept), bodies
 
 
-def _tokens_run_git_verb(tokens, verb, follow):
+def _tokens_run_git_verb(tokens, verbs, follow):
     """Whether ``tokens`` contain a ``git <verb>`` call in command position.
 
     Separator handling is done on the token stream rather than on the raw
@@ -416,7 +426,7 @@ def _tokens_run_git_verb(tokens, verb, follow):
                     j += 1
                     continue
                 break
-            if j < len(tokens) and tokens[j] == verb:
+            if j < len(tokens) and tokens[j] in verbs:
                 if follow is None or _next_positional(tokens[j + 1:], 0) == follow:
                     return True
         at_command_position = False
@@ -584,7 +594,8 @@ def decide(command, policy):
         }
 
     if policy == "block-git-commit":
-        if git_subcommand_invoked(command, "commit", BLOCK_GIT_COMMIT):
+        if git_subcommand_invoked(command, COMMIT_CREATING_SUBCOMMANDS,
+                                  BLOCK_GIT_COMMIT):
             return {
                 "action": "block",
                 "reason": BLOCK_GIT_COMMIT_REASON,

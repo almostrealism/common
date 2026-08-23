@@ -86,7 +86,12 @@ def workstream_register(
             Callers using tokens scoped to specific workspaces must
             pass this parameter explicitly.
         slack_workspace_id: Not a parameter — rejected with a pointer to
-            ``workspace_id``, for the same reason as on ``workstream_register``.
+            ``workspace_id``. Workspace identity is the operator's, not
+            Slack's; Slack is an optional integration configured on a
+            workspace, and its own identifier is ``slack_team_id``. The
+            name is still declared so passing it is answered with that
+            correction: an undeclared parameter is dropped silently, which
+            would look like a workspace that took effect.
         plan_content: Literal markdown content of a planning document to
             commit directly to the new workstream's branch immediately after
             registration. Mutually exclusive with ``plan_instructions``.

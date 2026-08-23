@@ -183,7 +183,13 @@ def workstream_submit_task(
             sessions for this job. Overrides the workstream's
             ``max_wall_clock_hours``, which in turn overrides the controller
             default of six hours. ``0`` disables the ceiling for this job.
-            Leave unset (``None``, the default) to inherit. This is the ceiling
+            Leave unset (``None``, the default) to inherit. Must be ``0`` or
+            greater — a negative value is rejected rather than forwarded,
+            because the controller would read it as a negative duration and
+            disable the ceiling without saying so. (``workstream_update_config``
+            does accept a negative value, where it means "clear this
+            workstream's override"; there is no equivalent meaning per job.)
+            This is the ceiling
             that bounds a job which has stopped making progress rather than one
             that is doing too much: turn and dollar ceilings do not advance
             while a worker sits wedged on a network call.
@@ -320,6 +326,21 @@ def workstream_submit_task(
         model=model, effort=effort, default_runner=default_runner, runners=runners)
     if err:
         return err
+    if max_wall_clock_hours is not None and max_wall_clock_hours < 0:
+        return {
+            "ok": False,
+            "error": (
+                "max_wall_clock_hours must be 0 or greater; got "
+                f"{max_wall_clock_hours}. Use 0 to disable the ceiling for "
+                "this job, or omit the parameter to inherit the workstream "
+                "default. A negative value would reach the controller as a "
+                "negative duration and disable the ceiling silently."
+            ),
+            "next_steps": [
+                "Pass max_wall_clock_hours=0 to run this job without a ceiling",
+                "Omit max_wall_clock_hours to inherit the workstream setting",
+            ],
+        }
     err = server._check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
         repo_url=repo_url, description=description, started_after=started_after,

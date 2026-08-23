@@ -105,8 +105,10 @@ def workspace_update_config(
             the existing value unchanged.
         slack_workspace_id: Not a parameter — rejected with a pointer to
             ``workspace_id``. Workspace identity is the operator's, not
-            Slack's; the Slack-side identifier is ``slack_team_id``.
-            Accepted for backward compatibility with older callers.
+            Slack's; the Slack-side identifier is ``slack_team_id``. The
+            name is still declared so passing it is answered with that
+            correction: an undeclared parameter is dropped silently, which
+            would look like a workspace that took effect.
 
     Returns:
         dict with ``ok=True`` and the updated workspace fields, or

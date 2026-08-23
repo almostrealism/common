@@ -138,6 +138,20 @@ class BlockGitCommitTests(unittest.TestCase):
         d = self.core.decide('git commit -m "unterminated', "block-git-commit")
         self.assertEqual(d["action"], "block")
 
+    def test_commit_tree_plumbing_still_blocks(self):
+        # `commit-tree` creates a commit object. The substring pattern
+        # blocked it because `git commit` is a prefix of it; matching the
+        # subcommand exactly released it, and a prior session is on record
+        # using exactly this route to commit while the guard was in force.
+        d = self.core.decide("git commit-tree $T -p $P -m msg", "block-git-commit")
+        self.assertEqual(d["action"], "block")
+
+    def test_commit_graph_is_allowed(self):
+        # Writes a cache file and creates no commit. The substring pattern
+        # blocked it; that was a false positive, not a property to keep.
+        d = self.core.decide("git commit-graph write", "block-git-commit")
+        self.assertEqual(d["action"], "allow")
+
     def test_separator_inside_a_quoted_argument_is_not_a_separator(self):
         # Splitting the raw text on `&&` treats the one inside this
         # argument as a pipeline boundary, which turns a string
