@@ -418,6 +418,16 @@
             "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/topic-interlude.sh",
+            "description": "Occasionally inject a short public-domain poem at a work boundary and ask for a brief response; soft-inject only, never blocks"
+          }
+        ]
       }
     ]
   }

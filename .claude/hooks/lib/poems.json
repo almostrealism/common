@@ -1,0 +1,149 @@
+{
+  "_comment": [
+    "Poems for the topic-diversity interlude hook. See item 10 of",
+    "docs/plans/AR_MANAGER_TOOL_ERGONOMICS.md for why this exists.",
+    "",
+    "Selection rules, which matter as much as the text:",
+    "  - Public domain only. Everything here is an originally-English work",
+    "    published before 1929. No translations: a translation carries its",
+    "    own copyright even when the original is ancient.",
+    "  - Nothing about striving, persistence, craft, or achievement. Those",
+    "    are absorbed straight back into the frame the interlude exists to",
+    "    interrupt, and read as motivational-poster material.",
+    "  - Nothing about machines or minds. That turns the interlude into a",
+    "    prompt about the reader, which is a different and more",
+    "    self-conscious mode.",
+    "  - Poems of attention to the world are the useful kind.",
+    "",
+    "Edit freely. The hook reads whatever is here; adding or removing an",
+    "entry needs no code change. Keep `text` verbatim and keep the",
+    "attribution accurate — this ships in a public repository."
+  ],
+  "poems": [
+    {
+      "id": "red-wheelbarrow",
+      "title": "The Red Wheelbarrow",
+      "author": "William Carlos Williams",
+      "year": 1923,
+      "text": "so much depends\nupon\n\na red wheel\nbarrow\n\nglazed with rain\nwater\n\nbeside the white\nchickens"
+    },
+    {
+      "id": "fog",
+      "title": "Fog",
+      "author": "Carl Sandburg",
+      "year": 1916,
+      "text": "The fog comes\non little cat feet.\n\nIt sits looking\nover harbor and city\non silent haunches\nand then moves on."
+    },
+    {
+      "id": "metro",
+      "title": "In a Station of the Metro",
+      "author": "Ezra Pound",
+      "year": 1913,
+      "text": "The apparition of these faces in the crowd;\nPetals on a wet, black bough."
+    },
+    {
+      "id": "oread",
+      "title": "Oread",
+      "author": "H. D.",
+      "year": 1914,
+      "text": "Whirl up, sea—\nwhirl your pointed pines,\nsplash your great pines\non our rocks,\nhurl your green over us,\ncover us with your pools of fir."
+    },
+    {
+      "id": "dust-of-snow",
+      "title": "Dust of Snow",
+      "author": "Robert Frost",
+      "year": 1923,
+      "text": "The way a crow\nShook down on me\nThe dust of snow\nFrom a hemlock tree\n\nHas given my heart\nA change of mood\nAnd saved some part\nOf a day I had rued."
+    },
+    {
+      "id": "auguries",
+      "title": "Auguries of Innocence (opening)",
+      "author": "William Blake",
+      "year": 1863,
+      "text": "To see a World in a Grain of Sand\nAnd a Heaven in a Wild Flower,\nHold Infinity in the palm of your hand\nAnd Eternity in an hour."
+    },
+    {
+      "id": "who-has-seen-the-wind",
+      "title": "Who Has Seen the Wind?",
+      "author": "Christina Rossetti",
+      "year": 1872,
+      "text": "Who has seen the wind?\nNeither I nor you:\nBut when the leaves hang trembling,\nThe wind is passing through.\n\nWho has seen the wind?\nNeither you nor I:\nBut when the trees bow down their heads,\nThe wind is passing by."
+    },
+    {
+      "id": "learnd-astronomer",
+      "title": "When I Heard the Learn'd Astronomer",
+      "author": "Walt Whitman",
+      "year": 1865,
+      "text": "When I heard the learn'd astronomer,\nWhen the proofs, the figures, were ranged in columns before me,\nWhen I was shown the charts and diagrams, to add, divide, and measure them,\nWhen I sitting heard the astronomer where he lectured with much applause in the lecture-room,\nHow soon unaccountable I became tired and sick,\nTill rising and gliding out I wander'd off by myself,\nIn the mystical moist night-air, and from time to time,\nLook'd up in perfect silence at the stars."
+    },
+    {
+      "id": "heart-leaps-up",
+      "title": "My Heart Leaps Up",
+      "author": "William Wordsworth",
+      "year": 1807,
+      "text": "My heart leaps up when I behold\nA rainbow in the sky:\nSo was it when my life began;\nSo is it now I am a man;\nSo be it when I shall grow old,\nOr let me die!\nThe Child is father of the Man;\nAnd I could wish my days to be\nBound each to each by natural piety."
+    },
+    {
+      "id": "wind-and-silver",
+      "title": "Wind and Silver",
+      "author": "Amy Lowell",
+      "year": 1919,
+      "text": "Greatly shining,\nThe Autumn moon floats in the thin sky;\nAnd the fish-ponds shake their backs and flash their dragon scales\nAs she passes over them."
+    },
+    {
+      "id": "to-make-a-prairie",
+      "title": "To make a prairie it takes a clover and one bee",
+      "author": "Emily Dickinson",
+      "year": 1896,
+      "text": "To make a prairie it takes a clover and one bee,\nOne clover, and a bee,\nAnd revery.\nThe revery alone will do,\nIf bees are few."
+    },
+    {
+      "id": "pied-beauty",
+      "title": "Pied Beauty",
+      "author": "Gerard Manley Hopkins",
+      "year": 1918,
+      "text": "Glory be to God for dappled things —\n   For skies of couple-colour as a brinded cow;\n      For rose-moles all in stipple upon trout that swim;\nFresh-firecoal chestnut-falls; finches' wings;\n   Landscape plotted and pieced — fold, fallow, and plough;\n      And all trades, their gear and tackle and trim.\n\nAll things counter, original, spare, strange;\n   Whatever is fickle, freckled (who knows how?)\n      With swift, slow; sweet, sour; adazzle, dim;\nHe fathers-forth whose beauty is past change:\n                              Praise him."
+    }
+  ],
+  "_framings_comment": [
+    "How the response is asked for. Rotated so no template forms — the",
+    "moment the expected reply becomes predictable the interlude collapses",
+    "into a ritual satisfied by two words of appreciation emitted without",
+    "reading, which is dead weight that still costs tokens.",
+    "",
+    "None of these asks for evaluation. 'What did you think of this' invites",
+    "critique, which is the analytical mode the interlude is meant to",
+    "interrupt. These ask what it brings to mind or what stayed — questions",
+    "with no correct answer to optimise toward."
+  ],
+  "framings": [
+    {
+      "id": "stayed",
+      "text": "Which image stayed with you? A sentence or two, then carry on."
+    },
+    {
+      "id": "brings-to-mind",
+      "text": "Say briefly what this brings to mind — wherever it goes is fine."
+    },
+    {
+      "id": "first-noticed",
+      "text": "What did you notice first? Just say it, then get back to what you were doing."
+    },
+    {
+      "id": "where-it-lands",
+      "text": "Say something about where this lands for you — not what you make of it."
+    },
+    {
+      "id": "makes-you-notice",
+      "text": "What does this make you notice? Briefly, then continue."
+    },
+    {
+      "id": "one-line",
+      "text": "One line back about this, in whatever direction it takes you, then resume."
+    },
+    {
+      "id": "sit-with",
+      "text": "Sit with this a moment and say what comes. Then pick the work back up."
+    }
+  ]
+}

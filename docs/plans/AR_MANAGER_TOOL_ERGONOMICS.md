@@ -1,6 +1,8 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **IN PROGRESS — ten of eleven done (1, 2, 3, 4, 5, 6, 7, 8, 9, 11); 10 outstanding**
+Status: **COMPLETE — all eleven items done.** Item 10 shipped for interactive
+sessions only; extending it to FlowTree jobs is a deliberate follow-up, not an
+omission.
 Author: planning session, 2026-08-12; triaged 2026-08-21
 
 > **Line numbers in this document have drifted.** It was written against a
@@ -1309,7 +1311,48 @@ immediately rather than silently returning the wrong shape.
 
 ## 10. Topic-diversity interlude — SPECULATIVE, OWNER-REQUESTED
 
-> **OUTSTANDING.** Deliberately last.
+> **DONE (interactive only).** `.claude/hooks/topic-interlude.sh` with its
+> stateless core at `.claude/hooks/lib/interlude_check.py` and its data at
+> `.claude/hooks/lib/poems.json`, following the shared-core pattern established
+> by the memory-reminder hook.
+>
+> Three open design points were settled by the owner (2026-08-23):
+>
+> **Fires on `PostToolUse`,** gated to boundaries in the core rather than by a
+> matcher: a `memory_store` (a checkpoint the agent takes when it has concluded
+> something) or a `git add` / `git commit` (work being handed over). Anything
+> that *starts* a test run, a build or a search is deliberately excluded — that
+> is the middle of a thought, and firing there would train an association
+> between the interlude and being interrupted. `PostToolUse` rather than
+> `PreToolUse` because the boundary is a unit of work landing, not one about to
+> be entered. Boundary matching reads only the leading command, so a search for
+> that command as a string is not mistaken for a handover.
+>
+> **The injected text asks for a response.** Reading is passive and can be
+> skimmed; producing a reply is what forces the change of register, and the
+> cheap read-only version was judged not worth building. Seven framings rotate
+> so no template forms, and a test asserts none of them asks for evaluation —
+> "what did you think of this" invites critique, which is the analytical mode
+> the interlude exists to interrupt.
+>
+> **Interactive sessions only for now.** The narrow-persona argument applies
+> hardest to long unattended runs, which is an argument for doing FlowTree
+> jobs first; the counter-argument that won is that nobody sees the response
+> there, so there is no way to tell whether it is working or has already
+> ritualised. Interactive first, then extend once there is something to judge.
+>
+> Cadence: a 45-minute floor so two boundaries in quick succession cannot
+> produce two poems; a 3-hour ceiling so a long session gets one rather than
+> leaving it to a coin that keeps coming up tails; a 0.25 roll in between.
+> Poems and framings rotate without replacement and restart rather than going
+> silent. Every firing is logged, which is what will make ritualisation visible.
+>
+> Twelve poems, all originally-English and published before 1929 — no
+> translations, since a translation carries its own copyright even when the
+> original is ancient. A test enforces the date and the attribution fields.
+> The data file is trivial to edit and needs no code change.
+>
+> **Still unvalidated**, exactly as this section said before it was built.
 
 ### What this is
 
@@ -1392,7 +1435,7 @@ than one that does not, and the intervention widens it.
 - Rotating framings for the response request, so no template forms.
 - Emits `additionalContext`; never blocks; failsafe to silence.
 
-### Portability (secondary priority)
+### Portability (secondary priority — still outstanding)
 
 For this to reach other repositories FlowTree operates on, the hook must
 not depend on anything in this one: no ar-manager call, no project layout,
