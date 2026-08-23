@@ -133,6 +133,7 @@ written to `networksFile` after every cycle.
 The two pieces of state worth knowing about are the population list
 (`getNetworks()`) and the per-cycle progress record (`getProgress()`).
 
+<!-- TODO(review): this example calls process.setScene(scene, 10), but ArrangementGenerationProcess has no setScene method (see ArrangementGenerationProcess.java) -- the real API is prepare(scene, cycles) then run(), or the iterate(scene, cycles) convenience method. Also the prose below ("prepare(...) (which run() calls)") is backwards: run() does not call prepare() -- iterate() calls prepare() then run(). Verify and correct both the example and the prose. -->
 ```java
 ArrangementGenerationProcess process = new ArrangementGenerationProcess("/path/to/networks.dat");
 process.setScene(scene, 10);

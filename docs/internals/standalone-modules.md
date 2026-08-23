@@ -261,8 +261,7 @@ flowtree-only branches. Running tests in `build` ensures they always execute.
 `tools/` contains development tooling, MCP (Model Context Protocol) servers, and utilities
 for working with the Almost Realism codebase. It includes:
 
-<!-- TODO(review): "consult_legacy" and "documentation_search" do not appear anywhere else in the repo (tools/mcp/manager/memory_tools.py only registers consult/memory_recall/memory_store/memory_namespaces); verify and drop them if they are not real tool names. -->
-- `tools/mcp/manager/` — MCP server for managing FlowTree jobs, GitHub PRs, memory, workstreams (the controller endpoint that now also carries `consult`, `consult_legacy`, `documentation_search`, and the rest of the doc/memory/inference surface — see `tools/mcp/README.md`)
+- `tools/mcp/manager/` — MCP server for managing FlowTree jobs, GitHub PRs, memory, workstreams (the controller endpoint that now also carries `consult` and the rest of the doc/memory/inference surface — see `tools/mcp/README.md`)
 - `tools/mcp/memory/` — MCP server for the centralized HTTP memory service with embedding-based search
 - `tools/mcp/build-validator/` — MCP server for static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne
 - `tools/mcp/jmx/` — MCP server for JVM memory diagnostics and JFR profiling

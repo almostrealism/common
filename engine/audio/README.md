@@ -323,8 +323,8 @@ WaveData uses 1024-bin FFT for frequency analysis, defined in `WaveData.FFT_BINS
 
 Run the audio module tests via the MCP test runner:
 
-```python
-mcp__ar-test-runner__start_test_run(module="engine/audio", test_classes=["<TestClass>"])
+```
+mcp__ar-test-runner__start_test_run module:"engine/audio" test_classes:["<TestClass>"]
 ```
 
 Test audio files should be placed in `engine/audio/Library/` for integration tests.
