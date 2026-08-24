@@ -43,7 +43,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `allowedTools` | `Read,Edit,Write,Bash,Glob,Grep` | Comma-separated tool allowlist (MCP tools are appended automatically) |
 | `maxTurns` | `50` | Maximum number of agent turns |
 | `maxBudgetUsd` | `10.0` | Spending cap per job |
-| `maxWallClockHours` | Inherited from workstream | Wall-clock ceiling in hours. `null` lets the job inherit `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; `0` disables the ceiling entirely |
+| `maxWallClockHours` | Inherited from workstream | Wall-clock ceiling in hours. **Omit** the field on the submission API to let the job inherit `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; the controller parses this value as an integer when present, so JSON `null` is **not** the way to inherit — it is read as `0` and disables the ceiling. `0` disables the ceiling entirely |
 | `targetBranch` | `null` | Git branch for commits (disables git if null) |
 | `baseBranch` | `"master"` | Branch to create new target branches from (`origin/<baseBranch>`) |
 | `workstreamUrl` | `null` | Controller URL for status events and Slack messaging |
