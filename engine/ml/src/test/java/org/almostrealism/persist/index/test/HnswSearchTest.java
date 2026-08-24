@@ -348,7 +348,7 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void cosineMetricNormalizesCorrectly() {
 		PackedCollection vec = vec(3.0, 4.0);
-		PackedCollection normalized = SimilarityMetric.COSINE.normalize(cp(vec)).evaluate();
+		PackedCollection normalized = SimilarityMetric.COSINE.normalize(vec);
 
 		double norm = 0.0;
 		for (int i = 0; i < normalized.getMemLength(); i++) {
@@ -420,7 +420,7 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void cosineNormalizeZeroVectorDoesNotProduceNaN() {
 		PackedCollection zeroVec = vec(0.0, 0.0, 0.0);
-		PackedCollection normalized = SimilarityMetric.COSINE.normalize(cp(zeroVec)).evaluate();
+		PackedCollection normalized = SimilarityMetric.COSINE.normalize(zeroVec);
 
 		for (int i = 0; i < normalized.getMemLength(); i++) {
 			double v = normalized.toDouble(i);
@@ -434,9 +434,8 @@ public class HnswSearchTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void cosineIdenticalVectorsHaveSimilarityOne() {
 		PackedCollection a = vec(1.0, 0.0, 0.0);
-		PackedCollection normalized = SimilarityMetric.COSINE.normalize(cp(a)).evaluate();
-		float sim = (float) SimilarityMetric.COSINE
-				.similarity(cp(normalized), cp(normalized)).evaluate().toDouble(0);
+		PackedCollection normalized = SimilarityMetric.COSINE.normalize(a);
+		float sim = SimilarityMetric.COSINE.similarity(normalized, normalized);
 		Assert.assertEquals(1.0f, sim, 0.001f);
 	}
 

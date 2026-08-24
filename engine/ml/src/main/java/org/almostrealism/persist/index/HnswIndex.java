@@ -17,7 +17,6 @@
 package org.almostrealism.persist.index;
 
 import io.almostrealism.code.Precision;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.protobuf.Diskstore;
@@ -53,7 +52,7 @@ import java.util.logging.Logger;
  *
  * @see SimilarityMetric
  */
-public class HnswIndex implements CodeFeatures {
+public class HnswIndex {
 	/** Logger for this class. */
 	private static final Logger log = Logger.getLogger(HnswIndex.class.getName());
 
@@ -178,7 +177,7 @@ public class HnswIndex implements CodeFeatures {
 					"Expected dimension " + dimension + " but got " + vector.getMemLength());
 		}
 
-		PackedCollection normalizedData = metric.normalize(cp(vector)).evaluate();
+		double[] normalizedData = metric.normalizeToArray(vector);
 
 		Node existing = nodes.get(id);
 		if (existing != null) {
@@ -201,7 +200,7 @@ public class HnswIndex implements CodeFeatures {
 		}
 
 		String currentId = entryPointId;
-		PackedCollection cachedNorm = newNode.cachedData;
+		double[] cachedNorm = newNode.cachedData;
 
 		for (int lc = maxLevel; lc > level; lc--) {
 			currentId = greedyClosest(currentId, cachedNorm, lc);
@@ -259,7 +258,7 @@ public class HnswIndex implements CodeFeatures {
 					"Expected dimension " + dimension + " but got " + queryVector.getMemLength());
 		}
 
-		PackedCollection queryData = metric.normalize(cp(queryVector)).evaluate();
+		double[] queryData = metric.normalizeToArray(queryVector);
 
 		String currentId = entryPointId;
 
@@ -274,7 +273,7 @@ public class HnswIndex implements CodeFeatures {
 		for (String candidateId : candidates) {
 			Node node = nodes.get(candidateId);
 			if (node != null && !node.deleted) {
-				float sim = score(queryData, node.cachedData);
+				float sim = metric.similarityCached(queryData, node.cachedData);
 				results.add(new IdScore(candidateId, sim));
 			}
 		}
@@ -360,8 +359,12 @@ public class HnswIndex implements CodeFeatures {
 				Diskstore.HnswNodeData.Builder nodeBuilder =
 						Diskstore.HnswNodeData.newBuilder();
 				nodeBuilder.setId(node.id);
+				PackedCollection tempVec =
+						new PackedCollection(node.cachedData.length)
+								.fill(node.cachedData);
 				nodeBuilder.setVector(
-						CollectionEncoder.encode(node.cachedData, Precision.FP32));
+						CollectionEncoder.encode(tempVec, Precision.FP32));
+				tempVec.destroy();
 				nodeBuilder.setLevel(node.level);
 				nodeBuilder.setDeleted(node.deleted);
 
@@ -404,8 +407,11 @@ public class HnswIndex implements CodeFeatures {
 					? null : data.getEntryPointId();
 
 			for (Diskstore.HnswNodeData nodeData : data.getNodesList()) {
-				Node node = new Node(nodeData.getId(),
-						CollectionEncoder.decode(nodeData.getVector()),
+				PackedCollection vector =
+						CollectionEncoder.decode(nodeData.getVector());
+				double[] vectorData = SimilarityMetric.toDoubleArray(vector);
+				vector.destroy();
+				Node node = new Node(nodeData.getId(), vectorData,
 						nodeData.getLevel());
 				node.deleted = nodeData.getDeleted();
 
@@ -433,7 +439,7 @@ public class HnswIndex implements CodeFeatures {
 	 * Greedy search on a single layer to find the closest non-deleted node
 	 * to the query vector, starting from the given entry point.
 	 */
-	private String greedyClosest(String entryId, PackedCollection queryData, int layer) {
+	private String greedyClosest(String entryId, double[] queryData, int layer) {
 		String currentId = entryId;
 		float currentSim = similarityTo(currentId, queryData);
 
@@ -447,7 +453,8 @@ public class HnswIndex implements CodeFeatures {
 				Node neighbor = nodes.get(neighborId);
 				if (neighbor == null || neighbor.deleted) continue;
 
-				float neighborSim = score(queryData, neighbor.cachedData);
+				float neighborSim = metric.similarityCached(queryData,
+						neighbor.cachedData);
 				if (neighborSim > currentSim) {
 					currentId = neighborId;
 					currentSim = neighborSim;
@@ -463,7 +470,7 @@ public class HnswIndex implements CodeFeatures {
 	 * Search a single layer starting from the entry point, returning
 	 * up to {@code ef} closest candidates.
 	 */
-	private List<String> searchLayer(String entryId, PackedCollection queryData,
+	private List<String> searchLayer(String entryId, double[] queryData,
 									 int ef, int layer) {
 		Set<String> visited = new HashSet<>();
 		PriorityQueue<IdScore> candidates = new PriorityQueue<>(
@@ -495,7 +502,8 @@ public class HnswIndex implements CodeFeatures {
 				Node neighbor = nodes.get(neighborId);
 				if (neighbor == null) continue;
 
-				float neighborSim = score(queryData, neighbor.cachedData);
+				float neighborSim = metric.similarityCached(queryData,
+						neighbor.cachedData);
 
 				farthestResult = results.peek();
 				if (results.size() < ef ||
@@ -523,12 +531,12 @@ public class HnswIndex implements CodeFeatures {
 	 * Uses the simple heuristic of keeping the most similar candidates.
 	 */
 	private List<String> selectNeighbors(List<String> candidates,
-										 PackedCollection nodeData, int maxConnections) {
+										 double[] nodeData, int maxConnections) {
 		List<IdScore> scored = new ArrayList<>(candidates.size());
 		for (String candidateId : candidates) {
 			Node candidate = nodes.get(candidateId);
 			if (candidate == null || candidate.deleted) continue;
-			float sim = score(nodeData, candidate.cachedData);
+			float sim = metric.similarityCached(nodeData, candidate.cachedData);
 			scored.add(new IdScore(candidateId, sim));
 		}
 
@@ -543,33 +551,17 @@ public class HnswIndex implements CodeFeatures {
 	}
 
 	/**
-	 * Scores one pair of normalized vectors.
-	 *
-	 * <p>This is where a described similarity becomes a number. The graph walk cannot be
-	 * expressed as a single computation — which node is visited next is not known until the
-	 * current one has been scored — so the boundary sits around one comparison rather than
-	 * at the top of the search.</p>
-	 *
-	 * @param a first normalized vector
-	 * @param b second normalized vector
-	 * @return the similarity score
-	 */
-	private float score(PackedCollection a, PackedCollection b) {
-		return (float) metric.similarity(cp(a), cp(b)).evaluate().toDouble(0);
-	}
-
-	/**
 	 * Returns the similarity between the given node's cached vector and the query data.
 	 * Returns {@link Float#NEGATIVE_INFINITY} if the node is not found.
 	 *
 	 * @param nodeId    ID of the node to compare
-	 * @param queryData Normalized query vector
+	 * @param queryData Normalized query vector as a {@code double[]}
 	 * @return Similarity score, or {@link Float#NEGATIVE_INFINITY} if the node is absent
 	 */
-	private float similarityTo(String nodeId, PackedCollection queryData) {
+	private float similarityTo(String nodeId, double[] queryData) {
 		Node node = nodes.get(nodeId);
 		if (node == null) return Float.NEGATIVE_INFINITY;
-		return score(queryData, node.cachedData);
+		return metric.similarityCached(queryData, node.cachedData);
 	}
 
 	/**
@@ -609,7 +601,7 @@ public class HnswIndex implements CodeFeatures {
 
 	/**
 	 * Internal node representation in the HNSW graph. Stores the vector
-	 * so scoring reads it without a further transfer. No
+	 * as a {@code double[]} for fast similarity computation. No
 	 * {@link PackedCollection} is retained, avoiding native memory leaks
 	 * when the finalizer is disabled.
 	 */
@@ -617,8 +609,8 @@ public class HnswIndex implements CodeFeatures {
 		/** Unique identifier for this node. */
 		final String id;
 
-		/** Normalized vector, held so scoring reads it without a further transfer. */
-		PackedCollection cachedData;
+		/** Normalized vector data cached as a {@code double[]} for fast similarity computation. */
+		double[] cachedData;
 
 		/** Highest layer at which this node has edges. */
 		final int level;
@@ -633,10 +625,10 @@ public class HnswIndex implements CodeFeatures {
 		 * Creates a new node with pre-normalized vector data and initializes empty neighbor lists.
 		 *
 		 * @param id    Unique node identifier
-		 * @param data  Pre-normalized vector
+		 * @param data  Pre-normalized vector as a {@code double[]}
 		 * @param level Maximum layer index for this node
 		 */
-		Node(String id, PackedCollection data, int level) {
+		Node(String id, double[] data, int level) {
 			this.id = id;
 			this.cachedData = data;
 			this.level = level;

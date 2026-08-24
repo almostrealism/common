@@ -58,11 +58,32 @@ production cannot reach.
 `largestDeviation`, reduces on the device and is what a test asserting that nothing
 anywhere deviates should reach for.
 
-### `engine/ml/.../HnswSearchTest.java` — 2
+### `engine/ml/.../HnswIndex.java`, `SimilarityMetric.java` — defended, and measured
 
-`HnswIndex.insert` and `search` take `double[]` by design. The signature was a deliberate
-fix for native-memory exhaustion — the `PackedCollection` form leaked an allocation per
-insert and cascaded into out-of-memory failures across later test classes.
+The index holds each node's normalized vector as a `double[]` and compares one pair at a
+time while walking the graph. This is the audit's one case where the host array is the
+faster *and* the only workable form, and it was established twice by measurement.
+
+The conversion to `CollectionProducer` was written, and it does not work. A single 128-element
+similarity costs **430 µs** when it crosses to the device and back, against roughly 100 ns of
+arithmetic — a factor of about four thousand, all of it dispatch. HNSW construction is on the
+order of 10⁶–10⁷ such comparisons: at `efConstruction` 200 an insert issued ~400 of them, taking
+**171 ms** at only 200 nodes, which puts 10,000 inserts at **28 minutes at the low end** against
+a 60-second budget. The host form does the same work in seconds.
+
+Batching does not rescue it. The walk is data-dependent — which node is visited next is not
+known until the current one has been scored — so the only available batch is one node's
+neighbour list, at most `2 * m` = 32 wide. That caps the saving near 32× against a shortfall
+of several hundred, and it costs a redesign to contiguous vector storage to collect the batch
+at all.
+
+Two independent signals said so before the measurement did, and both are worth trusting
+earlier next time. The `PackedCollection` form retains one native allocation per node, which
+is the native-memory exhaustion an earlier session had already fixed by moving to arrays — the
+javadoc promising that no collection is retained survived the conversion that falsified it. And
+the conversion could only compile by adding `HnswIndex.insert`, `search` and `score` to
+`ProducerPatternDetector`'s `evaluate`/`toDouble` exemptions: needing a new carve-out from the
+rule this migration exists to enforce is evidence against the change, not paperwork for it.
 
 ### `studio/compose/.../MixdownLayerPerformanceTest.java` — 1
 

@@ -140,13 +140,6 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			"SkyTntMidi.java", Set.of(
 					"embedAndSumNet"            // Step-boundary: materializes the summed token
 					                            // embedding fed into netCompiledModel.forward
-			),
-			"HnswIndex.java", Set.of(
-					"insert",                   // Stores the normalized vector for a node
-					"search",                   // Normalizes the query once per search
-					"score"                     // Graph-walk boundary: the next node visited
-					                            // is chosen by the current comparison, so the
-					                            // walk cannot be described as one computation
 			)
 	);
 
@@ -155,10 +148,6 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	 * {@link #EVALUATE_ALLOWED_FILE_METHODS} for {@code .toDouble()} calls.
 	 */
 	private static final Map<String, Set<String>> TODOUBLE_ALLOWED_FILE_METHODS = Map.of(
-			"HnswIndex.java", Set.of(
-					"score"                     // Reads the single similarity value the graph
-					                            // walk branches on
-			),
 			"AutoregressiveModel.java", Set.of(
 					"getTemperature",           // Accessor for temperature scalar
 					"sampleToken",              // Token-selection at autoregressive step boundary
