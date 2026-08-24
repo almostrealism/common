@@ -80,6 +80,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
+| GET | `/api/workstreams` | -- | List registered workstreams with capabilities. Optional query filters: `workspaceId`, `repoUrl` (matched on repository identity — SSH and HTTPS spellings of one repository are equivalent), `dispatchCapable` (`true`/`false`), and `archived` (`true`/`false`, supersedes `includeArchived`). Optional enrichments: `includeStatus` (adds `lastJobId`, `lastJobStatus`, `lastJobAt`), `includePullRequest` (adds `pullRequest`). Both enrichments default to off; an empty query value counts as absent. |
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
 | POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
@@ -216,9 +217,6 @@ mcpServers:
   ar-memory:
     source: tools/mcp/memory/server.py
     port: 7783
-  ar-consultant:
-    source: tools/mcp/consultant/server.py
-    port: 7784
 
 # Optional: pushed MCP tools served as files by the controller and downloaded
 # into dev containers on first use. Use for tools that need to run in the

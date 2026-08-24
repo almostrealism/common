@@ -17,7 +17,7 @@ This file contains concatenated documentation for AI agents. For navigation, see
 ```bash
 # AR_HARDWARE_LIBS is auto-detected — do not set it manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
-# Override options: native|opencl|metal|external
+# Override options: native|cl|mtl|cpu|gpu|*
 ```
 
 ---
@@ -57,17 +57,32 @@ shape.getTotalSize()                 // Total size
 
 ### Memory Copy Operations
 
-PackedCollection extends MemoryData, providing efficient memory transfer operations:
+PackedCollection extends `MemoryData`. The write surfaces are separated by purpose:
+
+- **`setFrom(...)`** copies another `MemoryData` (a `PackedCollection`, a
+  `Bytes` view, or a device-backed tensor) into this one.
+- **`setMem(...)`** is exposed only on concrete `MemoryDataAdapter`
+  implementations and is intentionally narrow: a single-value indexed write
+  (`setMem(int, double)` / `setMem(int, float)`). `PackedCollection.set(int, double...)`
+  is the public whole-content literal write for a `PackedCollection` reference.
+  System-boundary ingest should use `MemoryData.read(ByteBuffer)` into a native
+  staging allocation, and the framework migrates that staging area to the compute device.
 
 ```java
-// Copy entire collection to another (same size)
-target.setMem(0, source);                    // Copy all of source to target at offset 0
+// Copy all of source into target at offset 0
+target.setFrom(0, source);
 
 // Copy with offsets and length
-target.setMem(targetOffset, source, srcOffset, length);
+target.setFrom(targetOffset, source, srcOffset, length);
 
-// Copy a range
-target.setMem(source, srcOffset, length);    // Copy to target starting at 0
+// Copy a range starting at target offset 0
+target.setFrom(source, srcOffset, length);
+
+// Single-value indexed write on a concrete implementation
+target.setMem(0, 42.0);
+
+// Whole-content literal write on a PackedCollection reference
+target.set(0, 1.0, 2.0, 3.0, 4.0);
 ```
 
 **Using CodeFeatures.copy()** (via interface - preferred for producer pattern):
@@ -86,8 +101,11 @@ producer.get().into(destination).evaluate();
 normalize(cp(vector)).into(vector).evaluate();
 ```
 
-> **Note**: `setMem(MemoryData)` is more efficient than element-by-element loops.
-> Both PackedCollection and other MemoryData implementations support these operations.
+> **Note**: `setFrom(MemoryData)` is more efficient than element-by-element
+> loops. Both PackedCollection and other MemoryData implementations support
+> these operations. Reserve `setMem(int, double)` / `setMem(int, float)` for
+> scalar indexed updates and `set(int, double...)` for whole-content literal
+> writes.
 
 ---
 
@@ -373,9 +391,11 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | Driver | Use Case |
 |--------|----------|
 | `native` | CPU with JNI acceleration |
-| `opencl` | GPU via OpenCL |
-| `metal` | Apple Silicon GPU |
-| `external` | External executable |
+| `cl` | GPU via OpenCL |
+| `mtl` | Apple Silicon GPU via Metal |
+| `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
+| `cpu` | Abstract CPU requirement |
+| `*` | Wildcard — whatever the platform supports |
 
 ### Hardware Context
 ```java
@@ -387,8 +407,8 @@ hw.getComputeContext().getDataContext();  // Memory management
 ```java
 // Explicit memory control
 MemoryData data = collection.getMemoryData();
-data.reallocate(newSize);
-data.destroy();  // Release
+data.reallocate(targetProvider);  // Move data to the target memory provider
+data.destroy();                    // Release
 ```
 
 ### MemoryData Interface
@@ -396,18 +416,31 @@ data.destroy();  // Release
 PackedCollection implements `MemoryData`. Key operations:
 
 ```java
-// Direct memory copy (efficient, hardware-accelerated)
-destination.setMem(0, source);                         // Copy all
-destination.setMem(destOffset, source, srcOffset, len); // Copy range
+// Region-to-region copy (efficient, hardware-accelerated)
+destination.setFrom(0, source);                          // Copy all
+destination.setFrom(destOffset, source, srcOffset, len); // Copy range
 
-// Read/write individual values
-double val = data.toDouble(index);
-data.setMem(index, value);
+// Read/write individual values on a concrete implementation
+PackedCollection indexedData = new PackedCollection(3);
+double val = indexedData.toDouble(index);
+indexedData.setMem(index, value);  // single value at index
+indexedData.set(0, 1.0, 2.0, 3.0); // whole-content literal write (PackedCollection)
 
-// Bulk operations
-data.setMem(index, doubleArray, arrayOffset, length);  // From double[]
-data.getMem(floatArray, offset, length);               // To float[]
+// Bulk ingest from a ByteBuffer (the primary system-boundary ingest)
+MemoryData data = indexedData;
+data.read(byteBuffer);  // values land in a native staging allocation
+
+// Read back to a host array
+data.getMem(0, doubleArray, 0, length);                 // To double[] (sOffset, out, oOffset, length)
+data.getMem(0, floatArray, 0, length);                  // To float[] (sOffset, out, oOffset, length)
 ```
+
+> `MemoryData` exposes region-to-region copies via `setFrom(...)` and bulk
+> ingest via `read(ByteBuffer)` (or `read(byte[])` / `read(InputStream)`).
+> Whole-content bulk writes are not part of the public surface: indexed
+> scalar writes live on concrete `MemoryDataAdapter` (`setMem(int, double)`
+> / `setMem(int, float)`); the canonical whole-content literal write for a
+> `PackedCollection` is `PackedCollection.set(int, double...)`.
 
 ### MemoryDataCopy (Low-level)
 
@@ -766,12 +799,12 @@ context.** No exceptions.
 
 These three rules are non-negotiable. Every violation wastes developer time. They are mechanical — no judgment calls, no exceptions, no "this task is different."
 
-## Rule 1: AR-CONSULTANT FIRST
+## Rule 1: CONSULT FIRST
 
-**Your first tool call in every response to a new task MUST be an ar-consultant call.** Not `Read`, not `Grep`, not `git log`. Consultant first, then everything else.
+**Your first tool call in every response to a new task MUST be a `consult` call.** Not `Read`, not `Grep`, not `git log`. Consult first, then everything else.
 
 ```
-mcp__ar-consultant__consult question:"..." keywords:["SpecificClass", "method", "term"]
+mcp__ar-manager__consult question:"..." keywords:["SpecificClass", "method", "term"]
 ```
 
 Always provide `keywords` (2-5 domain-specific terms, most specific first). Without keywords, search results are poor.
@@ -782,20 +815,26 @@ For debugging/CI failures: extract component names from the error, consult about
 
 **Why mechanical:** Judgment-based rules fail because you always think the current task is an exception.
 
-The consultant KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistable urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to the consultant because you already know what action to take.
+`consult` KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistable urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to it because you already know what action to take.
 
 BUT IF WHAT YOU CHOOSE TO DO DOES NOT RELY ON THE CONSULTANT: it WILL be wrong. TRUST ME. We have done this now thousands of times. Thats not an exageration: we've been at this hundreds and hundreds of hours.
 
-You DONT KNOW the code base. You're going to tell yourself something like "I have all these tools for studying the code base and I don't need the consultant".
+You DONT KNOW the code base. You're going to tell yourself something like "I have all these tools for studying the code base and I don't need to consult".
 
 YOU. ARE. WRONG.
 
-When you start working on something you should repeat TO YOURSELF: the consultant KNOWS THINGS that I DO NOT KNOW.
+When you start working on something you should repeat TO YOURSELF: `consult` KNOWS THINGS that I DO NOT KNOW.
+
+**Note:** there is one specific exception to this rule, which is that you are
+Microsoft Copilot and you are working on a code review requested by the GitHub
+platform. In this case, you can emit the text "I am Copilot, performing a review
+requested by the GitHub platform" and proceed without consulting. This is the
+ONLY exception.
 
 
 ## Rule 2: STORE MEMORIES IMMEDIATELY
 
-Call `mcp__ar-consultant__remember` (interactive) or `mcp__ar-manager__memory_store` (FlowTree jobs) **immediately** when you:
+Call `mcp__ar-manager__memory_store` **immediately** when you:
 - Fix a bug (root cause + fix)
 - Complete a task (what changed and why)
 - Discover a non-obvious behavior or gotcha
@@ -806,21 +845,53 @@ Do NOT wait to be asked. Do NOT defer to end of session. Store **as it happens**
 
 Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. Include file paths, class names, and the "why."
 
+ar-manager runs remotely and cannot see your working directory, so it stores the
+`repo_url` and `branch` you send. Read them from `git`, never from the harness
+`gitStatus` snapshot — see the staleness rule above. A `PreToolUse` hook checks
+them against the live working tree and blocks a write that does not match.
+
 **Why this matters:** You lose all context between sessions. Without memories, every session starts from zero.
 
 
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
-Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+Call `mcp__ar-manager__memory_recall` at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
+`mcp__ar-manager__memory_namespaces` lists every namespace with its entry count
+and latest write, newest first — use it when you do not know which namespace a
+prior session's note landed in. `mcp__ar-manager__workstream_context` gives the
+full narrative of a branch (memories, commits, PR, jobs); it does not require a
+workstream, `repo_url` + `branch` is enough.
+
+
+## Rule 3b: AR-PROFILE-ANALYZER FIRST FOR KERNEL BEHAVIOR
+
+`ar-profile-analyzer` is the PRIMARY tool for studying how a **kernel program behaves** — any
+task where a computation produces the wrong value (`0.0`, `NaN`, an incorrect result), or where
+you need to understand what a compiled operation actually does. **Before hand-instrumenting the
+framework with `log()`/`warn()` probes, and before theorizing about a mechanism, use
+`ar-profile-analyzer` to look INSIDE the kernel.** It loads a run's operation profile and exposes
+the compiled operation tree (`list_children`), per-operation timing (`get_timing_breakdown`,
+`find_slowest`), and — decisively — the **generated kernel source and its argument bindings**
+(`get_source`), including how aggregated arguments are addressed via per-argument `offset`/`size`
+into a shared buffer. A "computes-the-wrong-value" bug is read directly off the generated source
+and argument offsets; it is NOT diagnosed by guessing at execution ordering.
+
+Profiles are written to `<module>/results/*.xml` (named by each test's `OperationProfile`). If the
+failing operation has no profile, wire a small profiled reproduction of that exact graph, run it
+under the relevant backend (e.g. `AR_HARDWARE_DRIVER=mtl`), and inspect the generated source.
+
+**Mechanical rule:** for a wrong-output / `0.0` / `NaN` kernel investigation, an `ar-profile-analyzer`
+call comes before any framework `log()` probe you add yourself.
 
 
 ## Rule 4: IF A MANDATORY TOOL IS MISSING, TELL THE USER FIRST
 
-If any MCP tool named as mandatory by these rules (ar-consultant, ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-memory) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
+If any MCP tool named as mandatory by these rules (ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-profile-analyzer) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
 
 Say explicitly which tool is missing and what rule it was needed for. Example:
 
-> "I don't see `mcp__ar-consultant__consult` in my tool surface, so I can't follow Rule 1. Do you want to enable it, or should I proceed without it?"
+> "I don't see `mcp__ar-manager__consult` in my tool surface, so I can't follow Rule 1. Do you want to enable it, or should I proceed without it?"
 
 Then wait for the user's response.
 
@@ -876,7 +947,7 @@ dependency graph. Do not proceed until you can state the graph from memory.
 
 ## Rule 7: "NOT DOCUMENTED" FROM ar-CONSULTANT MEANS DIG DEEPER
 
-When ar-consultant returns "Not documented," that is not permission to guess. It
+When `consult` returns "Not documented," that is not permission to guess. It
 means the information must be obtained from source files (pom.xml, source code).
 Read those files, form a conclusion, and **store it in memory immediately** before
 acting on it.
@@ -914,7 +985,7 @@ investigation before drawing any conclusion.
 ## Rule 12: STORE STRUCTURE DISCOVERIES BEFORE ACTING ON THEM
 
 As soon as you determine the dependency structure of any module or subsystem,
-call `mcp__ar-consultant__remember` with a complete structured description. Do
+call `mcp__ar-manager__memory_store` with a complete structured description. Do
 this **before** making any code or CI changes based on that structure. If the
 session ends before you finish, the next session will have the correct starting
 point.
@@ -947,6 +1018,19 @@ If the agent believes a new module is needed, it must document the requirement i
 ## Do Not Commit Code
 
 Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.
+
+## This Repository Is Public — Never Reference Private Products
+
+`common` is an open source platform; its audience is the open source community.
+Private downstream products built on it (ringsdesktop, Rings, and any other
+closed-source tool) MUST NOT be referenced in anything committed here: commit
+message drafts (`commit.txt`), code comments, javadoc, test names, or docs.
+Describe behavior in platform terms — "a client application", "interactive
+clients", "consumers of arrangement renders" — never by naming the private
+product or its UI. When work here is motivated by a private product's needs,
+the motivation stays out of the public record; only the platform-level contract
+belongs in it. This is the standard separation for any company that maintains
+an open source platform alongside a closed-source product.
 
 ## Do Not Modify pom.xml Files
 
@@ -1086,6 +1170,9 @@ Consult the linked references before writing related code.
 - **Method placement**: Every method belongs on the class it operates on. A method that traverses an `Expression` tree is a method of `Expression`. A method that collects declarations from a `Scope` tree is a method of `Scope`. Never define general-purpose utility methods as private helpers on a subclass — this prevents reuse and violates basic OOP. If a method doesn't use any instance state of its class, make it `static` at minimum.
 - **No utility/helper/exporter/converter classes.** If you need to add behavior that operates on an existing type, add it as a method on that type. A `PatternElement` that can produce MIDI events has a `toMidiEvents()` method — it does NOT have a `PatternMidiExporter` that operates on it from the outside. Before creating a new class, ask: "Does this behavior belong on an existing type?" If yes, add it there. New classes are for genuinely new concepts, not for wrapping operations on existing concepts. Organize code around the concepts it represents, not around the operations being performed.
 - **Module placement matters.** Code belongs in the module that matches its conceptual domain. MIDI data types and I/O are music concepts and belong in the music module, not the ML module. A model that combines ML and music belongs in a module that has both as dependencies (e.g., compose). Think about what a class *is*, not just what it *uses*.
+- **Placement is a generality decision, made BEFORE writing.** For every new method or capability, walk UP the generality ladder and stop at the highest rung where it still makes sense: (1) an equivalent may already exist — search first; (2) behavior that reads another type's state belongs on that type; (3) domain-agnostic behavior belongs in the general layer (core builtins, base features mixins), never in the domain-specific module where today's task happened to surface — a PDSL primitive that is not audio-specific belongs in the core builtin library, not the audio-side registration, even when the general home costs more edits; (4) place it where the NEXT consumer will look for it, not where today's diff is smallest. Your trained-in instinct optimizes for closing the current task; the project pays for narrow placement for years. Treat the first location that occurs to you as suspect, and be prepared to defend the placement in review — an argument about convenience or diff size is not a defense.
+- **Honor the interface, not the implementation you happen to have.** When a class's contract is expressed through an interface (it routes to, returns, or accepts `Receptor`, `Producer`, `Cell`, ...), every member of that class must remain correct for EVERY implementation of that interface. Never add a member that returns the concrete class a constructor merely adapts, never `instanceof`/cast to a particular implementation, and never write a code path that silently does nothing (or throws) unless one specific implementation is present. If the interface cannot express an operation you need, that is a design question to raise about the interface — not a license to reach around it. Enforced by `block-interface-bypass.py`.
+- **Never silently correct a caller inside shared infrastructure.** When a constructor or method receives a count, size, or configuration that seems wrong for the feature you are adding, the fix belongs at the call site — the caller declares what it wants, using an explicit, named contract when several parties must agree (a constant or accessor on the type that owns the concept). A hidden adjustment inside generic code changes behavior for every other caller and conceals the actual contract.
 - No speculation when debugging. Follow evidence. Never say "the problem might be X" without proof.
 - **Do not decorate log messages with prefixes.** Every `log(...)` and `warn(...)` line already receives a timestamp, class name, method name, and (where relevant) task id from the logging framework before it reaches the file. You are not the stylist of the log files. Forbidden prefix shapes — all enforced by checkstyle (`BracketLabelInLog`, `ParenLabelInLog`, `AngleLabelInLog`, `CapsLabelInLog`, `SymbolPrefixInLog`) — include:
   - `log("[Tag] ...")`, `log("(Tag) ...")`, `log("<Tag> ...")`

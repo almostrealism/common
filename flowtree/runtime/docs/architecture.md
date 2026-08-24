@@ -947,11 +947,7 @@ The configuration arrives as a JSON string in the `centralizedMcpConfig` field:
 {
     "ar-manager": {
         "url": "http://0.0.0.0:8010",
-        "tools": ["send_message", "github_pr_find", "memory_recall"]
-    },
-    "ar-consultant": {
-        "url": "http://0.0.0.0:8080/mcp/ar-consultant",
-        "tools": ["consult", "recall", "remember", "search_docs", ...]
+        "tools": ["send_message", "github_pr_find", "memory_recall", "consult", "search_docs", ...]
     }
 }
 ```

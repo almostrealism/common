@@ -57,7 +57,7 @@ Look specifically for:
 
 ## How to verify — evidence, not speculation
 
-- **Use `ar-consultant`.** Query the documentation corpus for the components touched by recent
+- **Use `consult`.** Call `mcp__ar-manager__consult` to query the documentation corpus for the components touched by recent
   changes and compare what it returns against the current source. The consultant knows things
   about this codebase that are not obvious from a first read.
 - Confirm every claimed discrepancy against the actual code before changing a doc. Do not

@@ -35,8 +35,8 @@ relationship between software and intelligence.
    journal — it captures the ongoing narrative of where the project is heading and why.
 
 2. **Survey the Landscape**: Explore the codebase, documentation, existing plans in
-   `docs/plans/`, test coverage, and recent git history. Use `ar-consultant` to understand
-   components you're less familiar with.
+   `docs/plans/`, test coverage, and recent git history. Use `consult`
+   (`mcp__ar-manager__consult`) to understand components you're less familiar with.
 
 3. **Evaluate Needs by Category**: Assess the project against each category below, in
    priority order. The first category where you find meaningful work to do is where you
@@ -169,5 +169,5 @@ were made.
   that duplicates existing efforts. Read the plans in `docs/plans/` and the Manager Log.
 - **Think in sequences.** Your task should be a logical next step in a larger progression.
   What came before? What will come after? Make this explicit in the Manager Log.
-- **Use ar-consultant.** Query the documentation system to understand components before
+- **Use `consult`.** Call `mcp__ar-manager__consult` to query the documentation system to understand components before
   proposing work on them. Don't assume — look it up.
