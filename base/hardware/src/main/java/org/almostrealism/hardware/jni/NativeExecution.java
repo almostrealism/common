@@ -31,11 +31,10 @@ import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.TimingMetric;
 
 import java.lang.ref.Reference;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -312,6 +311,11 @@ public class NativeExecution extends HardwareOperator {
 	 * finally blocks, and any workers that could not be submitted are counted down here &mdash;
 	 * so no waiter can hang on a failed dispatch.
 	 *
+	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
+	 * well as the ordinary one. Releasing it is what allows this dispatch's memory to be
+	 * freed, and a worker still inside the kernel would then be reading a block that has
+	 * gone.</p>
+	 *
 	 * @param data      the resolved kernel arguments
 	 * @param args      the original arguments (retained so backing memory stays reachable)
 	 * @param dependsOn the completion this dispatch is ordered after, or {@code null}
@@ -321,7 +325,7 @@ public class NativeExecution extends HardwareOperator {
 	 */
 	private void coordinate(MemoryData[] data, Object[] args, Semaphore dependsOn,
 							KernelMemoryGuard.Reservation guard, DefaultLatchSemaphore latch, int p) {
-		List<Future<?>> workers = new ArrayList<>(p);
+		AtomicInteger submitted = new AtomicInteger();
 
 		try {
 			if (dependsOn != null) dependsOn.waitFor();
@@ -330,7 +334,7 @@ public class NativeExecution extends HardwareOperator {
 				for (int i = 0; i < p; i++) {
 					int id = i;
 
-					workers.add(executor.submit(() -> {
+					executor.submit(() -> {
 						try {
 							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
 						} catch (Exception e) {
@@ -339,7 +343,9 @@ public class NativeExecution extends HardwareOperator {
 						} finally {
 							latch.countDown();
 						}
-					}));
+					});
+
+					submitted.incrementAndGet();
 				}
 
 				latch.waitFor();
@@ -351,20 +357,11 @@ public class NativeExecution extends HardwareOperator {
 		} catch (Exception e) {
 			warn(getName() + " dispatch failed", e);
 		} finally {
-			// Every worker that was submitted has to be finished with before
-			// the guard comes off, including on the failure path. Releasing the
-			// guard is what permits this dispatch's memory to be freed, and a
-			// worker still inside the kernel would then be reading a block that
-			// has gone. Waiting on the tasks rather than the latch is what makes
-			// that true: the latch can reach zero without the workers having
-			// returned, because the counts for tasks that were never submitted
-			// are made up below.
-			awaitWorkers(workers);
-
-			for (int i = workers.size(); i < p; i++) {
+			for (int i = submitted.get(); i < p; i++) {
 				latch.countDown();
 			}
 
+			latch.waitFor();
 			KernelMemoryGuard.releaseFor(guard);
 		}
 
@@ -372,27 +369,4 @@ public class NativeExecution extends HardwareOperator {
 		Reference.reachabilityFence(args);
 	}
 
-	/**
-	 * Waits for every submitted worker to finish, whatever became of it.
-	 *
-	 * <p>A worker that failed has already reported its own failure, and one
-	 * that was cancelled has nothing to report; what matters here is only that
-	 * none of them is still running. An interruption is honored by restoring
-	 * the flag and returning, since continuing to wait would ignore a request
-	 * to stop.</p>
-	 *
-	 * @param workers the futures of the submitted workers
-	 */
-	private void awaitWorkers(List<Future<?>> workers) {
-		for (Future<?> worker : workers) {
-			try {
-				worker.get();
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				return;
-			} catch (Exception e) {
-				// Already reported by the worker itself
-			}
-		}
-	}
 }

@@ -55,10 +55,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }</pre>
  *
  * <p>The deallocation pipeline in {@link HardwareMemoryProvider} consults
- * {@link #canDeallocate(long)} before freeing native memory, but only to warn:
- * an explicit release proceeds either way. Holding it back was tried and taken
- * back out while these counts were still leaking; see
- * {@code HardwareMemoryProvider.deallocateNow}.</p>
+ * {@link #canDeallocate(long)} before freeing native memory, and holds the
+ * release back while a kernel is still using the block. That verdict is only
+ * worth acting on because the counts below are given back reliably — an
+ * earlier attempt to act on them, made while they still leaked, waited for
+ * something that never came and exhausted memory instead.</p>
  *
  * <p>Guarding only covers memory the guard can resolve to a {@link RAM}. An
  * argument it cannot resolve is reported when the kernel takes it, because
@@ -140,6 +141,10 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	 * increments the reference count for the native address and holds a strong
 	 * reference to the {@link RAM} object to prevent garbage collection.</p>
 	 *
+	 * <p>An argument that cannot be resolved is reported rather than passed
+	 * over: every check downstream is keyed by the address this would have
+	 * produced, so nothing later can report it either.</p>
+	 *
 	 * @param args the kernel memory arguments (may contain nulls)
 	 * @return what was taken, to be handed to {@link #release(Reservation)}
 	 */
@@ -152,12 +157,6 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 
 			RAM ram = resolveRAM(arg);
 			if (ram == null) {
-				// An argument that cannot be resolved is not merely unguarded:
-				// nothing downstream can report it either, because every later
-				// check is keyed by the address this would have produced. A
-				// kernel reading released memory would then crash the process
-				// with no preceding warning of any kind, which is precisely the
-				// shape of failure this class exists to make visible.
 				warn("Kernel argument " + arg.getClass().getSimpleName() +
 						" has no resolvable memory and cannot be guarded; a" +
 						" kernel using it will not be protected from release");

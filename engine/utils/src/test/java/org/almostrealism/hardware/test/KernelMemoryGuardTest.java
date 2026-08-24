@@ -172,8 +172,6 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		MemoryData data = stubMemoryData(400L);
 
-		// A reservation that took nothing, and no reservation at all, must both
-		// leave an address the guard never counted exactly as it was.
 		guard.release(guard.acquire());
 		guard.release(null);
 

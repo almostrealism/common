@@ -349,13 +349,25 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 *   <li>All arguments must be non-null</li>
 	 *   <li>All arguments must be {@link MemoryData} instances</li>
 	 *   <li>Argument count must match expected count</li>
+	 *   <li>Memory must not already have been released</li>
+	 *   <li>The range described must fit within that memory</li>
 	 * </ul>
+	 *
+	 * <p>The last two are checked here because everything past this point deals in
+	 * bare addresses: a compiled kernel is handed an address, an offset and a length,
+	 * and reads wherever the arithmetic lands. Refusing costs the operation and names
+	 * the argument; letting it through costs the process and names nothing. Their
+	 * order around {@link #reassignMemory} is deliberate — there is nothing to migrate
+	 * out of released memory, while migration is what decides the allocation a range
+	 * is finally read against.</p>
 	 *
 	 * @param argCount Expected number of arguments
 	 * @param args The arguments to prepare
 	 * @return Array of validated {@link MemoryData} arguments
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if any argument is not {@link MemoryData}
+	 * @throws HardwareException if any argument's memory is released, or describes
+	 *         a range that does not fit within it
 	 */
 	protected MemoryData[] prepareArguments(int argCount, Object[] args) {
 		long start = System.nanoTime();
@@ -375,20 +387,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 			data[i] = (MemoryData) args[i];
 
-			// Checked before anything is done with the memory, because
-			// everything past this point deals in bare addresses. A compiled
-			// kernel receives a number and dereferences it; released memory
-			// reaches it as an address that no longer maps to anything, and the
-			// process is gone with no indication of which operation or which
-			// argument was responsible. Refusing here costs the operation and
-			// reports both. Migrating it would be no better: there is nothing
-			// to copy out of a block that has been freed.
 			if (!data[i].isAvailable()) {
-				// The two ways of being unusable are worth telling apart: data
-				// that no longer holds any memory was destroyed by whoever owned
-				// it, while data still holding memory that has been released
-				// points at a block someone else freed. They are found in
-				// different places.
 				throw new HardwareException("argument " + i + " to function " +
 						getName() + (data[i].isDestroyed()
 								? " has been destroyed"
@@ -397,11 +396,6 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 
 			reassignMemory(data[i]);
 
-			// Checked after migration, since that is what decides the
-			// allocation the range will finally be read against. A range that
-			// overruns its allocation is not caught by anything further on: the
-			// kernel is handed an address, an offset and a length, and reads
-			// wherever the arithmetic lands.
 			if (!data[i].isWithinBounds()) {
 				throw new HardwareException("argument " + i + " to function " +
 						getName() + " describes " + data[i].getAtomicMemLength() +
