@@ -77,24 +77,47 @@ fi
 # Failure to reach the API is deliberately NOT treated as "no open PR".
 # Guessing "none" authorises a run, which is the direction that created
 # the backlog; guessing "some" only delays one.
+# The listing is paged: the API caps a page at 100, and the round we are
+# looking for is the OLDEST matching PR, so it is the one a single first
+# page would drop. Missing it authorises a run while a round is still
+# open — the failure this condition exists to catch.
+PER_PAGE=100
+MAX_PAGES=20
+
 if [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
-    PR_JSON=$(curl -sS -f \
-        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100") \
-        || {
-            echo "::warning::Could not list open PRs — assuming one is open and skipping."
-            emit false pr-query-failed
-            exit 0
-        }
+    PAGE=1
+    OPEN_REFS=""
+    while [ "$PAGE" -le "$MAX_PAGES" ]; do
+        PR_JSON=$(curl -sS -f \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=${PER_PAGE}&page=${PAGE}") \
+            || {
+                echo "::warning::Could not list open PRs — assuming one is open and skipping."
+                emit false pr-query-failed
+                exit 0
+            }
 
-    OPEN_COUNT=$(echo "$PR_JSON" \
-        | jq --arg p "$BRANCH_PREFIX" '[.[] | select(.head.ref | startswith($p))] | length')
-
-    if [ "$OPEN_COUNT" -gt 0 ]; then
         OPEN_REFS=$(echo "$PR_JSON" \
             | jq -r --arg p "$BRANCH_PREFIX" \
                 '[.[] | select(.head.ref | startswith($p)) | "#\(.number) \(.head.ref)"] | join(", ")')
+
+        # Stop at the first match: one open round is enough to skip, and
+        # there is no reason to keep paging to enumerate the rest.
+        [ -n "$OPEN_REFS" ] && break
+
+        PAGE_COUNT=$(echo "$PR_JSON" | jq 'length')
+        [ "$PAGE_COUNT" -lt "$PER_PAGE" ] && break
+        PAGE=$((PAGE + 1))
+    done
+
+    if [ "$PAGE" -gt "$MAX_PAGES" ]; then
+        echo "::warning::Stopped after ${MAX_PAGES} pages of open PRs without reaching the end — assuming one is open and skipping."
+        emit false pr-page-limit
+        exit 0
+    fi
+
+    if [ -n "$OPEN_REFS" ]; then
         echo "::notice::A previous run is still open (${OPEN_REFS}) — skipping. Review or close it first."
         emit false pr-open
         exit 0
@@ -105,26 +128,36 @@ fi
 
 # ─── Condition 2: the last run is younger than the interval ──────────
 #
-# The branch name carries its own creation time, so the newest branch
-# name sorts lexically to the newest run.
-LATEST_BRANCH=$(git ls-remote --heads "$REMOTE" "${BRANCH_PREFIX}*" 2>/dev/null \
-    | sed 's|.*refs/heads/||' | sort | tail -1 || true)
+# The branch name carries its own creation time, so among the names that
+# carry a readable date the newest sorts last.
+#
+# Only dated names are considered. Taking the lexically-last name outright
+# would let a single name without a date mask every real run: anything
+# beginning with a letter sorts after "2026...", so one such branch would
+# be read as "the most recent run", fail to parse, and fall through to
+# "treat as due" — holding the gate permanently open, which is the exact
+# failure this script exists to prevent.
+ALL_BRANCHES=$(git ls-remote --heads "$REMOTE" "${BRANCH_PREFIX}*" 2>/dev/null \
+    | sed 's|.*refs/heads/||' || true)
 
-if [ -z "$LATEST_BRANCH" ]; then
+if [ -z "$ALL_BRANCHES" ]; then
     echo "::notice::No previous ${BRANCH_PREFIX}* branch — first run"
     emit true first-run
     exit 0
 fi
 
-# "<prefix>YYYYMMDD-HHMMSS" -> "YYYYMMDD"
-STAMP="${LATEST_BRANCH#"$BRANCH_PREFIX"}"
-DAY="${STAMP%%-*}"
+# "<prefix>YYYYMMDD-HHMMSS" -> "YYYYMMDD-HHMMSS", keeping only dated names.
+STAMP=$(echo "$ALL_BRANCHES" | sed "s|^${BRANCH_PREFIX}||" \
+    | grep -E '^[0-9]{8}-' | sort | tail -1 || true)
 
-if ! echo "$DAY" | grep -Eq '^[0-9]{8}$'; then
-    echo "::warning::Could not read a date from ${LATEST_BRANCH} — treating as due"
+if [ -z "$STAMP" ]; then
+    echo "::warning::No ${BRANCH_PREFIX}* branch carries a readable date — treating as due"
     emit true unparseable-branch-date
     exit 0
 fi
+
+LATEST_BRANCH="${BRANCH_PREFIX}${STAMP}"
+DAY="${STAMP:0:8}"
 
 # date(1) differs between BSD (macOS runners) and GNU (Linux runners).
 if date -j >/dev/null 2>&1; then

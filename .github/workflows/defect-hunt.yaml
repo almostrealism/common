@@ -144,6 +144,7 @@ jobs:
               pr-open) echo "Skipped: a previous defect-hunt PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last defect hunt is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           fi

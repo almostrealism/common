@@ -25,9 +25,15 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 _SCRIPT = os.path.join(_REPO_ROOT, "tools", "ci", "qa-cadence.sh")
 
 
+# One clock for the whole module. Reading the wall clock per call would let
+# two stamps in a single test straddle a UTC midnight, and the failure would
+# surface once at 00:00 and never reproduce.
+_NOW = datetime.now(timezone.utc)
+
+
 def _stamp(days_ago):
-    """Returns a branch-name date that many days in the past."""
-    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).strftime("%Y%m%d")
+    """Returns a branch-name date that many days before the fixed clock."""
+    return (_NOW - timedelta(days=days_ago)).strftime("%Y%m%d")
 
 
 class QaCadenceTests(unittest.TestCase):
@@ -129,6 +135,33 @@ class QaCadenceTests(unittest.TestCase):
         run, reason = self._decide()
         self.assertEqual("true", run)
         self.assertEqual("unparseable-branch-date", reason)
+
+    def test_undated_branch_cannot_mask_a_recent_run(self):
+        # Regression. Selecting the lexically-last branch name made a single
+        # undated name shadow every real run: anything starting with a letter
+        # sorts after "2026...", so it was read as "the most recent run",
+        # failed to parse, and fell through to "treat as due". One such branch
+        # held the gate permanently open — the exact behaviour this script
+        # exists to prevent, and invisible because each run looked reasonable.
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self._branch("qa/docs-not-a-date")
+        self.assertEqual(("false", "too-recent"), self._decide())
+
+    def test_undated_branch_does_not_hide_an_old_run_either(self):
+        # The same selection, in the direction that should run: the dated
+        # branch is old, so the answer is "due" for that reason rather than
+        # because the undated name was unreadable.
+        self._branch("qa/docs-%s-010101" % _stamp(30))
+        self._branch("qa/docs-zzz-placeholder")
+        self.assertEqual(("true", "due"), self._decide())
+
+    def test_dated_branch_is_chosen_regardless_of_sort_position(self):
+        # Undated names on both sides of the digits, so the fix cannot be
+        # passing by accident of where one of them happens to sort.
+        self._branch("qa/docs-AAA-before")
+        self._branch("qa/docs-%s-010101" % _stamp(1))
+        self._branch("qa/docs-zzz-after")
+        self.assertEqual(("false", "too-recent"), self._decide())
 
 
 if __name__ == "__main__":
