@@ -133,11 +133,9 @@ written to `networksFile` after every cycle.
 The two pieces of state worth knowing about are the population list
 (`getNetworks()`) and the per-cycle progress record (`getProgress()`).
 
-<!-- TODO(review): this example calls process.setScene(scene, 10), but ArrangementGenerationProcess has no setScene method (see ArrangementGenerationProcess.java) -- the real API is prepare(scene, cycles) then run(), or the iterate(scene, cycles) convenience method. Also the prose below ("prepare(...) (which run() calls)") is backwards: run() does not call prepare() -- iterate() calls prepare() then run(). Verify and correct both the example and the prose. -->
 ```java
 ArrangementGenerationProcess process = new ArrangementGenerationProcess("/path/to/networks.dat");
-process.setScene(scene, 10);
-process.run();
+process.iterate(scene, 10);  // throws IOException
 
 // Per-cycle progress — both numbers describe the cycle in progress,
 // not the run. A new cycle starts over at zero.
@@ -147,8 +145,13 @@ log("completed=" + cycle.completed() + "/" + cycle.total()
     + " fraction=" + cycle.fraction());
 ```
 
-`prepare(...)` (which `run()` calls) calls `optimizer.init()` so the
-master output file and per-channel stem files are configured on the
+The most common entry point is `iterate(scene, cycles)`, which calls
+`prepare(scene, cycles)` followed by `run()`. `run()` itself does NOT
+call `prepare()` — it only drives an optimizer that was set up earlier.
+Callers that need to configure the optimizer between setup and execution
+should use `prepare(...)` and then `run()` explicitly, so the configured
+optimizer survives the call. `prepare(...)` calls `optimizer.init()` so
+the master output file and per-channel stem files are configured on the
 health computation. Without it, every rendered arrangement reports no
 stems — the stem `WaveOutput`s resolve to a null file and never record
 a path for the health score to carry. The standalone runner

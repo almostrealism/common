@@ -112,6 +112,7 @@ Registers a new workstream dynamically. When a `channelName` is provided and a S
 | `planningDocument` | `string` | No | Path to the plan document (relative to repo root) |
 | `completionListeners` | `string[]` | No | Workstream IDs to notify with automated wake-up jobs when this workstream completes |
 | `dormantForCompletionListeners` | `boolean` | No | Drop completion-listener wake-ups to this workstream while preserving manual submissions; defaults to `false` |
+| `maxWallClockHours` | `integer` | No | Workstream-level ceiling on a job's total wall-clock time, in hours. **Omit** the field to let jobs inherit `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; the controller parses this value as an integer, so sending JSON `null` is **not** the way to inherit — it is read as `0` and disables the ceiling. `0` disables the ceiling for jobs on this workstream |
 | `channelName` | `string` | No | Desired Slack channel name (a private channel is created if provided) |
 
 **Response (200):**
@@ -146,6 +147,7 @@ Updates fields on an existing workstream. All fields are optional; only provided
 | `planningDocument` | `string` | Change the plan document path |
 | `completionListeners` | `string[]` | Replace the workstream IDs notified on completion |
 | `dormantForCompletionListeners` | `boolean` | Pause or resume automated completion-listener wake-ups to this workstream; omitted values leave the current state unchanged |
+| `maxWallClockHours` | `integer` | Change the workstream's wall-clock ceiling. An integer replaces the ceiling (in hours, with `0` disabling it); a **negative** value (e.g. `-1`) clears the override so jobs inherit the default. The controller parses this value as an integer, so JSON `null` is read as `0` and is not the way to clear |
 
 ### JobStatsStore
 
@@ -171,6 +173,7 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 - **planningDocument** -- path to a plan document (relative to repo root) that agents read before starting work
 - **repoUrl** -- repository clone URL for automatic checkout
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
+- **maxWallClockHours** -- workstream-level ceiling on a job's wall-clock time, in hours. Defaults are inherited from `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; setting it on the workstream sets the per-job default (overridable on the job itself) that every job dispatched there starts from. Values below the default lower the ceiling; values above raise it.
 
 Workstreams can be defined statically in the YAML config or registered dynamically via `POST /api/workstreams`. A workstream without a `channelId` (registered before its Slack channel is created or in simulation mode) is still functional for job dispatch.
 
@@ -235,6 +238,10 @@ workstreams:
     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
     maxTurns: 50
     maxBudgetUsd: 10.0
+    # Optional: jobs on this workstream may run up to 12 hours of wall-clock
+    # time. Omit to inherit RestartGovernor.DEFAULT_MAX_WALL_CLOCK. Set to 0
+    # to disable the ceiling entirely.
+    # maxWallClockHours: 12
 
   # Per-workstream env vars override global pushed tool env.
   # Useful for per-org tokens or workstream-specific config.
