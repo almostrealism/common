@@ -43,6 +43,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `allowedTools` | `Read,Edit,Write,Bash,Glob,Grep` | Comma-separated tool allowlist (MCP tools are appended automatically) |
 | `maxTurns` | `50` | Maximum number of agent turns |
 | `maxBudgetUsd` | `10.0` | Spending cap per job |
+| `maxWallClockHours` | Inherited from workstream | Wall-clock ceiling in hours. `null` lets the job inherit `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; `0` disables the ceiling entirely |
 | `targetBranch` | `null` | Git branch for commits (disables git if null) |
 | `baseBranch` | `"master"` | Branch to create new target branches from (`origin/<baseBranch>`) |
 | `workstreamUrl` | `null` | Controller URL for status events and Slack messaging |
