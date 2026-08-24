@@ -48,6 +48,13 @@
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
 #   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
+#   DEFAULT_PHASE_CONFIG - JSON object applied to every phase that has no
+#                       dedicated entry, e.g. '{"model":"opus"}'. Omitted →
+#                       the workstream/workspace default applies.
+#   PHASE_CONFIGS     - JSON object mapping phase wire names to per-phase
+#                       config, e.g. '{"primary":{"model":"opus"}}'. Each named
+#                       phase overrides DEFAULT_PHASE_CONFIG field-by-field.
+#                       Use this to pin one phase without disturbing the rest.
 #
 # Exit codes:
 #   0 - submission succeeded
@@ -142,6 +149,21 @@ fi
 
 if [ -n "${MAX_BUDGET_USD:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson b "$MAX_BUDGET_USD" '. + {maxBudgetUsd: $b}')
+fi
+
+# Phase configuration is passed through as parsed JSON rather than a string:
+# the controller reads `defaultPhaseConfig` / `phaseConfigs` as objects. jq
+# fails loudly on malformed input here, which is the right moment to find out
+# — a job that silently ran on the wrong model would look like a successful
+# run whose results are not what was asked for.
+if [ -n "${DEFAULT_PHASE_CONFIG:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson c "$DEFAULT_PHASE_CONFIG" \
+        '. + {defaultPhaseConfig: $c}')
+fi
+
+if [ -n "${PHASE_CONFIGS:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson c "$PHASE_CONFIGS" \
+        '. + {phaseConfigs: $c}')
 fi
 
 if [ -n "${STARTED_AFTER:-}" ]; then
