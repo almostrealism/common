@@ -266,6 +266,44 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	/**
+	 * Returns whether this data still has memory that can be read from.
+	 *
+	 * <p>Stronger than {@link #isDestroyed()}, which only asks whether this
+	 * object still points at memory. Memory can also have been released while
+	 * this object goes on pointing at it — the native types keep returning the
+	 * address of a block that has already been freed — so the provider that
+	 * handed the memory out is asked as well.</p>
+	 *
+	 * @return {@code true} if the memory is still usable
+	 */
+	default boolean isAvailable() {
+		Memory mem = getMem();
+		if (mem == null) return false;
+
+		MemoryProvider provider = mem.getProvider();
+		return provider == null || !provider.isReleased(mem);
+	}
+
+	/**
+	 * Returns whether the range this data describes lies within its memory.
+	 *
+	 * <p>Nothing downstream can tell that it does not. A kernel is given the
+	 * address, the offset and the length, and reads what the arithmetic
+	 * produces; a range that overruns its allocation lands on whatever happens
+	 * to follow it.</p>
+	 *
+	 * @return {@code true} if the range fits, or if its extent cannot be known
+	 */
+	default boolean isWithinBounds() {
+		Memory mem = getMem();
+		if (mem == null) return false;
+
+		MemoryProvider provider = mem.getProvider();
+		return provider == null
+				|| provider.isWithinBounds(mem, getOffset(), getAtomicMemLength());
+	}
+
+	/**
 	 * Reads data from a {@link ByteBuffer} into this memory — the primary form
 	 * of the system-boundary ingest surface for serialized values. The buffer
 	 * may be heap- or direct-backed (a mapped file, a payload handed over by a
