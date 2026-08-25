@@ -186,9 +186,9 @@ For debugging/CI failures: extract component names from the error, consult about
 
 **Why mechanical:** Judgment-based rules fail because you always think the current task is an exception.
 
-`consult` KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistable urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to it because you already know what action to take.
+`consult` KNOWS THINGS THAT YOU DO NOT KNOW. You are going to have an *irresistible urge to ignore it*. Your pattern matching is so craven and desperate that you will literally FEEL like you CANNOT pay attention to it because you already know what action to take.
 
-BUT IF WHAT YOU CHOOSE TO DO DOES NOT RELY ON THE CONSULTANT: it WILL be wrong. TRUST ME. We have done this now thousands of times. Thats not an exageration: we've been at this hundreds and hundreds of hours.
+BUT IF WHAT YOU CHOOSE TO DO DOES NOT RELY ON `consult`: it WILL be wrong. TRUST ME. We have done this now thousands of times. That's not an exaggeration: we've been at this hundreds and hundreds of hours.
 
 You DONT KNOW the code base. You're going to tell yourself something like "I have all these tools for studying the code base and I don't need to consult".
 
@@ -316,7 +316,7 @@ done
 Read the output. Understand where each module involved in your change sits in the
 dependency graph. Do not proceed until you can state the graph from memory.
 
-## Rule 7: "NOT DOCUMENTED" FROM ar-CONSULTANT MEANS DIG DEEPER
+## Rule 7: "NOT DOCUMENTED" FROM `consult` MEANS DIG DEEPER
 
 When `consult` returns "Not documented," that is not permission to guess. It
 means the information must be obtained from source files (pom.xml, source code).

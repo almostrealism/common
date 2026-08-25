@@ -645,9 +645,7 @@ After downloading, pushed tools are stored in a flat directory structure under t
 ~/.flowtree/
   tools/
     mcp/
-      ar-memory/
-        server.py
-      ar-consultant/
+      <server-name>/
         server.py
 ```
 
@@ -673,7 +671,7 @@ The `ManagedToolsDownloader` is constructed with a reference to the `McpConfigBu
 
 ### Decorator Pattern
 
-Used by: ar-manager, ar-memory, ar-consultant, ar-profile-analyzer, ar-secrets.
+Used by: ar-manager, ar-memory, ar-profile-analyzer, ar-secrets.
 
 In this pattern, each tool is a Python function decorated with `@mcp.tool()`:
 
@@ -1035,7 +1033,7 @@ Fix the memory leak in CacheManager
 --allowedTools Read,Edit,Write,Bash,Glob,Grep,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__memory_store,mcp__ar-manager__memory_namespaces,mcp__ar-manager__workstream_context,mcp__ar-manager__consult \
 --max-turns 50 \
 --max-budget-usd 10.00 \
---mcp-config '{"mcpServers":{"ar-manager":{"type":"http","url":"http://controller:8010","headers":{"Authorization":"Bearer armt_tmp_..."}},"ar-consultant":{"command":"python3","args":["tools/mcp/consultant/server.py"]}}}'
+--mcp-config '{"mcpServers":{"ar-manager":{"type":"http","url":"http://controller:8010","headers":{"Authorization":"Bearer armt_tmp_..."}}}}'
 ```
 
 In practice, the prompt and MCP config strings are much longer, but the structure is always the same.

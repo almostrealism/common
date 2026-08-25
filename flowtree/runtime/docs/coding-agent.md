@@ -215,16 +215,15 @@ The ar-manager tool list is appended to `--allowedTools` automatically whenever 
 When the controller's YAML config includes an `mcpServers` section, those servers are started as HTTP processes on the controller host. Agents connect to them over HTTP instead of stdio, which enables:
 
 - **Cross-project portability** — agents don't need local Python source files for these tools
-- **Shared state** — stateful servers like ar-memory and ar-consultant share a single database across all agents
+- **Shared state** — stateful servers like ar-memory share a single database across all agents
 
 **Server classification:**
 
 | Server | Mode | Reason |
 |--------|------|--------|
-| ar-manager | Centralized HTTP | Single internet-facing endpoint; bearer-token auth scoped per job |
+| ar-manager | Centralized HTTP | Single internet-facing endpoint; bearer-token auth scoped per job. Carries `consult` plus the memory, documentation, and Q&A surface since ar-consultant was retired |
 | ar-secrets | Project (stdio in agent container) | Must write rendered credential files in the agent's filesystem namespace |
 | ar-memory | Centralized | SQLite + FAISS state shared across agents |
-| ar-consultant | Centralized | Memory + history DB; must be shared |
 | ar-docs | Local (.mcp.json) | Project-specific repo docs |
 | ar-test-runner | Local (.mcp.json) | Local `mvn test` |
 | ar-jmx | Local (.mcp.json) | Local JVM attachment |
@@ -236,7 +235,6 @@ When `centralizedMcpConfig` is set on a job, `buildMcpConfig()` emits `{"type":"
 
 **Known limitations:**
 
-- When ar-consultant is centralized, it searches docs from the controller host's repo, not the target project
 - No auto-restart if a centralized server process crashes
 - Ports are fixed per config; dynamic allocation is future work
 
