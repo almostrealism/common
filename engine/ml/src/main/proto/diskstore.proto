@@ -18,6 +18,9 @@ message DiskStoreIndex {
 
 message HnswLayerNeighbors {
   repeated string neighbor_ids = 1;
+  // Similarity to each neighbor, parallel to neighbor_ids; may be absent
+  // in files written before edge scores were recorded.
+  repeated float neighbor_scores = 2;
 }
 
 message HnswNodeData {
