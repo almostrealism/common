@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# PostToolUse - Bash: apply the inline-comment policy to source files the command
-# changed.
+# PostToolUse - Bash: apply the edit-time guards to source files the command changed.
 #
 # The edit-scoped guards (block-excessive-comments, scan-producer-violations,
 # warn-assertion-free-test, warn-line-number-refs) all match on Write/Edit/MultiEdit.
@@ -12,8 +11,10 @@
 # It runs after the fact, so it reports rather than blocks, and it reports each file
 # once per distinct state so a standing violation does not repeat after every command.
 #
-# The decision logic lives in .claude/hooks/lib/source_write_check.py, which shares
-# its measurement with the edit-time guard.
+# The decision logic lives in .claude/hooks/lib/source_write_check.py. It shares the
+# inline-comment measurement with the edit-time guard, and for the whole-file guards
+# it runs those same scripts rather than restating their rules, so neither route can
+# come to enforce something the other does not.
 set -euo pipefail
 
 cat >/dev/null
