@@ -21,6 +21,8 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+import io.almostrealism.code.Memory;
+
 import java.lang.ref.ReferenceQueue;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -183,8 +186,22 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 
 	/** Tracks all currently allocated memory blocks by their native pointer. */
 	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
+	/**
+	 * How long a release may be held back waiting for the kernels using that
+	 * memory to finish. Past this the memory is released anyway: a reference
+	 * count that is never returned would otherwise hold the block for the life
+	 * of the process, turning a crash into a leak.
+	 */
+	public static long deferredReleaseTimeoutMs = 30_000;
+
+	/** How often deferred releases are reconsidered. */
+	private static final long DEFERRED_SWEEP_INTERVAL_MS = 100;
+
 	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
+
+	/** Releases held back while kernels are still using the memory, by address. */
+	private final ConcurrentHashMap<Long, DeferredRelease<T>> deferred = new ConcurrentHashMap<>();
 	/** Reference queue populated by the GC when tracked {@link RAM} objects become unreachable. */
 	private ReferenceQueue<T> referenceQueue;
 	/** True while this provider is being destroyed; suppresses further allocations and error logging. */
@@ -223,7 +240,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		Thread deallocationProcess = new Thread(() -> {
 			while (true) {
 				try {
-					deallocateNow(getDeallocationQueue().take());
+					NativeRef<T> ref = getDeallocationQueue()
+							.poll(DEFERRED_SWEEP_INTERVAL_MS, TimeUnit.MILLISECONDS);
+					if (ref != null) deallocateNow(ref);
+
+					sweepDeferred();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					break;
 				} catch (Exception e) {
 					warn(e.getMessage());
 				}
@@ -286,27 +310,40 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/**
 	 * Deallocates a memory block identified by its native reference.
 	 *
-	 * <p>Consults {@link KernelMemoryGuard} for diagnostic visibility: if the
-	 * guard reports the block as still referenced by an active kernel, a warning
-	 * is emitted (with allocation stack trace when available) but deallocation
-	 * proceeds regardless. Blocking or silently deferring an explicit deallocate
-	 * has been determined to be a more dangerous strategy than producing a
-	 * visible warning plus potential use-after-free — the warning at least gives
-	 * the developer the context needed to diagnose the problem.</p>
+	 * <p>A block that {@link KernelMemoryGuard} reports as still in use by a
+	 * kernel is not freed now: the release is held back and reconsidered once
+	 * the kernel has finished. Only a release held back past
+	 * {@link #deferredReleaseTimeoutMs} is carried out anyway, with a warning,
+	 * on the grounds that a reference count which never comes back would
+	 * otherwise hold the block for the life of the process.</p>
+	 *
+	 * <p>That timeout is a backstop and not a working part: a kernel finishes
+	 * in milliseconds, so reaching it means a count was taken and never given
+	 * back. It fired constantly on an earlier attempt at this, which is how the
+	 * leak behind it was found — a run of it that warns is reporting a defect
+	 * somewhere else, not doing its job.</p>
 	 *
 	 * <p>Note: for the GC-driven deallocation path, the guard's strong references
 	 * to active RAMs should normally prevent the underlying phantom reference
-	 * from being enqueued in the first place. A warning here from the GC path
+	 * from being enqueued in the first place. A deferral here from the GC path
 	 * would therefore indicate either a race window between reference-queue
 	 * enqueuing and guard release, or a bug in the guard's accounting.</p>
 	 *
 	 * @param ref Native reference to the memory block to deallocate
 	 */
 	private void deallocateNow(NativeRef<T> ref) {
-		KernelMemoryGuard.warnIfActivelyReferenced(
-				ref.getAddress(), ref.getAllocationStackTrace(),
-				getClass().getSimpleName());
+		if (deferIfInUse(ref)) return;
 
+		releaseNow(ref);
+	}
+
+	/**
+	 * Releases the block behind the given reference, once it has been decided
+	 * that releasing it is safe.
+	 *
+	 * @param ref Native reference to the memory block to free
+	 */
+	private void releaseNow(NativeRef<T> ref) {
 		if (!ref.tryClaimFreed()) {
 			warnDoubleFree(ref);
 			return;
@@ -326,6 +363,86 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 			}
 		}
 	}
+
+	/**
+	 * Holds back a release while kernels are still reading the memory.
+	 *
+	 * <p>The memory is not freed now; it is remembered and reconsidered by the
+	 * deallocation thread until the kernels using it have finished, at which
+	 * point it is released normally. This is a deferral and not a wait — the
+	 * caller returns immediately — because the thread asking for the release
+	 * may well be the one that has to finish the kernel first, and holding it
+	 * here would stop the very work that would let the memory go.</p>
+	 *
+	 * <p>Deferral is skipped while the provider is being destroyed, where
+	 * nothing further will run to release the memory later.</p>
+	 *
+	 * @param ref the reference whose release was requested
+	 * @return {@code true} if the release was held back
+	 */
+	private boolean deferIfInUse(NativeRef<T> ref) {
+		if (destroying || !isActivelyReferenced(ref.getAddress())) return false;
+
+		deferred.computeIfAbsent(ref.getAddress(),
+				k -> new DeferredRelease<>(ref, System.currentTimeMillis()));
+		return true;
+	}
+
+	/**
+	 * Reconsiders every release being held back: frees those whose kernels have
+	 * finished, and frees the rest anyway once they have waited too long.
+	 *
+	 * <p>The timeout exists because a reference count that is never returned —
+	 * a dispatch that died without releasing its guard — would otherwise hold
+	 * the block forever. Freeing it is the old behavior, and is announced,
+	 * because from here on a kernel still holding that address would read
+	 * memory that is gone.</p>
+	 */
+	private void sweepDeferred() {
+		if (deferred.isEmpty()) return;
+
+		for (DeferredRelease<T> release : List.copyOf(deferred.values())) {
+			NativeRef<T> ref = release.ref();
+			boolean expired = System.currentTimeMillis() - release.deferredAt()
+					>= deferredReleaseTimeoutMs;
+
+			if (!expired && isActivelyReferenced(ref.getAddress())) continue;
+
+			deferred.remove(ref.getAddress());
+
+			if (expired) {
+				KernelMemoryGuard.warnIfActivelyReferenced(
+						ref.getAddress(), ref.getAllocationStackTrace(),
+						getClass().getSimpleName() + " (held for " +
+								deferredReleaseTimeoutMs + "ms)");
+			}
+
+			releaseNow(ref);
+		}
+	}
+
+	/**
+	 * Returns whether a kernel currently reports the given address as in use.
+	 *
+	 * @param address the native address to test
+	 * @return {@code true} if a kernel is still using the memory
+	 */
+	private boolean isActivelyReferenced(long address) {
+		Hardware hw = Hardware.getLocalHardware();
+		if (hw == null) return false;
+
+		KernelMemoryGuard guard = hw.getKernelMemoryGuard();
+		return guard != null && !guard.canDeallocate(address);
+	}
+
+	/**
+	 * One release being held back, and when it was first asked for.
+	 *
+	 * @param <R> the memory type
+	 * @param ref        the reference to release
+	 * @param deferredAt when the release was first requested
+	 */
+	private record DeferredRelease<R extends RAM>(NativeRef<R> ref, long deferredAt) { }
 
 	/**
 	 * Logs a warning that a double-free of the given reference was prevented, including
@@ -362,6 +479,61 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	 */
 	protected NativeRef<T> nativeRef(T ram) {
 		return new NativeRef<>(ram, getReferenceQueue());
+	}
+
+	/**
+	 * Returns whether the given memory has been released, and so must not be
+	 * handed to anything that would read from it.
+	 *
+	 * <p>The registry is the authority rather than the memory object: the
+	 * native types do not clear their pointer when the block behind it is
+	 * freed, so a released {@link RAM} goes on reporting the same address. A
+	 * block is released once its reference is gone from the registry, or once
+	 * that reference has been claimed for freeing.</p>
+	 *
+	 * @param mem the memory to test
+	 * @return {@code true} if the memory has been released, or belongs to
+	 *         another provider, or this provider has been destroyed
+	 */
+	@Override
+	public boolean isReleased(Memory mem) {
+		if (allocated == null) return true;
+		if (!(mem instanceof RAM ram)) return false;
+		if (ram.getProvider() != this) return true;
+
+		NativeRef<T> ref = allocated.get(ram.getContainerPointer());
+		return ref == null || ref.isFreed();
+	}
+
+	/**
+	 * Returns whether the given range lies within the allocation it names.
+	 *
+	 * <p>Sizes are compared in bytes, because that is what an allocation is
+	 * measured in here while a range is measured in elements.</p>
+	 *
+	 * <p>A {@link RAM} that does not report its size cannot be checked, and is
+	 * reported as fitting rather than as failing: refusing work over a question
+	 * that could not be asked would be worse than the risk it guards against.</p>
+	 *
+	 * @param mem    the memory the range is within
+	 * @param offset the start of the range, in elements
+	 * @param length the length of the range, in elements
+	 * @return {@code true} if the range fits, or if the size is unknown
+	 */
+	@Override
+	public boolean isWithinBounds(Memory mem, int offset, int length) {
+		if (!(mem instanceof RAM ram)) return true;
+		if (offset < 0 || length < 0) return false;
+
+		long size;
+
+		try {
+			size = ram.getSize();
+		} catch (UnsupportedOperationException e) {
+			return true;
+		}
+
+		return ((long) offset + length) * getNumberSize() <= size;
 	}
 
 	/**

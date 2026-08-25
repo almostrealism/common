@@ -87,12 +87,9 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 		Assert.assertEquals(expected, details.getFrameCount());
 		Assert.assertEquals(expected, audio.getMemLength());
 
-		double values[] = audio.toArray();
-		double peak = 0.0;
-		for (double v : values) {
-			Assert.assertFalse("Audio contains a non-finite sample", Double.isNaN(v));
-			peak = Math.max(peak, Math.abs(v));
-		}
+		assertAllFinite("Audio contains a non-finite sample", audio);
+
+		double peak = max(cp(audio).abs()).evaluate().toDouble(0);
 
 		assertTrue("Converted audio is silent", peak > 1e-6);
 		assertTrue("Normalization left no headroom: peak was " + peak, peak <= 0.9 + 1e-4);
@@ -111,9 +108,9 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 
 		new FrequencyToAudioConverter(new Random(1234)).convert(details);
 
-		for (double v : details.getData().toArray()) {
-			Assert.assertFalse("Silent input produced a non-finite sample", Double.isNaN(v));
-			Assert.assertEquals(0.0, v, 1e-9);
-		}
+		assertAllFinite("Silent input produced a non-finite sample", details.getData());
+
+		Assert.assertEquals("Silent input must stay silent",
+				0.0, largestDeviation(0.0, details.getData()), 1e-9);
 	}
 }

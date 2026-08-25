@@ -216,10 +216,7 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 				PackedCollection input = new PackedCollection(
 						new TraversalPolicy(inChannels, signal));
 				input.fill(0.25);
-				double squareEnergy = 0.0;
-				for (double v : square.forward(input).toArray(0, signal)) {
-					squareEnergy += v * v;
-				}
+				double squareEnergy = energy(square.forward(input).range(shape(signal)), 0);
 				log("rectProbe vectorized=" + vectorized
 						+ " squareEnergy=" + squareEnergy);
 
@@ -241,8 +238,7 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 
 				double energy = 0.0;
 				for (int pass = 0; pass < 4; pass++) {
-					double[] out = compiled.forward(input).toArray(0, signal);
-					for (double v : out) energy += v * v;
+					energy += energy(compiled.forward(input).range(shape(signal)), 0);
 				}
 				log("rectProbe vectorized=" + vectorized + " energy=" + energy);
 			}

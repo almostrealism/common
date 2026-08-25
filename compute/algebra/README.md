@@ -101,9 +101,11 @@ PackedCollection can wrap existing memory without copying, enabling efficient me
 // Create a large buffer
 PackedCollection largeBuffer = new PackedCollection<>(1000000);
 
-// Create views into different regions (zero-copy)
-PackedCollection view1 = largeBuffer.range(shape(100, 100), 0);      // First 10000 elements
-PackedCollection view2 = largeBuffer.range(shape(100, 100), 10000);  // Next 10000 elements
+// Successive equal-sized regions are members: shape the buffer and index it,
+// rather than computing each offset by hand (see "Members versus ranges" below)
+PackedCollection blocks = largeBuffer.reshape(shape(100, 100, 100)).traverse(1);
+PackedCollection view1 = blocks.get(0);   // First 10000 elements
+PackedCollection view2 = blocks.get(1);   // Next 10000 elements
 
 // Changes to views modify the underlying buffer
 view1.setMem(0, 5.0);  // largeBuffer now has 5.0 at position 0
@@ -116,6 +118,32 @@ PackedCollection subset = largeBuffer
     .range(shape(500, 500), 0)     // View into buffer
     .range(shape(100, 100), 0);    // View into view
 ```
+
+#### Members versus ranges
+
+A collection knows how to hand back one of its members. Ask it:
+
+```java
+PackedCollection row = rows.traverse(1).get(i);
+```
+
+Do not compute the same view by hand. `rows.range(shape(size), i * size)` is that
+collection's own membership restated as arithmetic, and it leaves every later reader
+checking the multiplication to work out that a member was meant. Where the collection
+is flat so `get` would not give the member, the shape is what is wrong — reshape, then
+index.
+
+Members are taken along the traversal axis, so a `[rows, columns]` collection needs
+`traverse(1)` before `get` addresses its rows; without it the single member is the whole
+collection and the index runs past the end of the data.
+
+Never promote either form to a named accessor. A private `rowOf(int)` or `columnAt(int)`
+creates a second vocabulary for membership, local to one class, describing something the
+collection type already expresses.
+
+`range` remains the right call for regions that are not members — a prefix or suffix of
+one, a sliding window, a placement offset unrelated to member boundaries. The tell is the
+offset: a multiple of the member size is membership, anything else is a range.
 
 #### Memory Copy Between Collections
 

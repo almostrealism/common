@@ -663,6 +663,11 @@ class TestRunner:
             metadata["current_invocation"] = invocation_num
             self._save_metadata_dict(run_id, metadata)
 
+            # Wall-clock stamp taken before the process launches, so the report copy can
+            # tell this invocation's reports from ones left by earlier runs. Distinct from
+            # inv_start below, which is monotonic and only measures duration.
+            inv_wall_start = datetime.now()
+
             # Write invocation marker to output
             with open(output_file, "a") as f:
                 f.write(f"\n{'='*60}\n")
@@ -734,7 +739,8 @@ class TestRunner:
 
             # Copy surefire reports for this invocation
             self._copy_surefire_reports_to_invocation(
-                run_id, config.module, invocation_num, config.project_root())
+                    run_id, config.module, invocation_num,
+                    config.project_root(), inv_wall_start)
 
             # Parse test counts from this invocation's reports
             inv_reports = self._reports(run_id).invocation(invocation_num)
@@ -775,14 +781,28 @@ class TestRunner:
             self._save_metadata_dict(run_id, metadata)
 
     def _copy_surefire_reports_to_invocation(self, run_id: str, module: str,
-                                             invocation_num: int, project_root: Path):
-        """Copy surefire reports to an invocation-specific subdirectory.
+                                             invocation_num: int, project_root: Path,
+                                             invocation_start: datetime):
+        """Copy this invocation's surefire reports to an invocation-specific subdirectory.
 
-        Since invocations are sequential and Maven overwrites reports each time,
-        no time filtering is needed.
+        Only reports written at or after ``invocation_start`` are copied. Maven overwrites
+        the report for a class it actually runs, but leaves every other report in place, so
+        ``target/surefire-reports`` accumulates results from earlier runs of other classes
+        indefinitely. Copying the whole directory therefore counted those stale classes as
+        part of this run: a 44-test class reported 58 tests because three unrelated classes
+        (5, 4 and 5 tests) were still sitting in the directory. Single-invocation runs have
+        always filtered by time; this is the same filter, per invocation.
+
+        Args:
+            run_id: the run identifier
+            module: the Maven module under test
+            invocation_num: 1-based invocation index
+            project_root: the checkout the module's target directory lives under
+            invocation_start: wall-clock time captured before this invocation launched
         """
         self._reports(run_id).invocation(invocation_num).collect_from(
-            reports.module_output(project_root, module))
+            reports.module_output(project_root, module),
+            modified_since=invocation_start)
 
     def get_run_timing(self, run_id: str) -> Optional[dict]:
         """Get timing analysis for a multi-invocation run.

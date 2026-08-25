@@ -276,8 +276,8 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 			genome.consolidateGeneValues();
 
 			PackedCollection params = new PackedCollection(GENOME_PARAMS);
-			if (opts.zeroGenome) {
-			} else {
+			// A new collection is already zero, so the zero-genome case needs nothing
+			if (!opts.zeroGenome) {
 				params.randFill();
 			}
 			genome.assignTo(params);

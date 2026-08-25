@@ -697,12 +697,14 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 
 					PackedCollection result = normBackwards(o, g, null, null);
 
-					for (int i = 0; i < c; i++) {
-						double expected = result.valueAt(i);
-						double actual = output.valueAt(i);
-						// log(expected + " vs " + actual);
+					// Callers may supply randomly generated inputs, so a failure is only
+					// reproducible if it reports the values that produced it.
+					String inputs = "index %d of o=" + o.toArrayString(0, c)
+							+ " g=" + g.toArrayString(0, c);
 
-						assertSimilar(expected, actual);
+					for (int i = 0; i < c; i++) {
+						assertSimilar(String.format(inputs, i),
+								result.valueAt(i), output.valueAt(i));
 					}
 				}, false, false, true).save("results/" + name + ".xml");
 	}
@@ -726,15 +728,8 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		PackedCollection dout = dy.evaluate();
 		print(4, 4, dout);
 
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < 4; j++) {
-				if (i == j) {
-					assertEquals(1.0, dout.toDouble(i * 4 + j));
-				} else {
-					assertEquals(0.0, dout.toDouble(i * 4 + j));
-				}
-			}
-		}
+		// Enumerating a reshape rearranges without mixing, so its gradient is the identity.
+		assertEquals(identity(4).evaluate(), dout.reshape(shape(4, 4)));
 	}
 
 	/**
@@ -779,8 +774,6 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 	 */
 	@Test(timeout = 60000)
 	public void embedded2() {
-		int dim = 3;
-
 		PackedCollection w1 = pack(4, -3, 2);
 		CollectionProducer x = cp(pack(0.0, 0.0, 0.0));
 
@@ -795,9 +788,7 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		PackedCollection dout = dy.evaluate();
 		dout.print();
 
-		for (int i = 0; i < dim; i++) {
-			assertEquals(w1.toDouble(i), dout.toDouble(i));
-		}
+		assertEquals(w1, dout.reshape(w1.getShape()));
 	}
 
 	/**
@@ -894,15 +885,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		PackedCollection dout = dy.evaluate().reshape(dim, dim);
 		dout.traverse().print();
 
-		for (int i = 0; i < dim; i++) {
-			for (int j = 0; j < dim; j++) {
-				if (i == j) {
-					assertEquals(f.valueAt(j), dout.valueAt(i, j));
-				} else {
-					assertEquals(0.0, dout.valueAt(i, j));
-				}
-			}
-		}
+		// The gradient of an element-wise product with respect to one factor is
+		// diagonal, carrying the other factor.
+		assertEquals(diagonal(cp(f)).evaluate(), dout);
 	}
 
 	/**

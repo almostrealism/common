@@ -349,13 +349,25 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	 *   <li>All arguments must be non-null</li>
 	 *   <li>All arguments must be {@link MemoryData} instances</li>
 	 *   <li>Argument count must match expected count</li>
+	 *   <li>Memory must not already have been released</li>
+	 *   <li>The range described must fit within that memory</li>
 	 * </ul>
+	 *
+	 * <p>The last two are checked here because everything past this point deals in
+	 * bare addresses: a compiled kernel is handed an address, an offset and a length,
+	 * and reads wherever the arithmetic lands. Refusing costs the operation and names
+	 * the argument; letting it through costs the process and names nothing. Their
+	 * order around {@link #reassignMemory} is deliberate — there is nothing to migrate
+	 * out of released memory, while migration is what decides the allocation a range
+	 * is finally read against.</p>
 	 *
 	 * @param argCount Expected number of arguments
 	 * @param args The arguments to prepare
 	 * @return Array of validated {@link MemoryData} arguments
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if any argument is not {@link MemoryData}
+	 * @throws HardwareException if any argument's memory is released, or describes
+	 *         a range that does not fit within it
 	 */
 	protected MemoryData[] prepareArguments(int argCount, Object[] args) {
 		long start = System.nanoTime();
@@ -374,7 +386,22 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			}
 
 			data[i] = (MemoryData) args[i];
+
+			if (!data[i].isAvailable()) {
+				throw new HardwareException("argument " + i + " to function " +
+						getName() + (data[i].isDestroyed()
+								? " has been destroyed"
+								: " refers to memory that has already been released"));
+			}
+
 			reassignMemory(data[i]);
+
+			if (!data[i].isWithinBounds()) {
+				throw new HardwareException("argument " + i + " to function " +
+						getName() + " describes " + data[i].getAtomicMemLength() +
+						" values from offset " + data[i].getOffset() +
+						", which does not fit within its memory");
+			}
 		}
 
 		prepareArgumentsMetric.addEntry(System.nanoTime() - start);
