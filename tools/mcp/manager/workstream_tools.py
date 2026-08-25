@@ -24,8 +24,23 @@ from memory_text import prefers_reformulated, present
 from server import mcp
 
 
+# Silence after which an active job is worth flagging to the operator. Well
+# below the stuck-job scanner's termination threshold on purpose: the point is
+# to surface a stall while someone can still look at it, not to duplicate the
+# scanner's verdict.
+_STALLED_WARNING_SECONDS = 6 * 3600
+
+
 @mcp.tool()
-def workstream_list(include_archived: bool = False) -> dict:
+def workstream_list(
+    include_archived: bool = False,
+    workspace_id: str = "",
+    repo_url: str = "",
+    dispatch_capable: Optional[bool] = None,
+    archived: Optional[bool] = None,
+    include_status: bool = False,
+    include_pull_request: bool = False,
+) -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
     Each workstream entry includes:
@@ -45,19 +60,66 @@ def workstream_list(include_archived: bool = False) -> dict:
     Use this to discover workstreams and determine which tools are
     available for each one.
 
+    The filters are applied by the controller, so a question like "which
+    workstreams on this repository have dispatch enabled?" is one call rather
+    than a listing plus a client-side scan.
+
     Args:
         include_archived: When ``False`` (default) archived workstreams
             are omitted from the response. Set ``True`` to include them;
             each archived entry carries ``archived=true``.
+        workspace_id: Only workstreams in this workspace. Distinct from the
+            scope filter the caller's token already imposes — this is an
+            explicit narrowing a multi-workspace caller can ask for.
+        repo_url: Only workstreams on this repository. Matched on the
+            repository identity, so the ``git@``/``https``/``.git`` spellings
+            of one repository are equivalent.
+        dispatch_capable: Only workstreams whose dispatch flag matches.
+        archived: Explicit archived selector — ``True`` for archived only,
+            ``False`` for live only. Supersedes ``include_archived`` when
+            given; that parameter is the older, coarser form.
+        include_status: When ``True``, each entry also carries ``lastJobId``,
+            ``lastJobStatus`` (``SUCCESS`` / ``FAILED`` / ``CANCELLED`` /
+            ``DEGRADED`` / ``STARTED``) and ``lastJobAt`` (ISO-8601). Off by
+            default because it costs one job-history read per workstream
+            returned; narrow with the filters above before turning it on.
+        include_pull_request: When ``True``, each entry also carries
+            ``pullRequest`` as ``{"url": ..., "number": ...}``, read from the
+            most recent job that recorded one. Absent when no recent job did.
+            Same per-workstream cost as ``include_status``, and served from
+            the same read when both are requested.
 
     Returns:
         Dictionary with list of workstream summaries.
     """
     server._require_scope("read")
-    server._audit("workstream_list", include_archived=include_archived)
-    path = "/api/workstreams"
+    err = server._check_short_strings(
+        workspace_id=workspace_id, repo_url=repo_url,
+    )
+    if err:
+        return err
+    server._audit("workstream_list", include_archived=include_archived,
+                  workspace_id=workspace_id, repo_url=repo_url)
+
+    params = {}
     if include_archived:
-        path += "?includeArchived=true"
+        params["includeArchived"] = "true"
+    if workspace_id:
+        params["workspaceId"] = workspace_id
+    if repo_url:
+        params["repoUrl"] = repo_url
+    if dispatch_capable is not None:
+        params["dispatchCapable"] = "true" if dispatch_capable else "false"
+    if archived is not None:
+        params["archived"] = "true" if archived else "false"
+    if include_status:
+        params["includeStatus"] = "true"
+    if include_pull_request:
+        params["includePullRequest"] = "true"
+
+    path = "/api/workstreams"
+    if params:
+        path += "?" + urlencode(params)
     result = server._controller_get(path)
 
     if isinstance(result, list):
@@ -80,7 +142,8 @@ def workstream_list(include_archived: bool = False) -> dict:
     return result
 
 @mcp.tool()
-def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
+def workstream_get_status(workstream_id: str, period: str = "weekly",
+                          include_active_jobs: bool = True) -> dict:
     """Get aggregate job statistics for a workstream.
 
     Shows job counts, total time, cost, and turns for this week and last week.
@@ -91,6 +154,13 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
         period: Reporting period. The controller currently supports only
             ``"weekly"`` — any other value is rejected up front. Defaults
             to ``"weekly"``.
+        include_active_jobs: When ``True`` (the default), the response also
+            carries ``active_jobs`` — the workstream's currently-running jobs
+            with their age and time since last liveness signal — and, when any
+            of them has been silent too long, an ``active_jobs_warning``
+            naming the job. This is how a stalled job becomes visible before
+            the stuck-job scanner reaches it. Set ``False`` to skip the extra
+            controller read.
 
     Returns:
         Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
@@ -119,6 +189,23 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
     params = urlencode({"workstream": workstream_id, "period": period})
     result = server._controller_get(f"/api/stats?{params}")
     result["workstream_id"] = workstream_id
+
+    if include_active_jobs:
+        active = server._controller_get(
+            f"/api/workstreams/{workstream_id}/jobs/active")
+        if isinstance(active, list):
+            result["active_jobs"] = active
+            stalled = [j for j in active
+                       if isinstance(j, dict)
+                       and j.get("sinceHeartbeatSeconds", 0) >= _STALLED_WARNING_SECONDS]
+            if stalled:
+                names = ", ".join(str(j.get("jobId")) for j in stalled)
+                result["active_jobs_warning"] = (
+                    f"{len(stalled)} job(s) have not reported progress in over "
+                    f"{_STALLED_WARNING_SECONDS // 3600}h: {names}. A job that "
+                    "stays silent is failed by the controller's stuck-job "
+                    "scanner so anything waiting on it is released."
+                )
 
     result.setdefault("next_steps", [
         "Use workstream_submit_task to submit a new coding task",

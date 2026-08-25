@@ -45,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Consumer;
 import io.flowtree.submission.SubmissionRunnerResolver;
 
 /**
@@ -498,6 +497,21 @@ public class WorkstreamConfig {
          */
         @JsonInclude(JsonInclude.Include.NON_DEFAULT)
         private boolean useTmux;
+        /**
+         * Workstream-level ceiling on a job's total elapsed wall-clock time,
+         * in hours. Unset (the common case) leaves
+         * {@link io.flowtree.jobs.RestartGovernor#DEFAULT_MAX_WALL_CLOCK} in
+         * force; a workstream whose work legitimately runs longer raises it
+         * here so every job on the workstream inherits the higher ceiling
+         * instead of restating it on each submission. Zero disables the
+         * ceiling for this workstream.
+         *
+         * <p>Nullable rather than a primitive because "not configured" and
+         * "configured to zero" mean different things: the first inherits the
+         * default, the second turns the check off.</p>
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private Integer maxWallClockHours;
         /** See {@link Workstream#dormantForCompletionListeners}. */
         @JsonInclude(JsonInclude.Include.NON_DEFAULT)
         private boolean dormantForCompletionListeners;
@@ -704,6 +718,24 @@ public class WorkstreamConfig {
         public void setDispatchCapable(boolean dispatchCapable) { this.dispatchCapable = dispatchCapable; }
 
         /**
+         * Returns the workstream's wall-clock ceiling in hours.
+         *
+         * @return the ceiling in hours, {@code 0} to disable it, or
+         *         {@code null} when the workstream inherits the default
+         */
+        public Integer getMaxWallClockHours() { return maxWallClockHours; }
+
+        /**
+         * Sets the workstream's wall-clock ceiling in hours.
+         *
+         * @param maxWallClockHours the ceiling in hours, {@code 0} to disable
+         *                          it, or {@code null} to inherit the default
+         */
+        public void setMaxWallClockHours(Integer maxWallClockHours) {
+            this.maxWallClockHours = maxWallClockHours;
+        }
+
+        /**
          * Returns the workstream-level default for the agent subprocess
          * launch mode. See {@link Workstream#isUseTmux()} for the runtime
          * view, including the precedence over the per-job {@code use_tmux}
@@ -771,6 +803,7 @@ public class WorkstreamConfig {
             ws.setCompletionListeners(completionListeners);
             ws.setDispatchCapable(dispatchCapable);
             ws.setUseTmux(useTmux);
+            ws.setMaxWallClockHours(maxWallClockHours);
             ws.setDormantForCompletionListeners(dormantForCompletionListeners);
             return ws;
         }
@@ -1340,58 +1373,18 @@ public class WorkstreamConfig {
         entry.setWorkspaceId(ws.getWorkspaceId());
         entry.setDefaultRunner(ws.getDefaultRunner());
         entry.setRunners(ws.getRunners());
-        applyBundleToEntry(entry, ws.getPhaseConfigBundle());
+        // Per-phase configuration round-trips through phaseConfigs alone: the
+        // legacy runners map is write-only and no longer serialized, so a
+        // per-phase runner not carried by the bundle would be lost on save.
+        PhaseConfigBundle bundle = ws.getPhaseConfigBundle();
+        (bundle == null ? PhaseConfigBundle.EMPTY : bundle)
+                .applyTo(entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
         entry.setArchived(ws.isArchived());
         entry.setCompletionListeners(ws.getCompletionListeners());
         entry.setDispatchCapable(ws.isDispatchCapable());
         entry.setUseTmux(ws.isUseTmux());
+        entry.setMaxWallClockHours(ws.getMaxWallClockHours());
         entry.setDormantForCompletionListeners(ws.isDormantForCompletionListeners());
-    }
-
-    /**
-     * Copies every non-empty per-phase entry of {@code bundle} — runner,
-     * model, effort, and provider alike — onto {@code entry}'s new
-     * {@code phaseConfigs} field so the full configuration round-trips through
-     * YAML serialization. The legacy {@code runners} map is write-only and is
-     * no longer serialized, so per-phase runner values must be carried by
-     * {@code phaseConfigs} rather than mirrored to {@code runners}.
-     */
-    private static void applyBundleToEntry(WorkstreamEntry entry, PhaseConfigBundle bundle) {
-        applyBundleToFields(bundle, entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
-    }
-
-    /**
-     * Writes the contents of {@code bundle} into a container's new
-     * {@code defaultPhaseConfig} / {@code phaseConfigs} fields via the
-     * supplied setters. Every non-empty per-phase entry is emitted; the
-     * bundle default is written when non-empty and cleared otherwise.
-     *
-     * <p>Unlike a phase-only copy, a bundle that carries only a default —
-     * e.g. a model-only workstream or a {@code defaultRunner}-only workspace
-     * with no per-phase overrides — still has that default persisted. This
-     * matters under write-only legacy serialization: the default is the only
-     * place a migrated {@code model} / {@code effort} / {@code defaultRunner}
-     * survives once the legacy fields stop being written.</p>
-     *
-     * @param bundle          the bundle to copy; {@code null} clears both fields
-     * @param setDefault      receives the bundle's default, or {@code null}
-     * @param setPhaseConfigs receives the per-phase map (never {@code null})
-     */
-    private static void applyBundleToFields(PhaseConfigBundle bundle,
-                                            Consumer<PhaseConfig> setDefault,
-                                            Consumer<Map<String, PhaseConfig>> setPhaseConfigs) {
-        Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
-        if (bundle != null) {
-            for (Map.Entry<Phase, PhaseConfig> e : bundle.phaseConfigs().entrySet()) {
-                PhaseConfig pc = e.getValue();
-                if (!pc.isEmpty()) {
-                    phaseConfigs.put(e.getKey().wireName(), pc);
-                }
-            }
-        }
-        setPhaseConfigs.accept(phaseConfigs);
-        PhaseConfig def = bundle != null ? bundle.defaultPhaseConfig() : null;
-        setDefault.accept(def != null && !def.isEmpty() ? def : null);
     }
 
     /**
@@ -1583,14 +1576,14 @@ public class WorkstreamConfig {
      */
     void migrateLegacyConfigToPhaseConfig() {
         for (WorkstreamEntry entry : workstreams) {
-            applyBundleToFields(entry.toPhaseConfigBundle(),
+            entry.toPhaseConfigBundle().applyTo(
                     entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
             entry.setDefaultRunner(null);
             entry.setRunners(null);
         }
         if (workspaces != null) {
             for (WorkspaceEntry entry : workspaces) {
-                applyBundleToFields(entry.toPhaseConfigBundle(),
+                entry.toPhaseConfigBundle().applyTo(
                         entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
                 entry.setDefaultRunner(null);
                 entry.setRunners(null);

@@ -60,20 +60,24 @@ public class BatchedNoteInputs {
 	/** Number of source layers in the melodic-SSS shape. */
 	public static final int LAYERS = 3;
 
+	/** Number of per-note scalars: nine per layer, then five filter and five volume ADSR values. */
+	public static final int SCALARS = LAYERS * 9 + 10;
+
 	/** Per-layer raw source buffers (full resampled length, or fitted when requested). */
 	private final PackedCollection[] sources;
 
-	/** Per-layer pitch ratios. */
-	private final double[] ratios;
-
-	/** Per-layer envelope scalars, {@code [LAYERS][8]}. */
-	private final double[][] layerParams;
-
-	/** Filter-envelope scalars {@code [5]}; {@code null} for percussion. */
-	private final double[] filterAdsr;
-
-	/** Volume-envelope scalars {@code [5]}; {@code null} for a dry percussion note. */
-	private final double[] volumeAdsr;
+	/**
+	 * The per-note scalar set, indexed by the {@code *Index} accessors.
+	 *
+	 * <p>The index order is the SSS column order of the batched renderer's bound scalar
+	 * store, so a note's block maps onto that store's first {@link #SCALARS} columns
+	 * position for position — the dispatch copies it in one pass instead of walking
+	 * separate ratio, layer-envelope, filter and volume structures. Entries a note does
+	 * not carry (the per-layer and filter envelopes of a percussion note, the volume
+	 * envelope of a dry one) stay zero and are not read: {@link #isMelodic} and
+	 * {@link #isWet} say which are meaningful.</p>
+	 */
+	private final double[] scalars;
 
 	/**
 	 * Whether this record is the full melodic-SSS shape (per-layer envelopes, filter
@@ -89,21 +93,15 @@ public class BatchedNoteInputs {
 	/**
 	 * Creates an input record from the extracted per-note tensors.
 	 *
-	 * @param sources     per-layer raw source buffers
-	 * @param ratios      per-layer pitch ratios
-	 * @param layerParams per-layer envelope scalars, or {@code null} for percussion
-	 * @param filterAdsr  filter-envelope scalars, or {@code null} for percussion
-	 * @param volumeAdsr  volume-envelope scalars, or {@code null} for a dry percussion note
-	 * @param melodic     whether this is the full melodic-SSS shape (percussion otherwise)
-	 * @param wet         whether this note carries a volume envelope (the wet voicing)
+	 * @param sources per-layer raw source buffers
+	 * @param scalars the per-note scalar set, in the order the {@code *Index} accessors define
+	 * @param melodic whether this is the full melodic-SSS shape (percussion otherwise)
+	 * @param wet     whether this note carries a volume envelope (the wet voicing)
 	 */
-	private BatchedNoteInputs(PackedCollection[] sources, double[] ratios, double[][] layerParams,
-							  double[] filterAdsr, double[] volumeAdsr, boolean melodic, boolean wet) {
+	private BatchedNoteInputs(PackedCollection[] sources, double[] scalars,
+							  boolean melodic, boolean wet) {
 		this.sources = sources;
-		this.ratios = ratios;
-		this.layerParams = layerParams;
-		this.filterAdsr = filterAdsr;
-		this.volumeAdsr = volumeAdsr;
+		this.scalars = scalars;
 		this.melodic = melodic;
 		this.wet = wet;
 	}
@@ -111,17 +109,50 @@ public class BatchedNoteInputs {
 	/** Per-layer raw source buffers (full resampled length, or fitted when requested). */
 	public PackedCollection[] getSources() { return sources; }
 
-	/** Per-layer pitch ratios (target frequency / sample-root frequency). */
-	public double[] getRatios() { return ratios; }
+	/**
+	 * Returns the scalar index of layer {@code l}'s pitch ratio (target frequency /
+	 * sample-root frequency).
+	 *
+	 * @param l the layer index
+	 * @return the index into the per-note scalar set
+	 */
+	public static int ratioIndex(int l) { return l * 9; }
 
-	/** Per-layer envelope scalars, {@code [LAYERS][8]} = (mainDuration, f0, f1, f2, v0, v1, v2, v3). */
-	public double[][] getLayerParams() { return layerParams; }
+	/**
+	 * Returns the scalar index of envelope value {@code p} of layer {@code l}, where the
+	 * eight values per layer are (mainDuration, f0, f1, f2, v0, v1, v2, v3).
+	 *
+	 * @param l the layer index
+	 * @param p the envelope scalar index, {@code [0, 8)}
+	 * @return the index into the per-note scalar set
+	 */
+	public static int layerEnvIndex(int l, int p) { return l * 9 + 1 + p; }
 
-	/** Filter-envelope scalars {@code [5]} = (attack, decay, sustain, release, duration). */
-	public double[] getFilterAdsr() { return filterAdsr; }
+	/**
+	 * Returns the scalar index of filter-envelope value {@code p}, where the five values
+	 * are (attack, decay, sustain, release, duration). Meaningful only when melodic.
+	 *
+	 * @param p the ADSR scalar index, {@code [0, 5)}
+	 * @return the index into the per-note scalar set
+	 */
+	public static int filterAdsrIndex(int p) { return LAYERS * 9 + p; }
 
-	/** Volume-envelope scalars {@code [5]} = (attack, decay, sustain, release, duration); {@code null} when dry. */
-	public double[] getVolumeAdsr() { return volumeAdsr; }
+	/**
+	 * Returns the scalar index of volume-envelope value {@code p}, where the five values
+	 * are (attack, decay, sustain, release, duration). Meaningful only when {@link #isWet}.
+	 *
+	 * @param p the ADSR scalar index, {@code [0, 5)}
+	 * @return the index into the per-note scalar set
+	 */
+	public static int volumeAdsrIndex(int p) { return LAYERS * 9 + 5 + p; }
+
+	/**
+	 * Returns one value of the per-note scalar set.
+	 *
+	 * @param index the scalar index, from one of the {@code *Index} accessors
+	 * @return the scalar value
+	 */
+	public double getScalar(int index) { return scalars[index]; }
 
 	/**
 	 * Returns whether this is the full melodic-SSS shape; {@code false} for the
@@ -197,35 +228,45 @@ public class BatchedNoteInputs {
 			return null;
 		}
 
+		double[] scalars = new double[SCALARS];
+
 		// Volume envelope scalars: getVolumeEnv adjusts and clamps sustain/release.
 		double adjV = ParameterizedVolumeEnvelope.adjustmentBase
 				+ ParameterizedVolumeEnvelope.adjustmentAutomation * automationLevel;
-		double vSus = clamp(volF.getSustain() * adjV, 0.25, 1.0);
-		double vRel = Math.min(volF.getRelease(durationSec) * adjV, 0.7 * durationSec);
-		double[] volumeAdsr = { volF.getAttack(durationSec), volF.getDecay(), vSus, vRel, durationSec };
+		scalars[volumeAdsrIndex(0)] = volF.getAttack(durationSec);
+		scalars[volumeAdsrIndex(1)] = volF.getDecay();
+		scalars[volumeAdsrIndex(2)] = clamp(volF.getSustain() * adjV, 0.25, 1.0);
+		scalars[volumeAdsrIndex(3)] = Math.min(volF.getRelease(durationSec) * adjV, 0.7 * durationSec);
+		scalars[volumeAdsrIndex(4)] = durationSec;
 
 		// Filter envelope scalars: cutoff = ADSR shape; sustain/release scaled by adjustment, no clamp.
 		double adjF = ParameterizedFilterEnvelope.adjustmentBase
 				+ ParameterizedFilterEnvelope.adjustmentAutomation * automationLevel;
-		double[] filterAdsr = { filtF.getAttack(), filtF.getDecay(),
-				filtF.getSustain() * adjF, filtF.getRelease() * adjF, durationSec };
+		scalars[filterAdsrIndex(0)] = filtF.getAttack();
+		scalars[filterAdsrIndex(1)] = filtF.getDecay();
+		scalars[filterAdsrIndex(2)] = filtF.getSustain() * adjF;
+		scalars[filterAdsrIndex(3)] = filtF.getRelease() * adjF;
+		scalars[filterAdsrIndex(4)] = durationSec;
 
 		PackedCollection[] sources = new PackedCollection[LAYERS];
-		double[] ratios = new double[LAYERS];
-		double[][] layerParams = new double[LAYERS][];
 		for (int i = 0; i < LAYERS; i++) {
 			if (!(layers.get(i) instanceof PatternNoteLayer layer)) return null;
 			if (!(layer.getFilter() instanceof ParameterizedLayerEnvelope.Filter lf)) return null;
 			if (!resolveSourceAndRatio(layer.getDelegate(), target, channel, sourceLength,
-					audioSelection, sources, ratios, i)) {
+					audioSelection, sources, scalars, i)) {
 				return null;
 			}
-			layerParams[i] = new double[] { durationSec,
-					lf.getAttack(), lf.getSustain(), lf.getRelease(),
-					lf.getVolume0(), lf.getVolume1(), lf.getVolume2(), lf.getVolume3() };
+			scalars[layerEnvIndex(i, 0)] = durationSec;
+			scalars[layerEnvIndex(i, 1)] = lf.getAttack();
+			scalars[layerEnvIndex(i, 2)] = lf.getSustain();
+			scalars[layerEnvIndex(i, 3)] = lf.getRelease();
+			scalars[layerEnvIndex(i, 4)] = lf.getVolume0();
+			scalars[layerEnvIndex(i, 5)] = lf.getVolume1();
+			scalars[layerEnvIndex(i, 6)] = lf.getVolume2();
+			scalars[layerEnvIndex(i, 7)] = lf.getVolume3();
 		}
 
-		return new BatchedNoteInputs(sources, ratios, layerParams, filterAdsr, volumeAdsr, true, true);
+		return new BatchedNoteInputs(sources, scalars, true, true);
 	}
 
 	/**
@@ -284,29 +325,30 @@ public class BatchedNoteInputs {
 		// Volume envelope is present only on the wet voicing; the dry (MAIN) voicing
 		// has none. When wet, the scalars are adjusted and clamped exactly as the
 		// melodic from() path (getVolumeEnv applies the same automation and clamps).
-		double[] volumeAdsr = null;
+		double[] scalars = new double[SCALARS];
 		if (wet) {
 			ParameterizedVolumeEnvelope.Filter volF = (ParameterizedVolumeEnvelope.Filter) outer.getFilter();
 			double adjV = ParameterizedVolumeEnvelope.adjustmentBase
 					+ ParameterizedVolumeEnvelope.adjustmentAutomation * automationLevel;
-			double vSus = clamp(volF.getSustain() * adjV, 0.25, 1.0);
-			double vRel = Math.min(volF.getRelease(durationSec) * adjV, 0.7 * durationSec);
-			volumeAdsr = new double[] { volF.getAttack(durationSec), volF.getDecay(), vSus, vRel, durationSec };
+			scalars[volumeAdsrIndex(0)] = volF.getAttack(durationSec);
+			scalars[volumeAdsrIndex(1)] = volF.getDecay();
+			scalars[volumeAdsrIndex(2)] = clamp(volF.getSustain() * adjV, 0.25, 1.0);
+			scalars[volumeAdsrIndex(3)] = Math.min(volF.getRelease(durationSec) * adjV, 0.7 * durationSec);
+			scalars[volumeAdsrIndex(4)] = durationSec;
 		}
 
 		PackedCollection[] sources = new PackedCollection[LAYERS];
-		double[] ratios = new double[LAYERS];
 		for (int i = 0; i < LAYERS; i++) {
 			// Percussion layers are bare PatternNoteAudioChoice (no PatternNoteLayer
 			// wrapper, no per-layer envelope). Resolve at unity pitch (target == null
 			// => ratio 1.0, sample-rate-only fold), keeping the full raw source.
 			if (!resolveSourceAndRatio(layers.get(i), null, channel, 0,
-					audioSelection, sources, ratios, i)) {
+					audioSelection, sources, scalars, i)) {
 				return null;
 			}
 		}
 
-		return new BatchedNoteInputs(sources, ratios, null, null, volumeAdsr, false, wet);
+		return new BatchedNoteInputs(sources, scalars, false, wet);
 	}
 
 	/**
@@ -330,14 +372,14 @@ public class BatchedNoteInputs {
 	 * @param sourceLength   the per-layer source buffer length, or {@code 0} to keep the full source
 	 * @param audioSelection the function resolving a layer choice to concrete audio
 	 * @param sources        the per-layer source buffers to populate
-	 * @param ratios         the per-layer pitch ratios to populate
+	 * @param scalars        the per-note scalar set, whose layer ratio entry is populated
 	 * @param i              the layer index being resolved
 	 * @return {@code true} if the layer resolved to a {@link NoteAudioProvider}, {@code false} otherwise
 	 */
 	private static boolean resolveSourceAndRatio(PatternNoteAudio start, KeyPosition<?> target,
 												 int channel, int sourceLength,
 												 DoubleFunction<PatternNoteAudio> audioSelection,
-												 PackedCollection[] sources, double[] ratios, int i) {
+												 PackedCollection[] sources, double[] scalars, int i) {
 		PatternNoteAudio resolved = start;
 		if (resolved instanceof PatternNoteAudioChoice choice) {
 			resolved = choice.getDelegate(audioSelection);
@@ -353,7 +395,7 @@ public class BatchedNoteInputs {
 		}
 		PackedCollection raw = wave.getChannelData(channel, 1.0);
 		sources[i] = sourceLength > 0 ? fit(raw, sourceLength) : raw;
-		ratios[i] = effectiveRatio;
+		scalars[ratioIndex(i)] = effectiveRatio;
 		return true;
 	}
 

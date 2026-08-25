@@ -31,7 +31,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Arrays;
 import java.util.stream.IntStream;
 
 /**
@@ -439,12 +438,12 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		Evaluable<PackedCollection> ev = multiply(c(2), c(p(timeline))).get();
 		ev.into(destination.traverseEach()).evaluate();
-		log(Arrays.toString(destination.toArray(0, 10)));
+		log(destination.toArrayString(0, 10));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 
 		destination = ev.evaluate();
-		log(Arrays.toString(destination.toArray(0, 10)));
+		log(destination.toArrayString(0, 10));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 	}
@@ -461,12 +460,12 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		Evaluable<PackedCollection> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
 		ev.into(destination.traverseEach()).evaluate();
-		log(Arrays.toString(destination.toArray(0, 10)));
+		log(destination.toArrayString(0, 10));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 
 		destination = ev.evaluate();
-		log(Arrays.toString(destination.toArray(0, 10)));
+		log(destination.toArrayString(0, 10));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 	}
@@ -572,9 +571,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 		Producer<PackedCollection> max = max(v(shape(-1, 10), 0));
 		PackedCollection dest = max.get().evaluate(series.traverse(1));
 
-		log(Arrays.toString(dest.toArray(0, 2)));
-		assertEquals(14, dest.toArray(0, 1)[0]);
-		assertEquals(16, dest.toArray(1, 1)[0]);
+		log(dest.toArrayString(0, 2));
+		assertEquals(14, dest.toDouble(0));
+		assertEquals(16, dest.toDouble(1));
 	}
 
 	/**
@@ -598,9 +597,9 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		// If this was permitted, it should perhaps repeat the
 		// result for every position in the output
-		log(Arrays.toString(dest.toArray(0, 2)));
-		assertEquals(14, dest.toArray(0, 1)[0]);
-		assertEquals(14, dest.toArray(1, 1)[0]);
+		log(dest.toArrayString(0, 2));
+		assertEquals(14, dest.toDouble(0));
+		assertEquals(14, dest.toDouble(1));
 	}
 
 	/**

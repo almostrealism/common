@@ -58,14 +58,26 @@ import sys
 #   block-git-commit: 'git(\s+--[a-z-]+)*\s+commit'
 #       matches `git commit`, `git --no-pager commit`, `git commit --amend`,
 #       `git --no-pager commit --amend`, etc.
+#
+#   Retained as the fallback for a command the tokenizer cannot parse, and
+#   as the pattern the nested-invocation scan applies to a string it has
+#   given up on. `git_subcommand_invoked` is the primary detector; see the
+#   note on its false-positive history.
 BLOCK_GIT_COMMIT = re.compile(r"git(?:\s+--[a-z-]+)*\s+commit")
 #
 #   block-git-worktree: 'worktree([[:space:]]+-[^[:space:]]+)*[[:space:]]+add([[:space:]]|$)'
 #       matches `worktree add`, `worktree --track add`, `worktree -d add` (not
 #       a real flag but the pattern doesn't care — `git worktree -d add` is
 #       also blocked, which is the original behavior). Does NOT match
-#       `worktree list`, `worktree remove`, `worktree prune`, etc. The
-#       `worktree` token is not anchored on `git`, matching the original.
+#       `worktree list`, `worktree remove`, `worktree prune`, etc.
+#
+#       Retained as the fallback for an unparseable command. The primary
+#       detector is `git_subcommand_invoked(..., "worktree", follow="add")`,
+#       which additionally requires `git` in command position. The bare
+#       `worktree add` the pattern also matched is no longer blocked on its
+#       own: `worktree` is not an executable, so without `git` in front of
+#       it nothing creates a worktree, and matching it was what blocked
+#       searching or documenting the phrase.
 BLOCK_GIT_WORKTREE = re.compile(r"worktree(?:\s+-\S+)*\s+add(?:\s|$)")
 #
 #   warn-git-log: '(^|[[:space:]|;&])git([[:space:]]+--[a-z-]+)*[[:space:]]+log([[:space:]]|$)'
@@ -73,6 +85,31 @@ BLOCK_GIT_WORKTREE = re.compile(r"worktree(?:\s+-\S+)*\s+add(?:\s|$)")
 #       The `git` is anchored to start, whitespace, or shell separator so
 #       `git/log` (path) and `git log.txt` (file) are not false positives.
 WARN_GIT_LOG = re.compile(r"(?:^|[\s|;&])git(?:\s+--[a-z-]+)*\s+log(?:\s|$)")
+
+# Subcommands that create a commit object. `commit-tree` is plumbing, and
+# is the documented route a previous session used to commit while this
+# guard was in force, so an exact match on "commit" alone is not enough.
+# `commit-graph` is deliberately NOT here: it writes a cache file and
+# creates no commit. The substring pattern blocked it; that was a false
+# positive rather than a property worth keeping.
+COMMIT_CREATING_SUBCOMMANDS = frozenset({"commit", "commit-tree"})
+
+# Opening marker of a heredoc, with the delimiter word that ends its body.
+_HEREDOC_START = re.compile(r"<<-?\s*(?P<q>['\"]?)(?P<word>[A-Za-z_][A-Za-z0-9_]*)(?P=q)")
+
+# Tokens that end one command and begin the next. Recognised on the token
+# stream, so the same characters inside a quoted argument are left alone.
+_SHELL_SEPARATOR_TOKENS = frozenset({";", "&&", "||", "|", "&", "\n", "(", ")"})
+
+# Wrappers that execute a command supplied to them as a string. Without
+# recursing into these, `bash -c "<command>"` would evade a detector that
+# only looks at the outer command line.
+SHELL_INVOKERS = frozenset({"bash", "sh", "zsh", "ksh", "dash", "eval"})
+
+# Ceiling on `bash -c "bash -c ..."` nesting. Reaching it reports a match
+# rather than giving up: a command nested this deep is not something a
+# legitimate caller writes, and the guard fails closed.
+MAX_NESTING_DEPTH = 3
 
 
 BLOCK_GIT_COMMIT_REASON = (
@@ -227,6 +264,174 @@ def _git_calls(segment):
                 continue
         i += 1
     return calls
+
+
+def _nested_invocation_runs(tokens, verb, fallback, follow, depth):
+    """Whether a shell wrapper inside ``tokens`` executes ``verb`` itself.
+
+    ``bash -c "<command>"`` hands its argument to a shell, so the argument
+    has to be examined as a command in its own right. Without this,
+    narrowing the outer match to command position would open an evasion
+    the previous substring match happened to close.
+    """
+    for i, token in enumerate(tokens):
+        if token.rsplit("/", 1)[-1] not in SHELL_INVOKERS:
+            continue
+        for arg in tokens[i + 1:]:
+            if arg.startswith("-"):
+                continue
+            # Only the first non-option argument is the command string;
+            # anything after it is that command's own argv.
+            return git_subcommand_invoked(arg, verb, fallback, follow, depth + 1)
+    return False
+
+
+def git_subcommand_invoked(command, verb, fallback, follow=None, depth=0):
+    """Whether ``command`` actually runs ``git <verb>``.
+
+    Distinguishes running the subcommand from merely naming it. The
+    original guards matched ``git <verb>`` as a substring anywhere in the
+    command line, which blocked ``grep 'git <verb>' docs/`` and any
+    heredoc writing documentation that mentions it — the guard fired on
+    reading and writing *prose about* the rule. Tokenizing and requiring
+    ``git`` in command position removes that class of false positive.
+
+    The narrowing is deliberately not a weakening. Quoted strings handed
+    to a shell wrapper are still followed (see
+    :func:`_nested_invocation_runs`), a command whose quoting cannot be
+    parsed still falls back to the substring pattern, and nesting past
+    :data:`MAX_NESTING_DEPTH` reports a match rather than giving up. Every
+    spelling that previously blocked and could actually execute still
+    blocks.
+
+    :param command: the shell command to examine
+    :param verb: the git subcommand to detect, e.g. ``"commit"``, or a
+        collection of subcommands any one of which counts
+    :param fallback: pattern applied when the command cannot be tokenized
+    :param follow: when set, the first non-option argument the subcommand
+        must carry for this to count, e.g. ``"add"`` for ``worktree``.
+        ``None`` matches the subcommand whatever its arguments.
+    :param depth: current shell-wrapper nesting depth
+    :return: True when the command would run ``git <verb>``
+    """
+    if not command or not command.strip():
+        return False
+    if depth > MAX_NESTING_DEPTH:
+        return True
+
+    verbs = frozenset([verb]) if isinstance(verb, str) else frozenset(verb)
+    stripped, bodies = _strip_heredoc_bodies(command)
+    tokens = _tokenize(stripped)
+    if tokens is None:
+        # Unbalanced quoting leaves nothing reliable to tokenize. Fall
+        # back to the substring pattern and accept its false positives
+        # rather than letting the command through unread.
+        return bool(fallback.search(command))
+
+    if _tokens_run_git_verb(tokens, verbs, follow):
+        return True
+    if _nested_invocation_runs(tokens, verb, fallback, follow, depth):
+        return True
+
+    # A heredoc body is data, not a command — unless it is fed to a shell.
+    # `cat <<EOF | bash` runs its body, so when a shell invoker survives
+    # the strip the bodies are examined as commands in their own right.
+    if bodies and any(t.rsplit("/", 1)[-1] in SHELL_INVOKERS for t in tokens):
+        for body in bodies:
+            if git_subcommand_invoked(body, verb, fallback, follow, depth + 1):
+                return True
+    return False
+
+
+def _tokenize(command):
+    """Tokenize a command, keeping shell separators as their own tokens.
+
+    :param command: the command text
+    :return: the token list, or ``None`` when the quoting cannot be parsed
+    """
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        return list(lexer)
+    except ValueError:
+        return None
+
+
+def _strip_heredoc_bodies(command):
+    """Remove heredoc bodies from ``command``, returning them separately.
+
+    A heredoc body is input to a program, not part of the command line,
+    but :mod:`shlex` has no notion of one and tokenizes it as if it were
+    arguments. Prose in a body — an apostrophe in an ordinary English
+    word is enough — then fails to parse, which sends the whole command
+    to the substring fallback and blocks a file that merely *describes*
+    the command. Documenting these guards kept tripping them for exactly
+    this reason.
+
+    :param command: the command text
+    :return: ``(command_without_bodies, [body, ...])``
+    """
+    if "<<" not in command:
+        return command, []
+
+    lines = command.split("\n")
+    kept = []
+    bodies = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match = _HEREDOC_START.search(line)
+        if not match:
+            kept.append(line)
+            i += 1
+            continue
+        kept.append(line[:match.start()] + line[match.end():])
+        delimiter = match.group("word")
+        body = []
+        i += 1
+        while i < len(lines) and lines[i].strip() != delimiter:
+            body.append(lines[i])
+            i += 1
+        i += 1
+        bodies.append("\n".join(body))
+    return "\n".join(kept), bodies
+
+
+def _tokens_run_git_verb(tokens, verbs, follow):
+    """Whether ``tokens`` contain a ``git <verb>`` call in command position.
+
+    Separator handling is done on the token stream rather than on the raw
+    string because a separator inside a quoted argument does not start a
+    new command. Splitting the text on ``&&`` would treat the ``&&``
+    inside ``"cd /repo && git ..."`` — an argument, not a pipeline — as a
+    real separator, which is how a document *describing* a command came to
+    be read as one.
+    """
+    at_command_position = True
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if token in _SHELL_SEPARATOR_TOKENS:
+            at_command_position = True
+            i += 1
+            continue
+        if at_command_position and token.rsplit("/", 1)[-1] == "git":
+            j = i + 1
+            while j < len(tokens):
+                candidate = tokens[j]
+                if candidate in _GIT_GLOBAL_OPTS_WITH_ARG:
+                    j += 2
+                    continue
+                if candidate.startswith("-"):
+                    j += 1
+                    continue
+                break
+            if j < len(tokens) and tokens[j] in verbs:
+                if follow is None or _next_positional(tokens[j + 1:], 0) == follow:
+                    return True
+        at_command_position = False
+        i += 1
+    return False
 
 
 def _next_positional(args, start):
@@ -389,7 +594,8 @@ def decide(command, policy):
         }
 
     if policy == "block-git-commit":
-        if BLOCK_GIT_COMMIT.search(command):
+        if git_subcommand_invoked(command, COMMIT_CREATING_SUBCOMMANDS,
+                                  BLOCK_GIT_COMMIT):
             return {
                 "action": "block",
                 "reason": BLOCK_GIT_COMMIT_REASON,
@@ -399,7 +605,8 @@ def decide(command, policy):
         return {"action": "allow", "reason": "", "context": "", "stderr": ""}
 
     if policy == "block-git-worktree":
-        if BLOCK_GIT_WORKTREE.search(command):
+        if git_subcommand_invoked(command, "worktree", BLOCK_GIT_WORKTREE,
+                                  follow="add"):
             return {
                 "action": "block",
                 "reason": BLOCK_GIT_WORKTREE_REASON,

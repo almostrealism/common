@@ -32,7 +32,6 @@ import org.almostrealism.model.Block;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.optimize.FixedFilterChromosome;
 import org.almostrealism.studio.optimize.OptimizeFactorFeatures;
-import org.almostrealism.util.FirFilterTestFeatures;
 
 import java.util.HashMap;
 import java.util.List;
@@ -80,8 +79,7 @@ import java.util.stream.IntStream;
  * decoupled during the cutover.
  */
 @Deprecated
-public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFeatures,
-		FirFilterTestFeatures {
+public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFeatures {
 
 	/** Number of log-spaced cutoff bins in the filter impulse-response lookup tables. */
 	private static final int FILTER_TABLE_BINS = 1024;
@@ -567,7 +565,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		PackedCollection lpTable = biquadResponseTable(false);
 		for (int ch = 0; ch < config.channels; ch++) {
 			refresh.add(a(taps,
-					cp(hpCoeffs.range(shape(taps), ch * taps)),
+					cp(hpCoeffs.reshape(shape(config.channels, taps)).traverse(1).get(ch)),
 					tableRow(hpTable, hpCutoffProducer(config.channel(ch)), taps)));
 		}
 		refresh.add(a(taps, cp(lpCoeffs),
@@ -1461,6 +1459,13 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * the ceiling of its largest element. Used to size ring state from the current
 	 * genome's gene-driven delays; the kernels' ring-band clamp bounds any later
 	 * live-swap value that exceeds the built ring.
+	 *
+	 * <p>The largest element is found by reading the evaluated values rather than by a
+	 * reduction on the device. The answer has to become an {@code int} to size a buffer,
+	 * so some read is unavoidable; taking it as a reduction would mean an
+	 * {@code evaluate().toDouble()} pair inside production code, which is the shape the
+	 * policy prohibits and would not save the read anyway. The count here is the layer
+	 * count, and this runs once per argument build.</p>
 	 *
 	 * @param values the producer to evaluate
 	 * @param count  the element count

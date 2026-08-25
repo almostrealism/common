@@ -24,6 +24,7 @@ import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -112,6 +113,9 @@ final class CodingAgentJobCodec {
         }
         if (job.restartGovernor().getMaxTotalTurns() != RestartGovernor.DEFAULT_MAX_TOTAL_TURNS) {
             sb.append("::maxTotalTurns:=").append(job.restartGovernor().getMaxTotalTurns());
+        }
+        if (!RestartGovernor.DEFAULT_MAX_WALL_CLOCK.equals(job.restartGovernor().getMaxWallClock())) {
+            sb.append("::maxWallClockMs:=").append(job.restartGovernor().getMaxWallClock().toMillis());
         }
         // Runner identity. Model, effort, and provider are NOT separate wire
         // keys — they travel only inside phaseConfigBundle below, whose decode
@@ -228,6 +232,11 @@ final class CodingAgentJobCodec {
                 return true;
             case "maxTotalSessions":
                 job.restartGovernor().setMaxTotalSessions(Integer.parseInt(value));
+                return true;
+            case "maxWallClockMs":
+                // Non-positive is meaningful here: it disables the ceiling, so
+                // it travels rather than being treated as an absent override.
+                job.restartGovernor().setMaxWallClock(Duration.ofMillis(Long.parseLong(value)));
                 return true;
             case "maxTotalTurns":
                 job.restartGovernor().setMaxTotalTurns(Integer.parseInt(value));

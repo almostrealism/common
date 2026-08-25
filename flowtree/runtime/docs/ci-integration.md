@@ -246,6 +246,7 @@ Content-Type: application/json
 | `createWorkstreamIfMissing` | `boolean` | No | Register a workstream for `targetBranch` + `repoUrl` when none matches, instead of rejecting the submission (default: `false`) |
 | `maxTurns` | `integer` | No | Maximum turns for the Claude Code session |
 | `maxBudgetUsd` | `number` | No | Maximum budget in USD for the session |
+| `maxWallClockHours` | `integer` | No | Wall-clock ceiling in hours for this job. Overrides the workstream default when present (`0` disables the ceiling); omitted lets the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK` apply |
 | `allowedTools` | `string` | No | Comma-separated allowed tools override |
 
 **Response:**

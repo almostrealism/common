@@ -63,7 +63,6 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 		PackedCollection[] ratios = new PackedCollection[LAYERS];
 		PackedCollection[] layerCurves = new PackedCollection[LAYERS];
 		PackedCollection[][] sourceByLayerNote = new PackedCollection[LAYERS][N];
-		double[][] ratioValues = new double[LAYERS][N];
 
 		for (int l = 0; l < LAYERS; l++) {
 			PackedCollection batch =
@@ -71,10 +70,7 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 			ratios[l] = perNote(1.0 + 0.1 * l, 0.05);
 
 			for (int n = 0; n < N; n++) {
-				sourceByLayerNote[l][n] = batch.range(shape(SOURCE_LENGTH), n * SOURCE_LENGTH);
-				// The reference resamples note by note with a host scalar while the
-				// batched path reads the collection, so it takes them from there.
-				ratioValues[l][n] = ratios[l].toDouble(n);
+				sourceByLayerNote[l][n] = batch.traverse(1).get(n);
 			}
 
 			sources[l] = batch;
@@ -106,12 +102,15 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 				.get().evaluate();
 
 		// ── Per-note reference (the path real playback takes today). ──
-		double[] expected = new double[WINDOW_WIDTH];
+		PackedCollection expected = new PackedCollection(WINDOW_WIDTH);
 		for (int n = 0; n < N; n++) {
 			CollectionProducer merged = null;
 			for (int l = 0; l < LAYERS; l++) {
+				// The reference resamples note by note with a host scalar while the
+				// batched path reads the collection, so it takes the ratio from there.
 				PackedCollection resampled =
-						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
+						renderer.buildResampleProducer(sourceByLayerNote[l][n],
+										cp(ratios[l].get(n, shape(1))))
 								.get().evaluate();
 				CollectionProducer shaped =
 						cp(resampled).multiply(cp(layerCurves[l].traverse(1).get(n)));
@@ -131,34 +130,16 @@ public class BatchedSssPlaybackTest extends BatchedSssTestBase {
 							.get().evaluate();
 			PackedCollection voiced = cp(filtered).multiply(cp(volN)).get().evaluate();
 
+			// The note is placed at its own offset and accumulated into the window
+			// where it lands, the tail beyond the window being dropped.
 			int off = (int) destOffsets.toDouble(n);
-			for (int k = 0; k < TARGET_LENGTH; k++) {
-				int f = off + k;
-				if (f < WINDOW_WIDTH) {
-					expected[f] += voiced.toDouble(k);
-				}
+			int len = Math.min(TARGET_LENGTH, WINDOW_WIDTH - off);
+			if (len > 0) {
+				PackedCollection slot = expected.range(shape(len), off);
+				a(cp(slot), cp(slot).add(cp(voiced.range(shape(len))))).get().run();
 			}
 		}
 
-		double sumSqDiff = 0.0;
-		double sumSqRef = 0.0;
-		for (int i = 0; i < WINDOW_WIDTH; i++) {
-			double diff = expected[i] - out.toDouble(i);
-			sumSqDiff += diff * diff;
-			sumSqRef += expected[i] * expected[i];
-		}
-		double rms = Math.sqrt(sumSqDiff / WINDOW_WIDTH);
-		double refRms = Math.sqrt(sumSqRef / WINDOW_WIDTH);
-
-		log("Full SSS playback chain vs per-note reference:");
-		log(String.format("  Reference RMS: %.6f", refRms));
-		log(String.format("  Difference RMS: %.6f", rms));
-		if (refRms > 1e-10) {
-			log(String.format("  Relative difference: %.2e", rms / refRms));
-		}
-
-		Assert.assertTrue(
-				"Full SSS playback chain RMS difference from per-note reference exceeds 1e-4 (got " + rms + ")",
-				rms < 1e-4);
+		assertRmsEquivalent("Full SSS playback chain vs per-note reference", expected, out);
 	}
 }

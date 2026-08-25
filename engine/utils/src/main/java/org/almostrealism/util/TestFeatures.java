@@ -322,6 +322,111 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Computes the largest absolute deviation of a collection from a single value every
+	 * element is required to hold.
+	 *
+	 * <p>This is the reduction to reach for when a requirement is uniform across the
+	 * output — a constant fill, a clamp that saturates, a padded region that must stay
+	 * zero. The whole comparison settles in one reduction, so the collection is read once
+	 * rather than once per element, and a single failure reports the worst offender
+	 * instead of the first one encountered.</p>
+	 *
+	 * <p>Unlike {@link #compare(PackedCollection, PackedCollection)}, which averages, this
+	 * does not let one large deviation hide among many small ones.</p>
+	 *
+	 * @param expected the value every element is required to hold
+	 * @param actual   the device-computed collection to check
+	 * @return the largest absolute deviation from {@code expected}
+	 */
+	default double largestDeviation(double expected, PackedCollection actual) {
+		return max(cp(actual).subtract(c(expected)).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Computes the largest absolute difference between two {@link PackedCollection}
+	 * instances, element by element, as a single reduction on the device.
+	 *
+	 * <p>The averaging form, {@link #compare(PackedCollection, PackedCollection)}, reads
+	 * both collections back to the host and lets one large difference hide among many
+	 * small ones; this reports the worst element and leaves the data where it was computed.</p>
+	 *
+	 * @param expected the expected collection values
+	 * @param actual   the actual collection values
+	 * @return the largest absolute difference between corresponding elements
+	 */
+	default double largestDeviation(PackedCollection expected, PackedCollection actual) {
+		return max(cp(actual).subtract(cp(expected)).abs()).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Computes the largest absolute deviation of a device-computed
+	 * {@link PackedCollection} from expected values derived, position by position, from
+	 * a function.
+	 *
+	 * <p>This is the strict counterpart to
+	 * {@link #compare(TraversalPolicy, Function, PackedCollection)}, for the same case:
+	 * an expectation that is a formula worked out independently of the device, so that
+	 * agreement means something. It is what a test wants in place of a loop of
+	 * per-element assertions — the reference stays a function rather than becoming an
+	 * array, the collection is read once rather than once per element, and asserting
+	 * that the result is zero is exactly as strict as asserting every element
+	 * individually, because the largest deviation is within tolerance precisely when
+	 * all of them are.</p>
+	 *
+	 * @param shape    the shape whose positions are visited
+	 * @param expected the function supplying the expected value at each position
+	 * @param actual   the device-computed collection to check
+	 * @return the largest absolute difference between corresponding elements
+	 */
+	default double largestDeviation(TraversalPolicy shape, Function<int[], Double> expected,
+									PackedCollection actual) {
+		double act[] = actual.toArray();
+		return shape.stream()
+				.mapToDouble(pos -> Math.abs(expected.apply(pos) - act[shape.index(pos)]))
+				.max().orElseThrow();
+	}
+
+	/**
+	 * Asserts that every element of a collection is finite.
+	 *
+	 * <p>Counted on the device by testing each element's magnitude against the largest
+	 * representable value, which excludes the infinities and, because a comparison
+	 * against {@code NaN} is false whichever way it is written, the not-a-numbers too.
+	 * The count is what comes back, so a result riddled with them is one read rather
+	 * than one per element.</p>
+	 *
+	 * @param msg    the message to report if any element is not finite
+	 * @param actual the collection to check
+	 * @throws AssertionError if any element is infinite or not a number
+	 */
+	default void assertAllFinite(String msg, PackedCollection actual) {
+		int len = actual.getMemLength();
+		double nonFinite = sum(lessThan(cp(actual).abs(), c(Double.MAX_VALUE), c(0.0), c(1.0))
+				.reshape(shape(len))).evaluate().toDouble(0);
+
+		if (nonFinite > 0.0) {
+			throw new AssertionError(msg + " (" + (int) nonFinite + " of " + len + ")");
+		}
+	}
+
+	/**
+	 * Asserts that a one-dimensional collection is symmetric about its centre.
+	 *
+	 * <p>The reversed collection is gathered on the device, so the property is checked
+	 * without reading index against mirrored index from the host.</p>
+	 *
+	 * @param actual the collection to check
+	 * @throws AssertionError if any element differs from its mirror
+	 */
+	default void assertSymmetric(PackedCollection actual) {
+		int size = actual.getShape().getTotalSize();
+		PackedCollection reversed = cp(actual)
+				.valueAt(c(size - 1.0).subtract(integers(0, size)))
+				.evaluate();
+		assertEquals(0.0, largestDeviation(actual, reversed));
+	}
+
+	/**
 	 * Asserts that two {@link PackedCollection} instances are equal.
 	 * Compares shapes (ignoring axis differences) and element values.
 	 *
@@ -539,6 +644,37 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @throws AssertionError if the values differ by more than the specified tolerance
 	 */
 	default void assertSimilar(double a, double b, double r) {
+		assertSimilar(null, a, b, r);
+	}
+
+	/**
+	 * Asserts that two double values are similar within the default relative tolerance,
+	 * reporting {@code msg} alongside the values when they differ.
+	 *
+	 * <p>Use this wherever the inputs are generated rather than fixed — a random or
+	 * data-dependent case that fails is only actionable if the failure carries the inputs
+	 * that produced it, otherwise it is unreproducible.</p>
+	 *
+	 * @param msg context to report when the assertion fails, such as the generating inputs
+	 * @param a   the expected value
+	 * @param b   the actual value
+	 * @throws AssertionError if the values differ by more than 0.1%
+	 */
+	default void assertSimilar(String msg, double a, double b) {
+		assertSimilar(msg, a, b, 0.001);
+	}
+
+	/**
+	 * Asserts that two double values are similar within a specified relative tolerance,
+	 * reporting {@code msg} alongside the values when they differ.
+	 *
+	 * @param msg context to report when the assertion fails, such as the generating inputs
+	 * @param a   the expected value
+	 * @param b   the actual value
+	 * @param r   the relative tolerance (e.g., 0.001 for 0.1% tolerance)
+	 * @throws AssertionError if the values differ by more than the specified tolerance
+	 */
+	default void assertSimilar(String msg, double a, double b, double r) {
 		double gap = Math.max(Math.abs(a), Math.abs(b));
 		double eps = Hardware.getLocalHardware().epsilon();
 		double comp = Math.max(eps, r * gap);
@@ -547,8 +683,9 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 
 		if (c >= comp) {
 			double s = c / gap;
-			warn(b + " != " + a + " (" + s + " > " + r + ")");
-			throw new AssertionError();
+			String detail = b + " != " + a + " (" + s + " > " + r + ")";
+			warn(msg == null ? detail : detail + " " + msg);
+			throw new AssertionError(msg == null ? detail : detail + " " + msg);
 		}
 	}
 

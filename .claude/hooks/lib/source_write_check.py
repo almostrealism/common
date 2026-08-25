@@ -47,6 +47,27 @@ def _git(repo_root, *args):
     return done.stdout
 
 
+#: Files whose presence means an operation in progress owns the working tree.
+IN_PROGRESS_MARKERS = ("MERGE_HEAD", "REVERT_HEAD", "CHERRY_PICK_HEAD",
+                       "rebase-merge", "rebase-apply")
+
+
+def operation_in_progress(repo_root):
+    """Return whether a merge, rebase, revert or cherry-pick is under way.
+
+    While one is, the difference from HEAD is the whole incoming changeset
+    rather than anything written here, so measuring it would report other
+    people's committed work as though this session had just produced it.
+    """
+    git_dir = _git(repo_root, "rev-parse", "--git-dir")
+    if git_dir is None:
+        return False
+
+    git_dir = os.path.join(repo_root, git_dir.strip())
+    return any(os.path.exists(os.path.join(git_dir, marker))
+               for marker in IN_PROGRESS_MARKERS)
+
+
 def changed_source_files(repo_root):
     """Return the source files that differ from HEAD, tracked or not."""
     listed = _git(repo_root, "diff", "--name-only", "HEAD")
@@ -103,6 +124,9 @@ def _remember(repo_root, seen):
 
 def violations(repo_root):
     """Return a report for each source file newly in breach of the policy."""
+    if operation_in_progress(repo_root):
+        return []
+
     seen = _reported(repo_root)
     found = []
 

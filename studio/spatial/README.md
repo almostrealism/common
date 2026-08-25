@@ -113,6 +113,51 @@ hub.pause();
 | `AudioModelOutput` | ML model output with conditions/embeddings |
 | `SoundDataTimeseries` | Bridges `SoundData` with visualization |
 
+### Generation
+
+| Class | Purpose |
+|-------|---------|
+| `ArrangementGenerationProcess` | Drives an `AudioSceneOptimizer` cycle-by-cycle, persists the scored population, and exposes per-cycle progress |
+
+### `ArrangementGenerationProcess`
+
+`ArrangementGenerationProcess` is the long-running driver behind the
+audio-scene genetic algorithm. It takes an `AudioScene` (cloned — the
+caller's original is untouched), wires the optimizer's
+`healthListener`, `cycleListener`, and `completionListener` to its own
+state, and then runs the cycle count the caller specified. Each
+delivered `AudioHealthScore` is attached to the matching
+`GenomicNetwork` in the persisted population, and the population is
+written to `networksFile` after every cycle.
+
+The two pieces of state worth knowing about are the population list
+(`getNetworks()`) and the per-cycle progress record (`getProgress()`).
+
+```java
+ArrangementGenerationProcess process = new ArrangementGenerationProcess("/path/to/networks.dat");
+process.iterate(scene, 10);  // throws IOException
+
+// Per-cycle progress — both numbers describe the cycle in progress,
+// not the run. A new cycle starts over at zero.
+ArrangementGenerationProcess.Progress cycle = process.getProgress();
+log("completed=" + cycle.completed() + "/" + cycle.total()
+    + " remaining=" + cycle.remaining()
+    + " fraction=" + cycle.fraction());
+```
+
+The most common entry point is `iterate(scene, cycles)`, which calls
+`prepare(scene, cycles)` followed by `run()`. `run()` itself does NOT
+call `prepare()` — it only drives an optimizer that was set up earlier.
+Callers that need to configure the optimizer between setup and execution
+should use `prepare(...)` and then `run()` explicitly, so the configured
+optimizer survives the call. `prepare(...)` calls `optimizer.init()` so
+the master output file and per-channel stem files are configured on the
+health computation. Without it, every rendered arrangement reports no
+stems — the stem `WaveOutput`s resolve to a null file and never record
+a path for the health score to carry. The standalone runner
+(`AudioSceneOptimizer.run`) does the same thing immediately after
+build, for the same reason.
+
 ### Listener Interfaces
 
 | Interface | Purpose |
@@ -226,6 +271,7 @@ org.almostrealism.spatial
 ├── GenomicNetwork.java             # Neural network output
 ├── SpatialGenomic.java             # Genome marker interface
 ├── SpatialSurface.java             # Rendering integration
+├── ArrangementGenerationProcess.java # Drives AudioSceneOptimizer cycles and reports per-cycle progress
 └── series/
     ├── SimpleTimeseries.java       # Tree-structured base
     ├── RecordedTimeseries.java     # Recorded audio

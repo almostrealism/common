@@ -844,6 +844,7 @@ The first token is the fully qualified class name (used by the deserialization f
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
 | `enforceChanges` | `enforceChanges` | Plain boolean | Always |
 | `dedupMode` | `deduplicationMode` | Plain string | Non-null |
+| `maxWallClockHours` | `maxWallClockHours` | Plain int (empty = inherit) | The hours field on the Factory: an empty value means the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK` |
 
 Additionally, all `GitManagedJob` fields are encoded by `super.encode()`:
 
@@ -879,11 +880,12 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 - `protectTests`: Parsed as boolean
 - `enforceChanges`: Parsed as boolean
 - `dedupMode`: Stored directly as `this.deduplicationMode` (plain string; `"local"` or `"spawn"`)
+- `maxWallClockHours`: Parsed as `Integer`; an empty value leaves the field `null` so the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`
 - Default: delegated to `super.set(key, value)` for `GitManagedJob` fields
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`). The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `maxWallClockHours`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`). The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 

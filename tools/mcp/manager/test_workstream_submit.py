@@ -41,6 +41,28 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIn("next_steps", result)
 
     @patch.object(server, "_controller_post")
+    def test_negative_wall_clock_is_rejected_not_forwarded(self, mock_post):
+        # A negative value reaches RestartGovernor as a negative Duration,
+        # which disables the ceiling — the opposite of what a caller
+        # lowering it would expect, and silent. Zero is the documented way
+        # to disable it, so a negative has no meaning to forward.
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test", max_wall_clock_hours=-1)
+        self.assertFalse(result["ok"])
+        self.assertIn("max_wall_clock_hours", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_zero_wall_clock_is_forwarded(self, mock_post):
+        # Zero is meaningful: it disables the ceiling for this job.
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-z"}
+        server.workstream_submit_task(
+            prompt="Task", workstream_id="ws-test", max_wall_clock_hours=0)
+        self.assertEqual(0, mock_post.call_args[0][1]["maxWallClockHours"])
+
+    @patch.object(server, "_controller_post")
     def test_submit_with_options(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-2"}

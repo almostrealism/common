@@ -68,6 +68,15 @@ class EnforcementRunner implements ConsoleFeatures {
         if (job.isEnforceChanges()) {
             rules.add(new EnforceChangesRule());
         }
+        // Review is deliberately NOT gated on the primary phase's outcome. A
+        // primary phase that reports failure has still been observed to leave
+        // work review can recover, so skipping review on the strength of that
+        // report discards changes that would have landed. What makes review
+        // pointless is a tree that cannot be pushed — a merge conflict, a git
+        // failure, or a run that never intended to push — not a bad primary
+        // result. Falsification is gated (see CodingAgentJob#doWork) because it
+        // reasons about work the agent claims to have completed; review reasons
+        // about the tree, which exists either way.
         ReviewRule reviewRule = job.isReviewEnabled() ? new ReviewRule(job.getMaxReviewPasses()) : null;
         job.setActiveReviewRule(reviewRule);
         if (reviewRule != null) rules.add(reviewRule);
@@ -240,6 +249,27 @@ class EnforcementRunner implements ConsoleFeatures {
      */
     private boolean applyExhaustionFallback(EnforcementRule rule, CodingAgentJob job) {
         if (!"commit-message".equals(rule.getName())) return false;
+
+        // The fallback synthesises a message from the job prompt — a description
+        // of what was ASKED for, not of what was done. That is a reasonable
+        // stand-in when the agent worked and merely failed to describe itself,
+        // and a fabrication when the primary phase hard-failed: it would label a
+        // tree the agent never successfully worked on with a message implying it
+        // had. Downstream, that message is what a reviewer reads and what the
+        // status rollup treats as a completed unit of work.
+        //
+        // Refusing here leaves the rule unresolved, which is the honest outcome:
+        // the job reports a failure it actually had rather than a success it
+        // manufactured.
+        if (job.isPrimaryPhaseHardFailed()) {
+            warn("commit-message rule: not writing a fallback commit message because"
+                    + " the primary phase hard-failed; a prompt-derived message would"
+                    + " describe work that was not done");
+            job.harnessStatus().unusual("commit-message fallback suppressed after a"
+                    + " hard primary failure");
+            return false;
+        }
+
         Path commitFile = job.resolveWorkingPath("commit.txt");
         if (commitFile == null) return false;
         String fallback = buildFallbackCommitMessage(job);

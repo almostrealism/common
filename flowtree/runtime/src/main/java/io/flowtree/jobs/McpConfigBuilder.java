@@ -188,6 +188,10 @@ public class McpConfigBuilder implements ConsoleFeatures {
             // controller, but agents use the in-container ar-secrets MCP
             // server (tools/mcp/secrets/server.py) so the rendered file
             // lands in the agent's filesystem rather than ar-manager's.
+            // Read-only, but its audience is operators diagnosing a denial,
+            // not agents; an agent that hits one should report it rather than
+            // investigate the harness layer itself.
+            "workstream_introspect",
             "workspace_secret_list_names",
             "workspace_secret_render_file"
         ))

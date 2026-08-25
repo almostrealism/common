@@ -317,6 +317,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workspace_update_config",
 			"workstream_archive",
 			"workstream_archive_many",
+			"workstream_introspect",
 			"workstream_unarchive_many",
 			"workstream_unarchive",
 			"workstream_delete",
@@ -521,7 +522,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workspace_update_config must declare workspace_id in signature",
 			workspaceUpdateParams.contains("workspace_id"));
 		assertTrue("workspace_update_config must declare slack_workspace_id in signature"
-			+ " (deprecated alias for workspace_id, retained for backward compatibility)",
+			+ " so a caller reaching for it is answered with a pointer to workspace_id."
+			+ " An undeclared name is dropped silently by the MCP schema layer, which"
+			+ " would look like a workspace_id that took effect. It is declared to be"
+			+ " refused, never forwarded",
 			workspaceUpdateParams.contains("slack_workspace_id"));
 		assertTrue("workspace_update_config must declare new_id in signature so"
 			+ " operators can rename a workspace to a friendlier ID",
@@ -551,7 +555,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			+ " operators can route a new workstream to a specific workspace",
 			registerParams.contains("workspace_id"));
 		assertTrue("workstream_register must declare slack_workspace_id in signature"
-			+ " (deprecated alias for workspace_id, retained for backward compatibility)",
+			+ " so a caller reaching for it is answered with a pointer to workspace_id."
+			+ " An undeclared name is dropped silently by the MCP schema layer, which"
+			+ " would look like a workspace_id that took effect. It is declared to be"
+			+ " refused, never forwarded",
 			registerParams.contains("slack_workspace_id"));
 
 		List<String> memoryRecallParams =

@@ -69,50 +69,38 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * tick-relative start offset. Generated once per density level outside the timed loop.
 	 */
 	private static final class B1NoteMetadata {
+		/** Column holding each note's tick-relative start offset in samples. */
+		static final int TICK_START_OFFSET = 10;
+		/** Number of per-note scalar columns. */
+		static final int COLUMNS = 11;
+
 		/** Source buffer index for each note (into the synthetic pool). */
 		final int[] sourceIdx;
 		/** Sample offset within the selected source buffer for each note. */
 		final int[] sourceOffset;
-		/** Pitch ratio (resample factor) for each note. */
-		final double[] pitchRatio;
-		/** Volume envelope attack fraction for each note. */
-		final double[] volAttack;
-		/** Volume envelope decay fraction for each note. */
-		final double[] volDecay;
-		/** Volume envelope sustain level for each note. */
-		final double[] volSustain;
-		/** Volume envelope release fraction for each note. */
-		final double[] volRelease;
-		/** Filter envelope attack fraction for each note. */
-		final double[] filterAttack;
-		/** Filter envelope decay fraction for each note. */
-		final double[] filterDecay;
-		/** Filter envelope sustain level for each note. */
-		final double[] filterSustain;
-		/** Filter envelope release fraction for each note. */
-		final double[] filterRelease;
-		/** Automation level (0–1) for each note. */
-		final double[] automationLevel;
-		/** Tick-relative start offset in samples for each note. */
-		final double[] tickStartOffset;
 
 		/**
-		 * Allocates all per-note arrays for the given total note count.
+		 * The per-note scalar set in the column-major {@code [COLUMNS, totalNotes]} layout
+		 * the batched dispatch binds. Each column is one scalar across every note, so a
+		 * column is a member of this collection and is addressed as one.
+		 *
+		 * <p>The columns are, in order: pitch ratio; the volume envelope's attack, decay,
+		 * sustain and release; the filter envelope's attack, decay, sustain and release;
+		 * the automation level; and the tick-relative start offset.</p>
+		 */
+		final PackedCollection scalars;
+
+		/** The destination the per-tick copy targets, {@code [COLUMNS, totalNotes]}. */
+		final PackedCollection scalarStore;
+
+		/**
+		 * Allocates the scalar block and the destination the per-tick copy targets.
 		 */
 		B1NoteMetadata(int totalNotes) {
 			sourceIdx = new int[totalNotes];
 			sourceOffset = new int[totalNotes];
-			pitchRatio = new double[totalNotes];
-			volAttack = new double[totalNotes];
-			volDecay = new double[totalNotes];
-			volSustain = new double[totalNotes];
-			volRelease = new double[totalNotes];
-			filterAttack = new double[totalNotes];
-			filterDecay = new double[totalNotes];
-			filterSustain = new double[totalNotes];
-			filterRelease = new double[totalNotes];
-			automationLevel = new double[totalNotes];
-			tickStartOffset = new double[totalNotes];
+			scalars = new PackedCollection(COLUMNS, totalNotes);
+			scalarStore = new PackedCollection(COLUMNS, totalNotes);
 		}
 	}
 
@@ -638,33 +626,52 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 	 * a random source index drawn from the pool, a random in-source offset that leaves at
 	 * least {@code NOTE_SIZE} samples to gather, and randomised pitch/ADSR/automation/start
 	 * values. Called once per density outside the timed loop.
+	 *
+	 * <p>Every scalar is a uniform draw over its own interval, so the whole block is one
+	 * draw scaled and shifted per column, with the bounds named by the column they belong
+	 * to. The tick-start offset is floored afterwards, being a sample index rather than a
+	 * continuous quantity.</p>
 	 */
 	private B1NoteMetadata buildB1NoteMetadata(int totalNotes, int[] sourceLengths, Random rng) {
 		B1NoteMetadata md = new B1NoteMetadata(totalNotes);
+
 		for (int n = 0; n < totalNotes; n++) {
 			md.sourceIdx[n] = rng.nextInt(B1_SOURCE_POOL_SIZE);
 			int srcLen = sourceLengths[md.sourceIdx[n]];
 			md.sourceOffset[n] = rng.nextInt(Math.max(1, srcLen - NOTE_SIZE));
-			md.pitchRatio[n] = 0.5 + rng.nextDouble() * 1.5;
-			md.volAttack[n] = 0.01 + rng.nextDouble() * 0.1;
-			md.volDecay[n] = 0.05 + rng.nextDouble() * 0.15;
-			md.volSustain[n] = 0.3 + rng.nextDouble() * 0.5;
-			md.volRelease[n] = 0.05 + rng.nextDouble() * 0.2;
-			md.filterAttack[n] = 0.01 + rng.nextDouble() * 0.1;
-			md.filterDecay[n] = 0.05 + rng.nextDouble() * 0.15;
-			md.filterSustain[n] = 0.3 + rng.nextDouble() * 0.5;
-			md.filterRelease[n] = 0.05 + rng.nextDouble() * 0.2;
-			md.automationLevel[n] = rng.nextDouble();
-			md.tickStartOffset[n] = rng.nextInt(NOTE_SIZE);
 		}
+
+		PackedCollection floors = pack(0.5, 0.01, 0.05, 0.3, 0.05,
+				0.01, 0.05, 0.3, 0.05, 0.0, 0.0);
+		PackedCollection spans = pack(1.5, 0.1, 0.15, 0.5, 0.2,
+				0.1, 0.15, 0.5, 0.2, 1.0, NOTE_SIZE);
+
+		rand(shape(B1NoteMetadata.COLUMNS, totalNotes), rng)
+				.multiply(repeat(1, totalNotes, cp(spans).reshape(shape(B1NoteMetadata.COLUMNS, 1))))
+				.add(repeat(1, totalNotes, cp(floors).reshape(shape(B1NoteMetadata.COLUMNS, 1))))
+				.into(md.scalars)
+				.evaluate();
+
+		PackedCollection tickStart = md.scalars.traverse(1).get(B1NoteMetadata.TICK_START_OFFSET);
+		floor(cp(tickStart)).into(tickStart).evaluate();
+
 		return md;
 	}
 
 	/**
 	 * Executes one B1 gather iteration: copies each note's audio from the source pool into
 	 * row {@code n}'s central slot of {@code audioData} (leaving pad zones as zero), pushes
-	 * the gathered buffer to the pre-allocated audio collection, and allocates and populates
-	 * the eleven {@code [N]} scalar tensors that production would need per tick.
+	 * the gathered buffer to the pre-allocated audio collection, and uploads the per-note
+	 * scalar set production would marshal per tick.
+	 *
+	 * <p>The scalar step is one copy of a {@code [COLUMNS, N]} block rather than eleven
+	 * separate {@code [N]} allocations, because that is what production now binds: every
+	 * scalar buffer is a column of a single store, written once per dispatch. It is kept
+	 * inside the timed region — production's scalar set changes with the notes overlapping
+	 * each window, so it cannot be staged ahead, and hoisting it out would measure a
+	 * pre-staged buffer scheme, which is the separate B3 question. Note that the block is
+	 * device-resident here, so this measures the copy and not the host-side assembly that
+	 * production still performs ahead of it.</p>
 	 */
 	private void runB1Gather(PackedCollection audioBuf, PackedCollection audioData,
 							 int totalNotes, int paddedNoteSize, int padHalf,
@@ -676,17 +683,7 @@ public class PatternRenderingFloorBenchmarkAdditional extends PatternRenderingFl
 		}
 		audioBuf.setFrom(0, audioData);
 
-		PackedCollection.of(md.pitchRatio);
-		PackedCollection.of(md.volAttack);
-		PackedCollection.of(md.volDecay);
-		PackedCollection.of(md.volSustain);
-		PackedCollection.of(md.volRelease);
-		PackedCollection.of(md.filterAttack);
-		PackedCollection.of(md.filterDecay);
-		PackedCollection.of(md.filterSustain);
-		PackedCollection.of(md.filterRelease);
-		PackedCollection.of(md.automationLevel);
-		PackedCollection.of(md.tickStartOffset);
+		md.scalarStore.setFrom(0, md.scalars);
 	}
 
 	/**

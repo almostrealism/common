@@ -545,6 +545,7 @@ The following keys are used by `GitManagedJob.encode()` and decoded by `GitManag
 | `wsEnv` | `workstreamEnv` | Base64 | JSON object string, only when non-empty |
 | `planDoc` | `planningDocument` | Base64 | Only when non-null |
 | `protectTests` | `protectTestFiles` | Plain boolean | Repeated from parent |
+| `maxWallClockHours` | `maxWallClockHours` | Plain int (empty = inherit) | The hours field on the Factory: an empty value means the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; only present in the wire format of the Factory |
 
 ### Deserialization Flow
 

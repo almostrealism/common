@@ -17,6 +17,7 @@
 package org.almostrealism.audio;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -121,6 +122,95 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	private PackedCollection sssSamplingOffsets;
 
 	/**
+	 * Backing store for every bound SSS scalar buffer, {@code [sssScalarColumns(layers), n]}.
+	 * Each {@code getSss*} scalar accessor returns a row of this collection, so the whole
+	 * per-tick scalar set is one contiguous region that a caller writes in a single pass
+	 * rather than one upload per column.
+	 */
+	private PackedCollection sssScalars;
+
+	/** Source-layer count the SSS buffers were built for; set when {@link #sssDispatch} is built. */
+	private int sssLayers;
+
+	/**
+	 * Returns the number of scalar columns the SSS dispatch reads: one pitch ratio and eight
+	 * envelope scalars per layer, then the five filter-envelope and five volume-envelope
+	 * scalars, then the destination and sampling offsets.
+	 *
+	 * @return the column count of {@link #getSssScalars()}
+	 */
+	public int getSssScalarColumns() { return sssLayers * 9 + 12; }
+
+	/**
+	 * Returns how many leading {@link #getSssScalars()} columns come verbatim from a single
+	 * note — every column except the destination and sampling offsets, which are properties
+	 * of the window a note is placed into rather than of the note itself.
+	 *
+	 * <p>These columns are contiguous and ordered from column zero, so a caller holding one
+	 * note's scalar set in this same order transfers it in one pass. A caller that relies on
+	 * that should compare this count against the length of the set it holds: the two agree
+	 * only while both describe the same layer count.</p>
+	 *
+	 * @return the count of leading note-supplied columns
+	 */
+	public int getSssNoteScalarColumns() { return sssLayers * 9 + 10; }
+
+	/**
+	 * Returns the {@link #getSssScalars()} column holding layer {@code l}'s pitch ratios.
+	 *
+	 * @param l the layer index
+	 * @return the column index
+	 */
+	public int sssRatioColumn(int l) { return l * 9; }
+
+	/**
+	 * Returns the {@link #getSssScalars()} column holding envelope scalar {@code p} of layer {@code l}.
+	 *
+	 * @param l the layer index
+	 * @param p the envelope scalar index, {@code [0, 8)}
+	 * @return the column index
+	 */
+	public int sssLayerEnvColumn(int l, int p) { return l * 9 + 1 + p; }
+
+	/**
+	 * Returns the {@link #getSssScalars()} column holding filter-envelope scalar {@code p}.
+	 *
+	 * @param p the ADSR scalar index, {@code [0, 5)}
+	 * @return the column index
+	 */
+	public int sssFilterAdsrColumn(int p) { return sssLayers * 9 + p; }
+
+	/**
+	 * Returns the {@link #getSssScalars()} column holding volume-envelope scalar {@code p}.
+	 *
+	 * @param p the ADSR scalar index, {@code [0, 5)}
+	 * @return the column index
+	 */
+	public int sssVolumeAdsrColumn(int p) { return sssLayers * 9 + 5 + p; }
+
+	/**
+	 * Returns the {@link #getSssScalars()} column holding the per-note destination offsets.
+	 *
+	 * @return the column index
+	 */
+	public int sssDestOffsetColumn() { return sssLayers * 9 + 10; }
+
+	/**
+	 * Returns the {@link #getSssScalars()} column holding the per-note sampling offsets.
+	 *
+	 * @return the column index
+	 */
+	public int sssSamplingOffsetColumn() { return sssLayers * 9 + 11; }
+
+	/**
+	 * Returns the backing store for every bound SSS scalar buffer, {@code [columns, n]},
+	 * whose rows are addressed by the {@code sss*Column} accessors.
+	 *
+	 * @return the contiguous scalar store read by the SSS dispatch
+	 */
+	public PackedCollection getSssScalars() { return sssScalars; }
+
+	/**
 	 * Returns the compile-once fully-fused SSS dispatch for this renderer's fixed
 	 * shape, building and compiling it on first call and reusing it thereafter. The
 	 * dispatch reads its inputs from this renderer's
@@ -134,24 +224,27 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 */
 	public Evaluable<PackedCollection> sssDispatch(int layers) {
 		if (sssDispatch == null) {
+			sssLayers = layers;
+			sssScalars = new PackedCollection(getSssScalarColumns(), n);
+
 			sssSources = new PackedCollection[layers];
 			sssRatios = new PackedCollection[layers];
 			sssLayerEnv = new PackedCollection[layers][8];
 			for (int l = 0; l < layers; l++) {
 				sssSources[l] = new PackedCollection(n, sourceLength);
-				sssRatios[l] = new PackedCollection(n);
+				sssRatios[l] = sssScalars.traverse(1).get(sssRatioColumn(l));
 				for (int p = 0; p < 8; p++) {
-					sssLayerEnv[l][p] = new PackedCollection(n);
+					sssLayerEnv[l][p] = sssScalars.traverse(1).get(sssLayerEnvColumn(l, p));
 				}
 			}
 			sssFilterAdsr = new PackedCollection[5];
 			sssVolumeAdsr = new PackedCollection[5];
 			for (int p = 0; p < 5; p++) {
-				sssFilterAdsr[p] = new PackedCollection(n);
-				sssVolumeAdsr[p] = new PackedCollection(n);
+				sssFilterAdsr[p] = sssScalars.traverse(1).get(sssFilterAdsrColumn(p));
+				sssVolumeAdsr[p] = sssScalars.traverse(1).get(sssVolumeAdsrColumn(p));
 			}
-			sssDestOffsets = new PackedCollection(n);
-			sssSamplingOffsets = new PackedCollection(n);
+			sssDestOffsets = sssScalars.traverse(1).get(sssDestOffsetColumn());
+			sssSamplingOffsets = sssScalars.traverse(1).get(sssSamplingOffsetColumn());
 
 			CollectionProducer producer = buildBatchedSssChainPlacedFromScalars(
 					sssSources, sssRatios, sssLayerEnv, sssFilterAdsr, sssVolumeAdsr,
@@ -235,6 +328,63 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	private PackedCollection percSamplingOffsets;
 
 	/**
+	 * Backing store for every bound percussion scalar buffer,
+	 * {@code [getPercScalarColumns(), n]}, on the same basis as {@link #sssScalars}.
+	 */
+	private PackedCollection percScalars;
+
+	/** Source-layer count the percussion buffers were built for. */
+	private int percLayers;
+
+	/**
+	 * Returns the number of scalar columns the percussion dispatch reads: one pitch ratio per
+	 * layer, then the five volume-envelope scalars, then the destination and sampling offsets.
+	 * Percussion carries no per-layer or filter envelope, so it is the strict subset of the
+	 * SSS scalar set.
+	 *
+	 * @return the column count of {@link #getPercScalars()}
+	 */
+	public int getPercScalarColumns() { return percLayers + 7; }
+
+	/**
+	 * Returns the {@link #getPercScalars()} column holding layer {@code l}'s pitch ratios.
+	 *
+	 * @param l the layer index
+	 * @return the column index
+	 */
+	public int percRatioColumn(int l) { return l; }
+
+	/**
+	 * Returns the {@link #getPercScalars()} column holding volume-envelope scalar {@code p}.
+	 *
+	 * @param p the ADSR scalar index, {@code [0, 5)}
+	 * @return the column index
+	 */
+	public int percVolumeAdsrColumn(int p) { return percLayers + p; }
+
+	/**
+	 * Returns the {@link #getPercScalars()} column holding the per-note destination offsets.
+	 *
+	 * @return the column index
+	 */
+	public int percDestOffsetColumn() { return percLayers + 5; }
+
+	/**
+	 * Returns the {@link #getPercScalars()} column holding the per-note sampling offsets.
+	 *
+	 * @return the column index
+	 */
+	public int percSamplingOffsetColumn() { return percLayers + 6; }
+
+	/**
+	 * Returns the backing store for every bound percussion scalar buffer, {@code [columns, n]},
+	 * whose rows are addressed by the {@code perc*Column} accessors.
+	 *
+	 * @return the contiguous scalar store read by the percussion dispatch
+	 */
+	public PackedCollection getPercScalars() { return percScalars; }
+
+	/**
 	 * Allocates the percussion input buffers on first use, sized to this renderer's
 	 * fixed shape. Shared by the dry and wet percussion dispatches: both read the
 	 * same per-layer sources, pitch ratios, and offsets; only the wet dispatch
@@ -244,16 +394,19 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 */
 	private void ensurePercBuffers(int layers) {
 		if (percSources == null) {
+			percLayers = layers;
+			percScalars = new PackedCollection(getPercScalarColumns(), n);
+
 			percSources = new PackedCollection[layers];
 			percRatios = new PackedCollection[layers];
 			for (int l = 0; l < layers; l++) {
 				percSources[l] = new PackedCollection(n, sourceLength);
-				percRatios[l] = new PackedCollection(n);
+				percRatios[l] = percScalars.traverse(1).get(percRatioColumn(l));
 			}
 			percVolumeAdsr = new PackedCollection[5];
-			for (int p = 0; p < 5; p++) percVolumeAdsr[p] = new PackedCollection(n);
-			percDestOffsets = new PackedCollection(n);
-			percSamplingOffsets = new PackedCollection(n);
+			for (int p = 0; p < 5; p++) percVolumeAdsr[p] = percScalars.traverse(1).get(percVolumeAdsrColumn(p));
+			percDestOffsets = percScalars.traverse(1).get(percDestOffsetColumn());
+			percSamplingOffsets = percScalars.traverse(1).get(percSamplingOffsetColumn());
 		}
 	}
 
@@ -384,7 +537,23 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 *         {@code [targetLength]}
 	 */
 	public CollectionProducer buildResampleProducer(PackedCollection source, double ratio) {
-		CollectionProducer srcPos = integers(0, targetLength).multiply(c(ratio));
+		return buildResampleProducer(source, c(ratio));
+	}
+
+	/**
+	 * Resamples one note's source at the given ratio, the ratio supplied as a producer.
+	 *
+	 * <p>This is the form to reach for when the ratio is already held in a collection —
+	 * one note's entry in a per-note ratio buffer, say. Reading it out as a {@code double}
+	 * to call the other form only has it wrapped straight back up here.</p>
+	 *
+	 * @param source source audio buffer of length {@code sourceLength}
+	 * @param ratio  resample ratio — reads source at {@code sample × ratio}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [targetLength]}
+	 */
+	public CollectionProducer buildResampleProducer(PackedCollection source,
+												   Producer<PackedCollection> ratio) {
+		CollectionProducer srcPos = integers(0, targetLength).multiply(ratio);
 		CollectionProducer fPos = floor(srcPos);
 		CollectionProducer frac = srcPos.subtract(fPos);
 		CollectionProducer s0 = c(shape(targetLength), cp(source), fPos);

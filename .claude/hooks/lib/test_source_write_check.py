@@ -98,6 +98,27 @@ class ViolationTest(RepositoryTestCase):
 
         self.assertEqual([], check.violations(plain))
 
+    def test_nothing_is_reported_while_a_merge_is_under_way(self):
+        """A merge's difference from HEAD is everything it is bringing in.
+
+        Measuring that would attribute whatever the incoming branch happens to
+        contain to whoever is resolving the merge.
+        """
+        self.write("Foo.java", "class Foo {\n" + WALL + "\n}\n")
+        self.write(os.path.join(".git", "MERGE_HEAD"), "0" * 40 + "\n")
+
+        self.assertTrue(check.operation_in_progress(self.root))
+        self.assertEqual([], check.violations(self.root))
+
+    def test_reporting_resumes_once_the_merge_is_finished(self):
+        self.write(os.path.join(".git", "MERGE_HEAD"), "0" * 40 + "\n")
+        os.remove(os.path.join(self.root, ".git", "MERGE_HEAD"))
+
+        self.write("Foo.java", "class Foo {\n" + WALL + "\n}\n")
+
+        self.assertFalse(check.operation_in_progress(self.root))
+        self.assertEqual(1, len(check.violations(self.root)))
+
 
 if __name__ == "__main__":
     unittest.main()

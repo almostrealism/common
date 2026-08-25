@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import io.flowtree.JsonFieldExtractor;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -117,6 +118,10 @@ final class CodingAgentJobConfigurer {
         job.setEnforceMavenDependencies(factory.isEnforceMavenDependencies());
         job.setEnforceOrganizationalPlacement(factory.isEnforceOrganizationalPlacement());
         job.setUseTmux(factory.isUseTmux());
+        if (factory.getMaxWallClockHours() != null) {
+            job.restartGovernor().setMaxWallClock(
+                    Duration.ofHours(factory.getMaxWallClockHours().intValue()));
+        }
         job.setReviewEnabled(factory.isReviewEnabled());
         job.setMaxReviewPasses(factory.getMaxReviewPasses());
         job.setRetrospectiveEnabled(factory.isRetrospectiveEnabled());

@@ -128,6 +128,57 @@ public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
     }
 
     /**
+     * A hard primary failure must not produce a fabricated commit message.
+     *
+     * <p>The fallback builds its message from the job prompt — a description of
+     * what was asked for, not of what was done. When the primary phase never
+     * succeeded, writing it labels a tree the agent did not work on with a
+     * message implying it had, and that message is what a reviewer reads and
+     * what the status rollup treats as a completed unit of work.</p>
+     */
+    @Test(timeout = 30000)
+    public void hardPrimaryFailureSuppressesTheFallbackCommitMessage() throws IOException {
+        CodingAgentJob job = new CodingAgentJob("t1", "Fix the authentication bug in UserService") {
+            @Override
+            protected void runCorrectionSession(String correctionPrompt, String activity) { }
+        };
+        job.setWorkingDirectory(tempDir.toString());
+        job.setTargetBranch("feature/test");
+        job.setEnforceOrganizationalPlacement(false);
+        job.setPrimaryPhaseHardFailed(true);
+        deleteCommitTxt();
+
+        job.runEnforcementRules();
+
+        assertTrue("No fallback commit message may be written after a hard primary"
+                + " failure — it would describe work that was never done",
+                readCommitTxt() == null);
+    }
+
+    /**
+     * The suppression is conditional on the failure, not a removal of the
+     * fallback: an ordinary exhaustion still writes a message.
+     */
+    @Test(timeout = 30000)
+    public void fallbackStillAppliesWhenThePrimaryPhaseSucceeded() throws IOException {
+        CodingAgentJob job = new CodingAgentJob("t1", "Fix the authentication bug in UserService") {
+            @Override
+            protected void runCorrectionSession(String correctionPrompt, String activity) { }
+        };
+        job.setWorkingDirectory(tempDir.toString());
+        job.setTargetBranch("feature/test");
+        job.setEnforceOrganizationalPlacement(false);
+        job.setPrimaryPhaseHardFailed(false);
+        deleteCommitTxt();
+
+        job.runEnforcementRules();
+
+        String msg = readCommitTxt();
+        assertNotNull("An ordinary exhaustion must still write a fallback message", msg);
+        assertFalse("Fallback message must not be empty", msg.trim().isEmpty());
+    }
+
+    /**
      * When the commit-message rule's correction sessions produce a valid commit.txt
      * (not violated), the rule exits cleanly and does not re-enter.
      */

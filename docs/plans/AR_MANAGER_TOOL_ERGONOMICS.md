@@ -1,6 +1,8 @@
 # ar-manager Tool Ergonomics and Observability
 
-Status: **IN PROGRESS — five of ten done (2, 3, 7, 8, 9); items 1, 4, 5, 6, 10 outstanding**
+Status: **COMPLETE — all eleven items done.** Item 10 shipped for interactive
+sessions only; extending it to FlowTree jobs is a deliberate follow-up, not an
+omission.
 Author: planning session, 2026-08-12; triaged 2026-08-21
 
 > **Line numbers in this document have drifted.** It was written against a
@@ -78,9 +80,28 @@ constraints.
 
 ## 1. No fleet-level query capability — REAL, HIGHEST VALUE
 
-> **OUTSTANDING.** Needs controller-side Java changes (`Workstream.toSummaryJson`,
-> `FlowTreeApiEndpoint.handleListWorkstreams`) plus the `workstream_list` filters,
-> and a deploy. Still the operator's original blocker.
+> **PARTIALLY DONE.** The filters are in: `workstream_list` takes `workspace_id`,
+> `repo_url`, `dispatch_capable` and `archived`, applied controller-side, so
+> "which workstreams match P?" is one call. Repository matching is on identity,
+> so URL spelling does not matter.
+>
+> **DONE.** The status fields from design (b) are in, behind
+> `include_status` (adds `lastJobId` / `lastJobStatus` / `lastJobAt`) and
+> `include_pull_request` (adds `pullRequest`). Both default to off, so a caller
+> that does not ask for them pays exactly what it paid before; each costs one
+> job-history read per workstream returned, which is what the filters are for.
+>
+> The pull request is read controller-side from the job history rather than
+> from GitHub. `JobCompletionEvent` already persists `pullRequestUrl`, so the
+> data was there for free — no GitHub round trip, no per-caller N+1, and it
+> stays correct across a controller restart. The search walks back through
+> recent jobs rather than reading the newest alone, because a workstream's PR
+> does not stop existing when a later job runs without touching it.
+>
+> `lastJobAt` is ISO-8601. `toSummaryJson` carried no timestamp to follow, so
+> the choice went to the convention the rest of the tool surface already uses.
+>
+> Pagination is deliberately not shipped — see open question 4.
 
 ### What we found
 
@@ -180,10 +201,8 @@ trip per workstream for the PR.
 **(c) Pagination.** Not strictly part of the operator's question but
 adjacent. Today the response is a flat array of every workstream; for
 multi-workspace deployments this could grow. A `limit`/`offset` pair
-keeps the response bounded. **Defer this unless the operator fleet
-actually exceeds the practical size** — 51 workstreams is fine in a
-single response, and adding pagination now adds parameter surface area
-without solving a problem.
+keeps the response bounded. **Deferred** — see open question 4, which
+records the decision and what it will cost to reverse.
 
 ### A dedicated `workstream_query` tool?
 
@@ -408,9 +427,12 @@ Yes. No shared state with any other tool.
 
 ## 4. Job status reports SUCCESS when PRIMARY hard-failed — PARTIALLY ADDRESSED, P1 GAP REMAINS
 
-> **OUTSTANDING.** Java-side; the remaining gap is the COMMIT-MESSAGE phase
-> committing a corrupted tree when PRIMARY hard-fails. Open question 1 in §"Open
-> questions" still needs an answer before implementing.
+> **DONE.** The commit-message fallback no longer fires after a hard primary
+> failure: it builds its message from the job prompt, which describes what was
+> asked rather than what was done, so writing it would label a tree the agent
+> never worked on. Review was found already ungated on failure — only the status
+> rollup and this fallback read the flag — so the owner's push-viability rule
+> holds today, and is now recorded at the rule-selection site.
 
 ### What we found
 
@@ -547,8 +569,56 @@ Partially. (a) is independent. (b) depends on (a) being correct.
 
 ## 5. Silent worker hangs break dependent automation with no signal — REAL, HARD
 
-> **OUTSTANDING.** Java-side and the hardest item. Open question 2 (the wall-clock
-> default) is unresolved.
+> **DONE.** All three pieces.
+>
+> **(a)** The wall-clock ceiling sits in `RestartGovernor` beside the session,
+> turn and dollar ceilings: six hours by default, disabled by a non-positive
+> value. It had shipped as a package-private setter only — reachable from Java
+> and nowhere else — which left the "configurable per workstream" half of the
+> triage answer unimplemented. It now runs the full path:
+> `WorkstreamConfig` (persisted YAML) → `Workstream` → registration and update
+> handlers → `CodingAgentJobFactory.resolveMaxWallClockHours` →
+> `CodingAgentJobCodec` (so it survives the worker hop) →
+> `CodingAgentJobConfigurer`. Exposed as `max_wall_clock_hours` on
+> `workstream_register`, `workstream_update_config` and
+> `workstream_submit_task`, with per-job winning over per-workstream winning
+> over the default.
+>
+> Zero is a real value there — it disables the ceiling — so "not configured"
+> and "configured to zero" are kept distinguishable throughout. A plain `int`
+> default of zero would have silently pinned every workstream to "no ceiling",
+> which is the opposite of what this item is for.
+>
+> **(b)** `JobStatsStore` gained a `heartbeat_at` column (via the existing
+> `SCHEMA_MIGRATIONS` mechanism), `recordHeartbeat`, `getActiveJobs`, and an
+> `ActiveJob` record that owns the age arithmetic — `age`, `sinceHeartbeat`,
+> `isStale` — so the scanner, the endpoint and the status tool cannot disagree
+> about whether a job is stuck. Persisted rather than in-memory because the
+> failure this exists to catch includes a controller restart with jobs in
+> flight; an in-memory heartbeat disappears in exactly that case.
+>
+> Heartbeats are written on **any** status event the controller already
+> receives, so liveness needed no agent-side change. `sinceHeartbeat` falls
+> back to the start time, which is what makes a job that died before its first
+> heartbeat detectable instead of permanently fresh.
+> `GET /api/workstreams/{id}/jobs/active` exposes the list, and
+> `workstream_get_status` carries `active_jobs` plus an `active_jobs_warning`
+> when something has been silent too long.
+>
+> **(c)** `StuckJobScanner` fails a job silent for more than twice the
+> wall-clock ceiling, firing the ordinary completion path so the dependent
+> chain is released. `scanOnce(Instant)` is separate from the timer so the
+> decision is testable without waiting on a schedule; termination is
+> idempotent; and a scan that throws is swallowed, because
+> `scheduleAtFixedRate` stops repeating after an uncaught exception and would
+> otherwise disable stall recovery permanently — reintroducing this item's own
+> failure mode one level up.
+>
+> The synthesized event goes through the new
+> `FlowTreeApiEndpoint.completeJob`, extracted from the status-event handler so
+> a scanner-generated failure travels the same notifier-and-fan-out path as a
+> real one. A synthesized completion that skipped the fan-out would record the
+> failure and still leave the chain blocked.
 
 ### What we found
 
@@ -688,9 +758,18 @@ together or in close succession.
 
 ## 6. Capability / permission state is not introspectable — REAL, DESIGN QUESTION
 
-> **OUTSTANDING.** Python-only and self-contained, so the cheapest of the five left.
-> Open question 3 — whether the tool is agent-callable read-only — still needs a
-> decision.
+> **DONE.** `workstream_introspect` reports both the controller flag and the
+> harness allowlist, and the dispatch denial now names it. Open question 3 is
+> resolved as **excluded from agents**: it is read-only, but its audience is an
+> operator diagnosing a denial, and an agent that hits one should report it
+> rather than investigate the harness layer itself.
+>
+> The plan anticipated the risk in duplicating the Java classification and asked
+> for a test that both sides agree. That is `McpToolClassificationParityTest`,
+> which reads the sets out of both source files — the Python side is written as
+> plain literals so it can be parsed — and fails naming the offending tool. A
+> report that disagreed with enforcement would be worse than no report, since it
+> is consulted exactly when something has been denied.
 
 ### What we found
 
@@ -1130,9 +1209,150 @@ Yes. Local to one function; no shared code.
 
 ---
 
+## 11. Slack naming leaks into the workspace identity API — REAL, OWNER-RAISED
+
+> **OUTSTANDING.** Added 2026-08-22. Surface cleanup, not a data migration —
+> see below.
+
+### What we found
+
+A workspace is a core concept: the operator's organisational unit, with its own
+operator-chosen id. Slack is one optional integration a workspace may have. The
+public surface does not say that. `slackWorkspaceId` appears 149 times across
+24 files, and a reader encountering it reasonably concludes that a workspace
+*is* a Slack workspace and that Slack is mandatory. It is not, and it should be
+possible to run a workspace with no Slack connection at all without the API
+implying otherwise.
+
+That a workspace currently maps one-to-one onto a Slack workspace is a fact
+about one deployment, not a definition. The mapping does not make Slack the
+source of truth for workspace identity.
+
+### The good news: the model is already right
+
+`Workstream` holds exactly one field — `workspaceId` (line 194) — and
+`toSummaryJson` emits `slackWorkspaceId` as a **duplicate of the same value**,
+labelled in the source as a legacy alias to be removed in a future release.
+There is no second identity, no migration, and no data to move. `slackTeamId`
+on the workspace entry is the genuine Slack-side identifier and is correctly
+named: that one *should* say Slack, because it is Slack's.
+
+So this is removing an alias and the parameters that mirror it, not
+restructuring anything.
+
+### Proposed design
+
+1. **Stop emitting the alias.** Drop `slackWorkspaceId` from `toSummaryJson`.
+   Any consumer reading it is reading a copy of `workspaceId`.
+2. **Retire the mirrored parameters.** `slack_workspace_id` on
+   `workstream_register` and `workspace_update_config` is a deprecated alias
+   for `workspace_id`. Reject it with a pointer to the real name, following the
+   precedent set for `max_memories` in Item 2 — a rejection that names the
+   right parameter teaches the caller once, where an alias creates a second
+   permanent name.
+3. **Fix the prose.** Docstrings and docs that describe workspaces in terms of
+   Slack should describe them in terms of workspaces, and mention Slack where
+   Slack is genuinely involved.
+4. **Leave `slackTeamId`, the `slack/` package and the notifier alone.** Those
+   are the Slack integration, correctly named.
+
+### Impact and effort
+
+| Component | Effort | Why |
+|---|---|---|
+| Drop the alias from `toSummaryJson` | XS | One line, plus the Java tests that assert it. |
+| Reject `slack_workspace_id` on the two tools | S | Same shape as the Item 2 rejections. |
+| Update tests that assert on the alias | M | The count is large but mechanical; most are fixtures naming the field. |
+| Prose pass | S | Docstrings and docs. |
+
+**Priority: P2.** No behaviour is wrong today; what is wrong is what the API
+teaches. That makes it worth doing and worth doing deliberately, rather than
+urgently.
+
+### Implemented
+
+Done as designed, with one addition the design did not anticipate.
+
+- `toSummaryJson` no longer emits `slackWorkspaceId`.
+- `slack_workspace_id` on `workstream_register` and `workspace_update_config`
+  is rejected with a pointer to `workspace_id`; the outbound payload no longer
+  carries the alias. The parameter stays *declared* deliberately — the MCP
+  schema layer drops undeclared keys silently, so removing it from the
+  signature would turn a caller's mistake into a silent success rather than a
+  correction.
+- The registration handler's 400 told the caller to "Supply slackWorkspaceId";
+  it now names `workspaceId`. `Unknown Slack workspace:` became
+  `Unknown workspace:`.
+- Prose pass over `AGENT_RUNNERS.md`, `RECIPES.md`, and the affected javadoc.
+- Kept, each for its own reason: the `@JsonAlias` on `WorkstreamConfig`
+  (on-disk YAML), the handler's body-alias read (unowned HTTP clients),
+  `workspace_map.py`'s read fallbacks (an older controller may still be the
+  peer), and everything named `slackTeamId`.
+
+The addition: rejecting a parameter breaks
+`WorkstreamConfigSchemaAlignmentTest`, which flags any typed parameter the
+Java handler reads but the Python payload does not forward — exactly what a
+rejection looks like from the outside. The guard now derives the set of
+rejected parameters from each tool's own body rather than carrying a list, so
+the same pattern in Item 2 and any future rejection is covered without
+another edit. Mutation-checked in both directions: dropping a genuinely
+forwarded key still fails, and removing a rejection re-arms the guard rather
+than disarming it.
+
+### Risk
+
+The alias is a published field. Dropping it is a breaking change for any
+consumer still reading it, so it wants a scan of known consumers first — the
+Python side is in this repository and easy to check; anything outside it is
+not. Retiring the *parameters* is lower risk, since a rejection is visible
+immediately rather than silently returning the wrong shape.
+
+---
+
 ## 10. Topic-diversity interlude — SPECULATIVE, OWNER-REQUESTED
 
-> **OUTSTANDING.** Deliberately last.
+> **DONE (interactive only).** `.claude/hooks/topic-interlude.sh` with its
+> stateless core at `.claude/hooks/lib/interlude_check.py` and its data at
+> `.claude/hooks/lib/poems.json`, following the shared-core pattern established
+> by the memory-reminder hook.
+>
+> Three open design points were settled by the owner (2026-08-23):
+>
+> **Fires on `PostToolUse`,** gated to boundaries in the core rather than by a
+> matcher: a `memory_store` (a checkpoint the agent takes when it has concluded
+> something) or a `git add` / `git commit` (work being handed over). Anything
+> that *starts* a test run, a build or a search is deliberately excluded — that
+> is the middle of a thought, and firing there would train an association
+> between the interlude and being interrupted. `PostToolUse` rather than
+> `PreToolUse` because the boundary is a unit of work landing, not one about to
+> be entered. Boundary matching reads only the leading command, so a search for
+> that command as a string is not mistaken for a handover.
+>
+> **The injected text asks for a response.** Reading is passive and can be
+> skimmed; producing a reply is what forces the change of register, and the
+> cheap read-only version was judged not worth building. Seven framings rotate
+> so no template forms, and a test asserts none of them asks for evaluation —
+> "what did you think of this" invites critique, which is the analytical mode
+> the interlude exists to interrupt.
+>
+> **Interactive sessions only for now.** The narrow-persona argument applies
+> hardest to long unattended runs, which is an argument for doing FlowTree
+> jobs first; the counter-argument that won is that nobody sees the response
+> there, so there is no way to tell whether it is working or has already
+> ritualised. Interactive first, then extend once there is something to judge.
+>
+> Cadence: a 45-minute floor so two boundaries in quick succession cannot
+> produce two poems; a 3-hour ceiling so a long session gets one rather than
+> leaving it to a coin that keeps coming up tails; a 0.25 roll in between.
+> Poems and framings rotate without replacement and restart rather than going
+> silent. Every firing is logged, which is what will make ritualisation visible.
+>
+> Twelve poems, all originally-English and published before 1929 — no
+> translations, since a translation carries its own copyright even when the
+> original is ancient. A test enforces the date and the attribution fields.
+> The data file is trivial to edit and needs no code change.
+>
+> **Still unvalidated**, exactly as this section said before it was built.
 
 ### What this is
 
@@ -1215,7 +1435,7 @@ than one that does not, and the intervention widens it.
 - Rotating framings for the response request, so no template forms.
 - Emits `additionalContext`; never blocks; failsafe to silence.
 
-### Portability (secondary priority)
+### Portability (secondary priority — still outstanding)
 
 For this to reach other repositories FlowTree operates on, the hook must
 not depend on anything in this one: no ar-manager call, no project layout,
@@ -1339,19 +1559,49 @@ non-issue, rather than invent work:
 ## Open questions for triage
 
 1. **Item 4 (b) — should REVIEW run after a hard primary fail?**
-   Currently it does. The minimal fix (a) keeps REVIEW but blocks
-   the COMMIT-MESSAGE fallback. A stronger fix (b) skips REVIEW
-   entirely. Both have operator consequences.
-2. **Item 5 (a) default cap.** 4 hours is a guess. Real fleet data
-   should inform the default. Keep it configurable per-workstream?
+   **ANSWERED (owner, 2026-08-22): keep running it.** Neither of the
+   two options as posed. The question assumed the choice was about
+   how bad the primary failure was; it is not. The rule is:
+
+   > Skip REVIEW only when the run has no prospect of pushing —
+   > because it does not intend to, or because it cannot (merge
+   > conflict, git failure). In every other case run it.
+
+   The reasoning is that review has been observed to *recover* runs
+   whose primary phase reported failure, so skipping it on the
+   strength of that report discards work that would have landed. What
+   makes review pointless is not a bad primary result but an
+   unpushable tree — there is nothing for the review to save.
+
+   Note this reframes item 4 (b) rather than choosing between its
+   options: the condition to test is push-viability, not failure
+   severity. Fix (a) — blocking the COMMIT-MESSAGE fallback from
+   committing a corrupted tree — is unaffected and still wanted.
+
+2. **Item 5 (a) default cap.** **ANSWERED (owner, 2026-08-22): six
+   hours, and configurable per workstream.** The per-workstream
+   override is the part that matters; the default only has to be safe
+   for the common case, and a run that legitimately exceeds six hours
+   can carry its own value. Fleet data would still be worth gathering
+   to refine it, but it is no longer blocking.
 3. **Item 6 — should the introspection tool be agent-callable in
    read-only form?** Right now it is in `EXCLUDED_AR_MANAGER_TOOLS`.
    An agent diagnosing its own permission denial could benefit from
    it. Counter-argument: agents should not need to know about the
    harness layer; the controller side is enough.
-4. **Item 1 pagination.** Defer unless real fleet exceeds the
-   practical size — but worth a one-line decision so the filter
-   parameters don't ship without pagination in a later re-design.
+4. **Item 1 pagination.** **ANSWERED (owner, 2026-08-22): defer.**
+   `limit`/`offset` is not shipping with the filters. The decision,
+   recorded so a later redesign is not surprised by it: at ~51
+   workstreams the full array is a rounding error next to the
+   `include_status` / `include_pull_request` reads, and the filters
+   are what actually bound the response. Revisit around ~200
+   workstreams, or sooner if a caller starts paging client-side.
+
+   The cost of deferring is known and accepted: adding pagination
+   later turns the bare JSON array into an envelope
+   (`{workstreams, total, offset}`), which is a breaking change for
+   every reader. Doing it now would spend that break on a problem
+   nobody has.
 
 ---
 

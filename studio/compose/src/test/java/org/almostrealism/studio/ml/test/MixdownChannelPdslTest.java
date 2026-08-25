@@ -184,46 +184,41 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 		int numPasses = totalSamples / SIGNAL_SIZE;
 
 		// Measure energy of each tone before and after filtering
-		double[] inLow = new double[totalSamples];
-		double[] inMid = new double[totalSamples];
-		double[] inHigh = new double[totalSamples];
-		double[] outLow = new double[totalSamples];
-		double[] outMid = new double[totalSamples];
-		double[] outHigh = new double[totalSamples];
+		PackedCollection inLow = new PackedCollection(totalSamples);
+		PackedCollection inMid = new PackedCollection(totalSamples);
+		PackedCollection inHigh = new PackedCollection(totalSamples);
+		PackedCollection outLow = new PackedCollection(totalSamples);
+		PackedCollection outMid = new PackedCollection(totalSamples);
+		PackedCollection outHigh = new PackedCollection(totalSamples);
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
 
 			// Low tone at 50 Hz (below HP cutoff — should be attenuated)
-			// Read each toArray() before the next forward() call to avoid buffer reuse aliasing.
+			// Copy each result before the next forward() call, which reuses the output.
 			PackedCollection lowInput = new PackedCollection(SIGNAL_SIZE);
 			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 50.0 / SAMPLE_RATE))
 					.into(lowInput.traverseEach()).evaluate();
-			double[] lo = lowInput.toArray(0, SIGNAL_SIZE);
-			double[] loOut = compiled.forward(lowInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
+			PackedCollection loOut = compiled.forward(lowInput.reshape(compiled.getInputShape()));
+			inLow.setFrom(offset, lowInput);
+			outLow.setFrom(offset, loOut);
 
 			// Mid tone at 1 kHz (in passband — should pass through near unity)
 			PackedCollection midInput = new PackedCollection(SIGNAL_SIZE);
 			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 1000.0 / SAMPLE_RATE))
 					.into(midInput.traverseEach()).evaluate();
-			double[] mi = midInput.toArray(0, SIGNAL_SIZE);
-			double[] miOut = compiled.forward(midInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
+			PackedCollection miOut = compiled.forward(midInput.reshape(compiled.getInputShape()));
+			inMid.setFrom(offset, midInput);
+			outMid.setFrom(offset, miOut);
 
 			// High tone at 14 kHz (above LP cutoff — should be attenuated)
 			PackedCollection highInput = new PackedCollection(SIGNAL_SIZE);
 			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 14000.0 / SAMPLE_RATE))
 					.into(highInput.traverseEach()).evaluate();
-			double[] hi = highInput.toArray(0, SIGNAL_SIZE);
-			double[] hiOut = compiled.forward(highInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
+			PackedCollection hiOut = compiled.forward(highInput.reshape(compiled.getInputShape()));
+			inHigh.setFrom(offset, highInput);
+			outHigh.setFrom(offset, hiOut);
 
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				inLow[offset + i] = lo[i];
-				outLow[offset + i] = loOut[i];
-				inMid[offset + i] = mi[i];
-				outMid[offset + i] = miOut[i];
-				inHigh[offset + i] = hi[i];
-				outHigh[offset + i] = hiOut[i];
-			}
 		}
 
 		// Skip FIR edge effects when computing energy
@@ -287,33 +282,27 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 
 		int totalSamples = SAMPLE_RATE;
 		int numPasses = totalSamples / SIGNAL_SIZE;
-		float[] mainSignal = new float[totalSamples];
-		float[] channelSignal = new float[totalSamples];
+		PackedCollection mainSignal = new PackedCollection(totalSamples);
+		PackedCollection channelSignal = new PackedCollection(totalSamples);
 
+		// Both models carry a delay ring between passes, so the two are advanced together
+		// pass by pass rather than one signal being rendered before the other.
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
 			PackedCollection input = new PackedCollection(SIGNAL_SIZE);
 			sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 440.0 / SAMPLE_RATE))
 					.into(input.traverseEach()).evaluate();
 
-			double[] mainOut = mainCompiled.forward(input.reshape(mainCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-			double[] chanOut = channelCompiled.forward(input.reshape(channelCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				mainSignal[offset + i] = (float) mainOut[i];
-				channelSignal[offset + i] = (float) chanOut[i];
-			}
+			mainSignal.setFrom(offset, mainCompiled.forward(input.reshape(mainCompiled.getInputShape()))
+					.range(shape(SIGNAL_SIZE)));
+			channelSignal.setFrom(offset, channelCompiled.forward(input.reshape(channelCompiled.getInputShape()))
+					.range(shape(SIGNAL_SIZE)));
 		}
 
 		// The wet delay path must contribute echo energy — outputs must differ
-		double diffEnergy = 0.0;
-		for (int i = 0; i < totalSamples; i++) {
-			double diff = channelSignal[i] - mainSignal[i];
-			diffEnergy += diff * diff;
-		}
 		Assert.assertTrue(
 				"mixdown_channel wet delay must add echo energy (diff from main-only must be > 0)",
-				diffEnergy > 0.0);
+				differenceEnergy(channelSignal, mainSignal) > 0.0);
 	}
 
 	/**
@@ -351,9 +340,9 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 
 		int totalSamples = SAMPLE_RATE;
 		int numPasses = totalSamples / SIGNAL_SIZE;
-		float[] drySignal = new float[totalSamples];
-		float[] mainSignal = new float[totalSamples];
-		float[] channelSignal = new float[totalSamples];
+		PackedCollection drySignal = new PackedCollection(totalSamples);
+		PackedCollection mainSignal = new PackedCollection(totalSamples);
+		PackedCollection channelSignal = new PackedCollection(totalSamples);
 
 		for (int pass = 0; pass < numPasses; pass++) {
 			int offset = pass * SIGNAL_SIZE;
@@ -363,15 +352,12 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 					.add(sin(integers(offset, offset + SIGNAL_SIZE).multiply(2.0 * Math.PI * 12000.0 / SAMPLE_RATE)).multiply(0.33))
 					.into(input.traverseEach()).evaluate();
 
-			double[] inArr = input.toArray(0, SIGNAL_SIZE);
-			double[] mainOut = mainCompiled.forward(input.reshape(mainCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-			double[] chanOut = channelCompiled.forward(input.reshape(channelCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
-
-			for (int i = 0; i < SIGNAL_SIZE; i++) {
-				drySignal[offset + i] = (float) inArr[i];
-				mainSignal[offset + i] = (float) mainOut[i];
-				channelSignal[offset + i] = (float) chanOut[i];
-			}
+			// Each result is copied before the next forward(), which reuses the output
+			drySignal.setFrom(offset, input);
+			mainSignal.setFrom(offset, mainCompiled
+					.forward(input.reshape(mainCompiled.getInputShape())).range(shape(SIGNAL_SIZE)));
+			channelSignal.setFrom(offset, channelCompiled
+					.forward(input.reshape(channelCompiled.getInputShape())).range(shape(SIGNAL_SIZE)));
 		}
 
 		PdslAudioDemoTest.writeDemoWav(new File(outputDir, "pdsl_mixdown_dry.wav"), drySignal, SAMPLE_RATE);
@@ -386,8 +372,8 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 				new File(outputDir, "pdsl_mixdown_channel.wav").length() > 0);
 
 		// Main path must attenuate the 12 kHz content (LP filter active)
-		double dryEnergy = energy(floatToDouble(drySignal), FILTER_ORDER);
-		double mainEnergy = energy(floatToDouble(mainSignal), FILTER_ORDER);
+		double dryEnergy = energy(drySignal, FILTER_ORDER);
+		double mainEnergy = energy(mainSignal, FILTER_ORDER);
 		Assert.assertTrue(
 				"mixdown_main LP filter must attenuate multitone signal containing 12 kHz: "
 						+ "dryEnergy=" + dryEnergy + " mainEnergy=" + mainEnergy,
