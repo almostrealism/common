@@ -84,7 +84,13 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td><td>Proxy a GET request to the GitHub API</td></tr>
  *   <tr><td>POST</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a POST request to the GitHub API</td></tr>
  *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PUT request to the GitHub API</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List registered workstreams. Filters: {@code workspaceId}, {@code repoUrl} (matched on repository identity, so SSH and HTTPS spellings of one repository are equivalent), {@code dispatchCapable} ({@code true}/{@code false}), {@code archived} ({@code true}/{@code false}; supersedes {@code includeArchived}, the older coarser parameter, which is still honoured when {@code archived} is absent). An empty query value counts as absent. Enrichments: {@code includeStatus} (adds {@code lastJobId}, {@code lastJobStatus}, {@code lastJobAt}), {@code includePullRequest} (adds {@code pullRequest}); both default to off</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List registered workstreams. Filters: {@code workspaceId},
+ *       {@code repoUrl} (matched on repository identity, so SSH and HTTPS spellings of one repository are equivalent),
+ *       {@code dispatchCapable} ({@code true}/{@code false}), {@code archived} ({@code true}/{@code false}; supersedes
+ *       {@code includeArchived}, the older coarser parameter, which is still honoured when {@code archived} is absent).
+ *       An empty query value counts as absent. Enrichments: {@code includeStatus} (adds {@code lastJobId},
+ *       {@code lastJobStatus}, {@code lastJobAt}), {@code includePullRequest} (adds {@code pullRequest}); both default
+ *       to off.</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td><td>List recent jobs for a workstream; optional {@code limit} query param</td></tr>
  *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td><td>Look up a specific job event by ID</td></tr>
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
@@ -97,6 +103,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  * @see SlackNotifier
  * @see FlowTreeController
  */
+// TODO(review): file is approaching the 1600-line checkstyle FileLength hard limit (currently ~1580); plan a split into focused collaborators before it crosses the limit.
 public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Default port for the API endpoint. */

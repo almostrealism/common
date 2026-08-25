@@ -80,7 +80,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
-| GET | `/api/workstreams` | -- | List registered workstreams with capabilities. Optional query filters: `workspaceId`, `repoUrl` (matched on repository identity — SSH and HTTPS spellings of one repository are equivalent), `dispatchCapable` (`true`/`false`), and `archived` (`true`/`false`, supersedes `includeArchived`). Optional enrichments: `includeStatus` (adds `lastJobId`, `lastJobStatus`, `lastJobAt`), `includePullRequest` (adds `pullRequest`). Both enrichments default to off; an empty query value counts as absent. |
+| GET | `/api/workstreams` | -- | List registered workstreams (see [Workstream listing filters](#workstream-listing-filters) below) |
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
 | POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
@@ -91,6 +91,15 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/health` | -- | Health check |
 | GET | `/api/stats` | -- | Weekly job statistics (query params: `workstream`, `period`) |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
+
+#### Workstream listing filters
+
+`GET /api/workstreams` accepts these optional query parameters:
+
+- **Filters:** `workspaceId`, `repoUrl` (matched on repository identity — SSH and HTTPS spellings of one repository are equivalent), `dispatchCapable` (`true`/`false`), and `archived` (`true`/`false`, supersedes `includeArchived`).
+- **Enrichments:** `includeStatus` (adds `lastJobId`, `lastJobStatus`, `lastJobAt`), `includePullRequest` (adds `pullRequest`).
+
+Both enrichments default to off. An empty query value counts as absent. The full Javadoc table is in `FlowTreeApiEndpoint.java`.
 
 When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-manager` HTTP MCP server reads this (forwarded to it by the controller) and the `send_message` tool POSTs messages to `{url}/messages`.
 
