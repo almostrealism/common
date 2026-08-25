@@ -305,6 +305,29 @@ public class PackedCollection extends MemoryDataAdapter
 		super.init();
 	}
 
+	/**
+	 * Returns the member of this collection at the given index.
+	 *
+	 * <p>This is how membership is expressed. Computing the same view by hand —
+	 * {@code range(shape(size), index * size)} — restates what this method already does,
+	 * and leaves the next reader verifying arithmetic to work out that a member is what
+	 * was meant. Prefer this, and do not wrap either form in a named accessor.</p>
+	 *
+	 * <p>The member is taken along the shape's traversal axis, so what counts as a member
+	 * depends on how this collection is traversed. A {@code [rows, columns]} collection
+	 * traverses axis 0 by default, where the single member is the whole collection; to
+	 * address its rows, traverse axis 1 first:</p>
+	 *
+	 * <pre>{@code collection.traverse(1).get(row)}</pre>
+	 *
+	 * <p>Indexing without that gives an offset past the end of the data and fails with
+	 * "Delegate offset is out of bounds" rather than silently returning the wrong view.
+	 * Where the collection is flat, reshape before traversing.</p>
+	 *
+	 * @param index the zero-based index of the desired member
+	 * @return a view of this collection covering that member
+	 * @see #range(TraversalPolicy, int)
+	 */
 	@Override
 	public PackedCollection get(int index) {
 		if (shape.getTraversalAxis() == 1 && supply != null) {
@@ -634,6 +657,9 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * Returns a sub-collection view starting at position 0 with the given shape.
 	 *
+	 * <p>For one member of this collection, use {@link #get(int)} rather than this —
+	 * see the note there on when a range is the wrong call.</p>
+	 *
 	 * @param shape the shape of the desired sub-collection
 	 * @return a view backed by this collection
 	 */
@@ -644,10 +670,25 @@ public class PackedCollection extends MemoryDataAdapter
 	/**
 	 * Returns a sub-collection view with the given shape starting at the specified element offset.
 	 *
+	 * <p><strong>This is not how you ask for a member.</strong> An offset of
+	 * {@code index * size} against a shape of {@code size} is this collection's own
+	 * membership, computed by hand; {@link #get(int)} already expresses it, and does so
+	 * without the reader having to check the arithmetic. If {@code get} does not give
+	 * the member because this collection is flat, the shape is what is wrong — reshape,
+	 * then index. Never wrap either form in a named accessor: a private
+	 * {@code columnAt(int)} or {@code rowOf(int)} introduces a second, class-local
+	 * vocabulary for something the collection type already says.</p>
+	 *
+	 * <p>Use this method for regions that are genuinely not members: a prefix or suffix
+	 * of one, a sliding window, or a placement offset that has nothing to do with member
+	 * boundaries. The tell is the offset — a multiple of the member size is membership,
+	 * anything else is a range.</p>
+	 *
 	 * @param shape the shape of the desired sub-collection
 	 * @param start the element offset within this collection
 	 * @return a view backed by this collection
 	 * @throws IllegalArgumentException if the range exceeds the collection size
+	 * @see #get(int)
 	 */
 	public PackedCollection range(TraversalPolicy shape, int start) {
 		int required = shape.getOrder() == null ? shape.getTotalInputSize() :

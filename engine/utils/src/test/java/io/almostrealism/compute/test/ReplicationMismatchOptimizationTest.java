@@ -210,7 +210,7 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 
 		PackedCollection coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		PackedCollection expected = referenceConvolve(signal, coeffs);
-		assertConvolutionEquals(expected, result, signalSize);
+		assertEquals(expected, result);
 	}
 
 	/**
@@ -237,6 +237,6 @@ public class ReplicationMismatchOptimizationTest extends TestSuiteBase implement
 
 		PackedCollection coeffs = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		PackedCollection expected = referenceConvolve(signal, coeffs);
-		assertConvolutionEquals(expected, result, signalSize);
+		assertEquals(expected, result);
 	}
 }

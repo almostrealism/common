@@ -306,6 +306,19 @@ PackedCollection block = data.range(new TraversalPolicy(5, 4), 0);
 The returned collection shares memory with the original. Writes to the view
 modify the original data, and vice versa.
 
+`range()` is for regions that are not members of the collection — a prefix, a
+sliding window, a placement offset. For one member, ask the collection:
+
+```java
+PackedCollection rows = data.reshape(new TraversalPolicy(10, 10)).traverse(1);
+PackedCollection row = rows.get(3);          // not data.range(shape(10), 30)
+```
+
+`data.range(shape(10), i * 10)` computes by hand the offset `get` already knows, and
+obliges the reader to check the arithmetic to see that a member was intended. Members
+are taken along the traversal axis, so a two-dimensional collection needs `traverse(1)`
+before `get` addresses its rows. Do not wrap either call in a named accessor.
+
 ### Repeating
 
 ```java

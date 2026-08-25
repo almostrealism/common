@@ -116,8 +116,10 @@ class SurefireReports:
             modified_since: When set, only reports written at or after this
                 time are copied, which is how a run avoids adopting the stale
                 reports a previous run left in the module's target directory.
-                Repeated invocations pass ``None`` because Maven overwrites
-                every report on each pass.
+                Maven overwrites the report for a class it actually runs but
+                leaves every other report in place, so a repeated invocation
+                needs the same filter as the run does — against its own start
+                rather than the run's — or it counts classes it never ran.
 
         A report that cannot be read or copied is skipped: partial results are
         more useful than none, and the run's own exit code is the authority on

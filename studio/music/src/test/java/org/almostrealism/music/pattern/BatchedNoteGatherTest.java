@@ -128,15 +128,22 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 		PackedCollection[][] layerEnvParams = new PackedCollection[LAYERS][8];
 		for (int l = 0; l < LAYERS; l++) {
 			sources[l] = in.getSources()[l];
-			double ratio = in.getRatios()[l];
+			double ratio = in.getScalar(BatchedNoteInputs.ratioIndex(l));
 			ratios[l] = pack(ratio);
 			for (int p = 0; p < 8; p++) {
-				double param = in.getLayerParams()[l][p];
+				double param = in.getScalar(BatchedNoteInputs.layerEnvIndex(l, p));
 				layerEnvParams[l][p] = pack(param);
 			}
 		}
-		PackedCollection[] filterAdsr = scalarColumns(in.getFilterAdsr());
-		PackedCollection[] volumeAdsr = scalarColumns(in.getVolumeAdsr());
+
+		PackedCollection[] filterAdsr = new PackedCollection[5];
+		PackedCollection[] volumeAdsr = new PackedCollection[5];
+		for (int p = 0; p < 5; p++) {
+			double filter = in.getScalar(BatchedNoteInputs.filterAdsrIndex(p));
+			double volume = in.getScalar(BatchedNoteInputs.volumeAdsrIndex(p));
+			filterAdsr[p] = pack(filter);
+			volumeAdsr[p] = pack(volume);
+		}
 
 		PackedCollection out = renderer.buildBatchedSssChainPlacedFromScalars(
 				sources, ratios, layerEnvParams, filterAdsr, volumeAdsr,
@@ -149,7 +156,8 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 
 		PackedCollection mergedColl = new PackedCollection(TARGET_LENGTH);
 		for (int l = 0; l < LAYERS; l++) {
-			PackedCollection resampled = renderer.buildResampleProducer(in.getSources()[l], in.getRatios()[l])
+			PackedCollection resampled = renderer.buildResampleProducer(in.getSources()[l],
+							in.getScalar(BatchedNoteInputs.ratioIndex(l)))
 					.get().evaluate();
 			ParameterizedLayerEnvelope.Filter lf =
 					(ParameterizedLayerEnvelope.Filter) ((PatternNoteLayer) inner.getLayers().get(l)).getFilter();
@@ -185,15 +193,6 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 				rms < 1e-3);
 	}
 
-	/** Splits a per-note ADSR array into one single-element collection per parameter. */
-	private PackedCollection[] scalarColumns(double[] adsr) {
-		PackedCollection[] cols = new PackedCollection[adsr.length];
-		for (int i = 0; i < adsr.length; i++) {
-			double value = adsr[i];
-			cols[i] = pack(value);
-		}
-		return cols;
-	}
 
 	/** Wraps a {@link PackedCollection} audio sample as a {@link NoteAudioProvider} tuned to C1. */
 	private NoteAudioProvider provider(PackedCollection sampleData) {

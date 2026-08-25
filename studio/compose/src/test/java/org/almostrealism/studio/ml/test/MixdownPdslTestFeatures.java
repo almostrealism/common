@@ -21,6 +21,7 @@ import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.FirFilterTestFeatures;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -32,9 +33,11 @@ import java.util.Map;
  * ({@link MixdownManagerPdslVerificationTest}) and the performance suite
  * ({@link MixdownLayerPerformanceTest}) so the two exercise identical layer
  * configurations. Extends {@link CellFeatures} so patterned fixture constants are
- * produced on the device (producer assignments) rather than staged in host arrays.
+ * produced on the device (producer assignments) rather than staged in host arrays, and
+ * {@link FirFilterTestFeatures} so the signal measurements those tests make are the
+ * shared ones rather than sums accumulated over a read-back result.
  */
-interface MixdownPdslTestFeatures extends CellFeatures {
+interface MixdownPdslTestFeatures extends CellFeatures, FirFilterTestFeatures {
 
 	/** Sample rate used for layer construction. */
 	int SAMPLE_RATE = OutputLine.sampleRate;

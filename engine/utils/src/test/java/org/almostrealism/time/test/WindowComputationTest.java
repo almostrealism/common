@@ -21,9 +21,19 @@ import org.almostrealism.time.computations.WindowComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.function.Function;
+
 /**
  * Tests for {@link WindowComputation} window function generation.
  * Validates correctness against reference implementations.
+ *
+ * <p>Each reference is the window's defining formula expressed as a function of
+ * position, evaluated with the host's own trigonometry. The host formula is the point:
+ * building the expectation from the framework's own {@code cos()} and index arithmetic
+ * would check the implementation against itself. Keeping it a function rather than an
+ * array is equally deliberate — the expectation is worked out per position as it is
+ * needed and never becomes data, so no reference values are carried around to be
+ * compared element by element.</p>
  */
 public class WindowComputationTest extends TestSuiteBase {
 
@@ -31,69 +41,68 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	/**
 	 * Reference Hann window: w[n] = 0.5 * (1 - cos(2*PI * n / (N-1)))
+	 *
+	 * @param size the window length
+	 * @return the expected value at each position
 	 */
-	protected double[] referenceHann(int size) {
-		double[] window = new double[size];
-		for (int n = 0; n < size; n++) {
-			window[n] = 0.5 * (1.0 - Math.cos(2.0 * Math.PI * n / (size - 1)));
-		}
-		return window;
+	protected Function<int[], Double> referenceHann(int size) {
+		return pos -> 0.5 * (1.0 - Math.cos(2.0 * Math.PI * pos[0] / (size - 1)));
 	}
 
 	/**
 	 * Reference Hamming window: w[n] = 0.54 - 0.46 * cos(2*PI * n / (N-1))
+	 *
+	 * @param size the window length
+	 * @return the expected value at each position
 	 */
-	protected double[] referenceHamming(int size) {
-		double[] window = new double[size];
-		for (int n = 0; n < size; n++) {
-			window[n] = 0.54 - 0.46 * Math.cos(2.0 * Math.PI * n / (size - 1));
-		}
-		return window;
+	protected Function<int[], Double> referenceHamming(int size) {
+		return pos -> 0.54 - 0.46 * Math.cos(2.0 * Math.PI * pos[0] / (size - 1));
 	}
 
 	/**
 	 * Reference Blackman window: w[n] = 0.42 - 0.5 * cos(2*PI*n/(N-1)) + 0.08 * cos(4*PI*n/(N-1))
+	 *
+	 * @param size the window length
+	 * @return the expected value at each position
 	 */
-	protected double[] referenceBlackman(int size) {
-		double[] window = new double[size];
-		for (int n = 0; n < size; n++) {
-			double angle = 2.0 * Math.PI * n / (size - 1);
-			window[n] = 0.42 - 0.5 * Math.cos(angle) + 0.08 * Math.cos(2.0 * angle);
-		}
-		return window;
+	protected Function<int[], Double> referenceBlackman(int size) {
+		return pos -> {
+			double angle = 2.0 * Math.PI * pos[0] / (size - 1);
+			return 0.42 - 0.5 * Math.cos(angle) + 0.08 * Math.cos(2.0 * angle);
+		};
 	}
 
 	/**
 	 * Reference Bartlett window: w[n] = 1 - |2n/(N-1) - 1|
+	 *
+	 * @param size the window length
+	 * @return the expected value at each position
 	 */
-	protected double[] referenceBartlett(int size) {
-		double[] window = new double[size];
-		for (int n = 0; n < size; n++) {
-			window[n] = 1.0 - Math.abs(2.0 * n / (size - 1) - 1.0);
-		}
-		return window;
+	protected Function<int[], Double> referenceBartlett(int size) {
+		return pos -> 1.0 - Math.abs(2.0 * pos[0] / (size - 1) - 1.0);
 	}
 
 	/**
 	 * Reference Flat-top window with 5 terms.
+	 *
+	 * @param size the window length
+	 * @return the expected value at each position
 	 */
-	protected double[] referenceFlattop(int size) {
+	protected Function<int[], Double> referenceFlattop(int size) {
 		double a0 = 0.21557895;
 		double a1 = 0.41663158;
 		double a2 = 0.277263158;
 		double a3 = 0.083578947;
 		double a4 = 0.006947368;
 
-		double[] window = new double[size];
-		for (int n = 0; n < size; n++) {
-			double angle = 2.0 * Math.PI * n / (size - 1);
-			window[n] = a0
+		return pos -> {
+			double angle = 2.0 * Math.PI * pos[0] / (size - 1);
+			return a0
 					- a1 * Math.cos(angle)
 					+ a2 * Math.cos(2.0 * angle)
 					- a3 * Math.cos(3.0 * angle)
 					+ a4 * Math.cos(4.0 * angle);
-		}
-		return window;
+		};
 	}
 
 	// ==================== Hann Window Tests ====================
@@ -104,12 +113,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testHannWindowSmall() {
 		int size = 64;
-		double[] expected = referenceHann(size);
 		PackedCollection result = WindowComputation.hann(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceHann(size), result));
 	}
 
 	/**
@@ -118,12 +124,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testHannWindowMedium() {
 		int size = 512;
-		double[] expected = referenceHann(size);
 		PackedCollection result = hannWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceHann(size), result));
 	}
 
 	/**
@@ -132,12 +135,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testHannWindowLarge() {
 		int size = 2048;
-		double[] expected = referenceHann(size);
 		PackedCollection result = hannWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceHann(size), result));
 	}
 
 	/**
@@ -157,10 +157,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		double centerValue = window.toDouble(size / 2);
 		assertTrue("Center value should be close to 1.0 but was " + centerValue, centerValue > 0.99);
 
-		// Hann window should be symmetric
-		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
-		}
+		assertSymmetric(window);
 	}
 
 	// ==================== Hamming Window Tests ====================
@@ -171,12 +168,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testHammingWindowSmall() {
 		int size = 64;
-		double[] expected = referenceHamming(size);
 		PackedCollection result = hammingWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceHamming(size), result));
 	}
 
 	/**
@@ -185,12 +179,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testHammingWindowMedium() {
 		int size = 512;
-		double[] expected = referenceHamming(size);
 		PackedCollection result = hammingWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceHamming(size), result));
 	}
 
 	/**
@@ -209,10 +200,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		double centerValue = window.toDouble(size / 2);
 		assertTrue("Center value should be close to 1.0 but was " + centerValue, centerValue > 0.99);
 
-		// Hamming window should be symmetric
-		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
-		}
+		assertSymmetric(window);
 	}
 
 	// ==================== Blackman Window Tests ====================
@@ -223,12 +211,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testBlackmanWindowSmall() {
 		int size = 64;
-		double[] expected = referenceBlackman(size);
 		PackedCollection result = blackmanWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceBlackman(size), result));
 	}
 
 	/**
@@ -237,12 +222,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testBlackmanWindowMedium() {
 		int size = 512;
-		double[] expected = referenceBlackman(size);
 		PackedCollection result = blackmanWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceBlackman(size), result));
 	}
 
 	/**
@@ -261,10 +243,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		double centerValue = window.toDouble(size / 2);
 		assertTrue("Center value should be close to 1.0 but was " + centerValue, centerValue > 0.99);
 
-		// Blackman window should be symmetric
-		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
-		}
+		assertSymmetric(window);
 	}
 
 	// ==================== Bartlett Window Tests ====================
@@ -275,12 +254,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testBartlettWindowSmall() {
 		int size = 64;
-		double[] expected = referenceBartlett(size);
 		PackedCollection result = bartlettWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceBartlett(size), result));
 	}
 
 	/**
@@ -289,12 +265,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testBartlettWindowMedium() {
 		int size = 512;
-		double[] expected = referenceBartlett(size);
 		PackedCollection result = bartlettWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceBartlett(size), result));
 	}
 
 	/**
@@ -313,19 +286,15 @@ public class WindowComputationTest extends TestSuiteBase {
 		double centerValue = window.toDouble(size / 2);
 		assertTrue("Center value should be close to 1.0 but was " + centerValue, centerValue > 0.99);
 
-		// Bartlett window should be symmetric
-		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
-		}
+		assertSymmetric(window);
 
-		// Bartlett window should be linear (triangular)
-		// Check that first half is monotonically increasing
-		// (small epsilon tolerance for GPU floating-point precision)
-		for (int i = 1; i <= size / 2; i++) {
-			assertTrue("Expected monotonically increasing at index " + i +
-					" but " + window.toDouble(i) + " < " + window.toDouble(i - 1),
-					window.toDouble(i) >= window.toDouble(i - 1) - 1e-6);
-		}
+		// The rising half of the triangle must never step down; the smallest step across
+		// it settles that, with a small tolerance for floating-point precision.
+		int half = size / 2;
+		double smallestStep = -max(cp(window.range(shape(half), 0))
+				.subtract(cp(window.range(shape(half), 1)))).evaluate().toDouble(0);
+		assertTrue("Expected the first half to increase monotonically, but the smallest"
+				+ " step was " + smallestStep, smallestStep >= -1e-6);
 	}
 
 	// ==================== Flat-top Window Tests ====================
@@ -336,12 +305,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testFlattopWindowSmall() {
 		int size = 64;
-		double[] expected = referenceFlattop(size);
 		PackedCollection result = flattopWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceFlattop(size), result));
 	}
 
 	/**
@@ -350,12 +316,9 @@ public class WindowComputationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void testFlattopWindowMedium() {
 		int size = 512;
-		double[] expected = referenceFlattop(size);
 		PackedCollection result = flattopWindow(size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], result.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceFlattop(size), result));
 	}
 
 	/**
@@ -366,10 +329,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		int size = 256;
 		PackedCollection window = flattopWindow(size).get().evaluate();
 
-		// Flat-top window should be symmetric
-		for (int i = 0; i < size / 2; i++) {
-			assertEquals(window.toDouble(i), window.toDouble(size - 1 - i));
-		}
+		assertSymmetric(window);
 
 		// Flat-top window can have negative values at edges (unique property)
 		// Just check it's computed without error
@@ -390,9 +350,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection hannDirect = hannWindow(size).get().evaluate();
 		PackedCollection hannByType = window(WindowComputation.Type.HANN, size).get().evaluate();
 
-		for (int i = 0; i < size; i++) {
-			assertEquals(hannDirect.toDouble(i), hannByType.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(hannDirect, hannByType));
 	}
 
 	// ==================== Apply Window Tests ====================
@@ -412,10 +370,7 @@ public class WindowComputationTest extends TestSuiteBase {
 		PackedCollection windowed = applyWindow(cp(signal), WindowComputation.Type.HANN).get().evaluate();
 
 		// Result should equal the window coefficients since signal was all ones
-		double[] expected = referenceHann(size);
-		for (int i = 0; i < size; i++) {
-			assertEquals(expected[i], windowed.toDouble(i));
-		}
+		assertEquals(0.0, largestDeviation(shape(size), referenceHann(size), windowed));
 	}
 
 	/**

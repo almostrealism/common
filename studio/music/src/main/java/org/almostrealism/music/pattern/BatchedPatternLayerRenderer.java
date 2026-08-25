@@ -409,13 +409,6 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 		int startFrame = windowStart;
 		int targetLength = windowWidth;
 
-		double[][] ratios = new double[layers][bucketN];
-		double[][][] layerParams = new double[layers][8][bucketN];
-		double[][] filterAdsr = new double[5][bucketN];
-		double[][] volumeAdsr = new double[5][bucketN];
-		double[] destOffsets = new double[bucketN];
-		double[] samplingOffsets = new double[bucketN];
-
 		// A note beginning in this window is placed at its in-window offset and read
 		// from sample 0; a note continuing from an earlier window is placed at offset
 		// 0 and read (and enveloped) from its within-note position, so output frame k
@@ -437,17 +430,24 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 
 			long marshalStart = System.nanoTime();
 
+			// The renderer's scalar buffers are rows of one contiguous store, so the whole
+			// per-tick scalar set is assembled in this single column-major staging array and
+			// uploaded once rather than one upload per column.
+			double[] scalars = new double[renderer.getSssScalarColumns() * bucketN];
+
 			// Finite placeholder scalars for all rows; real rows overwrite below.
 			double[] layerDefaults = { PAD_DURATION, 0.3, 0.6, 1.0, 0.5, 0.5, 0.5, 0.5 };
 			double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
 			for (int row = 0; row < bucketN; row++) {
 				for (int l = 0; l < layers; l++) {
-					ratios[l][row] = 1.0;
-					for (int p = 0; p < 8; p++) layerParams[l][p][row] = layerDefaults[p];
+					scalars[renderer.sssRatioColumn(l) * bucketN + row] = 1.0;
+					for (int p = 0; p < 8; p++) {
+						scalars[renderer.sssLayerEnvColumn(l, p) * bucketN + row] = layerDefaults[p];
+					}
 				}
 				for (int p = 0; p < 5; p++) {
-					filterAdsr[p][row] = adsrDefaults[p];
-					volumeAdsr[p][row] = adsrDefaults[p];
+					scalars[renderer.sssFilterAdsrColumn(p) * bucketN + row] = adsrDefaults[p];
+					scalars[renderer.sssVolumeAdsrColumn(p) * bucketN + row] = adsrDefaults[p];
 				}
 			}
 
@@ -460,41 +460,38 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 			// command-buffer commit instead of forcing one synchronous host wait per layer.
 			PackedCollection[] boundSources = renderer.getSssSources();
 			renderer.clearSssSources();
+
+			// A note's scalar set is stored in this store's column order, so the whole set
+			// transfers in one pass rather than one walk per envelope structure. That holds
+			// only while both sides describe the same layer count.
+			if (renderer.getSssNoteScalarColumns() != BatchedNoteInputs.SCALARS) {
+				throw new IllegalStateException("Renderer expects "
+						+ renderer.getSssNoteScalarColumns()
+						+ " note-supplied scalar columns, but a note carries "
+						+ BatchedNoteInputs.SCALARS);
+			}
+
 			for (int row = 0; row < count; row++) {
 				BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 				for (int l = 0; l < layers; l++) {
 					PackedCollection src = in.getSources()[l];
 					copyRow(boundSources[l], row * sourceLength, src,
 							Math.min(src.getMemLength(), sourceLength));
-					ratios[l][row] = in.getRatios()[l];
-					for (int p = 0; p < 8; p++) layerParams[l][p][row] = in.getLayerParams()[l][p];
 				}
-				for (int p = 0; p < 5; p++) {
-					filterAdsr[p][row] = in.getFilterAdsr()[p];
-					volumeAdsr[p][row] = in.getVolumeAdsr()[p];
+
+				for (int c = 0; c < BatchedNoteInputs.SCALARS; c++) {
+					scalars[c * bucketN + row] = in.getScalar(c);
 				}
+
 				int noteStart = notes.get(row).getOffset();
-				destOffsets[row] = Math.max(0, noteStart - startFrame);
-				samplingOffsets[row] = Math.max(0, startFrame - noteStart);
+				scalars[renderer.sssDestOffsetColumn() * bucketN + row] =
+						Math.max(0, noteStart - startFrame);
+				scalars[renderer.sssSamplingOffsetColumn() * bucketN + row] =
+						Math.max(0, startFrame - noteStart);
 			}
 
-			// Write the assembled per-note scalar columns into the kernel's bound buffers.
-			PackedCollection[] boundRatios = renderer.getSssRatios();
-			PackedCollection[][] boundLayerEnv = renderer.getSssLayerEnv();
-			for (int l = 0; l < layers; l++) {
-				boundRatios[l].fill(ratios[l]);
-				for (int p = 0; p < 8; p++) {
-					boundLayerEnv[l][p].fill(layerParams[l][p]);
-				}
-			}
-			PackedCollection[] boundFilter = renderer.getSssFilterAdsr();
-			PackedCollection[] boundVolume = renderer.getSssVolumeAdsr();
-			for (int p = 0; p < 5; p++) {
-				boundFilter[p].fill(filterAdsr[p]);
-				boundVolume[p].fill(volumeAdsr[p]);
-			}
-			renderer.getSssDestOffsets().fill(destOffsets);
-			renderer.getSssSamplingOffsets().fill(samplingOffsets);
+			// One upload covers every bound scalar buffer, each being a row of this store.
+			renderer.getSssScalars().fill(scalars);
 
 			marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
@@ -531,11 +528,6 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 		int targetLength = windowWidth;
 		boolean wet = notes.get(0).getBatchedInputs().isWet();
 
-		double[][] ratios = new double[layers][bucketN];
-		double[][] volumeAdsr = wet ? new double[5][bucketN] : null;
-		double[] destOffsets = new double[bucketN];
-		double[] samplingOffsets = new double[bucketN];
-
 		int sourceLength = sourceLengthFor(notes, count, layers, startFrame, targetLength);
 
 		BatchedPatternRenderer renderer = rendererFor(bucketN, sourceLength, targetLength);
@@ -548,13 +540,20 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 
 			long marshalStart = System.nanoTime();
 
+			// One column-major staging array for the whole scalar set, as in dispatchWindow.
+			double[] scalars = new double[renderer.getPercScalarColumns() * bucketN];
+
 			// Finite placeholder scalars for all rows; real rows overwrite below. The dry
 			// voicing has no volume envelope, so its rows need no defaults.
 			double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
 			for (int row = 0; row < bucketN; row++) {
-				for (int l = 0; l < layers; l++) ratios[l][row] = 1.0;
+				for (int l = 0; l < layers; l++) {
+					scalars[renderer.percRatioColumn(l) * bucketN + row] = 1.0;
+				}
 				if (wet) {
-					for (int p = 0; p < 5; p++) volumeAdsr[p][row] = adsrDefaults[p];
+					for (int p = 0; p < 5; p++) {
+						scalars[renderer.percVolumeAdsrColumn(p) * bucketN + row] = adsrDefaults[p];
+					}
 				}
 			}
 
@@ -570,29 +569,27 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 					PackedCollection src = in.getSources()[l];
 					copyRow(boundSources[l], row * sourceLength, src,
 							Math.min(src.getMemLength(), sourceLength));
-					ratios[l][row] = in.getRatios()[l];
+					scalars[renderer.percRatioColumn(l) * bucketN + row]
+							= in.getScalar(BatchedNoteInputs.ratioIndex(l));
 				}
 				if (wet) {
-					for (int p = 0; p < 5; p++) volumeAdsr[p][row] = in.getVolumeAdsr()[p];
+					// Percussion carries no per-layer or filter envelope, so its bound store
+					// is a different (shorter) column order than the note's own scalar set;
+					// the two ranges it does share are mapped across explicitly.
+					for (int p = 0; p < 5; p++) {
+						scalars[renderer.percVolumeAdsrColumn(p) * bucketN + row]
+								= in.getScalar(BatchedNoteInputs.volumeAdsrIndex(p));
+					}
 				}
 				int noteStart = notes.get(row).getOffset();
-				destOffsets[row] = Math.max(0, noteStart - startFrame);
-				samplingOffsets[row] = Math.max(0, startFrame - noteStart);
+				scalars[renderer.percDestOffsetColumn() * bucketN + row] =
+						Math.max(0, noteStart - startFrame);
+				scalars[renderer.percSamplingOffsetColumn() * bucketN + row] =
+						Math.max(0, startFrame - noteStart);
 			}
 
-			// Write the assembled per-note scalar columns into the kernel's bound buffers.
-			PackedCollection[] boundRatios = renderer.getPercRatios();
-			for (int l = 0; l < layers; l++) {
-				boundRatios[l].fill(ratios[l]);
-			}
-			if (wet) {
-				PackedCollection[] boundVolume = renderer.getPercVolumeAdsr();
-				for (int p = 0; p < 5; p++) {
-					boundVolume[p].fill(volumeAdsr[p]);
-				}
-			}
-			renderer.getPercDestOffsets().fill(destOffsets);
-			renderer.getPercSamplingOffsets().fill(samplingOffsets);
+			// One upload covers every bound scalar buffer, each being a row of this store.
+			renderer.getPercScalars().fill(scalars);
 
 			marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
@@ -627,7 +624,8 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures {
 			int samplingOffset = Math.max(0, startFrame - notes.get(row).getOffset());
 			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
 			for (int l = 0; l < layers; l++) {
-				int read = (int) Math.ceil((samplingOffset + targetLength) * in.getRatios()[l]) + 1;
+				int read = (int) Math.ceil((samplingOffset + targetLength)
+						* in.getScalar(BatchedNoteInputs.ratioIndex(l))) + 1;
 				required = Math.max(required, read);
 			}
 		}

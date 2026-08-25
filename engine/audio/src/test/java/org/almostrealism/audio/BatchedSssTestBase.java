@@ -18,6 +18,7 @@ package org.almostrealism.audio;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
+import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 
 /**
@@ -28,9 +29,11 @@ import org.almostrealism.util.TestSuiteBase;
  * <p>The subclasses compare different routes through that workload — a batched
  * dispatch against a per-note reference, and a fused scalar-driven dispatch against
  * a pre-materialized one — so they must describe the same notes for the comparison
- * to mean anything.</p>
+ * to mean anything. Those comparisons are energies of a signal and of the difference
+ * between two, which is what {@link FirFilterTestFeatures} already measures.</p>
  */
-public abstract class BatchedSssTestBase extends TestSuiteBase implements TemporalFeatures {
+public abstract class BatchedSssTestBase extends TestSuiteBase
+		implements TemporalFeatures, FirFilterTestFeatures {
 
 	/** Number of notes active in the window. */
 	protected static final int N = 4;
