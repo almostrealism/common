@@ -34,6 +34,7 @@ import java.lang.ref.Reference;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -276,7 +277,7 @@ public class NativeExecution extends HardwareOperator {
 
 		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
 
-		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
 
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
@@ -293,7 +294,7 @@ public class NativeExecution extends HardwareOperator {
 					}
 				});
 			} finally {
-				KernelMemoryGuard.releaseFor(guard, data);
+				KernelMemoryGuard.releaseFor(guard);
 			}
 
 			Reference.reachabilityFence(data);
@@ -310,6 +311,11 @@ public class NativeExecution extends HardwareOperator {
 	 * finally blocks, and any workers that could not be submitted are counted down here &mdash;
 	 * so no waiter can hang on a failed dispatch.
 	 *
+	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
+	 * well as the ordinary one. Releasing it is what allows this dispatch's memory to be
+	 * freed, and a worker still inside the kernel would then be reading a block that has
+	 * gone.</p>
+	 *
 	 * @param data      the resolved kernel arguments
 	 * @param args      the original arguments (retained so backing memory stays reachable)
 	 * @param dependsOn the completion this dispatch is ordered after, or {@code null}
@@ -318,8 +324,8 @@ public class NativeExecution extends HardwareOperator {
 	 * @param p         the number of parallel worker tasks
 	 */
 	private void coordinate(MemoryData[] data, Object[] args, Semaphore dependsOn,
-							KernelMemoryGuard guard, DefaultLatchSemaphore latch, int p) {
-		int submitted = 0;
+							KernelMemoryGuard.Reservation guard, DefaultLatchSemaphore latch, int p) {
+		AtomicInteger submitted = new AtomicInteger();
 
 		try {
 			if (dependsOn != null) dependsOn.waitFor();
@@ -338,12 +344,12 @@ public class NativeExecution extends HardwareOperator {
 							latch.countDown();
 						}
 					});
+
+					submitted.incrementAndGet();
 				}
 
 				latch.waitFor();
 			});
-
-			submitted = p;
 
 			if (enableVerboseLog) {
 				log(getName() + " result0=" + data[0].toDouble(0));
@@ -351,14 +357,16 @@ public class NativeExecution extends HardwareOperator {
 		} catch (Exception e) {
 			warn(getName() + " dispatch failed", e);
 		} finally {
-			for (int i = submitted; i < p; i++) {
+			for (int i = submitted.get(); i < p; i++) {
 				latch.countDown();
 			}
 
-			KernelMemoryGuard.releaseFor(guard, data);
+			latch.waitFor();
+			KernelMemoryGuard.releaseFor(guard);
 		}
 
 		Reference.reachabilityFence(data);
 		Reference.reachabilityFence(args);
 	}
+
 }

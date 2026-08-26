@@ -231,7 +231,7 @@ public class CLOperator extends HardwareOperator {
 
 		MemoryData data[] = prepareArguments(argCount, args);
 
-		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
 		CLSemaphore semaphore[] = new CLSemaphore[1];
 
 		try {
@@ -295,7 +295,7 @@ public class CLOperator extends HardwareOperator {
 					// The memory guard is released only once the kernel has completed (the
 					// enqueue above is asynchronous), via the semaphore's processing callback.
 					semaphore[0] = new CLSemaphore(prog.getMetadata(), context, event, profile,
-							() -> KernelMemoryGuard.releaseFor(guard, data));
+							() -> KernelMemoryGuard.releaseFor(guard));
 
 					if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
 				} catch (CLException e) {
@@ -309,7 +309,7 @@ public class CLOperator extends HardwareOperator {
 			if (semaphore[0] == null) {
 				// The dispatch never published a completion (argument setup or the enqueue
 				// failed), so there is no kernel in flight and the guard is released here.
-				KernelMemoryGuard.releaseFor(guard, data);
+				KernelMemoryGuard.releaseFor(guard);
 			}
 		}
 

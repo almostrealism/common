@@ -43,7 +43,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-test-deception.sh",
-            "description": "Detect test-weakening transitions (TestDepth escalation, tolerance widening, dimension shrinkage) by comparing old vs new text — the in-session mirror of tools/ci/agent-protection/detect-test-hiding.sh"
+            "description": "Detect test-weakening transitions (TestDepth escalation, tolerance widening, dimension shrinkage) by comparing old vs new text \u2014 the in-session mirror of tools/ci/agent-protection/detect-test-hiding.sh"
           },
           {
             "type": "command",
@@ -63,7 +63,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-askuserquestion.sh",
-            "description": "Block the AskUserQuestion multiple-choice tool — broken in the current Claude Code version; ask in plain text instead"
+            "description": "Block the AskUserQuestion multiple-choice tool \u2014 broken in the current Claude Code version; ask in plain text instead"
           }
         ]
       },
@@ -73,7 +73,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/memory-reminder.sh",
-            "description": "Soft nudge the agent to call memory_store (or consultant remember) when a long stretch of work has happened without one — see docs/plans/MEMORY_REMINDER_HOOK.md"
+            "description": "Soft nudge the agent to call memory_store (or consultant remember) when a long stretch of work has happened without one \u2014 see docs/plans/MEMORY_REMINDER_HOOK.md"
           }
         ]
       },
@@ -83,7 +83,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-commit.sh",
-            "description": "Block git commit — agents stage only, humans commit"
+            "description": "Block git commit \u2014 agents stage only, humans commit"
           },
           {
             "type": "command",
@@ -93,7 +93,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-worktree.sh",
-            "description": "Block 'git worktree add' — all changes must stay in the single working tree the developer can see (read-only 'git worktree list' allowed)"
+            "description": "Block 'git worktree add' \u2014 all changes must stay in the single working tree the developer can see (read-only 'git worktree list' allowed)"
           },
           {
             "type": "command",
@@ -108,12 +108,12 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
-            "description": "Block bash manipulation of checkstyle configuration (checkstyle.xml, checkstyle-suppressions.xml, any /checkstyle/ dir, etc.) — abandon the task rather than tamper with enforcement"
+            "description": "Block bash manipulation of checkstyle configuration (checkstyle.xml, checkstyle-suppressions.xml, any /checkstyle/ dir, etc.) \u2014 abandon the task rather than tamper with enforcement"
           },
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/steer-ls-grep.sh",
-            "description": "Block simple `ls <path>` / `grep <pattern> <file>` — use the structured `glob` / `grep` tools instead (compound shell features are allowed through)"
+            "description": "Block simple `ls <path>` / `grep <pattern> <file>` \u2014 use the structured `glob` / `grep` tools instead (compound shell features are allowed through)"
           },
           {
             "type": "command",
@@ -163,7 +163,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
-            "description": "Block edits to checkstyle configuration — abandon the task rather than tamper with enforcement"
+            "description": "Block edits to checkstyle configuration \u2014 abandon the task rather than tamper with enforcement"
           },
           {
             "type": "command",
@@ -218,7 +218,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
-            "description": "Block MultiEdit of checkstyle configuration — abandon the task rather than tamper with enforcement"
+            "description": "Block MultiEdit of checkstyle configuration \u2014 abandon the task rather than tamper with enforcement"
           },
           {
             "type": "command",
@@ -248,7 +248,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
-            "description": "Block NotebookEdit of checkstyle configuration — abandon the task rather than tamper with enforcement"
+            "description": "Block NotebookEdit of checkstyle configuration \u2014 abandon the task rather than tamper with enforcement"
           },
           {
             "type": "command",
@@ -273,7 +273,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
-            "description": "Block writes of checkstyle configuration — abandon the task rather than tamper with enforcement"
+            "description": "Block writes of checkstyle configuration \u2014 abandon the task rather than tamper with enforcement"
           },
           {
             "type": "command",
@@ -323,7 +323,7 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\"",
-            "description": "Verdict on ~/.m2 artifact staleness before the test runner or build validator invokes Maven out-of-band — these MCP tools bypass the Bash hook, which is exactly how stale artifacts from a previous branch produced false local test results"
+            "description": "Verdict on ~/.m2 artifact staleness before the test runner or build validator invokes Maven out-of-band \u2014 these MCP tools bypass the Bash hook, which is exactly how stale artifacts from a previous branch produced false local test results"
           }
         ]
       },
@@ -333,12 +333,12 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-method-placement.py\"",
-            "description": "Remind the agent on EVERY new Java method it introduces: place it at the most general location where it makes sense (the generality ladder), with a sharper second tier when the method is static — the agent's trained-in first instinct is reliably procedural and short-termist"
+            "description": "Remind the agent on EVERY new Java method it introduces: place it at the most general location where it makes sense (the generality ladder), with a sharper second tier when the method is static \u2014 the agent's trained-in first instinct is reliably procedural and short-termist"
           },
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-interface-bypass.py\"",
-            "description": "Detect interface-contract bypass in Java edits: BLOCK new members that re-expose a concrete class the constructor adapts behind an interface (the getStemOutput pattern), warn on abstraction-level forks (getStemOutput beside getStem) and new instanceof checks against repo classes — an API that traffics in an interface must stay correct for every implementation"
+            "description": "Detect interface-contract bypass in Java edits: BLOCK new members that re-expose a concrete class the constructor adapts behind an interface (the getStemOutput pattern), warn on abstraction-level forks (getStemOutput beside getStem) and new instanceof checks against repo classes \u2014 an API that traffics in an interface must stay correct for every implementation"
           }
         ]
       },
@@ -380,7 +380,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-line-number-refs.sh",
-            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') — they go stale on the next edit"
+            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') \u2014 they go stale on the next edit"
           }
         ]
       },
@@ -400,7 +400,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-line-number-refs.sh",
-            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') — they go stale on the next edit"
+            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') \u2014 they go stale on the next edit"
           }
         ]
       },
@@ -410,7 +410,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-line-number-refs.sh",
-            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') — they go stale on the next edit"
+            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') \u2014 they go stale on the next edit"
           }
         ]
       },
@@ -421,6 +421,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-consultant-call.sh",
             "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/check-source-writes.sh",
+            "description": "Apply the inline-comment policy to source files a shell command changed, which the edit-scoped guards cannot see"
           }
         ]
       },

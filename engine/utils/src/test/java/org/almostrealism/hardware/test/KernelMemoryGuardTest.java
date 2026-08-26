@@ -52,11 +52,11 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		Assert.assertTrue("Should be deallocatable before acquire",
 				guard.canDeallocate(1000L));
 
-		guard.acquire(data);
+		KernelMemoryGuard.Reservation held = guard.acquire(data);
 		Assert.assertFalse("Should not be deallocatable after acquire",
 				guard.canDeallocate(1000L));
 
-		guard.release(data);
+		guard.release(held);
 		Assert.assertTrue("Should be deallocatable after release",
 				guard.canDeallocate(1000L));
 	}
@@ -70,19 +70,19 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		MemoryData data = stubMemoryData(2000L);
 
-		guard.acquire(data);
-		guard.acquire(data);
-		guard.acquire(data);
+		KernelMemoryGuard.Reservation first = guard.acquire(data);
+		KernelMemoryGuard.Reservation second = guard.acquire(data);
+		KernelMemoryGuard.Reservation third = guard.acquire(data);
 
-		guard.release(data);
+		guard.release(first);
 		Assert.assertFalse("Should not be deallocatable with 2 refs remaining",
 				guard.canDeallocate(2000L));
 
-		guard.release(data);
+		guard.release(second);
 		Assert.assertFalse("Should not be deallocatable with 1 ref remaining",
 				guard.canDeallocate(2000L));
 
-		guard.release(data);
+		guard.release(third);
 		Assert.assertTrue("Should be deallocatable after all releases",
 				guard.canDeallocate(2000L));
 	}
@@ -96,16 +96,16 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		MemoryData dataA = stubMemoryData(100L);
 		MemoryData dataB = stubMemoryData(200L);
 
-		guard.acquire(dataA);
-		guard.acquire(dataB);
+		KernelMemoryGuard.Reservation heldA = guard.acquire(dataA);
+		KernelMemoryGuard.Reservation heldB = guard.acquire(dataB);
 
-		guard.release(dataA);
+		guard.release(heldA);
 		Assert.assertTrue("Address A should be deallocatable",
 				guard.canDeallocate(100L));
 		Assert.assertFalse("Address B should still be guarded",
 				guard.canDeallocate(200L));
 
-		guard.release(dataB);
+		guard.release(heldB);
 		Assert.assertTrue("Address B should now be deallocatable",
 				guard.canDeallocate(200L));
 	}
@@ -116,8 +116,8 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	@Test(timeout = 10_000)
 	public void nullArgsArrayIsNoOp() {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
-		guard.acquire((MemoryData[]) null);
-		guard.release((MemoryData[]) null);
+		guard.release(guard.acquire((MemoryData[]) null));
+		guard.release(null);
 	}
 
 	/**
@@ -128,11 +128,11 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		MemoryData data = stubMemoryData(300L);
 
-		guard.acquire(null, data, null);
+		KernelMemoryGuard.Reservation held = guard.acquire(null, data, null);
 		Assert.assertFalse("Address should be guarded",
 				guard.canDeallocate(300L));
 
-		guard.release(null, data, null);
+		guard.release(held);
 		Assert.assertTrue("Address should be deallocatable",
 				guard.canDeallocate(300L));
 	}
@@ -146,8 +146,7 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		NoOpMemoryData noOp = new NoOpMemoryData();
 
-		guard.acquire(noOp);
-		guard.release(noOp);
+		guard.release(guard.acquire(noOp));
 	}
 
 	/**
@@ -159,7 +158,7 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		MemoryData data = new StubMemoryData(new NonRamMemory());
 
-		guard.acquire(data);
+		guard.release(guard.acquire(data));
 		// No addresses should be tracked
 		Assert.assertTrue("Unknown address should be deallocatable",
 				guard.canDeallocate(999L));
@@ -173,9 +172,12 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		MemoryData data = stubMemoryData(400L);
 
-		guard.release(data);
+		guard.release(guard.acquire());
+		guard.release(null);
+
 		Assert.assertTrue("Address should be deallocatable",
 				guard.canDeallocate(400L));
+		Assert.assertNotNull(data);
 	}
 
 	/**
@@ -199,34 +201,38 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		MemoryData failing = new FailingMemoryData();
 
-		guard.acquire(failing);
-		guard.release(failing);
+		guard.release(guard.acquire(failing));
 	}
 
 	/**
-	 * Documents a known limitation: if resolveRAM returns null during release
-	 * (e.g., MemoryData was explicitly destroyed between acquire and release),
-	 * the reference count is not decremented and the map entry leaks.
+	 * Memory destroyed while a kernel is running is still given back.
 	 *
-	 * <p>This test verifies the current behavior (leak) so that a future fix
-	 * can be validated by changing the assertion.</p>
+	 * <p>This used to leak, and was documented as a known limitation: release
+	 * asked the argument which address it had used, and an argument whose
+	 * memory has been cleared can no longer answer, so the count stayed up and
+	 * the address was reported as in use for the life of the process. Rendering
+	 * destroys its intermediates as a matter of course, so this was not a
+	 * corner case — it left hundreds of addresses permanently marked in use,
+	 * and anything that trusted that verdict was misled by it.</p>
+	 *
+	 * <p>What was taken is now recorded when it is taken, so giving it back
+	 * does not depend on the argument still being able to describe itself.</p>
 	 */
 	@Test(timeout = 10_000)
-	public void releaseWithNullResolveRAMLeaksEntry() {
+	public void memoryDestroyedDuringAKernelIsStillReleased() {
 		KernelMemoryGuard guard = new KernelMemoryGuard();
 		MutableMemoryData data = new MutableMemoryData(new StubRAM(700L));
 
-		guard.acquire(data);
+		KernelMemoryGuard.Reservation held = guard.acquire(data);
 		Assert.assertFalse("Should be guarded after acquire",
 				guard.canDeallocate(700L));
 
 		// Simulate MemoryData.destroy() clearing the memory reference
 		data.clearMem();
 
-		guard.release(data);
-		// Known limitation: the entry leaks because resolveRAM returns null
-		Assert.assertFalse("Entry leaks when resolveRAM returns null during release "
-				+ "(known limitation: the guard cannot reclaim an entry whose backing RAM was already cleared)",
+		guard.release(held);
+		Assert.assertTrue("The count must come back down even though the argument"
+						+ " can no longer say which address it used",
 				guard.canDeallocate(700L));
 	}
 
@@ -239,10 +245,10 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	public void staticHelpersWithNoHardware() {
 		MemoryData data = stubMemoryData(500L);
 
-		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(new MemoryData[]{ data });
+		KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(new MemoryData[]{ data });
 		// In test environment without Hardware initialized, guard may be null
 		// Either way, releaseFor should not throw
-		KernelMemoryGuard.releaseFor(guard, new MemoryData[]{ data });
+		KernelMemoryGuard.releaseFor(guard);
 	}
 
 	/**
@@ -264,8 +270,7 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 				try {
 					barrier.await();
 					for (int i = 0; i < iterations; i++) {
-						guard.acquire(data);
-						guard.release(data);
+						guard.release(guard.acquire(data));
 					}
 				} catch (Exception e) {
 					errors.incrementAndGet();

@@ -22,7 +22,9 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -39,21 +41,30 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <h2>Usage Pattern</h2>
  *
  * <p>Kernel execution backends use the static {@link #acquireFor(MemoryData[])}
- * and {@link #releaseFor(KernelMemoryGuard, MemoryData[])} methods to bracket
- * kernel dispatch:</p>
+ * and {@link #releaseFor(Reservation)} methods to bracket kernel dispatch. What
+ * acquiring returns is what releasing takes: the arguments are not consulted
+ * again, because by then they may no longer name the memory they used.</p>
  *
  * <pre>{@code
- * KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+ * KernelMemoryGuard.Reservation guard = KernelMemoryGuard.acquireFor(data);
  * try {
  *     // dispatch kernel...
  * } finally {
- *     KernelMemoryGuard.releaseFor(guard, data);
+ *     KernelMemoryGuard.releaseFor(guard);
  * }
  * }</pre>
  *
- * <p>The deallocation pipeline in {@link HardwareMemoryProvider} checks
- * {@link #canDeallocate(long)} before freeing native memory. If the address
- * is guarded, the deallocation is deferred.</p>
+ * <p>The deallocation pipeline in {@link HardwareMemoryProvider} consults
+ * {@link #canDeallocate(long)} before freeing native memory, and holds the
+ * release back while a kernel is still using the block. That verdict is only
+ * worth acting on because the counts below are given back reliably — an
+ * earlier attempt to act on them, made while they still leaked, waited for
+ * something that never came and exhausted memory instead.</p>
+ *
+ * <p>Guarding only covers memory the guard can resolve to a {@link RAM}. An
+ * argument it cannot resolve is reported when the kernel takes it, because
+ * nothing later can report it: every check downstream is keyed by the address
+ * that resolution would have produced.</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -83,22 +94,74 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	}
 
 	/**
+	 * What one kernel execution took, and must give back.
+	 *
+	 * <p>Holds the addresses that were counted, rather than the arguments they
+	 * came from. An argument is not a reliable way to find its own memory again
+	 * later: it may be destroyed while the kernel runs, and then it can name no
+	 * address at all. Recording the addresses is what makes giving them back
+	 * independent of what becomes of the arguments.</p>
+	 *
+	 * <p>The memory itself is held too, so that nothing counted here can be
+	 * collected while the kernel is still reading it.</p>
+	 */
+	public static final class Reservation {
+		/** The guard the addresses were counted against. */
+		private final KernelMemoryGuard guard;
+
+		/** The addresses counted, one entry per argument that had one. */
+		private final List<Long> addresses;
+
+		/** The memory behind those addresses, held so it cannot be collected. */
+		private final List<RAM> held;
+
+		/** Creates an empty reservation against the given guard. */
+		private Reservation(KernelMemoryGuard guard) {
+			this.guard = guard;
+			this.addresses = new ArrayList<>();
+			this.held = new ArrayList<>();
+		}
+
+		/**
+		 * Notes that one more count was taken against the given address.
+		 *
+		 * @param address the address counted
+		 * @param ram     the memory behind it, held until release
+		 */
+		private void record(long address, RAM ram) {
+			addresses.add(address);
+			held.add(ram);
+		}
+	}
+
+	/**
 	 * Registers all memory arguments as actively used by a kernel execution.
 	 *
 	 * <p>For each non-null argument with a resolvable {@link RAM} backing,
 	 * increments the reference count for the native address and holds a strong
 	 * reference to the {@link RAM} object to prevent garbage collection.</p>
 	 *
+	 * <p>An argument that cannot be resolved is reported rather than passed
+	 * over: every check downstream is keyed by the address this would have
+	 * produced, so nothing later can report it either.</p>
+	 *
 	 * @param args the kernel memory arguments (may contain nulls)
+	 * @return what was taken, to be handed to {@link #release(Reservation)}
 	 */
-	public void acquire(MemoryData... args) {
-		if (args == null) return;
+	public Reservation acquire(MemoryData... args) {
+		Reservation reservation = new Reservation(this);
+		if (args == null) return reservation;
 
 		for (MemoryData arg : args) {
 			if (arg == null) continue;
 
 			RAM ram = resolveRAM(arg);
-			if (ram == null) continue;
+			if (ram == null) {
+				warn("Kernel argument " + arg.getClass().getSimpleName() +
+						" has no resolvable memory and cannot be guarded; a" +
+						" kernel using it will not be protected from release");
+				continue;
+			}
 
 			long address = ram.getContentPointer();
 
@@ -111,29 +174,32 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 			heldMemory.computeIfAbsent(address,
 					k -> Collections.newSetFromMap(new ConcurrentHashMap<>()))
 					.add(ram);
+
+			reservation.record(address, ram);
 		}
+
+		return reservation;
 	}
 
 	/**
-	 * Releases all memory arguments after kernel execution completes.
+	 * Gives back what a kernel execution took.
 	 *
-	 * <p>For each non-null argument with a resolvable {@link RAM} backing,
-	 * atomically decrements the reference count. When the count reaches zero,
-	 * removes the address from both tracking maps.</p>
+	 * <p>Decrements each address the matching {@link #acquire} recorded, and
+	 * forgets an address once nothing is left holding it.</p>
 	 *
-	 * @param args the kernel memory arguments (may contain nulls)
+	 * <p>The addresses come from the reservation rather than from the arguments
+	 * because by now the arguments may name nothing: memory destroyed while the
+	 * kernel ran leaves an argument that can no longer say which address it
+	 * used, and a count that is never given back marks that address as in use
+	 * for the life of the process. That is not hypothetical — rendering
+	 * destroys its intermediates as a matter of course.</p>
+	 *
+	 * @param reservation what {@link #acquire} returned, or {@code null}
 	 */
-	public void release(MemoryData... args) {
-		if (args == null) return;
+	public void release(Reservation reservation) {
+		if (reservation == null) return;
 
-		for (MemoryData arg : args) {
-			if (arg == null) continue;
-
-			RAM ram = resolveRAM(arg);
-			if (ram == null) continue;
-
-			long address = ram.getContentPointer();
-
+		for (long address : reservation.addresses) {
 			activeReferences.computeIfPresent(address, (k, count) -> {
 				int remaining = count.decrementAndGet();
 				if (remaining <= 0) {
@@ -162,21 +228,21 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	/**
 	 * Acquires the guard for the given memory data from the local {@link Hardware}.
 	 *
-	 * <p>Returns the guard instance if acquisition succeeds, or {@code null} if
-	 * no hardware or guard is available, or if acquisition fails for any reason.
-	 * Guard failures are silently absorbed to avoid disrupting kernel execution.</p>
+	 * <p>Returns what was taken, to be handed back to
+	 * {@link #releaseFor(Reservation)}, or {@code null} if no hardware or guard
+	 * is available, or if acquisition fails for any reason. Guard failures are
+	 * silently absorbed to avoid disrupting kernel execution.</p>
 	 *
 	 * @param data the kernel memory arguments
-	 * @return the guard instance, or {@code null}
+	 * @return the reservation, or {@code null}
 	 */
-	public static KernelMemoryGuard acquireFor(MemoryData[] data) {
+	public static Reservation acquireFor(MemoryData[] data) {
 		try {
 			Hardware hw = Hardware.getLocalHardware();
 			if (hw != null) {
 				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
 				if (guard != null) {
-					guard.acquire(data);
-					return guard;
+					return guard.acquire(data);
 				}
 			}
 		} catch (Exception e) {
@@ -186,18 +252,17 @@ public class KernelMemoryGuard implements ConsoleFeatures {
 	}
 
 	/**
-	 * Releases the guard for the given memory data.
+	 * Gives back what {@link #acquireFor(MemoryData[])} took.
 	 *
-	 * <p>No-op if the guard is {@code null}. Release failures are silently
-	 * absorbed to avoid disrupting kernel return.</p>
+	 * <p>No-op if the reservation is {@code null}. Release failures are
+	 * silently absorbed to avoid disrupting kernel return.</p>
 	 *
-	 * @param guard the guard to release, or {@code null}
-	 * @param data the kernel memory arguments
+	 * @param reservation what was acquired, or {@code null}
 	 */
-	public static void releaseFor(KernelMemoryGuard guard, MemoryData[] data) {
-		if (guard == null) return;
+	public static void releaseFor(Reservation reservation) {
+		if (reservation == null) return;
 		try {
-			guard.release(data);
+			reservation.guard.release(reservation);
 		} catch (Exception e) {
 			// Guard failures must not prevent returning
 		}
