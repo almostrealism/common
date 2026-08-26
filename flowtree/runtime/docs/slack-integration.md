@@ -81,6 +81,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
 | GET | `/api/workstreams` | -- | List registered workstreams (see [Workstream listing filters](#workstream-listing-filters) below) |
+| GET | `/api/workstreams/{id}/jobs/active` | -- | List jobs still recorded as running for a workstream; each entry carries `jobId`, `workstreamId`, `startedAt`, `heartbeatAt`, `ageSeconds`, `sinceHeartbeatSeconds`, and `description` (see Javadoc on `FlowTreeApiEndpoint`) |
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
 | POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
@@ -166,6 +167,8 @@ HSQLDB-backed storage for job timing data and statistics. Records job start/comp
 - Database path: `~/.flowtree/stats` (HSQLDB file database)
 - Automatically cleans orphaned STARTED rows older than 7 days on initialization
 - Initialized and wired by `FlowTreeController` at startup
+- Tracks a `heartbeat_at` timestamp per job, written on every status event the controller already receives, so a job whose subprocess has died without posting a terminal status can still be distinguished from one that is running. `StuckJobScanner` consumes the heartbeat column to fail jobs silent for more than twice the workstream's wall-clock ceiling; the result flows through the same completion path as a real failure
+- `getActiveJobs(workstreamId)` returns the `ActiveJob` records (id, workstream, started-at, last heartbeat, description) the `GET /api/workstreams/{id}/jobs/active` endpoint exposes
 
 ### SlackListener
 

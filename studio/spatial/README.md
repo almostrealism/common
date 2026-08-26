@@ -125,13 +125,16 @@ hub.pause();
 audio-scene genetic algorithm. It takes an `AudioScene` (cloned — the
 caller's original is untouched), wires the optimizer's
 `healthListener`, `cycleListener`, and `completionListener` to its own
-state, and then runs the cycle count the caller specified. Each
-delivered `AudioHealthScore` is attached to the matching
-`GenomicNetwork` in the persisted population, and the population is
-written to `networksFile` after every cycle.
+state, and installs an `evaluationListener` so a render listener can be
+notified as the optimizer moves between genomes. It then runs the cycle
+count the caller specified. Each delivered `AudioHealthScore` is attached
+to the matching `GenomicNetwork` in the persisted population, and the
+population is written to `networksFile` after every cycle.
 
 The two pieces of state worth knowing about are the population list
 (`getNetworks()`) and the per-cycle progress record (`getProgress()`).
+The current render target is `getRendering()`, or `null` when nothing is
+being rendered:
 
 ```java
 ArrangementGenerationProcess process = new ArrangementGenerationProcess("/path/to/networks.dat");
@@ -143,6 +146,10 @@ ArrangementGenerationProcess.Progress cycle = process.getProgress();
 log("completed=" + cycle.completed() + "/" + cycle.total()
     + " remaining=" + cycle.remaining()
     + " fraction=" + cycle.fraction());
+
+// getRendering() reports which genome is being evaluated right now;
+// pass a render listener to be notified when the optimizer moves on.
+process.setRenderListener(network -> log("rendering=" + network));
 ```
 
 The most common entry point is `iterate(scene, cycles)`, which calls

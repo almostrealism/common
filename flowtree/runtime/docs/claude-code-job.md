@@ -835,6 +835,9 @@ The first token is the fully qualified class name (used by the deserialization f
 | `tools` | `allowedTools` | Base64 | Always |
 | `maxTurns` | `maxTurns` | Plain int | Always |
 | `maxBudget` | `maxBudgetUsd` | Plain double | Always |
+| `maxTotalSessions` | `restartGovernor().maxTotalSessions` | Plain int | Non-default |
+| `maxTotalTurns` | `restartGovernor().maxTotalTurns` | Plain int | Non-default |
+| `maxWallClockMs` | `restartGovernor().maxWallClock` | Plain long (milliseconds) | Non-default; non-positive is meaningful and disables the ceiling |
 | `centralMcp` | `centralizedMcpConfig` | Base64 | Non-null |
 | `pushedTools` | `pushedToolsConfig` | Base64 | Non-null |
 | `wsEnv` | `workstreamEnv` | JSON then Base64 | Non-null, non-empty |
@@ -842,7 +845,19 @@ The first token is the fully qualified class name (used by the deserialization f
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
 | `enforceChanges` | `enforceChanges` | Plain boolean | Always |
 | `dedupMode` | `deduplicationMode` | Plain string | Non-null |
-| `maxWallClockHours` | `maxWallClockHours` | Plain int (empty = inherit) | The hours field on the Factory: an empty value means the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK` |
+
+The wall-clock ceiling travels between two wire keys:
+
+- `maxWallClockHours` (plain int, Factory-only): the hours the user supplied at submission
+  on the `Factory`. Empty value means the job inherits the workstream default or
+  `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`.
+- `maxWallClockMs` (plain long, milliseconds, Codec-only): the resolved ceiling the
+  `CodingAgentJobCodec` carries over the worker hop. A non-positive value is meaningful
+  and disables the ceiling rather than being dropped.
+
+These are the same setting at different granularities: the Factory speaks hours because
+that is what the submission API takes; the Codec speaks milliseconds because
+`RestartGovernor.maxWallClock` is a `Duration`.
 
 Additionally, all `GitManagedJob` fields are encoded by `super.encode()`:
 
