@@ -186,6 +186,9 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	/** Optional listener called with genome signature and score after each evaluation. */
 	private BiConsumer<String, S> healthListener;
 
+	/** Optional listener called with a genome's signature as its evaluation begins. */
+	private Consumer<String> evaluationListener;
+
 	/** Optional listener called when a fitness evaluation throws an exception. */
 	private Consumer<Exception> errorListener;
 
@@ -298,6 +301,30 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	 * @param healthListener callback for fitness evaluation results
 	 */
 	public void setHealthListener(BiConsumer<String, S> healthListener) { this.healthListener = healthListener; }
+
+	/**
+	 * Returns the listener called as each fitness evaluation begins.
+	 *
+	 * @return the evaluation listener, or null if not set
+	 */
+	public Consumer<String> getEvaluationListener() { return evaluationListener; }
+
+	/**
+	 * Sets a listener to be notified as each genome's fitness evaluation begins,
+	 * receiving that genome's signature.
+	 * <p>
+	 * This is the counterpart of {@link #setHealthListener}, which reports the
+	 * same evaluation once it has finished. Evaluations run one at a time, so
+	 * between the two calls the named genome is the one being evaluated. The
+	 * listener runs on the thread performing the evaluation, and is called with
+	 * {@code null} once a generation's evaluations are done.
+	 * </p>
+	 *
+	 * @param evaluationListener callback for evaluations starting
+	 */
+	public void setEvaluationListener(Consumer<String> evaluationListener) {
+		this.evaluationListener = evaluationListener;
+	}
 
 	/**
 	 * Returns the error listener for handling evaluation failures.
@@ -503,7 +530,12 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			for (int i = 0; i < count; i++) {
 				int fi = i;
 
-				HealthCallable<O, S> call = new HealthCallable<>(() -> pop.enableGenome(targetGenome.orElse(fi)), health, scoring, h -> {
+				HealthCallable<O, S> call = new HealthCallable<>(() -> {
+					if (evaluationListener != null)
+						evaluationListener.accept(pop.getGenomes().get(targetGenome.orElse(fi)).signature());
+
+					return pop.enableGenome(targetGenome.orElse(fi));
+				}, health, scoring, h -> {
 					healthTable.put(pop.getGenomes().get(targetGenome.orElse(fi)), h.getScore());
 
 					if (healthListener != null)
@@ -568,6 +600,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			pop.getGenomes().clear();
 			pop.getGenomes().addAll(sorted);
 		} finally {
+			if (evaluationListener != null) evaluationListener.accept(null);
 			s.shutdown();
 		}
 	}
