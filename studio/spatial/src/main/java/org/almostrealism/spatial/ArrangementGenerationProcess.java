@@ -93,8 +93,25 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	/** Destination for persisted population records. */
 	private final String networksFile;
 
-	/** The population records, one per genome, carrying scores once delivered. */
-	private List<GenomicNetwork> networks;
+	/**
+	 * The population records, one per genome, carrying scores once delivered.
+	 *
+	 * <p>Guarded by {@link #recordLock}. The list is rebuilt on the thread
+	 * running the evaluations and read by whatever thread is displaying it, so
+	 * it is never handed out: {@link #getNetworks()} returns a snapshot. Every
+	 * rebuild is a single action under the lock, so a reader sees the records
+	 * as they were before it or as they are after it, never midway through.</p>
+	 */
+	private final List<GenomicNetwork> networks;
+
+	/** Guards {@link #networks} against the reader and the writer overlapping. */
+	private final Object recordLock = new Object();
+
+	/**
+	 * The record whose audio is being rendered right now, or {@code null}
+	 * between evaluations.
+	 */
+	private volatile GenomicNetwork rendering;
 
 	/** The cloned scene the current run renders with. */
 	private AudioScene<?> localScene;
@@ -125,6 +142,9 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 
 	/** Invoked when each optimization cycle completes, or {@code null}. */
 	private Runnable completionListener;
+
+	/** Notified when rendering moves to another record, or {@code null}. */
+	private Consumer<GenomicNetwork> renderListener;
 
 	/**
 	 * Creates a process persisting population records to the given file.
@@ -167,8 +187,44 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 		this.completionListener = completionListener;
 	}
 
-	/** Returns the live list of population records. */
-	public List<GenomicNetwork> getNetworks() { return networks; }
+	/**
+	 * Sets the listener notified when rendering moves to another record, with
+	 * the record now being rendered, or {@code null} when a cycle has finished
+	 * and nothing is being rendered.
+	 */
+	public void setRenderListener(Consumer<GenomicNetwork> renderListener) {
+		this.renderListener = renderListener;
+	}
+
+	/**
+	 * Returns the records as they stand, as an immutable snapshot.
+	 *
+	 * <p>The records themselves are shared - a score delivered later attaches
+	 * to the record a caller is already holding - but the list is not. The
+	 * process rebuilds its list whenever it falls out of step with the
+	 * population, so a caller keeping the returned list would be reading a set
+	 * of records that is no longer being written to. Ask again rather than
+	 * remembering the answer.</p>
+	 *
+	 * @return the records at the moment of the call
+	 */
+	public List<GenomicNetwork> getNetworks() {
+		synchronized (recordLock) {
+			return List.copyOf(networks);
+		}
+	}
+
+	/**
+	 * Returns the record whose audio is being rendered right now, or
+	 * {@code null} when nothing is.
+	 *
+	 * <p>Evaluations run one at a time, so at most one record is ever being
+	 * rendered. During a cycle this is non-null; it returns to {@code null}
+	 * when the cycle finishes.</p>
+	 *
+	 * @return the record being rendered, or {@code null}
+	 */
+	public GenomicNetwork getRendering() { return rendering; }
 
 	/**
 	 * Returns how far the current cycle has got.
@@ -200,16 +256,37 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			return optimizer.getPopulation().size();
 		}
 
-		return networks.size();
+		synchronized (recordLock) {
+			return networks.size();
+		}
 	}
 
 	/**
 	 * Replaces the population records, for callers that manage the record list
 	 * directly (trimming, reordering).
 	 *
+	 * <p>The records are copied in. The caller's list stays its own, and may be
+	 * the snapshot {@link #getNetworks()} returned, so this is safe to call with
+	 * a list derived from the process's own records.</p>
+	 *
 	 * @param networks the records to adopt
 	 */
-	public void setNetworks(List<GenomicNetwork> networks) { this.networks = networks; }
+	public void setNetworks(List<GenomicNetwork> networks) {
+		replaceRecords(new ArrayList<>(networks));
+	}
+
+	/**
+	 * Adopts a new set of records as one action, so a reader never sees the
+	 * list part-way through being rebuilt.
+	 *
+	 * @param replacement the records to adopt, already detached from any caller
+	 */
+	private void replaceRecords(List<GenomicNetwork> replacement) {
+		synchronized (recordLock) {
+			networks.clear();
+			networks.addAll(replacement);
+		}
+	}
 
 	/** Returns the optimizer for the current run, or {@code null} before {@link #prepare}. */
 	public AudioSceneOptimizer getOptimizer() { return optimizer; }
@@ -246,6 +323,13 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 		if (waveDetailsProcessor != null)
 			optimizer.setWaveDetailsProcessor(waveDetailsProcessor);
 		optimizer.setHealthListener(this::attachScore);
+		optimizer.setEvaluationListener(signature -> {
+			if (signature == null) {
+				endRender();
+			} else {
+				beginRender(signature);
+			}
+		});
 		if (errorListener != null) optimizer.setErrorListener(errorListener);
 		optimizer.setCycleListener(() -> {
 			completedThisCycle = 0;
@@ -294,39 +378,23 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * @param score     the delivered health score
 	 */
 	protected void attachScore(String signature, AudioHealthScore score) {
-		// Counted per delivery rather than per scored record. One evaluation is
-		// one unit of the cycle's work; a scored record is not. Records carry
-		// the previous cycle's scores until refreshNetworks rebuilds the list
-		// against the new population, and that rebuild replaces the list rather
-		// than updating it, so counting records means counting whichever list
-		// the counter happens to hold -- which for the cycle just finished is
-		// every record scored, and reads as a finished cycle before this one
-		// has begun.
 		completedThisCycle++;
 
 		log("scoreStems=" + (score.getStems() == null ?
 				"null" : score.getStems().size()) + " signature=" + signature
 				+ " completed=" + completedThisCycle + "/" + cycleSize());
 
-		boolean sync = networks.stream().map(GenomicNetwork::getGenome)
-				.filter(Objects::nonNull)
-				.anyMatch(g -> Objects.equals(g.signature(), signature));
-		if (!sync) refreshNetworks();
-
 		GenomicNetwork matched = null;
 
-		for (GenomicNetwork g : networks) {
-			if (g.getGenome() != null &&
-					Objects.equals(g.getGenome().signature(), signature)) {
-				g.setHealthScore(score);
+		for (GenomicNetwork g : recordsFor(signature)) {
+			g.setHealthScore(score);
 
-				SceneAudioNode node = new SceneAudioNode(g.getKey(),
-						networkNaming.apply(g), localScene, null);
-				node.setRange(0, localScene.getTotalMeasures());
-				g.setSceneAudioNode(node);
+			SceneAudioNode node = new SceneAudioNode(g.getKey(),
+					networkNaming.apply(g), localScene, null);
+			node.setRange(0, localScene.getTotalMeasures());
+			g.setSceneAudioNode(node);
 
-				matched = g;
-			}
+			matched = g;
 		}
 
 		if (matched == null) {
@@ -334,6 +402,66 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 		}
 
 		if (scoreListener != null) scoreListener.accept(matched, score);
+	}
+
+	/**
+	 * Records that the genome carrying the given signature is now being
+	 * rendered, and notifies the render listener.
+	 *
+	 * <p>This arrives before the render rather than after it, so it is the
+	 * first thing in a cycle to name a genome. That makes it, rather than the
+	 * first delivered score, where the records are brought back into step with
+	 * a population that breeding has moved on.</p>
+	 *
+	 * @param signature the signature of the genome being rendered
+	 */
+	protected void beginRender(String signature) {
+		GenomicNetwork record = recordsFor(signature).stream()
+				.findFirst().orElse(null);
+
+		if (record == null) {
+			warn("No record found for rendering genome " + signature);
+		}
+
+		rendering = record;
+		if (renderListener != null) renderListener.accept(record);
+	}
+
+	/**
+	 * Marks rendering as finished, so nothing is reported as in progress
+	 * between cycles.
+	 */
+	protected void endRender() {
+		rendering = null;
+		if (renderListener != null) renderListener.accept(null);
+	}
+
+	/**
+	 * Returns the records carrying the given genome signature, rebuilding the
+	 * records from the population first if none of them does.
+	 *
+	 * <p>Records outlive the population they were built from: they carry the
+	 * previous cycle's scores until breeding moves the population on and a
+	 * signature arrives that none of them answers to.</p>
+	 *
+	 * @param signature the genome signature to look for
+	 * @return the records carrying it, empty if the rebuild found none either
+	 */
+	private List<GenomicNetwork> recordsFor(String signature) {
+		if (!carriesSignature(signature)) refreshNetworks();
+
+		return getNetworks().stream()
+				.filter(g -> g.getGenome() != null &&
+						Objects.equals(g.getGenome().signature(), signature))
+				.collect(Collectors.toList());
+	}
+
+	/** Returns whether any record carries the given genome signature. */
+	private boolean carriesSignature(String signature) {
+		return getNetworks().stream()
+				.map(GenomicNetwork::getGenome)
+				.filter(Objects::nonNull)
+				.anyMatch(g -> Objects.equals(g.signature(), signature));
 	}
 
 	/**
@@ -345,12 +473,14 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	public void refreshNetworks() {
 		if (optimizer == null) return;
 
-		networks = new ArrayList<>();
+		List<GenomicNetwork> rebuilt = new ArrayList<>();
 
 		AudioScenePopulation population = (AudioScenePopulation) optimizer.getPopulation();
 		for (Genome<PackedCollection> genome : population.getGenomes()) {
-			networks.add(new GenomicNetwork(networks.size(), genome));
+			rebuilt.add(new GenomicNetwork(rebuilt.size(), genome));
 		}
+
+		replaceRecords(rebuilt);
 	}
 
 	/**
@@ -360,24 +490,26 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 */
 	public void loadNetworks() {
 		if (!new File(networksFile).exists()) {
-			networks = new ArrayList<>();
+			replaceRecords(new ArrayList<>());
 			return;
 		}
 
 		try (FileInputStream in = new FileInputStream(networksFile);
 			 InputStream migrated = MigrationClassLoader.migrateStream(in);
 			 XMLDecoder dec = new XMLDecoder(migrated)) {
-			networks = (List<GenomicNetwork>) dec.readObject();
-			log("loadedNetworks=" + networks.size() +
-					" scoredNetworks=" + networks.stream()
+			List<GenomicNetwork> loaded = (List<GenomicNetwork>) dec.readObject();
+			replaceRecords(loaded);
+
+			log("loadedNetworks=" + loaded.size() +
+					" scoredNetworks=" + loaded.stream()
 							.filter(g -> g.getHealthScore() != null).count() +
-					" stemNetworks=" + networks.stream()
+					" stemNetworks=" + loaded.stream()
 							.filter(g -> g.getHealthScore() != null &&
 									g.getHealthScore().getStems() != null &&
 									!g.getHealthScore().getStems().isEmpty()).count());
 		} catch (Exception e) {
 			warn("Unable to load population records from " + networksFile, e);
-			networks = new ArrayList<>();
+			replaceRecords(new ArrayList<>());
 		}
 	}
 
@@ -389,12 +521,14 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * @throws IOException if the records cannot be written
 	 */
 	public void saveNetworks() throws IOException {
+		List<GenomicNetwork> saved = getNetworks();
+
 		try (FileOutputStream out = new FileOutputStream(networksFile);
 			 XMLEncoder enc = new XMLEncoder(out)) {
-			enc.writeObject(networks);
+			enc.writeObject(new ArrayList<>(saved));
 		}
 
-		AudioScenePopulation.store(networks.stream()
+		AudioScenePopulation.store(saved.stream()
 						.map(GenomicNetwork::getGenome)
 						.filter(Objects::nonNull)
 						.collect(Collectors.toList()),
