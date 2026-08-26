@@ -143,15 +143,15 @@ public class ArrangementGenerationRecordsTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A caller that asks again sees the score; one that kept the earlier
-	 * answer does not.
+	 * A snapshot is of a moment: the records go on changing without it.
 	 *
-	 * <p>This is the failure as it was seen: the run reported progress while
-	 * every arrangement listed read as having no audio yet. Both statements
-	 * were true of the list each was looking at.</p>
+	 * <p>This is the shape of the failure as it was seen. A caller that kept
+	 * an earlier answer went on reading records the run had stopped writing
+	 * to, while the run reported progress against the records it was actually
+	 * scoring. Both were describing the set in front of them.</p>
 	 */
 	@Test(timeout = 30000)
-	public void aDeliveredScoreIsVisibleToWhoeverAsksAgain() {
+	public void aSnapshotDoesNotFollowLaterChangesToTheRecords() {
 		DrivableProcess process = new DrivableProcess();
 		process.setNetworks(records("a"));
 
