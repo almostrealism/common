@@ -92,7 +92,12 @@ import io.flowtree.submission.PhaseConfigResolver;
  *       {@code lastJobStatus}, {@code lastJobAt}), {@code includePullRequest} (adds {@code pullRequest}); both default
  *       to off.</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td><td>List recent jobs for a workstream; optional {@code limit} query param</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/active</td><td>--</td><td>List jobs still recorded as running for a workstream, newest first. Each entry is a JSON object carrying {@code jobId}, {@code workstreamId}, {@code startedAt}, {@code heartbeatAt} (ISO-8601 instants, omitted when absent), {@code ageSeconds} (elapsed since {@code STARTED}), {@code sinceHeartbeatSeconds} (elapsed since the last status event; falls back to {@code ageSeconds} for jobs that have not yet posted a heartbeat), and {@code description}. An empty array is returned when nothing is running or the controller is configured without job stats.</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/active</td><td>--</td><td>List jobs still recorded as running for a workstream, newest first. Each entry is a JSON
+ *       object carrying {@code jobId}, {@code workstreamId}, {@code startedAt}, {@code heartbeatAt} (ISO-8601 instants,
+ *       omitted when absent), {@code ageSeconds} (elapsed since {@code STARTED}), {@code sinceHeartbeatSeconds} (elapsed
+ *       since the last status event; falls back to {@code ageSeconds} for jobs that have not yet posted a heartbeat),
+ *       and {@code description}. An empty array is returned when nothing is running or the controller is configured
+ *       without job stats.</td></tr>
  *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td><td>Look up a specific job event by ID</td></tr>
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
