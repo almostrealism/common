@@ -114,6 +114,16 @@ jobs:
       # deduplication and commit-message phases keep whatever the
       # workspace configures for them. Pinning the default instead would
       # silently move every phase onto opus.
+      #
+      # All three of runner, model and provider are set together, because
+      # the merge against the workspace default is field-by-field. Setting
+      # the model alone left the workspace's runner and provider in place
+      # and produced "opencode/opus, provider=openrouter" — opencode
+      # declares no supported-model set, so nothing rejected it at submit
+      # time and the phase died in two seconds against an OpenRouter
+      # endpoint with no such model. Setting runner without provider fails
+      # the other way: the claude runner accepts provider=anthropic only,
+      # so an inherited openrouter is rejected outright.
       - name: Submit defect-hunt agent job
         if: steps.decide.outputs.run == 'true'
         env:
@@ -124,7 +134,7 @@ jobs:
           DESCRIPTION: "Hunt for a defect and prove it with a failing test"
           PROTECT_TEST_FILES: "true"
           AUTO_CREATE_PR: "true"
-          PHASE_CONFIGS: '{"primary": {"model": "opus"}}'
+          PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
@@ -138,7 +148,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
             echo "Created \`${{ steps.branch.outputs.branch }}\` and submitted a defect-hunt job" >> "$GITHUB_STEP_SUMMARY"
-            echo "with the primary phase pinned to opus." >> "$GITHUB_STEP_SUMMARY"
+            echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
           else
             case "${{ steps.decide.outputs.reason }}" in
               pr-open) echo "Skipped: a previous defect-hunt PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
