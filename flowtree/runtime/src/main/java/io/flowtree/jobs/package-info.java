@@ -68,8 +68,8 @@
  *       carried across the wire: prompt list, git settings, MCP
  *       configuration, wall-clock ceiling, and every other knob the
  *       controller can name at submission. The companion
- *       {@link io.flowtree.jobs.CodingAgentJobCodec} reads the same set back
- *       onto a {@code CodingAgentJob} instance.</dd>
+ *       {@code CodingAgentJobCodec} reads the same set back onto a
+ *       {@code CodingAgentJob} instance.</dd>
  *
  *   <dt>{@link io.flowtree.jobs.RestartGovernor}</dt>
  *   <dd>Per-job ceiling on sessions launched, turns consumed, and total

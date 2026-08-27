@@ -187,10 +187,9 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 - **repoUrl** -- repository clone URL for automatic checkout
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
 - **useTmux** -- workstream-level default for whether to launch agents in a `tmux` session (per-call override at submission time)
-<!-- TODO(review): dispatchCapable description below is factually wrong; see review-followup memory -->
-- **dispatchCapable** -- when `true`, the workstream receives submissions via `POST /api/workstreams/{id}/submit` independently of the centralized dispatch surface
+- **dispatchCapable** -- when `true`, agents on this workstream are permitted to call dispatch / orchestration MCP tools (e.g. `workstream_register`, `workstream_update_config`); defaults to `false` for safety
 - **maxWallClockHours** -- workstream-level ceiling on a job's wall-clock time, in hours. Defaults are inherited from `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; setting it on the workstream sets the per-job default (overridable on the job itself) that every job dispatched there starts from. Values below the default lower the ceiling; values above raise it.
-- **dormantForCompletionListeners** -- when `true`, automated completion-listener wake-ups target this workstream are dropped while manual submissions are still accepted
+- **dormantForCompletionListeners** -- when `true`, automated completion-listener wake-ups targeting this workstream are dropped while manual submissions are still accepted
 
 Workstreams can be defined statically in the YAML config or registered dynamically via `POST /api/workstreams`. A workstream without a `channelId` (registered before its Slack channel is created or in simulation mode) is still functional for job dispatch.
 
