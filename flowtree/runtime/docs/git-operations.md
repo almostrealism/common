@@ -8,7 +8,7 @@ branch state, and clone repositories through a uniform interface.
 
 **Package:** `io.flowtree.jobs`
 
-**Source file:** `flowtree/runtime/src/main/java/io/flowtree/jobs/GitOperations.java`
+**Source file:** `flowtree/base/src/main/java/io/flowtree/jobs/GitOperations.java`
 
 **Implements:** `ConsoleFeatures` (provides `log()`, `warn()`, and
 `formatMessage()` for structured logging)
