@@ -20,6 +20,16 @@ branch state, and clone repositories through a uniform interface.
 1. [Design Philosophy](#design-philosophy)
 2. [Construction and Identity](#construction-and-identity)
 3. [Public Method Reference](#public-method-reference)
+   - [`execute`](#execute)
+   - [`executeWithOutput`](#executewithoutput)
+   - [`getCurrentBranch`](#getcurrentbranch)
+   - [`branchExists`](#branchexists)
+   - [`cloneRepository`](#clonerepository)
+   - [`repositorySlug`](#repositoryslug)
+   - [`isSameRepository`](#issamerepository)
+   - [`executeCommand`](#executecommand)
+   - [`executeCommandWithOutput`](#executecommandwithoutput)
+   - [`formatMessage`](#formatmessage)
 4. [Working Directory Preparation Sequence](#working-directory-preparation-sequence)
 5. [Branch Management](#branch-management)
 6. [Base Branch Synchronization and Merge Conflict Detection](#base-branch-synchronization-and-merge-conflict-detection)
@@ -282,6 +292,87 @@ HTTPS URLs (`https://github.com/owner/repo.git`) are supported. When using
 SSH URLs, the `GIT_SSH_COMMAND` environment variable ensures non-interactive
 host key handling. When using HTTPS URLs, git may require authentication via
 credential helpers or tokens configured in the environment.
+
+The same repository is routinely written several ways — an SSH remote, an
+HTTPS clone URL, and a suffix-less URL a CI system reports. The class exposes
+[`repositorySlug`](#repositoryslug) and [`isSameRepository`](#issamerepository)
+for resolving that ambiguity so callers can recognise the same repository
+under any of its spellings. The submission endpoint uses them to route jobs
+to the workstream configured for the target repository, and the
+`createWorkstreamIfMissing` flow uses them so a submission that names the
+repository differently than the registration did still finds the existing
+workstream instead of creating a second one.
+
+---
+
+### `repositorySlug`
+
+```java
+public static String repositorySlug(String repoUrl)
+```
+
+Reduces a repository URL to its canonical `owner/repo` slug so URLs that
+name the same repository in different forms compare equal.
+
+**Parameter:**
+
+| Parameter | Type     | Description |
+|-----------|----------|-------------|
+| `repoUrl` | `String` | The repository URL in SSH (`git@host:owner/repo.git`), HTTP(S), or `git://` form. May be `null`. |
+
+**Returns:** the `owner/repo` slug with its original case, or `null` when
+`repoUrl` is `null`, blank, or not a recognised repository URL.
+
+**Behavior:** The slug is derived from the URL's path component; the host
+and scheme are deliberately **not** part of the slug, because the same
+repository reached over SSH and HTTPS is one repository. An optional
+`.git` suffix on the path is stripped before the slug is returned.
+
+**Example:**
+
+```java
+String slug = GitOperations.repositorySlug("git@github.com:almostrealism/common.git");
+// slug == "almostrealism/common"
+
+String slug2 = GitOperations.repositorySlug("https://github.com/almostrealism/common");
+// slug2 == "almostrealism/common" — same repository, different scheme
+```
+
+---
+
+### `isSameRepository`
+
+```java
+public static boolean isSameRepository(String repoUrl, String otherRepoUrl)
+```
+
+Determines whether two repository URLs name the same repository, comparing
+them by [`repositorySlug`](#repositoryslug) so SSH, HTTPS, and suffix-less
+forms of one repository match each other.
+
+**Parameters:**
+
+| Parameter      | Type     | Description |
+|----------------|----------|-------------|
+| `repoUrl`      | `String` | The first repository URL. May be `null`. |
+| `otherRepoUrl` | `String` | The second repository URL. May be `null`. |
+
+**Returns:** `true` when both URLs name the same repository.
+
+**Behavior:** Slugs are compared ignoring case, since a repository is
+reachable under any capitalisation of its owner and name. URLs that cannot
+be parsed into a slug fall back to an exact (case-sensitive) string
+comparison rather than being reported as a match — an unrecognised URL
+form matches only itself. Either URL being `null` reports `false`.
+
+**Example:**
+
+```java
+boolean same = GitOperations.isSameRepository(
+        "git@github.com:almostrealism/common.git",
+        "https://github.com/almostrealism/common");
+// same == true — same repository, different schemes
+```
 
 ---
 
