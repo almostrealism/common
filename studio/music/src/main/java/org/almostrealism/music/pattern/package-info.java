@@ -29,6 +29,9 @@
  * ({@link org.almostrealism.music.pattern.BatchedPatternLayerRenderer},
  * {@link org.almostrealism.music.pattern.BatchedNoteInputs}) is the a2
  * dispatch path that reads a contiguous per-note scalar store, with column
- * offsets named by the renderer, rather than per-scalar uploads.</p>
+ * offsets defined by {@link org.almostrealism.audio.BatchedPatternRenderer}
+ * (the owner of the bound scalar-column layout, e.g.
+ * {@code sssRatioColumn}/{@code sssFilterAdsrColumn}), rather than
+ * per-scalar uploads.</p>
  */
 package org.almostrealism.music.pattern;
