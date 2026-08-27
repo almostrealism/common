@@ -18,7 +18,11 @@ package org.almostrealism.persist.assets;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.mem.FileMapping;
 import org.almostrealism.protobuf.Collections;
+
+import java.io.File;
+import java.nio.ByteOrder;
 
 /**
  * Read-only {@link MemoryProvider} that treats protobuf
@@ -38,6 +42,14 @@ import org.almostrealism.protobuf.Collections;
  * @see CollectionEncoder#decode(Collections.CollectionData, boolean)
  */
 public class CollectionDataMemoryProvider implements MemoryProvider<Memory> {
+	/**
+	 * Byte order protobuf writes packed {@code double} and {@code float} in.
+	 *
+	 * <p>Fixed by the wire format rather than by the machine, which is what
+	 * lets a file written anywhere be read anywhere.</p>
+	 */
+	public static final ByteOrder VALUE_ORDER = ByteOrder.LITTLE_ENDIAN;
+
 	/** The shared provider instance. */
 	private static final CollectionDataMemoryProvider instance = new CollectionDataMemoryProvider();
 
@@ -69,7 +81,24 @@ public class CollectionDataMemoryProvider implements MemoryProvider<Memory> {
 	 * @return read-only memory over the message contents
 	 */
 	public Memory allocate(Collections.CollectionData data) {
-		return new CollectionDataMemory(this, data);
+		return new ParsedCollectionDataMemory(this, data);
+	}
+
+	/**
+	 * Creates memory over collection data still in the file it was written to.
+	 *
+	 * <p>This is the form that costs nothing to hold. The message is never
+	 * parsed: only where its values are was worked out, and they are read from
+	 * a mapping of the file when something reads them. A tensor nothing uses
+	 * occupies neither the Java heap nor a device.</p>
+	 *
+	 * @param reference where the values are, and what they are
+	 * @param file      the file holding them
+	 * @return read-only memory over those values
+	 */
+	public Memory allocate(CollectionDataReference reference, File file) {
+		return new MappedCollectionDataMemory(this, reference,
+				FileMapping.of(file, VALUE_ORDER));
 	}
 
 	/**

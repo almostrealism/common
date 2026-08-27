@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.protobuf.Collections;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.stream.IntStream;
 
@@ -129,6 +130,44 @@ public class CollectionEncoder {
 
 		CollectionDataMemory mem = (CollectionDataMemory)
 				CollectionDataMemoryProvider.getInstance().allocate(data);
+		return decode(shape, mem, materialize);
+	}
+
+	/**
+	 * Decodes collection data that is still in a file, without parsing it.
+	 *
+	 * <p>The values are read from the file when something reads them. Until
+	 * then they cost nothing: not a parsed message, not a host array, not a
+	 * device allocation. This is what the deferred forms of {@code decode} were
+	 * always for — a collection that has not been read yet — reached without
+	 * first reading the thing it is deferring.</p>
+	 *
+	 * @param reference   where the values are, and what they are
+	 * @param file        the file holding them
+	 * @param materialize whether to copy the values into freshly allocated
+	 *                    memory rather than reading them from the file
+	 * @return a collection with the referenced shape
+	 */
+	public static PackedCollection decode(CollectionDataReference reference,
+										  File file, boolean materialize) {
+		CollectionDataMemory mem = (CollectionDataMemory)
+				CollectionDataMemoryProvider.getInstance().allocate(reference, file);
+		return decode(reference.getShape(), mem, materialize);
+	}
+
+	/**
+	 * Builds a collection over the given memory, either reading through it or
+	 * copying out of it.
+	 *
+	 * @param shape       shape of the collection
+	 * @param mem         the memory holding its values
+	 * @param materialize whether to copy the values into freshly allocated
+	 *                    memory
+	 * @return a collection with the given shape
+	 */
+	private static PackedCollection decode(TraversalPolicy shape,
+										   CollectionDataMemory mem,
+										   boolean materialize) {
 		PackedCollection deferred = new PackedCollection(shape, shape.getTraversalAxis(),
 				Bytes.of(mem, mem.getLength()), 0);
 		if (!materialize) return deferred;
