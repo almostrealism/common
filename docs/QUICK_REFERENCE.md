@@ -290,6 +290,13 @@ PackedCollection embed = weights.get("model.embed_tokens.weight");
 PackedCollection wq = weights.get("model.layers.0.self_attn.q_proj.weight");
 ```
 
+Weight tensors are located, not parsed, by default: each tensor's structure (key, shape,
+value offset) is walked from the protobuf library, and its values stay in the file
+until a kernel reads them through a `FileMapping`. A weight no kernel ever asks for
+costs neither Java heap nor device memory. Set `StateDictionary.enableMaterializeWeights
+= true` to read every tensor into a freshly allocated `PackedCollection` at load time
+(useful for tests that need to inspect a tensor on the host first).
+
 ### Attention Pattern
 ```java
 // In AttentionFeatures

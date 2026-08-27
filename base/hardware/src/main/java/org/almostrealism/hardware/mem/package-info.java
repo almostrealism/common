@@ -23,6 +23,10 @@
  *   <li>{@link org.almostrealism.hardware.mem.Bytes} - the primary memory container</li>
  *   <li>{@link org.almostrealism.hardware.mem.RAM} - base class for native memory allocations</li>
  *   <li>{@link org.almostrealism.hardware.mem.DirectMemory} - native allocation exposing a {@link java.nio.ByteBuffer} view for ingest</li>
+ *   <li>{@link org.almostrealism.hardware.mem.FileMapping} - shared read-only mapping of one
+ *       file, ref-counted across every reader; a store holding many ranges of a file maps
+ *       the file once rather than once per range, and the mapping is released when the
+ *       last reader drops it</li>
  *   <li>{@link org.almostrealism.hardware.mem.HardwareMemoryProvider} - GC-integrated provider;
  *       consults {@link org.almostrealism.hardware.mem.KernelMemoryGuard} before releasing
  *       a block and holds the release back while a kernel is still reading it</li>
