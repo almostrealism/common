@@ -23,10 +23,15 @@
  *   <li>{@link org.almostrealism.hardware.mem.Bytes} - the primary memory container</li>
  *   <li>{@link org.almostrealism.hardware.mem.RAM} - base class for native memory allocations</li>
  *   <li>{@link org.almostrealism.hardware.mem.DirectMemory} - native allocation exposing a {@link java.nio.ByteBuffer} view for ingest</li>
- *   <li>{@link org.almostrealism.hardware.mem.HardwareMemoryProvider} - GC-integrated provider</li>
+ *   <li>{@link org.almostrealism.hardware.mem.HardwareMemoryProvider} - GC-integrated provider;
+ *       consults {@link org.almostrealism.hardware.mem.KernelMemoryGuard} before releasing
+ *       a block and holds the release back while a kernel is still reading it</li>
  *   <li>{@link org.almostrealism.hardware.mem.MemoryDataAdapter} - abstract MemoryData base</li>
  *   <li>{@link org.almostrealism.hardware.mem.MemoryReplacementManager} - cross-provider transfer</li>
- *   <li>{@link org.almostrealism.hardware.mem.KernelMemoryGuard} - kernel in-use reference counting</li>
+ *   <li>{@link org.almostrealism.hardware.mem.KernelMemoryGuard} - reference-counts
+ *       addresses held by in-flight kernels and exposes a {@code Reservation} carrying
+ *       what {@code acquire} counted, so {@code release} can give the addresses back
+ *       even after their original arguments have been destroyed</li>
  *   <li>{@link org.almostrealism.hardware.mem.ByteBufferTransfer} - precision-aware buffer-to-buffer transfer used by system-boundary ingest</li>
  * </ul>
  */

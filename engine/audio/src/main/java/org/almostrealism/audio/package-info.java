@@ -32,6 +32,9 @@
  *   <li>{@link org.almostrealism.audio.WavFile} - Low-level WAV file reader/writer</li>
  *   <li>{@link org.almostrealism.audio.AudioLibrary} - Manages collections of audio files
  *       with metadata analysis</li>
+ *   <li>{@link org.almostrealism.audio.BatchedPatternRenderer} - Batched render path for
+ *       pattern layers; owns the bound scalar column layout consumed by
+ *       {@code BatchedPatternLayerRenderer}</li>
  * </ul>
  *
  * <h2>Processing Model</h2>
