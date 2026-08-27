@@ -153,6 +153,10 @@
                         <h4>WaveOutput</h4>
                         <p>Coordinates audio output lifecycle. Manages sample buffer scheduling and output line synchronization.</p>
                     </div>
+                    <div class="class-item">
+                        <h4>BatchedPatternRenderer</h4>
+                        <p>Batched render path for pattern layers (the a2 dispatch). Owns the per-note scalar column layout (<code>getSssScalarColumns</code>, <code>sssRatioColumn</code>, <code>sssFilterAdsrColumn</code>, etc.) so the dispatch uploads one contiguous store instead of one buffer per scalar.</p>
+                    </div>
                 </div>
 
                 <h3>org.almostrealism.audio.sources</h3>

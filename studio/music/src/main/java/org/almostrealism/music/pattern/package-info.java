@@ -24,5 +24,11 @@
  * {@link org.almostrealism.music.pattern.PatternLayer},
  * {@link org.almostrealism.music.pattern.PatternElement}, and
  * {@link org.almostrealism.music.pattern.ScaleTraversalStrategy}.</p>
+ *
+ * <p>The batched-render pair
+ * ({@link org.almostrealism.music.pattern.BatchedPatternLayerRenderer},
+ * {@link org.almostrealism.music.pattern.BatchedNoteInputs}) is the a2
+ * dispatch path that reads a contiguous per-note scalar store, with column
+ * offsets named by the renderer, rather than per-scalar uploads.</p>
  */
 package org.almostrealism.music.pattern;

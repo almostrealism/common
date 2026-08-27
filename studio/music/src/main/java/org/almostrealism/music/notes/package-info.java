@@ -22,5 +22,13 @@
  * {@link org.almostrealism.music.notes.PatternNote},
  * {@link org.almostrealism.music.notes.NoteAudioChoice}, and
  * {@link org.almostrealism.music.notes.NoteAudioSource}.</p>
+ *
+ * <p>{@link org.almostrealism.music.notes.NoteAudioSource} implementations
+ * include {@link org.almostrealism.music.notes.FileNoteSource} (a single
+ * audio file, persisted with the scene), {@link org.almostrealism.music.notes.GroupNoteSource}
+ * (a saved audio group, rebuilt from the library on each assemble and reported as
+ * {@link org.almostrealism.music.notes.NoteAudioSource#isPersistent() non-persistent}),
+ * and {@link org.almostrealism.music.notes.TreeNoteSource} (a hierarchical file-tree
+ * source with lazy path resolution).</p>
  */
 package org.almostrealism.music.notes;

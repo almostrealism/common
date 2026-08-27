@@ -206,6 +206,7 @@ public class PopulationOptimizer<G, T extends Temporal, O, S extends HealthScore
 
     // Listeners
     public void setHealthListener(BiConsumer<String, S> listener);
+    public void setEvaluationListener(Consumer<String> listener); // counterpart of setHealthListener: fires before each evaluation starts
     public void setErrorListener(Consumer<Exception> listener);
 }
 ```
