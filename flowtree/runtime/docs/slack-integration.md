@@ -84,7 +84,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/workstreams/{id}/jobs/active` | -- | List jobs still recorded as running for a workstream; each entry carries `jobId`, `workstreamId`, `startedAt`, `heartbeatAt`, `ageSeconds`, `sinceHeartbeatSeconds`, and `description` (see Javadoc on `FlowTreeApiEndpoint`) |
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
-| POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
+| POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [CI Integration: Submit Endpoint](./ci-integration.md#submit-endpoint)) |
 | POST | `/api/workstreams` | `{"defaultBranch":"...","channelName":"..."}` | Register a new workstream (auto-creates private Slack channel) |
 | POST | `/api/workstreams/{id}/update` | `{"channelId":"...","channelName":"..."}` | Update an existing workstream |
 | POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
@@ -186,7 +186,11 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 - **planningDocument** -- path to a plan document (relative to repo root) that agents read before starting work
 - **repoUrl** -- repository clone URL for automatic checkout
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
+- **useTmux** -- workstream-level default for whether to launch agents in a `tmux` session (per-call override at submission time)
+<!-- TODO(review): dispatchCapable description below is factually wrong; see review-followup memory -->
+- **dispatchCapable** -- when `true`, the workstream receives submissions via `POST /api/workstreams/{id}/submit` independently of the centralized dispatch surface
 - **maxWallClockHours** -- workstream-level ceiling on a job's wall-clock time, in hours. Defaults are inherited from `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; setting it on the workstream sets the per-job default (overridable on the job itself) that every job dispatched there starts from. Values below the default lower the ceiling; values above raise it.
+- **dormantForCompletionListeners** -- when `true`, automated completion-listener wake-ups target this workstream are dropped while manual submissions are still accepted
 
 Workstreams can be defined statically in the YAML config or registered dynamically via `POST /api/workstreams`. A workstream without a `channelId` (registered before its Slack channel is created or in simulation mode) is still functional for job dispatch.
 

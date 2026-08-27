@@ -63,6 +63,25 @@
  *       Maven dependency protection) that trigger correction sessions when
  *       violated. Extend or configure via {@link io.flowtree.jobs.CodingAgentJobFactory}.</dd>
  *
+ *   <dt>{@link io.flowtree.jobs.CodingAgentJobFactory}</dt>
+ *   <dd>Builder for {@link io.flowtree.jobs.CodingAgentJob} configurations
+ *       carried across the wire: prompt list, git settings, MCP
+ *       configuration, wall-clock ceiling, and every other knob the
+ *       controller can name at submission. The companion
+ *       {@link io.flowtree.jobs.CodingAgentJobCodec} reads the same set back
+ *       onto a {@code CodingAgentJob} instance.</dd>
+ *
+ *   <dt>{@link io.flowtree.jobs.RestartGovernor}</dt>
+ *   <dd>Per-job ceiling on sessions launched, turns consumed, and total
+ *       elapsed wall-clock time
+ *       ({@link io.flowtree.jobs.RestartGovernor#DEFAULT_MAX_WALL_CLOCK}).
+ *       A job refusing further launches cites the ceiling it hit.</dd>
+ *
+ *   <dt>{@code EnforcementRunner}</dt>
+ *   <dd>Drives post-session enforcement rules: retries a check that fails up
+ *       to a per-rule budget and reports which rule ultimately passed or
+ *       gave up.</dd>
+ *
  *   <dt>{@link io.flowtree.jobs.EnforcementRule}</dt>
  *   <dd>Interface for post-session checks evaluated by {@link io.flowtree.jobs.CodingAgentJob}.
  *       Implement this to add custom rules; built-in rules (enforce-changes,
