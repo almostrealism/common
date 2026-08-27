@@ -25,5 +25,11 @@
  * {@link io.flowtree.controller.JobStatsStore}, and
  * {@link io.flowtree.controller.PushedToolsSelfTest} verifies the controller's
  * pushed-tools configuration on startup.</p>
+ *
+ * <p>{@link io.flowtree.controller.StuckJobScanner} runs alongside the
+ * controller and converts jobs whose worker has stopped reporting into
+ * terminal failures, so dependent chains waiting on a completion event are
+ * released rather than stalled by a process that has died without posting
+ * its result.</p>
  */
 package io.flowtree.controller;
