@@ -21,65 +21,51 @@ import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.protobuf.Collections;
 
 /**
- * Read-only {@link Memory} backed by a protobuf {@link Collections.CollectionData}
- * message. Values are served directly from the message on each read — nothing is
+ * Read-only {@link Memory} backed by protobuf collection data.
+ *
+ * <p>Values are served from the encoding on each read — nothing is
  * materialized on the host and nothing reaches a device until the framework
- * migrates this memory to a device provider at first kernel use.
+ * migrates this memory to a device provider at first kernel use.</p>
+ *
+ * <p>Where the encoding lives is the difference between the two forms of this.
+ * A {@link Collections.CollectionData} that has already been parsed is on the
+ * Java heap and stays there; collection data still in a file is read from the
+ * file. The second is the one worth having, and the reason the first exists is
+ * that a message already in hand should not have to be written out to be read
+ * this way.</p>
  *
  * @see CollectionDataMemoryProvider
  */
-public class CollectionDataMemory implements Memory {
+public abstract class CollectionDataMemory implements Memory {
 	/** The provider that manages this memory. */
 	private final CollectionDataMemoryProvider provider;
 
-	/** The protobuf message serving as the backing store; {@code null} once destroyed. */
-	private Collections.CollectionData data;
-
-	/** The number of elements the message contains. */
-	private final int length;
-
 	/**
-	 * Creates memory backed by the given protobuf message.
+	 * Creates memory managed by the given provider.
 	 *
 	 * @param provider the managing provider
-	 * @param data     the message serving as the backing store
 	 */
-	protected CollectionDataMemory(CollectionDataMemoryProvider provider,
-								   Collections.CollectionData data) {
+	protected CollectionDataMemory(CollectionDataMemoryProvider provider) {
 		this.provider = provider;
-		this.data = data;
-		this.length = data.getDataCount() > 0 ? data.getDataCount() : data.getData32Count();
 	}
 
-	/**
-	 * Returns the provider that manages this memory.
-	 */
+	/** Returns the provider that manages this memory. */
 	@Override
 	public MemoryProvider getProvider() { return provider; }
 
-	/**
-	 * Returns the number of elements available from the backing message.
-	 */
-	public int getLength() { return length; }
+	/** Returns the number of values available. */
+	public abstract int getLength();
 
 	/**
-	 * Reads the element at the given position from the backing message,
-	 * whichever precision the message was encoded at.
+	 * Reads the value at the given position, widening to {@code double}
+	 * whichever precision the data was encoded at.
 	 *
-	 * @param index the element position
+	 * @param index the value position
 	 * @return the value at that position
-	 * @throws IllegalStateException if the memory has been destroyed
+	 * @throws IllegalStateException if this memory has been destroyed
 	 */
-	protected double valueAt(int index) {
-		if (data == null) {
-			throw new IllegalStateException("Memory has been destroyed");
-		}
+	protected abstract double valueAt(int index);
 
-		return data.getDataCount() > 0 ? data.getData(index) : data.getData32(index);
-	}
-
-	/**
-	 * Releases the reference to the backing message.
-	 */
-	protected void destroy() { this.data = null; }
+	/** Releases whatever this memory was reading through. */
+	protected abstract void destroy();
 }
