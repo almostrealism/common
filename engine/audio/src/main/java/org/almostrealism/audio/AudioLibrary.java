@@ -20,6 +20,7 @@ import io.almostrealism.util.FrequencyCache;
 import org.almostrealism.audio.data.DynamicWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
+import org.almostrealism.audio.data.ContentIndex;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
@@ -159,12 +160,8 @@ public class AudioLibrary implements ConsoleFeatures {
 	/** The file tree providing access to audio files in the library directory. */
 	private final FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root;
 
-	/**
-	 * Index from content identifier to the file backing it, or {@code null}
-	 * when the tree has not been indexed. Read without locking, so it is
-	 * replaced wholesale rather than mutated.
-	 */
-	private volatile Map<String, File> fileIndex;
+	/** Where each identifier's content is, once the tree has been indexed. */
+	private final ContentIndex fileIndex = new ContentIndex();
 
 	/** Target sample rate for audio analysis. */
 	private final int sampleRate;
@@ -591,12 +588,8 @@ public class AudioLibrary implements ConsoleFeatures {
 	public File fileFor(String identifier) {
 		if (identifier == null || identifier.isBlank()) return null;
 
-		Map<String, File> index = fileIndex;
-
-		if (index != null) {
-			File indexed = index.get(identifier);
-			if (indexed != null && indexed.isFile()) return indexed;
-		}
+		File indexed = fileIndex.fileFor(identifier);
+		if (indexed != null) return indexed;
 
 		WaveDataProvider provider = find(identifier);
 		if (provider == null) return null;
@@ -624,13 +617,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return the file backing it, or {@code null} if the index cannot say
 	 */
 	public File indexedFileFor(String identifier) {
-		if (identifier == null || identifier.isBlank()) return null;
-
-		Map<String, File> index = fileIndex;
-		if (index == null) return null;
-
-		File indexed = index.get(identifier);
-		return indexed != null && indexed.isFile() ? indexed : null;
+		return fileIndex.fileFor(identifier);
 	}
 
 	/**
@@ -657,7 +644,7 @@ public class AudioLibrary implements ConsoleFeatures {
 				.filter(Objects::nonNull)
 				.forEach(provider -> record(index, provider.getIdentifier(), provider));
 
-		fileIndex = Collections.unmodifiableMap(index);
+		fileIndex.replace(index);
 		return index.size();
 	}
 
@@ -680,7 +667,21 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * Discards the identifier index, returning {@link #fileFor} to searching
 	 * the tree for every lookup.
 	 */
-	public void clearFileIndex() { fileIndex = null; }
+	public void clearFileIndex() { fileIndex.clear(); }
+
+	/**
+	 * Returns how many times the index has been replaced.
+	 *
+	 * <p>Anything derived from the index — which files a set of records names,
+	 * what is known about each of them — is only as current as the index it was
+	 * derived from. Comparing this against the value held when the derivation
+	 * was made says whether it still holds, without the deriver having to be
+	 * told that the library changed.</p>
+	 *
+	 * @return the current generation of the index
+	 */
+	public long getIndexGeneration() { return fileIndex.getGeneration(); }
+
 
 	/**
 	 * Returns how many identifiers are currently indexed, or {@code -1} when
@@ -688,10 +689,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 *
 	 * @return the size of the index, or {@code -1}
 	 */
-	public int getIndexedFileCount() {
-		Map<String, File> index = fileIndex;
-		return index == null ? -1 : index.size();
-	}
+	public int getIndexedFileCount() { return fileIndex.size(); }
 
 	/**
 	 * Adds pre-computed {@link WaveDetails} to this library.
@@ -1477,7 +1475,7 @@ public class AudioLibrary implements ConsoleFeatures {
 				}
 			});
 
-			fileIndex = Collections.unmodifiableMap(index);
+			fileIndex.replace(index);
 
 			WaveDetailsJob last = new WaveDetailsJob(this::processJob, null, false, -1.0);
 			last.getFuture().thenRun(() -> future.complete(null));

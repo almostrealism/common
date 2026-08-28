@@ -18,6 +18,9 @@ package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.api.Audio.AudioLayer;
 import org.almostrealism.audio.api.Audio.WaveDetailData;
+import org.almostrealism.audio.AudioLibrary;
+import org.almostrealism.audio.data.FileWaveDataProviderNode;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.studio.persistence.AudioLayerGroupLibrary;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -187,6 +190,40 @@ public class AudioLayerGroupPlacementTest extends TestSuiteBase {
 
 		Assert.assertEquals(kicks, whole);
 		Assert.assertEquals(whole, missingOne);
+	}
+
+	/**
+	 * What is derived from the index is worked out again when the index is.
+	 *
+	 * <p>Which files the groups claim, and what pitch each was captured at, are
+	 * both read through the index — so both are only as current as the index
+	 * they came from. Holding either until told to drop it does not work: the
+	 * thing that would have to do the telling is whatever saved a group, and it
+	 * has no reason to know that anything was derived. Without this, a group
+	 * saved during a session leaves its members showing loose rows until the
+	 * application is restarted.</p>
+	 */
+	@Test(timeout = 30000)
+	public void whatIsDerivedFromTheIndexIsWorkedOutAgainWhenItChanges()
+			throws IOException {
+		library();
+
+		File wav = file("drums/a.wav");
+		AudioLibrary audio = new AudioLibrary(
+				new FileWaveDataProviderNode(root), OutputLine.sampleRate);
+
+		long before = audio.getIndexGeneration();
+		audio.indexFiles();
+
+		Assert.assertNotEquals("Indexing must be visible as a change",
+				before, audio.getIndexGeneration());
+
+		long after = audio.getIndexGeneration();
+		audio.indexFiles();
+
+		Assert.assertNotEquals("Indexing again is another change",
+				after, audio.getIndexGeneration());
+		Assert.assertNotNull(wav);
 	}
 
 	/** A group with nothing findable belongs at the root. */

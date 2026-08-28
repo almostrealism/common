@@ -206,6 +206,7 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 	 *
 	 * @param pitchSource supplies a sample's own pitch, or {@code null} for none
 	 */
+	@Override
 	@JsonIgnore
 	public void setPitchSource(Function<FileWaveDataProvider, KeyPosition<?>> pitchSource) {
 		this.pitchSource = pitchSource;

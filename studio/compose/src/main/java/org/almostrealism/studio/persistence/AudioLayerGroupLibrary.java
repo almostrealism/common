@@ -75,6 +75,18 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	/** Directory into which member WAVs are copied, content-addressed as {@code <md5>.wav}. */
 	private final File libraryRoot;
 
+	/** Files the saved groups claim, as of {@link #claimedGeneration}. */
+	private Set<File> claimedFiles;
+
+	/** Index generation {@link #claimedFiles} was worked out from. */
+	private long claimedGeneration = -1;
+
+	/** Captured pitch by file, as of {@link #pitchGeneration}. */
+	private Map<File, KeyPosition<?>> capturedPitches;
+
+	/** Index generation {@link #capturedPitches} was worked out from. */
+	private long pitchGeneration = -1;
+
 	/**
 	 * Creates a coordinator over the given library and group store.
 	 *
@@ -157,14 +169,39 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 * @return the claimed files, by canonical path
 	 */
 	public Set<File> claimedFiles() {
-		Set<File> claimed = new HashSet<>();
-		if (library == null) return claimed;
+		if (library == null) return Set.of();
 
+		Set<File> cached = derived(claimedFiles, claimedGeneration);
+		if (cached != null) return cached;
+
+		Set<File> claimed = new HashSet<>();
 		for (Audio.AudioLayerGroup group : allGroups()) {
 			claimed.addAll(membersOf(group));
 		}
 
+		claimedGeneration = library.getIndexGeneration();
+		claimedFiles = claimed;
 		return claimed;
+	}
+
+	/**
+	 * Returns a derived value if it is still current, or {@code null} if it
+	 * must be worked out again.
+	 *
+	 * <p>Anything derived from the library's index is only as good as the index
+	 * it was derived from, and the index is rebuilt whenever the library is
+	 * refreshed. Holding a derivation until told to drop it does not work here:
+	 * what would have to do the telling is the thing that saved a group, which
+	 * has no reason to know that anything was derived. Comparing generations
+	 * asks the index instead, which always knows.</p>
+	 *
+	 * @param value      the derived value, or {@code null} if never worked out
+	 * @param generation the index generation it was derived from
+	 * @param <T>        the derived type
+	 * @return the value if still current, otherwise {@code null}
+	 */
+	private <T> T derived(T value, long generation) {
+		return value != null && generation == library.getIndexGeneration() ? value : null;
 	}
 
 	/**
@@ -285,8 +322,12 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 * @return the captured pitch of each file that has one
 	 */
 	public Map<File, KeyPosition<?>> capturedPitches() {
+		if (library == null) return Map.of();
+
+		Map<File, KeyPosition<?>> cached = derived(capturedPitches, pitchGeneration);
+		if (cached != null) return cached;
+
 		Map<File, KeyPosition<?>> pitches = new HashMap<>();
-		if (library == null) return pitches;
 
 		for (Audio.AudioLayerGroup group : allGroups()) {
 			for (Audio.AudioLayer layer : group.getLayersList()) {
@@ -301,6 +342,8 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 			}
 		}
 
+		pitchGeneration = library.getIndexGeneration();
+		capturedPitches = pitches;
 		return pitches;
 	}
 
