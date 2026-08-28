@@ -159,6 +159,13 @@ public class AudioLibrary implements ConsoleFeatures {
 	/** The file tree providing access to audio files in the library directory. */
 	private final FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root;
 
+	/**
+	 * Index from content identifier to the file backing it, or {@code null}
+	 * when the tree has not been indexed. Read without locking, so it is
+	 * replaced wholesale rather than mutated.
+	 */
+	private volatile Map<String, File> fileIndex;
+
 	/** Target sample rate for audio analysis. */
 	private final int sampleRate;
 
@@ -584,11 +591,106 @@ public class AudioLibrary implements ConsoleFeatures {
 	public File fileFor(String identifier) {
 		if (identifier == null || identifier.isBlank()) return null;
 
+		Map<String, File> index = fileIndex;
+
+		if (index != null) {
+			File indexed = index.get(identifier);
+			if (indexed != null && indexed.isFile()) return indexed;
+		}
+
 		WaveDataProvider provider = find(identifier);
 		if (provider == null) return null;
 
 		File file = new File(provider.getKey());
 		return file.isFile() ? file : null;
+	}
+
+	/**
+	 * Resolves a content identifier using only the index, never the tree.
+	 *
+	 * <p>{@link #fileFor} searches the tree when the index cannot answer, and
+	 * searching the tree builds it. A caller that is <em>itself</em> being
+	 * asked a question while the tree is being built therefore cannot use
+	 * {@code fileFor}: the search re-enters the build that is waiting on it,
+	 * and the two call each other until the stack is gone. Deciding where a
+	 * group belongs is such a caller — a directory's contents depend on which
+	 * groups belong in it, which depends on where the groups' members are.</p>
+	 *
+	 * <p>So this answers from the index or not at all. Before the tree has been
+	 * indexed it resolves nothing, which is the honest answer: nothing can be
+	 * resolved yet without asking the tree, and the tree is what is asking.</p>
+	 *
+	 * @param identifier the content identifier to resolve
+	 * @return the file backing it, or {@code null} if the index cannot say
+	 */
+	public File indexedFileFor(String identifier) {
+		if (identifier == null || identifier.isBlank()) return null;
+
+		Map<String, File> index = fileIndex;
+		if (index == null) return null;
+
+		File indexed = index.get(identifier);
+		return indexed != null && indexed.isFile() ? indexed : null;
+	}
+
+	/**
+	 * Indexes the tree by content identifier, so that resolving many
+	 * identifiers costs one walk rather than one walk each.
+	 *
+	 * <p>{@link #fileFor} searches the tree, and a caller resolving every
+	 * member of every group pays that search once per member. Indexing first
+	 * turns the same work into a single pass.</p>
+	 *
+	 * <p>The index only ever accelerates a hit: a miss, and an entry naming a
+	 * file that has since gone, both fall through to the search, which remains
+	 * what decides the answer. So an index that has fallen behind the tree
+	 * costs a lookup its shortcut and never its correctness. Build it again
+	 * after the tree changes to get the shortcut back.</p>
+	 *
+	 * @return the number of identifiers indexed
+	 */
+	public int indexFiles() {
+		Map<String, File> index = new HashMap<>();
+
+		root.children()
+				.map(Supplier::get)
+				.filter(Objects::nonNull)
+				.forEach(provider -> record(index, provider.getIdentifier(), provider));
+
+		fileIndex = Collections.unmodifiableMap(index);
+		return index.size();
+	}
+
+	/**
+	 * Records where a provider's content is, if it is anywhere.
+	 *
+	 * @param index      the index being built
+	 * @param identifier the provider's content identifier
+	 * @param provider   the provider
+	 */
+	private void record(Map<String, File> index, String identifier,
+						FileWaveDataProvider provider) {
+		if (identifier == null || identifier.isBlank()) return;
+
+		File file = new File(provider.getKey());
+		if (file.isFile()) index.putIfAbsent(identifier, file);
+	}
+
+	/**
+	 * Discards the identifier index, returning {@link #fileFor} to searching
+	 * the tree for every lookup.
+	 */
+	public void clearFileIndex() { fileIndex = null; }
+
+	/**
+	 * Returns how many identifiers are currently indexed, or {@code -1} when
+	 * there is no index.
+	 *
+	 * @return the size of the index, or {@code -1}
+	 */
+	public int getIndexedFileCount() {
+		Map<String, File> index = fileIndex;
+		return index == null ? -1 : index.size();
 	}
 
 	/**
@@ -1346,14 +1448,23 @@ public class AudioLibrary implements ConsoleFeatures {
 			CompletableFuture<Void> future = new CompletableFuture<>();
 			AtomicBoolean submitted = new AtomicBoolean(false);
 
+			// Indexed here rather than by a walk of its own: this walk already
+			// visits every provider and asks each for its identifier, which is
+			// the whole cost of building the index.
+			Map<String, File> index = new HashMap<>();
+
 			root.children().forEach(f -> {
 				FileWaveDataProvider provider = f.get();
 
 				boolean skipped = true;
 
 				try {
-					if (provider == null || completeIdentifiers.contains(provider.getIdentifier()))
-						return;
+					if (provider == null) return;
+
+					String identifier = provider.getIdentifier();
+					record(index, identifier, provider);
+
+					if (completeIdentifiers.contains(identifier)) return;
 
 					// Similarities may no longer be valid if the library is being updated
 					skipped = false;
@@ -1365,6 +1476,8 @@ public class AudioLibrary implements ConsoleFeatures {
 					if (!skipped) submitted.set(true);
 				}
 			});
+
+			fileIndex = Collections.unmodifiableMap(index);
 
 			WaveDetailsJob last = new WaveDetailsJob(this::processJob, null, false, -1.0);
 			last.getFuture().thenRun(() -> future.complete(null));

@@ -27,11 +27,15 @@ import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.studio.AudioScene;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -88,6 +92,288 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 
 	/** Returns the backing {@link ProtobufLayerGroupStore}. */
 	public ProtobufLayerGroupStore getGroupStore() { return groupStore; }
+
+	/**
+	 * Returns the content identifier a layer's audio is stored under, whether
+	 * the layer carries a reference to it or still carries the audio inline.
+	 *
+	 * @param layer the layer
+	 * @return the identifier, or {@code null} for a layer with no audio
+	 */
+	public static String audioRef(Audio.AudioLayer layer) {
+		String ref = null;
+
+		if (layer.getContentCase() == Audio.AudioLayer.ContentCase.AUDIO_REF) {
+			ref = layer.getAudioRef();
+		} else if (layer.hasAudio() && !layer.getAudio().getIdentifier().isBlank()) {
+			ref = layer.getAudio().getIdentifier();
+		}
+
+		return (ref == null || ref.isBlank()) ? null : ref;
+	}
+
+	/**
+	 * Returns the content identifiers claimed by the given groups.
+	 *
+	 * <p>A file whose identifier is claimed belongs to a group already. One
+	 * whose identifier is not is loose, and gets a group of its own
+	 * ({@link #syntheticGroup}).</p>
+	 *
+	 * @param groups the groups to read
+	 * @return the identifiers they reference
+	 */
+	public Set<String> claimedIdentifiers(List<Audio.AudioLayerGroup> groups) {
+		Set<String> claimed = new HashSet<>();
+
+		for (Audio.AudioLayerGroup group : groups) {
+			for (Audio.AudioLayer layer : group.getLayersList()) {
+				String ref = audioRef(layer);
+				if (ref != null) claimed.add(ref);
+			}
+		}
+
+		return claimed;
+	}
+
+	/**
+	 * Returns the files that saved groups claim as members.
+	 *
+	 * <p>A claimed file is shown under the group that claims it, so it does not
+	 * also get a row of its own. It may be claimed by several groups and appear
+	 * under each of them; what it must not do is appear a further time as a
+	 * loose file, which would leave the user unable to tell which row carries
+	 * the metadata.</p>
+	 *
+	 * <p>Resolved through the library's index, like placement and for the same
+	 * reason: this is asked while the tree is being built. A library that has
+	 * not been indexed claims nothing, so nothing is hidden — the tree shows
+	 * what it showed before rather than losing rows it cannot yet justify
+	 * losing.</p>
+	 *
+	 * @return the claimed files, by canonical path
+	 */
+	public Set<File> claimedFiles() {
+		Set<File> claimed = new HashSet<>();
+		if (library == null) return claimed;
+
+		for (Audio.AudioLayerGroup group : allGroups()) {
+			claimed.addAll(membersOf(group));
+		}
+
+		return claimed;
+	}
+
+	/**
+	 * Returns a group standing for a file that no saved group claims.
+	 *
+	 * <p>The library is a library of groups, and a loose file is the
+	 * degenerate case of one: a single layer, named for the file, carrying
+	 * nothing the file does not already say. Making that case explicit is what
+	 * lets everything downstream — placement, filtering, selection — have one
+	 * kind of thing to reason about instead of two.</p>
+	 *
+	 * <p>Synthetic groups are derived, never saved. Persisting one would make
+	 * the library's own directory a source of records, so that a file could not
+	 * be moved or removed without leaving a record behind that outlived it.</p>
+	 *
+	 * @param file       the loose file
+	 * @param identifier the file's content identifier
+	 * @return a one-layer group standing for the file
+	 */
+	public Audio.AudioLayerGroup syntheticGroup(File file, String identifier) {
+		return Audio.AudioLayerGroup.newBuilder()
+				.setKey(file.getName())
+				.addLayers(Audio.AudioLayer.newBuilder()
+						.setLayerId(file.getName())
+						.setAudioRef(identifier))
+				.build();
+	}
+
+	/**
+	 * Returns whether the given group was synthesized for a loose file rather
+	 * than saved.
+	 *
+	 * <p>A synthesized group is not in the store, so a group the store does not
+	 * know about is one that was derived. This is what tells apart a saved
+	 * one-layer group — which carries real metadata — from the one standing in
+	 * for a file.</p>
+	 *
+	 * @param group the group to test
+	 * @return whether it was derived rather than saved
+	 */
+	public boolean isSynthetic(Audio.AudioLayerGroup group) {
+		return groupStore == null || getGroup(group.getKey()) == null;
+	}
+
+	/**
+	 * Returns the files a group's layers resolve to, in layer order.
+	 *
+	 * <p>Layers that resolve to nothing are left out rather than reported as
+	 * missing: a group outlives the files it names, and one that has lost a
+	 * member is still a group with the members it has.</p>
+	 *
+	 * <p>Resolution goes through the library's index rather than a search of
+	 * the tree, because this is asked while the tree is being built — a
+	 * directory's contents include the groups that belong in it, and where a
+	 * group belongs depends on where its members are. Searching the tree here
+	 * would re-enter the build that is waiting on the answer. An unindexed
+	 * library therefore yields no members, and so no group rows, until it has
+	 * been indexed and the tree rebuilt.</p>
+	 *
+	 * @param group the group
+	 * @return the files its layers resolve to, possibly empty
+	 */
+	public List<File> membersOf(Audio.AudioLayerGroup group) {
+		List<File> files = new ArrayList<>();
+		if (library == null) return files;
+
+		for (Audio.AudioLayer layer : group.getLayersList()) {
+			String ref = audioRef(layer);
+			if (ref == null) continue;
+
+			File file = library.indexedFileFor(ref);
+			if (file != null) files.add(file);
+		}
+
+		return files;
+	}
+
+	/**
+	 * Returns the directory a group belongs in: the most specific one holding
+	 * every member that can be found.
+	 *
+	 * <p>A group is not itself a file, so where it belongs has to be derived
+	 * from where its members are. The most specific directory containing all
+	 * of them is the one a user would look in — a group whose members are
+	 * spread across two folders belongs in the folder that holds both, and one
+	 * whose members share a folder belongs in that folder rather than above
+	 * it.</p>
+	 *
+	 * <p>Members that cannot be found are left out of the calculation. If a
+	 * missing file counted, a group would climb toward the root each time the
+	 * library lost one of its samples, rearranging itself for a reason the
+	 * user cannot see. A group none of whose members can be found has no
+	 * derivable location and belongs at the root, where it remains visible as
+	 * something to repair.</p>
+	 *
+	 * @param group the group to place
+	 * @return the directory the group belongs in, never {@code null}
+	 */
+	public File locate(Audio.AudioLayerGroup group) {
+		return commonDirectory(membersOf(group));
+	}
+
+	/**
+	 * Returns the saved groups that belong in the given directory.
+	 *
+	 * <p>This is what a tree asks as it builds each directory: not "where does
+	 * this group go" one group at a time, but "what belongs here". Placement
+	 * stays in one place and the tree stays ignorant of how it is decided.</p>
+	 *
+	 * @param directory the directory being built
+	 * @return the groups placed there, in store order
+	 */
+	public List<Audio.AudioLayerGroup> groupsIn(File directory) {
+		List<Audio.AudioLayerGroup> placed = new ArrayList<>();
+		if (directory == null) return placed;
+
+		File target;
+
+		try {
+			target = directory.getCanonicalFile();
+		} catch (IOException e) {
+			warn("Unable to resolve " + directory, e);
+			return placed;
+		}
+
+		for (Audio.AudioLayerGroup group : allGroups()) {
+			File location = locate(group);
+
+			try {
+				if (target.equals(location.getCanonicalFile())) placed.add(group);
+			} catch (IOException e) {
+				warn("Unable to resolve " + location, e);
+			}
+		}
+
+		return placed;
+	}
+
+	/**
+	 * Returns the most specific directory containing all of the given files,
+	 * bounded below by the library root.
+	 *
+	 * <p>Compared by path segment rather than by character, so
+	 * {@code /a/foo.wav} and {@code /a/foobar.wav} are held to share
+	 * {@code /a} and not {@code /a/foo}.</p>
+	 *
+	 * @param files the files to cover; may be empty
+	 * @return the directory containing all of them, or the library root
+	 */
+	protected File commonDirectory(List<File> files) {
+		List<String> common = null;
+
+		for (File file : files) {
+			List<String> segments = segmentsWithinRoot(file.getParentFile());
+			if (segments == null) continue;
+
+			if (common == null) {
+				common = segments;
+				continue;
+			}
+
+			int shared = 0;
+			while (shared < common.size() && shared < segments.size()
+					&& common.get(shared).equals(segments.get(shared))) {
+				shared++;
+			}
+
+			common = common.subList(0, shared);
+		}
+
+		if (common == null) return libraryRoot;
+
+		File directory = libraryRoot;
+		for (String segment : common) {
+			directory = new File(directory, segment);
+		}
+
+		return directory;
+	}
+
+	/**
+	 * Returns the path segments leading from the library root to the given
+	 * directory.
+	 *
+	 * @param directory the directory to describe
+	 * @return the segments, empty for the root itself, or {@code null} when
+	 *         the directory lies outside the library
+	 */
+	private List<String> segmentsWithinRoot(File directory) {
+		if (directory == null) return null;
+
+		Path root;
+		Path target;
+
+		try {
+			root = libraryRoot.getCanonicalFile().toPath();
+			target = directory.getCanonicalFile().toPath();
+		} catch (IOException e) {
+			warn("Unable to resolve " + directory + " against " + libraryRoot, e);
+			return null;
+		}
+
+		if (!target.startsWith(root)) return null;
+
+		List<String> segments = new ArrayList<>();
+		root.relativize(target).forEach(segment -> segments.add(segment.toString()));
+
+		// An empty relative path names the root itself, which Path reports as
+		// a single empty segment rather than as no segments at all.
+		if (segments.size() == 1 && segments.get(0).isEmpty()) return List.of();
+
+		return segments;
+	}
 
 	/**
 	 * Saves a group as a first-class library entry, preserving the
