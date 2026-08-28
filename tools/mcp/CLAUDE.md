@@ -83,7 +83,12 @@ docstring results in no description being shown to the model. Include:
 - An `Args:` section listing every parameter
 - A `Returns:` section
 
-Follow the pattern of `workstream_submit_task` (line ~911 of `server.py`) exactly.
+Follow the pattern of `workstream_submit_task` (in
+`tools/mcp/manager/workstream_submit_tools.py` — the function grew out of
+`server.py` when the manager was split across per-domain `*_tools.py` modules
+to keep individual files under the Python line cap; see
+[McpToolDiscovery.locateManagerSources](../../flowtree/runtime/src/main/java/io/flowtree/jobs/McpToolDiscovery.java))
+exactly.
 
 ---
 
@@ -128,9 +133,9 @@ defaults and silently defeated per-phase overrides field-by-field, so they
 were a recurring source of surprising behaviour. A caller that passes any of
 them is rejected with a 400-style `{"ok": False, "error": "..."}` dict
 naming the offending parameter and pointing to its replacement (see
-`_reject_removed_config_params` in `tools/mcp/manager/server.py`). This is a
-deliberate clean break — there is no silent translation. Migrate callers as
-follows:
+`_reject_removed_config_params` in `tools/mcp/manager/phase_config.py`).
+This is a deliberate clean break — there is no silent translation. Migrate
+callers as follows:
 
 | Removed parameter | Replacement |
 |-------------------|-------------|
@@ -149,7 +154,7 @@ save-then-load cycle migrates the file in place. See
 
 When adding a new structured parameter, follow the pattern from
 `_parse_phase_configs_json` and `_parse_default_phase_config_json` in
-`tools/mcp/manager/server.py`: parse, validate locally (phase keys,
+`tools/mcp/manager/phase_config.py`: parse, validate locally (phase keys,
 runners against `_KNOWN_RUNNER_NAMES`, efforts against
 `VALID_EFFORT_LEVELS`, opaque fields like `model` passed through to the
 controller), and return a 400-style `{"ok": False, "error": "..."}`
