@@ -40,9 +40,9 @@
  *   <li>{@link org.almostrealism.persist.assets.CollectionDataMemoryProvider} -
  *       the shared {@code "PROTOBUF"} {@link io.almostrealism.code.MemoryProvider}
  *       that exposes collection data as read-only memory. It is a source provider:
- *       memory is created only from existing messages or file references, and
- *       the default {@code allocate} rejects writes (migration to a device is
- *       one-way).</li>
+ *       the default {@code allocate(int)} rejects empty allocation (memory is
+ *       created only from existing messages or file references), and the default
+ *       {@code setMem(...)} rejects writes — migration to a device is one-way.</li>
  *   <li>{@link org.almostrealism.persist.assets.CollectionDataMemory} - the
  *       abstract {@link io.almostrealism.code.Memory} implementation that
  *       {@link CollectionDataMemoryProvider} returns.</li>
