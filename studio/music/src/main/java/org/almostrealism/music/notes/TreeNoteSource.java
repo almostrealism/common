@@ -33,6 +33,7 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.function.Function;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -87,6 +88,13 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 
 	/** The list of filters to apply when selecting files from the tree. */
 	private final List<FileWaveDataProviderFilter> filters;
+
+	/**
+	 * Supplies a sample's own pitch, or {@code null} when nothing knows it.
+	 * Not persisted: it is a way of reaching what does know, not a property of
+	 * the source.
+	 */
+	private transient Function<FileWaveDataProvider, KeyPosition<?>> pitchSource;
 
 	/** Creates a {@code TreeNoteSource} with no tree. */
 	public TreeNoteSource() { this((FileWaveDataProviderTree) null); }
@@ -181,6 +189,40 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 
 	/** Returns the list of filters applied when selecting files from the tree. */
 	public List<FileWaveDataProviderFilter> getFilters() { return filters; }
+
+	/**
+	 * Sets a source of per-sample pitch, consulted before the source root.
+	 *
+	 * <p>The root of this source is one pitch applied to everything it yields,
+	 * which is the best that can be said about a folder of files: nothing
+	 * records what any one of them actually is. Where something does record it
+	 * — a captured sample whose pitch was known at the moment it was rendered —
+	 * that is the authoritative answer and this is how it reaches the note.</p>
+	 *
+	 * <p>Whatever knows about such records lives downstream of this class, so
+	 * it supplies the answer rather than being asked for it. A source with none
+	 * set, or one whose supplier has nothing to say about a sample, uses its
+	 * root exactly as before.</p>
+	 *
+	 * @param pitchSource supplies a sample's own pitch, or {@code null} for none
+	 */
+	@JsonIgnore
+	public void setPitchSource(Function<FileWaveDataProvider, KeyPosition<?>> pitchSource) {
+		this.pitchSource = pitchSource;
+	}
+
+	/**
+	 * Returns the pitch to treat the given sample as being at.
+	 *
+	 * @param p the sample
+	 * @return its own pitch if anything knows it, otherwise the source root
+	 */
+	protected KeyPosition<?> rootFor(FileWaveDataProvider p) {
+		if (pitchSource == null) return getRoot();
+
+		KeyPosition<?> captured = pitchSource.apply(p);
+		return captured == null ? getRoot() : captured;
+	}
 
 	@Override
 	public KeyboardTuning getTuning() {
@@ -285,7 +327,7 @@ public class TreeNoteSource extends NoteAudioSourceBase implements Named, Consol
 							.orElse(true);
 
 					if (match) {
-						providers.add(new Provider(new NoteAudioProvider(p, getRoot(), getBpm()),
+						providers.add(new Provider(new NoteAudioProvider(p, rootFor(p), getBpm()),
 													((FileWaveDataProviderTree) f).active()));
 					}
 				} catch (Exception e) {

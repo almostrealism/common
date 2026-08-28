@@ -19,7 +19,9 @@ package org.almostrealism.studio.persistence;
 import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.FileWaveDataProvider;
+import org.almostrealism.audio.data.FileWaveDataProviderFilter;
 import org.almostrealism.audio.data.WaveDetails;
+import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.music.notes.GroupNoteSource;
@@ -32,8 +34,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -261,6 +265,85 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 */
 	public File locate(Audio.AudioLayerGroup group) {
 		return commonDirectory(membersOf(group));
+	}
+
+	/**
+	 * Returns the pitch each captured sample was rendered at, by file.
+	 *
+	 * <p>A sample chosen from a folder is treated as being at whatever pitch
+	 * its source was configured with, because a folder of files records nothing
+	 * about any one of them. A captured layer does record it: the pitch was
+	 * known at the moment the audio was rendered, and it is exact rather than
+	 * inferred from a name. Where that is known it is the answer, and this is
+	 * how the selection path gets at it.</p>
+	 *
+	 * <p>Layers with no captured pitch are absent rather than present with a
+	 * guess, so a sample nothing knows about goes on being treated as before.
+	 * Resolution goes through the index, as everything asked during a tree
+	 * build must.</p>
+	 *
+	 * @return the captured pitch of each file that has one
+	 */
+	public Map<File, KeyPosition<?>> capturedPitches() {
+		Map<File, KeyPosition<?>> pitches = new HashMap<>();
+		if (library == null) return pitches;
+
+		for (Audio.AudioLayerGroup group : allGroups()) {
+			for (Audio.AudioLayer layer : group.getLayersList()) {
+				String ref = audioRef(layer);
+				if (ref == null) continue;
+
+				KeyPosition<?> captured = AudioLayerPitch.capturedKeyPosition(layer);
+				if (captured == null) continue;
+
+				File file = library.indexedFileFor(ref);
+				if (file != null) pitches.putIfAbsent(file, captured);
+			}
+		}
+
+		return pitches;
+	}
+
+	/**
+	 * Returns the value a filter matches a group against.
+	 *
+	 * <p>A filter selects a name or a path from whatever it is filtering. For a
+	 * file those are the file's own; for a group they are the group's own: the
+	 * key it is known by, and the directory it belongs in. A group whose members
+	 * are spread across several folders has one place it belongs and so one path
+	 * to be filtered on, which deriving the value from the members could not
+	 * give.</p>
+	 *
+	 * <p>This is what keeps a library of loose files behaving exactly as it did.
+	 * The group standing for a loose file is keyed by that file's name and
+	 * belongs in that file's directory, so both values are the ones the file
+	 * itself would have selected, and a filter a user wrote before any of this
+	 * existed goes on selecting what it selected.</p>
+	 *
+	 * @param on    which value the filter matches against
+	 * @param group the group to describe
+	 * @return the value to match, or {@code null} if there is none
+	 */
+	public String filterValue(FileWaveDataProviderFilter.FilterOn on,
+							  Audio.AudioLayerGroup group) {
+		if (on == FileWaveDataProviderFilter.FilterOn.NAME) {
+			return group.getKey();
+		}
+
+		List<String> segments = segmentsWithinRoot(locate(group));
+		return segments == null ? null : String.join(File.separator, segments);
+	}
+
+	/**
+	 * Returns whether the given filter selects the given group.
+	 *
+	 * @param filter the filter to apply
+	 * @param group  the group to test
+	 * @return whether the group is selected
+	 */
+	public boolean matches(FileWaveDataProviderFilter filter,
+						   Audio.AudioLayerGroup group) {
+		return filter.matches(filterValue(filter.getFilterOn(), group));
 	}
 
 	/**
