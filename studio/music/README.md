@@ -34,7 +34,7 @@ org.almostrealism.music
     |
     +-- arrange/          [AudioSceneContext, ChannelSection]
     |
-    +-- pattern/          [PatternSystemManager, PatternLayerManager, etc.]
+    +-- pattern/          [PatternSystemManager, PatternLayerManager, BatchedPatternLayerRenderer, BatchedNoteInputs, etc.]
     |
     +-- notes/            [PatternNote, NoteAudioChoice, etc.]
     |
@@ -458,6 +458,11 @@ PatternSystemManager
     │               └── NoteAudioChoice → NoteAudioProvider
     │
     └── sum() → PatternFeatures.render()
+            │
+            ├── BatchedPatternLayerRenderer (default-on; AR_PATTERN_BATCHED)
+            │       gathers overlapping notes and dispatches the batchable
+            │       ones through BatchedPatternRenderer, reading the bound
+            │       per-note scalars from BatchedNoteInputs
             │
             └── PackedCollection (rendered audio buffer)
 ```

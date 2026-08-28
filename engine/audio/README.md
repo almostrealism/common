@@ -23,6 +23,7 @@ ar-audio
 |   +-- CellList          - Hierarchical cell container with lifecycle
 |   +-- WavFile           - WAV file I/O (RIFF/PCM format)
 |   +-- WaveOutput        - Audio output coordination
+|   +-- BatchedPatternRenderer - Batched four-kernel pattern-render dispatch; owns the bound scalar column layout consumed by BatchedPatternLayerRenderer
 |
 +-- sources/              - Signal Generators
 |   +-- SineWaveCell      - Sine wave oscillator
