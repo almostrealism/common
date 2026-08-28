@@ -36,8 +36,19 @@ StateDictionary stateDict = new StateDictionary(weights);
 ```
 
 When loading from files, `loadWeights()` iterates over all non-hidden files in the
-directory, parses each as a `CollectionLibraryData` protobuf message, and decodes
-every `CollectionLibraryEntry` into a `PackedCollection` keyed by its string name.
+directory. The path each tensor takes depends on `StateDictionary.enableMaterializeWeights`:
+
+- **Default (`false`)** -- each tensor is **located**, not parsed. The library file is
+  walked for structure (the tensor's key, its shape, and where its values are), and
+  the values stay in the file until a kernel reads them through a
+  `CollectionDataReference` over a `FileMapping`. A tensor nothing reads never
+  reaches the Java heap or a device.
+- **When `true`** -- each tensor is **decoded** into a freshly allocated
+  `PackedCollection`, the legacy behavior. Useful when an in-memory representation is
+  needed before kernels ever run (e.g., for tests that introspect tensors on the host).
+
+The two paths both consume the same protobuf layout; the difference is only when the
+values are read off disk.
 
 ## HuggingFace Compatibility
 

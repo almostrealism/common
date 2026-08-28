@@ -60,6 +60,14 @@ stateDict.save(Path.of("/output/weights.pb"));
 stateDict.save(Path.of("/output/weights.pb"), Precision.FP32);
 ```
 
+**Lazy weight loading (default):** `StateDictionary.enableMaterializeWeights`
+controls whether a tensor is decoded into a freshly allocated `PackedCollection`
+when the library is opened, or whether it is located on disk and only read through
+a `FileMapping` when a kernel first asks for it. The default (`false`) keeps the
+file in place: a weight no kernel ever reads costs neither Java heap nor device
+memory. Set the flag to `true` for tests that need to inspect a tensor on the
+host before any kernel runs.
+
 ### 2. Transformer Attention
 
 ```java

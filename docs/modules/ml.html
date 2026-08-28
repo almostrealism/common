@@ -165,6 +165,16 @@ private PackedCollection getLayerWeight(StateDictionary dict, int layer, String 
 // Cleanup when done
 stateDict.destroy();</code></pre>
 
+                <p><strong>Lazy loading:</strong> by default, each tensor is located in the
+                protobuf library rather than parsed. The file is walked for the tensor's
+                key, shape, and the byte range of its values; the values themselves stay in
+                the file until a kernel first reads them. Weights no kernel asks for cost
+                neither the Java heap nor a device allocation. Set
+                <code>StateDictionary.enableMaterializeWeights = true</code> to decode every
+                tensor into a freshly allocated <code>PackedCollection</code> at load time
+                instead, which is useful when tests need to inspect a tensor on the host
+                before any kernel runs.</p>
+
                 <table class="comparison-table">
                     <tr>
                         <th>Feature</th>
