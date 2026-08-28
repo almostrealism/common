@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -75,14 +76,14 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	/** Directory into which member WAVs are copied, content-addressed as {@code <md5>.wav}. */
 	private final File libraryRoot;
 
-	/** Files the saved groups claim, as of {@link #claimedGeneration}. */
-	private Set<File> claimedFiles;
+	/** Canonical paths the saved groups claim, as of {@link #claimedGeneration}. */
+	private Set<String> claimedPaths;
 
-	/** Index generation {@link #claimedFiles} was worked out from. */
+	/** Index generation {@link #claimedPaths} was worked out from. */
 	private long claimedGeneration = -1;
 
-	/** Captured pitch by file, as of {@link #pitchGeneration}. */
-	private Map<File, KeyPosition<?>> capturedPitches;
+	/** Captured pitch by canonical path, as of {@link #pitchGeneration}. */
+	private Map<String, KeyPosition<?>> capturedPitches;
 
 	/** Index generation {@link #capturedPitches} was worked out from. */
 	private long pitchGeneration = -1;
@@ -166,22 +167,49 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 * what it showed before rather than losing rows it cannot yet justify
 	 * losing.</p>
 	 *
+	 * <p>Reported as canonical paths, which is the form the index holds and so
+	 * the form a caller can compare against without asking the filesystem
+	 * again. Comparing {@link File}s would not do: the same file reached by a
+	 * directory listing and by the index can carry different paths — a link in
+	 * one and its target in the other — and would then be two different files
+	 * to every comparison, so a claimed sample would keep its own row and
+	 * nothing would look wrong until someone noticed the duplicate.</p>
+	 *
 	 * @return the claimed files, by canonical path
 	 */
-	public Set<File> claimedFiles() {
+	public Set<String> claimedPaths() {
 		if (library == null) return Set.of();
 
-		Set<File> cached = derived(claimedFiles, claimedGeneration);
+		Set<String> cached = derived(claimedPaths, claimedGeneration);
 		if (cached != null) return cached;
 
-		Set<File> claimed = new HashSet<>();
+		Set<String> claimed = new HashSet<>();
+
 		for (Audio.AudioLayerGroup group : allGroups()) {
-			claimed.addAll(membersOf(group));
+			for (File member : membersOf(group)) {
+				String path = canonicalPath(member);
+				if (path != null) claimed.add(path);
+			}
 		}
 
 		claimedGeneration = library.getIndexGeneration();
-		claimedFiles = claimed;
-		return claimed;
+		claimedPaths = Collections.unmodifiableSet(claimed);
+		return claimedPaths;
+	}
+
+	/**
+	 * Returns a file's canonical path, or {@code null} if it cannot be had.
+	 *
+	 * @param file the file
+	 * @return its canonical path
+	 */
+	private String canonicalPath(File file) {
+		try {
+			return file.getCanonicalPath();
+		} catch (IOException e) {
+			warn("Unable to resolve " + file, e);
+			return null;
+		}
 	}
 
 	/**
@@ -319,15 +347,15 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 	 * Resolution goes through the index, as everything asked during a tree
 	 * build must.</p>
 	 *
-	 * @return the captured pitch of each file that has one
+	 * @return the captured pitch of each file that has one, by canonical path
 	 */
-	public Map<File, KeyPosition<?>> capturedPitches() {
+	public Map<String, KeyPosition<?>> capturedPitches() {
 		if (library == null) return Map.of();
 
-		Map<File, KeyPosition<?>> cached = derived(capturedPitches, pitchGeneration);
+		Map<String, KeyPosition<?>> cached = derived(capturedPitches, pitchGeneration);
 		if (cached != null) return cached;
 
-		Map<File, KeyPosition<?>> pitches = new HashMap<>();
+		Map<String, KeyPosition<?>> pitches = new HashMap<>();
 
 		for (Audio.AudioLayerGroup group : allGroups()) {
 			for (Audio.AudioLayer layer : group.getLayersList()) {
@@ -338,13 +366,16 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 				if (captured == null) continue;
 
 				File file = library.indexedFileFor(ref);
-				if (file != null) pitches.putIfAbsent(file, captured);
+				if (file == null) continue;
+
+				String path = canonicalPath(file);
+				if (path != null) pitches.putIfAbsent(path, captured);
 			}
 		}
 
 		pitchGeneration = library.getIndexGeneration();
-		capturedPitches = pitches;
-		return pitches;
+		capturedPitches = Collections.unmodifiableMap(pitches);
+		return capturedPitches;
 	}
 
 	/**
