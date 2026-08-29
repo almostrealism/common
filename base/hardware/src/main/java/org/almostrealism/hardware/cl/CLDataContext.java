@@ -62,6 +62,7 @@ import java.util.stream.Stream;
  * // Create context for GPU execution
  * CLDataContext context = new CLDataContext(
  *     "GPU",                    // Name
+ *     Precision.FP64,          // Ceiling on the precision that may be selected
  *     1024 * 1024 * 1024,      // 1GB max reservation
  *     1024 * 1024,             // 1MB off-heap threshold
  *     CLMemoryProvider.Location.DEVICE
@@ -99,19 +100,19 @@ import java.util.stream.Stream;
  * <pre>{@code
  * // DEVICE: Allocate on GPU device memory
  * CLDataContext device = new CLDataContext(
- *     "GPU", maxMem, threshold, CLMemoryProvider.Location.DEVICE);
+ *     "GPU", max, maxMem, threshold, CLMemoryProvider.Location.DEVICE);
  *
  * // HOST: Use host-pinned memory (faster transfers)
  * CLDataContext host = new CLDataContext(
- *     "CPU", maxMem, threshold, CLMemoryProvider.Location.HOST);
+ *     "CPU", max, maxMem, threshold, CLMemoryProvider.Location.HOST);
  *
  * // HEAP: Use Java heap arrays
  * CLDataContext heap = new CLDataContext(
- *     "Heap", maxMem, threshold, CLMemoryProvider.Location.HEAP);
+ *     "Heap", max, maxMem, threshold, CLMemoryProvider.Location.HEAP);
  *
  * // DELEGATE: Delegate to another memory provider
  * CLDataContext delegate = new CLDataContext(
- *     "Delegate", maxMem, threshold, CLMemoryProvider.Location.DELEGATE);
+ *     "Delegate", max, maxMem, threshold, CLMemoryProvider.Location.DELEGATE);
  * delegate.setDelegateMemoryProvider(customProvider);
  * }</pre>
  *
@@ -207,7 +208,8 @@ import java.util.stream.Stream;
  *
  * <h2>Precision Selection</h2>
  *
- * <p>Automatically selects FP32 for GPU, FP64 for CPU:</p>
+ * <p>The device capability selects FP32 for GPU and FP64 for CPU, and the ceiling supplied
+ * at construction lowers that further when the rest of the process requires it:</p>
  *
  * <pre>{@code
  * // With kernel device (GPU)
@@ -215,7 +217,15 @@ import java.util.stream.Stream;
  *
  * // Without kernel device (CPU only)
  * precision = Precision.FP64;  // 64-bit doubles
+ *
+ * // ... but never above the ceiling, so a context constructed with
+ * // Precision.FP32 is FP32 even on a CPU-only device
  * }</pre>
+ *
+ * <p>Because the selected precision determines the element width of this context's
+ * {@link CLMemoryProvider}, it must agree with the precision of any other context whose
+ * memory is copied to or from this one. {@link org.almostrealism.hardware.Hardware} is
+ * responsible for supplying a ceiling that keeps them in agreement.</p>
  *
  * <h2>Lifecycle Management</h2>
  *
@@ -256,6 +266,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 
 	/** The memory allocation strategy (HOST, DEVICE, HEAP, or DELEGATE). */
 	private final CLMemoryProvider.Location location;
+
+	/** The highest floating-point precision this context is permitted to select. */
+	private final Precision maximumPrecision;
 
 	/** The floating-point precision (FP32 or FP64). */
 	private Precision precision;
@@ -302,13 +315,17 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/**
 	 * Constructs a new CLDataContext with the specified configuration.
 	 *
-	 * @param name           the name of this data context (e.g., "GPU", "CPU")
-	 * @param maxReservation the maximum memory reservation in bytes
-	 * @param offHeapSize    the threshold size in bytes below which allocations use JVM heap
-	 * @param location       the memory allocation strategy (HOST, DEVICE, HEAP, or DELEGATE)
+	 * @param name             the name of this data context (e.g., "GPU", "CPU")
+	 * @param maximumPrecision the highest precision this context may select; the device
+	 *                         capability is used when it is lower, and it is never exceeded
+	 * @param maxReservation   the maximum memory reservation in bytes
+	 * @param offHeapSize      the threshold size in bytes below which allocations use JVM heap
+	 * @param location         the memory allocation strategy (HOST, DEVICE, HEAP, or DELEGATE)
 	 */
-	public CLDataContext(String name, long maxReservation, int offHeapSize, CLMemoryProvider.Location location) {
+	public CLDataContext(String name, Precision maximumPrecision, long maxReservation,
+						 int offHeapSize, CLMemoryProvider.Location location) {
 		this.name = name;
+		this.maximumPrecision = maximumPrecision;
 		this.maxReservation = maxReservation;
 		this.offHeapSize = offHeapSize;
 		this.location = location;
@@ -394,6 +411,10 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		}
 
 		precision = kernelDevice == null ? Precision.FP64 : Precision.FP32;
+
+		if (maximumPrecision != null && maximumPrecision.bytes() < precision.bytes()) {
+			precision = maximumPrecision;
+		}
 	}
 
 	/**
@@ -472,8 +493,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/**
 	 * Returns the floating-point precision used by this context.
 	 * Triggers lazy initialization if not already started.
-	 * Returns {@link Precision#FP32} when using a GPU kernel device,
-	 * or {@link Precision#FP64} when using CPU only.
+	 * The device capability yields {@link Precision#FP32} when using a GPU kernel device
+	 * and {@link Precision#FP64} when using CPU only, lowered to the maximum precision
+	 * supplied at construction when that is more restrictive.
 	 *
 	 * @return the precision (FP32 or FP64) for this context
 	 */
