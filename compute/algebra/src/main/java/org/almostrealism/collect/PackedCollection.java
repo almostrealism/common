@@ -200,6 +200,9 @@ public class PackedCollection extends MemoryDataAdapter
 	public static boolean enableFillOrigin =
 			SystemUtils.isEnabled("AR_FILL_ORIGIN").orElse(false);
 
+	/** How many calls a report names when asked where it came from. */
+	private static final int ORIGIN_FRAMES = 12;
+
 	/** Shared hardware-accelerated evaluable for zeroing a single element, used by {@link #clear()}. */
 	private static final Evaluable<PackedCollection> clear;
 
@@ -512,16 +515,18 @@ public class PackedCollection extends MemoryDataAdapter
 	 * materializes the whole content on the host and writes it across, where
 	 * {@code clear} runs a kernel. Zeros are therefore reported rather than
 	 * silently accepted — but only where the difference is worth anything. A
-	 * single value written from the host is not a kernel's worth of work, so
-	 * reporting it says nothing a reader can act on and buries the reports that
-	 * do.</p>
+	 * handful of values written from the host is not a kernel's worth of work,
+	 * so reporting it says nothing a reader can act on and buries the reports
+	 * that do. The threshold leaves out {@link org.almostrealism.algebra.Pair},
+	 * which is two values and is zeroed this way in the ordinary course of
+	 * things.</p>
 	 *
 	 * @param value the values to cycle through; repeated if shorter than the collection
 	 * @return this collection
 	 * @see #enableFillOrigin
 	 */
 	public PackedCollection fill(double... value) {
-		if (getMemLength() > 1 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
+		if (getMemLength() > 2 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
 			reportFillWithZeros();
 		}
 
@@ -556,24 +561,51 @@ public class PackedCollection extends MemoryDataAdapter
 			return;
 		}
 
-		Exception origin = new Exception("fill with zeros originated here");
-		warn(message + " (from " + originOf(origin) + ")", origin);
+		StackTraceElement[] stack = new Exception().getStackTrace();
+		warn(message + " (from " + originOf(stack) + ")" + callersOf(stack));
 	}
 
 	/**
 	 * Returns the first frame outside this class, which is the call that filled.
 	 *
-	 * @param origin the stack to read
+	 * @param stack the stack to read
 	 * @return a description of the calling frame, or "unknown origin"
 	 */
-	private String originOf(Exception origin) {
-		for (StackTraceElement frame : origin.getStackTrace()) {
+	private String originOf(StackTraceElement[] stack) {
+		for (StackTraceElement frame : stack) {
 			if (!PackedCollection.class.getName().equals(frame.getClassName())) {
 				return frame.toString();
 			}
 		}
 
 		return "unknown origin";
+	}
+
+	/**
+	 * Returns the calls that led here, as lines of the report itself.
+	 *
+	 * <p>Carried in the message rather than attached as an exception, because
+	 * an attached one is printed straight to the error stream and never
+	 * reaches the console — so it misses whatever the console has been asked
+	 * to write to, which for a packaged application is the only place anyone
+	 * reads. A stack that goes somewhere nobody is looking is no better than
+	 * no stack.</p>
+	 *
+	 * @param stack the stack to read
+	 * @return the frames, one per line
+	 */
+	private String callersOf(StackTraceElement[] stack) {
+		StringBuilder callers = new StringBuilder();
+		int shown = 0;
+
+		for (StackTraceElement frame : stack) {
+			if (PackedCollection.class.getName().equals(frame.getClassName())) continue;
+			if (shown++ >= ORIGIN_FRAMES) break;
+
+			callers.append("\n    at ").append(frame);
+		}
+
+		return callers.toString();
 	}
 
 	/**
