@@ -134,6 +134,7 @@
                         <h4><a href="../apidocs/org/almostrealism/persist/assets/CollectionDataMemoryProvider.html">CollectionDataMemoryProvider</a></h4>
                         <p>The shared <code>"PROTOBUF"</code> <code>MemoryProvider</code> that exposes collection data as read-only memory. A tensor nothing reads costs neither the Java heap nor a device allocation.</p>
                     </div>
+                    <!-- TODO(review): engine/ml/README.md documents CollectionDataMemory (the abstract base class returned by CollectionDataMemoryProvider) as its own bullet, but this page has no matching class-item entry for it. Consider adding one for consistency. -->
                     <div class="class-item">
                         <h4><a href="../apidocs/org/almostrealism/persist/assets/ParsedCollectionDataMemory.html">ParsedCollectionDataMemory</a></h4>
                         <p>Memory backed by a <code>CollectionData</code> already on the heap. Skips the device allocation when no kernel ever reads the values.</p>

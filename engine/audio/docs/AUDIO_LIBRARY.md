@@ -164,8 +164,9 @@ File fast = library.indexedFileFor(identifier);
 int count = library.getIndexedFileCount();
 
 // Generation counter; compare against the value held when a derivation was
-// made to see whether the library has moved on. Increments every time
-// indexFiles() rebuilds the entries.
+// made to see whether the library has moved on. Increments every time the
+// index is replaced — by indexFiles(), by clearFileIndex(), and by the
+// tree-refresh path.
 long generation = library.getIndexGeneration();
 
 // Drop the index, returning fileFor() to walking the tree for every call

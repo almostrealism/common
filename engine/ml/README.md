@@ -714,9 +714,9 @@ When the index exceeds `maxIndexSize`, new vectors are still stored but not inde
 ### Collection Data Memory
 
 `org.almostrealism.persist.assets` provides the read-only `Memory` surface that
-`StateDictionary` sits weight tensors behind. Together they let a tensor stay in
-its protobuf file until a kernel first reads it; a model whose weights nothing
-asks for costs the Java heap and the device nothing at all:
+`StateDictionary` places weight tensors behind. Together they let a tensor stay in
+its protobuf file until a kernel first reads it; a model whose weights no kernel
+ever asks for costs neither the Java heap nor the device:
 
 - **`CollectionEncoder`** — encode/decode a `PackedCollection` to protobuf `CollectionData`. The deferred `decode` forms hand back a collection whose values are read from the encoding on demand, never copied off it.
 - **`CollectionDataMemoryProvider`** — the shared `"PROTOBUF"` `MemoryProvider` exposing collection data as read-only memory. Default `allocate(int)` rejects empty allocation (memory is created only from existing messages or file references); the default `setMem(...)` rejects writes — migration to a device is one-way.
@@ -726,7 +726,7 @@ asks for costs the Java heap and the device nothing at all:
 - **`CollectionDataReference`** — locates collection data inside a message by descending a path of field numbers, and reports the byte range and precision of its values without parsing them. `MappedCollectionDataMemory` is built on top of one of these.
 - **`EncodedMessage`** — bytes of a protobuf message with field positions locatable without decoding. `CollectionDataReference` walks one of these to find what it needs.
 
-The `CollectionDataMemoryProvider` memory is consulted on first kernel use and migrates to the device lazily, so a `StateDictionary` weight nothing uses costs nothing.
+The `CollectionDataMemoryProvider` memory is consulted on first kernel use and migrates to the device lazily, so a `StateDictionary` weight that nothing uses costs nothing.
 
 ---
 
