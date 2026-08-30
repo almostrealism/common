@@ -19,9 +19,9 @@ A phase carries four independently nullable knobs, collected in
 | Field | Meaning when set | What `null` means |
 |-------|------------------|-------------------|
 | `runner` | The `AgentRunner` name to dispatch this phase on | Inherit the runner from the next level up the ladder |
-| `model` | The model identifier handed to the runner (e.g. `"claude-opus-4-7"`) | Runner uses its default model |
-| `effort` | The effort level (e.g. `"high"`) | Runner uses its default effort |
-| `provider` | The provider identifier (e.g. `"openrouter"`) | Runner uses its default provider |
+| `model` | The model identifier handed to the runner (e.g. `"claude-opus-4-7"`) | Inherit the model from the next level up the ladder |
+| `effort` | The effort level (e.g. `"high"`) | Inherit the effort from the next level up the ladder |
+| `provider` | The provider identifier (e.g. `"openrouter"`) | Inherit the provider from the next level up the ladder |
 
 A per-container `PhaseConfigBundle` holds a `defaultPhaseConfig` (applied to
 phases not otherwise overridden) plus a `Map<Phase, PhaseConfig>` of per-phase

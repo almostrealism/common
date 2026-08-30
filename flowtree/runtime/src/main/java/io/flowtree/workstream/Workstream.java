@@ -979,8 +979,10 @@ public class Workstream {
      * Returns a JSON object representing this workstream's configuration and capabilities,
      * suitable for inclusion in the {@code GET /api/workstreams} list response.
      *
-     * <p>All string fields are JSON-escaped. Optional fields are omitted when null or empty;
-     * boolean flags are omitted when {@code false}.</p>
+     * <p>All string fields are JSON-escaped. Scalar string fields are omitted when null;
+     * collection-shaped fields ({@code planningDocument}, {@code dependentRepos},
+     * {@code requiredLabels}) are additionally omitted when empty. Boolean flags are
+     * omitted when {@code false}.</p>
      *
      * <p>Always present: {@code workstreamId}, {@code hasPlanningDocument},
      * {@code pipelineCapable}. Every other identifier and metadata field follows the
