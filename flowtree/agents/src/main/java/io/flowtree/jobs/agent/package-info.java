@@ -21,11 +21,24 @@
  * <p>{@link io.flowtree.jobs.agent.AgentRunner} is the single contract every
  * runner implements; {@link io.flowtree.jobs.agent.AgentRunRequest} and
  * {@link io.flowtree.jobs.agent.AgentRunResult} carry the per-session input
- * and output across the boundary. Phase 1 of the pluggable-agents refactor
- * introduces the package and ships {@link io.flowtree.jobs.agent.ClaudeCodeRunner}
- * as the sole implementation; subsequent phases add additional runners (e.g.
- * {@link io.flowtree.jobs.agent.OpencodeRunner}) and per-phase runner selection
- * on the orchestrator.</p>
+ * and output across the boundary.</p>
+ *
+ * <p>The runner resolved for a session comes from a four-field per-phase
+ * configuration: {@link io.flowtree.jobs.agent.PhaseConfig} carries
+ * {@code (runner, model, effort, provider)}, and the per-container
+ * {@link io.flowtree.jobs.agent.PhaseConfigBundle} holds a
+ * {@code defaultPhaseConfig} plus a
+ * {@code Map<Phase, PhaseConfig>} of per-phase overrides. Each field is
+ * independently nullable and resolved separately against the same
+ * per-job / per-workstream / per-workspace / controller-default ladder.</p>
+ *
+ * <p>Built-in runners today:</p>
+ * <ul>
+ *   <li>{@link io.flowtree.jobs.agent.ClaudeCodeRunner} — drives the Claude
+ *       Code CLI.</li>
+ *   <li>{@link io.flowtree.jobs.agent.OpencodeRunner} — drives the opencode
+ *       CLI, typically pointed at a local OpenAI-compatible inference server.</li>
+ * </ul>
  *
  * <p>{@link io.flowtree.jobs.agent.OpencodeTranscriptWriter} writes a structured
  * JSONL transcript for every opencode session, capturing the full NDJSON event
