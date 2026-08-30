@@ -19,9 +19,11 @@ import org.almostrealism.audio.notes.ReversePlaybackAudioFilter;
 import org.almostrealism.audio.notes.NoteAudio;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.audio.sources.StatelessSource;
+import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.audio.tone.KeyboardTuning;
 
 import java.util.ArrayList;
@@ -63,6 +65,23 @@ public abstract class NoteAudioSourceBase implements NoteAudioSource {
 	public void setSynthesizerFactory(Function<NoteAudio, StatelessSource> synthesizerFactory) {
 		this.synthesizerFactory = synthesizerFactory;
 	}
+
+	/**
+	 * Offers a record of what pitch individual samples were captured at.
+	 *
+	 * <p>A source that draws from files has only its own root to go on, since
+	 * nothing about a file records what it is. Where something does record it,
+	 * this is how that reaches the source. A source with no use for it ignores
+	 * it, which is what this does; a source that can do better overrides.</p>
+	 *
+	 * <p>Offered to every source rather than to the ones known to want it, so
+	 * that whatever supplies it does not have to know which kinds of source
+	 * exist.</p>
+	 *
+	 * @param pitchSource supplies a sample's own pitch, or {@code null} for none
+	 */
+	@JsonIgnore
+	public void setPitchSource(Function<FileWaveDataProvider, KeyPosition<?>> pitchSource) { }
 
 	@Override
 	public List<PatternNoteAudio> getPatternNotes() {
