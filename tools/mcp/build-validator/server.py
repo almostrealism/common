@@ -52,6 +52,7 @@ _COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "co
 if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
+import build_tree  # noqa: E402
 
 # Project root: tools/mcp/build-validator/server.py is 4 levels deep
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
@@ -291,6 +292,7 @@ class BuildValidator:
                     "violation_count": c.get("violation_count", 0),
                     "violations": c.get("violations", []),
                     "duration_seconds": c.get("duration_seconds"),
+                    **({"note": c["note"]} if c.get("note") else {}),
                 }
                 for c in metadata.get("checks", [])
             ],
@@ -436,14 +438,25 @@ class BuildValidator:
                     # Extract the output produced by this check only
                     check_output = self._read_from_offset(output_file, offset_before)
                     violations = self._parse_violations(check_name, check_output)
-                metadata["checks"][i].update({
+                result = {
                     "status": "passed" if exit_code == 0 else "failed",
                     "completed_at": datetime.now().isoformat(),
                     "duration_seconds": round(duration, 1),
                     "exit_code": exit_code,
                     "violation_count": len(violations),
                     "violations": violations[:MAX_VIOLATIONS],
-                })
+                }
+
+                # A check that lost its build tree mid-scan exits non-zero with
+                # nothing parsed, which reads exactly like a clean failure. Say
+                # so, rather than letting the caller act on an interrupted scan.
+                if exit_code != 0 and not violations:
+                    note = build_tree.race_diagnosis(
+                        self._read_from_offset(output_file, offset_before))
+                    if note:
+                        result["note"] = note
+
+                metadata["checks"][i].update(result)
                 self._save_metadata(run_id, metadata)
 
             # ── Final status ─────────────────────────────────────────
@@ -1020,7 +1033,13 @@ async def list_tools():
                 "duplicate_code) automatically run 'mvn install -DskipTests' "
                 "first unless skip_build=true. "
                 "\n\nFor a fast pre-commit check: use checks=['checkstyle'] — no build needed. "
-                "For a full pre-push check: use the defaults (all four checks)."
+                "For a full pre-push check: use the defaults (all four checks). "
+                "\n\nRun this on its own. It builds the same target/ directories as a test "
+                "run, and the checks walk that tree while they work, so an overlapping run "
+                "makes both results meaningless — the validation typically reports a failed "
+                "check with zero violations, which reads like a real finding. Starting one "
+                "while a test run is in flight is refused; wait for that run or cancel it. "
+                "The same applies to a plain 'mvn' in a shell, which cannot be detected."
             ),
             inputSchema={
                 "type": "object",
@@ -1192,6 +1211,16 @@ async def call_tool(name: str, arguments: dict):
             if bad:
                 return [TextContent(type="text",
                     text=json.dumps({"error": f"Unknown checks: {bad}. Valid: {sorted(VALID_CHECKS)}"}))]
+
+            active = build_tree.in_flight()
+            if active:
+                return [TextContent(type="text", text=json.dumps({
+                    "error": build_tree.conflict_message(active, "ar-build-validator"),
+                    "active_runs": [
+                        {"tool": r.tool, "run_id": r.run_id, "started_at": r.started_at}
+                        for r in active
+                    ],
+                }, indent=2))]
 
             config = ValidationConfig(
                 checks=checks,
