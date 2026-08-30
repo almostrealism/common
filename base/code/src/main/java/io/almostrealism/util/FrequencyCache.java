@@ -84,9 +84,11 @@ import java.util.stream.Stream;
  * <h2>Eviction Listener</h2>
  *
  * <p>An optional {@link BiConsumer} eviction listener is invoked for every
- * key removed during capacity enforcement. This enables resource cleanup
+ * key removed during capacity enforcement and for every key whose value is
+ * displaced by an update in {@link #put(Object, Object)} that leaves the
+ * previous value with no remaining keys. This enables resource cleanup
  * (e.g., destroying compiled native code when an instruction manager is
- * evicted).</p>
+ * evicted or when a different key takes ownership of its value).</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -218,9 +220,14 @@ public class FrequencyCache<K, V> {
 	/**
 	 * Registers a listener to be notified when entries are evicted.
 	 *
-	 * <p>The listener is invoked for each key removed during capacity enforcement
-	 * in {@link #prepareCapacity()}. It is also invoked during explicit
-	 * {@link #evict(Object)} calls.</p>
+	 * <p>The listener is invoked for each key removed during capacity
+	 * enforcement in {@link #prepareCapacity()}, during explicit
+	 * {@link #evict(Object)} calls, and — when the new value differs from the
+	 * one previously mapped to {@code key} — during {@link #put(Object,
+	 * Object)} for the value displaced by the update once no remaining keys
+	 * reference it. Implementations that hold native resources in their
+	 * values must release those resources from this listener for every
+	 * callback path, not only the capacity-enforcement one.</p>
 	 *
 	 * @param listener the eviction listener, or null to disable notifications
 	 */
@@ -338,6 +345,9 @@ public class FrequencyCache<K, V> {
 	 * @param entry     the entry the key was detached from
 	 */
 	private void releaseIfOrphaned(K formerKey, CacheEntry entry) {
+		// TODO(review): linear scan of cache.values() on every key-update put()
+		// call; consider a refcount on CacheEntry if this cache is used with
+		// capacities large enough for this to matter under frequent key rebinding.
 		for (CacheEntry e : cache.values()) {
 			if (e == entry) return;
 		}
