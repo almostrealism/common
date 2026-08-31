@@ -100,19 +100,19 @@ import java.util.stream.Stream;
  * <pre>{@code
  * // DEVICE: Allocate on GPU device memory
  * CLDataContext device = new CLDataContext(
- *     "GPU", max, maxMem, threshold, CLMemoryProvider.Location.DEVICE);
+ *     "GPU", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.DEVICE);
  *
  * // HOST: Use host-pinned memory (faster transfers)
  * CLDataContext host = new CLDataContext(
- *     "CPU", max, maxMem, threshold, CLMemoryProvider.Location.HOST);
+ *     "CPU", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.HOST);
  *
  * // HEAP: Use Java heap arrays
  * CLDataContext heap = new CLDataContext(
- *     "Heap", max, maxMem, threshold, CLMemoryProvider.Location.HEAP);
+ *     "Heap", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.HEAP);
  *
  * // DELEGATE: Delegate to another memory provider
  * CLDataContext delegate = new CLDataContext(
- *     "Delegate", max, maxMem, threshold, CLMemoryProvider.Location.DELEGATE);
+ *     "Delegate", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.DELEGATE);
  * delegate.setDelegateMemoryProvider(customProvider);
  * }</pre>
  *
