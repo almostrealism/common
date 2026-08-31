@@ -84,9 +84,11 @@ import java.util.stream.Stream;
  * <h2>Eviction Listener</h2>
  *
  * <p>An optional {@link BiConsumer} eviction listener is invoked for every
- * key removed during capacity enforcement. This enables resource cleanup
+ * key removed during capacity enforcement and for every key whose value is
+ * displaced by an update in {@link #put(Object, Object)} that leaves the
+ * previous value with no remaining keys. This enables resource cleanup
  * (e.g., destroying compiled native code when an instruction manager is
- * evicted).</p>
+ * evicted or when a different key takes ownership of its value).</p>
  *
  * <h2>Thread Safety</h2>
  *
@@ -218,9 +220,14 @@ public class FrequencyCache<K, V> {
 	/**
 	 * Registers a listener to be notified when entries are evicted.
 	 *
-	 * <p>The listener is invoked for each key removed during capacity enforcement
-	 * in {@link #prepareCapacity()}. It is also invoked during explicit
-	 * {@link #evict(Object)} calls.</p>
+	 * <p>The listener is invoked for each key removed during capacity
+	 * enforcement in {@link #prepareCapacity()}, during explicit
+	 * {@link #evict(Object)} calls, and — when the new value differs from the
+	 * one previously mapped to {@code key} — during {@link #put(Object,
+	 * Object)} for the value displaced by the update once no remaining keys
+	 * reference it. Implementations that hold native resources in their
+	 * values must release those resources from this listener for every
+	 * callback path, not only the capacity-enforcement one.</p>
 	 *
 	 * @param listener the eviction listener, or null to disable notifications
 	 */
@@ -290,21 +297,64 @@ public class FrequencyCache<K, V> {
 	 * frequency is incremented. Otherwise, capacity is confirmed (potentially
 	 * evicting the lowest-scored entry) and a new entry is created.</p>
 	 *
+	 * <p>When {@code key} already mapped to a different value, that previous
+	 * value is released once this update leaves it with no remaining keys: it is
+	 * removed from the reverse cache and the eviction listener is notified, so a
+	 * key update does not leak the displaced value (its {@link #size()} slot or
+	 * the native resources the listener is responsible for cleaning up).</p>
+	 *
 	 * @param key   the key
 	 * @param value the value to associate with the key
 	 */
 	public void put(K key, V value) {
 		clock++;
 
+		CacheEntry existing = cache.get(key);
 		CacheEntry entry = reverseCache.get(value);
+
+		if (existing != null && existing == entry) {
+			// The key already maps to this exact value; just record the access.
+			entry.accessed();
+			return;
+		}
+
+		// Detach the key from its previous value before rebinding it, releasing
+		// that value when this key was its last reference.
+		if (existing != null) {
+			cache.remove(key);
+			releaseIfOrphaned(key, existing);
+		}
 
 		if (entry == null) {
 			confirmCapacity();
-			cache.put(key, new CacheEntry(value));
-			reverseCache.put(value, cache.get(key));
+			CacheEntry created = new CacheEntry(value);
+			reverseCache.put(value, created);
+			cache.put(key, created);
 		} else {
 			cache.put(key, entry);
 			entry.accessed();
+		}
+	}
+
+	/**
+	 * Removes {@code entry}'s value from the reverse cache and notifies the
+	 * eviction listener when no key still references {@code entry}. Called when a
+	 * key is rebound to a new value so the displaced value is not retained.
+	 *
+	 * @param formerKey the key that previously referenced {@code entry}
+	 * @param entry     the entry the key was detached from
+	 */
+	private void releaseIfOrphaned(K formerKey, CacheEntry entry) {
+		// TODO(review): linear scan of cache.values() on every key-update put()
+		// call; consider a refcount on CacheEntry if this cache is used with
+		// capacities large enough for this to matter under frequent key rebinding.
+		for (CacheEntry e : cache.values()) {
+			if (e == entry) return;
+		}
+
+		reverseCache.remove(entry.value);
+		if (evictionListener != null) {
+			evictionListener.accept(formerKey, entry.value);
 		}
 	}
 
