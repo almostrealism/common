@@ -429,6 +429,10 @@ class BuildValidator:
                     check_start = datetime.now()
                     exit_code, violations = self._run_native_check(check_name, output_file)
                     duration = (datetime.now() - check_start).total_seconds()
+
+                    # A native check walks the tree itself rather than reporting a
+                    # Java exception, so it produces nothing the race diagnosis reads
+                    check_output = None
                 else:
                     cmd = self._build_command(check_name)
                     check_start = datetime.now()
@@ -450,9 +454,8 @@ class BuildValidator:
                 # A check that lost its build tree mid-scan exits non-zero with
                 # nothing parsed, which reads exactly like a clean failure. Say
                 # so, rather than letting the caller act on an interrupted scan.
-                if exit_code != 0 and not violations:
-                    note = build_tree.race_diagnosis(
-                        self._read_from_offset(output_file, offset_before))
+                if check_output and exit_code != 0 and not violations:
+                    note = build_tree.race_diagnosis(check_output)
                     if note:
                         result["note"] = note
 
