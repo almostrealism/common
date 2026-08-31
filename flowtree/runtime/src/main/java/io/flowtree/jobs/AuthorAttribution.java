@@ -60,9 +60,9 @@ import java.util.regex.Pattern;
  * {@link SensitiveFileBypassTrailer}, the other commit-message trailer the
  * harness strips before committing.</p>
  *
- * @author Michael Murray
  * @see CommitMessageBuilder
  * @see CommitMessageRule
+ * @author Michael Murray
  */
 public final class AuthorAttribution {
 
@@ -79,10 +79,12 @@ public final class AuthorAttribution {
      * A tool-credit line, e.g.
      * {@code Generated with [Claude Code](https://claude.com/claude-code)}.
      * The credited party must be a named assistant or vendor so that ordinary
-     * prose beginning "Generated with ..." is not mistaken for attribution.
+     * prose beginning "Generated with ..." or "Written by ..." is not mistaken
+     * for attribution.
      */
     private static final Pattern TOOL_CREDIT_LINE = Pattern.compile(
-            "(?i)^[^\\p{L}]*(?:generated|created|authored|produced|written)[- ]?(?:with|by)\\b.*"
+            "(?i)^[^\\p{L}]*(?:co[- ]?)?(?:generated|created|authored|produced|written|assisted)"
+                    + "[- ]?(?:with|by)\\b.*"
                     + "\\b(?:claude|anthropic|copilot|chatgpt|openai|gpt-?[0-9]|codex|cursor|gemini)\\b.*$");
 
     /**
@@ -96,12 +98,20 @@ public final class AuthorAttribution {
      * Attribution recognizable inside a line that also carries other content.
      * Used to detect the unsafe case: attribution welded into the agent's own
      * prose, which cannot be deleted line-wise.
+     *
+     * <p>Covers a trailer key wherever it appears, an assistant identity, and
+     * a credit phrase in prose. The phrase form spans the same verbs as
+     * {@link #TOOL_CREDIT_LINE} &mdash; "written by ChatGPT" mid-sentence is
+     * attribution just as much as "Generated with Claude Code" is &mdash; and
+     * requires a named assistant or vendor after the verb, so "written by
+     * hand" and "created with the new script" remain ordinary prose.</p>
      */
     private static final Pattern INLINE_MARKER = Pattern.compile(
             "(?i)(?:co[- ]?)?(?:authored|written|assisted)[- ]?by[ \t]*:"
                     + "|noreply@anthropic\\.com|claude\\.com/claude-code|claude\\.ai/code"
-                    + "|(?:generated|created|produced)[- ]?(?:with|by)[ \t]+"
-                    + "(?:claude|anthropic|copilot|chatgpt|openai|codex|cursor|gemini)");
+                    + "|(?:co[- ]?)?(?:generated|created|produced|authored|written|assisted)"
+                    + "[- ]?(?:with|by)[ \t]+"
+                    + "(?:claude|anthropic|copilot|chatgpt|openai|gpt-?[0-9]|codex|cursor|gemini)");
 
     /** Prevents instantiation; this class only exposes static helpers. */
     private AuthorAttribution() {

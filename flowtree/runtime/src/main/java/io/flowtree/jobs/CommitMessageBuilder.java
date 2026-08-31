@@ -67,9 +67,9 @@ final class CommitMessageBuilder {
      *
      * @param job the orchestrator holding the working directory, prompt, and
      *            session metadata
-     * @return the commit message text; never {@code null}
      * @throws IllegalStateException if {@code commit.txt} carries author
      *         attribution that cannot be safely removed
+     * @return the commit message text; never {@code null}
      */
     static String resolve(CodingAgentJob job) {
         Path commitFile = job.resolveWorkingPath("commit.txt");
@@ -106,8 +106,8 @@ final class CommitMessageBuilder {
      *
      * @param job     the orchestrator, used for logging and to name the failure
      * @param message the trimmed {@code commit.txt} content
-     * @return the message with attribution removed; never {@code null}
      * @throws IllegalStateException if the attribution is not safely removable
+     * @return the message with attribution removed; never {@code null}
      */
     private static String sanitizeAttribution(CodingAgentJob job, String message) {
         String sanitized = AuthorAttribution.sanitize(message);

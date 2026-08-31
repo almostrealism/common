@@ -81,6 +81,23 @@ public class AuthorAttributionTest extends TestSuiteBase {
         assertNull(AuthorAttribution.sanitize(message));
     }
 
+    /**
+     * Inline credit is caught for every verb the whole-line pattern covers,
+     * not just "generated with" — "written by ChatGPT" mid-sentence is
+     * attribution too.
+     */
+    @Test(timeout = 30000)
+    public void inlineAttributionIsCaughtForEveryCreditVerb() {
+        assertTrue(AuthorAttribution.containsAttribution(
+                "Rework the tokenizer, written by ChatGPT\n\nBody text."));
+        assertTrue(AuthorAttribution.containsAttribution(
+                "Rework the tokenizer (co-authored by Claude)\n\nBody text."));
+        assertTrue(AuthorAttribution.containsAttribution(
+                "Rework the tokenizer, assisted by Copilot\n\nBody text."));
+        assertNull(AuthorAttribution.sanitize(
+                "Rework the tokenizer, written by ChatGPT\n\nBody text."));
+    }
+
     /** An attribution line with message content after it cannot be removed safely. */
     @Test(timeout = 30000)
     public void midBodyAttributionIsRefused() {
