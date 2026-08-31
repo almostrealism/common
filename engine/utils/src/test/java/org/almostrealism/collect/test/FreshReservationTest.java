@@ -92,13 +92,15 @@ public class FreshReservationTest extends TestSuiteBase {
 	public void aReservationAfterAReleaseReadsAsZero() {
 		List<PackedCollection> first = new ArrayList<>();
 
-		for (int i = 0; i < RESERVATIONS; i++) {
-			PackedCollection c = new PackedCollection(new TraversalPolicy(LENGTH));
-			c.fill(1.0);
-			first.add(c);
+		try {
+			for (int i = 0; i < RESERVATIONS; i++) {
+				PackedCollection c = new PackedCollection(new TraversalPolicy(LENGTH));
+				c.fill(1.0);
+				first.add(c);
+			}
+		} finally {
+			first.forEach(PackedCollection::destroy);
 		}
-
-		first.forEach(PackedCollection::destroy);
 
 		List<PackedCollection> second = new ArrayList<>();
 

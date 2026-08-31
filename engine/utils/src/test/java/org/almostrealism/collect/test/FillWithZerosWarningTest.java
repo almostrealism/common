@@ -19,6 +19,7 @@ package org.almostrealism.collect.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -103,9 +104,18 @@ public class FillWithZerosWarningTest extends TestSuiteBase {
 	 *
 	 * <p>A stack per report would drown a log being read for anything else, so
 	 * this is for a build that is hunting these and not for every build.</p>
+	 *
+	 * <p>What is pinned is the default, so a run that has configured
+	 * {@code AR_FILL_ORIGIN} is not one this has anything to say about — a
+	 * diagnostic run turns it on deliberately, and failing there would only
+	 * teach people to stop running the tests that way. Comparing the flag
+	 * against the property instead would assert the field initializer against
+	 * itself and hold nothing in place.</p>
 	 */
 	@Test(timeout = 60000)
 	public void theOriginIsNotAskedForByDefault() {
+		if (SystemUtils.isEnabled("AR_FILL_ORIGIN").isPresent()) return;
+
 		Assert.assertFalse("A trace per report would drown the log it is in",
 				PackedCollection.enableFillOrigin);
 	}

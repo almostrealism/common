@@ -591,15 +591,26 @@ public class PackedCollection extends MemoryDataAdapter
 	 * reads. A stack that goes somewhere nobody is looking is no better than
 	 * no stack.</p>
 	 *
+	 * <p>Begins above the origin, which the report has already named. Repeating
+	 * it would put the same frame on two consecutive lines of every report, and
+	 * these are read in numbers.</p>
+	 *
 	 * @param stack the stack to read
-	 * @return the frames, one per line
+	 * @return the frames above the origin, one per line
 	 */
 	private String callersOf(StackTraceElement[] stack) {
 		StringBuilder callers = new StringBuilder();
+		boolean atOrigin = true;
 		int shown = 0;
 
 		for (StackTraceElement frame : stack) {
 			if (PackedCollection.class.getName().equals(frame.getClassName())) continue;
+
+			if (atOrigin) {
+				atOrigin = false;
+				continue;
+			}
+
 			if (shown++ >= ORIGIN_FRAMES) break;
 
 			callers.append("\n    at ").append(frame);
