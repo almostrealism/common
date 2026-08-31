@@ -53,9 +53,17 @@ public class ZeroVector {
 	/**
 	 * Returns a {@link Producer} that generates the zero vector (0, 0, 0).
 	 *
+	 * <p>Described as zeros rather than as a {@link Vector} of three of them.
+	 * Building one names the value on the host and writes all three across,
+	 * where zeroing is the one case a kernel expresses on its own — and it is
+	 * this vector, wanted wherever something needs an origin or a default
+	 * direction, that pays for it most often.</p>
+	 *
 	 * @return a producer for the zero vector
 	 */
-	public static Producer<PackedCollection> getInstance() { return VectorFeatures.getInstance().vector(0, 0, 0); }
+	public static Producer<PackedCollection> getInstance() {
+		return VectorFeatures.getInstance().zeros(Vector.shape());
+	}
 
 	/**
 	 * Returns an {@link Evaluable} that produces the zero vector (0, 0, 0).
