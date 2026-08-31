@@ -257,7 +257,7 @@ normalize(cp(vector)).into(vector).evaluate();</code></pre>
                     <p><strong>Configuration:</strong> <span class="env-var">AR_HARDWARE_DRIVER=cl</span> or <span class="env-var">gpu</span></p>
                     <ul>
                         <li>Supports CPU fallback mode</li>
-                        <li>Multiple allocation strategies (DEVICE, HOST, HEAP, DELEGATE)</li>
+                        <li>Single allocation strategy: OpenCL device memory. The <code>HOST</code>, <code>HEAP</code>, and <code>DELEGATE</code> values on <a href="../apidocs/org/almostrealism/hardware/cl/CLMemoryProvider.Location.html">CLMemoryProvider.Location</a> are retained for source compatibility but all behave as <code>DEVICE</code> (see the <a href="../apidocs/org/almostrealism/hardware/cl/CLMemoryProvider.html">CLMemoryProvider</a> javadoc)</li>
                         <li>JNI-based native compilation option (<a href="../apidocs/org/almostrealism/hardware/cl/CLJNIPrintWriter.html">CLJNIPrintWriter</a>)</li>
                         <li>Exception mapping for CL_INVALID_CONTEXT, CL_INVALID_VALUE</li>
                     </ul>
