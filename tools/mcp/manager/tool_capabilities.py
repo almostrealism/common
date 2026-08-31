@@ -114,6 +114,23 @@ def allowed_tools(dispatch_capable: bool) -> list:
     return tools
 
 
+def unregistered(registered) -> list:
+    """Return the classified tool names missing from ``registered``.
+
+    Between them ``GRANTED_TOOLS`` and ``EXCLUDED_TOOLS`` name every tool the
+    server is supposed to expose — the parity test above keeps that true — so
+    anything here that a running server has not registered is a tool clients
+    cannot see. A server can check itself against this before it serves.
+
+    Args:
+        registered: Names of the tools an MCP server actually registered.
+
+    Returns:
+        The missing names, sorted. Empty when the surface is complete.
+    """
+    return sorted((set(GRANTED_TOOLS) | set(EXCLUDED_TOOLS)) - set(registered))
+
+
 def allowlist_csv(dispatch_capable: bool) -> str:
     """Return the ``--allowedTools`` fragment for the ar-manager server.
 

@@ -9,6 +9,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 from unittest.mock import MagicMock, patch
@@ -978,6 +979,99 @@ class TestStartupGuard(unittest.TestCase):
         proc = self._run_server({"MCP_TRANSPORT": "http"})
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("no auth tokens configured", proc.stdout.decode())
+
+class TestScriptModeToolSurface(unittest.TestCase):
+    """The tools a client actually sees come from running server.py as a
+    script, which is how the Dockerfile ENTRYPOINT and start.sh launch it.
+
+    Every other test in this file reaches the tools by importing the module,
+    and under an import all of them register. That blind spot let a
+    redeployment serve only the three tools defined above the tool-module
+    imports at the bottom of server.py while the suite stayed green. This
+    case runs the real entry point and compares what it would serve against
+    what the import registers.
+    """
+
+    _TOKENS = json.dumps({"tokens": [{"value": "t", "scopes": ["read"],
+                                      "label": "x"}]})
+
+    _REPORTER = (
+        "import sys, types\n"
+        "fake = types.ModuleType('uvicorn')\n"
+        "def run(app, **kw):\n"
+        "    import __main__\n"
+        "    print('TOOLS:' + ','.join(sorted(__main__.mcp._tool_manager._tools)))\n"
+        "    raise SystemExit(0)\n"
+        "fake.run = run\n"
+        "sys.modules['uvicorn'] = fake\n"
+    )
+
+    def test_partial_surface_refuses_to_serve(self):
+        """A server that reaches startup with tools missing must exit, not
+        serve. /_health is a static 200 handler that cannot see the registry,
+        so a degraded server would otherwise pass every liveness probe."""
+        with tempfile.TemporaryDirectory() as tmp:
+            # Drop a tool from the registry just before startup checks it,
+            # standing in for any path that leaves the surface incomplete.
+            with open(os.path.join(tmp, "sitecustomize.py"), "w") as handle:
+                handle.write(
+                    "import sys, types\n"
+                    "fake = types.ModuleType('uvicorn')\n"
+                    "def run(app, **kw):\n"
+                    "    raise AssertionError('served a partial tool surface')\n"
+                    "fake.run = run\n"
+                    "sys.modules['uvicorn'] = fake\n"
+                    "import tool_capabilities\n"
+                    "tool_capabilities.GRANTED_TOOLS = "
+                    "tool_capabilities.GRANTED_TOOLS + ('never_registered',)\n"
+                )
+            proc = self._run_as_script(tmp, timeout=120)
+
+        output = proc.stdout.decode()
+        self.assertNotEqual(proc.returncode, 0, output)
+        self.assertIn("never_registered", output)
+        self.assertIn("Refusing to serve a partial tool surface", output)
+
+    def _run_as_script(self, sitecustomize_dir, timeout=120):
+        """Launch server.py the way the Dockerfile and start.sh do.
+
+        The interpreter imports ``sitecustomize`` before running the script,
+        which is how each test here stands in for uvicorn and observes — or
+        perturbs — startup without editing the file under test.
+        """
+        env = dict(os.environ)
+        for key in ("MCP_TRANSPORT", "AR_MANAGER_TOKENS",
+                    "AR_MANAGER_TOKEN_FILE"):
+            env.pop(key, None)
+        env["MCP_TRANSPORT"] = "http"
+        env["AR_MANAGER_TOKENS"] = self._TOKENS
+        env["PYTHONPATH"] = os.pathsep.join(
+            [sitecustomize_dir, _MANAGER_DIR,
+             env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
+        return subprocess.run(
+            [sys.executable, os.path.join(_MANAGER_DIR, "server.py")],
+            cwd=_MANAGER_DIR, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
+        )
+
+    def test_script_mode_registers_every_tool(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "sitecustomize.py"), "w") as handle:
+                handle.write(self._REPORTER)
+            proc = self._run_as_script(tmp)
+            output = proc.stdout.decode()
+            reported = [line for line in output.splitlines()
+                        if line.startswith("TOOLS:")]
+            self.assertTrue(
+                reported,
+                "server.py never reached serve time as a script:\n" + output)
+
+            served = set(reported[0][len("TOOLS:"):].split(","))
+            self.assertEqual(
+                set(server.mcp._tool_manager._tools), served,
+                "the script entry point serves a different tool set than the "
+                "module import registers")
+
 
 class TestExtractOwnerRepo(unittest.TestCase):
 
