@@ -288,12 +288,15 @@ public class ClaudeCodeRunner implements AgentRunner {
                 }
                 costUsd = sessionCost;
 
+                // Each entry of permission_denials is
+                // {tool_name, tool_use_id, tool_input} — the name of the
+                // denied tool is carried by tool_name, not tool.
                 JsonNode denials = root.get("permission_denials");
                 if (denials != null && denials.isArray()) {
                     for (JsonNode denial : denials) {
-                        JsonNode toolNode = denial.get("tool");
-                        if (toolNode != null && toolNode.isTextual()) {
-                            deniedToolNames.add(toolNode.asText());
+                        String toolName = JsonFieldExtractor.getTextOrNull(denial, "tool_name");
+                        if (toolName != null) {
+                            deniedToolNames.add(toolName);
                         }
                     }
                 }

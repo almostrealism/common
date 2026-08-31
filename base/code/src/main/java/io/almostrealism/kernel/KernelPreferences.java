@@ -99,10 +99,13 @@ public class KernelPreferences {
 	/**
 	 * Returns {@code true} if uniform floating-point precision is required across all kernel arguments.
 	 *
+	 * <p>Sharing memory between backends implies it: a shared buffer has one element width, so
+	 * every backend reading it has to agree on that width.</p>
+	 *
 	 * @return {@code true} if uniform precision is required
 	 */
 	public static boolean isRequireUniformPrecision() {
-		return requireUniformPrecision;
+		return requireUniformPrecision || enableSharedMemory;
 	}
 
 	/**

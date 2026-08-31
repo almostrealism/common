@@ -34,6 +34,7 @@ _COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "co
 if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
+import build_tree  # noqa: E402
 
 # Preflight seeding of upstream module artifacts. Lives alongside server.py
 # so the import is cheap and unambiguous regardless of where python is launched
@@ -990,7 +991,14 @@ async def list_tools():
                 f"Default timeout_minutes is {DEFAULT_TIMEOUT}, set 5 minutes under the "
                 "harness's 20-minute inactivity timeout. Values >20 are unsafe — "
                 "the harness will kill the agent (and ar-test-runner) before the "
-                "test-runner's own timer fires."
+                "test-runner's own timer fires.\n"
+                "\n"
+                "Run this on its own. It builds the same target/ directories as a "
+                "build validation, and the policy checks walk that tree while they "
+                "work, so an overlapping run makes both results meaningless. Starting "
+                "one while a validation is in flight is refused; wait for it or cancel "
+                "it. The same applies to a plain 'mvn' in a shell, which cannot be "
+                "detected. A run against a different project is unaffected."
             ),
             inputSchema={
                 "type": "object",
@@ -1240,6 +1248,17 @@ async def call_tool(name: str, arguments: dict):
             # Resolve eagerly so a bad path is reported as a tool error rather
             # than surfacing later as an opaque Maven failure inside a run.
             project_root = config.project_root()
+
+            active = build_tree.in_flight(project_root=project_root)
+            if active:
+                return [TextContent(type="text", text=json.dumps({
+                    "error": build_tree.conflict_message(
+                        active, "ar-test-runner", project_root=project_root),
+                    "active_runs": [
+                        {"tool": r.tool, "run_id": r.run_id, "started_at": r.started_at}
+                        for r in active
+                    ],
+                }, indent=2))]
 
             if config.test_group is not None and config.test_groups is None:
                 config.test_groups = resolve_ci_test_groups(config.module, project_root)
