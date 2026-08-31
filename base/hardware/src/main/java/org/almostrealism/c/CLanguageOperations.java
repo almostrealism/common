@@ -67,6 +67,26 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	public boolean isEnableArgumentDetailReads() { return enableArgumentDetailReads; }
 
 	/**
+	 * Indicates that every language in this family provides a 64-bit integer type.
+	 *
+	 * <p>C, OpenCL C and Metal Shading Language all have one, and each of the generators
+	 * below already emits a 64-bit index: {@link org.almostrealism.hardware.jni.CJNIPrintWriter}
+	 * declares the kernel loop variable {@code long long} so that {@code global_id * size} does
+	 * not overflow, and the OpenCL and Metal generators cast their thread position to
+	 * {@code long} (see {@link #kernelIndex(int)} in each).</p>
+	 *
+	 * <p>This is a property of the target language, not of the floating point precision, which
+	 * is why it is stated here rather than inherited from the precision-based default in
+	 * {@link io.almostrealism.lang.LanguageOperations#isInt64()}. Under that default an integer
+	 * constant outside the {@code int} range — a large Jacobian stride in a backward pass, say —
+	 * was rejected below FP64, even though the expression it belongs to is 64-bit either way.</p>
+	 *
+	 * @return Always true
+	 */
+	@Override
+	public boolean isInt64() { return true; }
+
+	/**
 	 * Returns the C constant for pi based on the current precision.
 	 *
 	 * @return "M_PI" for FP64 precision, "M_PI_F" for FP32 precision

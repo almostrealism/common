@@ -238,6 +238,16 @@ The server does not set `AR_HARDWARE_LIBS` — it is auto-detected by the system
 
 ## Troubleshooting
 
+**"another Maven run is still using the same build tree":**
+- A build validation, or another test run, is in flight against the same
+  project. Both write and read the same `target/` directories, so the results
+  of overlapping runs describe neither. Wait for the named run
+  (`get_run_status` / `get_validation_status` with `block=true`) or cancel it.
+- A run against a different `project` is unaffected and starts normally.
+- A plain `mvn` in a shell leaves no record, so it cannot be detected. If a
+  check fails with a `NoSuchFileException` under `target/` and no violations,
+  that is what happened — see the `note` on the affected check.
+
 **Tests not starting:**
 - Check that Maven is installed and in PATH
 - Verify AR_PROJECT_ROOT points to the common directory

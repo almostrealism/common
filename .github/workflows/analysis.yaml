@@ -1410,6 +1410,15 @@ jobs:
     # CL lane, first stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
     # (rather than *) so Metal is excluded and GPU-eligible work routes through CL.
     #
+    # AR_HARDWARE_PRECISION is FP32 because CLDataContext selects FP32 whenever it has a GPU
+    # for kernels, and the native context has to match it: two contexts at different precisions
+    # have memory providers with different element widths, so every copy between them has to be
+    # converted one element at a time. On the macOS fleet FP32 was what both sides picked
+    # anyway; on x86 the default of FP64 leaves them disagreeing. FP32 is also what the tests
+    # on this lane have always run at, so their tolerances are unchanged. The ROCm host has an
+    # integrated GPU, whose FP64 rate is poor enough that raising the lane to FP64 would cost
+    # more than it is worth.
+    #
     # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, so it no longer gates on
     # test-mac/test-media-mac: those gates existed only to serialise the *macOS* GPUs, and
     # keeping them would leave this lane idle waiting on unrelated Metal work. The CL lane is
@@ -1471,6 +1480,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
@@ -1478,6 +1488,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
@@ -1487,6 +1498,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
@@ -1498,6 +1510,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
@@ -1507,6 +1520,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
@@ -1711,6 +1725,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1722,6 +1737,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1732,6 +1748,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1743,6 +1760,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1755,6 +1773,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
