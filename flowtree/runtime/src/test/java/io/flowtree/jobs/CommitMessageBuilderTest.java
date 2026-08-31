@@ -32,6 +32,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Unit tests for the {@link CommitMessageBuilder} static helpers extracted from
@@ -151,6 +152,31 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
                 msg.contains("Prompt: do the work please"));
         assertTrue("Body must include the exit code line",
                 msg.contains("Exit code: 0"));
+    }
+
+    /** {@link CommitMessageBuilder#resolve} strips a trailing attribution block from commit.txt. */
+    @Test(timeout = 30000)
+    public void resolveRemovesTrailingAuthorAttribution() throws IOException {
+        writeCommitTxt("Fix bug X\n\nThe guard was inverted.\n\n"
+                + "Co-Authored-By: Claude <noreply@anthropic.com>\n");
+        CodingAgentJob job = job("do the work");
+        assertEquals("Fix bug X\n\nThe guard was inverted.", CommitMessageBuilder.resolve(job));
+        assertEquals(CommitMessageBuilder.SOURCE_AGENT, job.getCommitMessageSource());
+    }
+
+    /** {@link CommitMessageBuilder#resolve} fails when attribution cannot be removed safely. */
+    @Test(timeout = 30000)
+    public void resolveFailsWhenAttributionIsNotSafelyRemovable() throws IOException {
+        writeCommitTxt("Fix bug X\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\n"
+                + "Body content written after the trailer.");
+        CodingAgentJob job = job("do the work");
+        try {
+            CommitMessageBuilder.resolve(job);
+            fail("Expected an IllegalStateException for unremovable author attribution");
+        } catch (IllegalStateException e) {
+            assertTrue("Failure must name the offending content",
+                    e.getMessage().contains("Co-Authored-By: Claude <noreply@anthropic.com>"));
+        }
     }
 
     /** Fallback body includes the session id only when set; absence leaves no Session: line. */

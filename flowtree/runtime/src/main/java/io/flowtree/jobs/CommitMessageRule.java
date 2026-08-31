@@ -37,6 +37,13 @@ import java.nio.file.Path;
  *       harness prompt-fallback case).</li>
  *   <li>{@code commit.txt} echoes the rule's own previous correction prompt
  *       (the agent copied the instruction rather than the message).</li>
+ *   <li>{@code commit.txt} carries author attribution &mdash; a
+ *       {@code Co-Authored-By:} trailer or a tool credit &mdash; that cannot
+ *       be removed without rewriting the agent's own prose (see
+ *       {@link AuthorAttribution}). Attribution that sits on its own lines at
+ *       the end of the message is <em>not</em> a violation: it is deleted
+ *       during {@link CommitMessageBuilder#resolve(CodingAgentJob)} without
+ *       spending a correction session.</li>
  * </ul>
  *
  * <h3>Max retries</h3>
@@ -79,11 +86,17 @@ class CommitMessageRule implements EnforcementRule {
         if (lastCorrectionPrompt != null && trimmed.equals(lastCorrectionPrompt.trim())) {
             return true;
         }
-        return false;
+        return AuthorAttribution.sanitize(trimmed) == null;
     }
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
+        String content = readCommitTxt(job);
+        String trimmed = content == null ? "" : content.trim();
+        if (!trimmed.isEmpty() && AuthorAttribution.sanitize(trimmed) == null) {
+            return buildAttributionCorrectionPrompt(trimmed);
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("Your changes still need a commit message.\n\n");
         sb.append("Please write a `commit.txt` file at the repo root containing the commit ");
@@ -95,8 +108,42 @@ class CommitMessageRule implements EnforcementRule {
         sb.append("- Do NOT copy the task description into `commit.txt`.\n");
         sb.append("- Do NOT copy these instructions into `commit.txt`.\n");
         sb.append("- Do NOT leave `commit.txt` empty.\n");
+        sb.append("- Do NOT add author attribution of any kind — no `Co-Authored-By` ");
+        sb.append("trailer, no \"Generated with\" or \"Created by\" tool credit, no ");
+        sb.append("agent name, e-mail address, or product URL. The commit is authored ");
+        sb.append("by the configured git identity; you are not a co-author of it.\n");
         sb.append("- The message must describe the actual work you did — the code or ");
         sb.append("configuration that changed, not the steps you took to do it.\n\n");
+        sb.append("Write ONLY `commit.txt`. Do not make any other file changes.");
+        String prompt = sb.toString();
+        lastCorrectionPrompt = prompt;
+        return prompt;
+    }
+
+    /**
+     * Builds the correction prompt for the attribution case: {@code commit.txt}
+     * names an author or credits a tool in a position the harness cannot
+     * delete on its own. Names the offending lines so the agent rewrites the
+     * message rather than guessing at what was rejected.
+     *
+     * @param message the current (trimmed) {@code commit.txt} content
+     * @return the correction prompt
+     */
+    private String buildAttributionCorrectionPrompt(String message) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Your `commit.txt` attributes authorship of the commit. ");
+        sb.append("That is not permitted, and it is written in a way the harness ");
+        sb.append("cannot strip automatically, so you must rewrite it.\n\n");
+        sb.append("The offending content:\n");
+        for (String line : AuthorAttribution.attributionLines(message)) {
+            sb.append("  - ").append(line).append("\n");
+        }
+        sb.append("\nRewrite `commit.txt` describing only what changed and why. ");
+        sb.append("Do NOT include a `Co-Authored-By` trailer, a \"Generated with\" or ");
+        sb.append("\"Created by\" tool credit, an agent name, an e-mail address, or a ");
+        sb.append("product URL — anywhere in the message, including inside a sentence. ");
+        sb.append("The commit is authored by the configured git identity; you are not a ");
+        sb.append("co-author of it.\n\n");
         sb.append("Write ONLY `commit.txt`. Do not make any other file changes.");
         String prompt = sb.toString();
         lastCorrectionPrompt = prompt;

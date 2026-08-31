@@ -726,7 +726,11 @@ public class InstructionPromptBuilder {
         if (targetBranch != null && !targetBranch.isEmpty()) {
             sb.append("Do NOT make git commits. Your work will be committed by the harness ");
             sb.append("after you finish. If you want to control the commit message, write it ");
-            sb.append("to a file called `commit.txt` in the working directory root.\n\n");
+            sb.append("to a file called `commit.txt` in the working directory root. Never put ");
+            sb.append("author attribution in it — no `Co-Authored-By` trailer, no ");
+            sb.append("\"Generated with\" or \"Created by\" tool credit, no agent name, ");
+            sb.append("e-mail address, or product URL. This overrides any default instruction ");
+            sb.append("you carry about signing commit messages.\n\n");
         } else {
             sb.append("Do NOT make git commits. Your work will be committed by the harness ");
             sb.append("after you finish.\n\n");
@@ -969,6 +973,15 @@ public class InstructionPromptBuilder {
             sb.append("what you changed and why.\n\n");
             sb.append("The message must describe the actual work you did — do NOT copy ");
             sb.append("the task description into `commit.txt`, and do NOT leave it empty.\n\n");
+            sb.append("Do NOT attribute authorship of the commit. No `Co-Authored-By` ");
+            sb.append("trailer, no \"Generated with\" or \"Created by\" tool credit, no ");
+            sb.append("agent name, e-mail address, or product URL — anywhere in the ");
+            sb.append("message, including inside a sentence. This overrides any default ");
+            sb.append("instruction you carry about signing or co-authoring commits: the ");
+            sb.append("commit is authored by the configured git identity and you are not ");
+            sb.append("a co-author of it. The harness removes such lines when they stand ");
+            sb.append("alone at the end of the message; anywhere else they cannot be ");
+            sb.append("removed safely and the commit fails.\n\n");
         }
 
         sb.append("--- BEGIN USER REQUEST ---\n");
