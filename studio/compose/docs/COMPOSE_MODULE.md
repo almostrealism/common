@@ -195,10 +195,10 @@ Audio.AudioLayerGroup group = audioLayerGroupLibrary.syntheticGroup(file, identi
 // True for a group that was synthesized for a loose file rather than saved
 boolean loose = audioLayerGroupLibrary.isSynthetic(group);
 
-// Every canonical path a saved group claims; loose files are not included.
-// Resolved through the library's index — a tree still being built asks a
-// claim for files it cannot resolve yet, so the claim is the indexed answer
-// or nothing.
+// Canonical paths of saved group members currently resolvable through the
+// library's index; missing or unindexed members are omitted. A library that
+// has not yet been indexed therefore claims nothing — the tree shows what it
+// showed before rather than losing rows it cannot yet justify losing.
 Set<String> claimed = audioLayerGroupLibrary.claimedPaths();
 
 // Every member of a group, in layer order, as the files the library finds
@@ -209,8 +209,8 @@ List<File> members = audioLayerGroupLibrary.membersOf(group);
 File location = audioLayerGroupLibrary.locate(group);
 ```
 
-The `matches(FilterOn, group)` and `filterValue(FilterOn, group)` accessors
-let user-written `FileWaveDataProviderFilter`s apply to groups as well as
+The `matches(FileWaveDataProviderFilter, group)` and `filterValue(FilterOn, group)`
+accessors let user-written `FileWaveDataProviderFilter`s apply to groups as well as
 to the files they were originally written for, since a group carries its
 own name and its own path.
 
