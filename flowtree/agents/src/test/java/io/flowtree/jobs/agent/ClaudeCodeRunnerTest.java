@@ -172,7 +172,9 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
                 + "{\"type\":\"result\",\"session_id\":\"s-1\",\"subtype\":\"success\","
                 + "\"is_error\":false,\"duration_ms\":1234,\"duration_api_ms\":900,"
                 + "\"num_turns\":3,\"total_cost_usd\":0.25,"
-                + "\"permission_denials\":[{\"tool\":\"Bash\"},{\"tool\":\"Edit\"}]}\n";
+                + "\"permission_denials\":["
+                + "{\"tool_name\":\"Bash\",\"tool_use_id\":\"tu-1\",\"tool_input\":{}},"
+                + "{\"tool_name\":\"Edit\",\"tool_use_id\":\"tu-2\",\"tool_input\":{}}]}\n";
 
         AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(sample, 0, false, SILENT);
 
@@ -186,6 +188,29 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         assertEquals(3, result.numTurns());
         assertEquals(0.25, result.costUsd(), 0.0001);
         assertEquals(List.of("Bash", "Edit"), result.deniedToolNames());
+    }
+
+    /**
+     * A denied MCP tool must reach {@code deniedToolNames} under the field
+     * name Claude Code actually emits.
+     *
+     * <p>The parser previously read {@code tool} from each
+     * {@code permission_denials} entry, a key the harness never writes, so
+     * every denial was dropped. Because the job's denial COUNT is derived
+     * from the size of this list, a session that was refused a tool
+     * reported zero permission denials and the operator learned about the
+     * refusal only if the agent happened to mention it in prose — which is
+     * how a denied {@code mcp__ar-manager__consult} went unreported.</p>
+     */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonReadsDeniedToolNameField() {
+        String sample = "{\"type\":\"result\",\"subtype\":\"success\",\"num_turns\":1,"
+                + "\"permission_denials\":[{\"tool_name\":\"mcp__ar-manager__consult\","
+                + "\"tool_use_id\":\"tu-1\",\"tool_input\":{\"question\":\"why\"}}]}";
+
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(sample, 0, false, SILENT);
+
+        assertEquals(List.of("mcp__ar-manager__consult"), result.deniedToolNames());
     }
 
     /**
