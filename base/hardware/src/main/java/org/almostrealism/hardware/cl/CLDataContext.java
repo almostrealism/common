@@ -51,7 +51,9 @@ import java.util.stream.Stream;
  * and compute contexts for hardware-accelerated computation. It supports:</p>
  * <ul>
  *   <li><strong>Device selection:</strong> CPU or GPU execution</li>
- *   <li><strong>Memory management:</strong> Multiple memory provider strategies (host, device, heap)</li>
+ *   <li><strong>Memory management:</strong> OpenCL device allocation via {@link CLMemoryProvider};
+ *       the {@link CLMemoryProvider.Location} values other than {@link CLMemoryProvider.Location#DEVICE}
+ *       are deprecated and behave as {@code DEVICE}</li>
  *   <li><strong>Compute contexts:</strong> Thread-local OpenCL or native C compilation</li>
  *   <li><strong>Lazy initialization:</strong> Resources allocated on first use</li>
  * </ul>
@@ -95,25 +97,17 @@ import java.util.stream.Stream;
  *
  * <h2>Memory Provider Strategies</h2>
  *
- * <p>Supports multiple memory allocation strategies via {@link CLMemoryProvider.Location}:</p>
+ * <p>{@link CLMemoryProvider} allocates OpenCL device memory for every buffer regardless of
+ * which {@link CLMemoryProvider.Location} is requested. Only {@link CLMemoryProvider.Location#DEVICE}
+ * selects device allocation; {@link CLMemoryProvider.Location#HOST},
+ * {@link CLMemoryProvider.Location#HEAP}, and {@link CLMemoryProvider.Location#DELEGATE} are
+ * retained for source compatibility and now behave as {@code DEVICE} (a warning is logged at
+ * construction). See the {@link CLMemoryProvider.Location} javadoc for the full statement.</p>
  *
  * <pre>{@code
- * // DEVICE: Allocate on GPU device memory
+ * // DEVICE: Allocate on OpenCL device memory (the only honored value)
  * CLDataContext device = new CLDataContext(
  *     "GPU", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.DEVICE);
- *
- * // HOST: Use host-pinned memory (faster transfers)
- * CLDataContext host = new CLDataContext(
- *     "CPU", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.HOST);
- *
- * // HEAP: Use Java heap arrays
- * CLDataContext heap = new CLDataContext(
- *     "Heap", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.HEAP);
- *
- * // DELEGATE: Delegate to another memory provider
- * CLDataContext delegate = new CLDataContext(
- *     "Delegate", Precision.FP64, maxMem, threshold, CLMemoryProvider.Location.DELEGATE);
- * delegate.setDelegateMemoryProvider(customProvider);
  * }</pre>
  *
  * <h2>Lazy Initialization</h2>
@@ -264,7 +258,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** The threshold size in bytes below which allocations use JVM heap. */
 	private final int offHeapSize;
 
-	/** The memory allocation strategy (HOST, DEVICE, HEAP, or DELEGATE). */
+	/** The memory allocation strategy; only {@link CLMemoryProvider.Location#DEVICE} is honored. */
 	private final CLMemoryProvider.Location location;
 
 	/** The highest floating-point precision this context is permitted to select. */
@@ -300,7 +294,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	/** The alternate JVM heap-based memory provider for small allocations. */
 	private MemoryProvider<Memory> altRam;
 
-	/** Optional delegate memory provider for DELEGATE location mode. */
+	/** Optional delegate memory provider retained for source compatibility; {@link CLMemoryProvider.Location#DELEGATE} is no longer honored. */
 	private MemoryProvider<? extends RAM> delegateMemory;
 
 	/** Thread-local list of compute contexts for concurrent access. */
@@ -320,7 +314,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	 *                         capability is used when it is lower, and it is never exceeded
 	 * @param maxReservation   the maximum memory reservation in bytes
 	 * @param offHeapSize      the threshold size in bytes below which allocations use JVM heap
-	 * @param location         the memory allocation strategy (HOST, DEVICE, HEAP, or DELEGATE)
+	 * @param location         the memory allocation strategy; only {@link CLMemoryProvider.Location#DEVICE}
+	 *                         is honored — the deprecated {@code HOST}, {@code HEAP}, and {@code DELEGATE}
+	 *                         values behave as {@code DEVICE}
 	 */
 	public CLDataContext(String name, Precision maximumPrecision, long maxReservation,
 						 int offHeapSize, CLMemoryProvider.Location location) {
@@ -594,16 +590,19 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 	}
 
 	/**
-	 * Sets the delegate memory provider for use when location is set to DELEGATE.
+	 * Retained for source compatibility; {@link CLMemoryProvider.Location#DELEGATE} is no longer
+	 * honored, so the registered delegate has no effect on allocation.
 	 *
-	 * @param delegate the memory provider to delegate allocations to
+	 * @param delegate the memory provider that was used when DELEGATE was honored
 	 */
 	public void setDelegateMemoryProvider(MemoryProvider<? extends RAM> delegate) {
 		this.delegateMemory = delegate;
 	}
 
 	/**
-	 * Returns the delegate memory provider, or {@code null} if not set.
+	 * Returns the delegate memory provider, or {@code null} if not set. Retained for source
+	 * compatibility; the value has no effect on allocation since
+	 * {@link CLMemoryProvider.Location#DELEGATE} is no longer honored.
 	 *
 	 * @return the delegate memory provider, or null
 	 */
