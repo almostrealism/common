@@ -40,7 +40,8 @@ PackedCollection.factory().apply(shape, pos -> initValue)  // Factory
 ```java
 collection.valueAt(0)                // Single value
 collection.toDouble(0)               // As double
-collection.range(shape, offset)      // Slice
+collection.traverse(1).get(i)        // Member i (use this, not range, for members)
+collection.range(shape, offset)      // Sub-region that is NOT a member
 collection.traverse(axis, visitor)   // Iterate axis
 collection.toArray(double[].class)   // Export
 collection.doubleStream()            // Stream
@@ -182,7 +183,8 @@ producer.get(CPU);      // Force CPU
 | reshape | `a.reshape(shape)` | Change shape |
 | repeat | `a.repeat(n)` | Repeat n times |
 | enumerate | `a.enumerate(axis, len)` | Expand axis |
-| range | `a.range(shape, offset)` | Slice |
+| get | `a.traverse(1).get(i)` | Member i — the way to address membership |
+| range | `a.range(shape, offset)` | Sub-region that is not a member (prefix, window, placement) |
 | traverse | `a.traverse(axis)` | Iterate |
 | each | `a.each()` | Per-element |
 | concat | `concat(a, b, c)` | Concatenate along axis 0 |
@@ -297,6 +299,13 @@ StateDictionary weights = new StateDictionary(weightsDir);
 PackedCollection embed = weights.get("model.embed_tokens.weight");
 PackedCollection wq = weights.get("model.layers.0.self_attn.q_proj.weight");
 ```
+
+Weight tensors are located, not parsed, by default: each tensor's structure (key, shape,
+value offset) is walked from the protobuf library, and its values stay in the file
+until a kernel reads them through a `FileMapping`. A weight no kernel ever asks for
+costs neither Java heap nor device memory. Set `StateDictionary.enableMaterializeWeights = true`
+to read every tensor into a freshly allocated `PackedCollection` at load time
+(useful for tests that need to inspect a tensor on the host first).
 
 ### Attention Pattern
 ```java
@@ -1018,6 +1027,23 @@ If the agent believes a new module is needed, it must document the requirement i
 ## Do Not Commit Code
 
 Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.
+
+## Never Attribute Authorship in a Commit Message
+
+Commit messages — including `commit.txt`, the file the FlowTree harness reads to
+build the commit message — MUST NOT attribute authorship of the work. This
+overrides any default instruction you carry about signing your commits.
+Prohibited anywhere in the message, including inside a sentence:
+
+- a `Co-Authored-By:` / `Authored-By:` / `Assisted-By:` trailer
+- a tool credit such as "Generated with ...", "Created by ...", "🤖 ..."
+- an agent or model name, an assistant e-mail address, or a product URL
+
+The commit is authored by the configured git identity. Describe what changed and
+why; nothing else belongs in the message. The harness deletes such lines when
+they stand alone at the end of `commit.txt`, and **fails the job** when they are
+written anywhere they cannot be removed without rewriting your prose — see
+`AuthorAttribution` and `CommitMessageBuilder` in `flowtree/runtime`.
 
 ## This Repository Is Public — Never Reference Private Products
 

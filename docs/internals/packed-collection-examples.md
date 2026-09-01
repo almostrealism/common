@@ -97,6 +97,17 @@ data.randnFill();                      // Normal distribution (mean 0, std 1)
 data.clear();                          // Zero out all elements
 ```
 
+`fill(0.0)` writes the whole content from the host, where `clear()` runs a
+kernel that does the same work on the device. The host path is reported rather
+than silently accepted, but only when it is worth anything — collections of
+two or fewer values are excluded because they are not a kernel's worth of work,
+and a `Pair` is filled this way in the ordinary course of things. The report
+names the collection and the cost, which is enough to know a call is worth
+replacing. To also see *where* the call came from, set `AR_FILL_ORIGIN=true`
+(or `PackedCollection.enableFillOrigin = true`) — each report then names its
+origin in the message rather than only in the stack, so repeated warnings
+remain distinguishable after the message-deduplicator drops them.
+
 ---
 
 ## TraversalPolicy
