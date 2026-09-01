@@ -20,6 +20,8 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Method;
 import fi.iki.elonen.NanoHTTPD.Response;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.GitOperations;
 import org.almostrealism.io.ConsoleFeatures;
@@ -30,7 +32,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -256,6 +260,163 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub PR creation failed: " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Maximum length GitHub accepts for a pull request title.
+     */
+    private static final int MAX_TITLE_LENGTH = 256;
+
+    /**
+     * Parses GitHub API responses. Jackson rather than a regex because the
+     * commit payload nests the message among many other string fields.
+     */
+    private static final ObjectMapper GITHUB_MAPPER = new ObjectMapper();
+
+    /**
+     * Creates a pull request whose title and body describe the commit on the
+     * head branch rather than the job that produced it.
+     *
+     * <p>The pull request is opened after the agent has pushed, so the commit
+     * message — which the agent wrote to describe what it actually did — is
+     * already available and is a far better description than the job's
+     * submission-time intent. Two jobs submitted with the same description
+     * would otherwise open indistinguishable pull requests.</p>
+     *
+     * <p>Falls back to {@code fallbackDescription} for the title whenever the
+     * commit cannot be read or carries no message, which preserves the previous
+     * behaviour rather than opening an untitled pull request.</p>
+     *
+     * @param ownerRepo           the {@code owner/repo} path component
+     * @param head                the head (source) branch name
+     * @param base                the base (target) branch name
+     * @param commitRef           commit SHA, or a branch name for its head commit
+     * @param fallbackDescription description to use when no commit message is available
+     * @param token               the GitHub API bearer token
+     * @return the HTML URL of the created pull request, or {@code null} on failure
+     */
+    public String createPullRequestFromCommit(String ownerRepo, String head, String base,
+                                   String commitRef, String fallbackDescription, String token) {
+        String commitMessage = commitRef == null ? null
+                : fetchCommitMessage(ownerRepo, commitRef, token);
+        return createGitHubPullRequest(ownerRepo, head, base,
+                pullRequestTitle(commitMessage, fallbackDescription),
+                pullRequestBody(commitMessage, fallbackDescription), token);
+    }
+
+    /**
+     * Builds the commit lookup URL for {@code ref}.
+     *
+     * <p>The ref occupies a single path segment, so a branch name is percent
+     * encoded: the branches this is used for are named {@code qa/defect-...}
+     * and {@code project/plan-...}, and an unencoded slash would address a
+     * different endpoint entirely. A commit SHA is unaffected by the
+     * encoding.</p>
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param ref       commit SHA, branch name, or tag
+     * @return the GitHub API URL for the commit
+     */
+    static String commitApiUrl(String ownerRepo, String ref) {
+        return "https://api.github.com/repos/" + ownerRepo + "/commits/"
+                + URLEncoder.encode(ref, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    /**
+     * Reads the commit message for {@code ref}.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param ref       commit SHA, branch name, or tag
+     * @param token     the GitHub API bearer token
+     * @return the commit message, or {@code null} when it cannot be read
+     */
+    public String fetchCommitMessage(String ownerRepo, String ref, String token) {
+        try {
+            URL url = URI.create(commitApiUrl(ownerRepo, ref)).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+
+            if (status == 200) {
+                JsonNode message = GITHUB_MAPPER.readTree(responseBody).path("commit").path("message");
+                if (!message.isMissingNode() && !message.asText().isBlank()) {
+                    return message.asText();
+                }
+                log("Commit " + ref + " carries no message; falling back to the job description");
+                return null;
+            }
+
+            log("GitHub commit lookup returned HTTP " + status + ": "
+                + responseBody.substring(0, Math.min(200, responseBody.length())));
+        } catch (IOException e) {
+            log("GitHub commit lookup failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Derives a pull request title from a commit message.
+     *
+     * <p>The subject line of a commit message is written to be read on its own,
+     * which is exactly what a title needs to be. Over-long subjects are
+     * truncated to what GitHub accepts.</p>
+     *
+     * @param commitMessage the commit message; may be {@code null} or blank
+     * @param fallback      title to use when no subject line can be derived
+     * @return the pull request title
+     */
+    static String pullRequestTitle(String commitMessage, String fallback) {
+        if (commitMessage != null) {
+            for (String line : commitMessage.split("\n", -1)) {
+                String subject = line.trim();
+                if (!subject.isEmpty()) {
+                    return subject.length() <= MAX_TITLE_LENGTH ? subject
+                            : subject.substring(0, MAX_TITLE_LENGTH - 3) + "...";
+                }
+            }
+        }
+        return fallback;
+    }
+
+    /**
+     * Derives a pull request body from a commit message.
+     *
+     * <p>Everything after the subject line, which is the explanation the agent
+     * wrote for the change. When the message is a subject alone the job
+     * description is used instead, so the pull request still says what kind of
+     * work produced it.</p>
+     *
+     * @param commitMessage the commit message; may be {@code null} or blank
+     * @param fallback      body to use when the message carries no explanation
+     * @return the pull request body
+     */
+    static String pullRequestBody(String commitMessage, String fallback) {
+        if (commitMessage != null) {
+            String[] lines = commitMessage.split("\n", -1);
+            int subject = -1;
+            for (int i = 0; i < lines.length; i++) {
+                if (!lines[i].trim().isEmpty()) {
+                    subject = i;
+                    break;
+                }
+            }
+            if (subject >= 0) {
+                String body = String.join("\n",
+                        Arrays.copyOfRange(lines, subject + 1, lines.length)).strip();
+                if (!body.isEmpty()) return body;
+            }
+        }
+        return fallback;
     }
 
     /**

@@ -1141,9 +1141,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     String ownerRepo = GitHubProxyHandler.extractOwnerRepo(prCtx.repoUrl);
                     if (ownerRepo != null) {
                         String base = prCtx.baseBranch != null ? prCtx.baseBranch : "master";
-                        String prUrl = githubProxyHandler.createGitHubPullRequest(
+                        // The branch head stands in when the event carried no hash.
+                        String commitRef = event.getCommitHash() != null
+                                ? event.getCommitHash() : event.getTargetBranch();
+                        String prUrl = githubProxyHandler.createPullRequestFromCommit(
                             ownerRepo, event.getTargetBranch(), base,
-                            prCtx.description, prCtx.description, token);
+                            commitRef, prCtx.description, token);
                         if (prUrl != null) {
                             event.withPullRequestUrl(prUrl);
                         }

@@ -376,6 +376,60 @@ step so a failed deploy cannot leave the controller permanently quiesced.
 `concurrency` does **not** cancel in progress: interrupting a half-finished
 container rebuild is worse than queueing behind it.
 
+### What the `Master Agent Dispatch` workflow does
+
+Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the three
+agent jobs that fire on a merge to master: `plan-next-task` (Project Manager),
+`doc-qa` (Quality Assurance) and `defect-hunt`. They were three separate
+workflows with byte-identical triggers; merging them keeps the Actions sidebar
+navigable without changing what any of them does.
+
+Each job carries its **own** `concurrency` group (`project-manager`,
+`quality-assurance`, `defect-hunt`, none cancelling in progress), so they
+serialize independently rather than queueing behind one another. Workflow-level
+concurrency would couple them — do not add one.
+
+A `workflow_dispatch` selects a single job via the `agent` input
+(`all` | `project-manager` | `quality-assurance` | `defect-hunt`); `force` is
+passed through to whichever job runs. Each job's `if` is written as
+`github.event_name != 'workflow_dispatch' || ...` so a push to master runs all
+three.
+
+`tools/mcp/manager/project_tools.py` dispatches this workflow by filename with
+`agent: project-manager` (the `project_create_branch` MCP tool). Renaming the
+file or the input breaks that tool — update it in the same change.
+
+The policy this reflects: **one workflow per lifecycle event**, with two
+deliberate exemptions. `workflow_dispatch`-only workflows stay separate because
+dispatch inputs are per-workflow and merging them produces one form of mostly
+inert fields (`Deploy Controller Stack` is triggered by hand often enough to
+earn its own entry on those grounds alone). Privileged triggers stay separate
+too — see `Cancel Merged PR Runs` below.
+
+### What the `Cancel Merged PR Runs` workflow does
+
+Lives in `.github/workflows/cancel-merged-pr-runs.yaml`. When a PR is merged it
+cancels that PR's still-running "Build and Test" runs, via
+`tools/ci/cancel-merged-pr-runs.sh`. Merging is already a decision that the
+checks passed, and the merge commit's own master pipeline re-runs them; the
+pre-merge pipeline is holding runners for a settled question.
+
+**It must stay in its own file.** It is triggered by `pull_request_target`,
+which grants a writable token in the base-repository context. That is safe here
+only because the file contains nothing that checks out or executes PR code —
+`actions/checkout` with no `ref` takes the base branch, and the job's only
+action is an API call driven by event metadata. Putting it in a file alongside
+jobs that build PR code is how `pull_request_target` becomes a token-exfiltration
+vector. Never add a `ref:` to that checkout, and never move this job into
+`analysis.yaml`.
+
+Scope is `event=pull_request` runs of `analysis.yaml` matching the PR's head
+branch **and** head repository. The event filter is load-bearing: under a
+fast-forward or rebase merge, master's new head can be the same SHA as the PR
+head, so a SHA-based filter would cancel the master pipeline. The
+head-repository match keeps a fork's branch from matching a same-named branch
+here.
+
 ### What the `analysis` job does
 
 Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`, and
