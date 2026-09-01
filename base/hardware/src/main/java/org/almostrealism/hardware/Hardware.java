@@ -437,13 +437,11 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h3>Incompatible Memory Location with NIO</h3>
- * <p>{@code AR_HARDWARE_NIO_MEMORY=true} overrides the requested location to
- * {@code delegate}; the only input the caller controls is whether to enable
- * the bridge. The other {@code Location} values ({@code host}, {@code heap},
- * {@code device}) are rejected when NIO memory is on. {@code delegate} is
- * still recognized by the startup parser for source compatibility, but
- * {@code CLMemoryProvider} no longer treats it specially — see
- * {@code CLMemoryProvider} Javadoc.</p>
+ * <p>With NIO memory on, the location is forced to {@code delegate}: an explicit
+ * {@code host} is warned and silently converted, and an explicit {@code device}
+ * or {@code heap} throws {@code IllegalArgumentException}. {@code delegate} is
+ * accepted for source compatibility; {@code CLMemoryProvider} no longer treats
+ * it specially — see its Javadoc.</p>
  * <pre>
  * # Enable the cross-backend NIO bridge
  * export AR_HARDWARE_NIO_MEMORY=true
@@ -477,6 +475,8 @@ import java.util.stream.Collectors;
  *
  * @author  Michael Murray
  */
+// TODO(review): file is at the 1600-line hard limit (1601 at last commit); move the env-var
+// reference javadoc above into base/hardware/README.md instead of trimming wording to fit.
 public final class Hardware implements ConsoleFeatures {
 	/** If true, log detailed initialization and backend configuration messages. */
 	public static boolean enableVerbose = false;
@@ -540,7 +540,6 @@ public final class Hardware implements ConsoleFeatures {
 
 		sharedMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(sharedMem);
 
-		// TODO(review): class javadoc says host is "rejected" with NIO memory, but here it only warns and converts to delegate
 		if (sharedMem) {
 			if (memLocation != null) {
 				if (location == Location.HOST) {
@@ -1215,11 +1214,10 @@ public final class Hardware implements ConsoleFeatures {
 	 * Returns whether the OpenCL backend should declare kernel memory arguments
 	 * {@code volatile}.
 	 *
-	 * <p>True when {@code AR_HARDWARE_MEMORY_LOCATION=heap}. Inherited from
-	 * the older heap-backed {@code CLMemoryProvider.Location.HEAP} path; the
-	 * backend no longer actually backs buffers on the JVM heap, but the flag
-	 * is preserved so the OpenCL kernel qualifier stays under caller control.
-	 * All other location values leave this {@code false}.</p>
+	 * <p>True when {@code AR_HARDWARE_MEMORY_LOCATION=heap}. The heap path no
+	 * longer backs buffers on the JVM heap, but the flag is preserved so the
+	 * OpenCL volatile qualifier stays under caller control; other location
+	 * values leave this {@code false}.</p>
 	 *
 	 * @return true if kernel memory arguments should be qualified volatile
 	 */
