@@ -730,9 +730,9 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	public static RGB decode(char data[], int index) {
 		long lr = 0, lg = 0, lb = 0;
 		
-		for (int i = 0; i < 16; i++) lr = lr + (((byte)data[index + i]) - 32) << (4 * i);
-		for (int i = 0; i < 16; i++) lg = lg + (((byte)data[index + 16 + i]) - 32) << (4 * i);
-		for (int i = 0; i < 16; i++) lb = lb + (((byte)data[index + 32 + i]) - 32) << (4 * i);
+		for (int i = 0; i < 16; i++) lr = lr + ((long) (((byte) data[index + i]) - 32) << (4 * i));
+		for (int i = 0; i < 16; i++) lg = lg + ((long) (((byte) data[index + 16 + i]) - 32) << (4 * i));
+		for (int i = 0; i < 16; i++) lb = lb + ((long) (((byte) data[index + 32 + i]) - 32) << (4 * i));
 		
 		double r = Double.longBitsToDouble(lr);
 		double g = Double.longBitsToDouble(lg);
