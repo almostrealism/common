@@ -31,6 +31,7 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -188,6 +189,20 @@ import java.util.stream.Stream;
  */
 public class PackedCollection extends MemoryDataAdapter
 		implements MemoryBank<PackedCollection>, Collection<PackedCollection, PackedCollection>, CollectionFeatures, ConsoleFeatures, Cloneable {
+	/**
+	 * Whether a report of filling with zeros carries the stack it came from.
+	 *
+	 * <p>Off by default: the stack is only wanted while these are being hunted,
+	 * and a trace per report would drown a log that is being read for anything
+	 * else. Enabled with {@code AR_FILL_ORIGIN}, which is how a build that is
+	 * hunting them turns it on without any code changing.</p>
+	 */
+	public static boolean enableFillOrigin =
+			SystemUtils.isEnabled("AR_FILL_ORIGIN").orElse(false);
+
+	/** How many calls a report names when asked where it came from. */
+	private static final int ORIGIN_FRAMES = 12;
+
 	/** Shared hardware-accelerated evaluable for zeroing a single element, used by {@link #clear()}. */
 	private static final Evaluable<PackedCollection> clear;
 
@@ -499,20 +514,109 @@ public class PackedCollection extends MemoryDataAdapter
 	 * <p>Filling with zeros is {@link #clear()} written the slow way: this method
 	 * materializes the whole content on the host and writes it across, where
 	 * {@code clear} runs a kernel. Zeros are therefore reported rather than
-	 * silently accepted.</p>
+	 * silently accepted — but only where the difference is worth anything. A
+	 * handful of values written from the host is not a kernel's worth of work,
+	 * so reporting it says nothing a reader can act on and buries the reports
+	 * that do. The threshold leaves out {@link org.almostrealism.algebra.Pair},
+	 * which is two values and is zeroed this way in the ordinary course of
+	 * things.</p>
 	 *
 	 * @param value the values to cycle through; repeated if shorter than the collection
 	 * @return this collection
+	 * @see #enableFillOrigin
 	 */
 	public PackedCollection fill(double... value) {
-		if (DoubleStream.of(value).allMatch(v -> v == 0.0)) {
-			warn("fill with zeros writes " + getMemLength()
-					+ " values from the host; clear() does this with a kernel");
+		if (getMemLength() > 2 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
+			reportFillWithZeros();
 		}
 
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(data);
 		return this;
+	}
+
+	/**
+	 * Reports a fill with zeros that a kernel should have done, saying where it
+	 * came from when asked to.
+	 *
+	 * <p>The report alone names the collection and the cost, which is enough to
+	 * know the call is worth replacing and not enough to find it. These reach
+	 * the log in numbers, from call sites that have survived several passes of
+	 * looking for them by hand, so the origin can be turned on and read
+	 * directly.</p>
+	 *
+	 * <p>The origin is named in the message and not only in the stack, because
+	 * repeated warnings are suppressed by message: without it, every call site
+	 * filling a collection of the same size would report as the same warning
+	 * and all but the first would be dropped — so turning the origin on would
+	 * have shown one of them and hidden the rest, which is the opposite of
+	 * what it is for.</p>
+	 */
+	private void reportFillWithZeros() {
+		String message = "fill with zeros writes " + getMemLength()
+				+ " values from the host; clear() does this with a kernel";
+
+		if (!enableFillOrigin) {
+			warn(message);
+			return;
+		}
+
+		StackTraceElement[] stack = new Exception().getStackTrace();
+		warn(message + " (from " + originOf(stack) + ")" + callersOf(stack));
+	}
+
+	/**
+	 * Returns the first frame outside this class, which is the call that filled.
+	 *
+	 * @param stack the stack to read
+	 * @return a description of the calling frame, or "unknown origin"
+	 */
+	private String originOf(StackTraceElement[] stack) {
+		for (StackTraceElement frame : stack) {
+			if (!PackedCollection.class.getName().equals(frame.getClassName())) {
+				return frame.toString();
+			}
+		}
+
+		return "unknown origin";
+	}
+
+	/**
+	 * Returns the calls that led here, as lines of the report itself.
+	 *
+	 * <p>Carried in the message rather than attached as an exception, because
+	 * an attached one is printed straight to the error stream and never
+	 * reaches the console — so it misses whatever the console has been asked
+	 * to write to, which for a packaged application is the only place anyone
+	 * reads. A stack that goes somewhere nobody is looking is no better than
+	 * no stack.</p>
+	 *
+	 * <p>Begins above the origin, which the report has already named. Repeating
+	 * it would put the same frame on two consecutive lines of every report, and
+	 * these are read in numbers.</p>
+	 *
+	 * @param stack the stack to read
+	 * @return the frames above the origin, one per line
+	 */
+	private String callersOf(StackTraceElement[] stack) {
+		StringBuilder callers = new StringBuilder();
+		boolean atOrigin = true;
+		int shown = 0;
+
+		for (StackTraceElement frame : stack) {
+			if (PackedCollection.class.getName().equals(frame.getClassName())) continue;
+
+			if (atOrigin) {
+				atOrigin = false;
+				continue;
+			}
+
+			if (shown++ >= ORIGIN_FRAMES) break;
+
+			callers.append("\n    at ").append(frame);
+		}
+
+		return callers.toString();
 	}
 
 	/**

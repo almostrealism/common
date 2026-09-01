@@ -136,13 +136,24 @@ public class SingleConstantComputation extends CollectionConstantComputation {
 	 * with the constant value, bypassing the normal computation pipeline for efficiency.
 	 * This is particularly useful for constant values as it avoids unnecessary kernel compilation.
 	 * 
+	 * <p>Zero is the exception, and is left to {@link PackedCollection#clear()}.
+	 * Naming it on the host means writing one value per element across, which is
+	 * the cost this short circuit exists to avoid paying, and it is the one
+	 * constant a kernel produces without being told what to write.</p>
+	 *
 	 * @return An Evaluable that directly produces the constant-filled collection
 	 */
 	@Override
 	public Evaluable<PackedCollection> getShortCircuit() {
 		return args -> {
 			PackedCollection v = new PackedCollection(getShape());
-			v.fill(value);
+
+			if (isZero()) {
+				v.clear();
+			} else {
+				v.fill(value);
+			}
+
 			return getPostprocessor() == null ? v : getPostprocessor().apply(v, 0);
 		};
 	}
