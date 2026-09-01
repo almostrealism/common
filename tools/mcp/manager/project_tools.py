@@ -23,9 +23,10 @@ def project_create_branch(
     plan_title: str = "",
     plan_content: str = "",
 ) -> dict:
-    """Create a planning branch and dispatch the project-manager workflow.
+    """Create a planning branch and dispatch the project-manager agent job.
 
-    This triggers the project-manager GitHub Actions workflow, which will:
+    This triggers the project-manager job of the "Master Agent Dispatch"
+    GitHub Actions workflow, which will:
     1. Create a timestamped branch (e.g., project/plan-20260301-title)
     2. Optionally commit a plan document
     3. Register a new workstream for the branch
@@ -98,15 +99,18 @@ def project_create_branch(
     if not effective_base:
         effective_base = github_api.default_branch(owner, repo)
 
-    inputs = {}
+    inputs = {"agent": "project-manager"}
     if plan_title:
         inputs["plan_title"] = plan_title
     if plan_content:
         inputs["plan_content"] = plan_content
 
+    # The planning job lives alongside the other merge-triggered agent jobs in
+    # master-agent-dispatch.yaml; `agent` selects it so a dispatch does not also
+    # run the documentation review and the defect hunt.
     result = server._github_request(
         "POST",
-        f"/repos/{owner}/{repo}/actions/workflows/project-manager.yaml/dispatches",
+        f"/repos/{owner}/{repo}/actions/workflows/master-agent-dispatch.yaml/dispatches",
         {"ref": effective_base, "inputs": inputs},
     )
 
@@ -123,7 +127,7 @@ def project_create_branch(
         }
 
     result.setdefault("next_steps", [
-        "Check that the project-manager.yaml workflow exists in the repository",
+        "Check that the master-agent-dispatch.yaml workflow exists in the repository",
         "Verify the GitHub token has 'actions:write' permission",
     ])
     return result

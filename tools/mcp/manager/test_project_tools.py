@@ -34,7 +34,9 @@ class TestProjectCreateBranch(unittest.TestCase):
         mock_gh.assert_called_once()
         call_path = mock_gh.call_args[0][1]
         self.assertIn("almostrealism/common", call_path)
-        self.assertIn("project-manager.yaml", call_path)
+        self.assertIn("master-agent-dispatch.yaml", call_path)
+        self.assertEqual(
+            "project-manager", mock_gh.call_args[0][2]["inputs"]["agent"])
         self.assertTrue(result["ok"])
         self.assertTrue(result["triggered"])
 

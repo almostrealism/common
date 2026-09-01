@@ -1,0 +1,449 @@
+name: "Master Agent Dispatch"
+
+# The agent jobs that fire on a merge to master.
+#
+# These were three separate workflows (Project Manager, Quality Assurance,
+# Defect Hunt) with byte-identical triggers. They are one workflow with three
+# jobs because a workflow per lifecycle event keeps the Actions UI navigable;
+# a separate file per job multiplies the sidebar without separating anything.
+#
+# Each job keeps its own concurrency group, so they still serialize
+# independently rather than queueing behind each other. Cadence and cleanup for
+# the two QA-style jobs stay in tools/ci/qa-cadence.sh and
+# tools/ci/archive-stale-workstreams.sh, which they already shared.
+#
+# A manual run selects one job with the `agent` input, or `all` to run the same
+# set a merge would. Deploy deliberately remains its own workflow: it is
+# triggered by hand often enough that it earns a dedicated entry.
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: "Which dispatch to run"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - "all"
+          - "project-manager"
+          - "quality-assurance"
+          - "defect-hunt"
+      force:
+        description: "Submit even if at capacity or one ran recently"
+        required: false
+        default: "false"
+
+jobs:
+  # ── Project Manager ──────────────────────────────────────────────────
+  # Maintains a fixed number of active project branches by creating a new
+  # planning task whenever a branch is merged.
+  plan-next-task:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'project-manager'
+    runs-on: [self-hosted, macos, ar-ci]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Only one project-manager run at a time to avoid race conditions
+    # when counting branches and creating new ones.
+    concurrency:
+      group: project-manager
+      cancel-in-progress: false
+
+    env:
+      # Target number of active project branches to maintain.
+      # When the count drops below this, a new planning branch is created.
+      PROJECT_BRANCH_TARGET: "3"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Count active project branches
+        id: branches
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Count open PRs targeting master via the GitHub CLI. The previous
+          # ar-github MCP CLI mode was retired when the tool was consolidated
+          # into ar-manager; ar-manager is an HTTP MCP server and is not
+          # invokable from a CI shell step.
+          OPEN_PR_COUNT=$(gh pr list --base master --state open --json number --jq 'length')
+          echo "open_prs=$OPEN_PR_COUNT" >> "$GITHUB_OUTPUT"
+          echo "target=$PROJECT_BRANCH_TARGET" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Force mode — creating new planning branch regardless of count"
+          elif [ "$OPEN_PR_COUNT" -lt "$PROJECT_BRANCH_TARGET" ]; then
+            echo "needs_new_branch=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Open PRs ($OPEN_PR_COUNT) below target ($PROJECT_BRANCH_TARGET) — creating new planning branch"
+          else
+            echo "needs_new_branch=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Open PRs ($OPEN_PR_COUNT) at or above target ($PROJECT_BRANCH_TARGET) — no new branch needed"
+          fi
+
+      - name: Create planning branch
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        id: new_branch
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH_NAME="project/plan-${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build planning prompt
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        env:
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+        run: |
+          ./tools/ci/prompts/build-planning-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Submit planning agent job
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Plan new work branch"
+          AUTO_CREATE_PR: "true"
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Project Manager" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Open PRs:** ${{ steps.branches.outputs.open_prs }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Target:** ${{ steps.branches.outputs.target }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.branches.outputs.needs_new_branch }}" = "true" ]; then
+            echo "Created new planning branch: \`${{ steps.new_branch.outputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "A FlowTree coding agent job was submitted to investigate the project" >> "$GITHUB_STEP_SUMMARY"
+            echo "and propose a new task." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No new branch needed — active branch count is at or above target." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ── Quality Assurance — Documentation ────────────────────────────────
+  # Submits a FlowTree coding-agent job that reviews the documentation for
+  # staleness against the changes merged over the last week and opens a PR with
+  # any fixes.
+  #
+  # Cadence is shared with the defect hunt via tools/ci/qa-cadence.sh: skip
+  # while a previous round's PR is still open, otherwise run at most once per
+  # MIN_INTERVAL_DAYS. A dispatch with force=true bypasses both.
+  #
+  # This replaced a once-per-UTC-day cap held in the GitHub Actions cache. The
+  # cache was not durable enough to hold it: the branch names it produced show
+  # five separate days with two rounds each, and 26 abandoned workstreams had
+  # accumulated behind them. Every cache miss silently authorised an extra run,
+  # and a miss is invisible. The branch list is the same state the job already
+  # produces, cannot drift from it, and carries the timestamp in the name.
+  doc-qa:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'quality-assurance'
+    runs-on: [self-hosted, macos, ar-ci]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: quality-assurance
+      cancel-in-progress: false
+
+    env:
+      # The window of recent history the agent reviews for documentation drift.
+      # Passed to the prompt as a git --since expression.
+      REVIEW_SINCE: "1 week ago"
+      BRANCH_PREFIX: "qa/docs-"
+      MIN_INTERVAL_DAYS: "7"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide whether to submit
+        id: decide
+        env:
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          FORCE: ${{ github.event.inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
+
+      # Retire the rounds that came before this one. Safe here because the
+      # gate above has already established that none of them has an open PR:
+      # anything still registered has been merged, closed, or abandoned.
+      # Archiving is reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
+
+      # A fresh branch for the agent to work on. It is pushed before submission
+      # so the agent's targetBranch exists; AUTO_CREATE_PR opens the PR once the
+      # agent commits its fixes. When the docs are already current the agent
+      # makes no changes and no PR is opened, leaving an empty branch at
+      # master's HEAD — which the next round's gate then reads as the last run.
+      - name: Create QA branch
+        if: steps.decide.outputs.run == 'true'
+        id: qa_branch
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${BRANCH_PREFIX}${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build documentation QA prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: master
+          REVIEW_SINCE: ${{ env.REVIEW_SINCE }}
+        run: |
+          ./tools/ci/prompts/build-doc-qa-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Submit documentation QA agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Review documentation for staleness"
+          PROTECT_TEST_FILES: "true"
+          AUTO_CREATE_PR: "true"
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Quality Assurance — Documentation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Review window:** ${{ env.REVIEW_SINCE }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
+            echo "Created \`${{ steps.qa_branch.outputs.branch }}\` and submitted a FlowTree" >> "$GITHUB_STEP_SUMMARY"
+            echo "coding agent job to review documentation for staleness and open a PR with any fixes." >> "$GITHUB_STEP_SUMMARY"
+          else
+            case "${{ steps.decide.outputs.reason }}" in
+              pr-open) echo "Skipped: a previous documentation QA PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
+              too-recent) echo "Skipped: the last review is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          fi
+
+  # ── Defect Hunt ──────────────────────────────────────────────────────
+  # Submits a FlowTree coding-agent job that goes looking for a real defect
+  # anywhere in the repository, proves it with a failing test, and fixes it
+  # if it can.
+  #
+  # Distinct from the documentation review in two ways. That job is scoped
+  # to what changed recently; this one is deliberately unscoped, because
+  # the defects that survive longest live in code nobody has looked at
+  # lately. And this one pins the primary phase to opus regardless of the
+  # workspace default: the work is hypothesis-forming and adversarial
+  # rather than mechanical, and it is the phase where model capability
+  # actually decides whether anything is found.
+  #
+  # Cadence and cleanup are shared with the documentation review through
+  # tools/ci/qa-cadence.sh and tools/ci/archive-stale-workstreams.sh. The
+  # gate is: skip while a previous round's PR is still open, otherwise run
+  # at most once per MIN_INTERVAL_DAYS.
+  defect-hunt:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'defect-hunt'
+    runs-on: [self-hosted, macos, ar-ci]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: defect-hunt
+      cancel-in-progress: false
+
+    env:
+      BRANCH_PREFIX: "qa/defect-"
+      MIN_INTERVAL_DAYS: "7"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide whether to submit
+        id: decide
+        env:
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          FORCE: ${{ github.event.inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
+
+      # Retire the rounds that came before this one. Safe here because the
+      # gate above has already established that none of them has an open
+      # PR: anything still registered has been merged, closed, or
+      # abandoned. Archiving is reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
+
+      - name: Create defect-hunt branch
+        if: steps.decide.outputs.run == 'true'
+        id: branch
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${BRANCH_PREFIX}${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build defect-hunt prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+        run: |
+          chmod +x ./tools/ci/prompts/build-defect-hunt-prompt.sh
+          ./tools/ci/prompts/build-defect-hunt-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # PHASE_CONFIGS pins only the primary phase, so the review,
+      # deduplication and commit-message phases keep whatever the
+      # workspace configures for them. Pinning the default instead would
+      # silently move every phase onto opus.
+      #
+      # All three of runner, model and provider are set together, because
+      # the merge against the workspace default is field-by-field. Setting
+      # the model alone left the workspace's runner and provider in place
+      # and produced "opencode/opus, provider=openrouter" — opencode
+      # declares no supported-model set, so nothing rejected it at submit
+      # time and the phase died in two seconds against an OpenRouter
+      # endpoint with no such model. Setting runner without provider fails
+      # the other way: the claude runner accepts provider=anthropic only,
+      # so an inherited openrouter is rejected outright.
+      - name: Submit defect-hunt agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Hunt for a defect and prove it with a failing test"
+          PROTECT_TEST_FILES: "true"
+          AUTO_CREATE_PR: "true"
+          PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Defect Hunt" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
+            echo "Created \`${{ steps.branch.outputs.branch }}\` and submitted a defect-hunt job" >> "$GITHUB_STEP_SUMMARY"
+            echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            case "${{ steps.decide.outputs.reason }}" in
+              pr-open) echo "Skipped: a previous defect-hunt PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
+              too-recent) echo "Skipped: the last defect hunt is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          fi
