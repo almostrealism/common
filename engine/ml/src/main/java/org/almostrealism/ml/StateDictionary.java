@@ -22,7 +22,11 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.persist.assets.Asset;
 import org.almostrealism.persist.assets.AssetGroup;
 import org.almostrealism.persist.assets.AssetGroupInfo;
+import org.almostrealism.hardware.mem.FileMapping;
+import org.almostrealism.persist.assets.CollectionDataMemoryProvider;
+import org.almostrealism.persist.assets.CollectionDataReference;
 import org.almostrealism.persist.assets.CollectionEncoder;
+import org.almostrealism.persist.assets.EncodedMessage;
 import org.almostrealism.protobuf.Collections;
 
 import io.almostrealism.code.Precision;
@@ -57,6 +61,15 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 	 * Passed directly as that method's {@code materialize} parameter.
 	 */
 	public static boolean enableMaterializeWeights = false;
+
+	/** Field number of {@code collections} within {@code CollectionLibraryData}. */
+	private static final int LIBRARY_COLLECTIONS_FIELD = 1;
+
+	/** Field number of {@code key} within {@code CollectionLibraryEntry}. */
+	private static final int ENTRY_KEY_FIELD = 1;
+
+	/** Field number of {@code collection} within {@code CollectionLibraryEntry}. */
+	private static final int ENTRY_COLLECTION_FIELD = 2;
 
 	/** The in-memory map from weight key names to their decoded {@link PackedCollection} tensors. */
 	private Map<String, PackedCollection> weights;
@@ -121,23 +134,12 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 				.filter(File::exists)
 				.filter(f -> !f.getName().startsWith("."))
 				.mapToInt(weightFile -> {
-			// Read and parse protobuf
-			try (FileInputStream fis = new FileInputStream(weightFile)) {
-				Collections.CollectionLibraryData libraryData = Collections.CollectionLibraryData.parseFrom(fis);
+			try {
+				int loaded = enableMaterializeWeights ?
+						readWeights(weightFile) : locateWeights(weightFile);
 
-				// Decode each collection entry
-				for (Collections.CollectionLibraryEntry entry : libraryData.getCollectionsList()) {
-					String key = entry.getKey();
-					PackedCollection collection = CollectionEncoder.decode(
-							entry.getCollection(), enableMaterializeWeights);
-
-					if (collection != null) {
-						weights.put(key, collection);
-					}
-				}
-
-				log("Loaded " + libraryData.getCollectionsCount() +
-						" weight tensors from " + weightFile.getName());
+				log("Loaded " + loaded + " weight tensors from " +
+						weightFile.getName());
 				return 1;
 			} catch (Exception e) {
 				warn("Error reading weights from file " + weightFile.getName() + ": " + e.getMessage());
@@ -145,6 +147,73 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			}
 		}).sum();
 
+		logLoaded(total);
+	}
+
+	/**
+	 * Locates each tensor in the given library without reading any of them.
+	 *
+	 * <p>The file is walked for structure only: what each tensor is called,
+	 * what shape it is, and where its values are. The values themselves stay
+	 * in the file until something reads them, so a model's weights cost the
+	 * Java heap nothing between being opened and being used, and a tensor no
+	 * kernel ever asks for costs it nothing at all.</p>
+	 *
+	 * @param weightFile the library to locate tensors in
+	 * @return the number of tensors located
+	 * @throws IOException if the file cannot be read
+	 */
+	private int locateWeights(File weightFile) throws IOException {
+		EncodedMessage library = new EncodedMessage(
+				FileMapping.of(weightFile,
+						CollectionDataMemoryProvider.VALUE_ORDER).buffer(), 0);
+
+		List<EncodedMessage> entries = library.fields(LIBRARY_COLLECTIONS_FIELD);
+
+		for (EncodedMessage entry : entries) {
+			String key = entry.stringOf(ENTRY_KEY_FIELD);
+			CollectionDataReference reference =
+					CollectionDataReference.within(entry, ENTRY_COLLECTION_FIELD);
+
+			if (key != null && reference != null) {
+				weights.put(key, CollectionEncoder.decode(reference, weightFile, false));
+			}
+		}
+
+		return entries.size();
+	}
+
+	/**
+	 * Reads every tensor in the given library into freshly allocated memory.
+	 *
+	 * @param weightFile the library to read
+	 * @return the number of tensors read
+	 * @throws IOException if the file cannot be read
+	 */
+	private int readWeights(File weightFile) throws IOException {
+		try (FileInputStream fis = new FileInputStream(weightFile)) {
+			Collections.CollectionLibraryData libraryData =
+					Collections.CollectionLibraryData.parseFrom(fis);
+
+			for (Collections.CollectionLibraryEntry entry : libraryData.getCollectionsList()) {
+				PackedCollection collection =
+						CollectionEncoder.decode(entry.getCollection(), true);
+
+				if (collection != null) {
+					weights.put(entry.getKey(), collection);
+				}
+			}
+
+			return libraryData.getCollectionsCount();
+		}
+	}
+
+	/**
+	 * Reports what was loaded, and from how many files.
+	 *
+	 * @param total the number of files read
+	 */
+	private void logLoaded(int total) {
 		log("StateDictionary loaded " + weights.size() +
 				" total weight tensors from " + total + " protobuf files");
 	}

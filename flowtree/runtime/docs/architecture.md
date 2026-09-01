@@ -139,8 +139,13 @@ WorkspaceResolver      -- Static utility for path and URL resolution
 PullRequestDetector    -- GitHub REST API client for PR detection
 McpConfigBuilder       -- Assembles --mcp-config JSON and --allowedTools string
 ManagedToolsDownloader -- Downloads pushed MCP tool files from controller
-InstructionPromptBuilder -- Constructs the instruction prompt from job state
-McpToolDiscovery       -- Discovers tool names by parsing Python MCP source files
+InstructionPromptBuilder -- Constructs the full instruction prompt from job state
+McpToolDiscovery       -- Discovers tool names by parsing Python MCP server source files
+CodingAgentJobFactory  -- Constructs CodingAgentJobs from a prompt list and config
+CodingAgentJobCodec    -- Codec between Factory wire form and a built CodingAgentJob
+CodingAgentJobConfigurer -- Applies Factory/Codec values onto a CodingAgentJob instance
+RestartGovernor        -- Per-job ceiling on sessions, turns, and wall-clock time
+EnforcementRunner      -- Runs post-session checks (enforce-changes, dedup, ...) with retries
 ```
 
 ### Configuration and Result Classes

@@ -115,7 +115,22 @@ public class FileWaveDataProviderFilter implements ConsoleFeatures {
 	 * @return true if the selected path component matches the filter pattern
 	 */
 	public boolean matches(FileWaveDataProviderTree tree, FileWaveDataProvider p) {
-		return getFilterType().matches(getFilterOn().select(tree, p), getFilter());
+		return matches(getFilterOn().select(tree, p));
+	}
+
+	/**
+	 * Returns whether this filter matches the given value.
+	 *
+	 * <p>What a filter matches against is a name or a path, and a file is not
+	 * the only thing that has those. Something that knows its own name and its
+	 * own place — a group of samples, say — can be filtered by the same filters
+	 * a user already wrote, by selecting the value itself and asking here.</p>
+	 *
+	 * @param value the already-selected value to match
+	 * @return whether it matches
+	 */
+	public boolean matches(String value) {
+		return getFilterType().matches(value, getFilter());
 	}
 
 	/**

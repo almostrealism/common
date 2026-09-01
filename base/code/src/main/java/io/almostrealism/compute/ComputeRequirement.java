@@ -47,6 +47,25 @@ public enum ComputeRequirement {
 	PROFILING;
 
 	/**
+	 * Returns the concrete backend that serves this requirement on the current platform.
+	 *
+	 * <p>{@link #CPU} and {@link #GPU} name a kind of hardware rather than a backend, and
+	 * which backend provides that hardware depends on the machine. Every other constant
+	 * already names a backend and is returned unchanged.</p>
+	 *
+	 * @return the backend a context will be created for
+	 */
+	public ComputeRequirement resolve() {
+		if (this == CPU) {
+			return SystemUtils.isAarch64() ? JNI : CL;
+		} else if (this == GPU) {
+			return SystemUtils.isMacOS() ? MTL : CL;
+		}
+
+		return this;
+	}
+
+	/**
 	 * Returns the highest {@link Precision} supported by this execution backend.
 	 *
 	 * @return the maximum floating-point precision for this backend

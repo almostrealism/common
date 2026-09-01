@@ -173,27 +173,33 @@ public enum Precision {
 	/**
 	 * Returns the generated code literal for the given double value at this precision.
 	 *
+	 * <p>Below {@link #FP64} the literal carries an {@code f} suffix, making it a single
+	 * precision literal in every target language. Without it the literal has no type of its
+	 * own and the target compiler reads it as a double, which is not merely wasteful: an
+	 * overload taking the value alongside a single precision operand then matches both the
+	 * single and the double precision form through one implicit conversion each, and the
+	 * call is ambiguous. Whether that happens is a property of the device rather than of
+	 * this code — a target without double support silently narrows the untyped literal
+	 * instead — so the suffix is what keeps generated source portable between them.</p>
+	 *
 	 * @param d the double value to format
-	 * @return the literal string, appropriately cast or formatted for the target precision
+	 * @return the literal string, formatted for the target precision
 	 */
 	public String stringForDouble(double d) {
-		boolean enableCast = false;
-
 		String raw = rawStringForDouble(d);
-
-		if (enableCast && this == Precision.FP32) {
-			return "((float) " + raw + ")";
-		} else {
-			return raw;
-		}
+		return this == Precision.FP64 ? raw : raw + "f";
 	}
 
 	/**
 	 * Returns the raw string representation of the given double value at this precision,
 	 * without any cast wrapper.
 	 *
-	 * <p>For non-FP64 precisions, the value is cast to {@code float} first. Infinite values
-	 * are replaced with the maximum finite value; NaN is replaced with {@code "0.0"}.
+	 * <p>For non-FP64 precisions, the value is cast to {@code float} first. An infinite value
+	 * is replaced with the furthest finite value of the same sign, which is also what a finite
+	 * value too large for the target precision saturates to once narrowed; NaN is replaced with
+	 * {@code "0.0"}. Note that {@link Float#MIN_VALUE} and {@link Double#MIN_VALUE} are the
+	 * smallest positive values rather than the most negative ones, so the negative case is the
+	 * negation of the maximum.</p>
 	 *
 	 * @param d the double value to format
 	 * @return the raw literal string
@@ -202,7 +208,7 @@ public enum Precision {
 		if (this != Precision.FP64) {
 			Float f = (float) d;
 			if (f.isInfinite()) {
-				return String.valueOf(f > 0 ? Float.MAX_VALUE : Float.MIN_VALUE);
+				return String.valueOf(f > 0 ? Float.MAX_VALUE : -Float.MAX_VALUE);
 			} else if (f.isNaN()) {
 				return "0.0";
 			}
@@ -211,7 +217,7 @@ public enum Precision {
 		} else {
 			Double v = d;
 			if (v.isInfinite()) {
-				return String.valueOf(v > 0 ? Double.MAX_VALUE : Double.MIN_VALUE);
+				return String.valueOf(v > 0 ? Double.MAX_VALUE : -Double.MAX_VALUE);
 			} else if (v.isNaN()) {
 				return "0.0";
 			}

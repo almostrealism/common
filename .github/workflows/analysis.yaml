@@ -26,6 +26,49 @@ on:
     branches:
       - master
 
+# ─── Per-branch pipeline concurrency ──────────────────────
+# CI capacity is limited, and the dominant source of backlog is several
+# full pipelines for the same branch running at once after rapid pushes.
+# Runs are therefore grouped per ref, with master and every other branch
+# resolving that contention differently.
+#
+# Other branches CANCEL: only the newest commit on a branch is worth
+# validating, since it is the one whose checks gate the merge. A new push
+# supersedes the run already in progress.
+#
+# Master QUEUES: a master pipeline gates nothing, because the merge it
+# builds has already happened. Its result is wanted for the record rather
+# than for a decision, and cancelling would discard that record. Queueing
+# holds master to one pipeline at a time, so it yields runners to the
+# branch pipelines someone is waiting on and works through off-hours.
+#
+# Note that GitHub keeps at most one PENDING run per group: when a master
+# pipeline is running and two more land, the first of those two is
+# cancelled as the second arrives. Master history is therefore complete
+# only while merges are spaced further apart than a pipeline takes.
+#
+# Master is also exempt from the group when re-run by hand: a re-run
+# (attempt 2 or later) gets a group of its own, keyed by run id, so it
+# runs alongside the live pipeline rather than queueing behind it. That
+# preserves the ability to re-run an older master run and compare its
+# result against the current one.
+#
+# The exemption is keyed on run_attempt, which is safe ONLY on master.
+# Elsewhere, "Auto-Resolve Submit" retries flaky test failures via
+# rerun-failed-jobs, which produces attempts 2 and 3 on the same run; an
+# attempt-based exemption would make those retries uncancellable. That
+# workflow's retry gate is itself restricted to non-master branches, so on
+# master a later attempt can only come from a person clicking re-run.
+#
+# To compare two commits on a branch other than master, push the older
+# commit to a scratch branch — a distinct ref is a distinct group.
+concurrency:
+  group: >-
+    build-and-test-${{ github.ref }}${{
+    github.ref == 'refs/heads/master' && github.run_attempt != '1'
+    && format('-rerun-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   # ─── Change Detection ─────────────────────────────────────────────
   # Determines whether code files were changed. If only documentation
@@ -1410,6 +1453,15 @@ jobs:
     # CL lane, first stage: the OpenCL duplicate of test-mac. AR_HARDWARE_DRIVER is native,cl
     # (rather than *) so Metal is excluded and GPU-eligible work routes through CL.
     #
+    # AR_HARDWARE_PRECISION is FP32 because CLDataContext selects FP32 whenever it has a GPU
+    # for kernels, and the native context has to match it: two contexts at different precisions
+    # have memory providers with different element widths, so every copy between them has to be
+    # converted one element at a time. On the macOS fleet FP32 was what both sides picked
+    # anyway; on x86 the default of FP64 leaves them disagreeing. FP32 is also what the tests
+    # on this lane have always run at, so their tolerances are unchanged. The ROCm host has an
+    # integrated GPU, whose FP64 rate is poor enough that raising the lane to FP64 would cost
+    # more than it is worth.
+    #
     # Runs on the ROCm fleet (tools/ci/rocm), not the macOS fleet, so it no longer gates on
     # test-mac/test-media-mac: those gates existed only to serialise the *macOS* GPUs, and
     # keeping them would leave this lane idle waiting on unrelated Metal work. The CL lane is
@@ -1471,6 +1523,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
@@ -1478,6 +1531,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_GROUP=${{ matrix.group }} \
@@ -1487,6 +1541,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline \
@@ -1498,6 +1553,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
@@ -1507,6 +1563,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl base/io,engine/utils-http \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
            -DAR_TEST_PROFILE=pipeline
@@ -1711,6 +1768,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1722,6 +1780,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1732,6 +1791,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1743,6 +1803,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl studio/spatial \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1755,6 +1816,7 @@ jobs:
         run: |
           LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" mvn test -Dcheckstyle.skip=true -pl extern/ml-onnx,studio/experiments \
            -DAR_HARDWARE_DRIVER=native,cl \
+           -DAR_HARDWARE_PRECISION=FP32 \
            -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \

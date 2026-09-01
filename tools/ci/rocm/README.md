@@ -403,7 +403,28 @@ unreadable pattern factory fails those tests rather than skipping them.
 
 ## Operations
 
-All as the service account (`sudo -iu ar-ci`):
+Day to day — pausing the fleet to take the machine back for interactive GPU
+work, and resuming it afterwards — use `fleet.sh`. It runs the operations below
+against the service account's systemd user instance, and re-executes itself
+under that account when invoked from an admin login, so it works from either:
+
+```bash
+./fleet.sh start            # start the configured number of runners
+./fleet.sh start 3          # start three — also how to scale up or down
+./fleet.sh stop             # stop all, deregistering cleanly
+./fleet.sh stop --if-idle   # stop only if no job is in flight
+./fleet.sh status           # units, whether each is running a job, free memory
+./fleet.sh logs -f          # journal for every instance
+```
+
+`start` delegates to `install-runner.sh --no-build`, so it also refreshes
+`runner.env` and the limits drop-in and applies the memory-headroom check. It
+does not rebuild the image; run `install-runner.sh` for that.
+
+`stop` cancels any job in flight. Runners are ephemeral, so `stop --if-idle`
+costs nothing but a retry — prefer it unless you need the GPU now.
+
+The underlying commands, all as the service account (`sudo -iu ar-ci`):
 
 ```bash
 # Status
@@ -585,6 +606,7 @@ tools/ci/rocm/
 ├── Dockerfile                # Runner agent + JDK + Maven + OpenCL ICD loader
 ├── ar-ci-cl-runner@.container # Quadlet template unit: devices, mounts, keep-groups
 ├── entrypoint.sh             # OpenCL preflight, register / run / deregister
+├── fleet.sh                  # Day-to-day start / stop / status / logs
 ├── install-runner.sh         # Build the image and install the systemd user service
 ├── settings.xml              # Maven settings
 ├── setup-host.sh             # One-time host setup; idempotent, --check to verify

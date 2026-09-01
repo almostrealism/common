@@ -89,6 +89,7 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `memory_namespaces` | memory-read | List namespaces with entry counts and latest-write times, newest first |
 | `workstream_context` | memory-read | Get memories, commits, PR, and jobs for a branch (a workstream is optional — `repo_url` + `branch` is enough; only the jobs stream needs one) |
 | `memory_store` | memory-write | Store a memory, optionally reformulated |
+| `consult` | consult | Documentation-grounded Q&A: retrieves the project docs and the relevant memories, then synthesises an answer (or returns retrieval-only when no model is reachable, marked `degraded: true`). Replaces the retired `ar-consultant` `consult` tool |
 
 Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not
 provided directly. LLM synthesis (via llama.cpp) is attempted for `memory_recall`

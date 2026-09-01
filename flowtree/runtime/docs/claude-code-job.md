@@ -315,6 +315,15 @@ The commit message is determined by `getCommitMessage()`, which implements a two
 
 The agent's instruction prompt tells it about the `commit.txt` mechanism (in the "Git Commit Instructions" section), so agents that are configured with a target branch know they can control the commit message.
 
+#### Author attribution is removed or the job fails
+
+Commit messages must not attribute authorship of the work: no `Co-Authored-By` (or `Authored-By` / `Assisted-By`) trailer, no "Generated with ..." / "Created by ..." tool credit, no agent name, assistant e-mail address, or product URL. The commit is authored by the configured git identity. Agents add these anyway — their base training and their own default harness instructions tell them to — so the instruction prompt forbids it explicitly *and* `getCommitMessage()` enforces it (`AuthorAttribution`):
+
+- **Removed** when every attribution occurrence is a whole line in the message's trailing block (at or after the last line of real content, blank lines allowed between). This is the shape agents actually produce, and deleting it changes nothing the agent wrote about its work. A warning naming the removed lines is logged.
+- **Refused** in every other position — inline in a line of prose, above further body content, or a message consisting only of attribution. There is no faithful automatic rewrite, so `CommitMessageBuilder.resolve()` throws `IllegalStateException`, which fails the job before any commit is made.
+
+`CommitMessageRule` (the last enforcement rule) reports the refused case as a violation first, so the agent gets correction attempts — with the offending lines quoted back to it — before the job reaches that hard failure. Attribution the harness can strip is deliberately *not* a violation and costs no correction session.
+
 ### Validation: detect-test-hiding.sh
 
 When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against `origin/<baseBranch>` for changes that might "hide" test failures, such as:
@@ -835,6 +844,9 @@ The first token is the fully qualified class name (used by the deserialization f
 | `tools` | `allowedTools` | Base64 | Always |
 | `maxTurns` | `maxTurns` | Plain int | Always |
 | `maxBudget` | `maxBudgetUsd` | Plain double | Always |
+| `maxTotalSessions` | `restartGovernor().maxTotalSessions` | Plain int | Non-default |
+| `maxTotalTurns` | `restartGovernor().maxTotalTurns` | Plain int | Non-default |
+| `maxWallClockMs` | `restartGovernor().maxWallClock` | Plain long (milliseconds) | Non-default; non-positive is meaningful and disables the ceiling |
 | `centralMcp` | `centralizedMcpConfig` | Base64 | Non-null |
 | `pushedTools` | `pushedToolsConfig` | Base64 | Non-null |
 | `wsEnv` | `workstreamEnv` | JSON then Base64 | Non-null, non-empty |
@@ -842,7 +854,19 @@ The first token is the fully qualified class name (used by the deserialization f
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
 | `enforceChanges` | `enforceChanges` | Plain boolean | Always |
 | `dedupMode` | `deduplicationMode` | Plain string | Non-null |
-| `maxWallClockHours` | `maxWallClockHours` | Plain int (empty = inherit) | The hours field on the Factory: an empty value means the job inherits the workstream default or `RestartGovernor.DEFAULT_MAX_WALL_CLOCK` |
+
+The wall-clock ceiling travels between two wire keys:
+
+- `maxWallClockHours` (plain int, Factory-only): the hours the user supplied at submission
+  on the `Factory`. Empty value means the job inherits the workstream default or
+  `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`.
+- `maxWallClockMs` (plain long, milliseconds, Codec-only): the resolved ceiling the
+  `CodingAgentJobCodec` carries over the worker hop. A non-positive value is meaningful
+  and disables the ceiling rather than being dropped.
+
+These are the same setting at different granularities: the Factory speaks hours because
+that is what the submission API takes; the Codec speaks milliseconds because
+`RestartGovernor.maxWallClock` is a `Duration`.
 
 Additionally, all `GitManagedJob` fields are encoded by `super.encode()`:
 

@@ -147,6 +147,41 @@ if (file != null) {
 }
 ```
 
+The `fileFor` path consults a `ContentIndex` the library holds; the index is
+populated by `indexFiles()` and by the tree-refresh path, so resolving an
+identifier that has been seen before does not walk the tree. Call `indexFiles`
+to force the index to reflect the entire tree at once — useful before a batch
+of lookups that have not yet populated the index:
+
+```java
+// Walk the tree once and cache every identifier → file mapping.
+int indexed = library.indexFiles();
+
+// Resolve through the index alone; never searches the tree.
+File fast = library.indexedFileFor(identifier);
+
+// How many identifiers the index currently holds; -1 means none.
+int count = library.getIndexedFileCount();
+
+// Generation counter; compare against the value held when a derivation was
+// made to see whether the library has moved on. Increments every time the
+// index is replaced — by indexFiles(), by clearFileIndex(), and by the
+// tree-refresh path.
+long generation = library.getIndexGeneration();
+
+// Drop the index, returning fileFor() to walking the tree for every call
+// it has not already cached.
+library.clearFileIndex();
+```
+
+`indexedFileFor` exists for callers that cannot afford to search the tree —
+a caller being asked which directory a group belongs to cannot search the
+tree, because building the group directory depends on which groups belong in
+it, and that depends on where each group's members are. The index is rebuilt
+whenever the tree is refreshed, so callers that need the shortcut and the
+ordinary `fileFor` path see the same answers for any identifier the tree
+holds.
+
 ### Computing Similarities
 
 ```java

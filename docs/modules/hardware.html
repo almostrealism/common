@@ -128,8 +128,20 @@
                         <p>Fixed-size memory block. Fundamental building block with delegation support for zero-copy views.</p>
                     </div>
                     <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/FileMapping.html">FileMapping</a></h4>
+                        <p>Shared read-only mapping of one file. A store holding many ranges of a file maps the file once rather than once per range, and the mapping is released when the last reader drops it.</p>
+                    </div>
+                    <div class="class-item">
                         <h4><a href="../apidocs/org/almostrealism/hardware/mem/MemoryDataAdapter.html">MemoryDataAdapter</a></h4>
                         <p>Delegation and versioning. Creates zero-copy views and caches memory across providers.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/HardwareMemoryProvider.html">HardwareMemoryProvider</a></h4>
+                        <p>GC-integrated native-memory provider. Defers a release that <a href="../apidocs/org/almostrealism/hardware/mem/KernelMemoryGuard.html">KernelMemoryGuard</a> reports as still in use, and carries it out anyway past <code>deferredReleaseTimeoutMs</code> with a warning if the count never comes back.</p>
+                    </div>
+                    <div class="class-item">
+                        <h4><a href="../apidocs/org/almostrealism/hardware/mem/KernelMemoryGuard.html">KernelMemoryGuard</a></h4>
+                        <p>Reference-counts native addresses held by in-flight kernels. <code>acquire</code> returns a <code>Reservation</code> carrying the addresses it counted, so <code>release</code> can give them back even after their original arguments have been destroyed.</p>
                     </div>
                     <div class="class-item">
                         <h4><a href="../apidocs/org/almostrealism/hardware/mem/MemoryReplacementManager.html">MemoryReplacementManager</a></h4>

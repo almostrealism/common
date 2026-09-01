@@ -11,6 +11,33 @@ For the runner SPI itself, see [AGENT_RUNNERS.md](AGENT_RUNNERS.md).
 
 ---
 
+## Per-phase configuration: `PhaseConfig` and `PhaseConfigBundle`
+
+A phase carries four independently nullable knobs, collected in
+`io.flowtree.jobs.agent.PhaseConfig`:
+
+| Field | Meaning when set | What `null` means |
+|-------|------------------|-------------------|
+| `runner` | The `AgentRunner` name to dispatch this phase on | Inherit the runner from the next level up the ladder |
+| `model` | The model identifier handed to the runner (e.g. `"claude-opus-4-7"`) | Inherit the model from the next level up the ladder |
+| `effort` | The effort level (e.g. `"high"`) | Inherit the effort from the next level up the ladder |
+| `provider` | The provider identifier (e.g. `"openrouter"`) | Inherit the provider from the next level up the ladder |
+
+A per-container `PhaseConfigBundle` holds a `defaultPhaseConfig` (applied to
+phases not otherwise overridden) plus a `Map<Phase, PhaseConfig>` of per-phase
+overrides. Both `Workstream` and `WorkspaceEntry` carry one. The legacy
+`default_runner` / `runners` fields on workstream and workspace YAML are
+write-only and auto-migrate into the bundle on load; new configuration
+should set `default_phase_config` / `phase_configs` directly.
+
+The routing precedence ladder below describes how the bundle is resolved
+per job (and per phase). The runner column is `PhaseConfig.runner`;
+analogous columns apply to `model`, `effort`, and `provider`, and each is
+resolved independently — a phase can inherit its runner from one level and
+its model from another.
+
+---
+
 ## The `Phase` enum
 
 `io.flowtree.jobs.agent.Phase` lives in `flowtree/agents/` alongside

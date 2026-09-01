@@ -979,8 +979,24 @@ public class Workstream {
      * Returns a JSON object representing this workstream's configuration and capabilities,
      * suitable for inclusion in the {@code GET /api/workstreams} list response.
      *
-     * <p>All string fields are JSON-escaped. Optional fields are omitted when null or empty.
-     * Computed fields: {@code hasPlanningDocument}, {@code pipelineCapable}.</p>
+     * <p>All string fields are JSON-escaped. Scalar string fields are omitted when null;
+     * collection-shaped fields ({@code planningDocument}, {@code dependentRepos},
+     * {@code requiredLabels}) are additionally omitted when empty. Boolean flags are
+     * omitted when {@code false}.</p>
+     *
+     * <p>Always present: {@code workstreamId}, {@code hasPlanningDocument},
+     * {@code pipelineCapable}. Every other identifier and metadata field follows the
+     * omission rule above: {@code channelName}, {@code defaultBranch}, {@code baseBranch},
+     * {@code repoUrl}, {@code githubOrg}, {@code workspaceId}, {@code planningDocument},
+     * {@code dependentRepos}, {@code requiredLabels}.</p>
+     *
+     * <p>Capability flags (omitted when {@code false}): {@code archived},
+     * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.</p>
+     *
+     * <p>{@code pipelineCapable} is computed as {@code repoUrl} being non-null and non-empty.
+     * {@code maxWallClockHours} is emitted only when explicitly set on this workstream
+     * (a {@code null} value lets jobs inherit
+     * {@link io.flowtree.jobs.RestartGovernor#DEFAULT_MAX_WALL_CLOCK}).</p>
      *
      * @return a JSON object string (not an array)
      */

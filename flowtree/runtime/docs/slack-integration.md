@@ -81,9 +81,10 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | Method | Path | Body | Description |
 |--------|------|------|-------------|
 | GET | `/api/workstreams` | -- | List registered workstreams (see [Workstream listing filters](#workstream-listing-filters) below) |
+| GET | `/api/workstreams/{id}/jobs/active` | -- | List jobs still recorded as running for a workstream; each entry carries `jobId`, `workstreamId`, `startedAt`, `heartbeatAt`, `ageSeconds`, `sinceHeartbeatSeconds`, and `description` (see Javadoc on `FlowTreeApiEndpoint`) |
 | POST | `/api/workstreams/{id}/messages` | `{"text":"..."}` | Post a message to the workstream's channel |
 | POST | `/api/workstreams/{id}/jobs/{jobId}/messages` | `{"text":"..."}` | Post a message to the job's thread |
-| POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [Pipeline Agents](../../PIPELINE_AGENTS.md)) |
+| POST | `/api/workstreams/{id}/submit` | `{"prompt":"..."}` | Submit a new job (see [CI Integration: Submit Endpoint](./ci-integration.md#submit-endpoint)) |
 | POST | `/api/workstreams` | `{"defaultBranch":"...","channelName":"..."}` | Register a new workstream (auto-creates private Slack channel) |
 | POST | `/api/workstreams/{id}/update` | `{"channelId":"...","channelName":"..."}` | Update an existing workstream |
 | POST | `/api/workstreams/{id}` | `{"jobId":"...","status":"..."}` | Receive a status event |
@@ -166,6 +167,8 @@ HSQLDB-backed storage for job timing data and statistics. Records job start/comp
 - Database path: `~/.flowtree/stats` (HSQLDB file database)
 - Automatically cleans orphaned STARTED rows older than 7 days on initialization
 - Initialized and wired by `FlowTreeController` at startup
+- Tracks a `heartbeat_at` timestamp per job, written on every status event the controller already receives, so a job whose subprocess has died without posting a terminal status can still be distinguished from one that is running. `StuckJobScanner` consumes the heartbeat column to fail jobs silent for more than twice the workstream's wall-clock ceiling; the result flows through the same completion path as a real failure
+- `getActiveJobs(workstreamId)` returns the `ActiveJob` records (id, workstream, started-at, last heartbeat, description) the `GET /api/workstreams/{id}/jobs/active` endpoint exposes
 
 ### SlackListener
 
@@ -183,7 +186,10 @@ Maps a Slack channel to a set of job defaults. Each workstream has:
 - **planningDocument** -- path to a plan document (relative to repo root) that agents read before starting work
 - **repoUrl** -- repository clone URL for automatic checkout
 - **allowedTools, maxTurns, maxBudgetUsd** -- job configuration defaults
+- **useTmux** -- workstream-level default for whether to launch agents in a `tmux` session (per-call override at submission time)
+- **dispatchCapable** -- when `true`, agents on this workstream are permitted to call dispatch / orchestration MCP tools (e.g. `workstream_register`, `workstream_update_config`); defaults to `false` for safety
 - **maxWallClockHours** -- workstream-level ceiling on a job's wall-clock time, in hours. Defaults are inherited from `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; setting it on the workstream sets the per-job default (overridable on the job itself) that every job dispatched there starts from. Values below the default lower the ceiling; values above raise it.
+- **dormantForCompletionListeners** -- when `true`, automated completion-listener wake-ups targeting this workstream are dropped while manual submissions are still accepted
 
 Workstreams can be defined statically in the YAML config or registered dynamically via `POST /api/workstreams`. A workstream without a `channelId` (registered before its Slack channel is created or in simulation mode) is still functional for job dispatch.
 

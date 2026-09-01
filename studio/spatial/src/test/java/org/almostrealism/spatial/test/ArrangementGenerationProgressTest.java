@@ -108,11 +108,9 @@ public class ArrangementGenerationProgressTest extends TestSuiteBase {
 	 * How many records hold a score is not how much of the cycle is done.
 	 *
 	 * <p>Records carry the scores of the cycle before until the list is rebuilt
-	 * against the new population, and the rebuild replaces the list rather than
-	 * updating it — so a caller that took hold of the list earlier goes on
-	 * counting one that is fully scored and no longer being written to. The
-	 * record count runs ahead of the work, which is what filled the bar
-	 * early.</p>
+	 * against the new population — so counting records counts a set that is
+	 * fully scored before the cycle describing it has begun. The record count
+	 * runs ahead of the work, which is what filled the bar early.</p>
 	 *
 	 * <p>Here three of four records already hold a score and one evaluation has
 	 * been delivered. Counting records would call the cycle three quarters

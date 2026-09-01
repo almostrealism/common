@@ -21,6 +21,13 @@
  * for submitting coding jobs to a FlowTree controller: it carries the target
  * repository, default branch, agent environment, runner / Phase configuration
  * bundle, and any other context that applies to every job submitted into it.
+ * Repository comparison goes through
+ * {@link io.flowtree.workstream.Workstream#matchesRepo(String)} so equivalent
+ * spellings of the same repository (SSH, HTTPS, suffix-less) resolve to one
+ * workstream rather than creating duplicates. Each job's wall-clock budget is
+ * bounded by {@link io.flowtree.workstream.Workstream#getMaxWallClockHours()},
+ * which overrides {@code RestartGovernor.DEFAULT_MAX_WALL_CLOCK} for this
+ * workstream and is itself overridden by a per-job submission value.
  * {@link io.flowtree.workstream.WorkstreamConfig} is the persistent registry
  * of workstreams and the workspaces that own them, including YAML
  * load/save.</p>

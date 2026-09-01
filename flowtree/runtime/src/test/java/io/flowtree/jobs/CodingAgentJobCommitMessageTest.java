@@ -148,6 +148,45 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
                 rule.isViolated(job));
     }
 
+    /**
+     * Verifies that attribution standing alone at the end of {@code commit.txt}
+     * is not a violation: the builder removes it without a correction session.
+     */
+    @Test(timeout = 30000)
+    public void commitMessageRuleNotViolatedByRemovableAttribution() throws IOException {
+        writeCommitTxt("Fix auth bug: validate token expiry\n\nAdded an expiry check.\n\n"
+                + "Co-Authored-By: Claude <noreply@anthropic.com>\n");
+        CommitMessageRule rule = new CommitMessageRule();
+        CodingAgentJob job = new CodingAgentJob("t1", "Fix the authentication bug");
+        job.setWorkingDirectory(tempDir.toString());
+        assertFalse("Trailing attribution is stripped, not corrected",
+                rule.isViolated(job));
+        assertEquals("Fix auth bug: validate token expiry\n\nAdded an expiry check.",
+                CommitMessageBuilder.resolve(job));
+    }
+
+    /**
+     * Verifies that attribution the harness cannot strip is a violation and that
+     * the correction prompt names the offending content.
+     */
+    @Test(timeout = 30000)
+    public void commitMessageRuleViolatedByUnremovableAttribution() throws IOException {
+        writeCommitTxt("Fix auth bug: validate token expiry\n\n"
+                + "Co-Authored-By: Claude <noreply@anthropic.com>\n\n"
+                + "Added an expiry check in UserService.authenticate().");
+        CommitMessageRule rule = new CommitMessageRule();
+        CodingAgentJob job = new CodingAgentJob("t1", "Fix the authentication bug");
+        job.setWorkingDirectory(tempDir.toString());
+        assertTrue("Attribution above the trailing block must be a violation",
+                rule.isViolated(job));
+
+        String correctionPrompt = rule.buildCorrectionPrompt(job);
+        assertTrue("Correction prompt must name the offending content",
+                correctionPrompt.contains("Co-Authored-By: Claude <noreply@anthropic.com>"));
+        assertTrue("Correction prompt must explain the attribution rule",
+                correctionPrompt.contains("attributes authorship"));
+    }
+
     /** Verifies that the rule is still violated when the agent writes the correction prompt text as its commit message. */
     @Test(timeout = 30000)
     public void commitMessageRuleViolatedWhenAgentEchoesOwnPrompt() throws IOException {

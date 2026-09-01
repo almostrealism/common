@@ -60,6 +60,14 @@ stateDict.save(Path.of("/output/weights.pb"));
 stateDict.save(Path.of("/output/weights.pb"), Precision.FP32);
 ```
 
+**Lazy weight loading (default):** `StateDictionary.enableMaterializeWeights`
+controls whether a tensor is decoded into a freshly allocated `PackedCollection`
+when the library is opened, or whether it is located on disk and only read through
+a `FileMapping` when a kernel first asks for it. The default (`false`) keeps the
+file in place: a weight no kernel ever reads costs neither Java heap nor device
+memory. Set the flag to `true` for tests that need to inspect a tensor on the
+host before any kernel runs.
+
 ### 2. Transformer Attention
 
 ```java
@@ -702,6 +710,23 @@ List<SearchResult<MyRecord>> results = store.search(queryVector, 10);  // top-10
 **Memory:** For 768-dimensional vectors with M=16, each node uses ~3.2 KB. The index is persisted as `hnsw.bin` and reloaded on startup.
 
 When the index exceeds `maxIndexSize`, new vectors are still stored but not indexed — `search()` falls back to brute-force scan for un-indexed vectors so correctness is preserved at all dataset sizes.
+
+### Collection Data Memory
+
+`org.almostrealism.persist.assets` provides the read-only `Memory` surface that
+`StateDictionary` places weight tensors behind. Together they let a tensor stay in
+its protobuf file until a kernel first reads it; a model whose weights no kernel
+ever asks for costs neither the Java heap nor the device:
+
+- **`CollectionEncoder`** — encode/decode a `PackedCollection` to protobuf `CollectionData`. The deferred `decode` forms hand back a collection whose values are read from the encoding on demand, never copied off it.
+- **`CollectionDataMemoryProvider`** — the shared `"PROTOBUF"` `MemoryProvider` exposing collection data as read-only memory. Default `allocate(int)` rejects empty allocation (memory is created only from existing messages or file references); the default `setMem(...)` rejects writes — migration to a device is one-way.
+- **`CollectionDataMemory`** — the abstract `Memory` implementation the provider returns.
+- **`ParsedCollectionDataMemory`** — memory backed by a `CollectionData` already on the heap. Skips the device allocation when no kernel ever reads the values.
+- **`MappedCollectionDataMemory`** — memory backed by values still in the file they were written to. The values are read through a `FileMapping` of the file when a kernel first needs them.
+- **`CollectionDataReference`** — locates collection data inside a message by descending a path of field numbers, and reports the byte range and precision of its values without parsing them. `MappedCollectionDataMemory` is built on top of one of these.
+- **`EncodedMessage`** — bytes of a protobuf message with field positions locatable without decoding. `CollectionDataReference` walks one of these to find what it needs.
+
+The `CollectionDataMemoryProvider` memory is consulted on first kernel use and migrates to the device lazily, so a `StateDictionary` weight that nothing uses costs nothing.
 
 ---
 
