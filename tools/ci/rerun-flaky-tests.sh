@@ -16,6 +16,17 @@
 # test job in it (a deterministic failure such as build/checkstyle/policy) —
 # reports retried=false, letting the caller proceed to submit an agent job.
 #
+# A run whose head commit is no longer the tip of its branch is superseded: a
+# newer commit has been pushed and its own pipeline is authoritative. Retrying
+# such a run spends test capacity on a commit that will not be merged, and
+# handing it to an agent produces a fix against stale code, so a superseded run
+# is neither retried nor submitted (superseded=true).
+#
+# Because a re-run is a new attempt on the SAME run, it re-enters the workflow's
+# concurrency group. The superseded guard is what keeps that safe: without it, a
+# retry of an older commit could start after — and therefore cancel — the
+# in-progress pipeline for the current head commit.
+#
 # A flaky-eligible job is a test-execution job: name `test`, a matrix entry
 # `test (N)`, or a `test-*` job (test-flowtree, test-media, test-mac, test-cl,
 # test-media-mac, test-media-cl, …). The deterministic `*-check` validators
@@ -31,13 +42,21 @@
 #   REPO          - owner/name
 #   RUN_ID        - the completed "Build and Test" run id
 #   RUN_ATTEMPT   - that run's attempt number (1-based)
+#   HEAD_SHA      - the commit the completed run was for
+#   HEAD_BRANCH   - the branch that commit was pushed to
+#   HEAD_REPO     - owner/name of the repository holding that branch (differs
+#                   from REPO for a pull request opened from a fork)
 #
 # Optional environment:
 #   MAX_ATTEMPTS  - retry only while RUN_ATTEMPT < MAX_ATTEMPTS (default 3)
 #
 # Output (appended to $GITHUB_OUTPUT, or stdout when unset):
-#   retried=true   - a re-run was requested; do NOT submit an agent job
-#   retried=false  - no re-run; the caller should proceed to submit
+#   retried=true      - a re-run was requested; do NOT submit an agent job
+#   retried=false     - no re-run
+#   superseded=true   - the run's commit is no longer the branch tip; the
+#                       caller should neither retry nor submit
+#   superseded=false  - the run's commit is still current (or could not be
+#                       resolved, in which case the guard is skipped)
 
 set -euo pipefail
 
@@ -45,11 +64,31 @@ set -euo pipefail
 : "${REPO:?REPO is required}"
 : "${RUN_ID:?RUN_ID is required}"
 : "${RUN_ATTEMPT:?RUN_ATTEMPT is required}"
+: "${HEAD_SHA:?HEAD_SHA is required}"
+: "${HEAD_BRANCH:?HEAD_BRANCH is required}"
+: "${HEAD_REPO:?HEAD_REPO is required}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 
+# emit <retried> [superseded]
 emit() {
-    echo "retried=$1" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+    {
+        echo "retried=$1"
+        echo "superseded=${2:-false}"
+    } >> "${GITHUB_OUTPUT:-/dev/stdout}"
 }
+
+# The tip of the branch the run was for. An empty result (deleted branch,
+# transient API failure) skips the guard rather than suppressing a legitimate
+# retry: the guard exists to avoid wasted work, not to gate correctness.
+CURRENT_SHA=$(gh api "/repos/$HEAD_REPO/commits/$HEAD_BRANCH" --jq '.sha' 2>/dev/null || true)
+
+if [ -z "$CURRENT_SHA" ]; then
+    echo "::notice::Could not resolve the tip of $HEAD_REPO@$HEAD_BRANCH — skipping the superseded check"
+elif [ "$CURRENT_SHA" != "$HEAD_SHA" ]; then
+    echo "::notice::Run $RUN_ID is for $HEAD_SHA but $HEAD_REPO@$HEAD_BRANCH is now at $CURRENT_SHA — superseded, so it is neither retried nor submitted"
+    emit false true
+    exit 0
+fi
 
 if [ "$RUN_ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
     echo "::notice::Run $RUN_ID has reached attempt $RUN_ATTEMPT (max $MAX_ATTEMPTS) — treating the failure as genuine and proceeding to auto-resolve"

@@ -26,6 +26,49 @@ on:
     branches:
       - master
 
+# ─── Per-branch pipeline concurrency ──────────────────────
+# CI capacity is limited, and the dominant source of backlog is several
+# full pipelines for the same branch running at once after rapid pushes.
+# Runs are therefore grouped per ref, with master and every other branch
+# resolving that contention differently.
+#
+# Other branches CANCEL: only the newest commit on a branch is worth
+# validating, since it is the one whose checks gate the merge. A new push
+# supersedes the run already in progress.
+#
+# Master QUEUES: a master pipeline gates nothing, because the merge it
+# builds has already happened. Its result is wanted for the record rather
+# than for a decision, and cancelling would discard that record. Queueing
+# holds master to one pipeline at a time, so it yields runners to the
+# branch pipelines someone is waiting on and works through off-hours.
+#
+# Note that GitHub keeps at most one PENDING run per group: when a master
+# pipeline is running and two more land, the first of those two is
+# cancelled as the second arrives. Master history is therefore complete
+# only while merges are spaced further apart than a pipeline takes.
+#
+# Master is also exempt from the group when re-run by hand: a re-run
+# (attempt 2 or later) gets a group of its own, keyed by run id, so it
+# runs alongside the live pipeline rather than queueing behind it. That
+# preserves the ability to re-run an older master run and compare its
+# result against the current one.
+#
+# The exemption is keyed on run_attempt, which is safe ONLY on master.
+# Elsewhere, "Auto-Resolve Submit" retries flaky test failures via
+# rerun-failed-jobs, which produces attempts 2 and 3 on the same run; an
+# attempt-based exemption would make those retries uncancellable. That
+# workflow's retry gate is itself restricted to non-master branches, so on
+# master a later attempt can only come from a person clicking re-run.
+#
+# To compare two commits on a branch other than master, push the older
+# commit to a scratch branch — a distinct ref is a distinct group.
+concurrency:
+  group: >-
+    build-and-test-${{ github.ref }}${{
+    github.ref == 'refs/heads/master' && github.run_attempt != '1'
+    && format('-rerun-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   # ─── Change Detection ─────────────────────────────────────────────
   # Determines whether code files were changed. If only documentation
