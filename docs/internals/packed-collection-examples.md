@@ -421,8 +421,8 @@ These guarantees have evolved over time; the table below reflects the current
 implementations (verify against the cited sources if in doubt).
 
 A plain constructor (`new PackedCollection(shape)`) always allocates directly
-from the active `MemoryProvider` and is **zero-initialized** on every standard
-backend:
+from the active `MemoryProvider`. The standard backends zero-initialize the
+new allocation:
 
 | Backend | Mechanism |
 |---|---|

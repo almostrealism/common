@@ -160,10 +160,13 @@ import java.util.stream.Collectors;
  * <p><strong>Values:</strong></p>
  * <ul>
  *   <li><strong>{@code device}</strong> - OpenCL device memory (the only value
- *       honored by {@code CLMemoryProvider}; default)</li>
- *   <li><strong>{@code host}</strong>, <strong>{@code heap}</strong>,
- *       <strong>{@code delegate}</strong> - recognized for source compatibility
- *       but behave as {@code device}; see {@code CLMemoryProvider} Javadoc.</li>
+ *       honored by {@code CLMemoryProvider}; default).</li>
+ *   <li><strong>{@code host}</strong>, <strong>{@code delegate}</strong> -
+ *       recognized at startup but allocate device memory; see
+ *       {@code CLMemoryProvider} Javadoc.</li>
+ *   <li><strong>{@code heap}</strong> - also allocates device memory, but keeps
+ *       {@link #isMemoryVolatile()} {@code true}, which preserves the OpenCL
+ *       {@code volatile} kernel-argument qualifier for callers that rely on it.</li>
  * </ul>
  *
  * <h3>AR_HARDWARE_NIO_MEMORY</h3>
@@ -475,8 +478,6 @@ import java.util.stream.Collectors;
  *
  * @author  Michael Murray
  */
-// TODO(review): file is at the 1600-line hard limit (1601 at last commit); move the env-var
-// reference javadoc above into base/hardware/README.md instead of trimming wording to fit.
 public final class Hardware implements ConsoleFeatures {
 	/** If true, log detailed initialization and backend configuration messages. */
 	public static boolean enableVerbose = false;

@@ -719,11 +719,16 @@ export AR_HARDWARE_MEMORY_SCALE=4   # ~4GB (default, FP32)
 export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB (FP32)
 export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 
+# TODO(review): Hardware.java is at the 1600-line checkstyle FileLength hard
+# limit with zero headroom; move its AR_HARDWARE_* env-var reference javadoc
+# here instead of trimming wording there to stay under the limit.
 # Memory location (OpenCL only)
 # Only `device` selects OpenCL device allocation in CLMemoryProvider.
-# `host`, `heap`, and `delegate` are recognized at startup but behave as
-# `device`; `CLMemoryProvider` logs a warning when one is requested. See
-# CLMemoryProvider Javadoc for the full statement.
+# `host`, `heap`, and `delegate` are still recognized as inputs but all
+# allocate on the device (a warning is logged); `heap` additionally keeps
+# the OpenCL `volatile` kernel-argument qualifier enabled via
+# Hardware.isMemoryVolatile(). See CLMemoryProvider Javadoc for the
+# full statement.
 export AR_HARDWARE_MEMORY_LOCATION=device   # OpenCL device memory (the only honored value)
 
 # Enable shared memory (Apple Silicon unified memory)
