@@ -1,0 +1,51 @@
+name: "Cancel Merged PR Runs"
+
+# Cancels the "Build and Test" pipeline still running against a pull
+# request's pre-merge head once that pull request is merged.
+#
+# Merging is a decision that the checks are good enough, and the merge
+# commit's own pipeline on master re-runs them against the merged code. The
+# pre-merge pipeline is answering a settled question, so on constrained CI
+# capacity it is holding runners that a branch someone is waiting on could
+# use.
+#
+# Why pull_request_target rather than pull_request:
+# A `pull_request` run from a fork receives a read-only token and could not
+# call the Actions API to cancel anything. `pull_request_target` runs in the
+# base repository's context with a writable token, so the cancellation works
+# for fork pull requests too. This is safe here because the job never checks
+# out or executes pull request code — actions/checkout with no `ref` takes
+# the base branch, and the job's only action is an API call driven by event
+# metadata.
+
+on:
+  pull_request_target:
+    types: [closed]
+
+concurrency:
+  group: cancel-merged-pr-runs-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cancel:
+    # Only a merge. A pull request closed without merging is a different
+    # decision, and its pipeline is left alone.
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Cancel the pull request's active pipelines
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          chmod +x ./tools/ci/cancel-merged-pr-runs.sh
+          ./tools/ci/cancel-merged-pr-runs.sh
