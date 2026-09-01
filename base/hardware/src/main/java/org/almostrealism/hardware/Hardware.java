@@ -159,10 +159,11 @@ import java.util.stream.Collectors;
  * <p><strong>Purpose:</strong> Memory storage strategy for OpenCL.</p>
  * <p><strong>Values:</strong></p>
  * <ul>
- *   <li><strong>{@code device}</strong> - GPU/accelerator memory (default, fastest)</li>
- *   <li><strong>{@code host}</strong> - System RAM accessible by GPU</li>
- *   <li><strong>{@code heap}</strong> - Java heap (volatile, slowest)</li>
- *   <li><strong>{@code delegate}</strong> - Native buffer delegation</li>
+ *   <li><strong>{@code device}</strong> - OpenCL device memory (the only value
+ *       honored by {@code CLMemoryProvider}; default)</li>
+ *   <li><strong>{@code host}</strong>, <strong>{@code heap}</strong>,
+ *       <strong>{@code delegate}</strong> - recognized for source compatibility
+ *       but behave as {@code device}; see {@code CLMemoryProvider} Javadoc.</li>
  * </ul>
  *
  * <h3>AR_HARDWARE_NIO_MEMORY</h3>
@@ -436,15 +437,16 @@ import java.util.stream.Collectors;
  * </pre>
  *
  * <h3>Incompatible Memory Location with NIO</h3>
+ * <p>{@code AR_HARDWARE_NIO_MEMORY=true} overrides the requested location to
+ * {@code delegate}; the only input the caller controls is whether to enable
+ * the bridge. The other {@code Location} values ({@code host}, {@code heap},
+ * {@code device}) are rejected when NIO memory is on. {@code delegate} is
+ * still recognized by the startup parser for source compatibility, but
+ * {@code CLMemoryProvider} no longer treats it specially — see
+ * {@code CLMemoryProvider} Javadoc.</p>
  * <pre>
- * # BAD: HOST location incompatible with NIO memory
+ * # Enable the cross-backend NIO bridge
  * export AR_HARDWARE_NIO_MEMORY=true
- * export AR_HARDWARE_MEMORY_LOCATION=host
- * # Warning: location will be set to DELEGATE instead
- *
- * # GOOD: Use DELEGATE with NIO memory
- * export AR_HARDWARE_NIO_MEMORY=true
- * export AR_HARDWARE_MEMORY_LOCATION=delegate
  * </pre>
  *
  * <h3>Precision Mismatch with Multiple Backends</h3>
@@ -538,6 +540,7 @@ public final class Hardware implements ConsoleFeatures {
 
 		sharedMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(sharedMem);
 
+		// TODO(review): class javadoc says host is "rejected" with NIO memory, but here it only warns and converts to delegate
 		if (sharedMem) {
 			if (memLocation != null) {
 				if (location == Location.HOST) {
@@ -1209,11 +1212,16 @@ public final class Hardware implements ConsoleFeatures {
 	public boolean isAsync() { return async; }
 
 	/**
-	 * Returns whether memory is volatile (stored in JVM heap).
+	 * Returns whether the OpenCL backend should declare kernel memory arguments
+	 * {@code volatile}.
 	 *
-	 * <p>True when {@code AR_HARDWARE_MEMORY_LOCATION=heap}.</p>
+	 * <p>True when {@code AR_HARDWARE_MEMORY_LOCATION=heap}. Inherited from
+	 * the older heap-backed {@code CLMemoryProvider.Location.HEAP} path; the
+	 * backend no longer actually backs buffers on the JVM heap, but the flag
+	 * is preserved so the OpenCL kernel qualifier stays under caller control.
+	 * All other location values leave this {@code false}.</p>
 	 *
-	 * @return true if memory is volatile
+	 * @return true if kernel memory arguments should be qualified volatile
 	 */
 	public boolean isMemoryVolatile() { return memVolatile; }
 

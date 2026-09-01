@@ -430,13 +430,18 @@ backend:
 | Native CPU/JNI (`NativeMemoryProvider`) | `calloc` (see `Malloc.getFunctionDefinition`) |
 | Metal (`MetalMemoryProvider`, default mode) | `newBufferWithLength` — zero-filled per the Metal API contract (`MTL.cpp createBuffer32`) |
 | NIO (`NativeBufferMemoryProvider`) | `ByteBuffer.allocateDirect` — zeroed by the JVM spec |
-| OpenCL `HEAP`/`DELEGATE` locations | `CL_MEM_USE_HOST_PTR` over zeroed host memory |
 
 The exceptions, where zero contents are **NOT** guaranteed:
 
-- **OpenCL `DEVICE` (the default CL location) and `HOST` locations** — bare
-  `clCreateBuffer` / `CL_MEM_ALLOC_HOST_PTR`; the OpenCL specification leaves
-  the contents undefined.
+- **OpenCL (`CLMemoryProvider`) on every `Location` value** — bare
+  `clCreateBuffer` with `CL_MEM_READ_WRITE`; the OpenCL specification leaves
+  the contents undefined. `CLMemoryProvider.Location.HOST`,
+  `CLMemoryProvider.Location.HEAP`, and `CLMemoryProvider.Location.DELEGATE`
+  are no longer honored by `CLMemoryProvider` itself (a warning is logged at
+  construction); they remain in the enum only for source compatibility and
+  behave as `DEVICE`. See `CLMemoryProvider` Javadoc for the full statement.
+  Zero contents are only established after a subsequent `fill(0.0)`,
+  `clear()`, or kernel write.
 - **Heap-carved allocations** — `PackedCollection.factory()` under an active
   `Heap` (or inside `Heap.stage(...)`) carves bump-pointer views from the
   stage's backing block without clearing them. The block is zeroed when first
@@ -450,9 +455,10 @@ The exceptions, where zero contents are **NOT** guaranteed:
   with another process.
 
 Providers do not pool freed chunks (deallocation destroys the memory), so a
-fresh provider allocation always comes from one of the zeroing allocators
-above — earlier contents of destroyed collections cannot reappear through the
-plain constructor.
+fresh provider allocation comes from a freshly allocated region rather than a
+reused one — earlier contents of destroyed collections cannot reappear through
+the plain constructor, and a new OpenCL allocation begins in the
+spec-defined undefined state rather than reading from a freed buffer.
 
 ### Why destroy() matters
 
