@@ -136,6 +136,15 @@ public class CLProgram implements OperationInfo {
 	 * available to the compiler a property of this class instead of a property of
 	 * whichever {@code -Xss} the surrounding process happens to run with.</p>
 	 *
+	 * <p>The wait for that thread is not interruptible. {@link CL#clBuildProgram} is a
+	 * blocking native call that no Java interrupt reaches, so returning early would not
+	 * stop the build; it would only leave it running against a {@link cl_program} the
+	 * caller is then free to {@link #destroy()}, which is a use-after-free rather than a
+	 * cancellation. Waiting for the build and restoring the interrupt afterwards keeps
+	 * the guarantee that no OpenCL work is outstanding once this method returns, which is
+	 * how the call behaved before it acquired a thread of its own. The thread is a daemon
+	 * so that it can never on its own be the reason a JVM stays alive.</p>
+	 *
 	 * @throws HardwareException if compilation fails, with the source code attached for debugging
 	 */
 	public void compile() {
@@ -149,13 +158,21 @@ public class CLProgram implements OperationInfo {
 			}
 		}, "CLProgram build " + getMetadata().getDisplayName(), COMPILATION_STACK_SIZE);
 
+		compilation.setDaemon(true);
 		compilation.start();
 
-		try {
-			compilation.join();
-		} catch (InterruptedException e) {
+		boolean interrupted = false;
+
+		while (compilation.isAlive()) {
+			try {
+				compilation.join();
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+		}
+
+		if (interrupted) {
 			Thread.currentThread().interrupt();
-			throw new HardwareException("Interrupted while building CLProgram", e);
 		}
 
 		if (failure[0] instanceof RuntimeException) {
