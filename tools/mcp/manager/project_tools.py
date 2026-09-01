@@ -27,7 +27,7 @@ def project_create_branch(
 
     This triggers the project-manager job of the "Master Agent Dispatch"
     GitHub Actions workflow, which will:
-    1. Create a timestamped branch (e.g., project/plan-20260301-title)
+    1. Create a timestamped branch (e.g., project/plan-20260301-143022-title)
     2. Optionally commit a plan document
     3. Register a new workstream for the branch
     4. Submit a planning agent to refine the plan
@@ -44,8 +44,14 @@ def project_create_branch(
     Args:
         workstream_id: Optional source workstream (from workstream_list).
         repo_url: Optional repository URL (HTTPS or SSH). Overrides workstream.
-        plan_title: Short title for the plan branch (used in branch name).
-        plan_content: Optional markdown content for the initial plan document.
+        plan_title: Short title for the plan branch. Slugified into the
+            branch name; the timestamp is kept so two runs of the same
+            title on one day do not collide.
+        plan_content: Optional markdown content for the initial plan
+            document. When given, it is committed to the branch as
+            ``docs/plans/PLAN-<date>-<slug>.md`` before the agent starts,
+            and the agent refines that document rather than surveying the
+            project for a task of its own.
 
     Returns:
         Dictionary confirming the workflow was dispatched.
@@ -122,7 +128,7 @@ def project_create_branch(
             "next_steps": [
                 "The workflow will create a new branch and register a workstream",
                 "Wait 1-2 minutes, then call workstream_list to find the new workstream",
-                "The workflow creates a branch named like 'project/plan-YYYYMMDD-title'",
+                "The workflow creates a branch named like 'project/plan-YYYYMMDD-HHMMSS-title'",
             ],
         }
 

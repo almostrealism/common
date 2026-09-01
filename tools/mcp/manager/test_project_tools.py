@@ -41,6 +41,27 @@ class TestProjectCreateBranch(unittest.TestCase):
         self.assertTrue(result["triggered"])
 
     @patch.object(server, "_github_request")
+    def test_dispatch_forwards_plan_inputs(self, mock_gh):
+        """plan_title/plan_content reach the workflow as declared inputs."""
+        _grant_all_scopes()
+        mock_gh.return_value = {"ok": True, "status": 204}
+        server.project_create_branch(
+            plan_title="my-feature", plan_content="# Plan\n\nDo the thing.")
+        inputs = mock_gh.call_args[0][2]["inputs"]
+        self.assertEqual("project-manager", inputs["agent"])
+        self.assertEqual("my-feature", inputs["plan_title"])
+        self.assertEqual("# Plan\n\nDo the thing.", inputs["plan_content"])
+
+    @patch.object(server, "_github_request")
+    def test_dispatch_omits_absent_plan_inputs(self, mock_gh):
+        """Absent optional inputs are not sent at all."""
+        _grant_all_scopes()
+        mock_gh.return_value = {"ok": True, "status": 204}
+        server.project_create_branch()
+        inputs = mock_gh.call_args[0][2]["inputs"]
+        self.assertEqual({"agent": "project-manager"}, inputs)
+
+    @patch.object(server, "_github_request")
     def test_dispatch_explicit_repo(self, mock_gh):
         _grant_all_scopes()
         mock_gh.return_value = {"status": 204}

@@ -36,6 +36,14 @@ on:
         description: "Submit even if at capacity or one ran recently"
         required: false
         default: "false"
+      plan_title:
+        description: "Project Manager only — short title, used in the planning branch name"
+        required: false
+        default: ""
+      plan_content:
+        description: "Project Manager only — markdown seeding the branch's plan document"
+        required: false
+        default: ""
 
 jobs:
   # ── Project Manager ──────────────────────────────────────────────────
@@ -94,16 +102,66 @@ jobs:
             echo "::notice::Open PRs ($OPEN_PR_COUNT) at or above target ($PROJECT_BRANCH_TARGET) — no new branch needed"
           fi
 
+      # The timestamp stays in the name even when a title is given: two
+      # dispatches of the same title on the same day would otherwise collide on
+      # an existing branch.
+      #
+      # plan_title is free text from a dispatch input, so it is read through the
+      # environment rather than interpolated into the script — a title
+      # containing shell metacharacters must not be able to run as code. The
+      # substitutions are POSIX: this job runs on macOS, whose sed does not
+      # understand GNU's \+.
       - name: Create planning branch
         if: steps.branches.outputs.needs_new_branch == 'true'
         id: new_branch
+        env:
+          PLAN_TITLE: ${{ github.event.inputs.plan_title }}
         run: |
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-          BRANCH_NAME="project/plan-${TIMESTAMP}"
+          SLUG=$(printf '%s' "${PLAN_TITLE:-}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -e 's/[^a-z0-9][^a-z0-9]*/-/g' -e 's/^-//' -e 's/-$//' \
+            | cut -c1-40 | sed -e 's/-$//')
+
+          if [ -n "$SLUG" ]; then
+            BRANCH_NAME="project/plan-${TIMESTAMP}-${SLUG}"
+          else
+            BRANCH_NAME="project/plan-${TIMESTAMP}"
+          fi
+
           git checkout -b "$BRANCH_NAME"
           git push -u origin "$BRANCH_NAME"
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "slug=${SLUG:-seed}" >> "$GITHUB_OUTPUT"
           echo "::notice::Created branch $BRANCH_NAME"
+
+      # When the caller supplied plan_content, that markdown IS the branch's
+      # plan document: commit it before the agent starts so the agent refines a
+      # stated task instead of inventing one. It is committed rather than passed
+      # through the prompt so the branch carries exactly one new plan document,
+      # which is what Verify Completion detects.
+      - name: Seed plan document
+        if: >-
+          steps.branches.outputs.needs_new_branch == 'true' &&
+          github.event.inputs.plan_content != ''
+        id: seed
+        env:
+          PLAN_CONTENT: ${{ github.event.inputs.plan_content }}
+          SLUG: ${{ steps.new_branch.outputs.slug }}
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+        run: |
+          PLAN_FILE="docs/plans/PLAN-$(date +%Y%m%d)-${SLUG}.md"
+          mkdir -p docs/plans
+          printf '%s\n' "$PLAN_CONTENT" > "$PLAN_FILE"
+
+          git add "$PLAN_FILE"
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "Seed planning document for ${BRANCH}"
+          git push
+
+          echo "plan_file=$PLAN_FILE" >> "$GITHUB_OUTPUT"
+          echo "::notice::Seeded $PLAN_FILE"
 
       - name: Register workstream
         if: steps.branches.outputs.needs_new_branch == 'true'
@@ -122,6 +180,7 @@ jobs:
         env:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
+          PLAN_DOCUMENT: ${{ steps.seed.outputs.plan_file }}
         run: |
           ./tools/ci/prompts/build-planning-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
@@ -148,8 +207,13 @@ jobs:
           if [ "${{ steps.branches.outputs.needs_new_branch }}" = "true" ]; then
             echo "Created new planning branch: \`${{ steps.new_branch.outputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was submitted to investigate the project" >> "$GITHUB_STEP_SUMMARY"
-            echo "and propose a new task." >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "${{ steps.seed.outputs.plan_file }}" ]; then
+              echo "Seeded \`${{ steps.seed.outputs.plan_file }}\` and submitted a FlowTree coding" >> "$GITHUB_STEP_SUMMARY"
+              echo "agent job to refine it into a complete plan." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "A FlowTree coding agent job was submitted to investigate the project" >> "$GITHUB_STEP_SUMMARY"
+              echo "and propose a new task." >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             echo "No new branch needed — active branch count is at or above target." >> "$GITHUB_STEP_SUMMARY"
           fi
