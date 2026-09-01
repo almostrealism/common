@@ -288,7 +288,9 @@ class EnforcementRunner implements ConsoleFeatures {
      * its retries and needs to produce a usable message so the job can proceed.
      * Uses, in order:
      * <ol>
-     *   <li>The job prompt's first line, if non-empty</li>
+     *   <li>The job prompt's first line, if non-empty and free of author
+     *       attribution (a prompt line that names an author would produce the
+     *       very message {@link CommitMessageBuilder} refuses to commit)</li>
      *   <li>{@code "Job {jobId} commit"}</li>
      * </ol>
      */
@@ -296,7 +298,7 @@ class EnforcementRunner implements ConsoleFeatures {
         String prompt = job.getPrompt();
         if (prompt != null && !prompt.trim().isEmpty()) {
             String firstLine = prompt.trim().split("\n")[0].trim();
-            if (!firstLine.isEmpty()) {
+            if (!firstLine.isEmpty() && !AuthorAttribution.containsAttribution(firstLine)) {
                 return firstLine.length() > 72
                         ? firstLine.substring(0, 69) + "..."
                         : firstLine;

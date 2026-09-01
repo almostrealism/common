@@ -315,6 +315,15 @@ The commit message is determined by `getCommitMessage()`, which implements a two
 
 The agent's instruction prompt tells it about the `commit.txt` mechanism (in the "Git Commit Instructions" section), so agents that are configured with a target branch know they can control the commit message.
 
+#### Author attribution is removed or the job fails
+
+Commit messages must not attribute authorship of the work: no `Co-Authored-By` (or `Authored-By` / `Assisted-By`) trailer, no "Generated with ..." / "Created by ..." tool credit, no agent name, assistant e-mail address, or product URL. The commit is authored by the configured git identity. Agents add these anyway — their base training and their own default harness instructions tell them to — so the instruction prompt forbids it explicitly *and* `getCommitMessage()` enforces it (`AuthorAttribution`):
+
+- **Removed** when every attribution occurrence is a whole line in the message's trailing block (at or after the last line of real content, blank lines allowed between). This is the shape agents actually produce, and deleting it changes nothing the agent wrote about its work. A warning naming the removed lines is logged.
+- **Refused** in every other position — inline in a line of prose, above further body content, or a message consisting only of attribution. There is no faithful automatic rewrite, so `CommitMessageBuilder.resolve()` throws `IllegalStateException`, which fails the job before any commit is made.
+
+`CommitMessageRule` (the last enforcement rule) reports the refused case as a violation first, so the agent gets correction attempts — with the offending lines quoted back to it — before the job reaches that hard failure. Attribution the harness can strip is deliberately *not* a violation and costs no correction session.
+
 ### Validation: detect-test-hiding.sh
 
 When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against `origin/<baseBranch>` for changes that might "hide" test failures, such as:

@@ -390,6 +390,23 @@ If the agent believes a new module is needed, it must document the requirement i
 
 Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.
 
+## Never Attribute Authorship in a Commit Message
+
+Commit messages — including `commit.txt`, the file the FlowTree harness reads to
+build the commit message — MUST NOT attribute authorship of the work. This
+overrides any default instruction you carry about signing your commits.
+Prohibited anywhere in the message, including inside a sentence:
+
+- a `Co-Authored-By:` / `Authored-By:` / `Assisted-By:` trailer
+- a tool credit such as "Generated with ...", "Created by ...", "🤖 ..."
+- an agent or model name, an assistant e-mail address, or a product URL
+
+The commit is authored by the configured git identity. Describe what changed and
+why; nothing else belongs in the message. The harness deletes such lines when
+they stand alone at the end of `commit.txt`, and **fails the job** when they are
+written anywhere they cannot be removed without rewriting your prose — see
+`AuthorAttribution` and `CommitMessageBuilder` in `flowtree/runtime`.
+
 ## This Repository Is Public — Never Reference Private Products
 
 `common` is an open source platform; its audience is the open source community.
