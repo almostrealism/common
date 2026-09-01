@@ -102,4 +102,22 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         String subject = "y".repeat(256);
         assertEquals(subject, GitHubProxyHandler.pullRequestTitle(subject, "fallback"));
     }
+
+    /**
+     * A branch name occupies one path segment, so its slash is encoded. Every
+     * branch this runs for is of this shape, and an unencoded slash addresses a
+     * different endpoint.
+     */
+    @Test(timeout = 10000)
+    public void branchRefIsPercentEncoded() {
+        assertEquals("https://api.github.com/repos/almostrealism/common/commits/qa%2Fdefect-20260901-120000",
+                GitHubProxyHandler.commitApiUrl("almostrealism/common", "qa/defect-20260901-120000"));
+    }
+
+    /** A commit SHA passes through the encoding unchanged. */
+    @Test(timeout = 10000)
+    public void shaRefIsUnchanged() {
+        assertEquals("https://api.github.com/repos/almostrealism/common/commits/8b6d8e8a6",
+                GitHubProxyHandler.commitApiUrl("almostrealism/common", "8b6d8e8a6"));
+    }
 }

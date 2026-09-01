@@ -51,14 +51,23 @@ set -euo pipefail
 WORKFLOW="${WORKFLOW:-analysis.yaml}"
 
 CANCELLED=0
+FAILED_QUERIES=0
 
 # A run that is queued has not yet taken a runner but would; a run that is
 # waiting is held at an environment approval gate. Both are cancelled along
 # with the ones already executing.
+#
+# A listing that fails (auth, rate limit, API outage) is reported rather than
+# read as an empty result: "no runs to cancel" and "could not find out" lead to
+# the same inaction but want different responses from whoever reads the log.
 for status in in_progress queued waiting; do
-    RUN_IDS=$(gh api --paginate \
+    if ! RUN_IDS=$(gh api --paginate \
         "/repos/$REPO/actions/workflows/$WORKFLOW/runs?event=pull_request&branch=$HEAD_BRANCH&status=$status" \
-        --jq ".workflow_runs[] | select(.head_repository.full_name == \"$HEAD_REPO\") | .id" 2>/dev/null || true)
+        --jq ".workflow_runs[] | select(.head_repository.full_name == \"$HEAD_REPO\") | .id" 2>/dev/null); then
+        echo "::warning::Could not list $status runs of $WORKFLOW for $HEAD_REPO@$HEAD_BRANCH; any are left running"
+        FAILED_QUERIES=$((FAILED_QUERIES + 1))
+        continue
+    fi
 
     for id in $RUN_IDS; do
         # A run that reached a terminal state between the query and here
@@ -72,8 +81,13 @@ for status in in_progress queued waiting; do
     done
 done
 
-if [ "$CANCELLED" -eq 0 ]; then
+if [ "$CANCELLED" -eq 0 ] && [ "$FAILED_QUERIES" -gt 0 ]; then
+    echo "::warning::Cancelled nothing for merged PR #$PR_NUMBER: $FAILED_QUERIES of 3 run listings failed"
+elif [ "$CANCELLED" -eq 0 ]; then
     echo "::notice::No active $WORKFLOW runs for merged PR #$PR_NUMBER ($HEAD_REPO@$HEAD_BRANCH)"
 else
     echo "::notice::Cancelled $CANCELLED run(s) for merged PR #$PR_NUMBER"
+    if [ "$FAILED_QUERIES" -gt 0 ]; then
+        echo "::warning::$FAILED_QUERIES of 3 run listings failed; some runs may still be active"
+    fi
 fi

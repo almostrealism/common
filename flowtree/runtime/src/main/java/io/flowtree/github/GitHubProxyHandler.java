@@ -32,6 +32,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
@@ -304,6 +305,24 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
+     * Builds the commit lookup URL for {@code ref}.
+     *
+     * <p>The ref occupies a single path segment, so a branch name is percent
+     * encoded: the branches this is used for are named {@code qa/defect-...}
+     * and {@code project/plan-...}, and an unencoded slash would address a
+     * different endpoint entirely. A commit SHA is unaffected by the
+     * encoding.</p>
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param ref       commit SHA, branch name, or tag
+     * @return the GitHub API URL for the commit
+     */
+    static String commitApiUrl(String ownerRepo, String ref) {
+        return "https://api.github.com/repos/" + ownerRepo + "/commits/"
+                + URLEncoder.encode(ref, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    /**
      * Reads the commit message for {@code ref}.
      *
      * @param ownerRepo the {@code owner/repo} path component
@@ -313,8 +332,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      */
     public String fetchCommitMessage(String ownerRepo, String ref, String token) {
         try {
-            String apiUrl = "https://api.github.com/repos/" + ownerRepo + "/commits/" + ref;
-            URL url = URI.create(apiUrl).toURL();
+            URL url = URI.create(commitApiUrl(ownerRepo, ref)).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("Authorization", "Bearer " + token.trim());
