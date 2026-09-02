@@ -60,6 +60,18 @@ import org.jocl.cl_program;
  * @see CLComputeContext
  */
 public class CLProgram implements OperationInfo {
+	/**
+	 * Stack size, in bytes, of the thread {@link #compile()} builds on.
+	 *
+	 * <p>Measured against a 986,390 character kernel, which overflows the 1MB
+	 * default and builds successfully at 2MB. The value here is far above that
+	 * because the depth an OpenCL implementation reaches is a property of the
+	 * implementation rather than something this class can predict, and because
+	 * the cost of the margin is only reserved address space: a thread stack is
+	 * committed as it is used, and one program is built per thread.</p>
+	 */
+	private static final long COMPILATION_STACK_SIZE = 64 * 1024 * 1024;
+
 	/** The compute context this program belongs to. */
 	private CLComputeContext ctx;
 
@@ -114,9 +126,70 @@ public class CLProgram implements OperationInfo {
 	/**
 	 * Compiles the OpenCL program.
 	 *
+	 * <p>The build runs on a thread of this class's own making rather than on the
+	 * caller's, because {@link CL#clBuildProgram} compiles in-process and some
+	 * implementations recurse in proportion to the size of the source. A generated
+	 * kernel approaching a megabyte of OpenCL C exhausts the 1MB stack that a JVM
+	 * on Linux gives a thread by default, and the resulting overflow lands in native
+	 * frames, so it arrives as a bare segmentation fault with no {@code hs_err} file
+	 * and no indication that OpenCL was involved. Owning the thread makes the stack
+	 * available to the compiler a property of this class instead of a property of
+	 * whichever {@code -Xss} the surrounding process happens to run with.</p>
+	 *
+	 * <p>The wait for that thread is not interruptible. {@link CL#clBuildProgram} is a
+	 * blocking native call that no Java interrupt reaches, so returning early would not
+	 * stop the build; it would only leave it running against a {@link cl_program} the
+	 * caller is then free to {@link #destroy()}, which is a use-after-free rather than a
+	 * cancellation. Waiting for the build and restoring the interrupt afterwards keeps
+	 * the guarantee that no OpenCL work is outstanding once this method returns, which is
+	 * how the call behaved before it acquired a thread of its own. The thread is a daemon
+	 * so that it can never on its own be the reason a JVM stays alive.</p>
+	 *
 	 * @throws HardwareException if compilation fails, with the source code attached for debugging
 	 */
 	public void compile() {
+		Throwable[] failure = new Throwable[1];
+
+		Thread compilation = new Thread(null, () -> {
+			try {
+				build();
+			} catch (Throwable t) {
+				failure[0] = t;
+			}
+		}, "CLProgram build " + getMetadata().getDisplayName(), COMPILATION_STACK_SIZE);
+
+		compilation.setDaemon(true);
+		compilation.start();
+
+		boolean interrupted = false;
+
+		while (compilation.isAlive()) {
+			try {
+				compilation.join();
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+		}
+
+		if (interrupted) {
+			Thread.currentThread().interrupt();
+		}
+
+		if (failure[0] instanceof RuntimeException) {
+			throw (RuntimeException) failure[0];
+		} else if (failure[0] instanceof Error) {
+			throw (Error) failure[0];
+		} else if (failure[0] != null) {
+			throw new HardwareException("Error building CLProgram", failure[0]);
+		}
+	}
+
+	/**
+	 * Performs the OpenCL build, translating a failure into a {@link HardwareException}.
+	 *
+	 * @throws HardwareException if compilation fails, with the source code attached for debugging
+	 */
+	private void build() {
 		try {
 			int r = CL.clBuildProgram(getProgram(), 0, null, null, null, null);
 			if (r != 0) throw new HardwareException("Error building CLProgram: " + r);

@@ -210,6 +210,12 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 
 	/**
 	 * Test MFCC with constant mel energies (should produce specific pattern).
+	 *
+	 * <p>The constant is deliberately not unit energy. Since
+	 * {@code c0 = sqrt(1/N) * sum(log(e_n))}, unit energy sends every log term to zero,
+	 * and c0 then vanishes for a reason that has nothing to do with the DCT. At that
+	 * level the only thing separating c0 from zero is the epsilon {@code mfcc} adds to
+	 * avoid {@code log(0)}, which is finer than single precision can resolve.</p>
 	 */
 	@Test(timeout = 60000)
 	public void testMFCCConstantInput() {
@@ -217,14 +223,17 @@ public class MelFilterBankTest extends TestSuiteBase implements TemporalFeatures
 		int numMfccCoeffs = 13;
 
 		// All mel bands have same energy
+		double energy = 2.0;
 		PackedCollection melEnergies = new PackedCollection(shape(numMelBands));
-		melEnergies.fill(1.0);
+		melEnergies.fill(energy);
 
 		PackedCollection mfccs = mfcc(numMfccCoeffs, melEnergies);
 
-		// For constant input, c0 should be non-zero (captures average)
-		// Higher coefficients should be near zero (no spectral variation)
-		assertTrue("c0 should be non-zero for constant input", Math.abs(mfccs.toDouble(0)) > 1e-10);
+		// c0 recovers the average log energy, while the higher coefficients
+		// are zero because there is no spectral variation for them to describe
+		assertSimilar("c0 should capture the average log energy for constant input",
+				Math.sqrt(1.0 / numMelBands) * numMelBands * Math.log(energy),
+				mfccs.toDouble(0));
 
 		for (int i = 1; i < numMfccCoeffs; i++) {
 			assertEquals("Higher MFCCs should be near zero for constant input",
