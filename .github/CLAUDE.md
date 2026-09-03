@@ -376,6 +376,24 @@ step so a failed deploy cannot leave the controller permanently quiesced.
 `concurrency` does **not** cancel in progress: interrupting a half-finished
 container rebuild is worse than queueing behind it.
 
+**The agent pool is part of the deploy.** `flowtree-agent-1` and
+`flowtree-agent-2` run their own image, which bundles the flowtree JARs — a
+change under `flowtree/agents` (the tool policy a coding-agent session runs
+under, for instance) reaches a running agent only when that image is rebuilt.
+The workflow therefore invokes `rebuild.sh --agents`, and then asserts the
+containers were actually recreated by comparing their Docker ids across the
+rebuild; a rebuild that "succeeded" while the old containers kept running fails
+the job. Set the repository variable `FLOWTREE_DEPLOY_AGENTS=false` (or answer
+`false` to the `redeploy_agents` input on a manual run) to deploy the controller
+stack alone.
+
+The agent `.env` is gitignored, so it is never present in the runner's checkout.
+`rebuild.sh` reads `FLOWTREE_AGENT_ENV` to find the host's copy; the workflow
+falls back to `/Users/Shared/flowtree/secrets/agent.env`, and the repository
+variable `FLOWTREE_AGENT_ENV` overrides that. Without it the script fails with
+the missing key rather than blocking on a prompt that has no terminal to answer
+it.
+
 ### What the `Master Agent Dispatch` workflow does
 
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the three
