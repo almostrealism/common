@@ -73,4 +73,16 @@ public class WavFileTest extends TestSuiteBase {
 	public void roundTrip32BitPreservesSign() throws Exception {
 		Assert.assertEquals(0.5, roundTrip(32), 0.001);
 	}
+
+	/**
+	 * A 64-bit sample must round-trip with its sign preserved. The read-side
+	 * scale factor previously used {@code 1L << (validBits - 1)}, which overflows
+	 * to {@link Long#MIN_VALUE} at 64 bits and sign-inverts every sample; the
+	 * power-of-two scale is now computed in floating point and stays positive
+	 * for every depth the class accepts.
+	 */
+	@Test(timeout = 30000)
+	public void roundTrip64BitPreservesSign() throws Exception {
+		Assert.assertEquals(0.5, roundTrip(64), 0.001);
+	}
 }

@@ -410,11 +410,15 @@ public class WavFile implements AutoCloseable {
 
 		// Calculate the scaling factor for converting to a normalised double
 		if (wavFile.validBits > 8) {
-			// If more than 8 validBits, data is signed. Shift in long: a 32-bit
-			// int shift overflows at validBits >= 32 and inverts every sample.
-			// TODO(review): still negative (Long.MIN_VALUE) at validBits == 64.
+			// If more than 8 validBits, data is signed. Compute 2^(validBits-1)
+			// in floating point: an integer shift overflows at validBits == 32
+			// (int) and again at validBits == 64 (long, where 1L << 63 is
+			// Long.MIN_VALUE), and either overflow sign-inverts every sample.
+			// Math.scalb returns the power-of-two exactly within the range a
+			// double can represent, which is sufficient because floatScale is
+			// only used to normalise samples into the [-1.0, 1.0] range.
 			wavFile.floatOffset = 0;
-			wavFile.floatScale = 1L << (wavFile.validBits - 1);
+			wavFile.floatScale = Math.scalb(1.0, wavFile.validBits - 1);
 		} else {
 			// Else if 8 or less validBits, data is unsigned
 			// Conversion required dividing by max positive value
