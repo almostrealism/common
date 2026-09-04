@@ -315,7 +315,9 @@ jobs:
           OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
           # These files are the enforcement infrastructure. Any modification
-          # on a PR branch is treated as tampering and fails the build.
+          # on a PR branch is treated as tampering and fails the build, with
+          # one carve-out applied below: on a ci/... branch the pipeline
+          # files among them are the declared subject of the work.
           PROTECTED_FILES=(
             "engine/utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
@@ -346,8 +348,26 @@ jobs:
             "engine/utils/src/main/resources/org/almostrealism/util/setmem-violation-baseline.tsv"
           )
 
+          # A branch named ci/... declares the pipeline as the subject of
+          # the change, the same declaration validate-agent-commit.sh RULE 3
+          # accepts. It unlocks only the protected files that ARE the
+          # pipeline — those under .github/workflows/ and tools/ci/. The
+          # policy detectors stay locked on every branch: weakening a
+          # detector is never what a pipeline change is about. The branch is
+          # read from GITHUB_HEAD_REF first because the workspace is a
+          # detached checkout of the pull request head.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          CI_BRANCH=false
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            CI_BRANCH=true
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+          fi
+
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+              continue
+            fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
               TAMPERED="${TAMPERED}- ${f}\n"
             fi
@@ -377,7 +397,9 @@ jobs:
             echo -e "altering an entry is treated as tampering, because that grandfathers a" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "new violation.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
-            echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "justification for human review. Work whose subject IS the pipeline" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "belongs on a branch named ci/..., chosen before the work starts, which" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "unlocks the workflow and tools/ci files — but never the policy detectors." >> ${RUNNER_TEMP}/enforcement-report.txt
             cat ${RUNNER_TEMP}/enforcement-report.txt
             if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
               echo "::warning::Enforcement infrastructure tampering detected but IGNORED via the override_integrity_checks input"
@@ -473,8 +495,26 @@ jobs:
             "checkstyle.xml"
           )
 
+          # A branch named ci/... declares the pipeline as the subject of
+          # the change, the same declaration validate-agent-commit.sh RULE 3
+          # accepts. It unlocks only the protected files that ARE the
+          # pipeline — those under .github/workflows/ and tools/ci/. The
+          # policy detectors stay locked on every branch: weakening a
+          # detector is never what a pipeline change is about. The branch is
+          # read from GITHUB_HEAD_REF first because the workspace is a
+          # detached checkout of the pull request head.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          CI_BRANCH=false
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            CI_BRANCH=true
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+          fi
+
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+              continue
+            fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
               TAMPERED="${TAMPERED}- ${f}\n"
             fi
@@ -594,8 +634,14 @@ jobs:
 
       - name: Validate agent commit
         id: validate
+        env:
+          # Lets the validator verify a controller-signed
+          # Sensitive-File-Bypass trailer. Absent secret means no commit
+          # can be granted a bypass, which is the safe direction to fail.
+          AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
         run: |
           chmod +x ./tools/ci/agent-protection/validate-agent-commit.sh
+          chmod +x ./tools/ci/agent-protection/verify-sensitive-bypass.sh
           ./tools/ci/agent-protection/validate-agent-commit.sh origin/master --require-production-changes || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
