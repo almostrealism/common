@@ -22,7 +22,7 @@ StateDictionary loads model weights from **protobuf format** (`.pb` files), NOT 
 **NOT Supported:** safetensors, PyTorch checkpoints (`.pt`/`.bin`), GGUF
 
 ```java
-import org.almostrealism.model.StateDictionary;
+import org.almostrealism.ml.StateDictionary;
 
 // Load model weights from directory containing .pb files
 StateDictionary stateDict = new StateDictionary("/path/to/weights");
@@ -104,7 +104,7 @@ Block transformerLayer = transformer(
 ### 3. Qwen3 Model Implementation
 
 ```java
-import org.almostrealism.models.qwen3.Qwen3;
+import org.almostrealism.ml.qwen3.Qwen3;
 
 // Load and configure model
 Qwen3 model = new Qwen3(
@@ -126,7 +126,7 @@ model.run(
 ### 4. Autoregressive Generation
 
 ```java
-import org.almostrealism.model.AutoregressiveModel;
+import org.almostrealism.ml.AutoregressiveModel;
 
 // Wrap compiled model for token generation
 AutoregressiveModel generator = AutoregressiveModel.of(
@@ -145,7 +145,7 @@ int nextToken = generator.next();
 ### 5. Tokenization
 
 ```java
-import org.almostrealism.models.qwen3.Qwen3Tokenizer;
+import org.almostrealism.ml.qwen3.Qwen3Tokenizer;
 
 // Load tokenizer
 Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("/path/to/tokenizer.bin");

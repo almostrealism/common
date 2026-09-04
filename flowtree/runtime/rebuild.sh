@@ -4,7 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 SECRETS_DIR="/Users/Shared/flowtree/secrets"
-AGENT_ENV="flowtree/runtime/agent/.env"
+# The agent pool's configuration file. It is gitignored, so a fresh checkout
+# (a CI runner workspace, for instance) never contains it — an unattended
+# caller must point FLOWTREE_AGENT_ENV at a copy that lives outside the
+# working tree, conventionally under ${SECRETS_DIR}.
+AGENT_ENV="${FLOWTREE_AGENT_ENV:-flowtree/runtime/agent/.env}"
 
 # ── Usage ──────────────────────────────────────────────────────────
 usage() {
@@ -29,6 +33,15 @@ Examples:
   flowtree/runtime/rebuild.sh --agents-only          # agents only
   flowtree/runtime/rebuild.sh --agents --with-llm    # full stack + agents + local LLM
   flowtree/runtime/rebuild.sh flowtree-controller    # just the controller service
+
+Environment variables consulted by --agents / --agents-only:
+  FLOWTREE_AGENT_ENV     path to the agent .env file
+                         (default: flowtree/runtime/agent/.env). Set this when
+                         running from a checkout that does not carry the file,
+                         e.g. /Users/Shared/flowtree/secrets/agent.env.
+  FLOWTREE_ROOT_HOST     controller hostname, when not supplied by that file
+  CLAUDE_CODE_OAUTH_TOKEN
+                         agent OAuth token, when not supplied by that file
 
 Environment variables consulted by --with-llm:
   LLM_MODEL          ollama model identifier (default: qwen3-coder:30b)
@@ -57,6 +70,45 @@ for arg in "$@"; do
     *)              SERVICES+=("${arg}") ;;
   esac
 done
+
+# ── Agent configuration ────────────────────────────────────────────
+#
+# Loaded and validated BEFORE the Maven build so a pool that cannot be
+# configured fails in seconds rather than after a full build.
+
+load_agent_env() {
+  if [ -f "${AGENT_ENV}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "${AGENT_ENV}"
+    set +a
+  fi
+}
+
+# Prompting is only possible with a terminal attached. An unattended caller
+# (the deploy workflow) has none, and a `read` against a closed stdin would
+# otherwise fail with no indication of what is actually missing. Name the key
+# and the file that should have supplied it instead.
+require_agent_config() {
+  echo "ERROR: $1 is required to rebuild the agent pool, and no terminal is"
+  echo "  attached to prompt for it. Supply it in ${AGENT_ENV}, or export it"
+  echo "  before invoking this script. $2"
+  exit 1
+}
+
+if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
+  load_agent_env
+  if [ ! -t 0 ]; then
+    if [ -z "${FLOWTREE_ROOT_HOST:-}" ]; then
+      require_agent_config FLOWTREE_ROOT_HOST \
+        "Set FLOWTREE_AGENT_ENV to an agent .env kept outside the working tree."
+    fi
+    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+      require_agent_config CLAUDE_CODE_OAUTH_TOKEN \
+        "Generate one with: claude setup-token"
+    fi
+  fi
+fi
 
 # When --cache is set, drop --no-cache so Docker reuses existing build
 # layers. This sidesteps transient "GPG error ... is not signed" failures
@@ -243,16 +295,15 @@ fi
 # ── Agent pool ─────────────────────────────────────────────────────
 
 if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
-  # Load existing .env if present
-  if [ -f "${AGENT_ENV}" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    . "${AGENT_ENV}"
-    set +a
-  fi
+  # Reload the env file: --with-llm may have written OPENCODE_* keys into it
+  # since the pre-build load.
+  load_agent_env
 
-  # Validate required config — skip prompts if already set
   if [ -z "${FLOWTREE_ROOT_HOST:-}" ]; then
+    if [ ! -t 0 ]; then
+      require_agent_config FLOWTREE_ROOT_HOST \
+        "Set FLOWTREE_AGENT_ENV to an agent .env kept outside the working tree."
+    fi
     read -rp "Controller host: " FLOWTREE_ROOT_HOST
     if [ -z "${FLOWTREE_ROOT_HOST}" ]; then
       echo "ERROR: Controller host is required."
@@ -263,6 +314,10 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
   fi
 
   if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    if [ ! -t 0 ]; then
+      require_agent_config CLAUDE_CODE_OAUTH_TOKEN \
+        "Generate one with: claude setup-token"
+    fi
     echo ""
     echo "A Claude Code OAuth token is required."
     echo "Generate one by running:  claude setup-token"

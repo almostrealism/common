@@ -97,6 +97,17 @@ data.randnFill();                      // Normal distribution (mean 0, std 1)
 data.clear();                          // Zero out all elements
 ```
 
+`fill(0.0)` writes the whole content from the host, where `clear()` runs a
+kernel that does the same work on the device. The host path is reported rather
+than silently accepted, but only when it is worth anything — collections of
+two or fewer values are excluded because they are not a kernel's worth of work,
+and a `Pair` is filled this way in the ordinary course of things. The report
+names the collection and the cost, which is enough to know a call is worth
+replacing. To also see *where* the call came from, set `AR_FILL_ORIGIN=true`
+(or `PackedCollection.enableFillOrigin = true`) — each report then names its
+origin in the message rather than only in the stack, so repeated warnings
+remain distinguishable after the message-deduplicator drops them.
+
 ---
 
 ## TraversalPolicy
@@ -421,8 +432,8 @@ These guarantees have evolved over time; the table below reflects the current
 implementations (verify against the cited sources if in doubt).
 
 A plain constructor (`new PackedCollection(shape)`) always allocates directly
-from the active `MemoryProvider` and is **zero-initialized** on every standard
-backend:
+from the active `MemoryProvider`. The standard backends zero-initialize the
+new allocation:
 
 | Backend | Mechanism |
 |---|---|
@@ -430,13 +441,18 @@ backend:
 | Native CPU/JNI (`NativeMemoryProvider`) | `calloc` (see `Malloc.getFunctionDefinition`) |
 | Metal (`MetalMemoryProvider`, default mode) | `newBufferWithLength` — zero-filled per the Metal API contract (`MTL.cpp createBuffer32`) |
 | NIO (`NativeBufferMemoryProvider`) | `ByteBuffer.allocateDirect` — zeroed by the JVM spec |
-| OpenCL `HEAP`/`DELEGATE` locations | `CL_MEM_USE_HOST_PTR` over zeroed host memory |
 
 The exceptions, where zero contents are **NOT** guaranteed:
 
-- **OpenCL `DEVICE` (the default CL location) and `HOST` locations** — bare
-  `clCreateBuffer` / `CL_MEM_ALLOC_HOST_PTR`; the OpenCL specification leaves
-  the contents undefined.
+- **OpenCL (`CLMemoryProvider`) on every `Location` value** — bare
+  `clCreateBuffer` with `CL_MEM_READ_WRITE`; the OpenCL specification leaves
+  the contents undefined. `CLMemoryProvider.Location.HOST`,
+  `CLMemoryProvider.Location.HEAP`, and `CLMemoryProvider.Location.DELEGATE`
+  are no longer honored by `CLMemoryProvider` itself (a warning is logged at
+  construction); they remain in the enum only for source compatibility and
+  behave as `DEVICE`. See `CLMemoryProvider` Javadoc for the full statement.
+  Zero contents are only established after a subsequent `fill(0.0)`,
+  `clear()`, or kernel write.
 - **Heap-carved allocations** — `PackedCollection.factory()` under an active
   `Heap` (or inside `Heap.stage(...)`) carves bump-pointer views from the
   stage's backing block without clearing them. The block is zeroed when first
@@ -450,9 +466,10 @@ The exceptions, where zero contents are **NOT** guaranteed:
   with another process.
 
 Providers do not pool freed chunks (deallocation destroys the memory), so a
-fresh provider allocation always comes from one of the zeroing allocators
-above — earlier contents of destroyed collections cannot reappear through the
-plain constructor.
+fresh provider allocation comes from a freshly allocated region rather than a
+reused one — earlier contents of destroyed collections cannot reappear through
+the plain constructor, and a new OpenCL allocation begins in the
+spec-defined undefined state rather than reading from a freed buffer.
 
 ### Why destroy() matters
 

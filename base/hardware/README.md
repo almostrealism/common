@@ -719,10 +719,17 @@ export AR_HARDWARE_MEMORY_SCALE=4   # ~4GB (default, FP32)
 export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB (FP32)
 export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 
+# TODO(review): Hardware.java is at the 1600-line checkstyle FileLength hard
+# limit with zero headroom; move its AR_HARDWARE_* env-var reference javadoc
+# here instead of trimming wording there to stay under the limit.
 # Memory location (OpenCL only)
-export AR_HARDWARE_MEMORY_LOCATION=device   # GPU memory (fastest)
-export AR_HARDWARE_MEMORY_LOCATION=host     # System RAM
-export AR_HARDWARE_MEMORY_LOCATION=delegate # Native buffer
+# Only `device` selects OpenCL device allocation in CLMemoryProvider.
+# `host`, `heap`, and `delegate` are still recognized as inputs but all
+# allocate on the device (a warning is logged); `heap` additionally keeps
+# the OpenCL `volatile` kernel-argument qualifier enabled via
+# Hardware.isMemoryVolatile(). See CLMemoryProvider Javadoc for the
+# full statement.
+export AR_HARDWARE_MEMORY_LOCATION=device   # OpenCL device memory (the only honored value)
 
 # Enable shared memory (Apple Silicon unified memory)
 export AR_HARDWARE_NIO_MEMORY=true
@@ -1023,10 +1030,11 @@ System.out.println("Compilable: " + canCompile);
 ```bash
 # Increase memory scale
 export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB (FP32)
-
-# Or use host memory
-export AR_HARDWARE_MEMORY_LOCATION=host
 ```
+
+The only honored memory location value today is `device`. `host`, `heap`, and
+`delegate` are still recognized as inputs but all behave as `device` (see
+`CLMemoryProvider` Javadoc); they do not move buffers off the device.
 
 Every `AR_HARDWARE_` setting is read as a **system property first**, and only then
 from the environment. Exporting it works when the process inherits the environment,
