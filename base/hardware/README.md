@@ -719,10 +719,6 @@ export AR_HARDWARE_MEMORY_SCALE=4   # ~4GB (default, FP32)
 export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB (FP32)
 export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 
-# TODO(review): Hardware.java is at the 1600-line checkstyle FileLength hard
-# limit with zero headroom (no SuppressionSingleFilter exemption); move its
-# AR_HARDWARE_* env-var reference javadoc here instead of trimming wording
-# there to stay under the limit.
 # Memory location (OpenCL only)
 # Only `device` selects OpenCL device allocation in CLMemoryProvider.
 # `host`, `heap`, and `delegate` are still recognized as inputs but all
