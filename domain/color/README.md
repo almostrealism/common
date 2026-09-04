@@ -69,13 +69,11 @@ PointLight light = new PointLight(
     new RGB(1.0, 1.0, 1.0)         // White color
 );
 
-// TODO(review): da/db/dc labels below appear swapped — RGBFeatures.attenuation()
-// computes da*d^2 + db*d + dc, so da is the quadratic term and dc is the constant term.
-// Set distance attenuation: intensity = color / (da + db*d + dc*d^2)
+// Set distance attenuation: intensity = color / (da*d^2 + db*d + dc)
 light.setAttenuationCoefficients(
-    0.0,   // Constant term (da)
-    0.0,   // Linear term (db)
-    1.0    // Quadratic term (dc)
+    1.0,   // Quadratic (d^2) term, inverse-square falloff
+    0.0,   // Linear (d) term
+    0.0    // Constant term
 );
 
 // Create lighting context
