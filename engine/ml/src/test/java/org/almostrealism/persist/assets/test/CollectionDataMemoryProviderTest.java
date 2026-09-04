@@ -179,6 +179,11 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 	 * on rather than expected from this one — a test that only evaluated and
 	 * asserted the values would pass with the write-back still there, which is
 	 * how this went unnoticed to begin with.</p>
+	 *
+	 * <p>Collecting them is added to what already happens to them rather than
+	 * put in its place. Anything else failing on a background thread during
+	 * this window is still reported by whatever was reporting it before, which
+	 * is the behaviour a test should be borrowing rather than suspending.</p>
 	 */
 	@Test(timeout = 120000)
 	public void readingDeferredValuesArrangesNoWriteBack() {
@@ -188,7 +193,10 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 		List<Throwable> failures = new CopyOnWriteArrayList<>();
 		Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
 
-		Thread.setDefaultUncaughtExceptionHandler((thread, thrown) -> failures.add(thrown));
+		Thread.setDefaultUncaughtExceptionHandler((thread, thrown) -> {
+			failures.add(thrown);
+			if (previous != null) previous.uncaughtException(thread, thrown);
+		});
 
 		try {
 			for (int i = 0; i < DISPATCHES; i++) {

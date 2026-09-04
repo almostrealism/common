@@ -360,14 +360,22 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 	/**
 	 * Returns the copy operations that move each aggregated slice back to its source after kernel
-	 * execution, omitting any slice whose source shares memory with {@code skipOutput}.
+	 * execution, omitting any slice that must not be written.
 	 *
-	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told to
-	 * use as its explicit output (the in-place {@code x = x + y} case, where the aggregated read copy
-	 * of {@code x} must not overwrite the freshly written {@code x}). When {@code skipOutput} is null
-	 * the full, cached copy-out list is returned directly.</p>
+	 * <p>Two kinds are omitted. A slice whose source shares memory with {@code skipOutput} is left
+	 * out to avoid writing a stale read-copy over the buffer the kernel was told to use as its
+	 * explicit output (the in-place {@code x = x + y} case, where the aggregated read copy of
+	 * {@code x} must not overwrite the freshly written {@code x}). A slice whose source is read-only
+	 * is left out because it cannot be written and has no result to carry — the kernel read it and
+	 * nothing changed it.</p>
 	 *
-	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to copy all
+	 * <p>The read-only omission does not depend on the argument, so it is applied when the list is
+	 * built rather than on each call. Passing null therefore still returns a list built once, and it
+	 * is not the whole of {@link #copyOutOperations}: that one stays aligned with
+	 * {@link #replacements} for the indexed path below.</p>
+	 *
+	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to exclude only
+	 *                   what cannot be written
 	 * @return the post-execution copy operations, in replacement order
 	 */
 	public List<Submittable> getPostprocessOperations(MemoryData skipOutput) {
@@ -396,6 +404,12 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * <p>Each copy binds fixed memory — the replacement's root and a {@link Bytes} view of the
 	 * aggregate at the replacement's offset — so a single built operation is valid for the lifetime
 	 * of this map and is reused across every {@code apply} rather than rebuilt per dispatch.</p>
+	 *
+	 * <p>Every replacement gets a copy-out, so that the list stays aligned with {@link #replacements}
+	 * for callers that index it. Those whose source can actually be written are additionally
+	 * collected into {@link #writableCopyOutOperations}, which is what a caller running all of them
+	 * is given. Whether a source is read-only cannot change while this map lives, so it is decided
+	 * here rather than on each dispatch.</p>
 	 */
 	private void ensureCopyOperations() {
 		if (copyInOperations != null) {
