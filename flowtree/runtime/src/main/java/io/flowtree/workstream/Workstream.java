@@ -905,6 +905,9 @@ public class Workstream {
         return kind;
     }
 
+    // TODO(review): getRawKind() is unused — LifecycleClassifier.classify() only calls
+    // getKind(), never getRawKind(), so the javadoc's claim that it is "used by the
+    // lifecycle classifier" is inaccurate. Either wire it into the classifier or delete it.
     /**
      * Returns the raw {@code kind} value as stored on this workstream,
      * without applying the {@code "feature"} default. Used by the lifecycle

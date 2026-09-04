@@ -127,7 +127,9 @@ def workstream_list(
             workstreams with an open PR; ``"idle"`` returns workstreams
             with no PR and no recent job; ``"standing"`` and
             ``"orchestrator"`` return workstreams with that explicit
-            ``kind``. Applied server-side after enrichment.
+            ``kind``. Applied server-side after enrichment. Setting this
+            implies ``include_lifecycle=True`` — the classification the
+            filter matches against does not exist otherwise.
 
     Returns:
         Dictionary with list of workstream summaries.
@@ -159,7 +161,7 @@ def workstream_list(
         params["includePullRequest"] = "true"
     if include_pull_request_state:
         params["includePullRequestState"] = "true"
-    if include_lifecycle:
+    if include_lifecycle or lifecycle:
         params["includeLifecycle"] = "true"
     if idle_days != 14:
         params["idleDays"] = str(int(idle_days))

@@ -77,6 +77,12 @@ public class WorkstreamListFilterTest extends TestSuiteBase {
 		archived.setArchived(true);
 		notifier.registerWorkstream(archived);
 
+		Workstream standing = new Workstream("ws-standing", "C5", "#standing");
+		standing.setWorkspaceId("space-c");
+		standing.setRepoUrl("git@github.com:org/gamma.git");
+		standing.setKind("standing");
+		notifier.registerWorkstream(standing);
+
 		endpoint = new FlowTreeApiEndpoint(0, notifier);
 		endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
 	}
@@ -214,6 +220,24 @@ public class WorkstreamListFilterTest extends TestSuiteBase {
 		assertTrue(body.contains("ws-other"));
 		assertFalse("the filter still applies when enrichment is on",
 			body.contains("ws-live"));
+	}
+
+	/**
+	 * A {@code lifecycle} filter must trigger classification on its own,
+	 * without requiring the caller to separately pass {@code includeLifecycle}
+	 * — otherwise the filter compares against a classification that never ran
+	 * and drops every row.
+	 *
+	 * @throws Exception if the request fails
+	 */
+	@Test(timeout = 10000)
+	public void lifecycleFilterWorksWithoutIncludeLifecycle() throws Exception {
+		String body = get("?lifecycle=standing");
+		assertTrue("the lifecycle filter must trigger classification on its own",
+			body.contains("ws-standing"));
+		assertFalse(body.contains("ws-live"));
+		assertFalse(body.contains("ws-dispatch"));
+		assertFalse(body.contains("ws-other"));
 	}
 
 	/**

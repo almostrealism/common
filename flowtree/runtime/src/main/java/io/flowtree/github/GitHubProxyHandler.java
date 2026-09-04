@@ -335,6 +335,8 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      *                  {@code "almostrealism/common"})
      * @return the GitHub response as a parsed Jackson array, or {@code null}
      */
+    // TODO(review): single page, per_page=100, no pagination — a repo with >100 PRs
+    // (state=all) can silently miss an old branch's merged/closed PR. See review-followup memory.
     public JsonNode listPullRequestsByRepo(String ownerRepo) {
         if (ownerRepo == null || ownerRepo.isEmpty()) return null;
         String org = extractOrgFromRepoUrl("https://github.com/" + ownerRepo);

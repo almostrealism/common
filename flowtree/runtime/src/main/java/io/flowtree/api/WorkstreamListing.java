@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.jobs.GitOperations;
@@ -131,6 +132,12 @@ final class WorkstreamListing {
                 RequestParameters.first(session, "includeLifecycle", "false"));
         int idleDays = parseIdleDays(session);
         String lifecycleFilter = RequestParameters.first(session, "lifecycle", "");
+        // A lifecycle filter is meaningless without the classification that
+        // feeds it — enrich implicitly rather than silently dropping every
+        // row when a caller passes `lifecycle` without `includeLifecycle`.
+        if (!lifecycleFilter.isEmpty()) {
+            includeLifecycle = true;
+        }
 
         // `archived` is the explicit selector; `includeArchived` is the older
         // parameter it generalises. Both are honoured: archived=true means
@@ -159,13 +166,9 @@ final class WorkstreamListing {
             survivors.add(ws);
         }
 
-        // Coalesce GitHub PR lookups by repository so a 30-row list on two
-        // repositories issues two GitHub calls rather than 30. Per-branch PRs
-        // are returned by a single listing keyed on `head`, so one call per
-        // repository is sufficient regardless of how many workstreams share it.
-        Map<String, PrLookup> prCache = new ConcurrentHashMap<>();
+        // Coalesced by repository; see warmPrCache and PR_CACHE javadoc.
         if ((includePullRequestState || includeLifecycle) && githubHandler != null) {
-            warmPrCache(githubHandler, survivors, prCache);
+            warmPrCache(githubHandler, survivors);
         }
 
         StringBuilder json = new StringBuilder("[");
@@ -182,7 +185,7 @@ final class WorkstreamListing {
             }
             String lifecycleLabel = null;
             if (includePullRequestState || includeLifecycle) {
-                String prFields = prAndLifecycleFields(ws, prCache,
+                String prFields = prAndLifecycleFields(ws, statsStore,
                         includePullRequestState, includeLifecycle, idleDays);
                 if (!prFields.isEmpty()) {
                     extras.append(prFields);
@@ -256,44 +259,68 @@ final class WorkstreamListing {
     }
 
     /**
-     * One GitHub call per distinct repository across the surviving workstreams.
-     * The branches are split client-side. Each call's array response is cached
-     * for {@link PR_CACHE_TTL_MS} ms so a subsequent listing within that window
-     * avoids GitHub entirely.
+     * Per-{@code (owner, repo)} GitHub PR lookup cache, shared across every
+     * request this process serves rather than scoped to one {@link #toJson}
+     * call. Sharing it is what makes {@link #PR_CACHE_TTL_MS} meaningful: a
+     * request-scoped cache is warmed and discarded within the same call, so a
+     * second listing issued a second later would still pay for a fresh
+     * GitHub round trip. {@link PrLookup#fresh()} is what actually bounds
+     * how stale a shared entry can get.
      */
-    private static void warmPrCache(GitHubProxyHandler handler,
-                                    List<Workstream> survivors,
-                                    Map<String, PrLookup> prCache) {
+    private static final Map<String, PrLookup> PR_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * One GitHub call per distinct repository across the surviving workstreams
+     * whose {@link #PR_CACHE} entry is missing or stale. The branches are
+     * split client-side. PRs whose {@code head.repo.full_name} does not match
+     * {@code ownerRepo} are excluded so a fork PR sharing a branch name with a
+     * base-repo branch cannot be mistaken for that branch's own PR.
+     */
+    private static void warmPrCache(GitHubProxyHandler handler, List<Workstream> survivors) {
         Set<String> repoSet = new LinkedHashSet<>();
         for (Workstream ws : survivors) {
             String ownerRepo = GitHubProxyHandler.extractOwnerRepo(ws.getRepoUrl());
             if (ownerRepo != null) repoSet.add(ownerRepo);
         }
         for (String ownerRepo : repoSet) {
+            PrLookup existing = PR_CACHE.get(ownerRepo);
+            if (existing != null && existing.fresh()) continue;
             JsonNode listing = handler.listPullRequestsByRepo(ownerRepo);
             Map<String, List<JsonNode>> byBranch = new LinkedHashMap<>();
             if (listing != null && listing.isArray()) {
                 for (JsonNode pr : listing) {
                     JsonNode head = pr.path("head");
+                    String headRepo = head.path("repo").path("full_name").asText(null);
+                    if (headRepo != null && !headRepo.equalsIgnoreCase(ownerRepo)) continue;
                     String branchName = head.path("ref").asText(null);
                     if (branchName == null || branchName.isEmpty()) continue;
                     byBranch.computeIfAbsent(branchName, k -> new ArrayList<>()).add(pr);
                 }
             }
-            prCache.put(ownerRepo, new PrLookup(byBranch));
+            PR_CACHE.put(ownerRepo, new PrLookup(byBranch));
         }
     }
 
     /**
      * Builds the {@code pullRequestState} / {@code prCount} / {@code lifecycle} /
      * {@code lifecycleReason} members for a single workstream. The workstream's
-     * PR data is sourced from the per-repo cache populated by
+     * PR data is sourced from {@link #PR_CACHE}, populated by
      * {@link #warmPrCache}. The classifier consults PR state, the persisted last
      * job time, and the workstream's {@code kind} so a standing workstream
      * never reports {@code merged} regardless of PR state.
+     *
+     * <p>{@code branchPrs} is {@code null} only when the repository could not
+     * be resolved to a cache entry at all (unknown repo, or the cache entry
+     * expired between {@link #warmPrCache} and this call); a repository that
+     * resolved but has no PRs for {@code branch} yields an empty list. That
+     * distinction matters to {@link LifecycleClassifier#classify}, which
+     * treats {@code null} as "unknown" and an empty list as "idle".</p>
+     *
+     * @param statsStore supplies the workstream's most recent job timestamp
+     *                   for the classifier's idle-window comparison;
+     *                   {@code null} leaves that comparison unavailable
      */
-    private static String prAndLifecycleFields(Workstream ws,
-                                                Map<String, PrLookup> prCache,
+    private static String prAndLifecycleFields(Workstream ws, JobStatsStore statsStore,
                                                 boolean includePullRequestState,
                                                 boolean includeLifecycle,
                                                 int idleDays) {
@@ -301,9 +328,9 @@ final class WorkstreamListing {
         String ownerRepo = GitHubProxyHandler.extractOwnerRepo(ws.getRepoUrl());
         String branch = ws.getDefaultBranch();
         List<JsonNode> branchPrs = null;
-        PrLookup cached = ownerRepo != null ? prCache.get(ownerRepo) : null;
+        PrLookup cached = ownerRepo != null ? PR_CACHE.get(ownerRepo) : null;
         if (cached != null && cached.fresh()) {
-            branchPrs = cached.byBranch.get(branch);
+            branchPrs = cached.byBranch.getOrDefault(branch, List.of());
         }
 
         if (includePullRequestState) {
@@ -316,12 +343,17 @@ final class WorkstreamListing {
         }
 
         if (includeLifecycle) {
+            Instant lastJobAt = null;
+            if (statsStore != null) {
+                List<JobCompletionEvent> recent = statsStore.getRecentJobs(ws.getWorkstreamId(), 1);
+                if (!recent.isEmpty()) lastJobAt = recent.get(0).getEventTime();
+            }
             LifecycleClassifier.Classification cls =
-                    LifecycleClassifier.classify(ws, branchPrs, idleDays);
+                    LifecycleClassifier.classify(ws, branchPrs, idleDays, lastJobAt);
             extras.append(",\"lifecycle\":\"").append(cls.label).append("\"");
             if (cls.reason != null) {
                 extras.append(",\"lifecycleReason\":\"")
-                        .append(escapeForJson(cls.reason)).append("\"");
+                        .append(JsonFieldExtractor.escapeJson(cls.reason)).append("\"");
             }
         }
         return extras.toString();
@@ -344,20 +376,9 @@ final class WorkstreamListing {
             sb.append(",\"closedAt\":\"").append(pr.path("closed_at").asText()).append("\"");
         }
         sb.append(",\"number\":").append(pr.path("number").asInt());
-        sb.append(",\"url\":\"").append(escapeForJson(pr.path("html_url").asText())).append("\"");
+        sb.append(",\"url\":\"").append(JsonFieldExtractor.escapeJson(pr.path("html_url").asText())).append("\"");
         sb.append("}");
         return sb.toString();
-    }
-
-    /**
-     * Escapes a string for safe inclusion as a JSON string value.
-     *
-     * @param s the string to escape, or {@code null}
-     * @return the escaped string, never {@code null}
-     */
-    private static String escapeForJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /**

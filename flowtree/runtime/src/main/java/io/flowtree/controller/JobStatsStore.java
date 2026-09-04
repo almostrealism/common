@@ -302,6 +302,8 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param workstreamId      the workstream this job belongs to
      * @param status            the completion status (SUCCESS, FAILED, CANCELLED)
      * @param completedAt       the completion timestamp
+     * @param description       the human-readable job label submitted with the
+     *                          task, or null to fall back to the prompt
      * @param durationMs        duration reported by Claude Code
      * @param durationApiMs     API duration reported by Claude Code
      * @param costUsd           cost in USD
@@ -394,7 +396,7 @@ public class JobStatsStore implements ConsoleFeatures {
             return;
         }
 
-// No row existed - insert with started_at = completedAt. description
+        // No row existed - insert with started_at = completedAt. description
         // is included in the column list regardless so a null insert is an
         // explicit NULL column, not a column-mismatch error.
         String wsId = workstreamId != null ? workstreamId : "unknown";

@@ -16,6 +16,8 @@
 
 package io.flowtree.api;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,14 +26,14 @@ import io.flowtree.workstream.Workstream;
 /**
  * Classifies a workstream's lifecycle state for archival triage.
  *
- * <p>The classifier answers "is this workstream done?" from the inputs that
- * already exist in {@code WorkstreamListing}: the workstream's persisted
- * metadata ({@code kind}, {@code defaultBranch}, {@code baseBranch}) and the
- * GitHub pull-request data fetched by
- * {@link WorkstreamListing#warmPrCache}. It deliberately does not consult
- * {@link io.flowtree.controller.JobStatsStore} directly: the last-job
- * timestamp used as the idle-window anchor comes from
- * {@code WorkstreamListing.statusFields} so the classifier and the listing
+ * <p>The classifier answers "is this workstream done?" from the workstream's
+ * persisted metadata ({@code kind}, {@code defaultBranch}, {@code baseBranch}),
+ * the GitHub pull-request data fetched by
+ * {@link WorkstreamListing#warmPrCache}, and the persisted timestamp of the
+ * workstream's most recent job. It deliberately does not query
+ * {@link io.flowtree.controller.JobStatsStore} itself — the caller reads
+ * {@code lastJobAt} and passes it in, so the classifier and
+ * {@code WorkstreamListing.statusFields}'s own {@code lastJobAt} field always
  * agree on the same value.</p>
  *
  * <p>Order of precedence:</p>
@@ -39,12 +41,14 @@ import io.flowtree.workstream.Workstream;
  *   <li>{@code kind == "standing"} or {@code kind == "orchestrator"} — return
  *       {@code "standing"} / {@code "orchestrator"} verbatim. A standing
  *       workstream is never eligible for archival, so the classifier
- *       short-circuits regardless of PR data.</li>
+ *       short-circuits regardless of PR or job data.</li>
  *   <li>An open pull request for {@code defaultBranch} → {@code "active"}.</li>
- *   <li>The most recent PR is merged and there is no job in the idle
- *       window → {@code "merged"}.</li>
+ *   <li>{@code lastJobAt} falls within the idle window → {@code "active"},
+ *       even with no open PR: recent work is active regardless of PR
+ *       history.</li>
+ *   <li>The most recent PR is merged → {@code "merged"}.</li>
  *   <li>The most recent PR is closed but unmerged → {@code "abandoned"}.</li>
- *   <li>No PR for the branch and no job in the idle window → {@code "idle"}.</li>
+ *   <li>No PR for the branch → {@code "idle"}.</li>
  *   <li>Anything else (e.g. no PR lookup available) → {@code "unknown"}.</li>
  * </ol>
  */
@@ -91,42 +95,38 @@ final class LifecycleClassifier {
     }
 
     /**
-     * Classifies a workstream using the supplied inputs. {@code lastJobAt} is
-     * the persisted timestamp from {@code job_timing.completed_at} (or
-     * {@code started_at} for a still-running job), read by
-     * {@code WorkstreamListing.statusFields}. {@code branchPrs} is the list of
-     * GitHub pull requests the listing's PR cache resolved for
-     * {@code defaultBranch}; {@code null} when the cache had no entry for
-     * the workstream's repository.
+     * Classifies a workstream using the supplied inputs. {@code branchPrs} is
+     * the list of GitHub pull requests the listing's PR cache resolved for
+     * {@code defaultBranch}; {@code null} when the cache had no entry for the
+     * workstream's repository, as distinct from an empty list, which means
+     * the repository resolved but has no PRs for this branch.
+     * {@code lastJobAt} is the persisted timestamp of the workstream's most
+     * recent job (from {@code job_timing.completed_at}, or
+     * {@code started_at} for a still-running job); {@code null} when no job
+     * has ever run or no job store is configured.
      *
      * @param ws         the workstream to classify
      * @param branchPrs  the PRs for {@code defaultBranch}, or {@code null}
-     * @param idleDays   the idle window in days (matches {@code idleDays})
+     * @param idleDays   the idle window in days
+     * @param lastJobAt  the workstream's most recent job timestamp, or
+     *                   {@code null}
      * @return the classification result
      */
-    static Classification classify(Workstream ws, List<JsonNode> branchPrs, int idleDays) {
+    static Classification classify(Workstream ws, List<JsonNode> branchPrs, int idleDays,
+                                    Instant lastJobAt) {
         String kind = ws.getKind();
         if ("standing".equals(kind) || "orchestrator".equals(kind)) {
             return new Classification(kind,
                     "kind=" + kind + " — classifier defers to explicit workstream classification");
         }
 
-        // idle window is used by the "idle" verdict path via idleDays below.
-        // We do not need a cutoff or "now" reference because no
-        // idle-vs-active comparison in this method consumes them; idleDays
-        // is passed only for the reason string.
-
-        // Pull-request state derived from the GitHub-derived listing the
-        // caller already populated. We do not consult JobStatsStore here:
-        // the listing passed lastJobAt separately so a separate DB read would
-        // be both costly and a duplicate.
         boolean hasOpenPr = false;
         boolean hasMergedPr = false;
         boolean hasClosedUnmergedPr = false;
-        // TODO(review): prNumber is shared across states; a branch with PRs in more
-        // than one state can report the wrong PR number in the reason string below.
-        Integer prNumber = null;
-        if (branchPrs != null && !branchPrs.isEmpty()) {
+        Integer openPrNumber = null;
+        Integer mergedPrNumber = null;
+        Integer closedPrNumber = null;
+        if (branchPrs != null) {
             for (JsonNode pr : branchPrs) {
                 String state = pr.path("state").asText("");
                 boolean merged = !pr.path("merged_at").isMissingNode()
@@ -134,13 +134,13 @@ final class LifecycleClassifier {
                         && !pr.path("merged_at").asText().isEmpty();
                 if (merged) {
                     hasMergedPr = true;
-                    if (prNumber == null) prNumber = pr.path("number").asInt();
+                    if (mergedPrNumber == null) mergedPrNumber = pr.path("number").asInt();
                 } else if ("open".equals(state)) {
                     hasOpenPr = true;
-                    if (prNumber == null) prNumber = pr.path("number").asInt();
+                    if (openPrNumber == null) openPrNumber = pr.path("number").asInt();
                 } else if ("closed".equals(state)) {
                     hasClosedUnmergedPr = true;
-                    if (prNumber == null) prNumber = pr.path("number").asInt();
+                    if (closedPrNumber == null) closedPrNumber = pr.path("number").asInt();
                 }
             }
         }
@@ -149,23 +149,23 @@ final class LifecycleClassifier {
         // must never propose archiving a branch with a PR outstanding.
         if (hasOpenPr) {
             return new Classification("active",
-                    "PR #" + prNumber + " is open on " + ws.getDefaultBranch());
+                    "PR #" + openPrNumber + " is open on " + ws.getDefaultBranch());
         }
 
-        // The lifecycle classifier relies on lastJobAt to decide idle / merged /
-        // abandoned. We don't have it directly, so the caller folds it into the
-        // reason via the JSON fragment — but the verdict here does not need it
-        // when the PR data alone settles the question.
-        if (hasMergedPr && branchPrs != null) {
-            // A merged PR is sufficient to call the workstream merged even when
-            // lastJobAt is older than idleDays: the work landed regardless of
-            // whether a job has run since.
+        boolean jobRecentlyActive = lastJobAt != null
+                && lastJobAt.isAfter(Instant.now().minus(Duration.ofDays(idleDays)));
+        if (jobRecentlyActive) {
+            return new Classification("active",
+                    "a job completed on " + lastJobAt + ", within the last " + idleDays + " days");
+        }
+
+        if (hasMergedPr) {
             return new Classification("merged",
-                    "PR #" + prNumber + " merged on " + ws.getDefaultBranch());
+                    "PR #" + mergedPrNumber + " merged on " + ws.getDefaultBranch());
         }
         if (hasClosedUnmergedPr) {
             return new Classification("abandoned",
-                    "PR #" + prNumber + " closed without merging on "
+                    "PR #" + closedPrNumber + " closed without merging on "
                             + ws.getDefaultBranch());
         }
         if (branchPrs == null) {

@@ -1581,7 +1581,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 listener, this::readBody, this::errorResponse, this::log);
     }
 
-/** Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}. */
+    // TODO(review): javadoc here was compressed to dodge the file-length limit; see memory.
+    /** Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}. */
     private Response handleStatsQuery(IHTTPSession session) {
         return statsQueryHandler.handle(session, this::errorResponse);
     }
