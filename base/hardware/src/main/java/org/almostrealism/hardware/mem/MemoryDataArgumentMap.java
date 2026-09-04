@@ -132,6 +132,14 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * {@code apply}. Null until {@link #ensureCopyOperations()} runs.
 	 */
 	private List<Submittable> copyOutOperations;
+	/**
+	 * {@link #copyOutOperations} without the ones that would write into read-only memory, which is
+	 * what every caller that is not skipping an in-place output wants. Held separately so that the
+	 * common case still returns a list built once rather than one filtered per dispatch, while
+	 * {@link #copyOutOperations} stays aligned with {@link #replacements} for the callers that index
+	 * it. Null until {@link #ensureCopyOperations()} runs.
+	 */
+	private List<Submittable> writableCopyOutOperations;
 
 	/**
 	 * Creates an argument map bound to the {@link ComputeContext} of the operation it prepares
@@ -366,13 +374,15 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		ensureCopyOperations();
 
 		if (skipOutput == null) {
-			return copyOutOperations;
+			return writableCopyOutOperations;
 		}
 
 		Memory skip = skipOutput.getRootDelegate().getMem();
 		List<Submittable> result = new ArrayList<>(copyOutOperations.size());
 		for (int i = 0; i < replacements.size(); i++) {
-			if (replacements.get(i).getRoot().getRootDelegate().getMem() == skip) {
+			MemoryData root = replacements.get(i).getRoot();
+
+			if (root.getRootDelegate().getMem() == skip || root.isReadOnly()) {
 				continue;
 			}
 			result.add(copyOutOperations.get(i));
@@ -394,14 +404,20 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 		copyInOperations = new ArrayList<>(replacements.size());
 		copyOutOperations = new ArrayList<>(replacements.size());
+		writableCopyOutOperations = new ArrayList<>(replacements.size());
 
 		for (Replacement r : replacements) {
 			MemoryData root = r.getRoot();
 			int len = root.getMemLength();
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
+			Submittable copyOut = copyOperation(slice, root);
 
 			copyInOperations.add(copyOperation(root, slice));
-			copyOutOperations.add(copyOperation(slice, root));
+			copyOutOperations.add(copyOut);
+
+			if (!root.isReadOnly()) {
+				writableCopyOutOperations.add(copyOut);
+			}
 		}
 	}
 
@@ -435,6 +451,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		destroyCopyOperations(copyOutOperations);
 		copyInOperations = null;
 		copyOutOperations = null;
+		// Holds the same operations copyOutOperations does, already destroyed above
+		writableCopyOutOperations = null;
 		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
 		mems.forEach((k, v) -> v.destroy());
 		mems.clear();
