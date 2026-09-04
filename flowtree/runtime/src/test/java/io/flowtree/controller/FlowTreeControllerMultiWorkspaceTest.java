@@ -326,8 +326,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         // Call with an actual workspaceId
         listener.handleSlashCommand("status", "C_TEST", "#test", responder, "T111");
 
-        // Both invocations should succeed (may return "no workstream" message)
-        // The key test is that both overloads are callable without error
+        // TODO(review): no assertion — add one on `responses` so this test can actually fail.
     }
 
     /**
@@ -454,7 +453,8 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
             store.recordJobStarted("reload-job-1", workstreamId,
                     "Reload regression test", jobTime);
             store.recordJobCompleted("reload-job-1", workstreamId, "SUCCESS",
-                    jobTime.plusMillis(60000), 55000, 30000, 0.50, 10,
+                    jobTime.plusMillis(60000), "Reload regression test",
+                    55000, 30000, 0.50, 10,
                     "sess-1", 0, "success", false, 0,
                     null, null, null, null);
 

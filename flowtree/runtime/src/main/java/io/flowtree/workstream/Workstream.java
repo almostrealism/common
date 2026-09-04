@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import io.flowtree.controller.FlowTreeController;
 
@@ -285,6 +286,37 @@ public class Workstream {
      * {@code dormantForCompletionListeners: true} in YAML.
      */
     private boolean dormantForCompletionListeners;
+
+    /**
+     * Workstream classification for archival triage.
+     *
+     * <p>One of:</p>
+     * <ul>
+     *   <li>{@code "feature"} (default) — a single-feature workstream
+     *       tracking a development branch. Eligible for archival once the
+     *       branch has merged and no jobs have run in the configured idle
+     *       window.</li>
+     *   <li>{@code "orchestrator"} — a workstream whose {@code defaultBranch}
+     *       equals the trunk (typically {@code master}); it sits at the
+     *       base rather than tracking a feature. The lifecycle classifier
+     *       short-circuits {@code orchestrator} rows out of the
+     *       {@code merged} / {@code abandoned} / {@code idle} verdicts,
+     *       because archiving a base-tracking workstream would be a
+     *       regression rather than a cleanup.</li>
+     *   <li>{@code "standing"} — a long-lived inbox driver such as
+     *       {@code #eva-orchestrator} or {@code #remanence}. The branch
+     *       name starts with {@code orchestration/} and the workstream
+     *       never closes. The lifecycle classifier returns {@code standing}
+     *       verbatim regardless of recent PR or job activity.</li>
+     * </ul>
+     *
+     * <p>Stored verbatim in the workstream YAML. {@code null} or empty
+     * defaults to {@code "feature"} on read; an explicit value on a
+     * registration wins over the heuristic. Empty string on update is
+     * treated as a no-change signal so an unrelated update does not silently
+     * downgrade a {@code standing} workstream.</p>
+     */
+    private String kind = "feature";
 
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
@@ -862,6 +894,65 @@ public class Workstream {
     }
 
     /**
+     * Returns the workstream's classification for archival triage.
+     *
+     * @return one of {@code "feature"}, {@code "orchestrator"},
+     *         {@code "standing"}; never {@code null}; defaults to
+     *         {@code "feature"} when the workstream has no explicit value
+     */
+    public String getKind() {
+        if (kind == null || kind.isEmpty()) return "feature";
+        return kind;
+    }
+
+    /**
+     * Returns the raw {@code kind} value as stored on this workstream,
+     * without applying the {@code "feature"} default. Used by the lifecycle
+     * classifier so it can distinguish "explicitly cleared" from "never set".
+     *
+     * @return the raw {@code kind} string, possibly {@code null} or empty
+     */
+    public String getRawKind() { return kind; }
+
+    /**
+     * Sets the workstream's classification. Empty string clears the field
+     * so the next read falls back to {@code "feature"}; any other value is
+     * validated against the known set and rejected on a typo so an operator
+     * does not silently end up with an unknown classification that the
+     * lifecycle classifier cannot map.
+     *
+     * @param kind one of {@code "feature"}, {@code "orchestrator"},
+     *             {@code "standing"}; {@code null} or empty clears it
+     * @throws IllegalArgumentException when the value is not one of the
+     *         recognised classifications
+     */
+    public void setKind(String kind) {
+        if (kind == null || kind.isEmpty()) {
+            this.kind = "feature";
+            return;
+        }
+        if (!"feature".equals(kind)
+                && !"orchestrator".equals(kind)
+                && !"standing".equals(kind)) {
+            throw new IllegalArgumentException(
+                "Unknown workstream kind: '" + kind
+                + "'. Expected 'feature', 'orchestrator', or 'standing'.");
+        }
+        this.kind = kind;
+    }
+
+    /**
+     * Returns the set of recognised {@code kind} values. Public so the
+     * registration handler can validate inputs without re-listing the
+     * vocabulary in two places.
+     *
+     * @return immutable set of the three valid classifications
+     */
+    public static Set<String> getKnownKinds() {
+        return Set.of("feature", "orchestrator", "standing");
+    }
+
+    /**
      * Returns the default agent runner identifier for this workstream, or
      * {@code null} when no workstream-level default is set.
      */
@@ -1044,6 +1135,13 @@ public class Workstream {
         }
         if (dormantForCompletionListeners) {
             json.append(",\"dormantForCompletionListeners\":true");
+        }
+        // kind is omitted when it is the default ("feature") so the common
+        // case adds no noise to the listing. Non-default values are emitted
+        // so an operator scanning a list can see which rows are
+        // orchestrator/standing without opening each one.
+        if (!"feature".equals(getKind())) {
+            json.append(",\"kind\":\"").append(escapeForJson(getKind())).append("\"");
         }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {

@@ -432,7 +432,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
             return newFixedLengthResponse(Response.Status.OK, "application/json",
                     WorkstreamListing.toJson(session, notifiers.allWorkstreams(),
-                            statsQueryHandler.store()));
+                            statsQueryHandler.store(), githubProxyHandler));
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
@@ -1426,7 +1426,21 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         j.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(event.getJobId())).append("\"");
         j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
         j.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(event.getDescription())).append("\"");
-        j.append(",\"timestamp\":\"").append(event.getTimestamp().toString()).append("\"");
+        // Source the event time from the persisted row's eventTime, falling back
+        // to the constructor stamp when the event is purely in-memory (a
+        // pre-persist CodingAgentJob before its terminal event lands). This
+        // keeps workstream_get_job consistent with workstream_list: both report
+        // when the job actually happened rather than when the controller read it.
+        Instant eventTime = event.getEventTime();
+        j.append(",\"timestamp\":\"").append(eventTime.toString()).append("\"");
+        Instant started = event.getStartedAt();
+        if (started != null) {
+            j.append(",\"startedAt\":\"").append(started.toString()).append("\"");
+        }
+        Instant finished = event.getFinishedAt();
+        if (finished != null) {
+            j.append(",\"finishedAt\":\"").append(finished.toString()).append("\"");
+        }
         if (workstreamId != null) {
             j.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
         }
@@ -1567,24 +1581,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 listener, this::readBody, this::errorResponse, this::log);
     }
 
-    /**
-     * Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}.
-     *
-     * @param session the HTTP session supplying query parameters
-     * @return an HTTP response containing weekly stats JSON
-     */
+/** Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}. */
     private Response handleStatsQuery(IHTTPSession session) {
         return statsQueryHandler.handle(session, this::errorResponse);
     }
 
-    /**
-     * Handles requests to {@code /api/github/proxy} by forwarding them to
-     * {@link GitHubProxyHandler}.
-     *
-     * @param session the HTTP session
-     * @param method  the HTTP method of the incoming request
-     * @return JSON response wrapping the GitHub API result
-     */
+    /** Handles requests to {@code /api/github/proxy} by forwarding them to {@link GitHubProxyHandler}. */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
         return githubProxyHandler.handle(session, method, this::readBody, this::errorResponse);
     }

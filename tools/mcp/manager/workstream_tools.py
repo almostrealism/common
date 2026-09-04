@@ -40,6 +40,10 @@ def workstream_list(
     archived: Optional[bool] = None,
     include_status: bool = False,
     include_pull_request: bool = False,
+    include_pull_request_state: bool = False,
+    include_lifecycle: bool = False,
+    idle_days: int = 14,
+    lifecycle: str = "",
 ) -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
@@ -56,6 +60,9 @@ def workstream_list(
     - archived: ``true`` when the workstream has been archived (only
       present when ``include_archived=True``; otherwise such entries
       are filtered out entirely)
+    - kind: ``"feature"`` (default), ``"orchestrator"``, or
+      ``"standing"``. Omitted when the workstream is a feature
+      workstream so the common case adds no noise.
 
     Use this to discover workstreams and determine which tools are
     available for each one.
@@ -80,26 +87,60 @@ def workstream_list(
             given; that parameter is the older, coarser form.
         include_status: When ``True``, each entry also carries ``lastJobId``,
             ``lastJobStatus`` (``SUCCESS`` / ``FAILED`` / ``CANCELLED`` /
-            ``DEGRADED`` / ``STARTED``) and ``lastJobAt`` (ISO-8601). Off by
-            default because it costs one job-history read per workstream
-            returned; narrow with the filters above before turning it on.
+            ``DEGRADED`` / ``STARTED``), ``lastJobAt`` (ISO-8601) plus the
+            additional ``lastJobStartedAt`` and ``lastJobFinishedAt``
+            fields. ``lastJobAt`` and the two new fields all come from
+            the persisted ``job_timing`` row rather than the
+            controller's read-time instant, so two listings issued
+            seconds apart return byte-identical values. Off by default
+            because it costs one job-history read per workstream returned;
+            narrow with the filters above before turning it on.
         include_pull_request: When ``True``, each entry also carries
-            ``pullRequest`` as ``{"url": ..., "number": ...}``, read from the
-            most recent job that recorded one. Absent when no recent job did.
-            Same per-workstream cost as ``include_status``, and served from
-            the same read when both are requested.
+            ``pullRequest`` as ``{"url": ..., "number": ...}``, read from
+            the most recent job that recorded one. Absent when no recent
+            job did. Same per-workstream cost as ``include_status``, and
+            served from the same read when both are requested.
+        include_pull_request_state: When ``True``, each entry also carries
+            ``pullRequestState`` (the GitHub-derived state for the branch's
+            most recently updated PR — ``open`` / ``closed`` / ``merged``
+            plus ``mergedAt`` / ``closedAt`` / ``number`` / ``url``) and
+            ``prCount`` (the total number of PRs the branch has had across
+            all states). The lookup is coalesced by repository so a
+            multi-row list that lives on two repositories issues two
+            GitHub calls, not one per workstream. Cached for 60 s by the
+            controller. Off by default because the GitHub call is the
+            first thing a slow listing can pay for.
+        include_lifecycle: When ``True``, each entry carries ``lifecycle``
+            and ``lifecycleReason``. ``lifecycle`` is one of
+            ``"standing"`` / ``"orchestrator"`` / ``"active"`` /
+            ``"merged"`` / ``"abandoned"`` / ``"idle"`` / ``"unknown"``.
+            Standing and orchestrator workstreams are classified from
+            their ``kind`` and never report ``merged``. Requires the same
+            GitHub lookup as ``include_pull_request_state``; the cost
+            is opt-in.
+        idle_days: Window (in days) used by the ``lifecycle`` classifier
+            for the idle-window comparisons. Defaults to 14. Only
+            consulted when ``include_lifecycle=True``.
+        lifecycle: Exact-match filter on the classification. ``"merged"``
+            returns only workstreams whose branch has a merged PR and
+            no job in the last ``idle_days``; ``"active"`` returns
+            workstreams with an open PR; ``"idle"`` returns workstreams
+            with no PR and no recent job; ``"standing"`` and
+            ``"orchestrator"`` return workstreams with that explicit
+            ``kind``. Applied server-side after enrichment.
 
     Returns:
         Dictionary with list of workstream summaries.
     """
     server._require_scope("read")
     err = server._check_short_strings(
-        workspace_id=workspace_id, repo_url=repo_url,
+        workspace_id=workspace_id, repo_url=repo_url, lifecycle=lifecycle,
     )
     if err:
         return err
     server._audit("workstream_list", include_archived=include_archived,
-                  workspace_id=workspace_id, repo_url=repo_url)
+                  workspace_id=workspace_id, repo_url=repo_url,
+                  lifecycle=lifecycle)
 
     params = {}
     if include_archived:
@@ -116,6 +157,14 @@ def workstream_list(
         params["includeStatus"] = "true"
     if include_pull_request:
         params["includePullRequest"] = "true"
+    if include_pull_request_state:
+        params["includePullRequestState"] = "true"
+    if include_lifecycle:
+        params["includeLifecycle"] = "true"
+    if idle_days != 14:
+        params["idleDays"] = str(int(idle_days))
+    if lifecycle:
+        params["lifecycle"] = lifecycle
 
     path = "/api/workstreams"
     if params:

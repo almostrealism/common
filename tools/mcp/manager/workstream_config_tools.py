@@ -36,6 +36,7 @@ def workstream_register(
     dispatch_capable: bool = False,
     default_use_tmux: bool = False,
     max_wall_clock_hours: int = -1,
+    kind: str = "",
     slack_workspace_id: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
@@ -160,6 +161,17 @@ def workstream_register(
             ``0`` disables the ceiling for this workstream. Omitted (the
             default) inherits the controller default of six hours. A job
             submitted with its own ``max_wall_clock_hours`` overrides this.
+        kind: Classification of this workstream for archival triage. One
+            of ``"feature"`` (default), ``"orchestrator"`` (a workstream
+            tracking the trunk itself), or ``"standing"`` (a long-lived
+            inbox driver such as ``#eva-orchestrator``). When omitted, the
+            controller infers from the branch name: ``orchestrator`` when
+            ``default_branch == base_branch``; ``standing`` when
+            ``default_branch`` starts with ``orchestration/``; ``feature``
+            otherwise. The lifecycle classifier short-circuits
+            ``orchestrator`` and ``standing`` rows out of the ``merged`` /
+            ``abandoned`` / ``idle`` verdicts so an archival scan never
+            proposes archiving them.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -305,6 +317,8 @@ def workstream_register(
     # workstream to "no ceiling".
     if max_wall_clock_hours >= 0:
         payload["maxWallClockHours"] = int(max_wall_clock_hours)
+    if kind:
+        payload["kind"] = kind
 
     result = server._controller_post("/api/workstreams", payload)
 
@@ -369,6 +383,7 @@ def workstream_update_config(
     dispatch_capable: Optional[bool] = None,
     default_use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
+    kind: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -439,6 +454,10 @@ def workstream_update_config(
             ceiling; a negative value clears the workstream's override so
             it returns to inheriting the controller default of six hours.
             Omitted (the default) leaves the existing setting unchanged.
+        kind: Classification of this workstream for archival triage. One
+            of ``"feature"``, ``"orchestrator"``, ``"standing"``. Empty
+            string leaves the existing classification untouched; an
+            unknown value is rejected by the controller.
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -529,6 +548,12 @@ def workstream_update_config(
     # workstream-level tmux opt-in, ``True`` = opt the workstream in.
     if default_use_tmux is not None:
         payload["defaultUseTmux"] = bool(default_use_tmux)
+    # kind uses presence semantics: empty string means "no change"; any
+    # populated value (including a recognised name) is forwarded verbatim.
+    # The controller rejects unknown values with a 400, so a typo surfaces
+    # at the call site rather than as a silently broken lifecycle verdict.
+    if kind:
+        payload["kind"] = kind
 
     if not payload:
         return {

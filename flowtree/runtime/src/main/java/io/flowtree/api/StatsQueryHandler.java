@@ -26,9 +26,11 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
+import java.util.List;
 import java.util.Map;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.github.GitHubProxyHandler;
+import io.flowtree.jobs.JobCompletionEvent;
 
 /**
  * Handles {@code GET /api/stats} requests for {@link FlowTreeApiEndpoint}.
@@ -127,6 +129,13 @@ class StatsQueryHandler {
      * with HTTP 200 rather than 500, so callers can detect the condition
      * without treating it as a transport error.</p>
      *
+     * <p>The response also carries {@code lastJobAt},
+     * {@code lastJobStartedAt} and {@code lastJobFinishedAt} when a store is
+     * available, sourced from the most recent job on the filtered
+     * workstream. These timestamps come from the persisted {@code job_timing}
+     * row rather than the controller's read-time instant, so a caller can
+     * compute its own idle window without an additional database query.</p>
+     *
      * @param session  the NanoHTTPD session supplying query parameters
      * @param error    callback used to build HTTP 400 error responses
      * @return an HTTP response containing weekly stats JSON
@@ -153,10 +162,44 @@ class StatsQueryHandler {
         json.append(formatWeekJson(thisWeekStart, workstreamFilter));
         json.append(",\"lastWeek\":");
         json.append(formatWeekJson(lastWeekStart, workstreamFilter));
+        json.append(",\"lastJobAt\":");
+        appendLastJobTimestamps(json, workstreamFilter);
         json.append("}");
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
             "application/json", json.toString());
+    }
+
+    /**
+     * Appends the {@code lastJobAt} / {@code lastJobStartedAt} /
+     * {@code lastJobFinishedAt} members describing the most recent job on
+     * the filtered workstream. Each field is rendered as JSON null when no
+     * job exists, so the response shape is stable regardless of whether the
+     * store has any rows for the workstream.
+     *
+     * @param json             the response builder to append to
+     * @param workstreamFilter the workstream filter; {@code null} or empty
+     *                         means no workstream filter was supplied
+     */
+    private void appendLastJobTimestamps(StringBuilder json, String workstreamFilter) {
+        if (workstreamFilter == null || workstreamFilter.isEmpty()) {
+            json.append("null,\"lastJobStartedAt\":null,\"lastJobFinishedAt\":null");
+            return;
+        }
+        List<JobCompletionEvent> recent = statsStore.getRecentJobs(workstreamFilter, 1);
+        if (recent.isEmpty()) {
+            json.append("null,\"lastJobStartedAt\":null,\"lastJobFinishedAt\":null");
+            return;
+        }
+        JobCompletionEvent latest = recent.get(0);
+        Instant eventTime = latest.getEventTime();
+        Instant started = latest.getStartedAt();
+        Instant finished = latest.getFinishedAt();
+        json.append(eventTime == null ? "null" : "\"" + eventTime + "\"");
+        json.append(",\"lastJobStartedAt\":")
+                .append(started == null ? "null" : "\"" + started + "\"");
+        json.append(",\"lastJobFinishedAt\":")
+                .append(finished == null ? "null" : "\"" + finished + "\"");
     }
 
     /**
