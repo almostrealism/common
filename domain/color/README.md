@@ -59,17 +59,18 @@ RGB difference = color1.subtract(color2);
 ### 3. Lighting System
 
 ```java
-import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.LightingContext;
 
 // Create a point light
-Light light = new PointLight(
+PointLight light = new PointLight(
     new Vector(5, 5, 5),           // Position
     1.0,                            // Intensity
-    new RGB(1.0, 1.0, 1.0)         // White light
+    new RGB(1.0, 1.0, 1.0)         // White color
 );
 
+// TODO(review): da/db/dc labels below appear swapped — RGBFeatures.attenuation()
+// computes da*d^2 + db*d + dc, so da is the quadratic term and dc is the constant term.
 // Set distance attenuation: intensity = color / (da + db*d + dc*d^2)
 light.setAttenuationCoefficients(
     0.0,   // Constant term (da)
@@ -137,7 +138,7 @@ RGB colorAtPoint = texture.operate(pointVector);
 ### 6. Image I/O
 
 ```java
-import org.almostrealism.color.GraphicsConverter;
+import org.almostrealism.texture.GraphicsConverter;
 import static org.almostrealism.color.RGBFeatures.*;
 
 // Load image as RGB array
@@ -188,19 +189,19 @@ public class RGBA extends RGB {
 ### Light
 
 ```java
-public interface Light extends Node, Colorable {
+public interface Light {
     Producer<RGB> getColorAt(Producer<Vector> point);  // Color with attenuation
 
-    void setAttenuationCoefficients(double da, double db, double dc);
     void setIntensity(double intensity);
     void setColor(RGB color);
+    RGB getColor();
 }
 ```
 
 ### Shader
 
 ```java
-public interface Shader<C extends LightingContext> extends Node, Editable {
+public interface Shader<C extends LightingContext> {
     Producer<RGB> shade(C context, DiscreteField normals);
 }
 ```
@@ -208,7 +209,7 @@ public interface Shader<C extends LightingContext> extends Node, Editable {
 ### Texture
 
 ```java
-public interface Texture extends Node {
+public interface Texture {
     RGB operate(Vector point);  // Get color at 3D point
 }
 ```
@@ -238,9 +239,9 @@ The typical rendering flow:
 
 ```java
 // Create multiple lights
-Light keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
-Light fillLight = new PointLight(new Vector(-3, 2, 4), 0.5, new RGB(0.7, 0.7, 1.0));
-Light backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
+PointLight keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
+PointLight fillLight = new PointLight(new Vector(-3, 2, 4), 0.5, new RGB(0.7, 0.7, 1.0));
+PointLight backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
 
 // Configure attenuation (quadratic falloff)
 keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);

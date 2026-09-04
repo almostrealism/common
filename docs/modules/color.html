@@ -212,17 +212,18 @@ RGB difference = color1.subtract(color2);</code></pre>
                 <h3>Light Sources</h3>
                 <p>Multiple light types with configurable attenuation for realistic falloff.</p>
                 <div class="code-example">
-                    <pre><code class="language-java">import org.almostrealism.color.Light;
-import org.almostrealism.color.PointLight;
+                    <pre><code class="language-java">import org.almostrealism.color.PointLight;
 import org.almostrealism.color.LightingContext;
 
 // Create a point light
-Light light = new PointLight(
+PointLight light = new PointLight(
     new Vector(5, 5, 5),           // Position
     1.0,                            // Intensity
-    new RGB(1.0, 1.0, 1.0)         // White light
+    new RGB(1.0, 1.0, 1.0)         // White color
 );
 
+// TODO(review): da/db/dc labels below appear swapped — RGBFeatures.attenuation()
+// computes da*d^2 + db*d + dc, so da is the quadratic term and dc is the constant term.
 // Set distance attenuation: intensity = color / (da + db*d + dc*d^2)
 light.setAttenuationCoefficients(
     0.0,   // da - Constant term
@@ -293,7 +294,7 @@ RGB colorAtPoint = texture.operate(pointVector);
                 <h3>Image I/O</h3>
                 <p>Load and save images with format conversion utilities.</p>
                 <div class="code-example">
-                    <pre><code class="language-java">import org.almostrealism.color.GraphicsConverter;
+                    <pre><code class="language-java">import org.almostrealism.texture.GraphicsConverter;
 import static org.almostrealism.color.RGBFeatures.*;
 
 // Load image as RGB array
@@ -321,11 +322,11 @@ PackedCollection channels = channels(new File("image.png"));</code></pre>
         RGB white = new RGB(1.0, 1.0, 1.0);
 
         // Key light (main light source)
-        Light keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
+        PointLight keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
         keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);  // Quadratic falloff
 
         // Fill light (softer, colored)
-        Light fillLight = new PointLight(
+        PointLight fillLight = new PointLight(
             new Vector(-3, 2, 4),
             0.5,
             new RGB(0.7, 0.7, 1.0)  // Slight blue tint
@@ -333,7 +334,7 @@ PackedCollection channels = channels(new File("image.png"));</code></pre>
         fillLight.setAttenuationCoefficients(0.0, 0.0, 1.0);
 
         // Back light (rim lighting)
-        Light backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
+        PointLight backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
 
         // Build lighting context
         LightingContext context = new LightingContext();
