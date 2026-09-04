@@ -32,9 +32,11 @@ import java.util.function.Consumer;
  * Pins what the report of a fill with zeros costs when there is nothing to
  * report.
  *
- * <p>A fill with zeros is reported above two values, so that a
- * {@link org.almostrealism.algebra.Pair} — two values, zeroed this way in the
- * ordinary course of things — does not report.</p>
+ * <p>A fill with zeros is reported above three values, which leaves out the
+ * small fixed-size types — {@link org.almostrealism.algebra.Pair} at two and
+ * {@link org.almostrealism.algebra.Vector} at three. Both are zeroed in the
+ * ordinary course of things, a Vector often by arithmetic on it that happened
+ * to come out zero, which is not a call site anyone can act on.</p>
  *
  * <p>What this deliberately does not cover is a fill with zeros itself. Doing
  * so means calling {@code fill(0.0)} from checked-in source, and the code

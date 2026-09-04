@@ -517,16 +517,24 @@ public class PackedCollection extends MemoryDataAdapter
 	 * silently accepted — but only where the difference is worth anything. A
 	 * handful of values written from the host is not a kernel's worth of work,
 	 * so reporting it says nothing a reader can act on and buries the reports
-	 * that do. The threshold leaves out {@link org.almostrealism.algebra.Pair},
-	 * which is two values and is zeroed this way in the ordinary course of
-	 * things.</p>
+	 * that do.</p>
+	 *
+	 * <p>The threshold is set above the small fixed-size types this project
+	 * builds on — {@link org.almostrealism.algebra.Pair} at two values and
+	 * {@link org.almostrealism.algebra.Vector} at three. Those are zeroed in
+	 * the ordinary course of things, and often not by anyone who chose to:
+	 * arithmetic on a Vector writes its result back through here, so a
+	 * multiply that happens to come out zero reports a call site that is not
+	 * doing anything wrong and could only be silenced by rewriting the
+	 * arithmetic. Anything larger is a tensor, where zeroing is a kernel's
+	 * worth of work and the report is worth making.</p>
 	 *
 	 * @param value the values to cycle through; repeated if shorter than the collection
 	 * @return this collection
 	 * @see #enableFillOrigin
 	 */
 	public PackedCollection fill(double... value) {
-		if (getMemLength() > 2 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
+		if (getMemLength() > 3 && DoubleStream.of(value).allMatch(v -> v == 0.0)) {
 			reportFillWithZeros();
 		}
 
