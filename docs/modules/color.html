@@ -222,23 +222,24 @@ PointLight light = new PointLight(
     new RGB(1.0, 1.0, 1.0)         // White color
 );
 
-// Set distance attenuation: intensity = color / (da*d^2 + db*d + dc)
+// Set distance attenuation: color * (da*d^2 + db*d + dc)
 light.setAttenuationCoefficients(
-    1.0,   // da - Quadratic (d^2) term, inverse-square falloff
+    0.0,   // da - Quadratic (d^2) term
     0.0,   // db - Linear (d) term
-    0.0    // dc - Constant term
+    1.0    // dc - Constant term (no falloff)
 );
 
 // Get light color at a point (includes attenuation)
-Producer&lt;RGB&gt; colorAtPoint = light.getColorAt(pointProducer);</code></pre>
+Producer&lt;PackedCollection&gt; colorAtPoint = light.getColorAt(pointProducer);</code></pre>
                 </div>
 
                 <h3>Shader Interface</h3>
                 <p>Shaders compute surface color from lighting context and surface normals.</p>
+                <!-- TODO(review): "extends Node" does not match org.almostrealism.color.Shader, which declares no supertype -->
                 <div class="code-example">
                     <pre><code class="language-java">public interface Shader&lt;C extends LightingContext&gt; extends Node {
     // Compute shaded color for surface
-    Producer&lt;RGB&gt; shade(C context, DiscreteField normals);
+    Producer&lt;PackedCollection&gt; shade(C context, DiscreteField normals);
 }</code></pre>
                 </div>
 
@@ -321,7 +322,7 @@ PackedCollection channels = channels(new File("image.png"));</code></pre>
 
         // Key light (main light source)
         PointLight keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
-        keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);  // Quadratic falloff
+        keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);  // Constant intensity, no falloff
 
         // Fill light (softer, colored)
         PointLight fillLight = new PointLight(
@@ -455,7 +456,7 @@ public class AcceleratedColors {
 
                 <h3>Complete Shading Example</h3>
                 <pre><code class="language-java">public class ShadingExample {
-    public Producer&lt;RGB&gt; shadePoint(
+    public Producer&lt;PackedCollection&gt; shadePoint(
             Vector surfacePoint,
             Vector surfaceNormal,
             Light light,

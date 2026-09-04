@@ -69,11 +69,11 @@ PointLight light = new PointLight(
     new RGB(1.0, 1.0, 1.0)         // White color
 );
 
-// Set distance attenuation: intensity = color / (da*d^2 + db*d + dc)
+// Set distance attenuation: color * (da*d^2 + db*d + dc)
 light.setAttenuationCoefficients(
-    1.0,   // Quadratic (d^2) term, inverse-square falloff
-    0.0,   // Linear (d) term
-    0.0    // Constant term
+    0.0,   // da - Quadratic (d^2) term
+    0.0,   // db - Linear (d) term
+    1.0    // dc - Constant term (no falloff)
 );
 
 // Create lighting context
@@ -89,7 +89,7 @@ import org.almostrealism.color.computations.*;
 
 // Diffuse (Lambertian) shading
 Shader<ShaderContext> diffuse = new DiffuseShader();
-Producer<RGB> color = diffuse.shade(context, normalField);
+Producer<PackedCollection> color = diffuse.shade(context, normalField);
 
 // Phong highlights
 HighlightShader specular = new HighlightShader();
@@ -188,11 +188,13 @@ public class RGBA extends RGB {
 
 ```java
 public interface Light {
-    Producer<RGB> getColorAt(Producer<Vector> point);  // Color with attenuation
-
     void setIntensity(double intensity);
     void setColor(RGB color);
+
+    double getIntensity();
     RGB getColor();
+
+    Producer<PackedCollection> getColorAt(Producer<PackedCollection> point);  // Color with attenuation
 }
 ```
 
@@ -200,7 +202,7 @@ public interface Light {
 
 ```java
 public interface Shader<C extends LightingContext> {
-    Producer<RGB> shade(C context, DiscreteField normals);
+    Producer<PackedCollection> shade(C context, DiscreteField normals);
 }
 ```
 
@@ -241,7 +243,7 @@ PointLight keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
 PointLight fillLight = new PointLight(new Vector(-3, 2, 4), 0.5, new RGB(0.7, 0.7, 1.0));
 PointLight backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
 
-// Configure attenuation (quadratic falloff)
+// Configure attenuation (constant intensity, no falloff)
 keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);
 fillLight.setAttenuationCoefficients(0.0, 0.0, 1.0);
 
@@ -271,7 +273,7 @@ material.add(diffuse);
 material.add(specular);
 
 // Apply to surface
-Producer<RGB> shadedColor = material.shade(context, normalField);
+Producer<PackedCollection> shadedColor = material.shade(context, normalField);
 ```
 
 ### Pattern 3: Wavelength-Based Colors
