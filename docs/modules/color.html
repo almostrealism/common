@@ -212,34 +212,34 @@ RGB difference = color1.subtract(color2);</code></pre>
                 <h3>Light Sources</h3>
                 <p>Multiple light types with configurable attenuation for realistic falloff.</p>
                 <div class="code-example">
-                    <pre><code class="language-java">import org.almostrealism.color.Light;
-import org.almostrealism.color.PointLight;
+                    <pre><code class="language-java">import org.almostrealism.color.PointLight;
 import org.almostrealism.color.LightingContext;
 
 // Create a point light
-Light light = new PointLight(
+PointLight light = new PointLight(
     new Vector(5, 5, 5),           // Position
     1.0,                            // Intensity
-    new RGB(1.0, 1.0, 1.0)         // White light
+    new RGB(1.0, 1.0, 1.0)         // White color
 );
 
-// Set distance attenuation: intensity = color / (da + db*d + dc*d^2)
+// Set distance attenuation: color * (da*d^2 + db*d + dc)
 light.setAttenuationCoefficients(
-    0.0,   // da - Constant term
-    0.0,   // db - Linear term
-    1.0    // dc - Quadratic term (realistic falloff)
+    0.0,   // da - Quadratic (d^2) term
+    0.0,   // db - Linear (d) term
+    1.0    // dc - Constant term (no falloff)
 );
 
 // Get light color at a point (includes attenuation)
-Producer&lt;RGB&gt; colorAtPoint = light.getColorAt(pointProducer);</code></pre>
+Producer&lt;PackedCollection&gt; colorAtPoint = light.getColorAt(pointProducer);</code></pre>
                 </div>
 
                 <h3>Shader Interface</h3>
                 <p>Shaders compute surface color from lighting context and surface normals.</p>
+                <!-- TODO(review): "extends Node" does not match org.almostrealism.color.Shader, which declares no supertype -->
                 <div class="code-example">
                     <pre><code class="language-java">public interface Shader&lt;C extends LightingContext&gt; extends Node {
     // Compute shaded color for surface
-    Producer&lt;RGB&gt; shade(C context, DiscreteField normals);
+    Producer&lt;PackedCollection&gt; shade(C context, DiscreteField normals);
 }</code></pre>
                 </div>
 
@@ -293,7 +293,7 @@ RGB colorAtPoint = texture.operate(pointVector);
                 <h3>Image I/O</h3>
                 <p>Load and save images with format conversion utilities.</p>
                 <div class="code-example">
-                    <pre><code class="language-java">import org.almostrealism.color.GraphicsConverter;
+                    <pre><code class="language-java">import org.almostrealism.texture.GraphicsConverter;
 import static org.almostrealism.color.RGBFeatures.*;
 
 // Load image as RGB array
@@ -321,11 +321,11 @@ PackedCollection channels = channels(new File("image.png"));</code></pre>
         RGB white = new RGB(1.0, 1.0, 1.0);
 
         // Key light (main light source)
-        Light keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
-        keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);  // Quadratic falloff
+        PointLight keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
+        keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);  // Constant intensity, no falloff
 
         // Fill light (softer, colored)
-        Light fillLight = new PointLight(
+        PointLight fillLight = new PointLight(
             new Vector(-3, 2, 4),
             0.5,
             new RGB(0.7, 0.7, 1.0)  // Slight blue tint
@@ -333,7 +333,7 @@ PackedCollection channels = channels(new File("image.png"));</code></pre>
         fillLight.setAttenuationCoefficients(0.0, 0.0, 1.0);
 
         // Back light (rim lighting)
-        Light backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
+        PointLight backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
 
         // Build lighting context
         LightingContext context = new LightingContext();
@@ -456,7 +456,7 @@ public class AcceleratedColors {
 
                 <h3>Complete Shading Example</h3>
                 <pre><code class="language-java">public class ShadingExample {
-    public Producer&lt;RGB&gt; shadePoint(
+    public Producer&lt;PackedCollection&gt; shadePoint(
             Vector surfacePoint,
             Vector surfaceNormal,
             Light light,
