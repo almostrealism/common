@@ -1,0 +1,19 @@
+# tools/coverage-data/coverage-history.tsv — cooldown and give-up ledger for the coverage-qa pipeline.
+#
+# Append-only. Each row records the outcome of one coverage-qa round for
+# one selection unit (a Java package or a Python directory). select-target.py
+# reads this file to (a) skip a unit selected within COOLDOWN_DAYS of its
+# most recent row, and (b) auto-exclude a unit that has been attempted
+# MAX_ATTEMPTS times in a row without MIN_PROGRESS percentage points of
+# gain on any attempt. The coverage-qa agent appends one row per round as
+# part of its PR — never edits or removes an existing row.
+#
+# Columns (tab-separated):
+#   timestamp   UTC, "YYYY-MM-DDTHH:MM:SSZ" — when the round ran
+#   unit        the Java package (dotted) or Python directory (slashed)
+#   language    "java" or "python"
+#   before_pct  line coverage percentage before this round
+#   after_pct   line coverage percentage after this round (same value as
+#               before_pct when the round made no honest progress)
+#
+# Blank lines and lines starting with '#' are ignored by select-target.py.
