@@ -59,22 +59,21 @@ RGB difference = color1.subtract(color2);
 ### 3. Lighting System
 
 ```java
-import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.LightingContext;
 
 // Create a point light
-Light light = new PointLight(
+PointLight light = new PointLight(
     new Vector(5, 5, 5),           // Position
     1.0,                            // Intensity
-    new RGB(1.0, 1.0, 1.0)         // White light
+    new RGB(1.0, 1.0, 1.0)         // White color
 );
 
-// Set distance attenuation: intensity = color / (da + db*d + dc*d^2)
+// Set distance attenuation: color * (da*d^2 + db*d + dc)
 light.setAttenuationCoefficients(
-    0.0,   // Constant term (da)
-    0.0,   // Linear term (db)
-    1.0    // Quadratic term (dc)
+    0.0,   // da - Quadratic (d^2) term
+    0.0,   // db - Linear (d) term
+    1.0    // dc - Constant term (no falloff)
 );
 
 // Create lighting context
@@ -90,7 +89,7 @@ import org.almostrealism.color.computations.*;
 
 // Diffuse (Lambertian) shading
 Shader<ShaderContext> diffuse = new DiffuseShader();
-Producer<RGB> color = diffuse.shade(context, normalField);
+Producer<PackedCollection> color = diffuse.shade(context, normalField);
 
 // Phong highlights
 HighlightShader specular = new HighlightShader();
@@ -137,7 +136,7 @@ RGB colorAtPoint = texture.operate(pointVector);
 ### 6. Image I/O
 
 ```java
-import org.almostrealism.color.GraphicsConverter;
+import org.almostrealism.texture.GraphicsConverter;
 import static org.almostrealism.color.RGBFeatures.*;
 
 // Load image as RGB array
@@ -188,27 +187,29 @@ public class RGBA extends RGB {
 ### Light
 
 ```java
-public interface Light extends Node, Colorable {
-    Producer<RGB> getColorAt(Producer<Vector> point);  // Color with attenuation
-
-    void setAttenuationCoefficients(double da, double db, double dc);
+public interface Light {
     void setIntensity(double intensity);
     void setColor(RGB color);
+
+    double getIntensity();
+    RGB getColor();
+
+    Producer<PackedCollection> getColorAt(Producer<PackedCollection> point);  // Color with attenuation
 }
 ```
 
 ### Shader
 
 ```java
-public interface Shader<C extends LightingContext> extends Node, Editable {
-    Producer<RGB> shade(C context, DiscreteField normals);
+public interface Shader<C extends LightingContext> {
+    Producer<PackedCollection> shade(C context, DiscreteField normals);
 }
 ```
 
 ### Texture
 
 ```java
-public interface Texture extends Node {
+public interface Texture {
     RGB operate(Vector point);  // Get color at 3D point
 }
 ```
@@ -238,11 +239,11 @@ The typical rendering flow:
 
 ```java
 // Create multiple lights
-Light keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
-Light fillLight = new PointLight(new Vector(-3, 2, 4), 0.5, new RGB(0.7, 0.7, 1.0));
-Light backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
+PointLight keyLight = new PointLight(new Vector(5, 5, 5), 1.0, white);
+PointLight fillLight = new PointLight(new Vector(-3, 2, 4), 0.5, new RGB(0.7, 0.7, 1.0));
+PointLight backLight = new PointLight(new Vector(0, 0, -5), 0.3, white);
 
-// Configure attenuation (quadratic falloff)
+// Configure attenuation (constant intensity, no falloff)
 keyLight.setAttenuationCoefficients(0.0, 0.0, 1.0);
 fillLight.setAttenuationCoefficients(0.0, 0.0, 1.0);
 
@@ -272,7 +273,7 @@ material.add(diffuse);
 material.add(specular);
 
 // Apply to surface
-Producer<RGB> shadedColor = material.shade(context, normalField);
+Producer<PackedCollection> shadedColor = material.shade(context, normalField);
 ```
 
 ### Pattern 3: Wavelength-Based Colors
