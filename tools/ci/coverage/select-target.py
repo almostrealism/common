@@ -34,8 +34,8 @@ from collections import defaultdict
 
 DEFAULT_JAVA_COVERAGE_XML = "coverage.xml"
 DEFAULT_PYTHON_COVERAGE_XML = "python-coverage.xml"
-DEFAULT_EXCLUSIONS_FILE = "tools/ci/coverage-exclusions.txt"
-DEFAULT_HISTORY_FILE = "tools/ci/coverage-history.tsv"
+DEFAULT_EXCLUSIONS_FILE = "tools/coverage-data/coverage-exclusions.txt"
+DEFAULT_HISTORY_FILE = "tools/coverage-data/coverage-history.tsv"
 
 DEFAULT_COVERAGE_THRESHOLD = 80.0
 DEFAULT_MIN_LINES = 50

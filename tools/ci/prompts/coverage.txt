@@ -72,7 +72,7 @@ because you routed around the violation.
 5. Re-measure coverage locally for `${TARGET}` (JaCoCo for Java, coverage.py for Python — the
    same commands `tools/ci/coverage/fetch-latest-coverage.sh` uses) and iterate until you are at
    or above ${COVERAGE_THRESHOLD}%, or until further honest gains are impractical.
-6. Append exactly one row to `tools/ci/coverage-history.tsv` recording this round: the UTC
+6. Append exactly one row to `tools/coverage-data/coverage-history.tsv` recording this round: the UTC
    timestamp, `${TARGET}`, `${TARGET_LANGUAGE}`, the coverage percentage before your changes
    (${CURRENT_COVERAGE}), and the percentage after. This file is append-only — never edit or
    remove an existing row. Its header comment documents the column order.
@@ -95,7 +95,7 @@ If `${TARGET}` cannot reach ${COVERAGE_THRESHOLD}% with meaningful tests — the
 uncovered code is asset-gated, hardware-gated, or is genuinely trivial glue with no behavior to
 assert on — say so plainly in your summary, append the history row anyway (with an honest
 "after" percentage, even if it equals "before"), and recommend that a human add `${TARGET}` to
-`tools/ci/coverage-exclusions.txt`. Do not pad the round with hollow tests to manufacture a number
+`tools/coverage-data/coverage-exclusions.txt`. Do not pad the round with hollow tests to manufacture a number
 you know does not reflect real coverage. "I could not honestly move this further, and here is
 what I checked" is a valid and valuable outcome — the same standing the defect-hunt job gives to
 "no defect found."
@@ -106,15 +106,15 @@ what I checked" is a valid and valuable outcome — the same standing the defect
   note it in your summary rather than fixing it here — this round is scoped to one target so its
   diff stays reviewable.
 - Do not modify any `pom.xml`, and do not add a dependency.
-- Do not modify CI workflow files or files under `tools/ci/` other than appending the one ledger
-  row described above.
+- Do not modify CI workflow files or files under `tools/ci/`. The one ledger row you append
+  (step 6 above) lives in `tools/coverage-data/`, outside `tools/ci/` entirely.
 - Report what you ran and what it printed. "Verified locally" is not evidence on its own; the
   actual test output and the actual coverage numbers are.
 
 ## Deliverable
 
 1. New test files, and/or new test methods added to existing test classes, covering `${TARGET}`.
-2. The appended row in `tools/ci/coverage-history.tsv`.
+2. The appended row in `tools/coverage-data/coverage-history.tsv`.
 3. Your committed changes will be opened as a pull request automatically. Summarize what you
    tested, the coverage before and after, and — if you invoked the honesty clause — exactly what
    you checked and why further honest gains were impractical.

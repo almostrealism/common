@@ -615,7 +615,7 @@ jobs:
       #
       # Persisting it here is a pure optimization, never a correctness
       # requirement: select-target.py derives give-up state from
-      # tools/ci/coverage-history.tsv at runtime (is_given_up()), so the
+      # tools/coverage-data/coverage-history.tsv at runtime (is_given_up()), so the
       # next round skips this unit regardless of whether this push lands.
       # A direct push to master can fail under branch protection or race
       # with a concurrent merge, so failure is handled explicitly rather
@@ -626,17 +626,17 @@ jobs:
       - name: Best-effort commit of auto-exclusions when no round opens
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target == ''
         run: |
-          if ! git diff --quiet -- tools/ci/coverage-exclusions.txt; then
+          if ! git diff --quiet -- tools/coverage-data/coverage-exclusions.txt; then
             git -c user.name="github-actions[bot]" \
                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-                add tools/ci/coverage-exclusions.txt
+                add tools/coverage-data/coverage-exclusions.txt
             git -c user.name="github-actions[bot]" \
                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
                 commit -m "Auto-exclude a coverage-qa target that made no sustained progress"
             if git push origin master; then
-              echo "::notice::Committed a new auto-exclusion entry to tools/ci/coverage-exclusions.txt"
+              echo "::notice::Committed a new auto-exclusion entry to tools/coverage-data/coverage-exclusions.txt"
             else
-              echo "::warning::Best-effort push of the auto-exclusion entry to master failed (branch protection or a concurrent merge) and no round was opened this run to carry it instead. This is non-fatal: select-target.py re-derives give-up state from tools/ci/coverage-history.tsv at runtime, so the unit stays excluded from the next round regardless of whether this push lands."
+              echo "::warning::Best-effort push of the auto-exclusion entry to master failed (branch protection or a concurrent merge) and no round was opened this run to carry it instead. This is non-fatal: select-target.py re-derives give-up state from tools/coverage-data/coverage-history.tsv at runtime, so the unit stays excluded from the next round regardless of whether this push lands."
             fi
           fi
 
@@ -681,10 +681,10 @@ jobs:
       - name: Commit any new auto-exclusions to the coverage branch
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         run: |
-          if ! git diff --quiet -- tools/ci/coverage-exclusions.txt; then
+          if ! git diff --quiet -- tools/coverage-data/coverage-exclusions.txt; then
             git -c user.name="github-actions[bot]" \
                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-                add tools/ci/coverage-exclusions.txt
+                add tools/coverage-data/coverage-exclusions.txt
             git -c user.name="github-actions[bot]" \
                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
                 commit -m "Auto-exclude a coverage-qa target that made no sustained progress"
@@ -719,12 +719,12 @@ jobs:
 
       # PROTECT_TEST_FILES stays "true" and no sensitive-file bypass is
       # requested: a coverage round only ever adds new tests, appends to
-      # tools/ci/coverage-history.tsv, and may already carry the workflow's
-      # own auto-exclusion commit to tools/ci/coverage-exclusions.txt from
-      # the step above — all of which validate-agent-commit.sh already
-      # permits without a bypass (new tests satisfy RULE 2; both data files
-      # are exempted from RULE 3 by the PIPELINE_DATA_FILES allowance) — see
-      # the PIPELINE DATA FILE ALLOWANCE note in validate-agent-commit.sh.
+      # tools/coverage-data/coverage-history.tsv, and may already carry the
+      # workflow's own auto-exclusion commit to
+      # tools/coverage-data/coverage-exclusions.txt from the step above.
+      # Neither data file lives under tools/ci/, so validate-agent-commit.sh
+      # classifies both as ordinary (non-CI) files and RULE 3 never applies
+      # to them — no allowlist or bypass is needed. New tests satisfy RULE 2.
       - name: Submit coverage agent job
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:

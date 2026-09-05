@@ -1,4 +1,4 @@
-# tools/ci/coverage-history.tsv — cooldown and give-up ledger for the coverage-qa pipeline.
+# tools/coverage-data/coverage-history.tsv — cooldown and give-up ledger for the coverage-qa pipeline.
 #
 # Append-only. Each row records the outcome of one coverage-qa round for
 # one selection unit (a Java package or a Python directory). select-target.py

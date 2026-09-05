@@ -33,8 +33,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `test_select_target.py` | Unit tests for `select-target.py`, driven by the `testdata/` fixtures |
 | `assertion-density-report.sh` | Report-only: assertions-per-new-test-method for a coverage-qa PR |
 
-See `tools/ci/coverage-exclusions.txt` / `tools/ci/coverage-history.tsv` for the
-selector's data files.
+See `tools/coverage-data/coverage-exclusions.txt` / `tools/coverage-data/coverage-history.tsv`
+for the selector's data files — kept outside `tools/ci/` because they are mutable data an
+agent round appends to, not pipeline logic.
 
 ## Agent Protection (`agent-protection/`)
 

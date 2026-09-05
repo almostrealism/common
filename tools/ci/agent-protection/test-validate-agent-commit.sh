@@ -99,15 +99,12 @@ make_repo() {
 
     mkdir -p "$dir/src/test/java/org/example" \
              "$dir/src/main/java/org/example" \
-             "$dir/.github/workflows" \
-             "$dir/tools/ci"
+             "$dir/.github/workflows"
     base_test_class > "$dir/src/test/java/org/example/ExampleTest.java"
     overloaded_test_class > "$dir/src/test/java/org/example/OverloadTest.java"
     echo "public class Example { int value() { return 4; } }" \
         > "$dir/src/main/java/org/example/Example.java"
     echo "name: analysis" > "$dir/.github/workflows/analysis.yaml"
-    echo "# coverage-history ledger" > "$dir/tools/ci/coverage-history.tsv"
-    echo "# coverage-exclusions list" > "$dir/tools/ci/coverage-exclusions.txt"
 
     git -C "$dir" add -A
     git -C "$dir" commit -qm "initial"
@@ -239,31 +236,6 @@ edit_ci_only() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
 }
 
-append_coverage_ledger() {
-    printf '2026-01-01T00:00:00Z\torg.example\tjava\t10.0\t15.0\n' \
-        >> "$1/tools/ci/coverage-history.tsv"
-}
-
-add_new_test_file_and_ledger() {
-    add_new_test_file "$1"
-    append_coverage_ledger "$1"
-}
-
-append_coverage_exclusion() {
-    printf 'org.example.stuck\n' >> "$1/tools/ci/coverage-exclusions.txt"
-}
-
-add_new_test_file_and_exclusion() {
-    add_new_test_file "$1"
-    append_coverage_exclusion "$1"
-}
-
-add_new_test_file_and_ledger_and_exclusion() {
-    add_new_test_file "$1"
-    append_coverage_ledger "$1"
-    append_coverage_exclusion "$1"
-}
-
 edit_ci_file() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
     edit_production "$1"
@@ -320,28 +292,6 @@ run_case "CI edit allowed on ci/ branch"       0 ci/issue-1 "$SECRET" edit_ci_fi
 run_case "CI edit allowed on ci/issues/2"      0 ci/issues/2 "$SECRET" edit_ci_file
 run_case "CI-only commit substantive on ci/"   0 ci/issue-1 "$SECRET" edit_ci_only
 run_case "CI-only commit blocked elsewhere"    4 feature/x "$SECRET" edit_ci_only
-
-# ── Pipeline data file allowance (coverage-qa rounds) ───────────
-#
-# tools/ci/coverage-history.tsv and tools/ci/coverage-exclusions.txt are
-# exact-path exemptions from RULE 3: a coverage-qa round appends to the
-# ledger on every round, and the workflow may have already appended a
-# give-up entry to the exclusions file on this same branch before the
-# agent started (see master-agent-dispatch.yaml's "Commit any new
-# auto-exclusions to the coverage branch" step) — both on an ordinary
-# feature/qa branch, with no ci/ prefix and no signed bypass.
-
-echo "RULE 3 — pipeline data file allowance"
-run_case "new test + ledger append passes (typical coverage round)" \
-    0 feature/x "$SECRET" add_new_test_file_and_ledger
-run_case "ledger-only append not CI-blocked (flagged non-substantive)" \
-    3 feature/x "$SECRET" append_coverage_ledger
-run_case "new test + exclusion append passes (workflow gave up on a unit)" \
-    0 feature/x "$SECRET" add_new_test_file_and_exclusion
-run_case "exclusion-only append not CI-blocked (flagged non-substantive)" \
-    3 feature/x "$SECRET" append_coverage_exclusion
-run_case "new test + ledger + exclusion append all pass together" \
-    0 feature/x "$SECRET" add_new_test_file_and_ledger_and_exclusion
 
 # ── Sensitive-file bypass ───────────────────────────────────────
 
