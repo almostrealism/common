@@ -316,18 +316,18 @@ public interface RGBFeatures extends ScalarFeatures {
 		return cfromScalar(c(value));
 	}
 
+	// TODO(review): with da/db > 0 this factor grows (not falls off) with distance; confirm intended.
 	/**
-	 * Calculates light attenuation based on distance.
+	 * Calculates a distance-based scaling factor for light attenuation.
 	 *
-	 * <p>Implements the attenuation formula: {@code color / (da*d^2 + db*d + dc)}
-	 * where d is the distance (sqrt of distanceSq). This models how light
-	 * intensity decreases with distance from the source.</p>
+	 * <p>Implements the scaling formula: {@code color * (da*d^2 + db*d + dc)}
+	 * where d is the distance (sqrt of distanceSq). Depending on the sign and
+	 * magnitude of the coefficients, the resulting factor may increase or
+	 * decrease as distance grows.</p>
 	 *
 	 * <p>Common configurations:</p>
 	 * <ul>
-	 *   <li>{@code (0, 0, 1)}: Constant intensity (no falloff)</li>
-	 *   <li>{@code (1, 0, 0)}: Inverse-square law (physically realistic)</li>
-	 *   <li>{@code (0, 1, 0)}: Linear falloff</li>
+	 *   <li>{@code (0, 0, 1)}: Constant intensity (no attenuation)</li>
 	 * </ul>
 	 *
 	 * @param da coefficient for quadratic (d^2) term
