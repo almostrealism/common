@@ -29,7 +29,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Tests for the protobuf-backed memory provider: collections produced by
@@ -41,6 +43,12 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 
 	/** Number of elements in the test tensors. */
 	private static final int SIZE = 96;
+
+	/** How many dispatches to read a deferred collection through. */
+	private static final int DISPATCHES = 16;
+
+	/** How many frames of a collected failure to name. */
+	private static final int ORIGIN_FRAMES = 12;
 
 	/** Produces a collection whose values are a fixed function of the index. */
 	private PackedCollection testValues() {
@@ -155,6 +163,77 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 
 		materialized.setMem(0, 42.0);
 		Assert.assertEquals(42.0, materialized.toDouble(0), 1e-9);
+	}
+
+	/**
+	 * Reading a deferred collection arranges no write back into it.
+	 *
+	 * <p>An argument small enough to aggregate is copied into the dispatch
+	 * aggregate and, for writable memory, copied back out afterwards. Message
+	 * backed memory cannot accept that second copy, and nothing could have
+	 * written to it in between for the copy to carry.</p>
+	 *
+	 * <p>Arranged regardless, it fails where it runs rather than where it was
+	 * decided: on a pool thread, after the operation the test is watching has
+	 * already returned. So the failure is collected from the threads it lands
+	 * on rather than expected from this one — a test that only evaluated and
+	 * asserted the values would pass with the write-back still there, which is
+	 * how this went unnoticed to begin with.</p>
+	 *
+	 * <p>Collecting them is added to what already happens to them rather than
+	 * put in its place. Anything else failing on a background thread during
+	 * this window is still reported by whatever was reporting it before, which
+	 * is the behaviour a test should be borrowing rather than suspending.</p>
+	 */
+	@Test(timeout = 120000)
+	public void readingDeferredValuesArrangesNoWriteBack() {
+		PackedCollection deferred = CollectionEncoder.decode(
+				CollectionEncoder.encode(testValues(), Precision.FP64), false);
+
+		List<Throwable> failures = new CopyOnWriteArrayList<>();
+		Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+
+		Thread.setDefaultUncaughtExceptionHandler((thread, thrown) -> {
+			failures.add(thrown);
+			if (previous != null) previous.uncaughtException(thread, thrown);
+		});
+
+		try {
+			for (int i = 0; i < DISPATCHES; i++) {
+				cp(deferred).multiply(2.0).evaluate();
+			}
+		} finally {
+			Thread.setDefaultUncaughtExceptionHandler(previous);
+		}
+
+		Assert.assertTrue("Reading message-backed memory must not arrange a write into it: "
+				+ describe(failures), failures.isEmpty());
+	}
+
+	/**
+	 * Describes collected failures by where they were raised.
+	 *
+	 * <p>The message alone says only that a write was attempted, which is the
+	 * part already known. What has to be named is the code that arranged it,
+	 * and these were raised on threads no test is watching, so the stack goes
+	 * into the failure or nowhere.</p>
+	 *
+	 * @param failures the collected failures
+	 * @return a description naming the first one's origin
+	 */
+	private String describe(List<Throwable> failures) {
+		if (failures.isEmpty()) return "none";
+
+		StringBuilder description = new StringBuilder();
+		description.append(failures.size()).append(" of them, the first at:");
+
+		StackTraceElement[] stack = failures.get(0).getStackTrace();
+
+		for (int i = 0; i < Math.min(stack.length, ORIGIN_FRAMES); i++) {
+			description.append("\n    at ").append(stack[i]);
+		}
+
+		return description.toString();
 	}
 
 	/**
