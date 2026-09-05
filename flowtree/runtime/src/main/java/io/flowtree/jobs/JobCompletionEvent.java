@@ -72,8 +72,31 @@ public class JobCompletionEvent {
     private final Status status;
     /** Human-readable description of the job. */
     private final String description;
-    /** Instant at which this event was created. */
-    private final Instant timestamp;
+    /**
+     * Instant at which this event was created in memory.
+     *
+     * <p>Stamped at construction by the live code path (an agent constructing
+     * the event before posting it to the controller). For events reconstructed
+     * from the {@code job_timing} table, this field is overwritten after
+     * construction so the value reflects the persisted {@code completed_at}
+     * (or {@code started_at} for {@code STARTED} rows) rather than the
+     * read-time instant — see {@link JobStatsStore#rowToEvent}.</p>
+     */
+    private Instant timestamp;
+
+    /**
+     * Explicit read-side timestamp applied to events reconstructed from the
+     * {@code job_timing} table. Mirrors {@link #timestamp} once
+     * {@link #setTimestamp(Instant)} has been called by
+     * {@link JobStatsStore#rowToEvent}; before that, the value is whatever
+     * the constructor stamp produced. Tests that assert the in-memory-event
+     * constructor stamp continue to use {@link #getTimestamp()} directly.
+     */
+    private Instant eventTime;
+    /** Persisted {@code started_at} from the {@code job_timing} row, when reconstructed by the store. */
+    private Instant startedAt;
+    /** Persisted {@code completed_at} from the {@code job_timing} row, when reconstructed by the store. */
+    private Instant finishedAt;
 
     /** Name of the git branch targeted by this job. */
     private String targetBranch;
@@ -134,6 +157,9 @@ public class JobCompletionEvent {
         this.status = status;
         this.description = description;
         this.timestamp = Instant.now();
+        this.eventTime = this.timestamp;
+        this.startedAt = null;
+        this.finishedAt = null;
         this.stagedFiles = Collections.emptyList();
         this.skippedFiles = Collections.emptyList();
     }
@@ -230,6 +256,72 @@ public class JobCompletionEvent {
      * @return the event timestamp
      */
     public Instant getTimestamp() { return timestamp; }
+
+    /**
+     * Returns the persisted event timestamp recorded for this event. Mirrors
+     * {@link #getTimestamp()} once the event has been reconstructed from
+     * {@code job_timing}; equals the constructor stamp before that.
+     *
+     * <p>Distinct from {@link #getTimestamp()} because the constructor stamp
+     * captures the moment an event was instantiated (e.g. an agent's
+     * {@code Instant.now()} on emit), while this field is the authoritative
+     * event time as recorded in the database. The two are separate so the
+     * existing in-memory-event flow keeps working without modification while
+     * readers can consult the persisted time explicitly.</p>
+     *
+     * @return the persisted event timestamp
+     */
+    public Instant getEventTime() { return eventTime != null ? eventTime : timestamp; }
+
+    /**
+     * Returns the persisted start time for this event, or {@code null} when
+     * the event was never persisted through the {@code job_timing} row
+     * reconstruction path. Set by {@link JobStatsStore#rowToEvent} from the
+     * row's {@code started_at} column.
+     *
+     * @return the persisted start time, or {@code null}
+     */
+    public Instant getStartedAt() { return startedAt; }
+
+    /**
+     * Sets the persisted start time. Called by
+     * {@link JobStatsStore#rowToEvent}; ignored when {@code null}.
+     *
+     * @param startedAt the persisted start time
+     */
+    public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
+
+    /**
+     * Returns the persisted finish time for this event, or {@code null} when
+     * the row had no {@code completed_at} (e.g. a {@code STARTED} status that
+     * never completed). Set by {@link JobStatsStore#rowToEvent}.
+     *
+     * @return the persisted finish time, or {@code null}
+     */
+    public Instant getFinishedAt() { return finishedAt; }
+
+    /**
+     * Sets the persisted finish time. Called by
+     * {@link JobStatsStore#rowToEvent}; ignored when {@code null}.
+     *
+     * @param finishedAt the persisted finish time
+     */
+    public void setFinishedAt(Instant finishedAt) { this.finishedAt = finishedAt; }
+
+    /**
+     * Overwrites both {@link #timestamp} and {@link #eventTime} on the event.
+     * Called from {@link JobStatsStore#rowToEvent} so a row reconstructed from
+     * the {@code job_timing} table reports the persisted event time instead of
+     * the read-time instant. {@code null} is silently ignored so a partially
+     * populated row does not erase an existing stamp.
+     *
+     * @param time the authoritative event time from the persisted row
+     */
+    public void setTimestamp(Instant time) {
+        if (time == null) return;
+        this.timestamp = time;
+        this.eventTime = time;
+    }
 
     /**
      * Returns the git branch targeted by this job.

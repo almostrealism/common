@@ -97,10 +97,10 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 
 `GET /api/workstreams` accepts these optional query parameters:
 
-- **Filters:** `workspaceId`, `repoUrl` (matched on repository identity — SSH and HTTPS spellings of one repository are equivalent), `dispatchCapable` (`true`/`false`), and `archived` (`true`/`false`, supersedes `includeArchived`).
-- **Enrichments:** `includeStatus` (adds `lastJobId`, `lastJobStatus`, `lastJobAt`), `includePullRequest` (adds `pullRequest`).
+- **Filters:** `workspaceId`, `repoUrl` (matched on repository identity — SSH and HTTPS spellings of one repository are equivalent), `dispatchCapable` (`true`/`false`), `archived` (`true`/`false`, supersedes `includeArchived`), and `lifecycle` (exact-match on the classification added by `includeLifecycle`, applied after enrichment so a single call can ask "show me the merged workstreams").
+- **Enrichments:** `includeStatus` (adds `lastJobId`, `lastJobStatus`, `lastJobAt`, `lastJobStartedAt`, `lastJobFinishedAt`), `includePullRequest` (adds `pullRequest`, read from the most recent job that recorded one), `includePullRequestState` (adds `pullRequestState` and `prCount` from a GitHub lookup keyed by `defaultBranch`, cached for 60s per repository), `includeLifecycle` (adds `lifecycle` and `lifecycleReason`; honours `idleDays`, default 14).
 
-Both enrichments default to off. An empty query value counts as absent. The full Javadoc table is in `FlowTreeApiEndpoint.java`.
+All enrichments default to off. An empty query value counts as absent. The full Javadoc table is in `FlowTreeApiEndpoint.java` and `WorkstreamListing.java`.
 
 When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-manager` HTTP MCP server reads this (forwarded to it by the controller) and the `send_message` tool POSTs messages to `{url}/messages`.
 
@@ -125,6 +125,7 @@ Registers a new workstream dynamically. When a `channelName` is provided and a S
 | `dormantForCompletionListeners` | `boolean` | No | Drop completion-listener wake-ups to this workstream while preserving manual submissions; defaults to `false` |
 | `maxWallClockHours` | `integer` | No | Workstream-level ceiling on a job's total wall-clock time, in hours. **Omit** the field to let jobs inherit `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; the controller parses this value as an integer, so sending JSON `null` is **not** the way to inherit — it is read as `0` and disables the ceiling. `0` disables the ceiling for jobs on this workstream |
 | `channelName` | `string` | No | Desired Slack channel name (a private channel is created if provided) |
+| `kind` | `string` | No | Classification used for archival triage: one of `feature`, `orchestrator`, `standing`. An explicit value wins; otherwise it is inferred from the branch name (`orchestrator` when `defaultBranch` equals `baseBranch`, `standing` when `defaultBranch` starts with `orchestration/`, `feature` otherwise). An unrecognised value is rejected with a 400 |
 
 **Response (200):**
 
@@ -159,6 +160,7 @@ Updates fields on an existing workstream. All fields are optional; only provided
 | `completionListeners` | `string[]` | Replace the workstream IDs notified on completion |
 | `dormantForCompletionListeners` | `boolean` | Pause or resume automated completion-listener wake-ups to this workstream; omitted values leave the current state unchanged |
 | `maxWallClockHours` | `integer` | Change the workstream's wall-clock ceiling. An integer replaces the ceiling (in hours, with `0` disabling it); a **negative** value (e.g. `-1`) clears the override so jobs inherit the default. The controller parses this value as an integer, so JSON `null` is read as `0` and is not the way to clear |
+| `kind` | `string` | Change the classification used for archival triage: one of `feature`, `orchestrator`, `standing`. Presence-signalled — omitting the field leaves the current classification untouched; an unrecognised value is rejected with a 400 |
 
 ### JobStatsStore
 
