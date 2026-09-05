@@ -931,12 +931,12 @@ def github_workflow_run_status(
     can lag.
 
     The failed-step names identify the job and step, not the individual
-    failing tests: step logs and per-test output are not returned here
-    (job log endpoints require broader permissions than this token has).
-    To identify the failing tests, reproduce the job locally with its
-    exact configuration — for a test-matrix job, mirror the AR_TEST_GROUP,
-    AR_TEST_GROUPS, and hardware flags from the workflow definition —
-    or consult the uploaded surefire artifacts via the run's html_url.
+    failing tests: step logs and per-test output are not returned here.
+    Pass a failing job's id to ``github_job_logs`` for those — it is the
+    only way to see a stack trace from a failure that does not reproduce
+    outside CI. Reproducing the job locally remains the alternative, and
+    for a test-matrix job means mirroring the AR_TEST_GROUP, AR_TEST_GROUPS
+    and hardware flags from the workflow definition.
 
     Args:
         run_id: The numeric workflow run id.
@@ -967,3 +967,58 @@ def github_workflow_run_status(
            workstream_id=workstream_id)
 
     return github_api.get_workflow_run_status(owner, repo, run_id)
+
+
+@mcp.tool()
+def github_job_logs(
+    job_id: int = 0,
+    tail_lines: int = 200,
+    grep: str = "",
+    workstream_id: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Read the log of a single workflow job.
+
+    ``github_workflow_run_status`` reports which job and which step failed, and
+    a test job's own summary names the tests that failed — but neither carries
+    the stack trace, the assertion, or the output leading up to it. This does,
+    which is what makes a CI-only failure diagnosable without reproducing it.
+
+    Logs run to megabytes, so this returns the END of one by default: a failure
+    is reported at the end, and the beginning is setup. Use ``grep`` to narrow
+    to the lines that matter first — the filter is applied before the tail, so
+    ``grep`` with a large ``tail_lines`` finds every match rather than only the
+    matches near the end.
+
+    Args:
+        job_id: Numeric job id, from ``github_workflow_run_status``.
+        tail_lines: Lines to return from the end (default 200); 0 returns all,
+            which for a large log may exceed what the caller can accept.
+        grep: Regular expression; only matching lines are considered.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``; bypasses workstream resolution and is checked
+            against the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True, ``lines``, ``returned``, ``matched_lines``,
+        ``total_lines`` and ``truncated``; or ok=False with error details.
+    """
+    server._require_scope("github")
+    if org and repo:
+        server._require_org_in_scope(org)
+    if not job_id:
+        return {"ok": False, "error": "job_id is required"}
+    owner, repo, _, err = server._resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    server._audit("github_job_logs", job_id=job_id,
+           workstream_id=workstream_id)
+
+    return github_api.get_job_logs(owner, repo, job_id,
+                                   tail_lines=tail_lines, grep=grep)

@@ -163,6 +163,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
+            conn.setInstanceFollowRedirects(false);
 
             if (("POST".equals(githubMethod) || "PUT".equals(githubMethod))
                     && payload != null && !payload.isEmpty()) {
@@ -176,6 +177,18 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             int status = conn.getResponseCode();
             String linkHeader = conn.getHeaderField("Link");
 
+            if (isRedirect(status)) {
+                String location = conn.getHeaderField("Location");
+                if (location == null || location.isEmpty()) {
+                    return error.respond("GitHub proxy error: HTTP " + status
+                            + " without a Location header");
+                }
+                conn = follow(location, token);
+                status = conn.getResponseCode();
+            }
+
+            String contentType = conn.getContentType();
+
             InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
             String responseBody = "";
             if (is != null) {
@@ -183,14 +196,13 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                 is.close();
             }
 
-            // Wrap response: {"status":N,"link":"...","body":<raw-github-json>}
+            // Wrap response: {"status":N,"link":"...","body":<github-json-or-string>}
             StringBuilder json = new StringBuilder();
             json.append("{\"status\":").append(status);
             json.append(",\"link\":\"")
                 .append(JsonFieldExtractor.escapeJson(linkHeader != null ? linkHeader : ""))
                 .append("\"");
-            json.append(",\"body\":")
-                .append(responseBody.isEmpty() ? "null" : responseBody);
+            json.append(",\"body\":").append(encodeBody(responseBody, contentType));
             json.append("}");
 
             return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
@@ -199,6 +211,75 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub proxy error: " + e.getMessage());
             return error.respond("GitHub proxy error: " + e.getMessage());
         }
+    }
+
+    /**
+     * Returns whether a status code asks the client to make the request again elsewhere.
+     *
+     * @param status the HTTP status returned by GitHub
+     * @return true if the status carries a {@code Location} to follow
+     */
+    private static boolean isRedirect(int status) {
+        return status == HttpURLConnection.HTTP_MOVED_PERM
+                || status == HttpURLConnection.HTTP_MOVED_TEMP
+                || status == HttpURLConnection.HTTP_SEE_OTHER
+                || status == 307
+                || status == 308;
+    }
+
+    /**
+     * Opens a connection to a redirect target, carrying the API credential only when
+     * the target is the API itself.
+     *
+     * <p>Redirects are followed here rather than by {@link HttpURLConnection} so that
+     * this distinction can be made. The endpoints that serve a file — Actions job logs,
+     * artifact and release downloads — redirect to a storage host with a signature
+     * already in the URL, and replaying an {@code Authorization} header to a host
+     * outside the API is both unnecessary and a disclosure of the token. Redirects that
+     * stay on the API, such as the permanent redirect a renamed repository answers with,
+     * still need it.</p>
+     *
+     * <p>The read timeout is longer than the API's because what arrives through a
+     * redirect is a file rather than a document — a job log runs to megabytes.</p>
+     *
+     * @param location the URL from the {@code Location} header
+     * @param token    the GitHub token for the organisation
+     * @return an open connection to the target, its response not yet read
+     * @throws IOException if the target cannot be reached
+     */
+    private static HttpURLConnection follow(String location, String token) throws IOException {
+        URL target = URI.create(location).toURL();
+        HttpURLConnection conn = (HttpURLConnection) target.openConnection();
+
+        conn.setRequestMethod("GET");
+        if ("api.github.com".equalsIgnoreCase(target.getHost())) {
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+        }
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(60000);
+        conn.setInstanceFollowRedirects(false);
+
+        return conn;
+    }
+
+    /**
+     * Renders a GitHub response body as the {@code body} member of the proxy envelope.
+     *
+     * <p>A JSON body is spliced in as it stands, so callers receive the structure GitHub
+     * sent. Anything else is a document rather than a structure — job logs and raw file
+     * contents are the cases that occur — and becomes a JSON string, since splicing text
+     * in unquoted would produce an envelope that does not parse.</p>
+     *
+     * @param body        the response body, possibly empty
+     * @param contentType the response {@code Content-Type}, or null if absent
+     * @return the body encoded as a JSON value
+     */
+    private static String encodeBody(String body, String contentType) {
+        if (body.isEmpty()) return "null";
+        if (contentType != null && contentType.contains("json")) return body;
+
+        return "\"" + JsonFieldExtractor.escapeJson(body) + "\"";
     }
 
     /**

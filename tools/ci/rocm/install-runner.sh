@@ -16,8 +16,8 @@ set -euo pipefail
 #   --runners N   Run N runners (default: RUNNER_COUNT from .env, else 1).
 #                 Scaling down stops the instances above N.
 #   --allow-overcommit
-#                 Start even when the combined memory allowance exceeds what the
-#                 host can back. Only with a specific reason.
+#                 Start even when the combined memory or CPU allowance exceeds
+#                 what the host can back. Only with a specific reason.
 #   --no-build    Install/refresh the unit only; do not rebuild the image
 #   --no-start    Install everything but leave the services stopped
 #   -h, --help    Show this help
@@ -53,6 +53,11 @@ ALLOW_OVERCOMMIT=0
 # the kernel needs; overcommitting has already taken this machine down hard
 # enough to need physical intervention.
 MEM_BUDGET_PERCENT=85
+
+# Refuse to start a fleet whose combined CPU allowance exceeds this share of the
+# host's cores. Held below 100 so the runner agents, podman, and the host itself
+# are not competing with the test JVMs for the last core.
+CPU_BUDGET_PERCENT=90
 
 usage() { sed -n '4,28p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -251,6 +256,63 @@ if [ "${PER_KIB}" -gt 0 ] && [ "${HOST_KIB}" -gt 0 ]; then
         echo "" >&2
     else
         echo "Memory: ${RUNNERS} x ${PER_INSTANCE_MEM} = ${TOTAL_G}G of ${HOST_G}G host RAM (budget ${BUDGET_G}G)"
+    fi
+fi
+
+# ---------- CPU headroom ----------
+# CPUQuota is a per-cgroup ceiling in the same way MemoryMax is, and the runner
+# count multiplies it just as readily. Oversubscribing it does not take the host
+# down the way memory does; it does something quieter that is worse for CI.
+# Each test JVM sizes its own thread pools from the cores it believes it has
+# (KernelPreferences derives AR_HARDWARE_CPU_PARALLELISM from
+# availableProcessors, and the common ForkJoinPool does the same), so runners
+# each promised most of the machine do not share those cores — they collectively
+# schedule several times more compute threads than exist. Wall-clock stretches by
+# roughly the oversubscription factor, and tests whose timeout was set with a
+# comfortable margin begin failing on the clock rather than on their behaviour,
+# which reads as flakiness rather than as a misconfigured host.
+
+# Converts a systemd CPUQuota value (1200%, or a bare 1200) to an integer
+# percentage. Echoes 0 for anything unparseable, which disables the check
+# rather than guessing at a limit.
+to_percent() {
+    local value
+    value=$(printf '%s' "$1" | tr -d '%[:space:]')
+    case "${value}" in
+        ''|*[!0-9]*) echo 0 ;;
+        *)           echo "${value}" ;;
+    esac
+}
+
+PER_INSTANCE_CPU="${CPU_QUOTA}"
+if [ -z "${PER_INSTANCE_CPU}" ]; then
+    PER_INSTANCE_CPU=$(sed -n 's/^CPUQuota=//p' "${SCRIPT_DIR}/${UNIT_FILE}" | tail -1)
+fi
+
+PER_PCT=$(to_percent "${PER_INSTANCE_CPU}")
+HOST_PCT=$(( $(nproc 2>/dev/null || echo 0) * 100 ))
+
+if [ "${PER_PCT}" -gt 0 ] && [ "${HOST_PCT}" -gt 0 ]; then
+    TOTAL_PCT=$((PER_PCT * RUNNERS))
+    CPU_BUDGET_PCT=$((HOST_PCT * CPU_BUDGET_PERCENT / 100))
+
+    if [ "${TOTAL_PCT}" -gt "${CPU_BUDGET_PCT}" ]; then
+        echo "ERROR: ${RUNNERS} runners at ${PER_INSTANCE_CPU} each is ${TOTAL_PCT}% of CPU" >&2
+        echo "  allowance, against ${HOST_PCT}% on this host (budget ${CPU_BUDGET_PCT}% at" >&2
+        echo "  ${CPU_BUDGET_PERCENT}%). Refusing to start." >&2
+        echo "" >&2
+        echo "  Lower RUNNER_CPU_QUOTA in .env, or run fewer runners. Each test JVM" >&2
+        echo "  sizes its thread pools from the cores it is given, so promising the" >&2
+        echo "  same cores to several runners oversubscribes them rather than" >&2
+        echo "  sharing them, and tests fail on their timeouts rather than on" >&2
+        echo "  anything they were written to detect." >&2
+        echo "" >&2
+        echo "  --allow-overcommit proceeds anyway, if you have a reason." >&2
+        [ "${ALLOW_OVERCOMMIT}" = 1 ] || exit 2
+        echo "  --allow-overcommit given; continuing." >&2
+        echo "" >&2
+    else
+        echo "CPU: ${RUNNERS} x ${PER_INSTANCE_CPU} = ${TOTAL_PCT}% of ${HOST_PCT}% host CPU (budget ${CPU_BUDGET_PCT}%)"
     fi
 fi
 
