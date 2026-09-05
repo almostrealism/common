@@ -66,6 +66,9 @@ public class JobCompletionEvent {
         DEGRADED
     }
 
+    /** Marks an elision in {@link #shortDescription(int)}. */
+    private static final String ellipsis = "...";
+
     /** Unique identifier for the job that produced this event. */
     private final String jobId;
     /** Completion status of the job. */
@@ -260,14 +263,20 @@ public class JobCompletionEvent {
      * row — shows the description under a length budget of its own, so the
      * shortening belongs to the event rather than to any one reporter.</p>
      *
+     * <p>A budget too small to hold the ellipsis yields a plain truncation
+     * instead, and a budget of zero or less yields an empty string. Callers
+     * pass a length their own channel imposes, so an awkward budget is a
+     * reason to shorten differently rather than to throw.</p>
+     *
      * @param maxLength maximum number of characters to retain, including the
      *                  ellipsis
      * @return the (possibly shortened) description, never {@code null}
      */
     public String shortDescription(int maxLength) {
-        if (description == null) return "";
+        if (description == null || maxLength <= 0) return "";
         if (description.length() <= maxLength) return description;
-        return description.substring(0, maxLength - 3) + "...";
+        if (maxLength <= ellipsis.length()) return description.substring(0, maxLength);
+        return description.substring(0, maxLength - ellipsis.length()) + ellipsis;
     }
 
     /**

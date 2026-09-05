@@ -85,9 +85,11 @@ public class AlertRecipientEntry {
     /**
      * Builds the recipient directory described by the given entries.
      *
-     * <p>Entries that name no reachable destination are skipped, so a
+     * <p>Entries that name no reachable destination are skipped, as is a
+     * null entry — a YAML list with a blank item parses to one. A
      * half-written configuration yields a directory of the recipients that
-     * do work rather than no directory at all.</p>
+     * do work rather than no directory at all, and never a failure to
+     * start.</p>
      *
      * @param entries the configured entries, or {@code null}
      * @return the directory, never {@code null}
@@ -97,6 +99,7 @@ public class AlertRecipientEntry {
         if (entries == null) return recipients;
 
         for (AlertRecipientEntry entry : entries) {
+            if (entry == null) continue;
             recipients.add(entry.getName(), entry.deliveryProvider());
         }
 

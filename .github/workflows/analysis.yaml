@@ -760,7 +760,7 @@ jobs:
           fi
 
   # ─── Early Workstream Registration ─────────────────────────────────
-  # Registers a workstream for this branch as soon as the four validation
+  # Registers a workstream for this branch as soon as the early validation
   # jobs pass, rather than waiting for auto-resolve at the end of the run.
   #
   # auto-resolve already creates a workstream on demand
@@ -775,9 +775,14 @@ jobs:
   # normal path. If they all pass, the tests are about to run for a long
   # time and the workstream exists from the start.
   #
-  # Gating on the four validations also handles the docs-only case with no
-  # extra condition: they all declare `needs: build`, and `build` is gated
-  # on code_changed, so a docs-only PR skips them and therefore skips this.
+  # checkstyle is one of the gates for that reason and no other: it is not a
+  # prerequisite of the test jobs, but it fails fast and hard, so a branch
+  # that trips it reaches auto-resolve without a long wait — exactly the
+  # case this job exists to avoid duplicating.
+  #
+  # Gating on those jobs also handles the docs-only case with no extra
+  # condition: they all declare `needs: build`, and `build` is gated on
+  # code_changed, so a docs-only PR skips them and therefore skips this.
   # The code_changed check below is what expresses "some test job will
   # actually run" — test-flowtree gates on code_changed alone, so whenever
   # it is true at least one test job follows.
@@ -792,7 +797,7 @@ jobs:
   # signal, so this job is excluded from all-checks and every failure path
   # below reports a notice or warning and exits 0.
   register-workstream:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, checkstyle]
     if: >-
       github.ref != 'refs/heads/master' &&
       needs.build.result == 'success' &&
@@ -800,6 +805,7 @@ jobs:
       needs.test-timeout-check.result == 'success' &&
       needs.duplicate-code-check.result == 'success' &&
       needs.test-integrity-check.result == 'success' &&
+      needs.checkstyle.result == 'success' &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     permissions:

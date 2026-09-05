@@ -73,6 +73,7 @@ from config import (
     MAX_PROMPT_LEN,
     MAX_CONTENT_LEN,
     MAX_SHORT_STRING_LEN,
+    MAX_ALERT_TEXT_LEN,
     WORKSPACE_CACHE_TTL,
     _SENSITIVE_PATH_PREFIXES,
     audit_log,

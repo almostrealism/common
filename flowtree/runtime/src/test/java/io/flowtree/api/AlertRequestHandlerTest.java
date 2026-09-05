@@ -221,6 +221,20 @@ public class AlertRequestHandlerTest extends TestSuiteBase {
 		assertEquals(0, AlertRecipientEntry.directory(null).size());
 	}
 
+	/**
+	 * A null element is skipped rather than thrown on. A YAML list with a
+	 * blank item parses to one, and a typo in the config file should not
+	 * stop the controller from starting.
+	 */
+	@Test(timeout = 10000)
+	public void testNullEntryIsSkipped() {
+		AlertRecipientEntry entry = new AlertRecipientEntry();
+		entry.setName("michael");
+
+		assertEquals(0, AlertRecipientEntry.directory(
+				Arrays.asList(null, entry, null)).size());
+	}
+
 	/** Every configured entry is skipped when no SignalWire account is loaded. */
 	@Test(timeout = 10000)
 	public void testEntriesAreSkippedWithoutAnAccount() {

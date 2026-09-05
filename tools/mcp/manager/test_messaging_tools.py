@@ -291,6 +291,32 @@ class TestSendAlert(unittest.TestCase):
         self.assertFalse(result["ok"])
         mock_post.assert_not_called()
 
+    @patch.object(server, "_controller_post")
+    def test_overlong_text_is_rejected_locally(self, mock_post):
+        """Text past the controller's limit fails without a round trip."""
+        result = server.send_alert(text="x" * (server.MAX_ALERT_TEXT_LEN + 1),
+                                   recipients="michael")
+
+        self.assertFalse(result["ok"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_text_at_the_limit_is_accepted(self, mock_post):
+        """The boundary itself is allowed, matching the controller."""
+        mock_post.return_value = {"ok": True}
+        server.send_alert(text="x" * server.MAX_ALERT_TEXT_LEN, recipients="michael")
+
+        mock_post.assert_called_once()
+
+    def test_alert_limit_is_below_the_content_limit(self):
+        """send_alert must not validate against the general content cap.
+
+        The controller rejects an alert body past MAX_ALERT_TEXT_LEN, so
+        validating against MAX_CONTENT_LEN would forward payloads that were
+        always going to be refused.
+        """
+        self.assertLess(server.MAX_ALERT_TEXT_LEN, server.MAX_CONTENT_LEN)
+
     def test_requires_write_scope(self):
         """A read-only token cannot send an alert."""
         _grant_scopes(["read"])

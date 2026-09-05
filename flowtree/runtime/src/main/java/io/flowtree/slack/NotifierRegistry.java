@@ -429,18 +429,35 @@ public final class NotifierRegistry {
          * listener. A listener that throws is reported and skipped so the
          * remaining listeners still receive the event.
          *
+         * <p>The owner is isolated on the same terms as the rest. A chat
+         * outage must not decide whether an alert is published: that
+         * independence is the point of delivering job events to more than one
+         * consumer, and it would be lost if the first consumer could abort
+         * the fan-out.</p>
+         *
          * @param notification the notification to deliver
          */
         private void deliver(Consumer<JobCompletionListener> notification) {
-            if (owner != null) notification.accept(owner);
+            if (owner != null) accept(notification, owner);
 
             for (JobCompletionListener listener : additional) {
-                try {
-                    notification.accept(listener);
-                } catch (RuntimeException ex) {
-                    Console.root().warn(listener.getClass().getSimpleName()
-                            + " failed to handle a job event: " + ex.getMessage(), ex);
-                }
+                accept(notification, listener);
+            }
+        }
+
+        /**
+         * Delivers one notification to one listener, containing any failure.
+         *
+         * @param notification the notification to deliver
+         * @param listener     the listener to deliver it to
+         */
+        private void accept(Consumer<JobCompletionListener> notification,
+                            JobCompletionListener listener) {
+            try {
+                notification.accept(listener);
+            } catch (RuntimeException ex) {
+                Console.root().warn(listener.getClass().getSimpleName()
+                        + " failed to handle a job event: " + ex.getMessage(), ex);
             }
         }
     }

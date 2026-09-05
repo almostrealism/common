@@ -284,7 +284,8 @@ def send_alert(
 
     Args:
         text: The alert body.  Free-form, self-contained, and short;
-            at most 1000 characters.
+            at most ``MAX_ALERT_TEXT_LEN`` (1000) characters, the same
+            limit the controller enforces.
         recipients: Comma-separated recipient handles (e.g.
             ``"michael"`` or ``"michael,mmurray"``).  At least one is
             required.
@@ -308,7 +309,10 @@ def send_alert(
     if not text or not text.strip():
         return {"ok": False, "error": "text is required"}
 
-    err = server._check_length(text, "text", server.MAX_CONTENT_LEN)
+    # The controller rejects anything past this length, so check it here:
+    # a caller learns immediately, rather than after a round trip that was
+    # never going to succeed.
+    err = server._check_length(text, "text", server.MAX_ALERT_TEXT_LEN)
     if err:
         return err
 
