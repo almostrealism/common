@@ -116,6 +116,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "github_pr_check_status",
             "github_list_workflow_runs",
             "github_workflow_run_status",
+            "github_job_logs",
             "project_read_plan",
             "tracker_get_task",
             "tracker_list_tasks",

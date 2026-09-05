@@ -518,12 +518,18 @@ def get_job_logs(owner: str, repo: str, job_id: int,
         repo: Repository name.
         job_id: The numeric job id, as reported by ``get_workflow_run_status``.
         tail_lines: Number of lines to return from the end; 0 returns all.
+            Must not be negative — a negative slice would drop lines from the
+            front, which is the opposite of what a tail is for.
         grep: Optional regular expression; only matching lines are considered.
 
     Returns:
         dict with ok=True, ``lines``, ``returned``, ``total_lines`` and
         ``truncated``; or an ok=False error dict.
     """
+    if tail_lines < 0:
+        return {"ok": False,
+                "error": f"tail_lines must be 0 or greater (got {tail_lines})"}
+
     result = _github_request(
         "GET", f"/repos/{owner}/{repo}/actions/jobs/{job_id}/logs", timeout=60)
 

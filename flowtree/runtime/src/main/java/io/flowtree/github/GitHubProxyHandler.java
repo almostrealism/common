@@ -177,7 +177,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             int status = conn.getResponseCode();
             String linkHeader = conn.getHeaderField("Link");
 
-            if (isRedirect(status)) {
+            if (isRedirect(status) && "GET".equals(githubMethod)) {
                 String location = conn.getHeaderField("Location");
                 if (location == null || location.isEmpty()) {
                     return error.respond("GitHub proxy error: HTTP " + status
@@ -242,6 +242,11 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * <p>The read timeout is longer than the API's because what arrives through a
      * redirect is a file rather than a document — a job log runs to megabytes.</p>
      *
+     * <p>Only a GET is followed, which is why this replays the request as one. A
+     * redirect answering a POST or PUT is returned to the caller untouched instead:
+     * 307 and 308 preserve the method by definition, so re-issuing one as a GET would
+     * discard the payload and quietly turn a write into a read.</p>
+     *
      * @param location the URL from the {@code Location} header
      * @param token    the GitHub token for the organisation
      * @return an open connection to the target, its response not yet read
@@ -253,7 +258,10 @@ public class GitHubProxyHandler implements ConsoleFeatures {
 
         conn.setRequestMethod("GET");
         if ("api.github.com".equalsIgnoreCase(target.getHost())) {
+            // Same negotiation as the request that was redirected, so a redirect that
+            // stays on the API yields the same envelope a direct response would have.
             conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
             conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
         }
         conn.setConnectTimeout(15000);

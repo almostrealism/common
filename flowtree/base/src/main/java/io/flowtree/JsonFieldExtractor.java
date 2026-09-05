@@ -45,6 +45,13 @@ public final class JsonFieldExtractor {
 	 */
 	public static final ObjectMapper MAPPER = new ObjectMapper();
 
+	/**
+	 * Lowercase hex digits, for the {@code \\u00xx} escapes {@link #escapeJson} emits.
+	 * Held as a table because that method runs over whole CI logs, where formatting
+	 * each escape separately is measurable.
+	 */
+	private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
+
 	/** Private constructor — all methods are static; this class is not instantiated. */
 	private JsonFieldExtractor() { }
 
@@ -634,7 +641,11 @@ public final class JsonFieldExtractor {
 				case '\f': out.append("\\f"); break;
 				default:
 					if (c < 0x20) {
-						out.append(String.format("\\u%04x", (int) c));
+						// Every remaining control character is below 0x20, so the
+						// leading two hex digits are always zero.
+						out.append("\\u00")
+							.append(HEX_DIGITS[(c >> 4) & 0xf])
+							.append(HEX_DIGITS[c & 0xf]);
 					} else {
 						out.append(c);
 					}
