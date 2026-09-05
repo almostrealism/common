@@ -63,7 +63,7 @@ public class BufferDefaults {
 	 */
 	public static int padReadPosition(int readPosition, int bufferSize) {
 		int rp = readPosition + readGroupSensitivityPadding;
-		if (rp > bufferSize) rp = rp - bufferSize;
+		if (rp >= bufferSize) rp = rp - bufferSize;
 		return rp;
 	}
 
