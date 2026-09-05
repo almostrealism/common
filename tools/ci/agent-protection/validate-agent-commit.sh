@@ -45,19 +45,26 @@
 #
 # PIPELINE DATA FILE ALLOWANCE (coverage-qa rounds):
 #   RULE 3 locks every path under tools/ci/, but the coverage-qa pipeline
-#   needs its agent rounds to append one row to
-#   tools/ci/coverage-history.tsv — a cooldown/give-up ledger, not
-#   pipeline logic — on every round, without a signed bypass
-#   or a ci/... branch name. An exact-path allowlist (PIPELINE_DATA_FILES
-#   below) exempts that one file from CI_FILES classification. It is kept
-#   to a single literal path rather than a tools/ci/coverage/* prefix so
-#   the allowance cannot widen to cover a script: only a file whose format
-#   is inherently incapable of altering test or CI behavior belongs here.
-#   A pipeline-data file never counts toward RULE 2's substantive-change
-#   requirement — a coverage round already satisfies RULE 2 through the
-#   tests it adds, and letting this file count would hand every OTHER
-#   agent job dispatched under --require-production-changes a way to
-#   dodge RULE 2 by touching it as a decoy.
+#   needs two data files to travel on an ordinary qa/coverage-* branch,
+#   without a signed bypass or a ci/... branch name:
+#     - tools/ci/coverage-history.tsv, the cooldown/give-up ledger the
+#       agent appends one row to on every round.
+#     - tools/ci/coverage-exclusions.txt, which the workflow itself (not
+#       the agent) may append a give-up entry to before the agent starts,
+#       when select-target.py's auto-exclusion marker fires. That append
+#       now rides on the round's own branch — see master-agent-dispatch.yaml
+#       — instead of an unreviewed direct push to master, so it must clear
+#       this same validator when the round's PR is checked.
+#   Neither is pipeline logic, so an exact-path allowlist (PIPELINE_DATA_FILES
+#   below) exempts both from CI_FILES classification. It is kept to literal
+#   paths rather than a tools/ci/coverage/* prefix so the allowance cannot
+#   widen to cover a script: only a file whose format is inherently
+#   incapable of altering test or CI behavior belongs here. A pipeline-data
+#   file never counts toward RULE 2's substantive-change requirement — a
+#   coverage round already satisfies RULE 2 through the tests it adds, and
+#   letting either file count would hand every OTHER agent job dispatched
+#   under --require-production-changes a way to dodge RULE 2 by touching it
+#   as a decoy.
 #
 # SENSITIVE-FILE BYPASS:
 #   A commit carrying a `Sensitive-File-Bypass: <job-id>=<signature>`
@@ -110,6 +117,7 @@ CI_BRANCH_PATTERN='^ci/'
 # checked by exact string match, never by pattern.
 PIPELINE_DATA_FILES=(
     "tools/ci/coverage-history.tsv"
+    "tools/ci/coverage-exclusions.txt"
 )
 
 is_pipeline_data_file() {

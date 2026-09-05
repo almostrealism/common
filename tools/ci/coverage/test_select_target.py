@@ -56,6 +56,33 @@ class ParseJavaUnitsTests(unittest.TestCase):
     def test_missing_file_yields_no_units(self):
         self.assertEqual(st.parse_java_units("/no/such/file.xml"), [])
 
+    def test_malformed_xml_yields_no_units_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "coverage.xml")
+            _write(path, "<report><package name=\"unterminated\">")
+            self.assertEqual(st.parse_java_units(path), [])
+
+
+class PythonDirectoryRollupTests(unittest.TestCase):
+    """_python_directory must drop the filename before truncating to three
+    directory components — a naive parts[:3] on the whole path mistakes a
+    file's own name for a third directory level whenever the file sits
+    exactly two directories deep (e.g. tools/tests/foo.py)."""
+
+    def test_three_directory_levels(self):
+        self.assertEqual(
+            st._python_directory("tools/mcp/manager/server.py"), "tools/mcp/manager")
+
+    def test_deeper_nesting_still_rolls_up_to_three_components(self):
+        self.assertEqual(
+            st._python_directory("tools/mcp/manager/sub/server.py"), "tools/mcp/manager")
+
+    def test_two_directory_levels_does_not_include_the_filename(self):
+        self.assertEqual(st._python_directory("tools/tests/helper.py"), "tools/tests")
+
+    def test_one_directory_level(self):
+        self.assertEqual(st._python_directory("tools/script.py"), "tools")
+
 
 class ParsePythonUnitsTests(unittest.TestCase):
     """Cobertura <class> entries roll up to their top-level tool directory."""
@@ -77,6 +104,40 @@ class ParsePythonUnitsTests(unittest.TestCase):
 
     def test_missing_file_yields_no_units(self):
         self.assertEqual(st.parse_python_units("/no/such/file.xml"), [])
+
+    def test_malformed_xml_yields_no_units_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "python-coverage.xml")
+            _write(path, "<coverage><class filename=\"unterminated\">")
+            self.assertEqual(st.parse_python_units(path), [])
+
+    def test_production_file_two_directories_deep_rolls_up_correctly(self):
+        # A non-test_*.py file sitting directly in a two-directory-deep
+        # tool directory (e.g. tools/tests gaining a helper module) must
+        # aggregate into that directory, not become its own per-file unit.
+        xml = """<?xml version="1.0"?>
+<coverage>
+  <packages>
+    <package>
+      <classes>
+        <class filename="tools/tests/helper.py">
+          <lines>
+            <line number="1" hits="1"/>
+            <line number="2" hits="0"/>
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "python-coverage.xml")
+            _write(path, xml)
+            units = {u.name: u for u in st.parse_python_units(path)}
+            self.assertIn("tools/tests", units)
+            self.assertNotIn("tools/tests/helper.py", units)
+            self.assertEqual(units["tools/tests"].total, 2)
 
 
 class SizeFloorTests(unittest.TestCase):
@@ -206,6 +267,84 @@ class GiveUpMarkerTests(unittest.TestCase):
                 units, history, excludes=excludes, exclusions_path=exclusions_path,
                 max_attempts=2, min_progress=5.0)
             self.assertEqual(newly_excluded, [])
+
+
+class GiveUpRuntimeDerivationTests(unittest.TestCase):
+    """Give-up state must be derived from the history ledger alone, never
+    from whether an exclusion file's auto-appended entry actually landed
+    anywhere. The append can ride on an abandoned or not-yet-merged
+    qa/coverage- branch (see master-agent-dispatch.yaml's "Commit any new
+    auto-exclusions to the coverage branch" step), so a selector run that
+    only ever sees the exclusions file as it exists on master must still
+    refuse to reselect a unit the ledger says has given up."""
+
+    def test_is_eligible_false_from_ledger_alone_when_exclusions_file_lacks_entry(self):
+        now = time.time()
+        history = {"org.almostrealism.stuck": [
+            (now - 40 * 86400, 10.0, 12.0),
+            (now - 20 * 86400, 12.0, 13.0),
+        ]}
+        unit = st.Unit("org.almostrealism.stuck", "java", covered=13, missed=87)
+        # excludes=[] simulates the exclusion file never having gained the
+        # auto-appended entry (the branch carrying it was never merged).
+        self.assertFalse(st.is_eligible(
+            unit, excludes=[], min_lines=50, java_threshold=80.0,
+            python_threshold=80.0, history=history, cooldown_seconds=0,
+            max_attempts=2, min_progress=5.0, now=now))
+
+    def test_select_skips_given_up_unit_even_when_exclusions_file_lacks_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exclusions_path = os.path.join(tmp, "exclusions.txt")
+            history_path = os.path.join(tmp, "history.tsv")
+            # The fixture's normal ranking winner has given up per the
+            # ledger, but the exclusions file was never told.
+            _write(exclusions_path, "org.almostrealism.generated\norg.almostrealism.hardware.mem\n")
+            _write(history_path,
+                   _history_row("2026-01-01T00:00:00Z", "org.almostrealism.collect.computations",
+                                 "java", 10.0, 12.0)
+                   + _history_row("2026-02-01T00:00:00Z", "org.almostrealism.collect.computations",
+                                   "java", 12.0, 13.0))
+            now = st.parse_timestamp("2026-03-01T00:00:00Z")
+
+            target, _all_units = st.select(
+                _FIXTURE_JAVA_XML, _FIXTURE_PYTHON_XML, exclusions_path, history_path,
+                java_threshold=80.0, python_threshold=80.0, min_lines=5,
+                cooldown_days=30, max_attempts=2, min_progress=5.0, now=now)
+
+            self.assertIsNotNone(target)
+            self.assertNotEqual(target.name, "org.almostrealism.collect.computations")
+            self.assertEqual(target.name, "org.almostrealism.algebra.util")
+
+    def test_select_is_idempotent_when_the_auto_append_never_persists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exclusions_path = os.path.join(tmp, "exclusions.txt")
+            history_path = os.path.join(tmp, "history.tsv")
+            original_exclusions = "org.almostrealism.generated\norg.almostrealism.hardware.mem\n"
+            _write(exclusions_path, original_exclusions)
+            _write(history_path,
+                   _history_row("2026-01-01T00:00:00Z", "org.almostrealism.collect.computations",
+                                 "java", 10.0, 12.0)
+                   + _history_row("2026-02-01T00:00:00Z", "org.almostrealism.collect.computations",
+                                   "java", 12.0, 13.0))
+            now = st.parse_timestamp("2026-03-01T00:00:00Z")
+
+            first, _ = st.select(
+                _FIXTURE_JAVA_XML, _FIXTURE_PYTHON_XML, exclusions_path, history_path,
+                java_threshold=80.0, python_threshold=80.0, min_lines=5,
+                cooldown_days=30, max_attempts=2, min_progress=5.0, now=now)
+
+            # Simulate the branch carrying the auto-append being abandoned
+            # without merging: master's copy of the exclusions file never
+            # gains the entry select() just wrote to this local file.
+            _write(exclusions_path, original_exclusions)
+
+            second, _ = st.select(
+                _FIXTURE_JAVA_XML, _FIXTURE_PYTHON_XML, exclusions_path, history_path,
+                java_threshold=80.0, python_threshold=80.0, min_lines=5,
+                cooldown_days=30, max_attempts=2, min_progress=5.0, now=now)
+
+            self.assertEqual(first.name, second.name)
+            self.assertNotEqual(second.name, "org.almostrealism.collect.computations")
 
 
 class RankingTests(unittest.TestCase):

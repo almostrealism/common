@@ -604,14 +604,27 @@ jobs:
 
       # select-target.py's give-up marker may have appended a new entry to
       # coverage-exclusions.txt (a unit attempted MAX_ATTEMPTS times without
-      # MIN_PROGRESS points of gain). That is a durable exclusion-list fact,
-      # not something scoped to this round's branch, so it is committed
-      # straight to master here — mirroring how the Project Manager job
-      # commits a seeded planning document directly — rather than folding it
-      # into the coverage round's own PR, which may never be opened (a
-      # unit can give up without there being anything left to improve).
-      - name: Commit any new auto-exclusions
-        if: steps.decide.outputs.run == 'true'
+      # MIN_PROGRESS points of gain) while scanning ALL units — independent
+      # of whether this round itself selected a target. When a target IS
+      # selected (the common case) that append rides on the round's own
+      # branch instead (see "Commit any new auto-exclusions to the coverage
+      # branch" below), so it goes through the same PR and human review as
+      # everything else the round produces. This step only handles the
+      # remaining case: nothing is eligible this round, so no branch is
+      # created for the append to ride on.
+      #
+      # Persisting it here is a pure optimization, never a correctness
+      # requirement: select-target.py derives give-up state from
+      # tools/ci/coverage-history.tsv at runtime (is_given_up()), so the
+      # next round skips this unit regardless of whether this push lands.
+      # A direct push to master can fail under branch protection or race
+      # with a concurrent merge, so failure is handled explicitly rather
+      # than left to the shell's default "a failing command fails the
+      # step" behavior — this must never fail the workflow, and it runs
+      # after target selection, so it can never change what was (or was
+      # not) selected above.
+      - name: Best-effort commit of auto-exclusions when no round opens
+        if: steps.decide.outputs.run == 'true' && steps.select.outputs.target == ''
         run: |
           if ! git diff --quiet -- tools/ci/coverage-exclusions.txt; then
             git -c user.name="github-actions[bot]" \
@@ -620,8 +633,11 @@ jobs:
             git -c user.name="github-actions[bot]" \
                 -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
                 commit -m "Auto-exclude a coverage-qa target that made no sustained progress"
-            git push origin master
-            echo "::notice::Committed a new auto-exclusion entry to tools/ci/coverage-exclusions.txt"
+            if git push origin master; then
+              echo "::notice::Committed a new auto-exclusion entry to tools/ci/coverage-exclusions.txt"
+            else
+              echo "::warning::Best-effort push of the auto-exclusion entry to master failed (branch protection or a concurrent merge) and no round was opened this run to carry it instead. This is non-fatal: select-target.py re-derives give-up state from tools/ci/coverage-history.tsv at runtime, so the unit stays excluded from the next round regardless of whether this push lands."
+            fi
           fi
 
       # Retire the rounds that came before this one. Safe here because the
@@ -652,6 +668,30 @@ jobs:
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
           echo "::notice::Created branch $BRANCH_NAME"
 
+      # Puts any give-up auto-exclusion select-target.py wrote (working-tree
+      # only so far) onto this round's own branch, so it is reviewed as part
+      # of the round's PR rather than by an unreviewed direct push to
+      # master. Unlike the master push above, this is an ordinary push to a
+      # brand-new branch this same job just created and pushed — the same
+      # operation "Create coverage branch" already performs — so it is not
+      # wrapped as best-effort; a failure here is a real problem for the
+      # round (the branch push right above it already assumes success with
+      # no fallback either) and should fail the job like any other setup
+      # step failure would.
+      - name: Commit any new auto-exclusions to the coverage branch
+        if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
+        run: |
+          if ! git diff --quiet -- tools/ci/coverage-exclusions.txt; then
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                add tools/ci/coverage-exclusions.txt
+            git -c user.name="github-actions[bot]" \
+                -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                commit -m "Auto-exclude a coverage-qa target that made no sustained progress"
+            git push origin "${{ steps.branch.outputs.branch }}"
+            echo "::notice::Committed a new auto-exclusion entry on ${{ steps.branch.outputs.branch }}; it will land in this round's PR"
+          fi
+
       - name: Register workstream
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
@@ -678,12 +718,13 @@ jobs:
           ./tools/ci/prompts/build-coverage-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       # PROTECT_TEST_FILES stays "true" and no sensitive-file bypass is
-      # requested: a coverage round only ever adds new tests and appends
-      # to tools/ci/coverage-history.tsv, both of which
-      # validate-agent-commit.sh already permits without a bypass (new
-      # tests satisfy RULE 2; the ledger append is exempted from RULE 3 by
-      # its narrow tools/ci/coverage-history.tsv allowance) — see the
-      # PIPELINE DATA FILE ALLOWANCE note in validate-agent-commit.sh.
+      # requested: a coverage round only ever adds new tests, appends to
+      # tools/ci/coverage-history.tsv, and may already carry the workflow's
+      # own auto-exclusion commit to tools/ci/coverage-exclusions.txt from
+      # the step above — all of which validate-agent-commit.sh already
+      # permits without a bypass (new tests satisfy RULE 2; both data files
+      # are exempted from RULE 3 by the PIPELINE_DATA_FILES allowance) — see
+      # the PIPELINE DATA FILE ALLOWANCE note in validate-agent-commit.sh.
       - name: Submit coverage agent job
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:

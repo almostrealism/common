@@ -84,13 +84,49 @@ its open questions:
    classes was dropped as a middle tier: it would risk a class/exec mismatch
    if master had moved since the artifacts' run, for no benefit over the
    already-merged report the same run also produces.
-4. **The give-up marker's exclusion-list write is committed straight to
-   `master`,** in its own workflow step, before the coverage branch is
-   created — mirroring how the Project Manager job commits a seeded planning
-   document. The plan did not specify who performs this commit; a round that
-   gives up on a unit may never open a PR of its own (there can be nothing
-   left worth testing), so the exclusion belongs on `master` immediately
-   rather than riding along in a PR that might not exist.
+4. **The give-up marker's exclusion-list write rides the round's own PR when
+   one opens; a direct push to `master` is only a best-effort fallback for
+   the round that doesn't.** The first implementation committed the write
+   straight to `master` unconditionally, before the coverage branch was even
+   created — a real deviation, reviewed and found wanting: an unreviewed
+   direct push to `master` can fail under branch protection or race with a
+   concurrent merge, and it denied the exclusion a human review pass the
+   rest of the round gets. The revised design:
+   - When target selection succeeds (the common case), the append is
+     committed onto the round's own `qa/coverage-*` branch — right after
+     "Create coverage branch," before the agent is dispatched — so it lands
+     in the same PR as the agent's tests and gets the same human review.
+   - Only when nothing is eligible this round (no branch is created for the
+     append to ride on) does the workflow attempt a direct push to `master`,
+     and that attempt is strictly best-effort: `git push origin master`'s
+     result is checked explicitly (`if ... ; then ... else ::warning::
+     ... fi`), so a failure logs a warning and moves on rather than failing
+     the job. It cannot change what was already selected (or not selected)
+     this run, because it runs after target selection.
+   - Neither path is a correctness requirement. `select-target.py`'s
+     `is_given_up()` re-derives give-up state from
+     `tools/ci/coverage-history.tsv` (the ledger) at runtime on every future
+     run, independent of whether `tools/ci/coverage-exclusions.txt` ever
+     received the auto-appended entry. So an abandoned `qa/coverage-*`
+     branch, or a failed best-effort master push, never lets the selector
+     re-pick a unit that has genuinely given up — the exclusion-file write
+     is a human-facing convenience (a reviewer skimming the file sees the
+     reason recorded), not the mechanism that prevents thrashing. Both
+     properties are covered by `GiveUpRuntimeDerivationTests` in
+     `test_select_target.py`: give-up state computed from the ledger alone
+     with an empty exclusion list, and idempotent re-derivation across two
+     `select()` calls when the exclusion-file write is never persisted
+     between them.
+   - Because the append can now land on an ordinary `qa/coverage-*` branch
+     (not a `ci/...` branch) before the agent's own commits, it must clear
+     `validate-agent-commit.sh`'s RULE 3 the same way the ledger append
+     does. `tools/ci/coverage-exclusions.txt` was added to that script's
+     `PIPELINE_DATA_FILES` exact-path allowlist alongside
+     `tools/ci/coverage-history.tsv`, with the same two properties: exempt
+     from RULE 3's CI-file lock, and deliberately not counted toward RULE
+     2's substantive-change requirement (a coverage round already satisfies
+     RULE 2 through the tests it adds). Covered by new cases in
+     `test-validate-agent-commit.sh`.
 5. **Known accepted gap:** a round that only appends the honesty-clause
    ledger row (no test changes at all) still trips RULE 2's
    no-production-changes check, which is a warning in CI, not a hard failure,

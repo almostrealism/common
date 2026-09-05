@@ -132,11 +132,22 @@ def load_history(path):
 
 
 def parse_java_units(path):
-    """Parses a JaCoCo XML report into one Unit per ``<package>`` element."""
+    """Parses a JaCoCo XML report into one Unit per ``<package>`` element.
+
+    A report that fails to parse as XML (a truncated download, a corrupt
+    artifact) yields no units rather than crashing the selector — the same
+    "no data, no units" standing a missing file already has, so a single
+    bad report degrades selection instead of failing the whole pipeline.
+    """
     units = []
     if not path or not os.path.isfile(path):
         return units
-    root = ET.parse(path).getroot()
+    try:
+        root = ET.parse(path).getroot()
+    except ET.ParseError as error:
+        print("::warning::{} is not valid XML ({}); treating it as empty".format(
+            path, error), file=sys.stderr)
+        return units
     for package in root.iter("package"):
         name = package.get("name")
         if not name:
@@ -156,11 +167,18 @@ def _python_directory(filename):
     """Rolls a Python file path up to its top-level tool directory.
 
     Matches the ``python-tests`` CI job's discovery granularity: the first
-    three path components (e.g. ``tools/mcp/manager/foo.py`` ->
-    ``tools/mcp/manager``).
+    (up to) three directory path components, the filename itself dropped
+    before truncating (e.g. ``tools/mcp/manager/foo.py`` ->
+    ``tools/mcp/manager``, and — the case a naive ``parts[:3]`` on the
+    whole path gets wrong — ``tools/tests/foo.py`` -> ``tools/tests``, not
+    ``tools/tests/foo.py``, since a two-directories-deep file has only
+    three path components total and the filename must not be mistaken for
+    a third directory level).
     """
-    parts = filename.split("/")
-    return "/".join(parts[:3]) if len(parts) >= 3 else "/".join(parts)
+    directory_parts = filename.split("/")[:-1]
+    if not directory_parts:
+        return filename
+    return "/".join(directory_parts[:3])
 
 
 def parse_python_units(path):
@@ -172,10 +190,18 @@ def parse_python_units(path):
     coverage.py to omit them already (see the plan's Python measurement
     caveat) — a stray inclusion here must not silently inflate a
     directory's reported coverage.
+
+    A report that fails to parse as XML yields no units rather than
+    crashing the selector, matching ``parse_java_units``.
     """
     if not path or not os.path.isfile(path):
         return []
-    root = ET.parse(path).getroot()
+    try:
+        root = ET.parse(path).getroot()
+    except ET.ParseError as error:
+        print("::warning::{} is not valid XML ({}); treating it as empty".format(
+            path, error), file=sys.stderr)
+        return []
     agg = defaultdict(lambda: [0, 0])
     for cls in root.iter("class"):
         filename = cls.get("filename") or ""
