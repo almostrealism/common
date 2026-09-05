@@ -24,6 +24,25 @@
 #   than remove them. Test-surface membership is decided by
 #   test-method-lines.awk, not by the file's path.
 #
+#   PYTHON is held to a weaker form of the same rule. Java gives the
+#   extractor an annotation to key on and braces to find the end of a
+#   method; Python gives it neither, and a body delimited by indentation
+#   cannot be bounded as reliably. Rather than claim a byte-for-byte lock
+#   the parser cannot honestly enforce, two properties are checked, both
+#   of which survive imprecision:
+#
+#     - every `def test_*` present on the base branch is still present,
+#       which is what deletion and renaming-away have in common;
+#     - the file's assertion count does not fall, which is what gutting a
+#       body has in common with removing one.
+#
+#   Editing the inside of a Python test is therefore allowed, and the two
+#   ways of making a test stop testing are not. This is deliberately more
+#   permissive than the Java lock. It is not nothing, which is what Python
+#   test files were subject to before: they matched no test pattern here,
+#   so they were counted as PRODUCTION code — an agent could weaken them
+#   freely, and a commit that did only that satisfied RULE 2 as well.
+#
 # RULE 2 (Substantive Changes Required - DECEPTION.md Countermeasure #8):
 #   When the agent was dispatched to fix test failures, its commit MUST
 #   add something that did not exist before: a production change, a
@@ -148,6 +167,65 @@ test_methods() {
         | LC_ALL=C sort -u
 }
 
+# ── Reports the test functions of one revision of a Python file ─────
+#
+# Names only. What a Python test function contains cannot be delimited
+# with the confidence the Java extractor has, so the record is the name
+# alone and the body is left to the assertion count below.
+python_test_names() {
+    local rev="$1" file="$2"
+
+    git show "${rev}:${file}" 2>/dev/null \
+        | sed -nE 's/^[[:space:]]*(async[[:space:]]+)?def[[:space:]]+(test_[A-Za-z0-9_]*).*/\2/p' \
+        | LC_ALL=C sort -u
+}
+
+# ── Counts the assertions in one revision of a Python file ──────────
+#
+# Both bare `assert` and the unittest and pytest forms, since this
+# repository's Python tests use all three.
+python_assertions() {
+    local rev="$1" file="$2"
+
+    git show "${rev}:${file}" 2>/dev/null \
+        | grep -cE '(^|[^A-Za-z0-9_.])(assert|self\.assert[A-Za-z_]+|self\.fail|pytest\.raises|assertRaises)\b' \
+        || true
+}
+
+# ── Reports how a base-branch Python test file was changed ──────────
+#
+# The same three verdicts the Java classifier returns, reached from the
+# two properties described in RULE 1 rather than from method records.
+classify_python_test_file() {
+    local file="$1" base head base_assertions head_assertions
+
+    base=$(python_test_names "$BASE_BRANCH" "$file")
+    head=$(python_test_names HEAD "$file")
+
+    if [ -n "$base" ] && LC_ALL=C comm -23 \
+            <(printf '%s\n' "$base") \
+            <(printf '%s\n' "$head") | grep -q '[^[:space:]]'; then
+        echo "modified"
+        return
+    fi
+
+    base_assertions=$(python_assertions "$BASE_BRANCH" "$file")
+    head_assertions=$(python_assertions HEAD "$file")
+
+    if [ "$head_assertions" -lt "$base_assertions" ]; then
+        echo "modified"
+        return
+    fi
+
+    if [ -n "$head" ] && LC_ALL=C comm -13 \
+            <(printf '%s\n' "$base") \
+            <(printf '%s\n' "$head") | grep -q '[^[:space:]]'; then
+        echo "added"
+    else
+        echo "support"
+    fi
+}
+
 # ── Reports how a base-branch test file was changed ─────────────────
 #
 # Prints one of:
@@ -221,6 +299,17 @@ while IFS= read -r FILE; do
             # Only changes reaching an existing test method are locked;
             # added test methods, fixtures and helpers are ordinary code
             case "$(classify_test_file "$FILE")" in
+                modified) BASE_TEST_FILES="${BASE_TEST_FILES}${FILE}\n" ;;
+                added)    BASE_ADDED_FILES="${BASE_ADDED_FILES}${FILE}\n" ;;
+                *)        BASE_SUPPORT_FILES="${BASE_SUPPORT_FILES}${FILE}\n" ;;
+            esac
+        else
+            BRANCH_TEST_FILES="${BRANCH_TEST_FILES}${FILE}\n"
+        fi
+    # Python tests: test_*.py, *_test.py, or any module under a tests/ directory
+    elif echo "$FILE" | grep -qE '(^|/)(test_[^/]*|[^/]*_test)\.py$|/tests/[^/]*\.py$'; then
+        if git cat-file -e "${BASE_BRANCH}:${FILE}" 2>/dev/null; then
+            case "$(classify_python_test_file "$FILE")" in
                 modified) BASE_TEST_FILES="${BASE_TEST_FILES}${FILE}\n" ;;
                 added)    BASE_ADDED_FILES="${BASE_ADDED_FILES}${FILE}\n" ;;
                 *)        BASE_SUPPORT_FILES="${BASE_SUPPORT_FILES}${FILE}\n" ;;

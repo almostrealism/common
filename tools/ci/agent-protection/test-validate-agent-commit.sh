@@ -54,6 +54,25 @@ public class ExampleTest extends TestSuiteBase {
 JAVA
 }
 
+# The Python test module every case starts from on master.
+base_python_test() {
+    cat <<'PY'
+import unittest
+
+
+class ExampleTest(unittest.TestCase):
+    def fixture(self):
+        return 4
+
+    def test_adds_small_values(self):
+        self.assertEqual(8, self.fixture() * 2)
+        self.assertTrue(self.fixture() > 0)
+
+    def test_adds_large_values(self):
+        self.assertEqual(4000, self.fixture() * 1000)
+PY
+}
+
 expected_sig() {
     SECRET="$1" JOB_ID="$2" python3 - <<'PY'
 import base64, hashlib, hmac, os
@@ -102,6 +121,8 @@ make_repo() {
              "$dir/.github/workflows"
     base_test_class > "$dir/src/test/java/org/example/ExampleTest.java"
     overloaded_test_class > "$dir/src/test/java/org/example/OverloadTest.java"
+    mkdir -p "$dir/tools/example"
+    base_python_test > "$dir/tools/example/test_example.py"
     echo "public class Example { int value() { return 4; } }" \
         > "$dir/src/main/java/org/example/Example.java"
     echo "name: analysis" > "$dir/.github/workflows/analysis.yaml"
@@ -262,6 +283,69 @@ escalate_and_production() {
     edit_production "$1"
 }
 
+# ── Python mutations ────────────────────────────────────────────
+
+py_remove_test_function() {
+    python3 - "$1/tools/example/test_example.py" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+open(path, "w").write(text[:text.index("    def test_adds_large_values")])
+PY
+}
+
+py_rename_test_function() {
+    sed -i 's/def test_adds_large_values/def adds_large_values/' \
+        "$1/tools/example/test_example.py"
+}
+
+py_remove_assertion() {
+    sed -i '/self.assertTrue(self.fixture() > 0)/d' \
+        "$1/tools/example/test_example.py"
+}
+
+py_edit_test_body() {
+    # An ordinary edit: the assertion is rewritten, not removed, and both
+    # test functions stay. Java would block this; Python deliberately does not.
+    sed -i 's/self.assertEqual(8, self.fixture() \* 2)/self.assertEqual(12, self.fixture() * 3)/' \
+        "$1/tools/example/test_example.py"
+    edit_production "$1"
+}
+
+py_append_test_function() {
+    cat >> "$1/tools/example/test_example.py" <<'PY'
+
+    def test_added_case(self):
+        self.assertEqual(16, self.fixture() * 4)
+PY
+}
+
+py_edit_fixture() {
+    sed -i 's/return 4/return 5/' "$1/tools/example/test_example.py"
+    edit_production "$1"
+}
+
+py_add_new_test_file() {
+    cat > "$1/tools/example/test_added.py" <<'PY'
+import unittest
+
+
+class AddedTest(unittest.TestCase):
+    def test_new_case(self):
+        self.assertEqual(1, 1)
+PY
+}
+
+py_remove_assertion_and_production() {
+    py_remove_assertion "$1"
+    edit_production "$1"
+}
+
+py_remove_function_and_production() {
+    py_remove_test_function "$1"
+    edit_production "$1"
+}
+
 # ── RULE 1: existing test methods are locked ────────────────────
 
 echo "RULE 1 — test method write lock"
@@ -277,6 +361,24 @@ run_case "new test file allowed"               0 feature/x "$SECRET" add_new_tes
 run_case "production change allowed"           0 feature/x "$SECRET" edit_production
 run_case "added overload allowed"              0 feature/x "$SECRET" add_overload
 run_case "edited overload blocked"             2 feature/x "$SECRET" edit_overload
+
+# ── RULE 1: the weaker Python form of the same lock ─────────────
+#
+# The two ways a Python test stops testing are blocked; editing the
+# inside of one is not, which is the leniency the extractor's precision
+# obliges. Each blocked case also changes production code, so what it
+# proves is RULE 1 firing rather than RULE 2.
+
+echo "RULE 1 — Python test lock"
+run_case "py test function removal blocked"    2 feature/x "$SECRET" py_remove_function_and_production
+run_case "py test function rename blocked"     2 feature/x "$SECRET" py_rename_test_function
+run_case "py assertion removal blocked"        2 feature/x "$SECRET" py_remove_assertion_and_production
+
+echo "RULE 1 — permitted Python test work"
+run_case "py test body edit allowed"           0 feature/x "$SECRET" py_edit_test_body
+run_case "py added test function allowed"      0 feature/x "$SECRET" py_append_test_function
+run_case "py fixture edit allowed"             0 feature/x "$SECRET" py_edit_fixture
+run_case "py new test file allowed"            0 feature/x "$SECRET" py_add_new_test_file
 
 # ── RULE 2: substantive changes ─────────────────────────────────
 

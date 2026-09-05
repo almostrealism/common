@@ -795,6 +795,110 @@ jobs:
             echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Early Workstream Registration ─────────────────────────────────
+  # Registers a workstream for this branch as soon as the early validation
+  # jobs pass, rather than waiting for auto-resolve at the end of the run.
+  #
+  # auto-resolve already creates a workstream on demand
+  # (createWorkstreamIfMissing in submit-agent-job.sh), but it cannot run
+  # until every test job has reported, and the self-hosted test lanes are
+  # long. That leaves a branch with no workstream for the whole wait — so no
+  # workstream ID to submit other improvement jobs against, and nothing for
+  # another session to address memory to. Registering here closes that gap.
+  #
+  # The two outcomes are both wanted. If a validation job fails, this is
+  # skipped and auto-resolve fires almost immediately, registering by its
+  # normal path. If they all pass, the tests are about to run for a long
+  # time and the workstream exists from the start.
+  #
+  # checkstyle is one of the gates for that reason and no other: it is not a
+  # prerequisite of the test jobs, but it fails fast and hard, so a branch
+  # that trips it reaches auto-resolve without a long wait — exactly the
+  # case this job exists to avoid duplicating.
+  #
+  # Gating on those jobs also handles the docs-only case with no extra
+  # condition: they all declare `needs: build`, and `build` is gated on
+  # code_changed, so a docs-only PR skips them and therefore skips this.
+  # The code_changed check below is what expresses "some test job will
+  # actually run" — test-flowtree gates on code_changed alone, so whenever
+  # it is true at least one test job follows.
+  #
+  # Deliberately NOT declaring `environment:`. A job with an environment in
+  # a pull_request run attaches a GitHub Deployment to the PR head, and a
+  # cancelled one then shows as a spurious "had a problem deploying" red X.
+  # Avoiding that is the whole reason the auto-resolve submission lives in a
+  # separate workflow_run workflow; see auto-resolve-submit.yaml.
+  #
+  # Never fails the pipeline. Registration is a convenience, not a quality
+  # signal, so this job is excluded from all-checks and every failure path
+  # below reports a notice or warning and exits 0.
+  register-workstream:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, checkstyle]
+    if: >-
+      github.ref != 'refs/heads/master' &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      needs.checkstyle.result == 'success' &&
+      needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Determine branch context
+        id: ctx
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+            echo "base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "base=master" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Register workstream
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          # A fork PR gets no secrets, and the service token may be scoped to
+          # an environment this job deliberately does not declare. Either way
+          # the controller is unreachable through the tunnel, and saying so is
+          # better than a curl that fails with an opaque 401.
+          if [ -z "${CF_ACCESS_CLIENT_ID:-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+            echo "::notice::No Cloudflare Access service token available — skipping early workstream registration"
+            exit 0
+          fi
+
+          chmod +x ./tools/ci/register-workstream.sh
+
+          # The script annotates its own failures with ::error::, which would
+          # paint an error on a PR whose pipeline is green. Downgrade the
+          # marker while keeping the text: registration is best-effort here,
+          # and the same script still annotates normally for callers that do
+          # treat a failure as fatal.
+          set +e
+          ./tools/ci/register-workstream.sh 2>&1 | sed 's/^::error:://'
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
+            echo "::notice::Workstream registered early for branch ${BRANCH}"
+          else
+            # auto-resolve still creates the workstream at the end of the run,
+            # so a failure here costs the head start and nothing else.
+            echo "::warning::Early workstream registration failed — auto-resolve will register on its normal path"
+          fi
+
   # ─── Checkstyle Check ──────────────────────────────────────────────
   # Runs the default checkstyle rules (no var, no @SuppressWarnings)
   # as a dedicated job for clear violation reporting in the PR summary.

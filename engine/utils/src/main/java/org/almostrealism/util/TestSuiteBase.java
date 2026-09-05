@@ -16,8 +16,11 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.expression.Expression;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
+import org.junit.After;
 import org.junit.Rule;
 
 /**
@@ -88,4 +91,30 @@ public abstract class TestSuiteBase implements TestFeatures {
 	 */
 	@Rule
 	public TestDepthRule depthRule = testDepthRule();
+
+	/**
+	 * Removes any profile the test that just ran left assigned.
+	 *
+	 * <p>{@link TestFeatures#initKernelMetrics} installs a profile through
+	 * {@link Hardware#assignProfile}, which keeps its listeners in static fields —
+	 * among them {@link Expression#timing}, which makes every expression comparison
+	 * and every expression cache probe record a timing entry. Nothing in
+	 * {@code initKernelMetrics} removes them again, so the profiling one test asked
+	 * for otherwise stays switched on for every test that shares the JVM after it,
+	 * and its cost is charged to whichever test happens to run next.</p>
+	 *
+	 * <p>The listeners are installed and removed as a set, so any one of them answers
+	 * whether a profile is assigned. {@link Expression#timing} is the one to ask
+	 * because reading it does not load {@link Hardware}, and so does not initialize a
+	 * backend on behalf of a test that never used one.</p>
+	 *
+	 * <p>JUnit runs a subclass's {@code @After} methods before the superclass's, so a
+	 * test that saves its profile on the way out still finds it assigned.</p>
+	 */
+	@After
+	public void clearProfile() {
+		if (Expression.timing != null) {
+			Hardware.getLocalHardware().clearProfile();
+		}
+	}
 }
