@@ -66,4 +66,30 @@ public class BufferDefaultsTest extends TestSuiteBase {
 		assertFalse("Writing to group 0 should be unsafe when the padded read position " +
 				"wraps around to the start of the buffer", safe);
 	}
+
+	/**
+	 * When {@link BufferDefaults#readGroupSensitivityPadding} is large enough that
+	 * {@code readPosition + readGroupSensitivityPadding} spans more than one buffer
+	 * length, {@link BufferDefaults#padReadPosition(int, int)} must still wrap into
+	 * {@code [0, bufferSize)} rather than subtracting {@code bufferSize} only once.
+	 */
+	@Test(timeout = 30000)
+	public void padReadPositionWrapsAcrossMultipleBufferLengths() {
+		int originalPadding = BufferDefaults.readGroupSensitivityPadding;
+		int bufferSize = 65536;
+
+		try {
+			BufferDefaults.readGroupSensitivityPadding = bufferSize * 2 + 100;
+			int readPosition = 50;
+
+			int padded = BufferDefaults.padReadPosition(readPosition, bufferSize);
+
+			assertTrue("padReadPosition(" + readPosition + ", " + bufferSize + ") returned " +
+							padded + ", which is not a valid index into a buffer of size " + bufferSize,
+					padded >= 0 && padded < bufferSize);
+			assertEquals(150, padded);
+		} finally {
+			BufferDefaults.readGroupSensitivityPadding = originalPadding;
+		}
+	}
 }
