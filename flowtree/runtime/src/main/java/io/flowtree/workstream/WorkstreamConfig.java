@@ -410,61 +410,45 @@ public class WorkstreamConfig {
         /** Additional repository URLs cloned alongside the primary repo. */
         private List<String> dependentRepos;
         /**
-         * Workstream IDs of completion listeners that should be woken up
-         * automatically when a job on this workstream reaches a terminal
-         * status. The listener graph must be a DAG; the cycle check runs
-         * on register / update and rejects configurations that would
+         * Workstream IDs of completion listeners that should be woken up automatically when a
+         * job on this workstream reaches a terminal status. The listener graph must be a DAG;
+         * the cycle check runs on register / update and rejects configurations that would
          * introduce a cycle, including self-listing. See
-         * {@link Workstream#setCompletionListeners(List)} for the kill
-         * switch and reconciliation-invariant details.
+         * {@link Workstream#setCompletionListeners(List)} for the kill switch and
+         * reconciliation-invariant details.
          */
         private List<String> completionListeners;
         /** Node labels that jobs submitted to this workstream must match by default. */
         private Map<String, String> requiredLabels;
         /**
-         * The workspace ID this workstream is bound to. Accepts the legacy
-         * YAML key {@code slackWorkspaceId} via {@link JsonAlias} so existing
-         * configs continue to load; the field now holds an operator-chosen
-         * workspace ID rather than a Slack team ID.
+         * The workspace ID this workstream is bound to. Accepts the legacy YAML key
+         * {@code slackWorkspaceId} via {@link JsonAlias} so existing configs continue to load;
+         * the field now holds an operator-chosen workspace ID rather than a Slack team ID.
          */
         @JsonAlias({"slackWorkspaceId"})
         private String workspaceId;
         /**
-         * Default {@link io.flowtree.jobs.agent.AgentRunner} applied to jobs
-         * in this workstream when no per-phase or per-job override is set.
-         * Legacy field: accepted on load and auto-migrated into
-         * {@link #defaultPhaseConfig}, but write-only for serialization.
+         * Default {@link io.flowtree.jobs.agent.AgentRunner} applied to jobs in this workstream
+         * when no per-phase or per-job override is set. Legacy field: accepted on load and
+         * auto-migrated into {@link #defaultPhaseConfig}, but write-only for serialization.
          */
         @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private String defaultRunner;
         /**
-         * Per-phase runner overrides keyed by phase wire name (e.g.
-         * {@code primary}, {@code deduplication}). Phases not listed inherit
-         * {@link #defaultRunner}. Legacy field: accepted on load and
-         * auto-migrated into {@link #phaseConfigs}, but write-only for
-         * serialization.
+         * Per-phase runner overrides keyed by phase wire name (e.g. {@code primary},
+         * {@code deduplication}). Phases not listed inherit {@link #defaultRunner}. Legacy
+         * field: accepted on load and auto-migrated into {@link #phaseConfigs}, but write-only
+         * for serialization.
          */
         @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private Map<String, String> runners = new LinkedHashMap<>();
-        /**
-         * Workstream-level default {@link PhaseConfig}; new form for the
-         * unified per-phase config ladder. Optional; {@code null} omits the
-         * field from serialized YAML.
-         */
+        /** Workstream-level default {@link PhaseConfig}; new form for the unified per-phase config ladder. */
         @JsonInclude(JsonInclude.Include.NON_NULL)
         private PhaseConfig defaultPhaseConfig;
-        /**
-         * Workstream-level per-phase {@link PhaseConfig} overrides keyed by
-         * phase wire name. Optional; an empty map is omitted from
-         * serialized YAML.
-         */
+        /** Workstream-level per-phase {@link PhaseConfig} overrides keyed by phase wire name. */
         @JsonInclude(JsonInclude.Include.NON_EMPTY)
         private Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
-        /**
-         * Whether this workstream is archived. Archived workstreams are
-         * hidden from default {@code workstream_list} responses but their
-         * job history and memories remain queryable.
-         */
+        /** Whether this workstream is archived. */
         private boolean archived;
         /**
          * Whether agents running on this workstream are permitted to call
@@ -515,6 +499,9 @@ public class WorkstreamConfig {
         /** See {@link Workstream#dormantForCompletionListeners}. */
         @JsonInclude(JsonInclude.Include.NON_DEFAULT)
         private boolean dormantForCompletionListeners;
+        /** See {@link Workstream#getKind()}. */
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+        private String kind = "feature";
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
         /** Sets the persistent workstream identifier. */
@@ -686,11 +673,10 @@ public class WorkstreamConfig {
         }
 
         /**
-         * Builds the effective {@link PhaseConfigBundle} for this workstream
-         * entry, merging the new fields with the legacy
-         * {@code defaultRunner}/{@code runners} runner fields. The new fields
-         * take precedence field-by-field. Model, effort, and provider come
-         * solely from {@code defaultPhaseConfig}/{@code phaseConfigs}.
+         * Builds the effective {@link PhaseConfigBundle} for this workstream entry, merging the
+         * new fields with the legacy {@code defaultRunner}/{@code runners} runner fields. The new
+         * fields take precedence field-by-field. Model, effort, and provider come solely from
+         * {@code defaultPhaseConfig}/{@code phaseConfigs}.
          *
          * @return the merged bundle; never {@code null}
          */
@@ -756,6 +742,11 @@ public class WorkstreamConfig {
             this.dormantForCompletionListeners = dormantForCompletionListeners;
         }
 
+        /** See {@link Workstream#getKind()}. */
+        public String getKind() { return kind; }
+        /** See {@link Workstream#setKind(String)}. */
+        public void setKind(String kind) { this.kind = kind; }
+
         /**
          * Converts this entry to a {@link Workstream} instance.
          *
@@ -805,6 +796,9 @@ public class WorkstreamConfig {
             ws.setUseTmux(useTmux);
             ws.setMaxWallClockHours(maxWallClockHours);
             ws.setDormantForCompletionListeners(dormantForCompletionListeners);
+            if (kind != null && !kind.isEmpty()) {
+                ws.setKind(kind);
+            }
             return ws;
         }
     }

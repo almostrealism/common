@@ -323,6 +323,56 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
+     * Returns every pull request on the given repository, newest-updated
+     * first. Used by the workstream listing's PR enrichment: one call per
+     * repository is enough because GitHub's {@code head} filter is a single
+     * repository-wide scan, and any workstream's PR can be looked up
+     * client-side from the response. Missing token or transport failure
+     * returns {@code null} rather than throwing, so the listing can fall
+     * back to "no PR data" for the affected rows.
+     *
+     * @param ownerRepo the {@code owner/repo} path component (e.g.
+     *                  {@code "almostrealism/common"})
+     * @return the GitHub response as a parsed Jackson array, or {@code null}
+     */
+    // TODO(review): single page, per_page=100, no pagination — a repo with >100 PRs
+    // (state=all) can silently miss an old branch's merged/closed PR. See review-followup memory.
+    public JsonNode listPullRequestsByRepo(String ownerRepo) {
+        if (ownerRepo == null || ownerRepo.isEmpty()) return null;
+        String org = extractOrgFromRepoUrl("https://github.com/" + ownerRepo);
+        String token = resolveGithubToken(org);
+        if (token == null) {
+            log("No GitHub token configured for org '" + org
+                + "'; PR lookup for " + ownerRepo + " will be skipped");
+            return null;
+        }
+        String url = "https://api.github.com/repos/" + ownerRepo
+                + "/pulls?state=all&per_page=100&sort=updated&direction=desc";
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+            if (status == 200) {
+                return GITHUB_MAPPER.readTree(responseBody);
+            }
+            log("GitHub PR lookup returned HTTP " + status + ": "
+                + responseBody.substring(0, Math.min(200, responseBody.length())));
+        } catch (IOException e) {
+            log("GitHub PR lookup failed for " + ownerRepo + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Reads the commit message for {@code ref}.
      *
      * @param ownerRepo the {@code owner/repo} path component
