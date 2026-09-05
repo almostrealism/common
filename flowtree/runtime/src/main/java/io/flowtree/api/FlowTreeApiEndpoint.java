@@ -58,6 +58,9 @@ import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
+import org.almostrealism.io.AlertRecipients;
+import org.almostrealism.io.RateLimit;
+import org.almostrealism.util.SignalWireDeliveryProvider;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.submission.PhaseConfigResolver;
 
@@ -157,6 +160,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Handles all {@code /api/secrets/*} endpoint requests and token generation. */
     private final SecretsRequestHandler secretsHandler;
 
+    /** Serves the read-only job record endpoints. */
+    private final JobQueryHandler jobQueryHandler;
+
+    /**
+     * Serves {@code POST /api/alerts}. Starts with an empty recipient
+     * directory, so the route answers coherently ("no recipients are
+     * configured") before {@link #setAlertRecipients(AlertRecipients)} is
+     * called, rather than failing as an unknown route.
+     */
+    private AlertRequestHandler alertHandler =
+            new AlertRequestHandler(new AlertRecipients(), callerAlertLimit(), this::readBody);
+
     /**
      * Handles {@code /api/stats}, the active-job listing, and heartbeat
      * recording.
@@ -248,6 +263,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.notifiers = new NotifierRegistry(primaryNotifier, notifiersByWorkspace);
         this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
         this.secretsHandler = new SecretsRequestHandler(notifiers);
+        this.jobQueryHandler = new JobQueryHandler(this.notifiers);
     }
 
     /** Sets the FlowTree server used for job submission. */
@@ -374,6 +390,32 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Sets the named recipients reachable through {@code POST /api/alerts}.
+     *
+     * @param recipients the recipient directory built from configuration
+     */
+    public void setAlertRecipients(AlertRecipients recipients) {
+        this.alertHandler = new AlertRequestHandler(recipients,
+                callerAlertLimit(), this::readBody);
+    }
+
+    /**
+     * Returns the per-caller alert budget: half the delivery provider's
+     * account-wide ceiling, over the same window.
+     *
+     * <p>Deriving it from the provider's own limit rather than restating a
+     * number keeps the two from drifting apart, and makes the intent legible
+     * — no single caller may spend more than half of what the account can
+     * afford.</p>
+     *
+     * @return the per-caller rate limit
+     */
+    protected static RateLimit callerAlertLimit() {
+        return new RateLimit(Math.max(1, SignalWireDeliveryProvider.messageLimit() / 2),
+                SignalWireDeliveryProvider.limitWindow());
+    }
+
+    /**
      * Sets the shared secret used to validate HMAC temporary tokens.
      *
      * <p>When set, the secrets retrieve endpoint validates inbound workstream HMAC
@@ -430,6 +472,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return agentsQueryHandler.handle();
         }
 
+        if (Method.POST.equals(method) && "/api/alerts".equals(uri)) {
+            return alertHandler.handle(session);
+        }
+
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
             return handleStatsQuery(session);
         }
@@ -454,12 +500,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     List.of("10")).get(0);
             int limit = 10;
             try { limit = Integer.parseInt(limitParam); } catch (NumberFormatException ignored) { }
-            return handleListJobs(workstreamId, limit);
+            return jobQueryHandler.listJobs(workstreamId, limit);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/jobs/")) {
             String jobId = uri.substring("/api/jobs/".length());
-            return handleGetJob(jobId);
+            return jobQueryHandler.getJob(jobId);
         }
 
         if ("/api/config/accept-automated-jobs".equals(uri)) {
@@ -918,7 +964,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             ? jobDescription : CodingAgentJob.summarizePrompt(prompt);
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.notifierFor(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+        notifiers.completionListener(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
         if (delaySeconds > 0) {
             pendingDelayedJobs.put(factory.getTaskId(), delayedJobExecutor.schedule(
                     () -> { try { server.addTask(factory); } finally { pendingDelayedJobs.remove(factory.getTaskId()); } },
@@ -1017,7 +1063,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         JobCompletionEvent startEvent = JobCompletionEvent.started(
                 factory.getTaskId(), ShellCommandJob.summarizeCommand(command));
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.notifierFor(workstream.getWorkstreamId())
+        notifiers.completionListener(workstream.getWorkstreamId())
                 .onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
         if (delaySeconds > 0) {
@@ -1173,7 +1219,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             statsQueryHandler.recordHeartbeat(jobId, Instant.now());
         }
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
-            notifiers.notifierFor(workstreamId).onJobStarted(workstreamId, event);
+            notifiers.completionListener(workstreamId).onJobStarted(workstreamId, event);
         } else {
             completeJob(workstreamId, event);
         }
@@ -1196,7 +1242,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param event        the terminal event to dispatch
      */
     public void completeJob(String workstreamId, JobCompletionEvent event) {
-        notifiers.notifierFor(workstreamId).onJobCompleted(workstreamId, event);
+        notifiers.completionListener(workstreamId).onJobCompleted(workstreamId, event);
         if (completionListenerFanout == null) return;
         // Clearing the debounce keeps a fast-completing wake-up from
         // extending the window, which would defeat the property that a
@@ -1405,144 +1451,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         sb.append('"');
         return sb.toString();
-    }
-
-    /**
-     * Serialises a {@link JobCompletionEvent} to a JSON object string.
-     *
-     * @param event the event to serialise
-     * @return JSON object string
-     */
-    private String jobEventToJson(JobCompletionEvent event) {
-        return jobEventToJson(event, null);
-    }
-
-    /**
-     * Serialises a {@link JobCompletionEvent} to a JSON object string,
-     * optionally including the owning workstream identifier.
-     *
-     * @param event         the event to serialise
-     * @param workstreamId  the workstream that owns this job, or {@code null}
-     * @return JSON object string
-     */
-    private String jobEventToJson(JobCompletionEvent event, String workstreamId) {
-        StringBuilder j = new StringBuilder();
-        j.append("{");
-        j.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(event.getJobId())).append("\"");
-        j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
-        j.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(event.getDescription())).append("\"");
-        // Source the event time from the persisted row's eventTime, falling back
-        // to the constructor stamp when the event is purely in-memory (a
-        // pre-persist CodingAgentJob before its terminal event lands). This
-        // keeps workstream_get_job consistent with workstream_list: both report
-        // when the job actually happened rather than when the controller read it.
-        Instant eventTime = event.getEventTime();
-        j.append(",\"timestamp\":\"").append(eventTime.toString()).append("\"");
-        Instant started = event.getStartedAt();
-        if (started != null) {
-            j.append(",\"startedAt\":\"").append(started.toString()).append("\"");
-        }
-        Instant finished = event.getFinishedAt();
-        if (finished != null) {
-            j.append(",\"finishedAt\":\"").append(finished.toString()).append("\"");
-        }
-        if (workstreamId != null) {
-            j.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
-        }
-        if (event.getTargetBranch() != null) {
-            j.append(",\"targetBranch\":\"").append(JsonFieldExtractor.escapeJson(event.getTargetBranch())).append("\"");
-        }
-        if (event.getCommitHash() != null) {
-            j.append(",\"commitHash\":\"").append(JsonFieldExtractor.escapeJson(event.getCommitHash())).append("\"");
-        }
-        if (event.getPullRequestUrl() != null) {
-            j.append(",\"pullRequestUrl\":\"").append(JsonFieldExtractor.escapeJson(event.getPullRequestUrl())).append("\"");
-        }
-        if (event.getErrorMessage() != null) {
-            j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
-        }
-        double totalCost = event.getTotalCostUsd();
-        boolean costIncomplete = event.isCostIncomplete();
-        // Always emit costIncomplete as a stable boolean, matching
-        // JobCompletionEvent.toJson() and the documented wire shape so consumers
-        // never have to treat its absence as false.
-        j.append(",\"costIncomplete\":").append(costIncomplete);
-        // Emit the cost block when there is a positive total OR when the cost is
-        // incomplete: an inactivity-killed session can leave totalCost at 0 even
-        // though real (uncosted) work happened, and the total/breakdowns should
-        // still be surfaced as a lower bound.
-        if (totalCost > 0 || costIncomplete) {
-            j.append(String.format(",\"totalCostUsd\":%.2f", totalCost));
-            Map<String, Double> costByRunner = event.getCostByRunner();
-            if (costByRunner != null && !costByRunner.isEmpty()) {
-                j.append(",\"costByRunner\":{");
-                boolean first = true;
-                for (Map.Entry<String, Double> e : costByRunner.entrySet()) {
-                    if (!first) j.append(",");
-                    first = false;
-                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
-                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
-                }
-                j.append("}");
-            }
-            Map<String, Double> costByModel = event.getCostByModel();
-            if (costByModel != null && !costByModel.isEmpty()) {
-                j.append(",\"costByModel\":{");
-                boolean first = true;
-                for (Map.Entry<String, Double> e : costByModel.entrySet()) {
-                    if (!first) j.append(",");
-                    first = false;
-                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
-                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
-                }
-                j.append("}");
-            }
-        }
-        j.append("}");
-        return j.toString();
-    }
-
-    /**
-     * Handles {@code GET /api/workstreams/{id}/jobs?limit=N}.
-     * Returns the most recent jobs for the workstream, newest first.
-     *
-     * @param workstreamId the workstream identifier
-     * @param limit        maximum number of jobs to return
-     * @return JSON array of job events
-     */
-    private Response handleListJobs(String workstreamId, int limit) {
-        SlackNotifier n = notifiers.notifierFor(workstreamId);
-        List<JobCompletionEvent> page = n != null
-                ? n.getRecentJobs(workstreamId, limit) : new ArrayList<>();
-
-        StringBuilder json = new StringBuilder("[");
-        boolean first = true;
-        for (JobCompletionEvent event : page) {
-            if (!first) json.append(",");
-            first = false;
-            json.append(jobEventToJson(event));
-        }
-        json.append("]");
-
-        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
-    }
-
-    /**
-     * Handles {@code GET /api/jobs/{jobId}}.
-     * Returns the most recent event for the specified job.
-     *
-     * @param jobId the job identifier
-     * @return JSON object for the job event, or 404 if not found
-     */
-    private Response handleGetJob(String jobId) {
-        JobCompletionEvent event = notifiers.findJob(jobId);
-        if (event == null) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND,
-                    "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
-        }
-        String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", jobEventToJson(event, workstreamId));
     }
 
 

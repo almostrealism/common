@@ -99,4 +99,53 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertTrue("toString should contain status name", str.contains("SUCCESS"));
 		assertTrue("toString should contain commitHash", str.contains("def456"));
 	}
+
+	/** A description within the budget is returned unchanged. */
+	@Test(timeout = 30000)
+	public void shortDescriptionLeavesAFittingDescriptionAlone() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-7", "Short");
+
+		assertEquals("Short", event.shortDescription(5));
+		assertEquals("Short", event.shortDescription(80));
+	}
+
+	/** A description past the budget is elided with an ellipsis. */
+	@Test(timeout = 30000)
+	public void shortDescriptionElidesPastTheBudget() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-7", "Add alert delivery");
+
+		assertEquals("Add a...", event.shortDescription(8));
+	}
+
+	/**
+	 * A budget too small to hold the ellipsis truncates plainly instead of
+	 * throwing. The budget comes from whatever channel is reporting the job,
+	 * so an awkward one is a reason to shorten differently.
+	 */
+	@Test(timeout = 30000)
+	public void shortDescriptionSurvivesABudgetSmallerThanTheEllipsis() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-7", "Add alert delivery");
+
+		assertEquals("A", event.shortDescription(1));
+		assertEquals("Ad", event.shortDescription(2));
+		assertEquals("Add", event.shortDescription(3));
+	}
+
+	/** A budget of zero or less yields an empty string, never an exception. */
+	@Test(timeout = 30000)
+	public void shortDescriptionSurvivesANonPositiveBudget() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-7", "Add alert delivery");
+
+		assertEquals("", event.shortDescription(0));
+		assertEquals("", event.shortDescription(-1));
+	}
+
+	/** A missing description yields an empty string rather than null. */
+	@Test(timeout = 30000)
+	public void shortDescriptionOfAMissingDescriptionIsEmpty() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-7", null);
+
+		assertEquals("", event.shortDescription(80));
+		assertEquals("", event.shortDescription(1));
+	}
 }

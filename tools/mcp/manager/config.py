@@ -29,6 +29,11 @@ MAX_PROMPT_LEN = 50_000
 MAX_CONTENT_LEN = 100_000
 MAX_SHORT_STRING_LEN = 1_000
 
+# Longest alert body send_alert will forward. Must match `maxTextLength` in
+# AlertRequestHandler, which rejects anything longer: validating here turns a
+# server-side rejection into an immediate, actionable error for the caller.
+MAX_ALERT_TEXT_LEN = 1_000
+
 # Paths that are never valid targets for project_commit_plan
 _SENSITIVE_PATH_PREFIXES = (".github/workflows/", ".github/actions/")
 

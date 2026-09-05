@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -750,6 +751,9 @@ public class SlackListener implements ConsoleFeatures {
                 case "default-channel":
                     handleSlashDefaultChannelCommand(args, responder, workspaceId);
                     break;
+                case "archive":
+                    handleSlashArchiveCommand(channelId, args, responder, workspaceId);
+                    break;
                 default:
                     responder.respond(":information_source: *Flowtree Commands*\n"
                         + "  `/flowtree setup <directory> <branch>` \u2014 Set up a workstream for this channel\n"
@@ -761,6 +765,7 @@ public class SlackListener implements ConsoleFeatures {
                         + "  `/flowtree jobs` \u2014 List recent jobs\n"
                         + "  `/flowtree stats [global]` \u2014 Show weekly job statistics\n"
                         + "  `/flowtree active` \u2014 List workstreams active in the last 7 days\n"
+                        + "  `/flowtree archive [keep-channel]` \u2014 Archive this channel's workstream\n"
                         + "  `/flowtree default-channel <channel>` \u2014 Set the default fallback channel");
             }
         } catch (IOException e) {
@@ -1141,7 +1146,7 @@ public class SlackListener implements ConsoleFeatures {
                     statusText = "";
             }
             sb.append("   ").append(emoji).append(" `").append(SlackNotifier.truncate(entry.getKey(), 8)).append("` - ");
-            sb.append(SlackNotifier.truncate(event.getDescription(), 60)).append(statusText).append("\n");
+            sb.append(event.shortDescription(60)).append(statusText).append("\n");
             count++;
         }
 
@@ -1406,6 +1411,64 @@ public class SlackListener implements ConsoleFeatures {
 
         ctx.respond(":white_check_mark: Default channel set to `" + channel + "`\n"
             + "Messages without a configured workstream channel will now fall back here.");
+    }
+
+    /**
+     * Handles {@code /flowtree archive [keep-channel]}. Archives the
+     * workstream bound to the channel the command was invoked from, and
+     * archives that Slack channel too unless {@code keep-channel} is passed.
+     *
+     * <p>Applies the same guard as
+     * {@code POST /api/workstreams/{id}/archive}: a workstream with a running
+     * job is refused rather than archived out from under it.</p>
+     *
+     * @param channelId   the Slack channel the command was invoked from
+     * @param args        {@code keep-channel} to leave the channel open, or null
+     * @param ctx         the responder for sending the ephemeral reply
+     * @param workspaceId the Slack team ID, or {@code null}
+     * @throws IOException if the response cannot be sent
+     */
+    private void handleSlashArchiveCommand(String channelId, String args,
+                                            SlashCommandResponder ctx,
+                                            String workspaceId) throws IOException {
+        Workstream ws = findWorkstream(workspaceId, channelId);
+        if (ws == null) {
+            ctx.respond(":warning: No workstream configured for this channel.");
+            return;
+        }
+        if (ws.isArchived()) {
+            ctx.respond(":information_source: Workstream `"
+                + ws.getWorkstreamId() + "` is already archived.");
+            return;
+        }
+
+        SlackNotifier wsNotifier = resolveNotifier(ws.getWorkspaceId());
+        List<String> active = wsNotifier.getActiveJobIds(ws.getWorkstreamId());
+        if (!active.isEmpty()) {
+            ctx.respond(":warning: Cannot archive while " + active.size()
+                + " job(s) are still running: `" + String.join("`, `", active) + "`");
+            return;
+        }
+
+        ws.setArchived(true);
+        if (!persistOrWarn(ctx)) return;
+
+        boolean keepChannel = args != null && "keep-channel".equalsIgnoreCase(args.trim());
+        StringBuilder sb = new StringBuilder(":white_check_mark: *Workstream archived*\n");
+        sb.append("   Workstream ID: `").append(ws.getWorkstreamId()).append("`\n");
+
+        if (keepChannel || ws.getChannelId() == null || ws.getChannelId().isEmpty()) {
+            sb.append("   This channel was left open.");
+        } else {
+            // Archiving the channel is done last so the reply is composed
+            // before the conversation it describes closes. The response URL
+            // still delivers afterwards.
+            String error = wsNotifier.archiveChannel(ws.getChannelId());
+            sb.append(error == null ? "   This channel has been archived."
+                : "   The channel could not be archived: " + error);
+        }
+
+        ctx.respond(sb.toString());
     }
 
     /**

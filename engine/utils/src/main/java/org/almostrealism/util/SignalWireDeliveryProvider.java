@@ -20,6 +20,7 @@ import org.almostrealism.io.Alert;
 import org.almostrealism.io.AlertDeliveryProvider;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.RateLimit;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,6 +29,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.Properties;
 
@@ -71,11 +73,31 @@ import java.util.Properties;
  * @see AlertDeliveryProvider
  */
 public class SignalWireDeliveryProvider implements AlertDeliveryProvider, ConsoleFeatures {
-	/** Maximum number of SMS messages allowed per JVM session to prevent runaway charges. */
-	private static final int maxMessages = 30;
+	/**
+	 * Default ceiling on SMS messages sent within {@link #limitWindow()}.
+	 * Overridden by {@code alert.max_messages} in the configuration file.
+	 *
+	 * <p>The limit exists to stay inside the carrier's spam protections
+	 * rather than to budget spend, so it is deliberately low and is shared
+	 * by every provider instance: the account is what gets blocked, and the
+	 * account is account-wide.</p>
+	 */
+	private static final int defaultMaxMessages = 30;
 
-	/** Running count of SMS messages sent in the current session. */
-	private static int totalMessages;
+	/**
+	 * Default width of the rate-limit window in minutes. Overridden by
+	 * {@code alert.window_minutes} in the configuration file.
+	 */
+	private static final int defaultWindowMinutes = 60;
+
+	/**
+	 * The send budget, shared by every provider instance and sliding rather
+	 * than cumulative: a long-running process that reaches the ceiling
+	 * recovers as the window advances, where the per-JVM-lifetime counter
+	 * this replaces went permanently silent.
+	 */
+	private static RateLimit sendLimit =
+			new RateLimit(defaultMaxMessages, Duration.ofMinutes(defaultWindowMinutes));
 
 	/** The singleton default provider loaded from the properties file, or {@code null} if not loaded. */
 	private static SignalWireDeliveryProvider defaultProvider;
@@ -137,8 +159,9 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 
 	@Override
 	public void sendAlert(Alert alert) {
-		if (totalMessages > maxMessages) {
-			warn("Cannot send more SMS messages");
+		if (!sendLimit().reserve()) {
+			warn("SMS rate limit reached (" + messageLimit() + " per "
+					+ limitWindow().toMinutes() + " minutes); alert not sent");
 			return;
 		}
 
@@ -161,9 +184,78 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 			}
 		} catch (Exception e) {
 			warn("Failed to send SMS", e);
-		} finally {
-			totalMessages++;
 		}
+	}
+
+	/**
+	 * Returns the account-wide send budget.
+	 *
+	 * <p>The budget is shared by every provider instance because the account
+	 * is what a carrier blocks; a per-recipient budget would multiply the
+	 * account's exposure by the number of recipients configured.</p>
+	 *
+	 * @return the shared rate limit
+	 */
+	public static synchronized RateLimit sendLimit() {
+		return sendLimit;
+	}
+
+	/**
+	 * Returns the ceiling on messages sent within {@link #limitWindow()}.
+	 *
+	 * @return the maximum number of messages per window
+	 */
+	public static int messageLimit() {
+		return sendLimit().getMax();
+	}
+
+	/**
+	 * Returns the width of the rate-limit window.
+	 *
+	 * @return the window duration
+	 */
+	public static Duration limitWindow() {
+		return sendLimit().getWindow();
+	}
+
+	/**
+	 * Returns the number of sends still available in the current window.
+	 *
+	 * @return the remaining send budget, never negative
+	 */
+	public static int remainingSends() {
+		return sendLimit().remaining();
+	}
+
+	/**
+	 * Returns a provider that reaches a different recipient through the same
+	 * SignalWire account as this one.
+	 *
+	 * <p>The account credentials, sending number and message prefix are
+	 * shared; only the destination differs. This is how a directory of named
+	 * recipients is built from a single configured account, and it is why the
+	 * rate-limit window is shared rather than per-instance.</p>
+	 *
+	 * @param recipientNumber the destination number in E.164 format
+	 * @return a provider addressed to that number
+	 */
+	public SignalWireDeliveryProvider withRecipient(String recipientNumber) {
+		SignalWireDeliveryProvider provider = new SignalWireDeliveryProvider(
+				space, projectId, token, fromNumber, recipientNumber);
+		provider.setAlertPrefix(alertPrefix);
+		return provider;
+	}
+
+	/**
+	 * Returns the provider configured by {@link #attachDefault()}, from which
+	 * recipient-specific providers can be derived with
+	 * {@link #withRecipient(String)}.
+	 *
+	 * @return the default provider, or {@code null} when no configuration
+	 *         file has been loaded
+	 */
+	public static SignalWireDeliveryProvider getDefaultProvider() {
+		return defaultProvider;
 	}
 
 	/**
@@ -198,10 +290,45 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 					properties.getProperty("sw.from_number"),
 					properties.getProperty("sw.to_number"));
 			defaultProvider.setAlertPrefix(properties.getProperty("alert.message_prefix"));
+			configureLimit(properties);
 
 			Console.root().addAlertDeliveryProvider(defaultProvider);
 		} catch (IOException e) {
 			Console.root().warn("Failed to initialize SignalWire delivery provider: " + e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Applies the optional rate-limit settings from a configuration file.
+	 * Absent, unparseable or non-positive values leave the defaults in place,
+	 * so a malformed entry cannot disable the protection it configures.
+	 *
+	 * @param properties the loaded configuration
+	 */
+	protected static synchronized void configureLimit(Properties properties) {
+		sendLimit = new RateLimit(
+				positiveInt(properties.getProperty("alert.max_messages"),
+						defaultMaxMessages),
+				Duration.ofMinutes(positiveInt(
+						properties.getProperty("alert.window_minutes"),
+						defaultWindowMinutes)));
+	}
+
+	/**
+	 * Parses a positive integer, falling back to the given default.
+	 *
+	 * @param value        the configured text, or {@code null}
+	 * @param defaultValue the value to use when absent or invalid
+	 * @return the parsed value when positive, otherwise {@code defaultValue}
+	 */
+	protected static int positiveInt(String value, int defaultValue) {
+		if (value == null) return defaultValue;
+
+		try {
+			int parsed = Integer.parseInt(value.trim());
+			return parsed > 0 ? parsed : defaultValue;
+		} catch (NumberFormatException e) {
+			return defaultValue;
 		}
 	}
 

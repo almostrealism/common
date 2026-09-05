@@ -26,6 +26,7 @@ GRANTED_TOOLS = (
     "controller_health",
     "agent_options",
     "send_message",
+    "send_alert",
     "memory_recall",
     "memory_namespaces",
     "consult",
