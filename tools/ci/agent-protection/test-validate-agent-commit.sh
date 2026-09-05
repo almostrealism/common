@@ -99,12 +99,14 @@ make_repo() {
 
     mkdir -p "$dir/src/test/java/org/example" \
              "$dir/src/main/java/org/example" \
-             "$dir/.github/workflows"
+             "$dir/.github/workflows" \
+             "$dir/tools/ci"
     base_test_class > "$dir/src/test/java/org/example/ExampleTest.java"
     overloaded_test_class > "$dir/src/test/java/org/example/OverloadTest.java"
     echo "public class Example { int value() { return 4; } }" \
         > "$dir/src/main/java/org/example/Example.java"
     echo "name: analysis" > "$dir/.github/workflows/analysis.yaml"
+    echo "# coverage-history ledger" > "$dir/tools/ci/coverage-history.tsv"
 
     git -C "$dir" add -A
     git -C "$dir" commit -qm "initial"
@@ -236,6 +238,16 @@ edit_ci_only() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
 }
 
+append_coverage_ledger() {
+    printf '2026-01-01T00:00:00Z\torg.example\tjava\t10.0\t15.0\n' \
+        >> "$1/tools/ci/coverage-history.tsv"
+}
+
+add_new_test_file_and_ledger() {
+    add_new_test_file "$1"
+    append_coverage_ledger "$1"
+}
+
 edit_ci_file() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
     edit_production "$1"
@@ -292,6 +304,18 @@ run_case "CI edit allowed on ci/ branch"       0 ci/issue-1 "$SECRET" edit_ci_fi
 run_case "CI edit allowed on ci/issues/2"      0 ci/issues/2 "$SECRET" edit_ci_file
 run_case "CI-only commit substantive on ci/"   0 ci/issue-1 "$SECRET" edit_ci_only
 run_case "CI-only commit blocked elsewhere"    4 feature/x "$SECRET" edit_ci_only
+
+# ── Pipeline data file allowance (coverage-qa rounds) ───────────
+#
+# tools/ci/coverage-history.tsv is an exact-path exemption from RULE 3:
+# a coverage-qa round appends to it on every round, on an ordinary
+# feature/qa branch, with no ci/ prefix and no signed bypass.
+
+echo "RULE 3 — pipeline data file allowance"
+run_case "new test + ledger append passes (typical coverage round)" \
+    0 feature/x "$SECRET" add_new_test_file_and_ledger
+run_case "ledger-only append not CI-blocked (flagged non-substantive)" \
+    3 feature/x "$SECRET" append_coverage_ledger
 
 # ── Sensitive-file bypass ───────────────────────────────────────
 

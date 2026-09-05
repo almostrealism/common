@@ -43,6 +43,22 @@
 #   reviewed as such. It cannot be adopted after the fact to rescue a
 #   commit that was really about something else.
 #
+# PIPELINE DATA FILE ALLOWANCE (coverage-qa rounds):
+#   RULE 3 locks every path under tools/ci/, but the coverage-qa pipeline
+#   needs its agent rounds to append one row to
+#   tools/ci/coverage-history.tsv — a cooldown/give-up ledger, not
+#   pipeline logic — on every round, without a signed bypass
+#   or a ci/... branch name. An exact-path allowlist (PIPELINE_DATA_FILES
+#   below) exempts that one file from CI_FILES classification. It is kept
+#   to a single literal path rather than a tools/ci/coverage/* prefix so
+#   the allowance cannot widen to cover a script: only a file whose format
+#   is inherently incapable of altering test or CI behavior belongs here.
+#   A pipeline-data file never counts toward RULE 2's substantive-change
+#   requirement — a coverage round already satisfies RULE 2 through the
+#   tests it adds, and letting this file count would hand every OTHER
+#   agent job dispatched under --require-production-changes a way to
+#   dodge RULE 2 by touching it as a decoy.
+#
 # SENSITIVE-FILE BYPASS:
 #   A commit carrying a `Sensitive-File-Bypass: <job-id>=<signature>`
 #   trailer signed by the controller lifts RULE 1 and RULE 3 for the
@@ -86,6 +102,23 @@ VERIFY_BYPASS="${SCRIPT_DIR}/verify-sensitive-bypass.sh"
 
 # ── Branches that may change the pipeline ───────────────────────────
 CI_BRANCH_PATTERN='^ci/'
+
+# ── Pipeline data files exempt from RULE 3 ──────────────────────────
+#
+# Exact paths only — see "PIPELINE DATA FILE ALLOWANCE" above. A glob
+# here would be a much larger allowance than intended, so membership is
+# checked by exact string match, never by pattern.
+PIPELINE_DATA_FILES=(
+    "tools/ci/coverage-history.tsv"
+)
+
+is_pipeline_data_file() {
+    local file="$1" candidate
+    for candidate in "${PIPELINE_DATA_FILES[@]}"; do
+        [ "$file" = "$candidate" ] && return 0
+    done
+    return 1
+}
 
 # ── Reports the branch under validation ─────────────────────────────
 #
@@ -211,6 +244,7 @@ BRANCH_TEST_FILES=""
 CI_FILES=""
 PRODUCTION_FILES=""
 CONFIG_FILES=""
+PIPELINE_DATA_FILES_CHANGED=""
 
 while IFS= read -r FILE; do
     # Test files: anything under src/test/ or matching *Test*.java
@@ -228,6 +262,12 @@ while IFS= read -r FILE; do
         else
             BRANCH_TEST_FILES="${BRANCH_TEST_FILES}${FILE}\n"
         fi
+    # Pipeline data files: an exact-path allowlist of checked-in data
+    # files that a pipeline's own agent rounds append to (see the
+    # PIPELINE DATA FILE ALLOWANCE note above). Checked before the CI
+    # files pattern below so it takes precedence over the tools/ci/ match.
+    elif is_pipeline_data_file "$FILE"; then
+        PIPELINE_DATA_FILES_CHANGED="${PIPELINE_DATA_FILES_CHANGED}${FILE}\n"
     # CI files: .github/workflows/ or tools/ci/
     elif echo "$FILE" | grep -qE '(\.github/workflows/|tools/ci/)'; then
         CI_FILES="${CI_FILES}${FILE}\n"
@@ -246,6 +286,7 @@ BASE_SUPPORT_COUNT=$(echo -e "$BASE_SUPPORT_FILES" | grep -c '[^[:space:]]' || t
 BRANCH_TEST_COUNT=$(echo -e "$BRANCH_TEST_FILES" | grep -c '[^[:space:]]' || true)
 CI_COUNT=$(echo -e "$CI_FILES" | grep -c '[^[:space:]]' || true)
 PRODUCTION_COUNT=$(echo -e "$PRODUCTION_FILES" | grep -c '[^[:space:]]' || true)
+PIPELINE_DATA_COUNT=$(echo -e "$PIPELINE_DATA_FILES_CHANGED" | grep -c '[^[:space:]]' || true)
 
 echo "File classification:"
 echo "  Test methods changed (on base):   $BASE_TEST_COUNT"
@@ -254,6 +295,7 @@ echo "  Test support (existing on base):  $BASE_SUPPORT_COUNT"
 echo "  Test files (branch-introduced):   $BRANCH_TEST_COUNT"
 echo "  CI/workflow files:                $CI_COUNT"
 echo "  Production files:                 $PRODUCTION_COUNT"
+echo "  Pipeline data files (allowlisted):$PIPELINE_DATA_COUNT"
 
 if [ -n "$BYPASS_JOB_ID" ]; then
     echo "Sensitive-file bypass verified for job ${BYPASS_JOB_ID} — RULE 1 and RULE 3 are lifted."
@@ -386,6 +428,7 @@ echo "  $BRANCH_TEST_COUNT branch-introduced test file(s) changed."
 echo "  $BASE_ADDED_COUNT existing test file(s) gained new test method(s)."
 echo "  $BASE_TEST_COUNT base-branch test method(s) changed or removed."
 echo "  $CI_COUNT CI file(s) modified."
+echo "  $PIPELINE_DATA_COUNT pipeline data file(s) modified (allowlisted, RULE 3 exempt)."
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "blocked=false" >> "$GITHUB_OUTPUT"

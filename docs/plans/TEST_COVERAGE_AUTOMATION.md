@@ -6,11 +6,100 @@ Developer Tooling / CI / Automated Quality
 
 ## Status
 
-**Proposal only.** This document is the deliverable. No workflow, script, or
-prompt described here has been implemented. It is written to be reviewed by a
-human before any of it is built. Where a design choice has options, the tradeoff
-is stated briefly and a recommendation is made so the reviewer has something
-concrete to accept or reject.
+**Implemented.** Every workflow, script, prompt and data file this document
+describes has been built, following the plan's own recommendations on each of
+its open questions:
+
+- `coverage-qa` lives in `.github/workflows/master-agent-dispatch.yaml`
+  alongside `doc-qa`/`defect-hunt` (open question 1), with its own
+  non-cancelling `coverage-qa` concurrency group and `coverage` added to the
+  `agent` dispatch choices.
+- `tools/ci/coverage/fetch-latest-coverage.sh`, `tools/ci/coverage/select-target.py`
+  (plus its fixture-driven unit tests in the same directory),
+  `tools/ci/coverage-exclusions.txt`, `tools/ci/coverage-history.tsv`, and
+  `tools/ci/prompts/coverage.txt` + `build-coverage-prompt.sh` all exist and are
+  exercised: `select-target.py`'s test suite passes (ranking, size floor,
+  exclusion matching, cooldown, give-up, the Python per-directory rollup and
+  tie-breaking, all fixture-XML driven), the new/modified shell scripts pass
+  `shellcheck -S warning`, both edited workflow YAML files parse, and
+  `select-target.py` was dry-run both against the checked-in fixtures and
+  against a real coverage.py report generated from `tools/mcp/common`'s own
+  test suite.
+- A single global `COVERAGE_THRESHOLD` (default `80`) is exposed as a
+  workflow-level env var; `COVERAGE_THRESHOLD_PYTHON` is read by
+  `select-target.py` with a fallback to the global value, and is left unset in
+  the workflow by design (open question 4) until a Python-specific bar is
+  warranted.
+- Python measurement omits `test_*.py` from the coverage.py run
+  (`--omit='*/test_*.py'` in `fetch-latest-coverage.sh`), and
+  `select-target.py` additionally skips any stray `test_*.py` `<class>` entry
+  defensively when rolling files up to a directory.
+- Coverage rounds are submitted with `PROTECT_TEST_FILES=true` and no
+  sensitive-file bypass — full protection stays on. The one integration snag
+  the plan flagged (Risks, "Coverage gaming" §2) is real and was fixed rather
+  than worked around: see "Deviations" below.
+- The assertion-density report (Risks section) runs as a non-blocking,
+  report-only `assertion-density-report` job in `analysis.yaml`, scoped to
+  `qa/coverage-*` branches, deliberately absent from `all-checks`' `needs` so
+  it can never gate a merge.
+
+### Deviations from the proposal, and why
+
+1. **The `validate-agent-commit.sh` integration snag was resolved with a
+   third option, not either of the two the plan offered.** The plan's Risks
+   section proposed either (a) a commit trailer marking a round as
+   "tests-only expected," or (b) a validator mode permitting new-test-only
+   diffs. Neither was needed: the only file a coverage round touches outside
+   test files is the single append-only ledger,
+   `tools/ci/coverage-history.tsv`, and that file's *format* — not its
+   branch or its trailer — is what makes it safe. `validate-agent-commit.sh`
+   now carries an exact-path `PIPELINE_DATA_FILES` allowlist (documented
+   inline as "PIPELINE DATA FILE ALLOWANCE") containing exactly that one
+   path, exempting it from RULE 3's CI-file lock without touching RULE 1, RULE
+   2, or any other `tools/ci/` path. It deliberately does **not** count toward
+   RULE 2's substantive-change requirement, so no other agent job can touch
+   the ledger as a decoy to dodge that rule — a coverage round already
+   satisfies RULE 2 through the tests it adds. Verified with new regression
+   cases in `tools/ci/agent-protection/test-validate-agent-commit.sh`: a new
+   test file plus a ledger append passes (exit 0) on an ordinary branch with
+   no bypass; a ledger-only append (no test change) is still flagged as
+   non-substantive under RULE 2 (exit 3, a warning, not a hard block — see
+   below).
+2. **The extern/ "asset-gated" exclusion category was not implemented as a
+   package exclusion.** `extern/ml-onnx` and `extern/ml-djl` both compile
+   into the Java package `org.almostrealism.ml` — the same package name
+   `engine/ml` uses. Because the merged JaCoCo report aggregates coverage by
+   `<package name>` across every module, excluding `org.almostrealism.ml`
+   would also exclude `engine/ml`'s well-tested code. The two asset-gated
+   test methods the plan names (`OnnxAutoEncoderTests.encode`,
+   `OnnxPrototypeDiscoveryTest.discoverWithOnnxFeatures`) are already excluded
+   at the *method* level via `@TestProperties(excludeProfiles =
+   TestUtils.PIPELINE)`, which is unaffected by this; `tools/ci/coverage-exclusions.txt`
+   documents the reasoning in place of a pattern entry.
+3. **`fetch-latest-coverage.sh` implements two tiers, not three.** Java
+   coverage is either reused (download the `analysis` job's own
+   `merged-coverage-report` artifact — the exact already-finished answer) or
+   recomputed fully fresh with `FORCE=true`. The plan's sketch of merging raw
+   per-job `coverage-*` artifacts against the current checkout's compiled
+   classes was dropped as a middle tier: it would risk a class/exec mismatch
+   if master had moved since the artifacts' run, for no benefit over the
+   already-merged report the same run also produces.
+4. **The give-up marker's exclusion-list write is committed straight to
+   `master`,** in its own workflow step, before the coverage branch is
+   created — mirroring how the Project Manager job commits a seeded planning
+   document. The plan did not specify who performs this commit; a round that
+   gives up on a unit may never open a PR of its own (there can be nothing
+   left worth testing), so the exclusion belongs on `master` immediately
+   rather than riding along in a PR that might not exist.
+5. **Known accepted gap:** a round that only appends the honesty-clause
+   ledger row (no test changes at all) still trips RULE 2's
+   no-production-changes check, which is a warning in CI, not a hard failure,
+   but does surface as a quality-gate finding that the auto-resolve pipeline
+   would otherwise try to "fix." This is pre-existing behavior for any
+   agent round whose only change is non-production (not introduced by this
+   work), and was left as-is rather than special-cased — narrowing RULE 2
+   further was judged higher-risk than living with an occasional
+   quality-gate notice on a genuinely rare "nothing to add" round.
 
 ## Motivation
 

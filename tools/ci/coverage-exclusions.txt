@@ -1,0 +1,64 @@
+# ─── Coverage-qa target selection exclusions ───────────────────────────
+#
+# Glob patterns (matched with Python's fnmatch against the unit name) for
+# Java packages and Python directories that select-target.py must never
+# choose as a coverage-qa target, no matter how low their line coverage.
+#
+# A unit belongs here only when NO amount of CPU-only unit testing can
+# raise it — otherwise it belongs on the target list, however low its
+# percentage. Ranking already prefers large absolute gains (see
+# select-target.py's score = missed * (1 - coverage_fraction)); this file
+# exists for the units that would win that ranking forever without ever
+# being improvable.
+#
+# One pattern per line. Blank lines and lines starting with '#' are
+# ignored. Java units are dotted package names (e.g.
+# org.almostrealism.generated); Python units are the top-level tool
+# directory rolled up from file paths (e.g. tools/mcp/common).
+#
+# The give-up marker in select-target.py appends its own entries below
+# under the AUTO-EXCLUDED heading when a unit has been attempted
+# MAX_ATTEMPTS times without MIN_PROGRESS points of gain each time. Those
+# lines are a machine-written record for a human to review, not something
+# to hand-edit — remove one only after confirming the unit really is
+# improvable.
+
+# ── Generated code ──────────────────────────────────────────────────
+# Emitted by the kernel/expression code generator, not authored by hand
+# (measured at 6,034 lines, 0.0% coverage, in base/hardware alone).
+org.almostrealism.generated
+org.almostrealism.generated.*
+
+# ── base/hardware GPU / native packages ─────────────────────────────
+# Require a real Metal/OpenCL/CUDA device or a JNI bridge to a native
+# library. The CI Linux lane that runs the coverage-qa pipeline has no
+# GPU, so no CPU-only unit test can move these; they can only be
+# exercised on the self-hosted GPU/CL lanes (see .github/CLAUDE.md).
+org.almostrealism.hardware
+org.almostrealism.hardware.mem
+org.almostrealism.hardware.mem.*
+org.almostrealism.hardware.cl
+org.almostrealism.hardware.cl.*
+org.almostrealism.hardware.metal
+org.almostrealism.hardware.metal.*
+org.almostrealism.hardware.jni
+org.almostrealism.hardware.jni.*
+
+# ── extern/ asset-gated integration shims ───────────────────────────
+# extern/ml-onnx and extern/ml-djl share the org.almostrealism.ml package
+# name with engine/ml, so the merged JaCoCo report aggregates their
+# coverage into the SAME <package> element as engine/ml's well-tested
+# code — a package-level exclusion here would also exclude engine/ml.
+# The asset-gated methods in this package (OnnxAutoEncoderTests.encode,
+# OnnxPrototypeDiscoveryTest.discoverWithOnnxFeatures) are therefore
+# excluded at the test-method level instead, via
+# @TestProperties(excludeProfiles = TestUtils.PIPELINE) — see
+# .github/CLAUDE.md's "Tests excluded from the pipeline profile" table.
+# No package pattern is listed here for them; do not add
+# org.almostrealism.ml as a blanket exclusion.
+
+# ── Python: test-only directories ───────────────────────────────────
+# tools/tests holds only test_*.py files; it has no production code to
+# roll a coverage percentage up from and drops out of measurement
+# naturally, but is listed for clarity.
+tools/tests
