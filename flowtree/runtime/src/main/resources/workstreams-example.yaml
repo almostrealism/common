@@ -43,6 +43,25 @@
 #
 # defaultChannel: C0123456789
 
+# Alert recipients (optional).
+# Named people an alert can be addressed to, by handle rather than by
+# address, so a caller never handles a phone number and the number can
+# change without any caller changing. Handles are what the ar-manager
+# send_alert tool names, and what POST /api/alerts resolves.
+#
+# The SignalWire account these are sent through is configured separately,
+# in signalwire.properties beside this file — see
+# signalwire-example.properties. Only the destination belongs here, which
+# keeps API credentials out of the file the workspace tools edit.
+#
+# Recipients are read at controller startup; restart after changing them.
+#
+# alertRecipients:
+#   - name: michael
+#     smsNumber: "+15551234567"
+#   - name: mmurray
+#     smsNumber: "+15559876543"
+
 # ---------------------------------------------------------------------------
 # MCP tool delivery
 #

@@ -28,6 +28,15 @@
 #   GitHub org tokens go in the githubOrgs section of workstreams.yaml.
 #   See flowtree/runtime/src/main/resources/workstreams-example.yaml for reference.
 #
+# SMS alerting (optional):
+#   Place signalwire.properties in the same directory. The controller
+#   resolves it relative to its working directory, which is /config, so
+#   it must sit beside workstreams.yaml rather than under /secrets.
+#   Absent, alert delivery is inert — no error is raised.
+#   See flowtree/runtime/src/main/resources/signalwire-example.properties.
+#   Named recipients go in the alertRecipients section of workstreams.yaml;
+#   both are read at startup, so restart after changing either.
+#
 # Manager configuration:
 #   Place manager-tokens.json in /Users/Shared/flowtree/manager/ on the host.
 #   Generate a token: tools/mcp/manager/generate-token.sh
