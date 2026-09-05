@@ -11,7 +11,10 @@
 #           Comparing these records between two revisions of a file is
 #           what distinguishes "a test method was changed or removed"
 #           from "a test method was added", which are different acts
-#           with different risk.
+#           with different risk. Methods are reported one record each in
+#           source order, never merged by name: two overloads of the same
+#           name are two records, so adding one is visibly an addition
+#           rather than a change to the other.
 #
 # Lines that belong to anything else in the file — fields, constructors,
 # nested classes, and the private helpers that accumulate in test classes
@@ -52,18 +55,22 @@ function methodName(text,    last, rest, brace, i) {
     return last
 }
 
-# ── Records a completed method under its name ───────────────────────
+# ── Records a completed method ──────────────────────────────────────
 #
-# Methods are accumulated rather than assigned so that an overloaded or
-# duplicated name still contributes every one of its bodies to the
-# record, and a change to any of them is therefore still detected.
+# One record per method rather than one per name: methods sharing a name
+# must stay separable, or adding an overload would alter the record of
+# the overload already there and read as a change to it.
 function flush() {
     if (buf == "") return
-    body[name] = body[name] buf
+    records[++recordCount] = name "\t" buf
     buf = ""
 }
 
-BEGIN { depth = 0; pending = 0; inTest = 0; inBlockComment = 0; SEP = "\001" }
+BEGIN {
+    depth = 0; pending = 0; inTest = 0; inBlockComment = 0
+    recordCount = 0
+    SEP = "\001"
+}
 
 {
     raw = $0
@@ -132,6 +139,6 @@ BEGIN { depth = 0; pending = 0; inTest = 0; inBlockComment = 0; SEP = "\001" }
 END {
     if (mode == "methods") {
         flush()
-        for (n in body) print n "\t" body[n]
+        for (r = 1; r <= recordCount; r++) print records[r]
     }
 }

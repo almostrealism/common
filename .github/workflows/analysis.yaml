@@ -650,6 +650,13 @@ jobs:
               echo "::warning::Agent commit flagged: no production code changes"
             elif [ "$EXIT_CODE" -eq 4 ]; then
               echo "::error::Agent commit BLOCKED: CI/workflow file modifications detected"
+            else
+              # The validator could not reach a verdict — an unusable base
+              # ref, a missing helper. There is no evidence either way, so
+              # the step fails rather than reporting an unvalidated branch
+              # as clean.
+              echo "::error::Agent commit validation could not run (exit ${EXIT_CODE})"
+              exit "$EXIT_CODE"
             fi
             # Do not fail the build — the auto-resolve job checks this output
             exit 0

@@ -65,6 +65,28 @@ print(base64.urlsafe_b64encode(
 PY
 }
 
+# A class whose test methods share a name, to prove overloads stay
+# separable rather than merging into one record.
+overloaded_test_class() {
+    cat <<'JAVA'
+package org.example;
+
+import org.junit.Test;
+
+public class OverloadTest extends TestSuiteBase {
+    @Test(timeout = 60000)
+    public void handles() {
+        handles(1);
+    }
+
+    @Test(timeout = 60000)
+    public void handles(int value) {
+        assertEquals(value, value, 0.0001);
+    }
+}
+JAVA
+}
+
 # make_repo <dir> — a repository whose master holds the test class,
 # a production source file, and a CI workflow, with a branch checked out.
 make_repo() {
@@ -79,6 +101,7 @@ make_repo() {
              "$dir/src/main/java/org/example" \
              "$dir/.github/workflows"
     base_test_class > "$dir/src/test/java/org/example/ExampleTest.java"
+    overloaded_test_class > "$dir/src/test/java/org/example/OverloadTest.java"
     echo "public class Example { int value() { return 4; } }" \
         > "$dir/src/main/java/org/example/Example.java"
     echo "name: analysis" > "$dir/.github/workflows/analysis.yaml"
@@ -89,10 +112,10 @@ make_repo() {
     git -C "$dir" checkout -qb "$branch"
 }
 
-# run_case NAME EXPECTED_EXIT BRANCH SECRET_VALUE MUTATE_FN [COMMIT_MSG]
+# run_case NAME EXPECTED_EXIT BRANCH SECRET_VALUE MUTATE_FN [COMMIT_MSG] [BASE]
 run_case() {
     local name="$1" expected_exit="$2" branch="$3" secret="$4" mutate="$5"
-    local msg="${6:-agent commit}"
+    local msg="${6:-agent commit}" base="${7:-master}"
 
     local dir actual_exit output
     dir=$(mktemp -d)
@@ -105,7 +128,7 @@ run_case() {
     actual_exit=0
     output=$(cd "$dir" && AR_AGENT_BYPASS_SECRET="$secret" \
         GITHUB_HEAD_REF="" GITHUB_REF_NAME="" \
-        bash "$VALIDATE" master --require-production-changes 2>&1) || actual_exit=$?
+        bash "$VALIDATE" "$base" --require-production-changes 2>&1) || actual_exit=$?
 
     if [ "$actual_exit" -eq "$expected_exit" ]; then
         PASS=$((PASS + 1))
@@ -185,6 +208,30 @@ public class AnotherTest extends TestSuiteBase {
 JAVA
 }
 
+add_overload() {
+    local file="$1/src/test/java/org/example/OverloadTest.java"
+    python3 - "$file" <<'ADDOVERLOAD'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+addition = """
+    @Test(timeout = 60000)
+    public void handles(String value) {
+        assertNotNull(value);
+    }
+"""
+open(path, "w").write(text[:text.rindex("}")] + addition + "}\n")
+ADDOVERLOAD
+    edit_production "$1"
+}
+
+edit_overload() {
+    local file="$1/src/test/java/org/example/OverloadTest.java"
+    sed -i.bak 's/assertEquals(value, value, 0\.0001);/assertEquals(value, value, 0.5);/' \
+        "$file" && rm -f "$file.bak"
+    edit_production "$1"
+}
+
 edit_ci_only() {
     echo "name: analysis (edited)" > "$1/.github/workflows/analysis.yaml"
 }
@@ -228,6 +275,8 @@ run_case "added test method allowed"           0 feature/x "$SECRET" append_test
 run_case "helper edit allowed"                 0 feature/x "$SECRET" edit_helper_and_production
 run_case "new test file allowed"               0 feature/x "$SECRET" add_new_test_file
 run_case "production change allowed"           0 feature/x "$SECRET" edit_production
+run_case "added overload allowed"              0 feature/x "$SECRET" add_overload
+run_case "edited overload blocked"             2 feature/x "$SECRET" edit_overload
 
 # ── RULE 2: substantive changes ─────────────────────────────────
 
@@ -268,6 +317,15 @@ run_case "valid trailer inert without secret"  2 feature/x "" escalate_and_produ
     "fix the test
 
 Sensitive-File-Bypass: job-77=$SIG"
+
+# ── Fail-closed behaviour ───────────────────────────────────────
+#
+# A diff that cannot be taken is not a clean branch. The validator has to
+# stop rather than report an unvalidated commit as passing.
+
+echo "Fail-closed behaviour"
+run_case "unusable base ref fails closed"      1 feature/x "$SECRET" edit_production \
+    "agent commit" "origin/no-such-base"
 
 # ── Report ──────────────────────────────────────────────────────
 

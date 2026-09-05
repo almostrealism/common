@@ -58,7 +58,7 @@
 #
 # Exit codes:
 #   0 - commit is valid
-#   1 - invalid arguments
+#   1 - invalid arguments, or the branch could not be diffed
 #   2 - BLOCKED: base-branch test methods were changed or removed
 #   3 - BLOCKED: commit contains only test/CI changes (no production code)
 #   4 - BLOCKED: CI/workflow file modifications detected
@@ -183,7 +183,21 @@ classify_test_file() {
 # file's disappearance visible: renaming a test class would otherwise
 # present it as branch-introduced and unlock every method in it.
 
-ALL_CHANGED_FILES=$(git diff --name-only --no-renames "${BASE_BRANCH}...HEAD" || true)
+# A diff that cannot be taken — an unknown base ref, a shallow clone
+# without the merge base — must not read as "nothing changed". The
+# validator has no evidence in that case, and no evidence is a reason to
+# stop, not a reason to pass.
+if ! ALL_CHANGED_FILES=$(git diff --name-only --no-renames "${BASE_BRANCH}...HEAD" 2>&1); then
+    echo "Cannot diff ${BASE_BRANCH}...HEAD — the branch cannot be validated:" >&2
+    echo "$ALL_CHANGED_FILES" >&2
+
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "blocked=true" >> "$GITHUB_OUTPUT"
+        echo "block_reason=diff_unavailable" >> "$GITHUB_OUTPUT"
+    fi
+
+    exit 1
+fi
 
 if [ -z "$ALL_CHANGED_FILES" ]; then
     echo "No files changed — nothing to validate."
