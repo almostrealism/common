@@ -119,7 +119,7 @@ Two protected setters exist for use by subclass factory methods:
 - `setErrorMessage(String)` -- Sets the error message. Used by `ClaudeCodeJobEvent.failed()`.
 - `setException(Throwable)` -- Sets the exception. Used by `ClaudeCodeJobEvent.failed()`.
 
-These are `protected` rather than `public` because they should only be called during event construction (in factory methods or subclass constructors), never by external consumers. The `final` fields (`jobId`, `status`, `description`) are set only in the constructor and have no setters, making them effectively immutable. `timestamp` and `eventTime` are not `final` — `setTimestamp()` overwrites both when `JobStatsStore.rowToEvent` reconstructs an event from a persisted row, and `setStartedAt()` / `setFinishedAt()` populate the two read-only-from-outside persisted fields the same way.
+These are `protected` rather than `public` because they should only be called during event construction (in factory methods or subclass constructors), never by external consumers. The `final` fields (`jobId`, `status`, `description`) are set only in the constructor and have no setters, making them effectively immutable. `timestamp` and `eventTime` are not `final` — `setTimestamp()` overwrites both when `JobStatsStore.rowToEvent` reconstructs an event from a persisted row. `startedAt` and `finishedAt` are populated the same way via `setStartedAt()` / `setFinishedAt()`, which — unlike `setErrorMessage()` / `setException()` above — are `public`.
 
 ### toString() Representation
 
