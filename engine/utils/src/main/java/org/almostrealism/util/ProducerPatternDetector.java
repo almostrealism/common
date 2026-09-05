@@ -140,6 +140,12 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			"SkyTntMidi.java", Set.of(
 					"embedAndSumNet"            // Step-boundary: materializes the summed token
 					                            // embedding fed into netCompiledModel.forward
+			),
+			"HnswIndex.java", Set.of(
+					"insert",                   // Step boundary: one dispatch normalizes the
+					                            // vector into the store, one scores it against
+					                            // every stored vector
+					"search"                    // Step boundary: same two dispatches for the query
 			)
 	);
 
