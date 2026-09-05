@@ -87,10 +87,15 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List registered workstreams. Filters: {@code workspaceId},
  *       {@code repoUrl} (matched on repository identity, so SSH and HTTPS spellings of one repository are equivalent),
  *       {@code dispatchCapable} ({@code true}/{@code false}), {@code archived} ({@code true}/{@code false}; supersedes
- *       {@code includeArchived}, the older coarser parameter, which is still honoured when {@code archived} is absent).
- *       An empty query value counts as absent. Enrichments: {@code includeStatus} (adds {@code lastJobId},
- *       {@code lastJobStatus}, {@code lastJobAt}), {@code includePullRequest} (adds {@code pullRequest}); both default
- *       to off.</td></tr>
+ *       {@code includeArchived}, the older coarser parameter, which is still honoured when {@code archived} is absent),
+ *       {@code lifecycle} (exact-match on the classification added by {@code includeLifecycle}, applied after
+ *       enrichment). An empty query value counts as absent. Enrichments: {@code includeStatus} (adds
+ *       {@code lastJobId}, {@code lastJobStatus}, {@code lastJobAt}, {@code lastJobStartedAt},
+ *       {@code lastJobFinishedAt}), {@code includePullRequest} (adds {@code pullRequest}), {@code includePullRequestState}
+ *       (adds {@code pullRequestState} and {@code prCount} from a GitHub lookup keyed by {@code defaultBranch}),
+ *       {@code includeLifecycle} (adds {@code lifecycle} and {@code lifecycleReason}; honours {@code idleDays},
+ *       default 14). All enrichments default to off; see {@link WorkstreamListing#toJson} for the full
+ *       contract.</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td><td>List recent jobs for a workstream; optional {@code limit} query param</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/active</td><td>--</td><td>List jobs still recorded as running for a workstream, newest first. Each entry is a JSON
  *       object carrying {@code jobId}, {@code workstreamId}, {@code startedAt}, {@code heartbeatAt} (ISO-8601 instants,

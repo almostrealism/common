@@ -97,10 +97,10 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 
 `GET /api/workstreams` accepts these optional query parameters:
 
-- **Filters:** `workspaceId`, `repoUrl` (matched on repository identity — SSH and HTTPS spellings of one repository are equivalent), `dispatchCapable` (`true`/`false`), and `archived` (`true`/`false`, supersedes `includeArchived`).
-- **Enrichments:** `includeStatus` (adds `lastJobId`, `lastJobStatus`, `lastJobAt`), `includePullRequest` (adds `pullRequest`).
+- **Filters:** `workspaceId`, `repoUrl` (matched on repository identity — SSH and HTTPS spellings of one repository are equivalent), `dispatchCapable` (`true`/`false`), `archived` (`true`/`false`, supersedes `includeArchived`), and `lifecycle` (exact-match on the classification added by `includeLifecycle`, applied after enrichment so a single call can ask "show me the merged workstreams").
+- **Enrichments:** `includeStatus` (adds `lastJobId`, `lastJobStatus`, `lastJobAt`, `lastJobStartedAt`, `lastJobFinishedAt`), `includePullRequest` (adds `pullRequest`, read from the most recent job that recorded one), `includePullRequestState` (adds `pullRequestState` and `prCount` from a GitHub lookup keyed by `defaultBranch`, cached for 60s per repository), `includeLifecycle` (adds `lifecycle` and `lifecycleReason`; honours `idleDays`, default 14).
 
-Both enrichments default to off. An empty query value counts as absent. The full Javadoc table is in `FlowTreeApiEndpoint.java`.
+All enrichments default to off. An empty query value counts as absent. The full Javadoc table is in `FlowTreeApiEndpoint.java` and `WorkstreamListing.java`.
 
 When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-manager` HTTP MCP server reads this (forwarded to it by the controller) and the `send_message` tool POSTs messages to `{url}/messages`.
 

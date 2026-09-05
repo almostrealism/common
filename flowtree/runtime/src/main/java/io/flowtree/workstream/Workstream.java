@@ -910,8 +910,10 @@ public class Workstream {
     // lifecycle classifier" is inaccurate. Either wire it into the classifier or delete it.
     /**
      * Returns the raw {@code kind} value as stored on this workstream,
-     * without applying the {@code "feature"} default. Used by the lifecycle
-     * classifier so it can distinguish "explicitly cleared" from "never set".
+     * without applying the {@code "feature"} default. Distinguishes
+     * "explicitly cleared" ({@code ""}) from "never set" ({@code null}),
+     * which {@link #getKind()} collapses into the same {@code "feature"}
+     * result.
      *
      * @return the raw {@code kind} string, possibly {@code null} or empty
      */
