@@ -489,6 +489,135 @@ class TestGithubWorkflowRuns(unittest.TestCase):
         result = server.github_list_workflow_runs()
         self.assertFalse(result["ok"])
 
+class TestGithubJobLogs(unittest.TestCase):
+    """Tests for reading a single workflow job's log.
+
+    This is the tool that makes a CI-only failure diagnosable, so the cases
+    that matter are the ones that decide which part of a large log comes
+    back: a log arrives as text rather than JSON, and only the tail of it,
+    filtered, is of any use to the caller.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _log(self, count=500):
+        lines = [f"line {i}" for i in range(1, count + 1)]
+        lines.append("ERROR Tests run: 3, Failures: 1")
+        return {"ok": True, "status": 200, "text": "\n".join(lines)}
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_returns_tail_and_addresses_the_job(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._log()
+        result = server.github_job_logs(job_id=42, tail_lines=10)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["returned"], 10)
+        self.assertEqual(result["total_lines"], 501)
+        self.assertTrue(result["truncated"])
+        # The end of the log is where a failure is reported.
+        self.assertIn("Failures: 1", result["lines"][-1])
+        self.assertEqual(mock_gh.call_args[0][1],
+                         "/repos/owner/repo/actions/jobs/42/logs")
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_tail_lines_zero_returns_everything(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._log()
+        result = server.github_job_logs(job_id=42, tail_lines=0)
+        self.assertEqual(result["returned"], 501)
+        self.assertFalse(result["truncated"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_grep_is_applied_before_the_tail(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._log()
+        result = server.github_job_logs(job_id=42, grep=r"line \d+$",
+                                        tail_lines=3)
+        # Filtering first is what lets a match near the start of a large log
+        # be found at all; tailing first would only ever see the last lines.
+        self.assertEqual(result["matched_lines"], 500)
+        self.assertEqual(result["returned"], 3)
+        self.assertTrue(result["truncated"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_grep_narrows_to_the_failure(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._log()
+        result = server.github_job_logs(job_id=42, grep=r"Failures: \d+")
+        self.assertEqual(result["matched_lines"], 1)
+        self.assertIn("Tests run: 3", result["lines"][0])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_invalid_grep_is_reported_not_raised(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._log()
+        result = server.github_job_logs(job_id=42, grep="[unclosed")
+        self.assertFalse(result["ok"])
+        self.assertIn("Invalid grep pattern", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_negative_tail_lines_is_rejected(self, mock_gh, mock_repo):
+        # A negative slice would drop lines from the front instead of keeping
+        # the end, and report the result as a tail.
+        result = server.github_job_logs(job_id=42, tail_lines=-1)
+        self.assertFalse(result["ok"])
+        self.assertIn("tail_lines", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_non_text_body_is_reported(self, mock_gh, mock_repo):
+        # What the proxy returns when it has not passed the body through as
+        # text — the failure mode that made this unreadable to begin with.
+        mock_gh.return_value = {"ok": True, "status": 200}
+        result = server.github_job_logs(job_id=42)
+        self.assertFalse(result["ok"])
+        self.assertIn("not returned as text", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("owner", "repo", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_propagates_api_error(self, mock_gh, mock_repo):
+        mock_gh.return_value = {"ok": False,
+                                "error": "GitHub returned HTTP 403: Forbidden"}
+        result = server.github_job_logs(job_id=42)
+        self.assertFalse(result["ok"])
+        self.assertIn("403", result["error"])
+
+    def test_requires_job_id(self):
+        result = server.github_job_logs(job_id=0)
+        self.assertFalse(result["ok"])
+        self.assertIn("job_id", result["error"])
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("", "", "", {"ok": False, "error": "no repo"}))
+    @patch.object(server.github_api, "_github_request")
+    def test_unresolved_repo_short_circuits(self, mock_gh, mock_repo):
+        result = server.github_job_logs(job_id=42)
+        self.assertFalse(result["ok"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_resolve_github_repo",
+                  return_value=("explicit", "target", "master", None))
+    @patch.object(server.github_api, "_github_request")
+    def test_org_and_repo_address_that_repository(self, mock_gh, mock_repo):
+        mock_gh.return_value = self._log(count=1)
+        server.github_job_logs(job_id=7, org="explicit", repo="target")
+        self.assertEqual(mock_gh.call_args[0][1],
+                         "/repos/explicit/target/actions/jobs/7/logs")
+        self.assertEqual(mock_repo.call_args.kwargs["owner"], "explicit")
+        self.assertEqual(mock_repo.call_args.kwargs["repo"], "target")
+
+
 class TestGithubPrReviewComments(unittest.TestCase):
     """Tests for github_pr_review_comments (GraphQL-based, paginated)."""
 

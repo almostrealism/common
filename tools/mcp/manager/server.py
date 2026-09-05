@@ -1453,6 +1453,7 @@ from github_tools import (  # noqa: E402
     github_pr_check_status,
     github_list_workflow_runs,
     github_workflow_run_status,
+    github_job_logs,
 )
 from tracker_tools import (  # noqa: E402
     tracker_list_projects,
