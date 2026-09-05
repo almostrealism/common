@@ -64,7 +64,7 @@
  *
  * // Set up lighting
  * PointLight light = new PointLight(new Vector(5, 5, 5), 1.0, new RGB(1, 1, 1));
- * light.setAttenuationCoefficients(1.0, 0.0, 0.0);  // Inverse-square falloff
+ * light.setAttenuationCoefficients(1.0, 0.0, 0.0);  // Scale by squared distance
  *
  * // Create shader
  * ShaderSet<ShaderContext> material = new ShaderSet<>();

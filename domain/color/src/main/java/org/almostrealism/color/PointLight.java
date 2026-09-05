@@ -29,7 +29,8 @@ import org.almostrealism.geometry.RayFeatures;
  *
  * <p>A {@code PointLight} simulates an omnidirectional light source (like a light bulb)
  * where light radiates equally in all directions from a single point. The light intensity
- * can decrease with distance using configurable attenuation coefficients.</p>
+ * is scaled by a distance-based factor using configurable attenuation coefficients; depending
+ * on those coefficients, the factor may increase or decrease with distance.</p>
  *
  * <h2>Distance Attenuation</h2>
  * <p>Light color is scaled by a quadratic function of the distance:</p>
@@ -54,7 +55,7 @@ import org.almostrealism.geometry.RayFeatures;
  * // Create a white point light at position (5, 5, 5)
  * PointLight light = new PointLight(new Vector(5, 5, 5), 1.0, new RGB(1.0, 1.0, 1.0));
  *
- * // Scale the color by the squared distance
+ * // Scale the color by a factor that grows with the squared distance
  * light.setAttenuationCoefficients(1.0, 0.0, 0.0);
  *
  * // Get the attenuated color at a specific point
