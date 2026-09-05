@@ -97,6 +97,8 @@ public class WorkstreamConfig {
     private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
     /** Ordered list of workstream configuration entries. */
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
+    /** Named alert recipients, from the top-level {@code alertRecipients:} key. */
+    private List<AlertRecipientEntry> alertRecipients = new ArrayList<>();
     /**
      * Workspace configuration entries (operator-chosen IDs, optional Slack
      * connection). Populated from the {@code workspaces:} top-level YAML key
@@ -945,6 +947,14 @@ public class WorkstreamConfig {
      */
     @JsonProperty("workspaces")
     public List<WorkspaceEntry> getWorkspaces() { return workspaces; }
+
+    /** Returns the named alert recipients; never {@code null}. */
+    public List<AlertRecipientEntry> getAlertRecipients() { return alertRecipients; }
+
+    /** Sets the named alert recipients, treating {@code null} as empty. */
+    public void setAlertRecipients(List<AlertRecipientEntry> alertRecipients) {
+        this.alertRecipients = alertRecipients == null ? new ArrayList<>() : alertRecipients;
+    }
 
     /**
      * Sets the list of workspace configuration entries. Used by Jackson when

@@ -248,3 +248,80 @@ def send_message(
     if effective_activity:
         body["activity"] = effective_activity
     return server._controller_post(path, body)
+
+
+@mcp.tool()
+def send_alert(
+    text: str,
+    recipients: str,
+    severity: str = "INFO",
+) -> dict:
+    """Send an alert to named people, out of band from any chat channel.
+
+    Use this to reach a person directly — currently by SMS — when
+    something needs attention now and a message in a channel would not
+    be seen in time.  This is deliberately intrusive and it costs money
+    per message, so prefer ``send_message`` for ordinary status
+    reporting and keep this for things a person actually needs to be
+    interrupted for.
+
+    Recipients are named by handle (``"michael"``, ``"mmurray"``), never
+    by phone number.  The controller resolves each handle to a delivery
+    provider at send time, so handles are stable even when the
+    underlying number or channel changes.  A handle the controller does
+    not know is reported back in ``unknown`` rather than failing the
+    call, and the known handles are listed in ``known`` so a typo is
+    easy to correct.
+
+    The alert body is free-form text.  Nothing is prepended to it, so
+    include whatever context the reader needs to act — which repository,
+    which branch, which job — directly in ``text``.  Alerts are
+    delivered as a single short message; keep it to a sentence or two.
+
+    Rate limits apply at two levels: an account-wide ceiling shared by
+    everyone, and a smaller per-caller budget.  Exceeding either returns
+    ``ok=false`` rather than queuing the alert.
+
+    Args:
+        text: The alert body.  Free-form, self-contained, and short;
+            at most 1000 characters.
+        recipients: Comma-separated recipient handles (e.g.
+            ``"michael"`` or ``"michael,mmurray"``).  At least one is
+            required.
+        severity: One of ``INFO``, ``WARNING``, or ``ERROR``.  Defaults
+            to ``INFO``.  Unrecognized values are treated as ``INFO``.
+
+    Returns:
+        Dictionary with ``ok=true`` plus ``delivered``, ``unknown`` and
+        ``known`` recipient lists, or ``ok=false`` with error details.
+    """
+    server._require_scope("write")
+
+    names = [n.strip() for n in (recipients or "").split(",") if n.strip()]
+    if not names:
+        return {
+            "ok": False,
+            "error": "recipients is required; name at least one handle "
+                     "(e.g. recipients=\"michael\")",
+        }
+
+    if not text or not text.strip():
+        return {"ok": False, "error": "text is required"}
+
+    err = server._check_length(text, "text", server.MAX_CONTENT_LEN)
+    if err:
+        return err
+
+    server._audit("send_alert", recipients=",".join(names),
+                  severity=severity, text=text[:80])
+
+    # The caller identity is what the per-caller rate limit is keyed on.
+    # The token label is already the identity the audit log records, so
+    # a throttled caller can be traced to the same identity in both
+    # places without correlating anything.
+    return server._controller_post("/api/alerts", {
+        "text": text,
+        "recipients": names,
+        "severity": severity or "INFO",
+        "caller": server._get_token_label(),
+    })

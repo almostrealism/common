@@ -222,3 +222,80 @@ class TestSendMessageWorkstreamIdOptional(unittest.TestCase):
         self.assertIn("token", result["error"].lower())
         # No POST attempted — the call short-circuits at validation.
         mock_post.assert_not_called()
+
+
+class TestSendAlert(unittest.TestCase):
+    """Covers the send_alert pass-through to the controller alert endpoint."""
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_token_context(workstream_id="ws-1", job_id="job-1")
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+
+    @patch.object(server, "_controller_post")
+    def test_posts_to_alert_endpoint(self, mock_post):
+        """A well-formed call reaches /api/alerts with the parsed recipients."""
+        mock_post.return_value = {"ok": True, "delivered": ["michael"]}
+        result = server.send_alert(text="Build is green", recipients="michael")
+
+        mock_post.assert_called_once()
+        path, body = mock_post.call_args[0][0], mock_post.call_args[0][1]
+        self.assertEqual(path, "/api/alerts")
+        self.assertEqual(body["text"], "Build is green")
+        self.assertEqual(body["recipients"], ["michael"])
+        self.assertEqual(body["severity"], "INFO")
+        self.assertTrue(result["ok"])
+
+    @patch.object(server, "_controller_post")
+    def test_recipients_are_split_and_trimmed(self, mock_post):
+        """A comma-separated list becomes a JSON array with blanks dropped."""
+        mock_post.return_value = {"ok": True}
+        server.send_alert(text="Note", recipients=" michael , mmurray ,, ")
+
+        self.assertEqual(mock_post.call_args[0][1]["recipients"],
+                         ["michael", "mmurray"])
+
+    @patch.object(server, "_controller_post")
+    def test_severity_is_forwarded(self, mock_post):
+        """An explicit severity is passed through untouched."""
+        mock_post.return_value = {"ok": True}
+        server.send_alert(text="Disk full", recipients="michael", severity="ERROR")
+
+        self.assertEqual(mock_post.call_args[0][1]["severity"], "ERROR")
+
+    @patch.object(server, "_controller_post")
+    def test_caller_is_the_token_label(self, mock_post):
+        """The rate-limit key is the same identity the audit log records."""
+        mock_post.return_value = {"ok": True}
+        server.send_alert(text="Note", recipients="michael")
+
+        self.assertEqual(mock_post.call_args[0][1]["caller"],
+                         server._get_token_label())
+
+    @patch.object(server, "_controller_post")
+    def test_missing_recipients_is_rejected_locally(self, mock_post):
+        """An empty recipient list fails without reaching the controller."""
+        result = server.send_alert(text="Note", recipients="  , ")
+
+        self.assertFalse(result["ok"])
+        self.assertIn("recipients", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_post")
+    def test_missing_text_is_rejected_locally(self, mock_post):
+        """Blank text fails without reaching the controller."""
+        result = server.send_alert(text="   ", recipients="michael")
+
+        self.assertFalse(result["ok"])
+        mock_post.assert_not_called()
+
+    def test_requires_write_scope(self):
+        """A read-only token cannot send an alert."""
+        _grant_scopes(["read"])
+        try:
+            with self.assertRaises(PermissionError):
+                server.send_alert(text="Note", recipients="michael")
+        finally:
+            _grant_all_scopes()
