@@ -777,11 +777,11 @@ The output contains multiple JSON objects. Per-turn objects appear early with pa
 | `subtype` | `subtype` | `String` | `null` |
 | `isError` | `is_error` | `boolean` | `false` |
 | `permissionDenials` | `permission_denials` (array length) | `int` | `0` |
-| `deniedToolNames` | `permission_denials[*].tool` | `List<String>` | `null` |
+| `deniedToolNames` | `permission_denials[*].tool_name` | `List<String>` | `null` |
 
 The cost field has a two-step lookup: `total_cost_usd` is checked first, falling back to `cost_usd` if the former is zero or absent. This two-step approach handles different Claude Code output format versions, where the field name changed between releases. The method uses `resultNode.path("total_cost_usd").asDouble(0.0)` for the primary lookup, which returns `0.0` for both missing fields and explicit zero values, then checks `cost_usd` as a fallback only when the primary value is zero.
 
-Permission denials are extracted from a JSON array. Each element is expected to have a `"tool"` field, and the tool names are collected into a list. The count is the array's `size()`.
+Permission denials are extracted from a JSON array. Each element is `{tool_name, tool_use_id, tool_input}`; the denied tool's name is carried by the `"tool_name"` field (not `"tool"`), and the tool names are collected into a list. The count is the array's `size()`.
 
 ### JSON Parsing
 

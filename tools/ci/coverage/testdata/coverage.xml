@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Minimal fixture standing in for the merged JaCoCo report analysis.yaml's
+  `analysis` job produces from all `coverage-*` artifacts. Only the
+  <package> / <counter type="LINE"> shape select-target.py reads is
+  preserved; INSTRUCTION/BRANCH counters are included for a couple of
+  packages to confirm they are ignored.
+-->
+<report name="merged">
+  <!-- Big, badly-covered package: the clear ranking winner among eligible units. -->
+  <package name="org/almostrealism/collect/computations">
+    <counter type="INSTRUCTION" missed="4000" covered="1000"/>
+    <counter type="BRANCH" missed="200" covered="50"/>
+    <counter type="LINE" missed="1400" covered="600"/>
+  </package>
+
+  <!-- Smaller package, higher percentage but still below threshold — should
+       rank behind the big one because its score (missed*(1-frac)) is lower. -->
+  <package name="org/almostrealism/algebra/util">
+    <counter type="LINE" missed="80" covered="220"/>
+  </package>
+
+  <!-- Below the MIN_LINES floor: must never be selected regardless of its
+       (worst) percentage. -->
+  <package name="org/almostrealism/tiny">
+    <counter type="LINE" missed="12" covered="0"/>
+  </package>
+
+  <!-- Already at/above threshold: not eligible. -->
+  <package name="org/almostrealism/util/well/tested">
+    <counter type="LINE" missed="10" covered="490"/>
+  </package>
+
+  <!-- On the exclusion list (generated code): must never be selected no
+       matter how large or how low its percentage. -->
+  <package name="org/almostrealism/generated">
+    <counter type="LINE" missed="6034" covered="0"/>
+  </package>
+
+  <!-- On the exclusion list (GPU/native): same as above. -->
+  <package name="org/almostrealism/hardware/mem">
+    <counter type="LINE" missed="1130" covered="0"/>
+  </package>
+</report>

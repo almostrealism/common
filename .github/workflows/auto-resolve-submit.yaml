@@ -43,6 +43,14 @@ jobs:
   # a failure that survives (or a deterministic failure with no test job in
   # it) reaches `submit`.
   #
+  # A run whose commit is no longer the branch tip is superseded and is neither
+  # retried nor submitted: the newer commit has its own pipeline, so retrying
+  # spends test capacity on a commit that will not be merged and any agent fix
+  # would target stale code. This also keeps retries compatible with the
+  # workflow-level concurrency group in "Build and Test" — a retry is a new
+  # attempt on the same run and rejoins that group, so it must only ever be for
+  # the current head commit or it would cancel the live pipeline.
+  #
   # This lives here rather than in "Build and Test" because rerun-failed-jobs
   # can only act on a completed run — a job cannot re-run its own in-progress
   # run.
@@ -56,6 +64,7 @@ jobs:
       actions: write
     outputs:
       retried: ${{ steps.decide.outputs.retried }}
+      superseded: ${{ steps.decide.outputs.superseded }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -67,6 +76,9 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
           MAX_ATTEMPTS: "3"
         run: |
           chmod +x ./tools/ci/rerun-flaky-tests.sh
@@ -86,7 +98,8 @@ jobs:
       !cancelled() &&
       github.event.workflow_run.head_branch != 'master' &&
       github.event.workflow_run.conclusion != 'cancelled' &&
-      needs.retry-flaky-tests.outputs.retried != 'true'
+      needs.retry-flaky-tests.outputs.retried != 'true' &&
+      needs.retry-flaky-tests.outputs.superseded != 'true'
     runs-on: ubuntu-latest
     # Manual approval gate (required reviewers). Configure under:
     #   Settings -> Environments -> worker

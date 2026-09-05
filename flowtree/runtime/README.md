@@ -111,6 +111,24 @@ This script (run from the repo root):
 ./flowtree/runtime/rebuild.sh --agents-only   # agent pool only (controller already running)
 ```
 
+The agent image bundles the flowtree JARs, so a change under `flowtree/agents`
+reaches a running agent only through one of these two forms — rebuilding the
+controller stack alone leaves `flowtree-agent-1`/`-2` on the JARs they were last
+built with.
+
+Agent configuration comes from `flowtree/runtime/agent/.env`, which is
+gitignored. When rebuilding from a checkout that does not carry it (a CI runner
+workspace), point the script at a copy kept outside the working tree:
+
+```bash
+FLOWTREE_AGENT_ENV=/Users/Shared/flowtree/secrets/agent.env \
+  ./flowtree/runtime/rebuild.sh --agents
+```
+
+With no terminal attached, a missing `FLOWTREE_ROOT_HOST` or
+`CLAUDE_CODE_OAUTH_TOKEN` fails with the name of the missing key instead of
+waiting on a prompt.
+
 ### Manual compose commands
 
 ```bash

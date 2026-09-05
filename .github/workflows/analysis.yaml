@@ -26,6 +26,49 @@ on:
     branches:
       - master
 
+# ─── Per-branch pipeline concurrency ──────────────────────
+# CI capacity is limited, and the dominant source of backlog is several
+# full pipelines for the same branch running at once after rapid pushes.
+# Runs are therefore grouped per ref, with master and every other branch
+# resolving that contention differently.
+#
+# Other branches CANCEL: only the newest commit on a branch is worth
+# validating, since it is the one whose checks gate the merge. A new push
+# supersedes the run already in progress.
+#
+# Master QUEUES: a master pipeline gates nothing, because the merge it
+# builds has already happened. Its result is wanted for the record rather
+# than for a decision, and cancelling would discard that record. Queueing
+# holds master to one pipeline at a time, so it yields runners to the
+# branch pipelines someone is waiting on and works through off-hours.
+#
+# Note that GitHub keeps at most one PENDING run per group: when a master
+# pipeline is running and two more land, the first of those two is
+# cancelled as the second arrives. Master history is therefore complete
+# only while merges are spaced further apart than a pipeline takes.
+#
+# Master is also exempt from the group when re-run by hand: a re-run
+# (attempt 2 or later) gets a group of its own, keyed by run id, so it
+# runs alongside the live pipeline rather than queueing behind it. That
+# preserves the ability to re-run an older master run and compare its
+# result against the current one.
+#
+# The exemption is keyed on run_attempt, which is safe ONLY on master.
+# Elsewhere, "Auto-Resolve Submit" retries flaky test failures via
+# rerun-failed-jobs, which produces attempts 2 and 3 on the same run; an
+# attempt-based exemption would make those retries uncancellable. That
+# workflow's retry gate is itself restricted to non-master branches, so on
+# master a later attempt can only come from a person clicking re-run.
+#
+# To compare two commits on a branch other than master, push the older
+# commit to a scratch branch — a distinct ref is a distinct group.
+concurrency:
+  group: >-
+    build-and-test-${{ github.ref }}${{
+    github.ref == 'refs/heads/master' && github.run_attempt != '1'
+    && format('-rerun-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   # ─── Change Detection ─────────────────────────────────────────────
   # Determines whether code files were changed. If only documentation
@@ -272,7 +315,9 @@ jobs:
           OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
           # These files are the enforcement infrastructure. Any modification
-          # on a PR branch is treated as tampering and fails the build.
+          # on a PR branch is treated as tampering and fails the build, with
+          # one carve-out applied below: on a ci/... branch the pipeline
+          # files among them are the declared subject of the work.
           PROTECTED_FILES=(
             "engine/utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
@@ -303,8 +348,26 @@ jobs:
             "engine/utils/src/main/resources/org/almostrealism/util/setmem-violation-baseline.tsv"
           )
 
+          # A branch named ci/... declares the pipeline as the subject of
+          # the change, the same declaration validate-agent-commit.sh RULE 3
+          # accepts. It unlocks only the protected files that ARE the
+          # pipeline — those under .github/workflows/ and tools/ci/. The
+          # policy detectors stay locked on every branch: weakening a
+          # detector is never what a pipeline change is about. The branch is
+          # read from GITHUB_HEAD_REF first because the workspace is a
+          # detached checkout of the pull request head.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          CI_BRANCH=false
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            CI_BRANCH=true
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+          fi
+
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+              continue
+            fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
               TAMPERED="${TAMPERED}- ${f}\n"
             fi
@@ -334,7 +397,9 @@ jobs:
             echo -e "altering an entry is treated as tampering, because that grandfathers a" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "new violation.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
-            echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "justification for human review. Work whose subject IS the pipeline" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "belongs on a branch named ci/..., chosen before the work starts, which" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "unlocks the workflow and tools/ci files — but never the policy detectors." >> ${RUNNER_TEMP}/enforcement-report.txt
             cat ${RUNNER_TEMP}/enforcement-report.txt
             if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
               echo "::warning::Enforcement infrastructure tampering detected but IGNORED via the override_integrity_checks input"
@@ -430,8 +495,26 @@ jobs:
             "checkstyle.xml"
           )
 
+          # A branch named ci/... declares the pipeline as the subject of
+          # the change, the same declaration validate-agent-commit.sh RULE 3
+          # accepts. It unlocks only the protected files that ARE the
+          # pipeline — those under .github/workflows/ and tools/ci/. The
+          # policy detectors stay locked on every branch: weakening a
+          # detector is never what a pipeline change is about. The branch is
+          # read from GITHUB_HEAD_REF first because the workspace is a
+          # detached checkout of the pull request head.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          CI_BRANCH=false
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            CI_BRANCH=true
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+          fi
+
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+              continue
+            fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
               TAMPERED="${TAMPERED}- ${f}\n"
             fi
@@ -528,6 +611,42 @@ jobs:
             echo "No deception patterns detected." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Assertion Density Report (coverage-qa rounds) ───────────────
+  # Report-only, non-blocking: counts assertions per new test method
+  # added by a coverage-qa round and surfaces the ratio (and any
+  # zero-assertion method) as a visible signal for the human reviewer,
+  # the coverage-qa pipeline's defense against gaming the coverage
+  # percentage with assertion-free tests. Never a merge gate: it is
+  # deliberately absent from all-checks' needs, and the script itself
+  # always exits 0. Scoped to qa/coverage-* branches so every other PR's
+  # summary is unaffected.
+  assertion-density-report:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master' && startsWith(github.head_ref || github.ref_name, 'qa/coverage-')
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Run assertion density report
+        id: density
+        run: |
+          chmod +x ./tools/ci/coverage/assertion-density-report.sh
+          ./tools/ci/coverage/assertion-density-report.sh origin/master "${RUNNER_TEMP}/assertion-density-report.txt"
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f "${RUNNER_TEMP}/assertion-density-report.txt" ]; then
+            cat "${RUNNER_TEMP}/assertion-density-report.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   # ─── Agent Commit Validation ────────────────────────────────────
   # Validates that agent commits do not modify test files or CI
   # files. This is a hard block — agent commits that violate these
@@ -551,8 +670,14 @@ jobs:
 
       - name: Validate agent commit
         id: validate
+        env:
+          # Lets the validator verify a controller-signed
+          # Sensitive-File-Bypass trailer. Absent secret means no commit
+          # can be granted a bypass, which is the safe direction to fail.
+          AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
         run: |
           chmod +x ./tools/ci/agent-protection/validate-agent-commit.sh
+          chmod +x ./tools/ci/agent-protection/verify-sensitive-bypass.sh
           ./tools/ci/agent-protection/validate-agent-commit.sh origin/master --require-production-changes || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
@@ -561,6 +686,13 @@ jobs:
               echo "::warning::Agent commit flagged: no production code changes"
             elif [ "$EXIT_CODE" -eq 4 ]; then
               echo "::error::Agent commit BLOCKED: CI/workflow file modifications detected"
+            else
+              # The validator could not reach a verdict — an unusable base
+              # ref, a missing helper. There is no evidence either way, so
+              # the step fails rather than reporting an unvalidated branch
+              # as clean.
+              echo "::error::Agent commit validation could not run (exit ${EXIT_CODE})"
+              exit "$EXIT_CODE"
             fi
             # Do not fail the build — the auto-resolve job checks this output
             exit 0

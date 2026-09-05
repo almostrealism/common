@@ -518,7 +518,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * return a position in the output space.
 	 */
 	public int[] position(int index) {
-		if (index > getTotalInputSize()) {
+		if (index < 0 || index >= getTotalInputSize()) {
 			throw new IllegalArgumentException();
 		}
 

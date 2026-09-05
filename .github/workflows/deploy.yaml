@@ -24,6 +24,14 @@ on:
     types: [completed]
   workflow_dispatch:
     inputs:
+      redeploy_agents:
+        description: 'Rebuild and recreate the agent pool (flowtree-agent-1/-2) as well as the controller stack'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
       skip_drain:
         description: 'Deploy without waiting for in-flight agent jobs to finish (they will lose their ar-manager connection)'
         required: false
@@ -54,6 +62,12 @@ jobs:
     environment: production
     permissions:
       contents: read
+    env:
+      # workflow_run carries no inputs, so an automatic master deploy falls
+      # through to the repository variable, and to 'true' when that is unset:
+      # the agent pool tracks master by default, exactly as the controller
+      # stack does. Set FLOWTREE_DEPLOY_AGENTS=false to opt the pool out.
+      DEPLOY_AGENTS: ${{ github.event.inputs.redeploy_agents || vars.FLOWTREE_DEPLOY_AGENTS || 'true' }}
     steps:
       - name: Checkout master
         uses: actions/checkout@v4
@@ -89,6 +103,24 @@ jobs:
           DRAIN_TIMEOUT_SECONDS: '1800'
         run: ./tools/ci/drain-agent-jobs.sh
 
+      - name: Record the agent containers being replaced
+        # force-recreate always yields a NEW container id, so comparing ids
+        # across the rebuild is what proves the pool was actually replaced
+        # rather than left running on the previous image. Timestamps would be
+        # equally valid but need RFC3339 parsing that differs between BSD and
+        # GNU date.
+        id: agents_before
+        if: env.DEPLOY_AGENTS == 'true'
+        run: |
+          for n in 1 2; do
+            name="flowtree-agent-${n}"
+            id="$(docker inspect -f '{{.Id}}' "$name" 2>/dev/null || echo none)"
+            # Underscored output names: GitHub expressions read a hyphen in a
+            # property name as subtraction.
+            echo "agent_${n}=${id}" >> "$GITHUB_OUTPUT"
+            echo "::notice::${name} before deploy: ${id}"
+          done
+
       - name: Rebuild and restart the controller stack
         # rebuild.sh owns the whole build: it runs `mvn install -pl
         # flowtree/runtime -am -DskipTests` and then dependency:copy-dependencies,
@@ -102,7 +134,28 @@ jobs:
         # failure mode is the one this deployment exists to prevent — a cached
         # docs layer would leave ar-manager answering from an old corpus while
         # reporting a successful deploy.
-        run: ./flowtree/runtime/rebuild.sh
+        #
+        # --agents extends the same rebuild to the agent pool. The agent image
+        # bundles the flowtree JARs, so any change under flowtree/agents (the
+        # tool policy an agent session runs under, for instance) reaches a
+        # running agent ONLY through this flag; a controller-only deploy leaves
+        # flowtree-agent-1/-2 on the JARs they were last built with.
+        env:
+          # The agent .env is gitignored and therefore absent from this
+          # checkout. Point rebuild.sh at the host's copy, which lives beside
+          # the other deploy secrets.
+          FLOWTREE_AGENT_ENV: ${{ vars.FLOWTREE_AGENT_ENV }}
+        run: |
+          if [ -z "${FLOWTREE_AGENT_ENV}" ] \
+             && [ -f /Users/Shared/flowtree/secrets/agent.env ]; then
+            export FLOWTREE_AGENT_ENV=/Users/Shared/flowtree/secrets/agent.env
+          fi
+          if [ "${DEPLOY_AGENTS}" = 'true' ]; then
+            ./flowtree/runtime/rebuild.sh --agents
+          else
+            echo "::notice::Agent pool left untouched (DEPLOY_AGENTS=${DEPLOY_AGENTS})"
+            ./flowtree/runtime/rebuild.sh
+          fi
 
       - name: Verify the stack came back up
         env:
@@ -133,6 +186,35 @@ jobs:
             echo "::error::Running ar-manager has no usable documentation corpus ($COUNT files)."
             exit 1
           fi
+
+      - name: Verify the agent pool was replaced
+        if: env.DEPLOY_AGENTS == 'true'
+        env:
+          BEFORE_AGENT_1: ${{ steps.agents_before.outputs.agent_1 }}
+          BEFORE_AGENT_2: ${{ steps.agents_before.outputs.agent_2 }}
+        run: |
+          # A rebuild that "succeeded" while the old containers kept running is
+          # the failure this option exists to fix; assert the replacement
+          # instead of trusting the exit code.
+          status=0
+          for name in flowtree-agent-1 flowtree-agent-2; do
+            case "$name" in
+              flowtree-agent-1) before="$BEFORE_AGENT_1" ;;
+              flowtree-agent-2) before="$BEFORE_AGENT_2" ;;
+            esac
+            after="$(docker inspect -f '{{.Id}}' "$name" 2>/dev/null || echo none)"
+            running="$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null || echo false)"
+            if [ "$after" = none ] || [ "$running" != true ]; then
+              echo "::error::$name is not running after the deploy"
+              status=1
+            elif [ "$after" = "$before" ]; then
+              echo "::error::$name was not recreated — still container $after, running the previous image"
+              status=1
+            else
+              echo "::notice::$name recreated as $after"
+            fi
+          done
+          exit $status
 
       - name: Resume accepting agent jobs
         # always(): intake must be reopened even when a step above failed,

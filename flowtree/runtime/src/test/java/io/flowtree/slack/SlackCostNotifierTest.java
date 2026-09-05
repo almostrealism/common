@@ -157,12 +157,14 @@ public class SlackCostNotifierTest extends TestSuiteBase {
 
             store.recordJobStarted("j1", "ws-alpha", "Fix bug", jobTime);
             store.recordJobCompleted("j1", "ws-alpha", "SUCCESS",
-                jobTime.plusMillis(60000), 55000, 30000, 0.50, 10, "sess-1", 0,
+                jobTime.plusMillis(60000), "Fix bug",
+                55000, 30000, 0.50, 10, "sess-1", 0,
                 "success", false, 0, null, null, null, null);
 
             store.recordJobStarted("j2", "ws-beta", "Add feature", jobTime);
             store.recordJobCompleted("j2", "ws-beta", "FAILED",
-                jobTime.plusMillis(120000), 100000, 80000, 1.20, 25, "sess-2", 1,
+                jobTime.plusMillis(120000), "Add feature",
+                100000, 80000, 1.20, 25, "sess-2", 1,
                 "error_max_turns", true, 3, null, null, null, "max turns exceeded");
 
             SlackNotifier notifier = new SlackNotifier(null);

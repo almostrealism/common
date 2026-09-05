@@ -234,6 +234,23 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	Memory getMem();
 
 	/**
+	 * Returns whether the memory behind this data rejects writes.
+	 *
+	 * <p>Read through the root delegate, because that is what owns the memory: a view is no more
+	 * writable than what it is a view of.</p>
+	 *
+	 * <p>Worth asking before arranging a write rather than discovering by attempting one. A write
+	 * arranged against read-only memory does not fail where it was decided — it fails when it runs,
+	 * which for copies chained onto an operation is on whatever thread that operation completed on,
+	 * once per dispatch.</p>
+	 *
+	 * @return whether writes into this data are rejected
+	 */
+	default boolean isReadOnly() {
+		return getRootDelegate().getMem().getProvider().isReadOnly();
+	}
+
+	/**
 	 * Reallocates this memory data to a different {@link MemoryProvider}, copying existing data.
 	 *
 	 * <p>This is used when moving data between memory spaces (e.g., CPU -> GPU). The provider

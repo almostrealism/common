@@ -310,7 +310,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
 
     /**
      * Verifies that the workspace-aware {@code handleSlashCommand} overload is callable
-     * with both a null and a non-null workspace ID without throwing an exception.
+     * with both a null and a non-null workspace ID without throwing an exception, and
+     * that it actually invokes the responder in both cases. No workstream is registered
+     * for {@code C_TEST} under either workspace ID, so both calls fall through to the
+     * same "no workstream configured" reply.
      */
     @Test(timeout = 10000)
     public void testHandleSlashCommandPassesWorkspaceId() throws IOException {
@@ -320,14 +323,14 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         List<String> responses = new ArrayList<>();
         SlackListener.SlashCommandResponder responder = text -> responses.add(text);
 
-        // Call workspace-aware overload with null workspaceId — should not throw
         listener.handleSlashCommand("status", "C_TEST", "#test", responder, null);
-
-        // Call with an actual workspaceId
         listener.handleSlashCommand("status", "C_TEST", "#test", responder, "T111");
 
-        // Both invocations should succeed (may return "no workstream" message)
-        // The key test is that both overloads are callable without error
+        assertEquals("both calls must respond", 2, responses.size());
+        assertTrue("null workspaceId should report no configured workstream",
+                responses.get(0).contains("No workstream configured"));
+        assertTrue("T111 workspaceId should report no configured workstream",
+                responses.get(1).contains("No workstream configured"));
     }
 
     /**
@@ -454,7 +457,8 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
             store.recordJobStarted("reload-job-1", workstreamId,
                     "Reload regression test", jobTime);
             store.recordJobCompleted("reload-job-1", workstreamId, "SUCCESS",
-                    jobTime.plusMillis(60000), 55000, 30000, 0.50, 10,
+                    jobTime.plusMillis(60000), "Reload regression test",
+                    55000, 30000, 0.50, 10,
                     "sess-1", 0, "success", false, 0,
                     null, null, null, null);
 

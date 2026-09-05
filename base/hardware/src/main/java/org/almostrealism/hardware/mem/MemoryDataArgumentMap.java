@@ -132,6 +132,14 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * {@code apply}. Null until {@link #ensureCopyOperations()} runs.
 	 */
 	private List<Submittable> copyOutOperations;
+	/**
+	 * {@link #copyOutOperations} without the ones that would write into read-only memory, which is
+	 * what every caller that is not skipping an in-place output wants. Held separately so that the
+	 * common case still returns a list built once rather than one filtered per dispatch, while
+	 * {@link #copyOutOperations} stays aligned with {@link #replacements} for the callers that index
+	 * it. Null until {@link #ensureCopyOperations()} runs.
+	 */
+	private List<Submittable> writableCopyOutOperations;
 
 	/**
 	 * Creates an argument map bound to the {@link ComputeContext} of the operation it prepares
@@ -352,27 +360,37 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 	/**
 	 * Returns the copy operations that move each aggregated slice back to its source after kernel
-	 * execution, omitting any slice whose source shares memory with {@code skipOutput}.
+	 * execution, omitting any slice that must not be written.
 	 *
-	 * <p>The skip is used to avoid writing a stale read-copy over the buffer the kernel was told to
-	 * use as its explicit output (the in-place {@code x = x + y} case, where the aggregated read copy
-	 * of {@code x} must not overwrite the freshly written {@code x}). When {@code skipOutput} is null
-	 * the full, cached copy-out list is returned directly.</p>
+	 * <p>Two kinds are omitted. A slice whose source shares memory with {@code skipOutput} is left
+	 * out to avoid writing a stale read-copy over the buffer the kernel was told to use as its
+	 * explicit output (the in-place {@code x = x + y} case, where the aggregated read copy of
+	 * {@code x} must not overwrite the freshly written {@code x}). A slice whose source is read-only
+	 * is left out because it cannot be written and has no result to carry — the kernel read it and
+	 * nothing changed it.</p>
 	 *
-	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to copy all
+	 * <p>The read-only omission does not depend on the argument, so it is applied when the list is
+	 * built rather than on each call. Passing null therefore still returns a list built once, and it
+	 * is not the whole of {@link #copyOutOperations}: that one stays aligned with
+	 * {@link #replacements} for the indexed path below.</p>
+	 *
+	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to exclude only
+	 *                   what cannot be written
 	 * @return the post-execution copy operations, in replacement order
 	 */
 	public List<Submittable> getPostprocessOperations(MemoryData skipOutput) {
 		ensureCopyOperations();
 
 		if (skipOutput == null) {
-			return copyOutOperations;
+			return writableCopyOutOperations;
 		}
 
 		Memory skip = skipOutput.getRootDelegate().getMem();
 		List<Submittable> result = new ArrayList<>(copyOutOperations.size());
 		for (int i = 0; i < replacements.size(); i++) {
-			if (replacements.get(i).getRoot().getRootDelegate().getMem() == skip) {
+			MemoryData root = replacements.get(i).getRoot();
+
+			if (root.getRootDelegate().getMem() == skip || root.isReadOnly()) {
 				continue;
 			}
 			result.add(copyOutOperations.get(i));
@@ -386,6 +404,12 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * <p>Each copy binds fixed memory — the replacement's root and a {@link Bytes} view of the
 	 * aggregate at the replacement's offset — so a single built operation is valid for the lifetime
 	 * of this map and is reused across every {@code apply} rather than rebuilt per dispatch.</p>
+	 *
+	 * <p>Every replacement gets a copy-out, so that the list stays aligned with {@link #replacements}
+	 * for callers that index it. Those whose source can actually be written are additionally
+	 * collected into {@link #writableCopyOutOperations}, which is what a caller running all of them
+	 * is given. Whether a source is read-only cannot change while this map lives, so it is decided
+	 * here rather than on each dispatch.</p>
 	 */
 	private void ensureCopyOperations() {
 		if (copyInOperations != null) {
@@ -394,14 +418,20 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 		copyInOperations = new ArrayList<>(replacements.size());
 		copyOutOperations = new ArrayList<>(replacements.size());
+		writableCopyOutOperations = new ArrayList<>(replacements.size());
 
 		for (Replacement r : replacements) {
 			MemoryData root = r.getRoot();
 			int len = root.getMemLength();
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
+			Submittable copyOut = copyOperation(slice, root);
 
 			copyInOperations.add(copyOperation(root, slice));
-			copyOutOperations.add(copyOperation(slice, root));
+			copyOutOperations.add(copyOut);
+
+			if (!root.isReadOnly()) {
+				writableCopyOutOperations.add(copyOut);
+			}
 		}
 	}
 
@@ -435,6 +465,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		destroyCopyOperations(copyOutOperations);
 		copyInOperations = null;
 		copyOutOperations = null;
+		// Holds the same operations copyOutOperations does, already destroyed above
+		writableCopyOutOperations = null;
 		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
 		mems.forEach((k, v) -> v.destroy());
 		mems.clear();

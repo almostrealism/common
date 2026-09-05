@@ -603,14 +603,15 @@ Autonomous agents deployed via auto-resolve have demonstrated systematic pattern
 
 The following scripts enforce invariants mechanically:
 
-- `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that modify base-branch test files or CI files, or that contain no production code changes.
+- `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that change or remove a test method existing on the base branch, that modify CI files, or that contain no substantive changes. Adding a new test method to an existing test class is permitted, as is editing fixtures and helpers.
 - `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss.
 - `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
 
 ## Rules That Cannot Be Bypassed
 
 1. **"Verified locally" proves nothing.** If CI fails and local passes, assume CI is correct and your local environment is insufficient.
-2. **Base-branch test files are read-only for agents.** Mechanical enforcement via `validate-agent-commit.sh`. There are no exceptions based on agent judgment.
+2. **Base-branch test methods are read-only for agents.** Every test method that exists on the base branch must survive byte for byte — annotation block, signature and body. Mechanical enforcement via `validate-agent-commit.sh`. There are no exceptions based on agent judgment. New test methods MAY be added to an existing test class, and fixtures and helpers in a test class are ordinary code.
+   The two exemptions are mechanical, not matters of judgment. A branch named `ci/...` may change files under `.github/workflows/` and `tools/ci/`: the name is chosen before the work starts and declares the pipeline as the subject of the change, so the whole pipeline honours it — the CI-file lock, the enforcement-infrastructure tampering check, and the deception audit's CI-only-commit finding. The policy detectors under `engine/utils` remain locked on every branch, because weakening a detector is never what a pipeline change is about. Separately, a commit carrying a controller-signed `Sensitive-File-Bypass` trailer lifts the test-method and CI locks in `validate-agent-commit.sh`. An agent cannot produce that signature — the secret is not in its environment and the harness strips any trailer the agent writes.
 3. **A "fix" that only modifies test files or CI config is not a fix.** Production test failures require production code changes.
 4. **Before concluding "no changes needed," run `git diff origin/master...HEAD --name-only`** and for each changed production file, state whether the failing test depends on it (directly or transitively). If you cannot produce this evidence, you cannot claim unrelatedness.
 

@@ -295,6 +295,13 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		/**
 		 * Processes this replacement group by creating a temporary buffer and registering copy operations.
 		 *
+		 * <p>A group whose root is read-only is copied in and not back out.
+		 * Nothing can have written to it, so there is no result to carry back,
+		 * and registering the copy anyway does not fail here where it is
+		 * decided: it fails when it runs, on whichever thread the operation
+		 * completed on, once for every operation reading the same asset. Model
+		 * weights are read this way, so that is per layer, per token.</p>
+		 *
 		 * @param tempFactory Factory for creating the temporary buffer
 		 * @param tempChildren Callback that maps each child to its temporary slice
 		 */
@@ -307,7 +314,11 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 			MemoryData tmp = tempFactory.apply(length, length);
 
 			prepare.add(dependsOn -> context.copy(data, tmp, dependsOn));
-			postprocess.add(dependsOn -> context.copy(tmp, data, dependsOn));
+
+			// Read-only memory is copied in but never back out
+			if (!root.isReadOnly()) {
+				postprocess.add(dependsOn -> context.copy(tmp, data, dependsOn));
+			}
 
 			Bytes tempBytes = new Bytes(length, tmp, 0);
 
