@@ -1,7 +1,7 @@
 # ar-manager: Workstream Lifecycle Signals for Archival Assessment
 
-Status: in progress. Scopes A-F are implemented and under code review; see the
-open pull request for this branch.
+Status: merged. Scopes A-F landed in PR #448
+(`feature/ar-manager-archival-signals`).
 Owner: TBD.
 Scope: ar-manager MCP server (`tools/mcp/manager`) and FlowTree controller
 (`flowtree/runtime/src/main/java/io/flowtree/{api,controller,jobs,slack,workstream}`).

@@ -906,14 +906,17 @@ public class Workstream {
     }
 
     // TODO(review): getRawKind() is unused — LifecycleClassifier.classify() only calls
-    // getKind(), never getRawKind(), so the javadoc's claim that it is "used by the
-    // lifecycle classifier" is inaccurate. Either wire it into the classifier or delete it.
+    // getKind(), never getRawKind(). Either wire it into the classifier or delete it.
     /**
      * Returns the raw {@code kind} value as stored on this workstream,
-     * without applying the {@code "feature"} default. Used by the lifecycle
-     * classifier so it can distinguish "explicitly cleared" from "never set".
+     * without applying the {@code "feature"} default that {@link #getKind()}
+     * applies. In practice this never differs from {@link #getKind()}:
+     * {@code kind} is initialized to {@code "feature"}, and every setter and
+     * update path normalizes a {@code null} or empty value to
+     * {@code "feature"} before storing it, so an "explicitly cleared" empty
+     * string is not representable here.
      *
-     * @return the raw {@code kind} string, possibly {@code null} or empty
+     * @return the raw {@code kind} string; never {@code null} or empty
      */
     public String getRawKind() { return kind; }
 
