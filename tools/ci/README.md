@@ -30,7 +30,11 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-test-hiding.sh` | Detect modifications to base-branch tests that hide failures |
-| `validate-agent-commit.sh` | Block agent commits that modify base-branch tests or CI files |
+| `test-method-lines.awk` | Report the test methods of a Java source file, by line or by body |
+| `test-validate-agent-commit.sh` | Regression tests for `validate-agent-commit.sh` |
+| `test-verify-sensitive-bypass.sh` | Regression tests for `verify-sensitive-bypass.sh` |
+| `validate-agent-commit.sh` | Block agent commits that change base-branch test methods or CI files |
+| `verify-sensitive-bypass.sh` | Verify a controller-signed `Sensitive-File-Bypass` commit trailer |
 | `verify-memory-claim.sh` | Cross-reference "no changes needed" claims against git diff |
 
 ## Prompts (`prompts/`)
