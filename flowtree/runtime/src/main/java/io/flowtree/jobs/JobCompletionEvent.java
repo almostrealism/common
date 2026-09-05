@@ -251,6 +251,26 @@ public class JobCompletionEvent {
     public String getDescription() { return description; }
 
     /**
+     * Returns the job description shortened to fit the given length, with an
+     * ellipsis marking the elision. A description that already fits is
+     * returned unchanged, and a missing description yields an empty string
+     * rather than {@code null}, so callers can append the result directly.
+     *
+     * <p>Every channel that reports a job — chat post, SMS alert, listing
+     * row — shows the description under a length budget of its own, so the
+     * shortening belongs to the event rather than to any one reporter.</p>
+     *
+     * @param maxLength maximum number of characters to retain, including the
+     *                  ellipsis
+     * @return the (possibly shortened) description, never {@code null}
+     */
+    public String shortDescription(int maxLength) {
+        if (description == null) return "";
+        if (description.length() <= maxLength) return description;
+        return description.substring(0, maxLength - 3) + "...";
+    }
+
+    /**
      * Returns the instant at which this event was created.
      *
      * @return the event timestamp

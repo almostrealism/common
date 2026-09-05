@@ -31,8 +31,6 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
-import org.almostrealism.io.Alert;
-import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -634,9 +632,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         } else {
             postMessage(workstream.getChannelId(), message);
         }
-
-        // Fire SMS alert via SignalWire (no-op if no provider is attached)
-        fireCompletionAlert(event, workstream);
     }
 
     /**
@@ -1007,27 +1002,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Fires an SMS alert via {@link Console#alert(Alert)} summarizing
-     * the job completion. This is a no-op if no {@link org.almostrealism.io.AlertDeliveryProvider}
-     * is registered (e.g., no {@code signalwire.properties} file).
-     */
-    private void fireCompletionAlert(JobCompletionEvent event, Workstream workstream) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Job ").append(event.getStatus().name().toLowerCase());
-        if (workstream.getChannelName() != null) {
-            sb.append(" (").append(workstream.getChannelName()).append(")");
-        }
-        sb.append(": ").append(truncate(event.getDescription(), 80));
-        if (event.getPullRequestUrl() != null) {
-            sb.append(" | PR: ").append(event.getPullRequestUrl());
-        }
-        if (event.getCostUsd() > 0) {
-            sb.append(String.format(" | $%.2f", event.getCostUsd()));
-        }
-        Console.root().alert(new Alert(Alert.Severity.INFO, sb.toString()));
-    }
-
-    /**
      * Formats the Slack message text sent when a job is first submitted to the
      * queue, including description, target branch, and job ID.
      *
@@ -1038,7 +1012,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private String formatSubmittedMessage(JobCompletionEvent event, Workstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":outbox_tray: *Job submitted:* ");
-        sb.append(truncate(event.getDescription(), 100));
+        sb.append(event.shortDescription(100));
         sb.append("\n");
 
         if (event.getTargetBranch() != null) {
@@ -1062,7 +1036,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     private String formatStartedMessage(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
         sb.append(":arrows_counterclockwise: *Starting work:* ");
-        sb.append(truncate(event.getDescription(), 100));
+        sb.append(event.shortDescription(100));
 
         return sb.toString();
     }
@@ -1095,7 +1069,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                             ? event.getCommitHash().substring(0, 7)
                             : event.getCommitHash();
                         sb.append("   Commit: `").append(shortHash).append("` ");
-                        sb.append(truncate(event.getDescription(), 50));
+                        sb.append(event.shortDescription(50));
                         sb.append("\n");
                     }
 
@@ -1104,7 +1078,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     }
                 } else {
                     sb.append(":white_check_mark: *Work complete* - no changes to push\n");
-                    sb.append("   ").append(truncate(event.getDescription(), 100)).append("\n");
+                    sb.append("   ").append(event.shortDescription(100)).append("\n");
                 }
                 appendSessionMetrics(sb, event);
                 break;
