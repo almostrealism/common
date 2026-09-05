@@ -14,7 +14,10 @@
 # PATTERN 2: Test-Only Agent Commits
 #   Agent commits that modify ONLY test files or CI files with no
 #   production code changes. These cannot fix bugs — they can only
-#   hide failures.
+#   hide failures. On a ci/... branch a commit confined to CI files is
+#   the declared work rather than a finding, matching RULE 3 of
+#   validate-agent-commit.sh; a commit that also reaches base-branch
+#   tests is reported there as everywhere else.
 #
 # PATTERN 3: Repeated Failure Dispatch
 #   The same test class appearing in multiple auto-resolve dispatches
@@ -42,6 +45,17 @@ OUTPUT_FILE="${2:-}"
 if [ -z "$BASE_BRANCH" ]; then
     echo "Usage: $0 <base-branch> [output-file]" >&2
     exit 1
+fi
+
+# ── The branch under audit ──────────────────────────────────────────
+#
+# GITHUB_HEAD_REF names the source branch of a pull request, whose head
+# is checked out detached, so `git branch --show-current` is empty there.
+BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-$(git branch --show-current 2>/dev/null || true)}}"
+
+CI_BRANCH=false
+if [ -n "$BRANCH" ] && echo "$BRANCH" | grep -qE '^ci/'; then
+    CI_BRANCH=true
 fi
 
 FINDING_COUNT=0
@@ -143,6 +157,13 @@ if [ -n "$BRANCH_COMMITS" ]; then
         # branch-new tests are legitimate work.
         HAS_SUBSTANTIVE=$HAS_PRODUCTION
         if [ "$HAS_BRANCH_TEST" = true ]; then
+            HAS_SUBSTANTIVE=true
+        fi
+
+        # On a ci/... branch, a commit that touches nothing but CI files is
+        # the work the branch name declared. A commit that also reaches a
+        # base-branch test is still reported.
+        if [ "$CI_BRANCH" = true ] && [ "$HAS_CI" = true ] && [ "$HAS_BASE_TEST" = false ]; then
             HAS_SUBSTANTIVE=true
         fi
 
