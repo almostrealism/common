@@ -1141,7 +1141,7 @@ public class SlackListener implements ConsoleFeatures {
                     statusText = "";
             }
             sb.append("   ").append(emoji).append(" `").append(SlackNotifier.truncate(entry.getKey(), 8)).append("` - ");
-            sb.append(SlackNotifier.truncate(event.getDescription(), 60)).append(statusText).append("\n");
+            sb.append(event.shortDescription(60)).append(statusText).append("\n");
             count++;
         }
 

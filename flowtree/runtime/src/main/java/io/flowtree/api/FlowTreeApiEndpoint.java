@@ -918,7 +918,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             ? jobDescription : CodingAgentJob.summarizePrompt(prompt);
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.notifierFor(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+        notifiers.completionListener(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
         if (delaySeconds > 0) {
             pendingDelayedJobs.put(factory.getTaskId(), delayedJobExecutor.schedule(
                     () -> { try { server.addTask(factory); } finally { pendingDelayedJobs.remove(factory.getTaskId()); } },
@@ -1017,7 +1017,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         JobCompletionEvent startEvent = JobCompletionEvent.started(
                 factory.getTaskId(), ShellCommandJob.summarizeCommand(command));
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.notifierFor(workstream.getWorkstreamId())
+        notifiers.completionListener(workstream.getWorkstreamId())
                 .onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
         if (delaySeconds > 0) {
@@ -1173,7 +1173,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             statsQueryHandler.recordHeartbeat(jobId, Instant.now());
         }
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
-            notifiers.notifierFor(workstreamId).onJobStarted(workstreamId, event);
+            notifiers.completionListener(workstreamId).onJobStarted(workstreamId, event);
         } else {
             completeJob(workstreamId, event);
         }
@@ -1196,7 +1196,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param event        the terminal event to dispatch
      */
     public void completeJob(String workstreamId, JobCompletionEvent event) {
-        notifiers.notifierFor(workstreamId).onJobCompleted(workstreamId, event);
+        notifiers.completionListener(workstreamId).onJobCompleted(workstreamId, event);
         if (completionListenerFanout == null) return;
         // Clearing the debounce keeps a fast-completing wake-up from
         // extending the window, which would defeat the property that a

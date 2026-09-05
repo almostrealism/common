@@ -16,16 +16,21 @@
 
 package io.flowtree.slack;
 
+import io.flowtree.jobs.JobAlertNotifier;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.jobs.JobCompletionListener;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.workstream.Workstream;
+import org.almostrealism.io.Console;
 
 /**
  * Aggregation helper used by {@link FlowTreeApiEndpoint} to resolve workstream
@@ -55,8 +60,22 @@ public final class NotifierRegistry {
     private final Map<String, SlackNotifier> byWorkspace;
 
     /**
+     * Workspace-independent listeners notified of every job event alongside
+     * the resolved notifier. Seeded with the {@link JobAlertNotifier} by the
+     * constructor and extended through
+     * {@link #addCompletionListener(JobCompletionListener)}.
+     */
+    private final List<JobCompletionListener> additional = new CopyOnWriteArrayList<>();
+
+    /**
      * Creates a registry backed by the given primary notifier and optional
      * per-workspace map. The map is defensively copied.
+     *
+     * <p>A {@link JobAlertNotifier} is registered as a completion listener so
+     * that job outcomes reach the console alert bus whether or not the
+     * workstream has a chat channel. It is inert until an
+     * {@link org.almostrealism.io.AlertDeliveryProvider} is attached, so an
+     * unconfigured deployment pays nothing for it.</p>
      *
      * @param primary     the fallback notifier (may be {@code null})
      * @param byWorkspace workspace-ID → notifier map, or {@code null} for empty
@@ -66,6 +85,7 @@ public final class NotifierRegistry {
         this.byWorkspace = byWorkspace != null
                 ? new LinkedHashMap<>(byWorkspace)
                 : new LinkedHashMap<>();
+        addCompletionListener(new JobAlertNotifier(this::workstreamFor));
     }
 
     /** Returns the primary (fallback) notifier; may be {@code null}. */
@@ -96,6 +116,53 @@ public final class NotifierRegistry {
             }
         }
         return primary;
+    }
+
+    /**
+     * Registers a listener notified of a workstream's job events alongside
+     * the workstream's own notifier.
+     *
+     * <p>The chat notifier is one consumer of job events among several — an
+     * alert publisher, a metrics recorder and an external webhook are all
+     * plausible siblings — so consumers that are not tied to a workspace
+     * register here and are reached through
+     * {@link #completionListener(String)} like any other.</p>
+     *
+     * @param listener the listener to add
+     * @return this registry, for chaining
+     */
+    public NotifierRegistry addCompletionListener(JobCompletionListener listener) {
+        if (listener != null) additional.add(listener);
+        return this;
+    }
+
+    /**
+     * Returns the listener that reaches every consumer of the given
+     * workstream's job events: the notifier resolved by
+     * {@link #notifierFor(String)} followed by each listener registered
+     * through {@link #addCompletionListener(JobCompletionListener)}.
+     *
+     * <p>A listener that throws does not prevent the remaining listeners
+     * from being notified, so one misconfigured consumer cannot suppress
+     * the others.</p>
+     *
+     * @param workstreamId the workstream whose job event is being dispatched
+     * @return a listener fanning the event out to every consumer
+     */
+    public JobCompletionListener completionListener(String workstreamId) {
+        return new Fanout(notifierFor(workstreamId), additional);
+    }
+
+    /**
+     * Returns the workstream with the given ID, or {@code null} when no
+     * workspace claims it.
+     *
+     * @param workstreamId the workstream identifier
+     * @return the workstream, or {@code null} if unknown
+     */
+    public Workstream workstreamFor(String workstreamId) {
+        SlackNotifier owner = notifierFor(workstreamId);
+        return owner != null ? owner.getWorkstream(workstreamId) : null;
     }
 
     /**
@@ -317,5 +384,64 @@ public final class NotifierRegistry {
             return null;
         }
         return primary != null ? primary.findWorkstreamByBranchAndRepo(branch, repoUrl) : null;
+    }
+
+    /**
+     * Notifies a workstream's notifier and then every workspace-independent
+     * listener, isolating each from the others' failures.
+     */
+    private static final class Fanout implements JobCompletionListener {
+
+        /** The notifier owning the workstream, or {@code null} when none does. */
+        private final SlackNotifier owner;
+
+        /** The workspace-independent listeners, in registration order. */
+        private final List<JobCompletionListener> additional;
+
+        /**
+         * Creates a fan-out over the given notifier and listeners.
+         *
+         * @param owner      the resolved notifier, or {@code null}
+         * @param additional the workspace-independent listeners
+         */
+        private Fanout(SlackNotifier owner, List<JobCompletionListener> additional) {
+            this.owner = owner;
+            this.additional = additional;
+        }
+
+        @Override
+        public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
+            deliver(l -> l.onJobCompleted(workstreamId, event));
+        }
+
+        @Override
+        public void onJobSubmitted(String workstreamId, JobCompletionEvent event) {
+            deliver(l -> l.onJobSubmitted(workstreamId, event));
+        }
+
+        @Override
+        public void onJobStarted(String workstreamId, JobCompletionEvent event) {
+            deliver(l -> l.onJobStarted(workstreamId, event));
+        }
+
+        /**
+         * Applies the given notification to the owner and to each additional
+         * listener. A listener that throws is reported and skipped so the
+         * remaining listeners still receive the event.
+         *
+         * @param notification the notification to deliver
+         */
+        private void deliver(Consumer<JobCompletionListener> notification) {
+            if (owner != null) notification.accept(owner);
+
+            for (JobCompletionListener listener : additional) {
+                try {
+                    notification.accept(listener);
+                } catch (RuntimeException ex) {
+                    Console.root().warn(listener.getClass().getSimpleName()
+                            + " failed to handle a job event: " + ex.getMessage(), ex);
+                }
+            }
+        }
     }
 }
