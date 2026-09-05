@@ -316,18 +316,16 @@ public interface RGBFeatures extends ScalarFeatures {
 		return cfromScalar(c(value));
 	}
 
+	// TODO(review): confirm intensity growing with distance (da/db > 0) is intended; see attenuation() javadoc.
 	/**
 	 * Calculates light attenuation based on distance.
 	 *
-	 * <p>Implements the attenuation formula: {@code color / (da*d^2 + db*d + dc)}
-	 * where d is the distance (sqrt of distanceSq). This models how light
-	 * intensity decreases with distance from the source.</p>
+	 * <p>Implements the attenuation formula: {@code color * (da*d^2 + db*d + dc)}
+	 * where d is the distance (sqrt of distanceSq).</p>
 	 *
 	 * <p>Common configurations:</p>
 	 * <ul>
 	 *   <li>{@code (0, 0, 1)}: Constant intensity (no falloff)</li>
-	 *   <li>{@code (1, 0, 0)}: Inverse-square law (physically realistic)</li>
-	 *   <li>{@code (0, 1, 0)}: Linear falloff</li>
 	 * </ul>
 	 *
 	 * @param da coefficient for quadratic (d^2) term
