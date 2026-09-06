@@ -29,7 +29,7 @@ import org.junit.Test;
  * reading the log needs the difference, and the message identifier that lets
  * them look the delivery up where it is actually recorded.</p>
  */
-public class SignalWireSendOutcomeTest {
+public class SignalWireSendOutcomeTest extends TestSuiteBase {
 
 	/** A created or ok status is acceptance. */
 	@Test(timeout = 10000)
