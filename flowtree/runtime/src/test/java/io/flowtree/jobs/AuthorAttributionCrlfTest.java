@@ -62,8 +62,10 @@ public class AuthorAttributionCrlfTest extends TestSuiteBase {
     }
 
     /**
-     * A trailing {@code Co-Authored-By:} trailer sitting above a blank line is
-     * removed when the message uses CRLF line endings.
+     * A trailing {@code Co-Authored-By:} trailer is removed when the message
+     * uses CRLF line endings. The message is trimmed before being sanitized,
+     * mirroring {@link CommitMessageBuilder#resolve(CodingAgentJob)}, so there
+     * is no trailing blank line after the trailer.
      */
     @Test(timeout = 30000)
     public void trailingCoAuthorTrailerWithCrlfIsRemoved() {
