@@ -48,10 +48,10 @@ public class Bits {
 	 * @return the packed value at the specified position
 	 */
 	public static int put(int position, int bits, int value) {
-		// TODO(review): bits == 32 makes (1 << bits) wrap to (1 << 0) under Java's
-		// shift-count masking, so mask becomes 0 and put() silently always returns 0.
-		// No current caller passes bits == 32 (max observed is 16), but this is untested.
-		int mask = (1 << bits) - 1;
+		// Java masks shift counts to 5 bits for int, so (1 << 32) evaluates to
+		// (1 << 0) == 1 rather than overflowing to 0. bits == 32 is special-cased
+		// to an all-ones mask so a full-width field keeps every bit of value.
+		int mask = bits == 32 ? -1 : (1 << bits) - 1;
 		return (value & mask) << position;
 	}
 }

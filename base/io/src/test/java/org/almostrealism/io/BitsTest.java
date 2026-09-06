@@ -57,4 +57,14 @@ public class BitsTest {
 	public void inputsWithEqualLowBitsPackEqually() {
 		Assert.assertEquals(Bits.put(0, 16, 65535), Bits.put(0, 16, -1));
 	}
+
+	/**
+	 * A full 32-bit field must keep every bit of the value. Java masks shift
+	 * counts to 5 bits for {@code int}, so a naive {@code (1 << 32) - 1} mask
+	 * wraps to {@code 0} and would silently zero out any value packed here.
+	 */
+	@Test(timeout = 10000)
+	public void fullWidthFieldPreservesAllBits() {
+		Assert.assertEquals(-1, Bits.put(0, 32, -1));
+	}
 }
