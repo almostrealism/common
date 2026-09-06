@@ -45,6 +45,11 @@ import java.util.regex.Pattern;
  * and it can be deleted without touching a single character the agent wrote
  * about its work.</p>
  *
+ * <p>Lines are split on either {@code \n} or {@code \r\n}: {@code commit.txt}
+ * is read verbatim and an agent may write it with Windows line endings, so a
+ * trailing {@code \r} must not be left on a line where it would defeat the
+ * anchored whole-line patterns and let attribution through.</p>
+ *
  * <p>Anything else &mdash; attribution mixed into a line of prose, an
  * attribution line in the middle of the body with content after it, or a
  * message that is nothing but attribution &mdash; is <em>not</em> safely
@@ -177,7 +182,7 @@ public final class AuthorAttribution {
     public static List<String> attributionLines(String message) {
         List<String> found = new ArrayList<>();
         if (message == null || message.isEmpty()) return found;
-        for (String line : message.split("\n", -1)) {
+        for (String line : message.split("\r?\n", -1)) {
             if (isAttributionLine(line) || INLINE_MARKER.matcher(line).find()) {
                 found.add(line.trim());
             }
@@ -214,7 +219,7 @@ public final class AuthorAttribution {
     public static String sanitize(String message) {
         if (message == null) return null;
 
-        String[] lines = message.split("\n", -1);
+        String[] lines = message.split("\r?\n", -1);
 
         int lastContent = -1;
         for (int i = lines.length - 1; i >= 0; i--) {
@@ -260,7 +265,7 @@ public final class AuthorAttribution {
         if (message == null || message.isEmpty()) return message;
         StringBuilder out = new StringBuilder(message.length());
         boolean first = true;
-        for (String line : message.split("\n", -1)) {
+        for (String line : message.split("\r?\n", -1)) {
             if (isAttributionLine(line)) continue;
             if (!first) out.append('\n');
             out.append(line);
