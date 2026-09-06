@@ -50,9 +50,14 @@ public final class GitHubOrgs {
      * Returns the value mapped to {@code org}, comparing organisation names
      * without regard to case.
      *
-     * <p>When several keys differ only by case — which a well-formed config
-     * should never contain, since they name the same GitHub organisation —
-     * the first match in the map's iteration order is returned.</p>
+     * <p>An exact match is preferred when present. Otherwise, when several
+     * keys differ only by case — which a well-formed config should never
+     * contain, since they name the same GitHub organisation — the last match
+     * in the map's iteration order is returned, so that maps built with
+     * "last write wins" merge semantics (such as
+     * {@code WorkstreamConfig.mergedGithubOrgTokens()}) preserve the intended
+     * override precedence rather than falling back to whichever entry
+     * happened to be inserted first.</p>
      *
      * @param byOrg map keyed by GitHub org name; {@code null} is treated as empty
      * @param org   the org name to resolve; {@code null} or empty yields {@code null}
@@ -61,13 +66,17 @@ public final class GitHubOrgs {
      */
     public static <V> V lookup(Map<String, V> byOrg, String org) {
         if (byOrg == null || org == null || org.isEmpty()) return null;
+        // TODO(review): can return a stale entry if it isn't the last-inserted key; see memory review-followup.
+        if (byOrg.containsKey(org)) return byOrg.get(org);
+
+        V match = null;
 
         for (Map.Entry<String, V> entry : byOrg.entrySet()) {
             if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(org)) {
-                return entry.getValue();
+                match = entry.getValue();
             }
         }
 
-        return null;
+        return match;
     }
 }

@@ -86,6 +86,35 @@ public class GitHubOrgsTest extends TestSuiteBase {
     }
 
     /**
+     * When a merged map (built with "last write wins" semantics, as
+     * {@code WorkstreamConfig.mergedGithubOrgTokens()} does) contains both an
+     * exact-case key and an older case-insensitive duplicate, the exact match
+     * must win rather than whichever entry was inserted first.
+     */
+    @Test(timeout = 10000)
+    public void lookupPrefersExactMatchOverEarlierCaseInsensitiveEntry() {
+        Map<String, String> tokens = new LinkedHashMap<>();
+        tokens.put("Plytrix", "<STALE>");
+        tokens.put("plytrix", "<CURRENT>");
+
+        assertEquals("<CURRENT>", GitHubOrgs.lookup(tokens, "plytrix"));
+    }
+
+    /**
+     * When no exact match exists but several keys differ only by case, the
+     * last one in iteration order wins, matching "last write wins" merge
+     * semantics rather than returning whichever was inserted first.
+     */
+    @Test(timeout = 10000)
+    public void lookupPrefersLastCaseInsensitiveMatchWhenNoExactMatch() {
+        Map<String, String> tokens = new LinkedHashMap<>();
+        tokens.put("Plytrix", "<STALE>");
+        tokens.put("PLYTRIX", "<CURRENT>");
+
+        assertEquals("<CURRENT>", GitHubOrgs.lookup(tokens, "plytrix"));
+    }
+
+    /**
      * The regression itself: the org parsed out of a submitted repoUrl
      * resolves the owning workspace whichever casing each side used. The
      * repoUrl shape is the one CI submits, built from
