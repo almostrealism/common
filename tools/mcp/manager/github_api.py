@@ -135,6 +135,11 @@ def _github_proxy_request(method: str, path: str, payload: dict = None,
         if 200 <= gh_status < 300:
             if isinstance(gh_body, (dict, list)):
                 return gh_body
+            # Endpoints that serve a document rather than a structure — Actions job
+            # logs among them — come back as a string, which the caller still has to
+            # be able to reach.
+            if isinstance(gh_body, str):
+                return {"ok": True, "status": gh_status, "text": gh_body}
         if isinstance(gh_body, dict):
             msg = gh_body.get("message", "")
             return {"ok": False, "error": f"GitHub returned HTTP {gh_status}: {msg}"}
@@ -491,6 +496,77 @@ def list_workflow_runs(owner: str, repo: str, workflow: str = "",
         "total_count": result.get("total_count", len(runs)),
         "returned": len(runs),
         "workflow_runs": runs,
+    }
+
+
+def get_job_logs(owner: str, repo: str, job_id: int,
+                 tail_lines: int = 200, grep: str = "") -> dict:
+    """Fetch the log of a single workflow job.
+
+    The failure summary a test job prints names the tests that failed but not
+    what they were doing, so diagnosing one from the API alone is not possible
+    without the log itself. GitHub serves it as plain text, by way of a
+    redirect to storage, rather than as JSON.
+
+    Logs run to megabytes, so the whole of one is rarely what a caller wants
+    and never what should be returned by default: ``tail_lines`` keeps the end,
+    which is where a failure is reported, and ``grep`` narrows to the lines that
+    match before the tail is taken.
+
+    Args:
+        owner: Repository owner (org or user).
+        repo: Repository name.
+        job_id: The numeric job id, as reported by ``get_workflow_run_status``.
+        tail_lines: Number of lines to return from the end; 0 returns all.
+            Must not be negative — a negative slice would drop lines from the
+            front, which is the opposite of what a tail is for.
+        grep: Optional regular expression; only matching lines are considered.
+
+    Returns:
+        dict with ok=True, ``lines``, ``returned``, ``total_lines`` and
+        ``truncated``; or an ok=False error dict.
+    """
+    if tail_lines < 0:
+        return {"ok": False,
+                "error": f"tail_lines must be 0 or greater (got {tail_lines})"}
+
+    result = _github_request(
+        "GET", f"/repos/{owner}/{repo}/actions/jobs/{job_id}/logs", timeout=60)
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+    if not isinstance(result, dict) or "text" not in result:
+        return {
+            "ok": False,
+            "error": "Job logs were not returned as text",
+            "next_steps": [
+                "Confirm the controller proxy forwards non-JSON bodies",
+                "Confirm the org's GitHub token grants Actions: read",
+            ],
+        }
+
+    lines = result["text"].splitlines()
+    total = len(lines)
+
+    if grep:
+        try:
+            pattern = re.compile(grep)
+        except re.error as e:
+            return {"ok": False, "error": f"Invalid grep pattern: {e}"}
+        lines = [line for line in lines if pattern.search(line)]
+
+    matched = len(lines)
+    if tail_lines and matched > tail_lines:
+        lines = lines[-tail_lines:]
+
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "lines": lines,
+        "returned": len(lines),
+        "matched_lines": matched,
+        "total_lines": total,
+        "truncated": len(lines) < matched,
     }
 
 

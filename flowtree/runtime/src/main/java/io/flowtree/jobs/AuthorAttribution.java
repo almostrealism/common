@@ -45,6 +45,11 @@ import java.util.regex.Pattern;
  * and it can be deleted without touching a single character the agent wrote
  * about its work.</p>
  *
+ * <p>Lines are split on either {@code \n} or {@code \r\n}: {@code commit.txt}
+ * is read verbatim and an agent may write it with Windows line endings, so a
+ * trailing {@code \r} must not be left on a line where it would defeat the
+ * anchored whole-line patterns and let attribution through.</p>
+ *
  * <p>Anything else &mdash; attribution mixed into a line of prose, an
  * attribution line in the middle of the body with content after it, or a
  * message that is nothing but attribution &mdash; is <em>not</em> safely
@@ -88,27 +93,48 @@ public final class AuthorAttribution {
                     + "\\b(?:claude|anthropic|copilot|chatgpt|openai|gpt-?[0-9]|codex|cursor|gemini)\\b.*$");
 
     /**
-     * A line carrying an assistant identity &mdash; the agent's e-mail address
-     * or product URL &mdash; anywhere within it.
+     * A line that is nothing but an assistant identity &mdash; the agent's
+     * e-mail address or product URL &mdash; possibly wrapped in non-letter
+     * decoration (a list marker, angle brackets, parentheses, an emoji, or a
+     * {@code http(s)://} scheme). This is the stray bare-identity line agents
+     * sometimes drop on its own, and it is caught here because neither
+     * {@link #TRAILER_LINE} nor {@link #TOOL_CREDIT_LINE} would.
+     *
+     * <p>The identity must be the whole of the line's textual content: a line
+     * whose prose merely <em>mentions</em> the string &mdash; a commit
+     * describing a change to identity-handling code, say &mdash; is the agent's
+     * own description of its work, not attribution, and is deliberately not
+     * matched. Requiring no other letters before or after the identity is what
+     * keeps {@link #isAttributionLine(String)} true to its contract of
+     * recognizing a line that is <em>entirely</em> attribution.</p>
      */
     private static final Pattern IDENTITY_LINE = Pattern.compile(
-            "(?i)^.*(?:noreply@anthropic\\.com|claude\\.com/claude-code|claude\\.ai/code).*$");
+            "(?i)^[^\\p{L}]*(?:https?://)?"
+                    + "(?:noreply@anthropic\\.com|claude\\.com/claude-code|claude\\.ai/code)[^\\p{L}]*$");
 
     /**
      * Attribution recognizable inside a line that also carries other content.
      * Used to detect the unsafe case: attribution welded into the agent's own
      * prose, which cannot be deleted line-wise.
      *
-     * <p>Covers a trailer key wherever it appears, an assistant identity, and
-     * a credit phrase in prose. The phrase form spans the same verbs as
-     * {@link #TOOL_CREDIT_LINE} &mdash; "written by ChatGPT" mid-sentence is
-     * attribution just as much as "Generated with Claude Code" is &mdash; and
-     * requires a named assistant or vendor after the verb, so "written by
-     * hand" and "created with the new script" remain ordinary prose.</p>
+     * <p>Covers a trailer key wherever it appears and a credit phrase in prose.
+     * The phrase form spans the same verbs as {@link #TOOL_CREDIT_LINE} &mdash;
+     * "written by ChatGPT" mid-sentence is attribution just as much as
+     * "Generated with Claude Code" is &mdash; and requires a named assistant or
+     * vendor after the verb, so "written by hand" and "created with the new
+     * script" remain ordinary prose.</p>
+     *
+     * <p>A bare identity (e-mail or product URL) is intentionally <em>not</em>
+     * an inline marker: on its own line it is caught by {@link #IDENTITY_LINE},
+     * and merely mentioned in prose it is the agent describing its work rather
+     * than claiming authorship. Treating a mention as welded attribution would
+     * refuse or truncate a legitimate message, which the sanitization contract
+     * forbids.</p>
      */
+    // TODO(review): confirm dropping the bare-identity alternatives here doesn't let genuine
+    // attribution woven into non-canonical prose (not a mere mention) slip through undetected.
     private static final Pattern INLINE_MARKER = Pattern.compile(
             "(?i)(?:co[- ]?)?(?:authored|written|assisted)[- ]?by[ \t]*:"
-                    + "|noreply@anthropic\\.com|claude\\.com/claude-code|claude\\.ai/code"
                     + "|(?:co[- ]?)?(?:generated|created|produced|authored|written|assisted)"
                     + "[- ]?(?:with|by)[ \t]+"
                     + "(?:claude|anthropic|copilot|chatgpt|openai|gpt-?[0-9]|codex|cursor|gemini)");
@@ -119,8 +145,10 @@ public final class AuthorAttribution {
 
     /**
      * Returns whether {@code line} is entirely author attribution &mdash; a
-     * co-author trailer, a tool-credit line, or a line carrying an assistant
-     * identity.
+     * co-author trailer, a tool-credit line, or a line that is nothing but an
+     * assistant identity. A line whose prose merely mentions an identity
+     * string is the agent describing its work, not attribution, and is not
+     * matched.
      *
      * @param line a single line of a commit message, without its line terminator
      * @return {@code true} when the whole line is attribution
@@ -154,7 +182,7 @@ public final class AuthorAttribution {
     public static List<String> attributionLines(String message) {
         List<String> found = new ArrayList<>();
         if (message == null || message.isEmpty()) return found;
-        for (String line : message.split("\n", -1)) {
+        for (String line : message.split("\r?\n", -1)) {
             if (isAttributionLine(line) || INLINE_MARKER.matcher(line).find()) {
                 found.add(line.trim());
             }
@@ -191,7 +219,7 @@ public final class AuthorAttribution {
     public static String sanitize(String message) {
         if (message == null) return null;
 
-        String[] lines = message.split("\n", -1);
+        String[] lines = message.split("\r?\n", -1);
 
         int lastContent = -1;
         for (int i = lines.length - 1; i >= 0; i--) {
@@ -237,7 +265,7 @@ public final class AuthorAttribution {
         if (message == null || message.isEmpty()) return message;
         StringBuilder out = new StringBuilder(message.length());
         boolean first = true;
-        for (String line : message.split("\n", -1)) {
+        for (String line : message.split("\r?\n", -1)) {
             if (isAttributionLine(line)) continue;
             if (!first) out.append('\n');
             out.append(line);

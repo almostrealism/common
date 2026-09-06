@@ -1192,5 +1192,105 @@ public class SlackIntegrationTest extends TestSuiteBase {
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
         assertEquals("U0123456789", config.getChannelOwnerUserId());
     }
+
+    /** SlackListener /flowtree archive archives the channel's workstream. */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchive() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("C_ARCH_1", "#archive-channel");
+        listener.registerWorkstream(ws);
+        assertFalse("precondition: the workstream starts unarchived", ws.isArchived());
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("archive", "C_ARCH_1", "#archive-channel", response::set);
+
+        assertTrue("the workstream must actually be archived", ws.isArchived());
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("Workstream archived"));
+        assertTrue(response.get().contains(ws.getWorkstreamId()));
+    }
+
+    /** SlackListener /flowtree archive keep-channel leaves the Slack channel open. */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveKeepChannel() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("C_ARCH_2", "#archive-channel");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("archive keep-channel", "C_ARCH_2",
+                "#archive-channel", response::set);
+
+        assertTrue(ws.isArchived());
+        assertTrue(response.get().contains("left open"));
+    }
+
+    /** SlackListener /flowtree archive reports when no workstream is bound. */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveNoWorkstream() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("archive", "C_NONE", "#no-ws", response::set);
+
+        assertNotNull(response.get());
+        assertTrue(response.get().contains("No workstream configured"));
+    }
+
+    /** SlackListener /flowtree archive is idempotent for an archived workstream. */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveAlreadyArchived() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("C_ARCH_3", "#archive-channel");
+        ws.setArchived(true);
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("archive", "C_ARCH_3", "#archive-channel", response::set);
+
+        assertTrue(response.get().contains("already archived"));
+    }
+
+    /**
+     * SlackListener /flowtree archive refuses while a job is running, applying
+     * the same guard as the archive endpoint rather than archiving a
+     * workstream out from under an active job.
+     */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveRefusesWithActiveJobs() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("C_ARCH_4", "#archive-channel");
+        listener.registerWorkstream(ws);
+        notifier.onJobStarted(ws.getWorkstreamId(),
+                JobCompletionEvent.started("job-active", "Long running job"));
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("archive", "C_ARCH_4", "#archive-channel", response::set);
+
+        assertFalse("an active job must block the archive", ws.isArchived());
+        assertTrue(response.get().contains("Cannot archive"));
+        assertTrue(response.get().contains("job-active"));
+    }
+
+    /** The /flowtree help listing advertises the archive subcommand. */
+    @Test(timeout = 10000)
+    public void testSlashCommandHelpListsArchive() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("", "C123", "#test", response::set);
+
+        assertTrue(response.get().contains("/flowtree archive"));
+    }
 }
 

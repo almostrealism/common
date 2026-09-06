@@ -174,7 +174,7 @@
 
                 <h3>StateDictionary</h3>
                 <p>The standard way to load and access model weights in the AR framework.</p>
-                <pre><code class="language-java">import org.almostrealism.model.StateDictionary;
+                <pre><code class="language-java">import org.almostrealism.ml.StateDictionary;
 
 // Load model weights from directory
 StateDictionary stateDict = new StateDictionary("/path/to/weights");
@@ -271,7 +271,7 @@ Block transformerLayer = transformer(
 
                 <h3>Tokenization</h3>
                 <p>Byte-level BPE tokenizers convert text to token IDs and back.</p>
-                <pre><code class="language-java">import org.almostrealism.models.qwen3.Qwen3Tokenizer;
+                <pre><code class="language-java">import org.almostrealism.ml.qwen3.Qwen3Tokenizer;
 
 // Load tokenizer
 Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("/path/to/tokenizer.bin");
@@ -310,7 +310,7 @@ Producer&lt;PackedCollection&gt; rotatedQ = ropeRotation(
 
                 <h3>AutoregressiveModel</h3>
                 <p>Wraps a compiled model for token-by-token generation.</p>
-                <pre><code class="language-java">import org.almostrealism.model.AutoregressiveModel;
+                <pre><code class="language-java">import org.almostrealism.ml.AutoregressiveModel;
 
 // Wrap compiled model for token generation
 AutoregressiveModel generator = AutoregressiveModel.of(
@@ -432,7 +432,7 @@ String text = tokenizer.decodeAsInt(tokens);</code></pre>
                 <h2>Usage Examples</h2>
 
                 <h3>Loading and Running Qwen3</h3>
-                <pre><code class="language-java">import org.almostrealism.models.qwen3.Qwen3;
+                <pre><code class="language-java">import org.almostrealism.ml.qwen3.Qwen3;
 
 // Initialize model
 Qwen3 model = new Qwen3(

@@ -702,8 +702,8 @@ building and running LLMs.
 #### Loading and Running a Model
 
 ```Java
-import org.almostrealism.model.StateDictionary;
-import org.almostrealism.models.qwen3.Qwen3;
+import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.ml.qwen3.Qwen3;
 
 public class LLMExample {
     public static void main(String[] args) throws Exception {
@@ -729,7 +729,7 @@ public class LLMExample {
 #### Building Custom Models with StateDictionary
 
 ```Java
-import org.almostrealism.model.StateDictionary;
+import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.layers.AttentionFeatures;
 
 public class CustomModel implements AttentionFeatures {

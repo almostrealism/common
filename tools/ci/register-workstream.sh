@@ -21,9 +21,23 @@
 # Optional environment variables:
 #   CHANNEL_NAME      - explicit Slack channel name (controller auto-generates when absent)
 #   PLAN_FILE         - path to the planning document (relative to repo root)
-#   CONTROLLER_HOST   - FlowTree controller hostname (default: localhost)
+#   CONTROLLER_URL    - FlowTree controller base URL. Takes precedence over
+#                       CONTROLLER_HOST/CONTROLLER_PORT when set. Use this to
+#                       reach the controller through the public Cloudflare
+#                       Access tunnel (e.g. https://flowtree.almostrealism.ai)
+#                       from a cloud runner.
+#   CONTROLLER_HOST   - FlowTree controller hostname (default: localhost).
+#                       Used only when CONTROLLER_URL is unset; reaches the
+#                       controller directly on the closed network.
 #   CONTROLLER_PORT   - FlowTree controller port     (default: 7780)
-#   REPO_URL          - repository clone URL
+#   CF_ACCESS_CLIENT_ID     - Cloudflare Access service token client ID;
+#                             sent as CF-Access-Client-Id header when set
+#   CF_ACCESS_CLIENT_SECRET - Cloudflare Access service token client secret;
+#                             sent as CF-Access-Client-Secret header when set
+#   REPO_URL          - repository clone URL. Sent as repoUrl: it identifies
+#                       the workstream alongside the branch, and a workstream
+#                       is cloned from it — hence the SSH form, matching
+#                       submit-agent-job.sh.
 #
 # Exit codes:
 #   0 - registration succeeded
@@ -41,10 +55,33 @@ for var in BRANCH BASE_BRANCH; do
     fi
 done
 
-CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
-CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
+# Resolve the controller endpoint. CONTROLLER_URL (the Cloudflare-tunnelled
+# public URL) takes precedence; otherwise fall back to building the URL from
+# CONTROLLER_HOST/CONTROLLER_PORT for callers that reach the controller
+# directly on the closed network.
+if [ -n "${CONTROLLER_URL:-}" ]; then
+    CONTROLLER_BASE="${CONTROLLER_URL%/}"
+else
+    CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
+    CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
+    CONTROLLER_BASE="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}"
+fi
 
-ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/workstreams"
+ENDPOINT="${CONTROLLER_BASE}/api/workstreams"
+
+# Common curl arguments for every controller request. Seeded with the
+# content type rather than declared empty: under `set -u`, bash 3.2 (the
+# system bash on the macOS runners) treats the expansion of an empty array
+# as an unbound variable and aborts.
+#
+# Cloudflare Access service-token headers are appended when provided, so the
+# request is authorized through the tunnel in front of the controller.
+CURL_ARGS=(-s -w "\n%{http_code}" -X POST -H "Content-Type: application/json")
+
+if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+    CURL_ARGS+=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}")
+    CURL_ARGS+=(-H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
+fi
 
 PAYLOAD=$(jq -n \
     --arg branch "$BRANCH" \
@@ -68,14 +105,10 @@ if [ -n "${REPO_URL:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg url "$REPO_URL" '. + {repoUrl: $url}')
 fi
 
-RESPONSE=$(curl -s -w "\n%{http_code}" \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -d "$PAYLOAD" \
-    "$ENDPOINT") || CURL_EXIT=$?
+RESPONSE=$(curl "${CURL_ARGS[@]}" -d "$PAYLOAD" "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
-    echo "::error::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_HOST}:${CONTROLLER_PORT}"
+    echo "::error::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_BASE}"
     exit 1
 fi
 
@@ -99,11 +132,8 @@ if [ "$EXISTING" = "true" ] && [ -n "${PLAN_FILE:-}" ] && [ -n "$WORKSTREAM_ID" 
     UPDATE_ENDPOINT="${ENDPOINT}/${WORKSTREAM_ID}/update"
     UPDATE_PAYLOAD=$(jq -n --arg plan "$PLAN_FILE" '{planningDocument: $plan}')
 
-    UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" \
-        -X POST \
-        -H "Content-Type: application/json" \
-        -d "$UPDATE_PAYLOAD" \
-        "$UPDATE_ENDPOINT") || UPDATE_EXIT=$?
+    UPDATE_RESPONSE=$(curl "${CURL_ARGS[@]}" \
+        -d "$UPDATE_PAYLOAD" "$UPDATE_ENDPOINT") || UPDATE_EXIT=$?
 
     if [ "${UPDATE_EXIT:-0}" -ne 0 ]; then
         echo "::warning::Failed to update workstream with planning document (curl exit $UPDATE_EXIT)"

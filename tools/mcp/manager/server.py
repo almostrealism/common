@@ -73,6 +73,7 @@ from config import (
     MAX_PROMPT_LEN,
     MAX_CONTENT_LEN,
     MAX_SHORT_STRING_LEN,
+    MAX_ALERT_TEXT_LEN,
     WORKSPACE_CACHE_TTL,
     _SENSITIVE_PATH_PREFIXES,
     audit_log,
@@ -1422,6 +1423,7 @@ from workspace_tools import (  # noqa: E402
 )
 from messaging_tools import (  # noqa: E402
     send_message,
+    send_alert,
 )
 from workstream_config_tools import (  # noqa: E402
     workstream_register,
@@ -1453,6 +1455,7 @@ from github_tools import (  # noqa: E402
     github_pr_check_status,
     github_list_workflow_runs,
     github_workflow_run_status,
+    github_job_logs,
 )
 from tracker_tools import (  # noqa: E402
     tracker_list_projects,

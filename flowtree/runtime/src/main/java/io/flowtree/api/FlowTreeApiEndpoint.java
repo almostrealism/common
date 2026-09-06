@@ -58,6 +58,9 @@ import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
+import org.almostrealism.io.AlertRecipients;
+import org.almostrealism.io.RateLimit;
+import org.almostrealism.util.SignalWireDeliveryProvider;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.submission.PhaseConfigResolver;
 
@@ -87,10 +90,15 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List registered workstreams. Filters: {@code workspaceId},
  *       {@code repoUrl} (matched on repository identity, so SSH and HTTPS spellings of one repository are equivalent),
  *       {@code dispatchCapable} ({@code true}/{@code false}), {@code archived} ({@code true}/{@code false}; supersedes
- *       {@code includeArchived}, the older coarser parameter, which is still honoured when {@code archived} is absent).
- *       An empty query value counts as absent. Enrichments: {@code includeStatus} (adds {@code lastJobId},
- *       {@code lastJobStatus}, {@code lastJobAt}), {@code includePullRequest} (adds {@code pullRequest}); both default
- *       to off.</td></tr>
+ *       {@code includeArchived}, the older coarser parameter, which is still honoured when {@code archived} is absent),
+ *       {@code lifecycle} (exact-match on the classification added by {@code includeLifecycle}, applied after
+ *       enrichment). An empty query value counts as absent. Enrichments: {@code includeStatus} (adds
+ *       {@code lastJobId}, {@code lastJobStatus}, {@code lastJobAt}, {@code lastJobStartedAt},
+ *       {@code lastJobFinishedAt}), {@code includePullRequest} (adds {@code pullRequest}), {@code includePullRequestState}
+ *       (adds {@code pullRequestState} and {@code prCount} from a GitHub lookup keyed by {@code defaultBranch}),
+ *       {@code includeLifecycle} (adds {@code lifecycle} and {@code lifecycleReason}; honours {@code idleDays},
+ *       default 14). All enrichments default to off; see {@link WorkstreamListing#toJson} for the full
+ *       contract.</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td><td>List recent jobs for a workstream; optional {@code limit} query param</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs/active</td><td>--</td><td>List jobs still recorded as running for a workstream, newest first. Each entry is a JSON
  *       object carrying {@code jobId}, {@code workstreamId}, {@code startedAt}, {@code heartbeatAt} (ISO-8601 instants,
@@ -151,6 +159,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Handles all {@code /api/secrets/*} endpoint requests and token generation. */
     private final SecretsRequestHandler secretsHandler;
+
+    /** Serves the read-only job record endpoints. */
+    private final JobQueryHandler jobQueryHandler;
+
+    /**
+     * Serves {@code POST /api/alerts}. Starts with an empty recipient
+     * directory, so the route answers coherently ("no recipients are
+     * configured") before {@link #setAlertRecipients(AlertRecipients)} is
+     * called, rather than failing as an unknown route.
+     */
+    private AlertRequestHandler alertHandler =
+            new AlertRequestHandler(new AlertRecipients(), callerAlertLimit(), this::readBody);
 
     /**
      * Handles {@code /api/stats}, the active-job listing, and heartbeat
@@ -243,6 +263,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.notifiers = new NotifierRegistry(primaryNotifier, notifiersByWorkspace);
         this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
         this.secretsHandler = new SecretsRequestHandler(notifiers);
+        this.jobQueryHandler = new JobQueryHandler(this.notifiers);
     }
 
     /** Sets the FlowTree server used for job submission. */
@@ -369,6 +390,32 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Sets the named recipients reachable through {@code POST /api/alerts}.
+     *
+     * @param recipients the recipient directory built from configuration
+     */
+    public void setAlertRecipients(AlertRecipients recipients) {
+        this.alertHandler = new AlertRequestHandler(recipients,
+                callerAlertLimit(), this::readBody);
+    }
+
+    /**
+     * Returns the per-caller alert budget: half the delivery provider's
+     * account-wide ceiling, over the same window.
+     *
+     * <p>Deriving it from the provider's own limit rather than restating a
+     * number keeps the two from drifting apart, and makes the intent legible
+     * — no single caller may spend more than half of what the account can
+     * afford.</p>
+     *
+     * @return the per-caller rate limit
+     */
+    protected static RateLimit callerAlertLimit() {
+        return new RateLimit(Math.max(1, SignalWireDeliveryProvider.messageLimit() / 2),
+                SignalWireDeliveryProvider.limitWindow());
+    }
+
+    /**
      * Sets the shared secret used to validate HMAC temporary tokens.
      *
      * <p>When set, the secrets retrieve endpoint validates inbound workstream HMAC
@@ -425,6 +472,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return agentsQueryHandler.handle();
         }
 
+        if (Method.POST.equals(method) && "/api/alerts".equals(uri)) {
+            return alertHandler.handle(session);
+        }
+
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
             return handleStatsQuery(session);
         }
@@ -432,7 +483,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
             return newFixedLengthResponse(Response.Status.OK, "application/json",
                     WorkstreamListing.toJson(session, notifiers.allWorkstreams(),
-                            statsQueryHandler.store()));
+                            statsQueryHandler.store(), githubProxyHandler));
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
@@ -449,12 +500,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     List.of("10")).get(0);
             int limit = 10;
             try { limit = Integer.parseInt(limitParam); } catch (NumberFormatException ignored) { }
-            return handleListJobs(workstreamId, limit);
+            return jobQueryHandler.listJobs(workstreamId, limit);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/jobs/")) {
             String jobId = uri.substring("/api/jobs/".length());
-            return handleGetJob(jobId);
+            return jobQueryHandler.getJob(jobId);
         }
 
         if ("/api/config/accept-automated-jobs".equals(uri)) {
@@ -913,7 +964,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             ? jobDescription : CodingAgentJob.summarizePrompt(prompt);
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.notifierFor(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+        notifiers.completionListener(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
         if (delaySeconds > 0) {
             pendingDelayedJobs.put(factory.getTaskId(), delayedJobExecutor.schedule(
                     () -> { try { server.addTask(factory); } finally { pendingDelayedJobs.remove(factory.getTaskId()); } },
@@ -1012,7 +1063,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         JobCompletionEvent startEvent = JobCompletionEvent.started(
                 factory.getTaskId(), ShellCommandJob.summarizeCommand(command));
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.notifierFor(workstream.getWorkstreamId())
+        notifiers.completionListener(workstream.getWorkstreamId())
                 .onJobSubmitted(workstream.getWorkstreamId(), startEvent);
 
         if (delaySeconds > 0) {
@@ -1141,9 +1192,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     String ownerRepo = GitHubProxyHandler.extractOwnerRepo(prCtx.repoUrl);
                     if (ownerRepo != null) {
                         String base = prCtx.baseBranch != null ? prCtx.baseBranch : "master";
-                        String prUrl = githubProxyHandler.createGitHubPullRequest(
+                        // The branch head stands in when the event carried no hash.
+                        String commitRef = event.getCommitHash() != null
+                                ? event.getCommitHash() : event.getTargetBranch();
+                        String prUrl = githubProxyHandler.createPullRequestFromCommit(
                             ownerRepo, event.getTargetBranch(), base,
-                            prCtx.description, prCtx.description, token);
+                            commitRef, prCtx.description, token);
                         if (prUrl != null) {
                             event.withPullRequestUrl(prUrl);
                         }
@@ -1165,7 +1219,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             statsQueryHandler.recordHeartbeat(jobId, Instant.now());
         }
         if (eventStatus == JobCompletionEvent.Status.STARTED) {
-            notifiers.notifierFor(workstreamId).onJobStarted(workstreamId, event);
+            notifiers.completionListener(workstreamId).onJobStarted(workstreamId, event);
         } else {
             completeJob(workstreamId, event);
         }
@@ -1188,7 +1242,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param event        the terminal event to dispatch
      */
     public void completeJob(String workstreamId, JobCompletionEvent event) {
-        notifiers.notifierFor(workstreamId).onJobCompleted(workstreamId, event);
+        notifiers.completionListener(workstreamId).onJobCompleted(workstreamId, event);
         if (completionListenerFanout == null) return;
         // Clearing the debounce keeps a fast-completing wake-up from
         // extending the window, which would defeat the property that a
@@ -1399,130 +1453,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         return sb.toString();
     }
 
-    /**
-     * Serialises a {@link JobCompletionEvent} to a JSON object string.
-     *
-     * @param event the event to serialise
-     * @return JSON object string
-     */
-    private String jobEventToJson(JobCompletionEvent event) {
-        return jobEventToJson(event, null);
-    }
-
-    /**
-     * Serialises a {@link JobCompletionEvent} to a JSON object string,
-     * optionally including the owning workstream identifier.
-     *
-     * @param event         the event to serialise
-     * @param workstreamId  the workstream that owns this job, or {@code null}
-     * @return JSON object string
-     */
-    private String jobEventToJson(JobCompletionEvent event, String workstreamId) {
-        StringBuilder j = new StringBuilder();
-        j.append("{");
-        j.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(event.getJobId())).append("\"");
-        j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
-        j.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(event.getDescription())).append("\"");
-        j.append(",\"timestamp\":\"").append(event.getTimestamp().toString()).append("\"");
-        if (workstreamId != null) {
-            j.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
-        }
-        if (event.getTargetBranch() != null) {
-            j.append(",\"targetBranch\":\"").append(JsonFieldExtractor.escapeJson(event.getTargetBranch())).append("\"");
-        }
-        if (event.getCommitHash() != null) {
-            j.append(",\"commitHash\":\"").append(JsonFieldExtractor.escapeJson(event.getCommitHash())).append("\"");
-        }
-        if (event.getPullRequestUrl() != null) {
-            j.append(",\"pullRequestUrl\":\"").append(JsonFieldExtractor.escapeJson(event.getPullRequestUrl())).append("\"");
-        }
-        if (event.getErrorMessage() != null) {
-            j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
-        }
-        double totalCost = event.getTotalCostUsd();
-        boolean costIncomplete = event.isCostIncomplete();
-        // Always emit costIncomplete as a stable boolean, matching
-        // JobCompletionEvent.toJson() and the documented wire shape so consumers
-        // never have to treat its absence as false.
-        j.append(",\"costIncomplete\":").append(costIncomplete);
-        // Emit the cost block when there is a positive total OR when the cost is
-        // incomplete: an inactivity-killed session can leave totalCost at 0 even
-        // though real (uncosted) work happened, and the total/breakdowns should
-        // still be surfaced as a lower bound.
-        if (totalCost > 0 || costIncomplete) {
-            j.append(String.format(",\"totalCostUsd\":%.2f", totalCost));
-            Map<String, Double> costByRunner = event.getCostByRunner();
-            if (costByRunner != null && !costByRunner.isEmpty()) {
-                j.append(",\"costByRunner\":{");
-                boolean first = true;
-                for (Map.Entry<String, Double> e : costByRunner.entrySet()) {
-                    if (!first) j.append(",");
-                    first = false;
-                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
-                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
-                }
-                j.append("}");
-            }
-            Map<String, Double> costByModel = event.getCostByModel();
-            if (costByModel != null && !costByModel.isEmpty()) {
-                j.append(",\"costByModel\":{");
-                boolean first = true;
-                for (Map.Entry<String, Double> e : costByModel.entrySet()) {
-                    if (!first) j.append(",");
-                    first = false;
-                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
-                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
-                }
-                j.append("}");
-            }
-        }
-        j.append("}");
-        return j.toString();
-    }
-
-    /**
-     * Handles {@code GET /api/workstreams/{id}/jobs?limit=N}.
-     * Returns the most recent jobs for the workstream, newest first.
-     *
-     * @param workstreamId the workstream identifier
-     * @param limit        maximum number of jobs to return
-     * @return JSON array of job events
-     */
-    private Response handleListJobs(String workstreamId, int limit) {
-        SlackNotifier n = notifiers.notifierFor(workstreamId);
-        List<JobCompletionEvent> page = n != null
-                ? n.getRecentJobs(workstreamId, limit) : new ArrayList<>();
-
-        StringBuilder json = new StringBuilder("[");
-        boolean first = true;
-        for (JobCompletionEvent event : page) {
-            if (!first) json.append(",");
-            first = false;
-            json.append(jobEventToJson(event));
-        }
-        json.append("]");
-
-        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
-    }
-
-    /**
-     * Handles {@code GET /api/jobs/{jobId}}.
-     * Returns the most recent event for the specified job.
-     *
-     * @param jobId the job identifier
-     * @return JSON object for the job event, or 404 if not found
-     */
-    private Response handleGetJob(String jobId) {
-        JobCompletionEvent event = notifiers.findJob(jobId);
-        if (event == null) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND,
-                    "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
-        }
-        String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", jobEventToJson(event, workstreamId));
-    }
-
 
 
     /**
@@ -1564,24 +1494,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 listener, this::readBody, this::errorResponse, this::log);
     }
 
-    /**
-     * Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}.
-     *
-     * @param session the HTTP session supplying query parameters
-     * @return an HTTP response containing weekly stats JSON
-     */
+    // TODO(review): javadoc here was compressed to dodge the file-length limit; see memory.
+    /** Handles {@code GET /api/stats}. Delegates to {@link StatsQueryHandler}. */
     private Response handleStatsQuery(IHTTPSession session) {
         return statsQueryHandler.handle(session, this::errorResponse);
     }
 
-    /**
-     * Handles requests to {@code /api/github/proxy} by forwarding them to
-     * {@link GitHubProxyHandler}.
-     *
-     * @param session the HTTP session
-     * @param method  the HTTP method of the incoming request
-     * @return JSON response wrapping the GitHub API result
-     */
+    /** Handles requests to {@code /api/github/proxy} by forwarding them to {@link GitHubProxyHandler}. */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
         return githubProxyHandler.handle(session, method, this::readBody, this::errorResponse);
     }

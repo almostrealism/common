@@ -19,6 +19,9 @@ package io.flowtree.slack;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import io.flowtree.jobs.JobCompletionEvent;
+
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -241,5 +244,48 @@ public class NotifierRegistryTest extends TestSuiteBase {
         assertSame(b, registry.notifierForWorkspace("TBBB"));
         assertSame("Unknown workspace falls back to primary",
                 a, registry.notifierForWorkspace("TUNKNOWN"));
+    }
+
+    /**
+     * Verifies that a registered listener still receives a completion after
+     * the workstream's own notifier throws. A chat outage must not decide
+     * whether an alert is published — the fan-out isolates the notifier on
+     * the same terms as every other consumer.
+     */
+    @Test(timeout = 10000)
+    public void testFailingNotifierDoesNotSuppressOtherListeners() {
+        SlackNotifier failing = new SlackNotifier(null) {
+            @Override
+            public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
+                throw new IllegalStateException("chat is down");
+            }
+        };
+
+        List<String> delivered = new ArrayList<>();
+        NotifierRegistry registry = new NotifierRegistry(failing, null);
+        registry.addCompletionListener((workstreamId, event) -> delivered.add(event.getJobId()));
+
+        registry.completionListener("ws-1").onJobCompleted("ws-1",
+                JobCompletionEvent.success("job-1", "Add alert delivery"));
+
+        assertEquals("the listener runs even though the notifier threw",
+                1, delivered.size());
+        assertEquals("job-1", delivered.get(0));
+    }
+
+    /** A listener that throws does not suppress the ones registered after it. */
+    @Test(timeout = 10000)
+    public void testFailingListenerDoesNotSuppressLaterListeners() {
+        List<String> delivered = new ArrayList<>();
+        NotifierRegistry registry = new NotifierRegistry(new SlackNotifier(null), null);
+        registry.addCompletionListener((workstreamId, event) -> {
+            throw new IllegalStateException("boom");
+        });
+        registry.addCompletionListener((workstreamId, event) -> delivered.add(event.getJobId()));
+
+        registry.completionListener("ws-1").onJobCompleted("ws-1",
+                JobCompletionEvent.success("job-1", "Add alert delivery"));
+
+        assertEquals(1, delivered.size());
     }
 }

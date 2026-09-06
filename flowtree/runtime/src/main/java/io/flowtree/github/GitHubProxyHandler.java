@@ -20,6 +20,8 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Method;
 import fi.iki.elonen.NanoHTTPD.Response;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.GitOperations;
 import org.almostrealism.io.ConsoleFeatures;
@@ -30,7 +32,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -163,6 +167,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
+            conn.setInstanceFollowRedirects(false);
 
             if (("POST".equals(githubMethod) || "PUT".equals(githubMethod))
                     && payload != null && !payload.isEmpty()) {
@@ -176,6 +181,18 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             int status = conn.getResponseCode();
             String linkHeader = conn.getHeaderField("Link");
 
+            if (isRedirect(status) && "GET".equals(githubMethod)) {
+                String location = conn.getHeaderField("Location");
+                if (location == null || location.isEmpty()) {
+                    return error.respond("GitHub proxy error: HTTP " + status
+                            + " without a Location header");
+                }
+                conn = follow(location, token);
+                status = conn.getResponseCode();
+            }
+
+            String contentType = conn.getContentType();
+
             InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
             String responseBody = "";
             if (is != null) {
@@ -183,14 +200,13 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                 is.close();
             }
 
-            // Wrap response: {"status":N,"link":"...","body":<raw-github-json>}
+            // Wrap response: {"status":N,"link":"...","body":<github-json-or-string>}
             StringBuilder json = new StringBuilder();
             json.append("{\"status\":").append(status);
             json.append(",\"link\":\"")
                 .append(JsonFieldExtractor.escapeJson(linkHeader != null ? linkHeader : ""))
                 .append("\"");
-            json.append(",\"body\":")
-                .append(responseBody.isEmpty() ? "null" : responseBody);
+            json.append(",\"body\":").append(encodeBody(responseBody, contentType));
             json.append("}");
 
             return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
@@ -199,6 +215,83 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub proxy error: " + e.getMessage());
             return error.respond("GitHub proxy error: " + e.getMessage());
         }
+    }
+
+    /**
+     * Returns whether a status code asks the client to make the request again elsewhere.
+     *
+     * @param status the HTTP status returned by GitHub
+     * @return true if the status carries a {@code Location} to follow
+     */
+    private static boolean isRedirect(int status) {
+        return status == HttpURLConnection.HTTP_MOVED_PERM
+                || status == HttpURLConnection.HTTP_MOVED_TEMP
+                || status == HttpURLConnection.HTTP_SEE_OTHER
+                || status == 307
+                || status == 308;
+    }
+
+    /**
+     * Opens a connection to a redirect target, carrying the API credential only when
+     * the target is the API itself.
+     *
+     * <p>Redirects are followed here rather than by {@link HttpURLConnection} so that
+     * this distinction can be made. The endpoints that serve a file — Actions job logs,
+     * artifact and release downloads — redirect to a storage host with a signature
+     * already in the URL, and replaying an {@code Authorization} header to a host
+     * outside the API is both unnecessary and a disclosure of the token. Redirects that
+     * stay on the API, such as the permanent redirect a renamed repository answers with,
+     * still need it.</p>
+     *
+     * <p>The read timeout is longer than the API's because what arrives through a
+     * redirect is a file rather than a document — a job log runs to megabytes.</p>
+     *
+     * <p>Only a GET is followed, which is why this replays the request as one. A
+     * redirect answering a POST or PUT is returned to the caller untouched instead:
+     * 307 and 308 preserve the method by definition, so re-issuing one as a GET would
+     * discard the payload and quietly turn a write into a read.</p>
+     *
+     * @param location the URL from the {@code Location} header
+     * @param token    the GitHub token for the organisation
+     * @return an open connection to the target, its response not yet read
+     * @throws IOException if the target cannot be reached
+     */
+    private static HttpURLConnection follow(String location, String token) throws IOException {
+        URL target = URI.create(location).toURL();
+        HttpURLConnection conn = (HttpURLConnection) target.openConnection();
+
+        conn.setRequestMethod("GET");
+        if ("api.github.com".equalsIgnoreCase(target.getHost())) {
+            // Same negotiation as the request that was redirected, so a redirect that
+            // stays on the API yields the same envelope a direct response would have.
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+        }
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(60000);
+        conn.setInstanceFollowRedirects(false);
+
+        return conn;
+    }
+
+    /**
+     * Renders a GitHub response body as the {@code body} member of the proxy envelope.
+     *
+     * <p>A JSON body is spliced in as it stands, so callers receive the structure GitHub
+     * sent. Anything else is a document rather than a structure — job logs and raw file
+     * contents are the cases that occur — and becomes a JSON string, since splicing text
+     * in unquoted would produce an envelope that does not parse.</p>
+     *
+     * @param body        the response body, possibly empty
+     * @param contentType the response {@code Content-Type}, or null if absent
+     * @return the body encoded as a JSON value
+     */
+    private static String encodeBody(String body, String contentType) {
+        if (body.isEmpty()) return "null";
+        if (contentType != null && contentType.contains("json")) return body;
+
+        return "\"" + JsonFieldExtractor.escapeJson(body) + "\"";
     }
 
     /**
@@ -256,6 +349,213 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub PR creation failed: " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Maximum length GitHub accepts for a pull request title.
+     */
+    private static final int MAX_TITLE_LENGTH = 256;
+
+    /**
+     * Parses GitHub API responses. Jackson rather than a regex because the
+     * commit payload nests the message among many other string fields.
+     */
+    private static final ObjectMapper GITHUB_MAPPER = new ObjectMapper();
+
+    /**
+     * Creates a pull request whose title and body describe the commit on the
+     * head branch rather than the job that produced it.
+     *
+     * <p>The pull request is opened after the agent has pushed, so the commit
+     * message — which the agent wrote to describe what it actually did — is
+     * already available and is a far better description than the job's
+     * submission-time intent. Two jobs submitted with the same description
+     * would otherwise open indistinguishable pull requests.</p>
+     *
+     * <p>Falls back to {@code fallbackDescription} for the title whenever the
+     * commit cannot be read or carries no message, which preserves the previous
+     * behaviour rather than opening an untitled pull request.</p>
+     *
+     * @param ownerRepo           the {@code owner/repo} path component
+     * @param head                the head (source) branch name
+     * @param base                the base (target) branch name
+     * @param commitRef           commit SHA, or a branch name for its head commit
+     * @param fallbackDescription description to use when no commit message is available
+     * @param token               the GitHub API bearer token
+     * @return the HTML URL of the created pull request, or {@code null} on failure
+     */
+    public String createPullRequestFromCommit(String ownerRepo, String head, String base,
+                                   String commitRef, String fallbackDescription, String token) {
+        String commitMessage = commitRef == null ? null
+                : fetchCommitMessage(ownerRepo, commitRef, token);
+        return createGitHubPullRequest(ownerRepo, head, base,
+                pullRequestTitle(commitMessage, fallbackDescription),
+                pullRequestBody(commitMessage, fallbackDescription), token);
+    }
+
+    /**
+     * Builds the commit lookup URL for {@code ref}.
+     *
+     * <p>The ref occupies a single path segment, so a branch name is percent
+     * encoded: the branches this is used for are named {@code qa/defect-...}
+     * and {@code project/plan-...}, and an unencoded slash would address a
+     * different endpoint entirely. A commit SHA is unaffected by the
+     * encoding.</p>
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param ref       commit SHA, branch name, or tag
+     * @return the GitHub API URL for the commit
+     */
+    static String commitApiUrl(String ownerRepo, String ref) {
+        return "https://api.github.com/repos/" + ownerRepo + "/commits/"
+                + URLEncoder.encode(ref, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    /**
+     * Returns every pull request on the given repository, newest-updated
+     * first. Used by the workstream listing's PR enrichment: one call per
+     * repository is enough because GitHub's {@code head} filter is a single
+     * repository-wide scan, and any workstream's PR can be looked up
+     * client-side from the response. Missing token or transport failure
+     * returns {@code null} rather than throwing, so the listing can fall
+     * back to "no PR data" for the affected rows.
+     *
+     * @param ownerRepo the {@code owner/repo} path component (e.g.
+     *                  {@code "almostrealism/common"})
+     * @return the GitHub response as a parsed Jackson array, or {@code null}
+     */
+    // TODO(review): single page, per_page=100, no pagination — a repo with >100 PRs
+    // (state=all) can silently miss an old branch's merged/closed PR. See review-followup memory.
+    public JsonNode listPullRequestsByRepo(String ownerRepo) {
+        if (ownerRepo == null || ownerRepo.isEmpty()) return null;
+        String org = extractOrgFromRepoUrl("https://github.com/" + ownerRepo);
+        String token = resolveGithubToken(org);
+        if (token == null) {
+            log("No GitHub token configured for org '" + org
+                + "'; PR lookup for " + ownerRepo + " will be skipped");
+            return null;
+        }
+        String url = "https://api.github.com/repos/" + ownerRepo
+                + "/pulls?state=all&per_page=100&sort=updated&direction=desc";
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+            if (status == 200) {
+                return GITHUB_MAPPER.readTree(responseBody);
+            }
+            log("GitHub PR lookup returned HTTP " + status + ": "
+                + responseBody.substring(0, Math.min(200, responseBody.length())));
+        } catch (IOException e) {
+            log("GitHub PR lookup failed for " + ownerRepo + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Reads the commit message for {@code ref}.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param ref       commit SHA, branch name, or tag
+     * @param token     the GitHub API bearer token
+     * @return the commit message, or {@code null} when it cannot be read
+     */
+    public String fetchCommitMessage(String ownerRepo, String ref, String token) {
+        try {
+            URL url = URI.create(commitApiUrl(ownerRepo, ref)).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+
+            if (status == 200) {
+                JsonNode message = GITHUB_MAPPER.readTree(responseBody).path("commit").path("message");
+                if (!message.isMissingNode() && !message.asText().isBlank()) {
+                    return message.asText();
+                }
+                log("Commit " + ref + " carries no message; falling back to the job description");
+                return null;
+            }
+
+            log("GitHub commit lookup returned HTTP " + status + ": "
+                + responseBody.substring(0, Math.min(200, responseBody.length())));
+        } catch (IOException e) {
+            log("GitHub commit lookup failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Derives a pull request title from a commit message.
+     *
+     * <p>The subject line of a commit message is written to be read on its own,
+     * which is exactly what a title needs to be. Over-long subjects are
+     * truncated to what GitHub accepts.</p>
+     *
+     * @param commitMessage the commit message; may be {@code null} or blank
+     * @param fallback      title to use when no subject line can be derived
+     * @return the pull request title
+     */
+    static String pullRequestTitle(String commitMessage, String fallback) {
+        if (commitMessage != null) {
+            for (String line : commitMessage.split("\n", -1)) {
+                String subject = line.trim();
+                if (!subject.isEmpty()) {
+                    return subject.length() <= MAX_TITLE_LENGTH ? subject
+                            : subject.substring(0, MAX_TITLE_LENGTH - 3) + "...";
+                }
+            }
+        }
+        return fallback;
+    }
+
+    /**
+     * Derives a pull request body from a commit message.
+     *
+     * <p>Everything after the subject line, which is the explanation the agent
+     * wrote for the change. When the message is a subject alone the job
+     * description is used instead, so the pull request still says what kind of
+     * work produced it.</p>
+     *
+     * @param commitMessage the commit message; may be {@code null} or blank
+     * @param fallback      body to use when the message carries no explanation
+     * @return the pull request body
+     */
+    static String pullRequestBody(String commitMessage, String fallback) {
+        if (commitMessage != null) {
+            String[] lines = commitMessage.split("\n", -1);
+            int subject = -1;
+            for (int i = 0; i < lines.length; i++) {
+                if (!lines[i].trim().isEmpty()) {
+                    subject = i;
+                    break;
+                }
+            }
+            if (subject >= 0) {
+                String body = String.join("\n",
+                        Arrays.copyOfRange(lines, subject + 1, lines.length)).strip();
+                if (!body.isEmpty()) return body;
+            }
+        }
+        return fallback;
     }
 
     /**

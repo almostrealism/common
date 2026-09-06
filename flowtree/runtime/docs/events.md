@@ -40,7 +40,17 @@ These fields are set during event construction and are always present:
 | `jobId` | `String` | Constructor | The unique identifier for the job. Corresponds to the task ID from the Factory. |
 | `status` | `Status` | Constructor | The completion status of the job. |
 | `description` | `String` | Constructor | Human-readable description of the job (typically a truncated prompt or task summary). |
-| `timestamp` | `Instant` | Constructor (auto) | The instant at which the event was created. Set to `Instant.now()` in the constructor. |
+| `timestamp` | `Instant` | Constructor (auto), overwritable by `setTimestamp()` | The instant at which the event was created in memory, set to `Instant.now()` in the constructor. For an event reconstructed from the `job_timing` table, `JobStatsStore.rowToEvent` overwrites this with the persisted `completed_at` (or `started_at` for `STARTED` rows) so readers see the real event time rather than the read-time instant. |
+
+### Persisted Timestamp Fields
+
+These fields distinguish "when the event was constructed in memory" from "when the event actually happened," which matter once an event has round-tripped through `job_timing`:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `eventTime` | `Instant` | mirrors `timestamp` | Set alongside `timestamp` in the constructor and again by `setTimestamp()`. `getEventTime()` returns this field, falling back to `timestamp` if unset. |
+| `startedAt` | `Instant` | `null` | Persisted `started_at` from the `job_timing` row, set by `JobStatsStore.rowToEvent` via `setStartedAt()`. `null` for an event that was never reconstructed from a row. |
+| `finishedAt` | `Instant` | `null` | Persisted `completed_at` from the `job_timing` row, set by `JobStatsStore.rowToEvent` via `setFinishedAt()`. `null` when the row has no `completed_at` (e.g. a `STARTED` row). |
 
 ### Git Fields
 
@@ -109,7 +119,7 @@ Two protected setters exist for use by subclass factory methods:
 - `setErrorMessage(String)` -- Sets the error message. Used by `ClaudeCodeJobEvent.failed()`.
 - `setException(Throwable)` -- Sets the exception. Used by `ClaudeCodeJobEvent.failed()`.
 
-These are `protected` rather than `public` because they should only be called during event construction (in factory methods or subclass constructors), never by external consumers. The `final` fields (`jobId`, `status`, `description`, `timestamp`) are set only in the constructor and have no setters, making them effectively immutable.
+These are `protected` rather than `public` because they should only be called during event construction (in factory methods or subclass constructors), never by external consumers. The `final` fields (`jobId`, `status`, `description`) are set only in the constructor and have no setters, making them effectively immutable. `timestamp` and `eventTime` are not `final` — `setTimestamp()` overwrites both when `JobStatsStore.rowToEvent` reconstructs an event from a persisted row. `startedAt` and `finishedAt` are populated the same way via `setStartedAt()` / `setFinishedAt()`, which — unlike `setErrorMessage()` / `setException()` above — are `public`.
 
 ### toString() Representation
 

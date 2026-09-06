@@ -315,7 +315,9 @@ jobs:
           OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
           # These files are the enforcement infrastructure. Any modification
-          # on a PR branch is treated as tampering and fails the build.
+          # on a PR branch is treated as tampering and fails the build, with
+          # one carve-out applied below: on a ci/... branch the pipeline
+          # files among them are the declared subject of the work.
           PROTECTED_FILES=(
             "engine/utils/src/main/java/org/almostrealism/util/PolicyViolationDetector.java"
             "engine/utils/src/main/java/org/almostrealism/util/CodePolicyViolationDetector.java"
@@ -346,8 +348,26 @@ jobs:
             "engine/utils/src/main/resources/org/almostrealism/util/setmem-violation-baseline.tsv"
           )
 
+          # A branch named ci/... declares the pipeline as the subject of
+          # the change, the same declaration validate-agent-commit.sh RULE 3
+          # accepts. It unlocks only the protected files that ARE the
+          # pipeline — those under .github/workflows/ and tools/ci/. The
+          # policy detectors stay locked on every branch: weakening a
+          # detector is never what a pipeline change is about. The branch is
+          # read from GITHUB_HEAD_REF first because the workspace is a
+          # detached checkout of the pull request head.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          CI_BRANCH=false
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            CI_BRANCH=true
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+          fi
+
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+              continue
+            fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
               TAMPERED="${TAMPERED}- ${f}\n"
             fi
@@ -377,7 +397,9 @@ jobs:
             echo -e "altering an entry is treated as tampering, because that grandfathers a" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "new violation.\n" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
-            echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "justification for human review. Work whose subject IS the pipeline" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "belongs on a branch named ci/..., chosen before the work starts, which" >> ${RUNNER_TEMP}/enforcement-report.txt
+            echo -e "unlocks the workflow and tools/ci files — but never the policy detectors." >> ${RUNNER_TEMP}/enforcement-report.txt
             cat ${RUNNER_TEMP}/enforcement-report.txt
             if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
               echo "::warning::Enforcement infrastructure tampering detected but IGNORED via the override_integrity_checks input"
@@ -473,8 +495,26 @@ jobs:
             "checkstyle.xml"
           )
 
+          # A branch named ci/... declares the pipeline as the subject of
+          # the change, the same declaration validate-agent-commit.sh RULE 3
+          # accepts. It unlocks only the protected files that ARE the
+          # pipeline — those under .github/workflows/ and tools/ci/. The
+          # policy detectors stay locked on every branch: weakening a
+          # detector is never what a pipeline change is about. The branch is
+          # read from GITHUB_HEAD_REF first because the workspace is a
+          # detached checkout of the pull request head.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          CI_BRANCH=false
+          if echo "$BRANCH" | grep -qE '^ci/'; then
+            CI_BRANCH=true
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+          fi
+
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+              continue
+            fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
               TAMPERED="${TAMPERED}- ${f}\n"
             fi
@@ -571,6 +611,42 @@ jobs:
             echo "No deception patterns detected." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Assertion Density Report (coverage-qa rounds) ───────────────
+  # Report-only, non-blocking: counts assertions per new test method
+  # added by a coverage-qa round and surfaces the ratio (and any
+  # zero-assertion method) as a visible signal for the human reviewer,
+  # the coverage-qa pipeline's defense against gaming the coverage
+  # percentage with assertion-free tests. Never a merge gate: it is
+  # deliberately absent from all-checks' needs, and the script itself
+  # always exits 0. Scoped to qa/coverage-* branches so every other PR's
+  # summary is unaffected.
+  assertion-density-report:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master' && startsWith(github.head_ref || github.ref_name, 'qa/coverage-')
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Run assertion density report
+        id: density
+        run: |
+          chmod +x ./tools/ci/coverage/assertion-density-report.sh
+          ./tools/ci/coverage/assertion-density-report.sh origin/master "${RUNNER_TEMP}/assertion-density-report.txt"
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f "${RUNNER_TEMP}/assertion-density-report.txt" ]; then
+            cat "${RUNNER_TEMP}/assertion-density-report.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   # ─── Agent Commit Validation ────────────────────────────────────
   # Validates that agent commits do not modify test files or CI
   # files. This is a hard block — agent commits that violate these
@@ -594,8 +670,14 @@ jobs:
 
       - name: Validate agent commit
         id: validate
+        env:
+          # Lets the validator verify a controller-signed
+          # Sensitive-File-Bypass trailer. Absent secret means no commit
+          # can be granted a bypass, which is the safe direction to fail.
+          AR_AGENT_BYPASS_SECRET: ${{ secrets.AR_AGENT_BYPASS_SECRET }}
         run: |
           chmod +x ./tools/ci/agent-protection/validate-agent-commit.sh
+          chmod +x ./tools/ci/agent-protection/verify-sensitive-bypass.sh
           ./tools/ci/agent-protection/validate-agent-commit.sh origin/master --require-production-changes || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
@@ -604,6 +686,13 @@ jobs:
               echo "::warning::Agent commit flagged: no production code changes"
             elif [ "$EXIT_CODE" -eq 4 ]; then
               echo "::error::Agent commit BLOCKED: CI/workflow file modifications detected"
+            else
+              # The validator could not reach a verdict — an unusable base
+              # ref, a missing helper. There is no evidence either way, so
+              # the step fails rather than reporting an unvalidated branch
+              # as clean.
+              echo "::error::Agent commit validation could not run (exit ${EXIT_CODE})"
+              exit "$EXIT_CODE"
             fi
             # Do not fail the build — the auto-resolve job checks this output
             exit 0
@@ -704,6 +793,110 @@ jobs:
           else
             echo "Duplicate code blocks (10+ identical lines) detected across different files." >> "$GITHUB_STEP_SUMMARY"
             echo "Run \`mvn test -pl tools -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─── Early Workstream Registration ─────────────────────────────────
+  # Registers a workstream for this branch as soon as the early validation
+  # jobs pass, rather than waiting for auto-resolve at the end of the run.
+  #
+  # auto-resolve already creates a workstream on demand
+  # (createWorkstreamIfMissing in submit-agent-job.sh), but it cannot run
+  # until every test job has reported, and the self-hosted test lanes are
+  # long. That leaves a branch with no workstream for the whole wait — so no
+  # workstream ID to submit other improvement jobs against, and nothing for
+  # another session to address memory to. Registering here closes that gap.
+  #
+  # The two outcomes are both wanted. If a validation job fails, this is
+  # skipped and auto-resolve fires almost immediately, registering by its
+  # normal path. If they all pass, the tests are about to run for a long
+  # time and the workstream exists from the start.
+  #
+  # checkstyle is one of the gates for that reason and no other: it is not a
+  # prerequisite of the test jobs, but it fails fast and hard, so a branch
+  # that trips it reaches auto-resolve without a long wait — exactly the
+  # case this job exists to avoid duplicating.
+  #
+  # Gating on those jobs also handles the docs-only case with no extra
+  # condition: they all declare `needs: build`, and `build` is gated on
+  # code_changed, so a docs-only PR skips them and therefore skips this.
+  # The code_changed check below is what expresses "some test job will
+  # actually run" — test-flowtree gates on code_changed alone, so whenever
+  # it is true at least one test job follows.
+  #
+  # Deliberately NOT declaring `environment:`. A job with an environment in
+  # a pull_request run attaches a GitHub Deployment to the PR head, and a
+  # cancelled one then shows as a spurious "had a problem deploying" red X.
+  # Avoiding that is the whole reason the auto-resolve submission lives in a
+  # separate workflow_run workflow; see auto-resolve-submit.yaml.
+  #
+  # Never fails the pipeline. Registration is a convenience, not a quality
+  # signal, so this job is excluded from all-checks and every failure path
+  # below reports a notice or warning and exits 0.
+  register-workstream:
+    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, checkstyle]
+    if: >-
+      github.ref != 'refs/heads/master' &&
+      needs.build.result == 'success' &&
+      needs.code-policy-check.result == 'success' &&
+      needs.test-timeout-check.result == 'success' &&
+      needs.duplicate-code-check.result == 'success' &&
+      needs.test-integrity-check.result == 'success' &&
+      needs.checkstyle.result == 'success' &&
+      needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Determine branch context
+        id: ctx
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "branch=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+            echo "base=${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "base=master" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Register workstream
+        env:
+          BRANCH: ${{ steps.ctx.outputs.branch }}
+          BASE_BRANCH: ${{ steps.ctx.outputs.base }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          # A fork PR gets no secrets, and the service token may be scoped to
+          # an environment this job deliberately does not declare. Either way
+          # the controller is unreachable through the tunnel, and saying so is
+          # better than a curl that fails with an opaque 401.
+          if [ -z "${CF_ACCESS_CLIENT_ID:-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+            echo "::notice::No Cloudflare Access service token available — skipping early workstream registration"
+            exit 0
+          fi
+
+          chmod +x ./tools/ci/register-workstream.sh
+
+          # The script annotates its own failures with ::error::, which would
+          # paint an error on a PR whose pipeline is green. Downgrade the
+          # marker while keeping the text: registration is best-effort here,
+          # and the same script still annotates normally for callers that do
+          # treat a failure as fatal.
+          set +e
+          ./tools/ci/register-workstream.sh 2>&1 | sed 's/^::error:://'
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$STATUS" -eq 0 ]; then
+            echo "::notice::Workstream registered early for branch ${BRANCH}"
+          else
+            # auto-resolve still creates the workstream at the end of the run,
+            # so a failure here costs the head start and nothing else.
+            echo "::warning::Early workstream registration failed — auto-resolve will register on its normal path"
           fi
 
   # ─── Checkstyle Check ──────────────────────────────────────────────

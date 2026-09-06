@@ -302,6 +302,8 @@ public class JobStatsStore implements ConsoleFeatures {
      * @param workstreamId      the workstream this job belongs to
      * @param status            the completion status (SUCCESS, FAILED, CANCELLED)
      * @param completedAt       the completion timestamp
+     * @param description       the human-readable job label submitted with the
+     *                          task, or null to fall back to the prompt
      * @param durationMs        duration reported by Claude Code
      * @param durationApiMs     API duration reported by Claude Code
      * @param costUsd           cost in USD
@@ -318,7 +320,8 @@ public class JobStatsStore implements ConsoleFeatures {
      */
     public synchronized void recordJobCompleted(String jobId, String workstreamId,
                                                  String status,
-                                                 Instant completedAt, long durationMs,
+                                                 Instant completedAt, String description,
+                                                 long durationMs,
                                                  long durationApiMs, double costUsd,
                                                  int numTurns, String sessionId,
                                                  int exitCode, String subtype,
@@ -345,16 +348,25 @@ public class JobStatsStore implements ConsoleFeatures {
             warn("Failed to query started_at for wall_clock_ms: " + e.getMessage());
         }
 
-        // Try UPDATE first (job was previously started)
-        String updateSql = "UPDATE job_timing SET status = ?, completed_at = ?, "
+        // Try UPDATE first (job was previously started). Description is updated
+        // only when the caller supplied a non-null value — a null means "leave
+        // the start-time value untouched". This preserves the operator's
+        // short label when the agent posts one (the same value is forwarded
+        // by the controller's status-event handler), without forcing every
+        // caller to know about the column.
+        StringBuilder updateSql = new StringBuilder(
+            "UPDATE job_timing SET status = ?, completed_at = ?, "
             + "wall_clock_ms = ?, "
             + "duration_ms = ?, duration_api_ms = ?, cost_usd = ?, "
             + "num_turns = ?, session_id = ?, exit_code = ?, "
             + "subtype = ?, session_error = ?, permission_denials = ?, "
-            + "target_branch = ?, commit_hash = ?, pull_request_url = ?, error_message = ? "
-            + "WHERE job_id = ?";
+            + "target_branch = ?, commit_hash = ?, pull_request_url = ?, error_message = ?");
+        if (description != null) {
+            updateSql.append(", description = ?");
+        }
+        updateSql.append(" WHERE job_id = ?");
 
-        try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
+        try (PreparedStatement ps = connection.prepareStatement(updateSql.toString())) {
             ps.setString(1, status);
             ps.setTimestamp(2, Timestamp.from(completedAt));
             ps.setLong(3, wallClockMs);
@@ -371,7 +383,11 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setString(14, commitHash);
             ps.setString(15, pullRequestUrl);
             ps.setString(16, truncate(errorMessage, 2000));
-            ps.setString(17, jobId);
+            int idx = 17;
+            if (description != null) {
+                ps.setString(idx++, truncate(description, 1000));
+            }
+            ps.setString(idx, jobId);
 
             int updated = ps.executeUpdate();
             if (updated > 0) return;
@@ -380,14 +396,16 @@ public class JobStatsStore implements ConsoleFeatures {
             return;
         }
 
-        // No row existed - insert with started_at = completedAt
+        // No row existed - insert with started_at = completedAt. description
+        // is included in the column list regardless so a null insert is an
+        // explicit NULL column, not a column-mismatch error.
         String wsId = workstreamId != null ? workstreamId : "unknown";
         String insertSql = "INSERT INTO job_timing (job_id, workstream_id, status, "
             + "started_at, completed_at, wall_clock_ms, duration_ms, duration_api_ms, "
             + "cost_usd, num_turns, session_id, exit_code, "
             + "subtype, session_error, permission_denials, "
-            + "target_branch, commit_hash, pull_request_url, error_message) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "target_branch, commit_hash, pull_request_url, error_message, description) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
             ps.setString(1, jobId);
@@ -409,6 +427,7 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setString(17, commitHash);
             ps.setString(18, pullRequestUrl);
             ps.setString(19, truncate(errorMessage, 2000));
+            ps.setString(20, truncate(description, 1000));
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to insert job completed: " + e.getMessage());
@@ -424,7 +443,8 @@ public class JobStatsStore implements ConsoleFeatures {
     public synchronized void recordJobCompleted(String workstreamId, JobCompletionEvent event) {
         recordJobCompleted(
             event.getJobId(), workstreamId, event.getStatus().name(),
-            event.getTimestamp(), event.getDurationMs(), event.getDurationApiMs(),
+            event.getTimestamp(), event.getDescription(),
+            event.getDurationMs(), event.getDurationApiMs(),
             event.getCostUsd(), event.getNumTurns(), event.getSessionId(),
             event.getExitCode(), event.getSubtype(), event.isSessionError(),
             event.getPermissionDenials(),
@@ -623,6 +643,12 @@ public class JobStatsStore implements ConsoleFeatures {
      * Returns a best-effort reconstruction; Claude-specific fields default to zero/null.
      * Cost fields are populated from the per-runner and per-model cost tables so that
      * {@code getJob} can return an event with a complete cost picture.
+     *
+     * <p>The event's {@code timestamp} / {@code eventTime} are overwritten with the
+     * persisted {@code completed_at} (falling back to {@code started_at} when the row
+     * has not been completed yet, e.g. a {@code STARTED} status). The plain
+     * constructor stamps {@code Instant.now()}, which would make every read return the
+     * read-time instant rather than when the job actually happened.</p>
      */
     private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
         String jobId = rs.getString("job_id");
@@ -649,6 +675,24 @@ public class JobStatsStore implements ConsoleFeatures {
             event = JobCompletionEvent.degraded(jobId, description, errorMessage);
         } else {
             event = new JobCompletionEvent(jobId, status, description);
+        }
+
+        // Source the event time from the persisted row: completed_at when present,
+        // started_at otherwise. The constructor's Instant.now() stamp is overwritten
+        // so readers see when the job actually happened rather than when this row was
+        // read. setTimestamp updates both timestamp and eventTime.
+        Timestamp completedTs = rs.getTimestamp("completed_at");
+        Timestamp startedTs = rs.getTimestamp("started_at");
+        Instant rowInstant = completedTs != null ? completedTs.toInstant()
+                : (startedTs != null ? startedTs.toInstant() : null);
+        if (rowInstant != null) {
+            event.setTimestamp(rowInstant);
+        }
+        if (startedTs != null) {
+            event.setStartedAt(startedTs.toInstant());
+        }
+        if (completedTs != null) {
+            event.setFinishedAt(completedTs.toInstant());
         }
 
         if (targetBranch != null || commitHash != null) {

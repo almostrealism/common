@@ -30,6 +30,7 @@ import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
+import io.flowtree.workstream.AlertRecipientEntry;
 import org.almostrealism.util.SignalWireDeliveryProvider;
 
 import java.nio.charset.StandardCharsets;
@@ -1211,6 +1212,8 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
+            apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
+                    loadedConfig == null ? null : loadedConfig.getAlertRecipients()));
             stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,
                     flowtreeServer, statsStore, listener, primaryNotifier,
                     notifiersByWorkspace);
