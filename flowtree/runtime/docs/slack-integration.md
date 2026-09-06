@@ -125,6 +125,7 @@ Registers a new workstream dynamically. When a `channelName` is provided and a S
 | `dormantForCompletionListeners` | `boolean` | No | Drop completion-listener wake-ups to this workstream while preserving manual submissions; defaults to `false` |
 | `maxWallClockHours` | `integer` | No | Workstream-level ceiling on a job's total wall-clock time, in hours. **Omit** the field to let jobs inherit `RestartGovernor.DEFAULT_MAX_WALL_CLOCK`; the controller parses this value as an integer, so sending JSON `null` is **not** the way to inherit — it is read as `0` and disables the ceiling. `0` disables the ceiling for jobs on this workstream |
 | `channelName` | `string` | No | Desired Slack channel name (a private channel is created if provided) |
+| `kind` | `string` | No | Classification used for archival triage: one of `feature`, `orchestrator`, `standing`. An explicit value wins; otherwise it is inferred from the branch name (`orchestrator` when `defaultBranch` equals `baseBranch`, `standing` when `defaultBranch` starts with `orchestration/`, `feature` otherwise). An unrecognised value is rejected with a 400 |
 
 **Response (200):**
 
@@ -159,6 +160,7 @@ Updates fields on an existing workstream. All fields are optional; only provided
 | `completionListeners` | `string[]` | Replace the workstream IDs notified on completion |
 | `dormantForCompletionListeners` | `boolean` | Pause or resume automated completion-listener wake-ups to this workstream; omitted values leave the current state unchanged |
 | `maxWallClockHours` | `integer` | Change the workstream's wall-clock ceiling. An integer replaces the ceiling (in hours, with `0` disabling it); a **negative** value (e.g. `-1`) clears the override so jobs inherit the default. The controller parses this value as an integer, so JSON `null` is read as `0` and is not the way to clear |
+| `kind` | `string` | Change the classification used for archival triage: one of `feature`, `orchestrator`, `standing`. Presence-signalled — omitting the field leaves the current classification untouched; an unrecognised value is rejected with a 400 |
 
 ### JobStatsStore
 

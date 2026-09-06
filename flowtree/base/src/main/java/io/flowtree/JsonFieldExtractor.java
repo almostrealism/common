@@ -45,6 +45,13 @@ public final class JsonFieldExtractor {
 	 */
 	public static final ObjectMapper MAPPER = new ObjectMapper();
 
+	/**
+	 * Lowercase hex digits, for the {@code \\u00xx} escapes {@link #escapeJson} emits.
+	 * Held as a table because that method runs over whole CI logs, where formatting
+	 * each escape separately is measurable.
+	 */
+	private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
+
 	/** Private constructor — all methods are static; this class is not instantiated. */
 	private JsonFieldExtractor() { }
 
@@ -604,19 +611,48 @@ public final class JsonFieldExtractor {
 
 	/**
 	 * Escapes a string for safe inclusion in a JSON string literal,
-	 * replacing backslash, double-quote, and common whitespace control
-	 * characters.
+	 * replacing backslash, double-quote, and every C0 control character.
+	 *
+	 * <p>The control characters without a short escape are written as
+	 * {@code \\u00xx}. JSON forbids them literally, and a strict parser —
+	 * Python's {@code json.loads} among them — rejects a document containing
+	 * one, so text that carries them has to be escaped rather than passed
+	 * through. Terminal output is the case that matters in practice: build and
+	 * CI logs are full of {@code ESC} (0x1b) from ANSI colour sequences.</p>
 	 *
 	 * @param s the string to escape, or {@code null}
 	 * @return  the escaped string, or an empty string if {@code s} is {@code null}
 	 */
 	public static String escapeJson(String s) {
 		if (s == null) return "";
-		return s.replace("\\", "\\\\")
-				.replace("\"", "\\\"")
-				.replace("\n", "\\n")
-				.replace("\r", "\\r")
-				.replace("\t", "\\t");
+
+		StringBuilder out = new StringBuilder(s.length() + 16);
+
+		for (int i = 0; i < s.length(); i++) {
+			char c = s.charAt(i);
+
+			switch (c) {
+				case '\\': out.append("\\\\"); break;
+				case '"':  out.append("\\\""); break;
+				case '\n': out.append("\\n"); break;
+				case '\r': out.append("\\r"); break;
+				case '\t': out.append("\\t"); break;
+				case '\b': out.append("\\b"); break;
+				case '\f': out.append("\\f"); break;
+				default:
+					if (c < 0x20) {
+						// Every remaining control character is below 0x20, so the
+						// leading two hex digits are always zero.
+						out.append("\\u00")
+							.append(HEX_DIGITS[(c >> 4) & 0xf])
+							.append(HEX_DIGITS[c & 0xf]);
+					} else {
+						out.append(c);
+					}
+			}
+		}
+
+		return out.toString();
 	}
 
 	/**

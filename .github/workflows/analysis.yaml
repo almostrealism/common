@@ -611,6 +611,42 @@ jobs:
             echo "No deception patterns detected." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Assertion Density Report (coverage-qa rounds) ───────────────
+  # Report-only, non-blocking: counts assertions per new test method
+  # added by a coverage-qa round and surfaces the ratio (and any
+  # zero-assertion method) as a visible signal for the human reviewer,
+  # the coverage-qa pipeline's defense against gaming the coverage
+  # percentage with assertion-free tests. Never a merge gate: it is
+  # deliberately absent from all-checks' needs, and the script itself
+  # always exits 0. Scoped to qa/coverage-* branches so every other PR's
+  # summary is unaffected.
+  assertion-density-report:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/master' && startsWith(github.head_ref || github.ref_name, 'qa/coverage-')
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Run assertion density report
+        id: density
+        run: |
+          chmod +x ./tools/ci/coverage/assertion-density-report.sh
+          ./tools/ci/coverage/assertion-density-report.sh origin/master "${RUNNER_TEMP}/assertion-density-report.txt"
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f "${RUNNER_TEMP}/assertion-density-report.txt" ]; then
+            cat "${RUNNER_TEMP}/assertion-density-report.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   # ─── Agent Commit Validation ────────────────────────────────────
   # Validates that agent commits do not modify test files or CI
   # files. This is a hard block — agent commits that violate these

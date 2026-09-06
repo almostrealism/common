@@ -8,6 +8,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | Directory | Purpose |
 |---|---|
 | `agent-protection/` | Anti-deception enforcement scripts (test write locks, audit) |
+| `coverage/` | Test-coverage automation: target selection, report fetching, assertion density |
 | `docker/` | Linux CPU runner fleet (`ar-ci`), Docker Compose |
 | `macos/` | macOS GPU runner configuration (`ar-ci`) |
 | `rocm/` | AMD/ROCm OpenCL runner fleet (`ar-ci-cl`), Docker Compose |
@@ -22,6 +23,19 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `register-workstream.sh` | Register a workstream with the FlowTree controller |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
+
+## Coverage (`coverage/`)
+
+| Script | Purpose |
+|---|---|
+| `fetch-latest-coverage.sh` | Reuse (or, with `FORCE=true`, recompute) the merged JaCoCo report and a fresh coverage.py report |
+| `select-target.py` | Rank Java packages / Python directories by coverage and emit one coverage-qa target |
+| `test_select_target.py` | Unit tests for `select-target.py`, driven by the `testdata/` fixtures |
+| `assertion-density-report.sh` | Report-only: assertions-per-new-test-method for a coverage-qa PR |
+
+See `tools/coverage-data/coverage-exclusions.txt` / `tools/coverage-data/coverage-history.tsv`
+for the selector's data files — kept outside `tools/ci/` because they are mutable data an
+agent round appends to, not pipeline logic.
 
 ## Agent Protection (`agent-protection/`)
 
