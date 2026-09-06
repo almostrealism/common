@@ -24,6 +24,7 @@ import org.almostrealism.io.RateLimit;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -89,6 +90,12 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	 * {@code alert.window_minutes} in the configuration file.
 	 */
 	private static final int defaultWindowMinutes = 60;
+
+	/**
+	 * Characters of the API response retained for a log line. Enough to
+	 * carry the message identifier and status, which sit at the front of it.
+	 */
+	private static final int bodyLogLength = 300;
 
 	/**
 	 * The send budget, shared by every provider instance and sliding rather
@@ -157,6 +164,23 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 		this.alertPrefix = alertPrefix;
 	}
 
+	/**
+	 * Hands the alert to SignalWire for delivery.
+	 *
+	 * <p>What is reported on success is acceptance, not arrival. The API
+	 * answers as soon as it has taken the message, and delivery follows
+	 * afterwards, so a message accepted here can still fail on the way — for
+	 * an unregistered sender, an unverified destination on a trial account,
+	 * or an empty balance. Logging acceptance as a send would leave an
+	 * operator whose phone stayed silent reading a log that appears to
+	 * contradict them.</p>
+	 *
+	 * <p>The response body is logged with it because it carries the message
+	 * identifier, which is what the carrier's own records — where the
+	 * eventual delivery status lives — are searched by.</p>
+	 *
+	 * @param alert the alert to deliver
+	 */
 	@Override
 	public void sendAlert(Alert alert) {
 		if (!sendLimit().reserve()) {
@@ -169,18 +193,18 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 			String message = alert.getMessage();
 			if (alertPrefix != null) message = alertPrefix + message;
 
-			int responseCode = sendSms("https://" + space +
+			SendOutcome outcome = sendSms("https://" + space +
 							".signalwire.com/api/laml/2010-04-01/Accounts/" +
 							projectId + "/Messages",
 					projectId + ":" + token,
 					fromNumber, toNumber,
 					message);
 
-			if (responseCode == HttpURLConnection.HTTP_OK ||
-					responseCode == HttpURLConnection.HTTP_CREATED) {
-				log("Alert sent via SMS");
+			if (outcome.isAccepted()) {
+				log("Alert accepted by SignalWire for delivery: " + outcome.summary());
 			} else {
-				warn("Failed to send SMS (HTTP " + responseCode + ")");
+				warn("Failed to send SMS (HTTP " + outcome.getCode() + "): "
+						+ outcome.summary());
 			}
 		} catch (Exception e) {
 			warn("Failed to send SMS", e);
@@ -340,10 +364,10 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 	 * @param from the sender phone number
 	 * @param to   the recipient phone number
 	 * @param body the message content
-	 * @return the HTTP response code
+	 * @return what the API answered with
 	 * @throws IOException if the HTTP request fails
 	 */
-	protected static int sendSms(
+	protected static SendOutcome sendSms(
 							String url, String auth,
 						    String from, String to,
 						    String body) throws IOException {
@@ -366,7 +390,92 @@ public class SignalWireDeliveryProvider implements AlertDeliveryProvider, Consol
 			os.write(input, 0, input.length);
 		}
 
-		return con.getResponseCode();
+		return SendOutcome.from(con);
+	}
+
+	/**
+	 * What the SignalWire API answered when asked to send a message.
+	 *
+	 * <p>The status alone does not say whether anything arrived: the API
+	 * answers {@code 201 Created} once it has <em>accepted</em> a message,
+	 * and delivery happens afterwards. A message accepted here can still
+	 * fail later — for an unregistered sender, an unverified destination on
+	 * a trial account, or an empty balance — and the reason surfaces in the
+	 * carrier's own records rather than in this response. The body is
+	 * carried so the identifier it contains can be matched against those
+	 * records.</p>
+	 */
+	protected static final class SendOutcome {
+		/** The HTTP status the API answered with. */
+		private final int code;
+
+		/** The response body, verbatim; never {@code null}. */
+		private final String body;
+
+		/**
+		 * Creates an outcome.
+		 *
+		 * @param code the HTTP status
+		 * @param body the response body
+		 */
+		protected SendOutcome(int code, String body) {
+			this.code = code;
+			this.body = body == null ? "" : body;
+		}
+
+		/**
+		 * Reads the outcome of a completed request.
+		 *
+		 * <p>A failed request carries its reason on the error stream rather
+		 * than the input stream, so the body is taken from whichever one the
+		 * status indicates. A body that cannot be read is reported as absent:
+		 * losing the diagnostic detail is not a reason to lose the status
+		 * along with it.</p>
+		 *
+		 * @param con the connection to read
+		 * @return the outcome the API answered with
+		 * @throws IOException if the status itself cannot be read
+		 */
+		protected static SendOutcome from(HttpURLConnection con) throws IOException {
+			int code = con.getResponseCode();
+
+			try (InputStream in = code >= HttpURLConnection.HTTP_BAD_REQUEST
+					? con.getErrorStream() : con.getInputStream()) {
+				return new SendOutcome(code, in == null ? ""
+						: new String(in.readAllBytes(), StandardCharsets.UTF_8).trim());
+			} catch (IOException e) {
+				return new SendOutcome(code, "");
+			}
+		}
+
+		/** Returns the HTTP status the API answered with. */
+		public int getCode() { return code; }
+
+		/** Returns the response body, verbatim; never {@code null}. */
+		public String getBody() { return body; }
+
+		/**
+		 * Returns whether the API accepted the message. Acceptance is not
+		 * delivery — see the class comment.
+		 *
+		 * @return {@code true} for a 200 or 201 status
+		 */
+		public boolean isAccepted() {
+			return code == HttpURLConnection.HTTP_OK
+					|| code == HttpURLConnection.HTTP_CREATED;
+		}
+
+		/**
+		 * Returns the body shortened for a log line, since the full response
+		 * is longer than a log wants but its identifier and status sit at the
+		 * front of it.
+		 *
+		 * @return the shortened body
+		 */
+		public String summary() {
+			return body.length() <= bodyLogLength
+					? body : body.substring(0, bodyLogLength) + "...";
+		}
 	}
 }
 
