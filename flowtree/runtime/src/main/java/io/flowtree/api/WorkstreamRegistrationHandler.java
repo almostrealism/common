@@ -32,6 +32,7 @@ import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
+import io.flowtree.github.GitHubOrgs;
 import io.flowtree.github.GitHubProxyHandler;
 
 import java.util.ArrayList;
@@ -484,11 +485,14 @@ final class WorkstreamRegistrationHandler {
         // single-workspace mode) null / the primary notifier. In
         // multi-workspace mode failing to resolve a workspace is a 400 — the
         // alternative is silently placing the workstream in the wrong one.
+        // The org comparison ignores case: GitHub org names are themselves
+        // case-insensitive, and the casing in workstreams.yaml routinely
+        // differs from the casing CI puts in the submitted repoUrl.
         String targetWorkspaceId = explicitWorkspaceId;
         if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty()) && repoUrl != null) {
             String org = GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl);
             if (org != null) {
-                targetWorkspaceId = orgToWorkspaceId.get(org);
+                targetWorkspaceId = GitHubOrgs.lookup(orgToWorkspaceId, org);
             }
         }
         if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty())

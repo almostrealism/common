@@ -916,6 +916,9 @@ public class WorkstreamConfig {
      * <p>When the same org is declared under multiple workspaces the last
      * workspace wins, matching the merge order of {@link #mergedGithubOrgTokens()}.</p>
      *
+     * <p>Keys carry the casing the YAML used; since GitHub org names are
+     * case-insensitive, resolve with {@code GitHubOrgs.lookup}, not a map get.</p>
+     *
      * @return org-name → workspace-ID map, in insertion order
      */
     public Map<String, String> orgToWorkspaceId() {
