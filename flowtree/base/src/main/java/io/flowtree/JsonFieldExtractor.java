@@ -284,6 +284,8 @@ public final class JsonFieldExtractor {
 			int j = quoteStart + 1;
 			while (j < arrayContent.length()) {
 				char c = arrayContent.charAt(j);
+				// TODO(review): this escape-decoding switch is now byte-for-byte identical to
+				// the one in extractString() (see above); extract a shared helper in a dedup pass.
 				if (c == '\\' && j + 1 < arrayContent.length()) {
 					char next = arrayContent.charAt(j + 1);
 					if (next == '"') { value.append('"'); j += 2; }
@@ -291,6 +293,9 @@ public final class JsonFieldExtractor {
 					else if (next == 'n') { value.append('\n'); j += 2; }
 					else if (next == 'r') { value.append('\r'); j += 2; }
 					else if (next == 't') { value.append('\t'); j += 2; }
+					else if (next == 'b') { value.append('\b'); j += 2; }
+					else if (next == 'f') { value.append('\f'); j += 2; }
+					else if (next == '/') { value.append('/'); j += 2; }
 					else if (next == 'u' && j + 5 < arrayContent.length()) {
 						String hex = arrayContent.substring(j + 2, j + 6);
 						try {
