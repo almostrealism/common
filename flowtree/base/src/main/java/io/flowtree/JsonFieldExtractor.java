@@ -252,6 +252,13 @@ public final class JsonFieldExtractor {
 	/**
 	 * Extracts a JSON array of strings from a JSON string.
 	 *
+	 * <p>Decodes the same escape sequences as {@link #extractString(String, String)}
+	 * ({@code " \ n r t b f /} and {@code \\u} hex escapes), though the two methods
+	 * track their scan position differently (this one advances {@code j} directly
+	 * rather than relying on a for-loop increment), so the switch statements below
+	 * and in {@code extractString} are logically but not textually identical.
+	 * TODO(review): extract a shared helper in a dedup pass.</p>
+	 *
 	 * @param json  the JSON string
 	 * @param field the field name
 	 * @return list of string values from the array
@@ -284,8 +291,6 @@ public final class JsonFieldExtractor {
 			int j = quoteStart + 1;
 			while (j < arrayContent.length()) {
 				char c = arrayContent.charAt(j);
-				// TODO(review): this escape-decoding switch is now byte-for-byte identical to
-				// the one in extractString() (see above); extract a shared helper in a dedup pass.
 				if (c == '\\' && j + 1 < arrayContent.length()) {
 					char next = arrayContent.charAt(j + 1);
 					if (next == '"') { value.append('"'); j += 2; }

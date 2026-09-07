@@ -59,13 +59,13 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 10000)
 	public void arrayAndScalarDecodersAgree() {
-		String scalar = "{\"v\":\"a\\/b\"}";
-		String array = "{\"v\":[\"a\\/b\"]}";
+		String scalar = "{\"v\":\"a\\/b\\b\\fc\"}";
+		String array = "{\"v\":[\"a\\/b\\b\\fc\"]}";
 
 		String fromScalar = JsonFieldExtractor.extractString(scalar, "v");
 		List<String> fromArray = JsonFieldExtractor.extractStringArray(array, "v");
 
-		Assert.assertEquals("a/b", fromScalar);
+		Assert.assertEquals("a/b\b\fc", fromScalar);
 		Assert.assertEquals(1, fromArray.size());
 		Assert.assertEquals(fromScalar, fromArray.get(0));
 	}
