@@ -126,27 +126,10 @@ public final class JsonFieldExtractor {
 		StringBuilder sb = new StringBuilder();
 		for (int i = valueStart; i < json.length(); i++) {
 			char c = json.charAt(i);
-			if (c == '\\' && i + 1 < json.length()) {
-				char next = json.charAt(i + 1);
-				if (next == '"') { sb.append('"'); i++; }
-				else if (next == '\\') { sb.append('\\'); i++; }
-				else if (next == 'n') { sb.append('\n'); i++; }
-				else if (next == 'r') { sb.append('\r'); i++; }
-				else if (next == 't') { sb.append('\t'); i++; }
-				else if (next == 'b') { sb.append('\b'); i++; }
-				else if (next == 'f') { sb.append('\f'); i++; }
-				else if (next == '/') { sb.append('/'); i++; }
-				else if (next == 'u' && i + 5 < json.length()) {
-					String hex = json.substring(i + 2, i + 6);
-					try {
-						sb.append((char) Integer.parseInt(hex, 16));
-						i += 5;
-					} catch (NumberFormatException e) {
-						sb.append(c);
-					}
-				} else {
-					sb.append(c);
-				}
+			if (c == '\\') {
+				EscapeDecode escape = decodeEscape(json, i);
+				sb.append(escape.decoded());
+				i += escape.consumed() - 1;
 			} else if (c == '"') {
 				break;
 			} else {
@@ -253,11 +236,10 @@ public final class JsonFieldExtractor {
 	 * Extracts a JSON array of strings from a JSON string.
 	 *
 	 * <p>Decodes the same escape sequences as {@link #extractString(String, String)}
-	 * ({@code " \ n r t b f /} and {@code \\u} hex escapes), though the two methods
+	 * ({@code " \ n r t b f /} and {@code \\u} hex escapes) via the shared
+	 * {@link #decodeEscape(CharSequence, int)} helper, even though the two methods
 	 * track their scan position differently (this one advances {@code j} directly
-	 * rather than relying on a for-loop increment), so the switch statements below
-	 * and in {@code extractString} are logically but not textually identical.
-	 * TODO(review): extract a shared helper in a dedup pass.</p>
+	 * rather than relying on a for-loop increment).</p>
 	 *
 	 * @param json  the JSON string
 	 * @param field the field name
@@ -291,29 +273,10 @@ public final class JsonFieldExtractor {
 			int j = quoteStart + 1;
 			while (j < arrayContent.length()) {
 				char c = arrayContent.charAt(j);
-				if (c == '\\' && j + 1 < arrayContent.length()) {
-					char next = arrayContent.charAt(j + 1);
-					if (next == '"') { value.append('"'); j += 2; }
-					else if (next == '\\') { value.append('\\'); j += 2; }
-					else if (next == 'n') { value.append('\n'); j += 2; }
-					else if (next == 'r') { value.append('\r'); j += 2; }
-					else if (next == 't') { value.append('\t'); j += 2; }
-					else if (next == 'b') { value.append('\b'); j += 2; }
-					else if (next == 'f') { value.append('\f'); j += 2; }
-					else if (next == '/') { value.append('/'); j += 2; }
-					else if (next == 'u' && j + 5 < arrayContent.length()) {
-						String hex = arrayContent.substring(j + 2, j + 6);
-						try {
-							value.append((char) Integer.parseInt(hex, 16));
-							j += 6;
-						} catch (NumberFormatException e) {
-							value.append(c);
-							j++;
-						}
-					} else {
-						value.append(c);
-						j++;
-					}
+				if (c == '\\') {
+					EscapeDecode escape = decodeEscape(arrayContent, j);
+					value.append(escape.decoded());
+					j += escape.consumed();
 				} else if (c == '"') {
 					break;
 				} else {
@@ -710,5 +673,65 @@ public final class JsonFieldExtractor {
 			}
 		}
 		return numStr.toString();
+	}
+
+	/**
+	 * The result of decoding one JSON escape sequence: the character it
+	 * represents, and how many source characters — including the leading
+	 * backslash — the escape sequence occupies.
+	 *
+	 * @param decoded  the character the escape sequence represents, or the
+	 *                 literal backslash when the sequence is unrecognized or
+	 *                 truncated
+	 * @param consumed the number of characters consumed, counted from the
+	 *                 backslash
+	 */
+	private record EscapeDecode(char decoded, int consumed) { }
+
+	/**
+	 * Decodes the JSON escape sequence beginning at {@code backslashIndex} in
+	 * {@code s}. Shared by {@link #extractString(String, String)} and
+	 * {@link #extractStringArray(String, String)} so their escape-decoding
+	 * logic cannot drift apart.
+	 *
+	 * <p>Recognizes {@code " \ n r t b f /} and {@code \\u} hex escapes. An
+	 * unrecognized escape, or a {@code \\u} escape with fewer than four hex
+	 * digits remaining or an unparseable hex value, decodes to the literal
+	 * backslash and consumes only that one character, leaving the character
+	 * after the backslash to be scanned on its own.</p>
+	 *
+	 * @param s              the source text
+	 * @param backslashIndex the index of the {@code \} character
+	 * @return the decoded character and the number of characters consumed
+	 */
+	private static EscapeDecode decodeEscape(CharSequence s, int backslashIndex) {
+		int length = s.length();
+		if (backslashIndex + 1 >= length) {
+			return new EscapeDecode(s.charAt(backslashIndex), 1);
+		}
+
+		char next = s.charAt(backslashIndex + 1);
+		switch (next) {
+			case '"': return new EscapeDecode('"', 2);
+			case '\\': return new EscapeDecode('\\', 2);
+			case 'n': return new EscapeDecode('\n', 2);
+			case 'r': return new EscapeDecode('\r', 2);
+			case 't': return new EscapeDecode('\t', 2);
+			case 'b': return new EscapeDecode('\b', 2);
+			case 'f': return new EscapeDecode('\f', 2);
+			case '/': return new EscapeDecode('/', 2);
+			case 'u':
+				if (backslashIndex + 5 < length) {
+					String hex = s.subSequence(backslashIndex + 2, backslashIndex + 6).toString();
+					try {
+						return new EscapeDecode((char) Integer.parseInt(hex, 16), 6);
+					} catch (NumberFormatException e) {
+						return new EscapeDecode(s.charAt(backslashIndex), 1);
+					}
+				}
+				return new EscapeDecode(s.charAt(backslashIndex), 1);
+			default:
+				return new EscapeDecode(s.charAt(backslashIndex), 1);
+		}
 	}
 }
