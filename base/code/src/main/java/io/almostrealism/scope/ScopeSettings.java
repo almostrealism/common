@@ -227,6 +227,23 @@ public class ScopeSettings {
 	public static boolean enableExpressionReview =
 			SystemUtils.isEnabled("AR_EXPRESSION_REVIEW").orElse(false);
 
+	/**
+	 * When {@code true}, {@link io.almostrealism.expression.Expression#equals},
+	 * {@link io.almostrealism.expression.Expression#hashCode} and
+	 * {@code signature()} report their own durations to the assigned profile.
+	 * Controlled by {@code AR_EXPRESSION_TIMING}.
+	 *
+	 * <p>Off by default, because these three cannot be measured without the
+	 * measurement dominating them. Each runs in the order of nanoseconds, while
+	 * timing one costs two clock reads plus a map write, and {@code equals} is
+	 * called for every comparison inside every expression cache probe — so
+	 * switching this on does not report what the untimed code does, it reports
+	 * something several times slower. Enable it to study the comparison itself,
+	 * not while measuring anything else.</p>
+	 */
+	public static boolean enableExpressionTiming =
+			SystemUtils.isEnabled("AR_EXPRESSION_TIMING").orElse(false);
+
 	/** Running count of expressions that were simplified during this JVM session. */
 	public static long simplificationCount = 0;
 
