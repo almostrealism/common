@@ -129,7 +129,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 			} else if (this == CHORD) {
 				p: for (double p : element.getScalePositions()) {
 					if (keys.isEmpty()) break;
-					int keyIndex = (int) (p * keys.size());
+					int keyIndex = scaleKeyIndex(p, keys.size());
 
 					ElementVoicingDetails details =
 							audioContext.createVoicingDetails(melodic,
@@ -143,7 +143,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				double p = element.getScalePositions().get(i % element.getScalePositions().size());
 				if (keys.isEmpty()) break;
 
-				int keyIndex = (int) (p * keys.size());
+				int keyIndex = scaleKeyIndex(p, keys.size());
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(keyIndex), relativePosition);
@@ -202,7 +202,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 			} else if (this == CHORD) {
 				for (double p : element.getScalePositions()) {
 					if (keys.isEmpty()) break;
-					int keyIndex = Math.min((int) (p * keys.size()), keys.size() - 1);
+					int keyIndex = scaleKeyIndex(p, keys.size());
 
 					long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
 					long durationTicks = computeDurationTicks(element, context);
@@ -215,7 +215,7 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 				double p = element.getScalePositions().get(i % element.getScalePositions().size());
 				if (keys.isEmpty()) break;
 
-				int keyIndex = Math.min((int) (p * keys.size()), keys.size() - 1);
+				int keyIndex = scaleKeyIndex(p, keys.size());
 				long onsetTicks = framesToTicks(context.frameForPosition(actualPosition), sampleRate);
 				long durationTicks = computeDurationTicks(element, context);
 				int pitch = resolvePitch(keys.get(keyIndex));
@@ -224,6 +224,28 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 		}
 
 		return events;
+	}
+
+	/**
+	 * Selects the scale key index for a scale position, clamped to the last
+	 * available key.
+	 *
+	 * <p>Scale positions are drawn from {@code [0, 1]} (see
+	 * {@link ParameterizedPositionFunction#applyPositive}), so
+	 * {@code (int) (position * keyCount)} evaluates to {@code keyCount} — one
+	 * past the last valid index — when {@code position} is exactly {@code 1.0}.
+	 * Clamping to {@code keyCount - 1} maps that boundary position to the final
+	 * key instead of producing an out-of-bounds index. Both the audio
+	 * ({@link #getNoteDestinations}) and MIDI ({@link #toMidiEvents}) traversals
+	 * share this so their key selection cannot diverge.</p>
+	 *
+	 * @param position the scale position, expected within {@code [0, 1]}
+	 * @param keyCount the number of keys currently available for selection;
+	 *                 must be positive
+	 * @return the selected key index, within {@code [0, keyCount - 1]}
+	 */
+	private static int scaleKeyIndex(double position, int keyCount) {
+		return Math.min((int) (position * keyCount), keyCount - 1);
 	}
 
 	/**
