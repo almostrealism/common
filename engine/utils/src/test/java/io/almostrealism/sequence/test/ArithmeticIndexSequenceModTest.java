@@ -16,8 +16,12 @@
 
 package io.almostrealism.sequence.test;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.IndexSequence;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -91,6 +95,41 @@ public class ArithmeticIndexSequenceModTest extends TestSuiteBase {
 			long expected = seq.valueAt(pos).longValue() % 2;
 			Assert.assertEquals("mismatch at position " + pos,
 					expected, reduced.valueAt(pos).longValue());
+		}
+	}
+
+	/**
+	 * End-to-end proof that the guard in {@link ArithmeticIndexSequence#mod(long)} is not
+	 * merely an {@link IndexSequence} bookkeeping detail: the same {@code (index % 6) / 2 % 2}
+	 * pattern arises whenever a kernel index expression is reduced modulo a divisor and then
+	 * modulo a second, smaller value (for example, position arithmetic feeding a repeated or
+	 * tiled memory access). When a {@link org.almostrealism.collect.CollectionProducer} built
+	 * from such an expression is compiled to a real kernel, the compiler's
+	 * {@code KernelSeriesProvider} calls exactly this code path
+	 * ({@code Mod.sequence()} to {@code ArithmeticGenerator.sequence()} to
+	 * {@code ArithmeticIndexSequence.mod()}) to fold the index arithmetic into the generated
+	 * source. With the pre-fix guard ({@code mod % m != 0}), the folded sequence is wrong at
+	 * positions 6 and 7, so the actual, compiled {@code evaluate()} output of the producer —
+	 * not just the {@link IndexSequence} in isolation — is numerically incorrect.
+	 */
+	@Test(timeout = 30000)
+	public void collectionProducerGranularTwoModTwoMatchesElementwise() {
+		// TODO(review): counterfactual (fails if mod(long) guard is reverted) unconfirmed
+		TraversalPolicy shape = new TraversalPolicy(8);
+		PackedCollection unused = new PackedCollection(1);
+
+		DefaultTraversableExpressionComputation computation =
+				new DefaultTraversableExpressionComputation("granularityModRegression", shape,
+						args -> CollectionExpression.create(shape, idx ->
+								idx.imod(6).divide(2).imod(2)),
+						p(unused));
+
+		PackedCollection actual = computation.get().evaluate();
+
+		for (int pos = 0; pos < 8; pos++) {
+			long expected = ((pos % 6) / 2) % 2;
+			Assert.assertEquals("mismatch at position " + pos,
+					(double) expected, actual.toDouble(pos), 0.0);
 		}
 	}
 }
