@@ -342,7 +342,8 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * offset is a multiple of {@code scale * (operand / scale)}, the result is
 	 * {@code scale * (k % (operand / scale))}, which wraps every
 	 * {@code granularity * (operand / scale)} positions provided that period is
-	 * compatible with the existing modulus.</p>
+	 * compatible with the existing modulus. A period too large to represent is treated
+	 * as inexact rather than allowed to wrap.</p>
 	 *
 	 * @param operand the modulus; must be positive
 	 * @return the remainder sequence, or {@code null} if it cannot be represented
@@ -359,9 +360,16 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 			return new ArithmeticIndexSequence(offset % operand, 0, granularity, mod, len);
 		} else if (operand % scale == 0) {
 			long steps = operand / scale;
-			if (offset % (scale * steps) != 0) return null;
+			if (offset % operand != 0) return null;
 
-			long period = granularity * steps;
+			long period;
+
+			try {
+				period = Math.multiplyExact(granularity, steps);
+			} catch (ArithmeticException e) {
+				return null;
+			}
+
 			if (mod < len && mod % period != 0) return null;
 
 			return new ArithmeticIndexSequence(0, scale, granularity, Math.min(period, mod), len);
