@@ -20,9 +20,9 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
-import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
-import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -196,30 +196,55 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public IndexSequence sequence(Index index, long len, long limit) {
-		if (isFP()) return super.sequence(index, len, limit);
+	protected double[] computeValues(IndexRange range) {
+		double[][] c = range.values(getChildren());
+		double[] out = new double[range.getLength()];
 
-		List<Expression<?>> constant = new ArrayList<>();
-		List<Expression<?>> variable = new ArrayList<>();
-
-		getChildren().forEach(e -> {
-			if (e.doubleValue().isPresent()) {
-				constant.add(e);
-			} else {
-				variable.add(e);
+		if (isFP()) {
+			for (int i = 0; i < out.length; i++) {
+				double v = 1.0;
+				for (int j = 0; j < c.length; j++) v *= c[j][i];
+				out[i] = v;
 			}
-		});
+		} else {
+			for (int i = 0; i < out.length; i++) {
+				long l = 1;
+				for (int j = 0; j < c.length; j++) l *= (long) c[j][i];
+				out[i] = IndexRange.exact(l);
+			}
+		}
 
-		long value = constant.stream()
-				.mapToLong(e -> e.longValue().getAsLong())
-				.reduce(1L, (a, b) -> a * b);
-		if (variable.isEmpty()) return ArrayIndexSequence.of(value, len);
-		if (variable.size() != 1) return super.sequence(index, len, limit);
+		return out;
+	}
 
-		IndexSequence seq = variable.get(0).sequence(index, len, limit);
-		if (seq == null) return null;
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer product follows a progression when at most one factor is not a
+	 * constant and that factor follows one; the constants scale it.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (isFP()) return null;
 
-		return seq.multiply(value);
+		long constant = 1;
+		ArithmeticIndexSequence variable = null;
+
+		for (Expression<?> child : getChildren()) {
+			OptionalLong c = child.longValue();
+
+			if (c.isPresent()) {
+				constant *= c.getAsLong();
+			} else if (variable != null) {
+				return null;
+			} else {
+				variable = child.arithmeticSequence(index, len);
+				if (variable == null) return null;
+			}
+		}
+
+		if (variable == null) return new ArithmeticIndexSequence(constant, 0, 1, len, len);
+		return variable.scaled(constant);
 	}
 
 	@Override

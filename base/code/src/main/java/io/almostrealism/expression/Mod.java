@@ -17,8 +17,9 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
-import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -218,6 +219,61 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer modulus by a positive constant follows a progression when the
+	 * dividend does and the reduction is exact under
+	 * {@link ArithmeticIndexSequence#modExactly(long)}.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (fp) return null;
+
+		OptionalLong m = getChildren().get(1).longValue();
+		if (m.isEmpty() || m.getAsLong() <= 0) return null;
+
+		List<ArithmeticIndexSequence> terms = getChildren().get(0).arithmeticTerms(index, len);
+		if (terms == null) return null;
+
+		// A term that is a multiple of the modulus at every position cannot affect the
+		// remainder, provided the remaining terms are never negative (so that truncating
+		// and flooring remainders agree), and is dropped before the reduction
+		List<ArithmeticIndexSequence> remaining = terms.stream()
+				.filter(t -> !t.isMultipleOf(m.getAsLong()))
+				.collect(Collectors.toList());
+
+		if (remaining.isEmpty()) {
+			return new ArithmeticIndexSequence(0, 0, 1, len, len);
+		} else if (remaining.size() < terms.size() && remaining.stream().anyMatch(t -> t.min() < 0)) {
+			return null;
+		}
+
+		ArithmeticIndexSequence dividend = Sum.combine(remaining);
+		return dividend == null ? null : dividend.modExactly(m.getAsLong());
+	}
+
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[] dividend = getChildren().get(0).values(range);
+		double[] divisor = getChildren().get(1).values(range);
+		double[] out = new double[range.getLength()];
+
+		if (fp) {
+			for (int i = 0; i < out.length; i++) {
+				out[i] = dividend[i] % divisor[i];
+			}
+		} else {
+			boolean negative = dividendPossiblyNegative();
+
+			for (int i = 0; i < out.length; i++) {
+				out[i] = IndexRange.exact(foldIntMod((long) dividend[i], (long) divisor[i], negative));
+			}
+		}
+
+		return out;
+	}
+
 	@Override
 	public KernelSeries kernelSeries() {
 		KernelSeries input = getChildren().get(0).kernelSeries();
@@ -292,17 +348,6 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		return OptionalLong.of(0);
-	}
-
-	@Override
-	public IndexSequence sequence(Index index, long len, long limit) {
-		if (!isInt() || getChildren().get(1).intValue().isEmpty())
-			return super.sequence(index, len, limit);
-
-		IndexSequence seq = getChildren().get(0).sequence(index, len, limit);
-		if (seq == null) return null;
-
-		return seq.mod(getChildren().get(1).intValue().getAsInt());
 	}
 
 	@Override

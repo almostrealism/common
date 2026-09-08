@@ -283,6 +283,10 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 				return ArithmeticGenerator.create(getIndex(), 1, d.getAsLong() * getGranularity(), getMod());
 			} else if (getScale() % d.getAsLong() == 0) {
 				return ArithmeticGenerator.create(getIndex(), getScale() / d.getAsLong(), getGranularity(), getMod());
+			} else if (d.getAsLong() > 0 && d.getAsLong() % Math.abs(getScale()) == 0) {
+				// (s * k) / (|s| * q) == sign(s) * (k / q)
+				long q = d.getAsLong() / Math.abs(getScale());
+				return ArithmeticGenerator.create(getIndex(), Long.signum(getScale()), q * getGranularity(), getMod());
 			}
 		}
 
@@ -339,6 +343,11 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 	 *         or an {@link IntegerConstant} of zero if the result would always be zero
 	 */
 	public static Expression<? extends Number> create(Expression<?> index, long scale, long granularity, long mod) {
+		if (scale == 0) {
+			// Nothing survives a zero scale
+			return new IntegerConstant(0);
+		}
+
 		if (!index.isPossiblyNegative() && Math.abs(granularity) >= Math.abs(mod)) {
 			// If the granularity is greater than the modulus, the result would
 			// divide an expression which is always below the denominoator and

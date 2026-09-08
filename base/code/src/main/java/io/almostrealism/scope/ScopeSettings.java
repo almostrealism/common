@@ -78,8 +78,13 @@ public class ScopeSettings {
 	/** When {@code true}, kernel sequence results are cached to avoid recomputation. */
 	public static boolean enableKernelSeqCache = false;
 
-	/** When {@code true}, batch evaluation of sequences is enabled. */
-	public static boolean enableBatchEvaluation = false;
+	/**
+	 * Number of consecutive index values evaluated together when an {@link Expression}
+	 * is enumerated over an index via {@link io.almostrealism.sequence.IndexRange}.
+	 * Each block visits every node of the expression once, so larger blocks amortise
+	 * per-node overhead while smaller blocks let series recognition stop sooner.
+	 */
+	public static int sequenceBlockSize = 1 << 11;
 
 	/** When {@code true}, arithmetic sequences are used during expression evaluation. */
 	public static boolean enableArithmeticSequence = true;

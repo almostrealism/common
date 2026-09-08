@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -82,38 +81,8 @@ public class Equals extends Comparison {
 	}
 
 	@Override
-	protected boolean compare(Number left, Number right) {
-		return left.doubleValue() == right.doubleValue();
-	}
-
-	@Override
-	protected IndexSequence compare(IndexSequence left, IndexSequence right, long len) {
-		return left.eq(right);
-	}
-
-	@Override
-	protected int[] checkSingle(Expression left, Expression right, int len) {
-		if (left instanceof KernelIndex) {
-			OptionalInt i = right.intValue();
-			OptionalDouble d = right.doubleValue();
-
-			if (i.isPresent()) {
-				int val = i.getAsInt();
-				if (val >= 0 && val < len) {
-					int seq[] = new int[len];
-					seq[val] = 1;
-					return seq;
-				}
-			} else if (d.isPresent()) {
-				double val = d.getAsDouble();
-				if (val == Math.floor(val)) {
-					int seq[] = new int[len];
-					seq[(int) val] = 1;
-				}
-			}
-		}
-
-		return null;
+	protected boolean compare(double left, double right) {
+		return left == right;
 	}
 
 	@Override

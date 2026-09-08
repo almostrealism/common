@@ -20,8 +20,10 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.sequence.KernelSeries;
@@ -318,6 +320,77 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 			return l;
 		}
+	}
+
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[][] c = range.values(getChildren());
+		double[] out = new double[range.getLength()];
+
+		if (isFP()) {
+			for (int i = 0; i < out.length; i++) {
+				double v = 0.0;
+				for (int j = 0; j < c.length; j++) v += c[j][i];
+				out[i] = v;
+			}
+		} else {
+			for (int i = 0; i < out.length; i++) {
+				long l = 0;
+				for (int j = 0; j < c.length; j++) l += (long) c[j][i];
+				out[i] = IndexRange.exact(l);
+			}
+		}
+
+		return out;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer sum follows a progression when every term does and the terms
+	 * combine under {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)}.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		List<ArithmeticIndexSequence> terms = arithmeticTerms(index, len);
+		return terms == null ? null : combine(terms);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer sum reports the progression of each addend.</p>
+	 */
+	@Override
+	public List<ArithmeticIndexSequence> arithmeticTerms(Index index, long len) {
+		if (isFP()) return null;
+
+		List<ArithmeticIndexSequence> terms = new ArrayList<>();
+
+		for (Expression<?> child : getChildren()) {
+			ArithmeticIndexSequence term = child.arithmeticSequence(index, len);
+			if (term == null) return null;
+			terms.add(term);
+		}
+
+		return terms;
+	}
+
+	/**
+	 * Adds the given progressions together under
+	 * {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)}.
+	 *
+	 * @param terms the progressions to add; must not be empty
+	 * @return their sum, or {@code null} if it is not a progression
+	 */
+	public static ArithmeticIndexSequence combine(List<ArithmeticIndexSequence> terms) {
+		ArithmeticIndexSequence result = terms.get(0);
+
+		for (int i = 1; result != null && i < terms.size(); i++) {
+			result = result.plus(terms.get(i));
+		}
+
+		return result;
 	}
 
 	/**

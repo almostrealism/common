@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
@@ -71,6 +72,18 @@ public class Floor extends Expression<Double> {
 	@Override
 	public Number computeValue(IndexValues indexValues) {
 		return Math.floor((double) getChildren().get(0).value(indexValues));
+	}
+
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[] c = getChildren().get(0).values(range);
+		double[] out = new double[range.getLength()];
+
+		for (int i = 0; i < out.length; i++) {
+			out[i] = Math.floor(c[i]);
+		}
+
+		return out;
 	}
 
 	@Override

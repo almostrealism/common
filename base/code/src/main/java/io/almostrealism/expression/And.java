@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
@@ -190,6 +191,19 @@ public class And extends BinaryExpression<Integer> {
 	@Override
 	public Number evaluate(Number... children) {
 		return children[0].intValue() & children[1].intValue();
+	}
+
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[] left = getChildren().get(0).values(range);
+		double[] right = getChildren().get(1).values(range);
+		double[] out = new double[range.getLength()];
+
+		for (int i = 0; i < out.length; i++) {
+			out[i] = ((int) left[i]) & ((int) right[i]);
+		}
+
+		return out;
 	}
 
 	/**

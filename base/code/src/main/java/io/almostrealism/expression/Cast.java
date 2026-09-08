@@ -18,6 +18,9 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -219,6 +222,35 @@ public class Cast<T> extends UnaryExpression<T> {
 		} else {
 			return Double.valueOf(v);
 		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A cast between integer types leaves a progression unchanged; a cast involving
+	 * floating point establishes nothing.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (isFP() || getChildren().get(0).isFP()) return null;
+
+		return getChildren().get(0).arithmeticSequence(index, len);
+	}
+
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[] c = getChildren().get(0).values(range);
+		double[] out = new double[range.getLength()];
+
+		if (typeName.equals(INT_NAME)) {
+			for (int i = 0; i < out.length; i++) {
+				out[i] = (int) c[i];
+			}
+		} else {
+			System.arraycopy(c, 0, out, 0, out.length);
+		}
+
+		return out;
 	}
 
 	/**

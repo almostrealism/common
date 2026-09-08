@@ -16,11 +16,8 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.sequence.ArrayIndexSequence;
-import io.almostrealism.sequence.Index;
-import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ScopeSettings;
 
@@ -40,13 +37,13 @@ import java.util.stream.IntStream;
  *
  * <p>{@code Comparison} extends {@link BinaryExpression} with Boolean type and provides:</p>
  * <ul>
- *   <li>Abstract {@link #compare(Number, Number)} method for subclasses to implement specific comparisons</li>
+ *   <li>Abstract {@link #compare(double, double)} method for subclasses to implement specific comparisons</li>
  *   <li>Support for compile-time evaluation when operands are constant</li>
  *   <li>Index sequence computation for vectorized operations</li>
  *   <li>Expression simplification with constant folding and index option analysis</li>
  * </ul>
  *
- * <p>Subclasses must implement the {@link #compare(Number, Number)} method to define
+ * <p>Subclasses must implement the {@link #compare(double, double)} method to define
  * the specific comparison semantics (e.g., less-than, greater-than, equals).</p>
  *
  * @see BinaryExpression
@@ -86,7 +83,18 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	 * @param right the right operand value
 	 * @return {@code true} if the comparison holds, {@code false} otherwise
 	 */
-	protected abstract boolean compare(Number left, Number right);
+	protected abstract boolean compare(double left, double right);
+
+	/**
+	 * Compares two boxed values by their {@code double} representation.
+	 *
+	 * @param left  the left operand
+	 * @param right the right operand
+	 * @return the result of {@link #compare(double, double)}
+	 */
+	protected boolean compare(Number left, Number right) {
+		return compare(left.doubleValue(), right.doubleValue());
+	}
 
 	/**
 	 * Determines whether this comparison can be evaluated to a concrete value
@@ -113,69 +121,17 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		return compare(getLeft().value(indexValues), getRight().value(indexValues)) ? 1 : 0;
 	}
 
-	/**
-	 * Computes an index sequence representing the comparison results for a range
-	 * of index values. This enables vectorized evaluation of comparisons across
-	 * multiple indices.
-	 *
-	 * @param index the index variable to sequence over
-	 * @param len   the length of the sequence to generate
-	 * @param limit the maximum sequence length to consider
-	 * @return an {@link IndexSequence} of comparison results (1 or 0 values),
-	 *         or {@code null} if sequencing is not possible
-	 */
 	@Override
-	public IndexSequence sequence(Index index, long len, long limit) {
-		IndexValues values = IndexValues.of(index);
-		if (!getLeft().isValue(values) || !getRight().isValue(values)) {
-			return super.sequence(index, len, limit);
+	protected double[] computeValues(IndexRange range) {
+		double[] left = getLeft().values(range);
+		double[] right = getRight().values(range);
+		double[] out = new double[range.getLength()];
+
+		for (int i = 0; i < out.length; i++) {
+			out[i] = compare(left[i], right[i]) ? 1.0 : 0.0;
 		}
 
-		if (index instanceof KernelIndex) {
-			int seq[] = checkSingle(getLeft(), getRight(), Math.toIntExact(len));
-			if (seq != null) return ArrayIndexSequence.of(seq);
-
-			seq = checkSingle(getRight(), getLeft(), Math.toIntExact(len));
-			if (seq != null) return ArrayIndexSequence.of(seq);
-		}
-
-		IndexSequence l = getLeft().sequence(index, len, limit);
-		if (l == null) return null;
-
-		IndexSequence r = getRight().sequence(index, len, limit);
-		if (r == null) return null;
-
-		return compare(l, r, len);
-	}
-
-	/**
-	 * Compares two index sequences element-wise and returns a sequence of results.
-	 *
-	 * @param left  the left operand sequence
-	 * @param right the right operand sequence
-	 * @param len   the length of sequences to compare
-	 * @return an {@link IndexSequence} with 1 for true comparisons, 0 for false,
-	 *         or {@code null} if the length exceeds Integer.MAX_VALUE
-	 */
-	protected IndexSequence compare(IndexSequence left, IndexSequence right, long len) {
-		if (len > Integer.MAX_VALUE) return null;
-
-		return ArrayIndexSequence.of(Integer.class, IntStream.range(0, Math.toIntExact(len))
-				.mapToObj(i -> compare(left.valueAt(i), right.valueAt(i)) ? Integer.valueOf(1) : Integer.valueOf(0))
-				.toArray(Number[]::new));
-	}
-
-	/**
-	 * Checks for a single-value optimization pattern. Subclasses may override
-	 * this to provide optimized sequence generation for specific patterns.
-	 *
-	 * @param left  the left operand expression
-	 * @param right the right operand expression
-	 * @param len   the sequence length
-	 * @return an optimized int array if the pattern matches, or {@code null}
-	 */
-	protected int[] checkSingle(Expression left, Expression right, int len) {
-		return null;
+		return out;
 	}
 
 	/**

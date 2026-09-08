@@ -124,12 +124,28 @@ Expression<Integer> expr = seq.getExpression(index);
 
 // Create index sequences from expressions
 IndexSequence evaluated = ArrayIndexSequence.of(expression, indexValues, length);
+
+// Evaluate an expression over a block of index values at once
+double[] block = expression.values(new IndexRange(index, 0, 2048));
+
+// Derive the progression an integer expression follows, without evaluating it
+ArithmeticIndexSequence derived = expression.arithmeticSequence(index, length);
+
+// Recognise the closed form of a sequence, stopping as soon as none is possible
+Expression<?> series = expression.matchSeries(index, length, limit).getExpression(index, true);
 ```
+
+Kernel series detection, which replaces index arithmetic with constants, masks and
+arithmetic progressions during simplification, uses these in order: structural
+derivation first, then block-wise recognition with early abort, and only for
+expressions a `KernelSeriesProvider` can store as a lookup table a full enumeration.
 
 **Key Kernel Classes:**
 - `IndexSequence` - Sequence of numeric index values
-- `ArithmeticIndexSequence` - Efficient arithmetic progression
+- `ArithmeticIndexSequence` - Efficient arithmetic progression with exact symbolic algebra
 - `ArrayIndexSequence` - General-purpose array-backed sequence
+- `IndexRange` - Block of consecutive index values for evaluating expressions in bulk
+- `KernelSeriesMatcher` - Streaming recogniser of constant, mask and progression forms
 - `KernelStructureContext` - Context for kernel simplification
 
 ### Code Generation

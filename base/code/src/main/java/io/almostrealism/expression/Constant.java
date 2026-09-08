@@ -19,12 +19,16 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
@@ -54,6 +58,29 @@ public abstract class Constant<T> extends Expression<T> {
 
 	@Override
 	public boolean isValue(IndexValues values) { return true; }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A constant takes its single value at every position of the range.</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		return range.constant(value(new IndexValues()).doubleValue());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer constant is the progression with zero scale and itself as offset.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (isFP()) return null;
+
+		OptionalLong v = longValue();
+		return v.isPresent() ? new ArithmeticIndexSequence(v.getAsLong(), 0, 1, len, len) : null;
+	}
 
 	@Override
 	public Set<Index> getIndices() {

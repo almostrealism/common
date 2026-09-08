@@ -39,6 +39,36 @@ import java.util.OptionalLong;
 public interface Index extends SequenceGenerator, Named {
 
 	/**
+	 * Returns the kernel index implied by this index taking the given value, if
+	 * assigning this index determines the kernel index at all.
+	 *
+	 * <p>A {@link KernelIndex} implies itself. A {@link KernelIndexChild} implies the
+	 * kernel index that owns the given child position. Any other index implies nothing,
+	 * which is the default.</p>
+	 *
+	 * @param value the value assigned to this index
+	 * @return the implied kernel index, or empty if this index does not determine it
+	 */
+	default OptionalLong impliedKernelIndex(long value) {
+		return OptionalLong.empty();
+	}
+
+	/**
+	 * Returns the number of consecutive values of this index that imply the same kernel
+	 * index, if assigning this index determines the kernel index at all.
+	 *
+	 * <p>A {@link KernelIndex} implies a new kernel index at every value, so its
+	 * granularity is 1. A {@link KernelIndexChild} implies one kernel index per run of
+	 * child positions, so its granularity is the child index limit. Any other index
+	 * implies nothing, which is the default.</p>
+	 *
+	 * @return the granularity, or empty if this index does not determine the kernel index
+	 */
+	default OptionalLong kernelIndexGranularity() {
+		return OptionalLong.empty();
+	}
+
+	/**
 	 * Creates a composite child index from the given parent and child indices.
 	 *
 	 * <p>The child index encodes a multi-dimensional position as a flat index using

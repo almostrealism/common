@@ -63,10 +63,8 @@ public class Greater extends Comparison {
 	}
 
 	@Override
-	protected boolean compare(Number left, Number right) {
-		return orEqual ?
-				(left.doubleValue() >= right.doubleValue()) :
-				(left.doubleValue() > right.doubleValue());
+	protected boolean compare(double left, double right) {
+		return orEqual ? left >= right : left > right;
 	}
 
 	@Override

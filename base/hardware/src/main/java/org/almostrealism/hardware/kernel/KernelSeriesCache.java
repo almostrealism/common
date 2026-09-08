@@ -37,30 +37,24 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.function.Function;
-import java.util.function.IntSupplier;
-import java.util.function.Supplier;
 
 /**
- * {@link KernelSeriesProvider} that caches detected arithmetic/geometric sequences to avoid recomputation.
+ * {@link KernelSeriesProvider} for a compiled kernel that can also store sequences as
+ * kernel-resident lookup tables.
  *
- * <p>Analyzes {@link Expression} trees to identify repeating patterns that form arithmetic or geometric
- * progressions. Stores recognized sequences in {@link MemoryData} cache, replacing complex expression
- * subtrees with simple array lookups. Particularly effective for index sequences, twiddle factors,
- * and coordinate transformations.</p>
- *
- * <h2>Sequence Detection</h2>
- *
- * <p>Automatically recognizes:</p>
- * <ul>
- *   <li><strong>Arithmetic sequences:</strong> {@code [0, 1, 2, 3, ...]} to {@code start + i * step}</li>
- *   <li><strong>Geometric sequences:</strong> {@code [1, 2, 4, 8, ...]} to {@code start * ratio^i}</li>
- *   <li><strong>Polynomial patterns:</strong> {@code [0, 1, 4, 9, ...]} to {@code i^2}</li>
- * </ul>
+ * <p>Recognition of closed forms (constants, masks, arithmetic progressions) is inherited
+ * from {@link KernelSeriesProvider} and the {@link io.almostrealism.sequence.KernelSeriesMatcher}.
+ * What this class adds is storage: an index-dependent sub-expression whose sequence matches
+ * no closed form, but is large enough to be worth replacing, is evaluated for every kernel
+ * position and written into a {@link MemoryData} cache, and the sub-expression is replaced
+ * by an array lookup. This keeps the emitted kernel small when the index arithmetic is
+ * irregular. Particularly effective for index sequences, twiddle factors, and coordinate
+ * transformations.</p>
  *
  * <h2>Caching Strategy</h2>
  *
@@ -71,6 +65,9 @@ import java.util.function.Supplier;
  *   <li>If new pattern and space available: store in {@link MemoryDataCacheManager}</li>
  *   <li>Replace expression subtree with cache array reference</li>
  * </ol>
+ *
+ * <p>Outcomes are remembered per kernel, keyed structurally by the expression, so a
+ * sub-expression that recurs within one kernel is converted (or given up on) once.</p>
  *
  * <h2>Configuration</h2>
  *
@@ -137,10 +134,10 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 	/** Map from series signature to cache entry index for O(1) lookup. */
 	private Map<String, Integer> cache;
-	/** LRU frequency cache of expression trees that have been matched against. */
-	private FrequencyCache<String, Expression> expressions;
-	/** Set of series signatures that have previously failed to match; avoids repeated matching attempts. */
-	private Set<String> matchFailures;
+	/** Frequency cache of converted expressions, keyed structurally by the expression they replace. */
+	private FrequencyCache<Expression, Expression> expressions;
+	/** Expressions that could not be converted; avoids repeated attempts within this kernel. */
+	private Set<Expression> matchFailures;
 
 	/**
 	 * Creates a series cache for the specified operation.
@@ -162,7 +159,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.cacheManager = cacheManager;
 		this.cache = cacheManager == null ? null : new HashMap<>();
 		this.expressions = new FrequencyCache<>(defaultMaxExpressions, 0.7);
-		this.matchFailures = new TreeSet<>();
+		this.matchFailures = new HashSet<>();
 	}
 
 	/**
@@ -205,15 +202,16 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	/**
-	 * Attempts to recognize and replace an expression with a cached series.
+	 * Attempts to convert an expression to series form, remembering the outcome for
+	 * this kernel.
 	 *
-	 * <p>Checks if the expression has been seen before and returns a cached
-	 * series representation if available. Otherwise attempts to detect a sequence
-	 * pattern and cache it.</p>
+	 * <p>Expressions are keyed structurally (see {@link Expression#equals(Object)}), so
+	 * an expression equal to one already converted is answered from the cache, and one
+	 * equal to a previous failure is returned immediately without enumerating anything.</p>
 	 *
 	 * @param exp Expression to analyze
 	 * @param index Loop index variable
-	 * @return Series expression if pattern detected, original expression otherwise
+	 * @return Series expression if a form was found or the sequence was stored, original expression otherwise
 	 */
 	@Override
 	public Expression getSeries(Expression exp, Index index) {
@@ -221,89 +219,79 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 			return exp;
 		}
 
-		String e = exp.getExpression(lang);
-		if (matchFailures.contains(e)) return exp;
+		if (matchFailures.contains(exp)) return exp;
 
-		Expression result = expressions.get(e);
+		Expression result = expressions.get(exp);
 		if (result != null) return result;
 
 		result = KernelSeriesProvider.super.getSeries(exp, index);
+
 		if (result != exp) {
-			expressions.put(e, result);
+			expressions.put(exp, result);
+		} else {
+			matchFailures.add(exp);
 		}
 
 		return result;
 	}
 
 	/**
-	 * Detects and caches arithmetic/geometric sequence patterns.
+	 * {@inheritDoc}
 	 *
-	 * <p>Analyzes the expression to identify repeating patterns across indices.
-	 * If a pattern is found and meets complexity thresholds, stores it in the
-	 * cache and returns a reference to the cached sequence.</p>
-	 *
-	 * @param index Loop index expression
-	 * @param exp Supplier of expression string representation
-	 * @param sequence Supplier of detected index sequence
-	 * @param isInt Whether the result should be integer type
-	 * @param nodes Supplier of expression complexity (node count)
-	 * @return Cached series expression, or null if no pattern detected
+	 * @return {@link #minNodeCountMatch}
 	 */
 	@Override
-	public Expression getSeries(Expression index, Supplier<String> exp,
-								Supplier<IndexSequence> sequence,
-								boolean isInt, IntSupplier nodes) {
-		int n = nodes.getAsInt();
-		if (n < minNodeCountMatch) return null;
+	public int getMinimumNodeCount() { return minNodeCountMatch; }
 
-		IndexSequence seq = sequence.get();
-		if (seq == null) return null;
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A sequence can be stored when caching is enabled for this kernel, the
+	 * expression has at least {@link #minNodeCountCache} nodes, and the sequence
+	 * spans exactly the kernel's element count.</p>
+	 */
+	@Override
+	public boolean isSeriesStorable(int nodes, long len) {
+		return enableCache && cache != null && nodes >= minNodeCountCache && len == count;
+	}
 
-		Expression result = seq.getExpression(index, isInt);
-		if (result != null) return result;
-
-		if (!enableCache || cache == null || n < minNodeCountCache) {
-			matchFailures.add(exp.get());
-			return result;
-		}
-
-		if (seq.lengthLong() != count) {
-			matchFailures.add(exp.get());
-			if (enableVerbose)
-				warn("Cannot cache sequence of length " + seq.lengthLong() + " (length != " + count + ")");
-			return result;
-		}
-
+	/**
+	 * Stores a sequence that matched no closed form and returns a lookup into it.
+	 *
+	 * <p>The sequence is normalised to start at zero (the initial value is added back
+	 * in the returned expression) so that shifted copies of one sequence share a cache
+	 * entry, then keyed by its {@link IndexSequence#signature() signature}. When the
+	 * cache is full and the signature is new, nothing is stored.</p>
+	 *
+	 * @param index Loop index expression
+	 * @param seq The complete sequence of values
+	 * @param isInt Whether the result should be integer type
+	 * @return Cached series expression, or null if the sequence could not be stored
+	 */
+	@Override
+	public Expression referenceSeries(Expression index, IndexSequence seq, boolean isInt) {
 		double init = seq.doubleAt(0);
 		if (init != 0.0) {
 			seq = seq.mapDouble(d -> d - init);
 		}
 
-		r: try {
-			String sig = seq.signature();
+		String sig = seq.signature();
 
-			if (!cache.containsKey(sig)) {
-				if (cache.size() >= cacheManager.getMaxEntries()) {
-					if (enableVerbose)
-						warn("Cache is full");
-					break r;
-				}
-
-				int idx = cache.size();
-				cache.put(sig, idx);
-				cacheManager.setValue(idx, seq.doubleStream().toArray());
+		if (!cache.containsKey(sig)) {
+			if (cache.size() >= cacheManager.getMaxEntries()) {
+				if (enableVerbose)
+					warn("Cache is full");
+				return null;
 			}
 
-			result = cacheManager.reference(cache.get(sig), index);
-		} finally {
-			if (result == null) {
-				matchFailures.add(exp.get());
-			} else {
-				if (init != 0.0) result = result.add(new DoubleConstant(init));
-				if (isInt) result = result.toInt();
-			}
+			int idx = cache.size();
+			cache.put(sig, idx);
+			cacheManager.setValue(idx, seq.doubleStream().toArray());
 		}
 
+		Expression result = cacheManager.reference(cache.get(sig), index);
+		if (init != 0.0) result = result.add(new DoubleConstant(init));
+		if (isInt) result = result.toInt();
 		return result;
 	}
 

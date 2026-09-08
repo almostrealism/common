@@ -58,8 +58,8 @@ public class NotEquals extends Comparison {
 	}
 
 	@Override
-	protected boolean compare(Number left, Number right) {
-		return left.doubleValue() != right.doubleValue();
+	protected boolean compare(double left, double right) {
+		return left != right;
 	}
 
 	@Override
