@@ -201,13 +201,27 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>If the sequence has no offset, unit scale, and the current modulus is divisible
-	 * by the new modulus, returns a new {@code ArithmeticIndexSequence} with adjusted
-	 * modulus. Otherwise, falls back to the default element-wise modulo operation.
+	 * <p>If the sequence has no offset, unit scale, and the current modulus is a
+	 * multiple of {@code granularity * m}, returns a new {@code ArithmeticIndexSequence}
+	 * with adjusted modulus. Otherwise, falls back to the default element-wise modulo
+	 * operation.
+	 *
+	 * <p>The fast path replaces {@code ((pos % mod) / granularity) % m} with
+	 * {@code (pos % (granularity * m)) / granularity}. Those agree for every position
+	 * only when {@code mod} is a multiple of {@code granularity * m}: the original has
+	 * period {@code mod} while the replacement has period {@code granularity * m}, so a
+	 * modulus that is a multiple of {@code m} but not of {@code granularity * m} (for
+	 * example {@code mod=6, granularity=2, m=2}) would wrap at the wrong point and
+	 * diverge once {@code pos} reaches {@code mod}. Requiring divisibility by the full
+	 * {@code granularity * m} keeps the reduced sequence element-wise identical to the
+	 * default implementation.
 	 */
 	@Override
 	public IndexSequence mod(long m) {
-		if (offset != 0 || scale != 1 || mod % m != 0) {
+		// TODO(review): granularity * m can silently overflow for very large long
+		// values, which would make the guard below pass or fail incorrectly. See
+		// review-followup memory (workstream:0c48d22d-848d-4a89-a4cb-59cf2eac8b54).
+		if (offset != 0 || scale != 1 || mod % (granularity * m) != 0) {
 			return IndexSequence.super.mod(m);
 		}
 
