@@ -276,7 +276,7 @@ public class OperationProfile implements Nameable, ConsoleFeatures {
 	 * @return a scope timing listener
 	 */
 	public ScopeTimingListener getScopeListener(boolean exclusive) {
-		return (root, metadata, stage, nanos) -> { };
+		return ScopeTimingListener.NONE;
 	}
 
 	/**
