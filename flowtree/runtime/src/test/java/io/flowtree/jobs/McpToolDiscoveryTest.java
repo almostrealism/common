@@ -331,6 +331,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_context",
 			"memory_store",
 			"send_message",
+			"await_message",
 			"github_pr_find",
 			"github_pr_review_comments",
 			"github_pr_conversation",
@@ -627,6 +628,26 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " present) — primary-phase calls omit it",
 			McpToolDiscovery.isOptionalToolParameter(
 				managerSources, "send_message", "activity"));
+
+		List<String> awaitMessageParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "await_message");
+		assertTrue("await_message must declare since in signature; without it an"
+				+ " agent cannot advance its cursor and would be redelivered"
+				+ " messages it has already acted on",
+			awaitMessageParams.contains("since"));
+		assertTrue("await_message must declare timeout_seconds in signature",
+			awaitMessageParams.contains("timeout_seconds"));
+		assertTrue("await_message workstream_id must be optional (default value"
+				+ " present) so a job-scoped agent can wait with no arguments,"
+				+ " resolving the workstream from its bearer",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "await_message", "workstream_id"));
+
+		assertTrue("workstream_submit_task must declare collaborative in signature;"
+				+ " without it the submitted agent is never told to announce"
+				+ " readiness and wait, and the conversation cannot start",
+			McpToolDiscovery.discoverToolParameters(
+				managerSources, "workstream_submit_task").contains("collaborative"));
 
 		List<String> workstreamContextParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_context");

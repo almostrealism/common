@@ -1423,6 +1423,7 @@ from workspace_tools import (  # noqa: E402
 )
 from messaging_tools import (  # noqa: E402
     send_message,
+    await_message,
     send_alert,
 )
 from workstream_config_tools import (  # noqa: E402
