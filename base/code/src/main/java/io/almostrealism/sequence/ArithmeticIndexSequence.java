@@ -215,17 +215,30 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * diverge once {@code pos} reaches {@code mod}. Requiring divisibility by the full
 	 * {@code granularity * m} keeps the reduced sequence element-wise identical to the
 	 * default implementation.
+	 *
+	 * <p>{@code granularity * m} is computed with overflow checking; if it would
+	 * overflow a {@code long}, the fast path is abandoned in favor of the default
+	 * element-wise modulo operation rather than risking a wrapped product that makes
+	 * the divisibility guard pass or fail incorrectly.
 	 */
 	@Override
 	public IndexSequence mod(long m) {
-		// TODO(review): granularity * m can silently overflow for very large long
-		// values, which would make the guard below pass or fail incorrectly. See
-		// review-followup memory (workstream:0c48d22d-848d-4a89-a4cb-59cf2eac8b54).
-		if (offset != 0 || scale != 1 || mod % (granularity * m) != 0) {
+		if (offset != 0 || scale != 1) {
 			return IndexSequence.super.mod(m);
 		}
 
-		return new ArithmeticIndexSequence(0, 1, granularity, granularity * m, len);
+		long granularityTimesM;
+		try {
+			granularityTimesM = Math.multiplyExact(granularity, m);
+		} catch (ArithmeticException e) {
+			return IndexSequence.super.mod(m);
+		}
+
+		if (mod % granularityTimesM != 0) {
+			return IndexSequence.super.mod(m);
+		}
+
+		return new ArithmeticIndexSequence(0, 1, granularity, granularityTimesM, len);
 	}
 
 	/**
