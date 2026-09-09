@@ -220,6 +220,27 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * A product of a non-negative factor and a negative constant is possibly negative,
+	 * so the bounded-remainder fold must leave a sum containing it alone: with
+	 * {@code (k % 10) * -1024} as the coarse term, {@code (-1024 + 3) / 1024} is 0 while
+	 * {@code -1024 / 1024} is -1.
+	 */
+	@Test(timeout = 30000)
+	public void negativeProductIsPossiblyNegative() {
+		Expression<?> coarse = kernel().imod(10).multiply(-1024);
+		Assert.assertTrue(coarse.isPossiblyNegative());
+		Assert.assertTrue(coarse.lowerBound().getAsLong() <= -9 * 1024);
+
+		Expression<?> quotient = Quotient.of(Sum.of(coarse, kernel().imod(1024)), e(1024));
+		log(quotient.getExpression(lang));
+
+		for (int i = 0; i < 4096; i += 7) {
+			long expected = ((i % 10) * -1024 + (i % 1024)) / 1024;
+			Assert.assertEquals("at " + i, expected, quotient.value(new IndexValues().put(kernel(), i)).longValue());
+		}
+	}
+
+	/**
 	 * A floating-point quotient keeps its remainder even when every constant involved
 	 * has an integral value: {@code (k + 1024.0) / 2048.0} is not {@code 0.5}.
 	 */

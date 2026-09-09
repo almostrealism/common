@@ -20,7 +20,6 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.profile.OperationMetadata;
@@ -350,7 +349,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 
 		try {
 			if (distinctCount == 1) {
-				return isInt ? new IntegerConstant((int) first) : new DoubleConstant(first);
+				return isInt ? e((long) first) : new DoubleConstant(first);
 			}
 
 			if (maskPossible && distinctCount == 2) {
@@ -383,17 +382,8 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 					.and(index.lessThan(new IntegerConstant(Math.toIntExact(maskStart + total))));
 		}
 
-		double value = distinct[1];
-
-		if (isInt) {
-			if (value < Integer.MAX_VALUE && value > Integer.MIN_VALUE) {
-				return Mask.of(condition, new IntegerConstant((int) value));
-			} else {
-				return Mask.of(condition, new LongConstant((long) value));
-			}
-		} else {
-			return Mask.of(condition, new DoubleConstant(value));
-		}
+		Expression<?> value = isInt ? e((long) distinct[1]) : new DoubleConstant(distinct[1]);
+		return Mask.of(condition, (Expression) value);
 	}
 
 	/**
@@ -411,8 +401,8 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 		}
 
 		if (isInt) {
-			if (delta != 1.0) r = r.multiply(new IntegerConstant((int) delta));
-			if (first != 0.0) r = r.add(new IntegerConstant((int) first));
+			if (delta != 1.0) r = r.multiply(e((long) delta));
+			if (first != 0.0) r = r.add(e((long) first));
 		} else {
 			if (delta != 1.0) r = r.multiply(new DoubleConstant(delta));
 			if (first != 0.0) r = r.add(new DoubleConstant(first));

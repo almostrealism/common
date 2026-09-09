@@ -137,23 +137,48 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return OptionalLong.of(Math.abs(v));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When no factor can be negative the lower bound is the product of the factors'
+	 * lower bounds. Otherwise the product is bounded by interval arithmetic over every
+	 * factor's lower and upper bound, so a factor with a non-negative lower bound
+	 * multiplied by a negative constant is correctly reported as possibly negative
+	 * rather than as bounded below by zero.</p>
+	 */
 	@Override
 	public OptionalLong lowerBound(KernelStructureContext context) {
-		List<OptionalLong> values = getChildren().stream()
+		List<OptionalLong> lower = getChildren().stream()
 				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		long v = values.stream()
-				.map(o -> o.getAsLong())
-				.reduce(1L, (a, b) -> a * b);
+		if (lower.size() != getChildren().size()) return OptionalLong.empty();
 
-		if (v > 0 && getChildren().stream().anyMatch(Expression::isPossiblyNegative)) {
-			// If any of the children can be negative, the resulting product could
-			// be negative, so a more conservative lower bound should be negative
-			return OptionalLong.of(-v);
+		if (getChildren().stream().noneMatch(Expression::isPossiblyNegative)) {
+			return OptionalLong.of(lower.stream()
+					.map(o -> o.getAsLong())
+					.reduce(1L, (a, b) -> a * b));
 		}
 
-		return OptionalLong.of(v);
+		List<OptionalLong> upper = getChildren().stream()
+				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
+				.collect(Collectors.toList());
+		if (upper.size() != getChildren().size()) return OptionalLong.empty();
+
+		long lo = 1;
+		long hi = 1;
+
+		for (int i = 0; i < lower.size(); i++) {
+			long l = lower.get(i).getAsLong();
+			long h = upper.get(i).getAsLong();
+			long a = lo * l;
+			long b = lo * h;
+			long c = hi * l;
+			long d = hi * h;
+			lo = Math.min(Math.min(a, b), Math.min(c, d));
+			hi = Math.max(Math.max(a, b), Math.max(c, d));
+		}
+
+		return OptionalLong.of(lo);
 	}
 
 	@Override
