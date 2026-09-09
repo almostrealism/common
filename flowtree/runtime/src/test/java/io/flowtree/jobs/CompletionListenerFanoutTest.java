@@ -492,6 +492,77 @@ public class CompletionListenerFanoutTest extends TestSuiteBase {
     }
 
     /**
+     * {@code fanoutSelf} fires a wake-up to the source workstream itself,
+     * even when that workstream has NO registered listeners (the ordinary
+     * {@link CompletionListenerFanout#fanout} would be a no-op here). This
+     * is the defining difference from the listener-graph fan-out: self-notify
+     * is a job-level opt-in, not dependent on {@code completionListeners}.
+     */
+    @Test(timeout = 10000)
+    public void fanoutSelfFiresWakeUpToOwnWorkstream() {
+        workstreams.put("A", ws("A"));
+        fanout.fanoutSelf("A", success("j-self-1"));
+        assertEquals(1, server.added.size());
+        CodingAgentJob.Factory factory = (CodingAgentJob.Factory) server.added.get(0);
+        String prompt = factory.getPrompts().get(0);
+        assertTrue("self-notify prompt must address the source workstream as the"
+                        + " listener: " + prompt,
+                prompt.contains("listener workstream A"));
+    }
+
+    /**
+     * {@code fanoutSelf} is a no-op when the source workstream is not a
+     * registered workstream, mirroring {@code fanout}'s
+     * {@code wakeup_source_missing} guard.
+     */
+    @Test(timeout = 10000)
+    public void fanoutSelfNoOpWhenSourceWorkstreamMissing() {
+        fanout.fanoutSelf("unknown", success("j-self-2"));
+        assertEquals(0, server.added.size());
+    }
+
+    /**
+     * SAFETY TEST: {@code fanoutSelf} shares the exact same per-listener
+     * flood-window ceiling as {@code fanout} — it does not get its own,
+     * separate budget just because the listener happens to be the source.
+     */
+    @Test(timeout = 10000)
+    public void fanoutSelfSharesWindowCeilingWithOrdinaryFanout() {
+        workstreams.put("A", ws("A"));
+        long coalesceMs = CompletionListenerFanout.DEFAULT_COALESCE_WINDOW_SECONDS * 1000L;
+        int cap = CompletionListenerFanout.DEFAULT_MAX_WAKE_UPS_PER_WINDOW;
+        int total = cap + 2;
+        for (int i = 0; i < total; i++) {
+            clockMillis.set((long) i * (coalesceMs + 1));
+            fanout.fanoutSelf("A", success("j-self-" + i));
+        }
+        assertEquals("self-notify flood ceiling must cap wake-ups at " + cap,
+                cap, server.added.size());
+    }
+
+    /**
+     * SAFETY TEST: the kill switch halts {@code fanoutSelf} exactly as it
+     * halts {@code fanout} — self-notify cannot bypass the operator's
+     * global halt on automated job submission.
+     */
+    @Test(timeout = 10000)
+    public void fanoutSelfRespectsKillSwitch() throws IOException {
+        RecordingServer isolated = new RecordingServer();
+        CompletionListenerFanout killed = new CompletionListenerFanout(
+                () -> false,
+                () -> workstreams,
+                isolated,
+                null,
+                wsId -> "http://test/api/workstreams/" + wsId,
+                null, null, null, id -> null, null,
+                clockMillis::get);
+        workstreams.put("A", ws("A"));
+        killed.fanoutSelf("A", success("j-self-killed"));
+        assertEquals("kill switch must block self-notify wake-ups too",
+                0, isolated.added.size());
+    }
+
+    /**
      * A test-only fake {@link io.flowtree.Server} that records
      * every {@code addTask} invocation. The fanout's safety logic
      * only cares about the count of wake-ups actually submitted,

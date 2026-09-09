@@ -77,6 +77,30 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertEquals("https://github.com/org/repo/pull/1", event.getPullRequestUrl());
 	}
 
+	/** Verifies that self-notify defaults to false. */
+	@Test(timeout = 30000)
+	public void selfNotifyDefaultsToFalse() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-5", "Shell job");
+		assertFalse(event.isSelfNotify());
+	}
+
+	/** Verifies that withSelfNotify stores the flag on the event. */
+	@Test(timeout = 30000)
+	public void withSelfNotifySetsFlag() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-6", "Shell job")
+				.withSelfNotify(true);
+		assertTrue(event.isSelfNotify());
+	}
+
+	/** Verifies that toJson serializes the self-notify flag. */
+	@Test(timeout = 30000)
+	public void toJsonIncludesSelfNotify() {
+		JobCompletionEvent event = JobCompletionEvent.success("job-7", "Shell job")
+				.withSelfNotify(true);
+		assertTrue("toJson output must include the selfNotify flag: " + event.toJson(),
+				event.toJson().contains("\"selfNotify\":true"));
+	}
+
 	/** Verifies that staged and skipped file lists default to non-null empty lists. */
 	@Test(timeout = 30000)
 	public void defaultListsAreEmpty() {

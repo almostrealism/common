@@ -103,6 +103,13 @@ public class ShellCommandJob extends GitManagedJob {
 	/** Exit code returned by the command, or {@code -1} if not yet executed. */
 	private int exitCode = -1;
 
+	/**
+	 * When {@code true}, this job's own workstream is notified with a wake-up
+	 * job when this command completes. See
+	 * {@link CompletionListenerFanout#fanoutSelf(String, JobCompletionEvent)}.
+	 */
+	private boolean selfNotify;
+
 	/** Default constructor for deserialization. */
 	public ShellCommandJob() {
 	}
@@ -170,6 +177,26 @@ public class ShellCommandJob extends GitManagedJob {
 	 */
 	public int getExitCode() {
 		return exitCode;
+	}
+
+	/**
+	 * Returns whether this job's own workstream should be notified with a
+	 * wake-up job when this command completes.
+	 *
+	 * @return {@code true} if self-notification is enabled
+	 */
+	public boolean isSelfNotify() {
+		return selfNotify;
+	}
+
+	/**
+	 * Sets whether this job's own workstream should be notified with a
+	 * wake-up job when this command completes.
+	 *
+	 * @param selfNotify {@code true} to enable self-notification
+	 */
+	public void setSelfNotify(boolean selfNotify) {
+		this.selfNotify = selfNotify;
 	}
 
 	/**
@@ -302,6 +329,49 @@ public class ShellCommandJob extends GitManagedJob {
 	}
 
 	/**
+	 * Builds the completion event for this job, reflecting the command's exit
+	 * code rather than always reporting success.
+	 *
+	 * <p>{@link #doWork()} never rethrows: it catches every {@link IOException}
+	 * and {@link InterruptedException} itself and records the failure in
+	 * {@link #exitCode}/{@link #stderr}, so the base
+	 * {@link GitManagedJob#createEvent(Exception)} — which only reports
+	 * {@code FAILED} when an exception propagated out of {@code doWork()} —
+	 * would otherwise report every shell command as {@code SUCCESS} regardless
+	 * of whether it actually succeeded. A caller that asks to be notified of
+	 * this job's completion (see {@link #isSelfNotify()}) needs the real
+	 * outcome, not a status that ignores the exit code.</p>
+	 *
+	 * @param error the exception if the job's lifecycle itself failed (e.g.
+	 *              a git operation), or {@code null}
+	 * @return a {@code FAILED} event when {@code error} is set or the command
+	 *         exited non-zero, otherwise a {@code SUCCESS} event
+	 */
+	@Override
+	protected JobCompletionEvent createEvent(Exception error) {
+		if (error != null) {
+			return JobCompletionEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
+		}
+		if (exitCode != 0) {
+			return JobCompletionEvent.failed(getTaskId(), getTaskString(),
+					"Command exited with code " + exitCode, null);
+		}
+		return JobCompletionEvent.success(getTaskId(), getTaskString());
+	}
+
+	/**
+	 * Stamps this job's {@link #isSelfNotify()} setting onto the completion
+	 * event so the controller knows whether to fan a wake-up out to this
+	 * job's own workstream.
+	 *
+	 * @param event the event to populate
+	 */
+	@Override
+	protected void populateEventDetails(JobCompletionEvent event) {
+		event.withSelfNotify(selfNotify);
+	}
+
+	/**
 	 * Publishes the command output as a workstream message when a workstream URL
 	 * is configured.
 	 */
@@ -381,7 +451,7 @@ public class ShellCommandJob extends GitManagedJob {
 	/**
 	 * Encodes this job for transmission over the FlowTree messaging layer. The
 	 * base {@link GitManagedJob} fields are emitted by {@code super.encode()};
-	 * this override appends the command.
+	 * this override appends the command and, when enabled, the self-notify flag.
 	 *
 	 * @return the encoded job string
 	 */
@@ -391,13 +461,17 @@ public class ShellCommandJob extends GitManagedJob {
 		if (command != null) {
 			sb.append("::command:=").append(base64Encode(command));
 		}
+		if (selfNotify) {
+			sb.append("::selfNotify:=true");
+		}
 		return sb.toString();
 	}
 
 	/**
 	 * Deserializes a single key-value property into this job instance. The
-	 * {@code command} key is handled here; all other keys (including the
-	 * {@link GitManagedJob} fields) are delegated to {@code super.set(...)}.
+	 * {@code command} and {@code selfNotify} keys are handled here; all other
+	 * keys (including the {@link GitManagedJob} fields) are delegated to
+	 * {@code super.set(...)}.
 	 *
 	 * @param key   the property key
 	 * @param value the property value (Base64-encoded for string fields)
@@ -406,6 +480,8 @@ public class ShellCommandJob extends GitManagedJob {
 	public void set(String key, String value) {
 		if ("command".equals(key)) {
 			this.command = base64Decode(value);
+		} else if ("selfNotify".equals(key)) {
+			this.selfNotify = Boolean.parseBoolean(value);
 		} else {
 			super.set(key, value);
 		}
@@ -497,6 +573,48 @@ public class ShellCommandJob extends GitManagedJob {
 		}
 
 		/**
+		 * Returns the default workspace path used when a repo URL is
+		 * configured but no explicit working directory is provided.
+		 *
+		 * @return the default workspace path, or {@code null} if unset
+		 */
+		public String getDefaultWorkspacePath() {
+			return GitManagedJob.base64Decode(get("defaultWsPath"));
+		}
+
+		/**
+		 * Sets the default workspace path used when a repo URL is configured
+		 * but no explicit working directory is provided. This is the parent
+		 * directory under which the repository is cloned, matching the
+		 * location every coding-agent job on the same workstream clones into.
+		 *
+		 * @param defaultWorkspacePath the absolute path for repo checkouts
+		 */
+		public void setDefaultWorkspacePath(String defaultWorkspacePath) {
+			set("defaultWsPath", GitManagedJob.base64Encode(defaultWorkspacePath));
+		}
+
+		/**
+		 * Returns whether the job's own workstream should be notified with a
+		 * wake-up job when the command completes.
+		 *
+		 * @return {@code true} if self-notification is enabled
+		 */
+		public boolean isSelfNotify() {
+			return Boolean.parseBoolean(get("selfNotify"));
+		}
+
+		/**
+		 * Sets whether the job's own workstream should be notified with a
+		 * wake-up job when the command completes.
+		 *
+		 * @param selfNotify {@code true} to enable self-notification
+		 */
+		public void setSelfNotify(boolean selfNotify) {
+			set("selfNotify", Boolean.toString(selfNotify));
+		}
+
+		/**
 		 * Returns the branch checked out before the command runs.
 		 *
 		 * @return the target branch, or {@code null} if unset
@@ -559,6 +677,13 @@ public class ShellCommandJob extends GitManagedJob {
 			if (targetBranch != null) {
 				job.setTargetBranch(targetBranch);
 			}
+
+			String defaultWorkspacePath = getDefaultWorkspacePath();
+			if (defaultWorkspacePath != null) {
+				job.setDefaultWorkspacePath(defaultWorkspacePath);
+			}
+
+			job.setSelfNotify(isSelfNotify());
 
 			for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {
 				job.setRequiredLabel(entry.getKey(), entry.getValue());

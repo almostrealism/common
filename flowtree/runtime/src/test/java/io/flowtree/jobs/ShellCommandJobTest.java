@@ -76,6 +76,38 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		assertEquals(3, job.getExitCode());
 	}
 
+	/** Verifies createEvent reports SUCCESS when the command exits zero. */
+	@Test(timeout = 30000)
+	public void testCreateEventSuccessOnZeroExit() {
+		ShellCommandJob job = new ShellCommandJob("exec-status-1", "exit 0");
+		job.doWork();
+		JobCompletionEvent event = job.createEvent(null);
+		assertEquals(JobCompletionEvent.Status.SUCCESS, event.getStatus());
+	}
+
+	/**
+	 * Verifies createEvent reports FAILED when the command exits non-zero,
+	 * even though doWork() itself never throws — this is the fix ensuring a
+	 * self-notify wake-up reports the command's real outcome.
+	 */
+	@Test(timeout = 30000)
+	public void testCreateEventFailedOnNonZeroExit() {
+		ShellCommandJob job = new ShellCommandJob("exec-status-2", "exit 3");
+		job.doWork();
+		JobCompletionEvent event = job.createEvent(null);
+		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
+	}
+
+	/** Verifies createEvent reports FAILED when a lifecycle exception is passed in. */
+	@Test(timeout = 30000)
+	public void testCreateEventFailedOnLifecycleException() {
+		ShellCommandJob job = new ShellCommandJob("exec-status-3", "echo ok");
+		job.doWork();
+		JobCompletionEvent event = job.createEvent(new RuntimeException("git failure"));
+		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
+		assertEquals("git failure", event.getErrorMessage());
+	}
+
 	/** Verifies stderr output is captured separately from stdout. */
 	@Test(timeout = 30000)
 	public void testExecuteCapturesStderr() {
@@ -100,6 +132,25 @@ public class ShellCommandJobTest extends TestSuiteBase {
 	public void testValidateChangesNeverCommits() throws Exception {
 		ShellCommandJob job = new ShellCommandJob("exec-5", "echo x");
 		assertFalse(job.validateChanges());
+	}
+
+	/** Verifies the self-notify flag getter and setter round-trip. */
+	@Test(timeout = 30000)
+	public void testSetGetSelfNotify() {
+		ShellCommandJob job = new ShellCommandJob("exec-6", "echo x");
+		assertFalse(job.isSelfNotify());
+		job.setSelfNotify(true);
+		assertTrue(job.isSelfNotify());
+	}
+
+	/** Verifies populateEventDetails stamps the self-notify flag onto the completion event. */
+	@Test(timeout = 30000)
+	public void testPopulateEventDetailsCarriesSelfNotify() {
+		ShellCommandJob job = new ShellCommandJob("exec-7", "echo x");
+		job.setSelfNotify(true);
+		JobCompletionEvent event = job.createEvent(null);
+		job.populateEventDetails(event);
+		assertTrue(event.isSelfNotify());
 	}
 
 	/** Verifies the completion message includes the task id, exit code, and stdout. */
@@ -172,6 +223,35 @@ public class ShellCommandJobTest extends TestSuiteBase {
 				restored.getWorkstreamUrl());
 	}
 
+	/** Verifies the job wire encoding preserves the default workspace path. */
+	@Test(timeout = 30000)
+	public void testJobEncodeRoundTripPreservesDefaultWorkspacePath() {
+		ShellCommandJob job = new ShellCommandJob("rt-2", "echo serialize");
+		job.setDefaultWorkspacePath("/workspace/project");
+
+		ShellCommandJob restored = (ShellCommandJob) roundTrip(job);
+		assertEquals("/workspace/project", restored.getDefaultWorkspacePath());
+	}
+
+	/** Verifies the job wire encoding preserves the self-notify flag. */
+	@Test(timeout = 30000)
+	public void testJobEncodeRoundTripPreservesSelfNotify() {
+		ShellCommandJob job = new ShellCommandJob("rt-3", "echo serialize");
+		job.setSelfNotify(true);
+
+		ShellCommandJob restored = (ShellCommandJob) roundTrip(job);
+		assertTrue(restored.isSelfNotify());
+	}
+
+	/** Verifies an unset self-notify flag round-trips as false (not emitted on the wire). */
+	@Test(timeout = 30000)
+	public void testJobEncodeRoundTripDefaultsSelfNotifyFalse() {
+		ShellCommandJob job = new ShellCommandJob("rt-4", "echo serialize");
+
+		ShellCommandJob restored = (ShellCommandJob) roundTrip(job);
+		assertFalse(restored.isSelfNotify());
+	}
+
 	/** Verifies the factory configures and dispatches exactly one job. */
 	@Test(timeout = 30000)
 	public void testFactoryNextJobProducesConfiguredJob() {
@@ -179,6 +259,8 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		factory.setRepoUrl("git@github.com:almostrealism/common.git");
 		factory.setTargetBranch("feature/y");
 		factory.setWorkstreamUrl("http://0.0.0.0:8080/api/workstreams/ws-2/jobs/x");
+		factory.setDefaultWorkspacePath("/workspace/project");
+		factory.setSelfNotify(true);
 
 		assertEquals(0.0, factory.getCompleteness(), 1e-9);
 		Job next = factory.nextJob();
@@ -189,6 +271,8 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		assertEquals("feature/y", job.getTargetBranch());
 		assertEquals("http://0.0.0.0:8080/api/workstreams/ws-2/jobs/x",
 				job.getWorkstreamUrl());
+		assertEquals("/workspace/project", job.getDefaultWorkspacePath());
+		assertTrue(job.isSelfNotify());
 
 		assertNull(factory.nextJob());
 		assertEquals(1.0, factory.getCompleteness(), 1e-9);
@@ -204,6 +288,19 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		applyEncoded(factory.encode(), restored);
 		assertEquals("echo round::trip", restored.getCommand());
 		assertEquals("git@github.com:almostrealism/common.git", restored.getRepoUrl());
+	}
+
+	/** Verifies the factory wire encoding preserves the default workspace path and self-notify flag. */
+	@Test(timeout = 30000)
+	public void testFactoryEncodeRoundTripPreservesWorkspacePathAndSelfNotify() {
+		ShellCommandJob.Factory factory = new ShellCommandJob.Factory("echo round::trip");
+		factory.setDefaultWorkspacePath("/workspace/project");
+		factory.setSelfNotify(true);
+
+		ShellCommandJob.Factory restored = new ShellCommandJob.Factory();
+		applyEncoded(factory.encode(), restored);
+		assertEquals("/workspace/project", restored.getDefaultWorkspacePath());
+		assertTrue(restored.isSelfNotify());
 	}
 
 	/**
