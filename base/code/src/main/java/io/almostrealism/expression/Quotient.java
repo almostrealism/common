@@ -285,6 +285,10 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * divisor form {@code T}, and {@code c} is the largest factor of the divisor dividing
 	 * all of them.</p>
 	 *
+	 * <p>Negative terms, a remainder whose bound cannot be added without overflow, and
+	 * a divisor that shares no factor with any term all leave the terms unchanged; a
+	 * zero divisor never reaches this method.</p>
+	 *
 	 * @param terms the progressions of the sum's terms
 	 * @param divisor the positive divisor
 	 * @return the terms of {@code T}, or {@code terms} unchanged if no remainder can be dropped
@@ -296,10 +300,19 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (coarse.stream().anyMatch(t -> t.min() < 0)) return terms;
 
 		long c = coarse.stream().mapToLong(t -> gcd(t.commonFactor(), divisor)).reduce(divisor, Quotient::gcd);
-		long remainder = terms.stream().filter(t -> !coarse.contains(t))
-				.mapToLong(t -> t.min() < 0 ? Long.MAX_VALUE : t.max()).sum();
+		long remainder = 0;
 
-		return remainder >= 0 && remainder < c ? coarse : terms;
+		try {
+			for (ArithmeticIndexSequence t : terms) {
+				if (coarse.contains(t)) continue;
+				if (t.min() < 0) return terms;
+				remainder = Math.addExact(remainder, t.max());
+			}
+		} catch (ArithmeticException e) {
+			return terms;
+		}
+
+		return remainder < c ? coarse : terms;
 	}
 
 	/**
@@ -356,7 +369,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			} else if (term.upperBound().isEmpty()) {
 				return null;
 			} else {
-				remainder += term.upperBound().getAsLong();
+				try {
+					remainder = Math.addExact(remainder, term.upperBound().getAsLong());
+				} catch (ArithmeticException e) {
+					return null;
+				}
 			}
 		}
 

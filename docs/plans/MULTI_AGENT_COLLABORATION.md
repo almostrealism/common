@@ -1,0 +1,380 @@
+# Multi-Agent Collaboration over FlowTree Agent Jobs
+
+## Goal
+
+Two (or more) agent sessions, running on different machines in the same
+cluster, should be able to hold a conversation while both are working.
+
+The concrete scenario this plan is written against:
+
+> I would like this run on the AMD machine, not the one I am on. Let me spawn a
+> job that requires the label `hostname:halo`, telling it to get set up and then
+> wait for me. When it tells me it is ready, I give it its first real
+> instruction. We go back and forth. Eventually I tell it we are done. Most
+> important of all: by then it has started long-running work on that machine
+> that outlives its own session, and I can come back to that work later by
+> submitting another job targeted at the same host.
+
+Nothing in that scenario is exotic. What is missing today is a single
+primitive: **an agent cannot receive anything.**
+
+---
+
+## Current State — verified, with evidence
+
+### What already works
+
+**Host targeting is built and needs no work.**
+`flowtree/runtime/src/main/java/io/flowtree/node/AutomaticLabel.java` defines
+two self-assigning labels: `PLATFORM` (`macos`/`linux`) and `HOSTNAME` (the
+short, lower-case host name; `localhost` and unresolved addresses are rejected
+so that a label meant for one machine cannot be satisfied by every machine).
+`NodeLabelMatcher.satisfies(labels, requirements)` gates execution on the
+worker side, and `workstream_submit_task(required_labels="hostname:halo")`
+(`tools/mcp/manager/workstream_submit_tools.py:508-511`) forwards
+`requiredLabels` in the submission payload. Targeting the AMD machine — and
+coming back to it later — is a parameter, not a feature request.
+
+**Message archival and human notification work.**
+`send_message` (`tools/mcp/manager/messaging_tools.py`) POSTs to
+`/api/workstreams/{ws}[/jobs/{job}]/messages`, which
+`io.flowtree.api.MessageEndpointHandler.handle` turns into (a) a memory in the
+ar-memory `messages` namespace and (b) a Slack post, threaded under the job when
+`SlackNotifier.getThreadTs(jobId)` resolves.
+
+### What does not
+
+**There is no receive primitive.** No tool, endpoint, or class in the
+repository lets an agent read messages addressed to it, let alone block until
+one arrives. `send_message` is a fire-and-forget write to two sinks that only a
+human reads.
+
+**The agent subprocess cannot be fed mid-run.**
+`ClaudeCodeRunner.buildCommandLine` emits `claude -p <prompt> --output-format
+json …`, and `AgentProcessRunner.applyRequestToProcessBuilder` ends with
+`pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))`. The
+session is one-shot and its stdin is closed before it starts.
+
+**Waiting is what kills jobs.** `AgentRunner.DEFAULT_INACTIVITY_TIMEOUT_MILLIS`
+is 35 minutes (`OpencodeRunner` overrides to 45), and `AgentInactivityMonitor`
+destroys the whole process tree when stdout has been silent that long. This is
+the "issues around timing out due to inactivity" in the brief, and it is the one
+constraint that shapes the entire design: **a blocking call emits no stdout, so
+every wait must be bounded well under the watchdog and must end by producing
+output.**
+
+### Relationship to `docs/plans/JOB_MESSAGE_INBOX.md`
+
+That plan solves a narrower problem — a human redirecting one running job — and
+pays a high price for it: a per-job inbox, a polling daemon thread inside
+`ClaudeCodeJob`, and a rewrite of the Claude invocation to
+`--input-format stream-json` so new user turns can be pushed onto stdin. The
+riskiest part (item 10 of its implementation order) changes how *every* job is
+launched.
+
+This plan supersedes it, for three reasons:
+
+1. **Duplex, not one-way.** Collaboration needs the spawned agent to speak
+   first ("I am ready"), which a delivery-only inbox cannot express.
+2. **No subprocess surgery.** An agent that *asks* for its messages needs no
+   stdin, no stream-json, and no CLI version probe. The delivery mechanism is a
+   tool call, which every runner already supports.
+3. **The conversation, not the delivery, is the durable object.** Keying on the
+   workstream rather than a job id means a follow-up job submitted tomorrow
+   reads the same history — which is precisely the "come back to it later"
+   requirement.
+
+The stdin/stream-json work in `JOB_MESSAGE_INBOX.md` remains a legitimate future
+optimisation (it would let a message *interrupt* an agent mid-task instead of
+waiting for it to ask). It is not needed for collaboration and is not in scope
+here.
+
+---
+
+## Design
+
+### The one idea: the workstream is the conversation
+
+A workstream already names a shared piece of work with a branch, a channel, and
+a memory scope. Give it one more thing — an **ordered, durable, low-latency
+message log** — and every collaboration question answers itself:
+
+- *How do I reach the other agent?* Post to the workstream.
+- *How does it reach me?* It posts to the same workstream.
+- *How do we both avoid missing anything?* Each reader keeps its own cursor
+  (`since`); the log is append-only and totally ordered by `seq`.
+- *How does a job tomorrow pick up where today left off?* It reads from `seq`
+  0.
+- *How do humans see it?* Every post still archives to memory and to Slack —
+  unchanged.
+
+This is what the brief asks for in its own words: *"subscribe to messages in
+some rational way on our own work stream."*
+
+### Wire model
+
+```json
+{
+  "seq": 7,
+  "createdAt": "2026-09-08T19:12:33.129Z",
+  "sender": "job:b6e8f404",
+  "workstreamId": "1cef7061-…",
+  "jobId": "b6e8f404-…",
+  "activity": "",
+  "text": "Ready. vLLM is up on halo, rungs bf16 and rtn-w4 are healthy."
+}
+```
+
+`seq` is a monotonically increasing 64-bit integer assigned by the controller
+under the mailbox's lock, so ordering is total within a workstream. Readers are
+stateless on the server: every read carries `since=<seq>` and gets back
+`nextSince`.
+
+`sender` is the reader's only means of not hearing its own echo. It is derived,
+never supplied by the agent: the job id when the controller knows one from the
+URL, otherwise the caller's token label.
+
+### Endpoints
+
+Added to `FlowTreeApiEndpoint`, alongside the existing `/messages` suffix:
+
+```
+GET /api/workstreams/{ws}/mailbox?since=<seq>&wait=<seconds>&exclude=<sender>
+      -> {"ok":true,"messages":[…],"nextSince":<seq>}
+```
+
+`wait` is a **long poll**, not a client poll: the request blocks on the
+mailbox's monitor and returns the instant a message arrives, so end-to-end
+latency is a round trip rather than half a polling interval. `wait=0` (the
+default) returns immediately with whatever is already there. The server caps a
+single hold at `MAX_WAIT_SECONDS` (120) so that no HTTP request is long enough
+for an intermediary to time out; the *tool* does the looping to reach longer
+waits.
+
+There is deliberately **no new POST endpoint.** The existing
+`POST /api/workstreams/{ws}[/jobs/{job}]/messages` gains one line: after
+archiving and notifying, it appends to the mailbox. Every `send_message` that
+has ever been written becomes readable, which is the augmentation the brief
+asked for, and there is exactly one way to send.
+
+### Storage
+
+`io.flowtree.workstream.WorkstreamMailbox`, backed by one append-only NDJSON
+file per workstream under the controller's data directory
+(`<dataDir>/mailbox/<workstreamId>.ndjson`), loaded lazily on first touch and
+held in memory thereafter. Rationale is the same as the inbox plan's: a
+controller restart must not lose an undelivered instruction, NDJSON needs no
+migrations, and per-workstream files make retention a `File.delete`.
+
+Concurrency is a `ConcurrentHashMap<String, Mailbox>`; each `Mailbox` guards its
+list and `seq` counter with its own monitor and uses `wait`/`notifyAll` for the
+long poll. Waiters are capped per mailbox so a pathological client cannot pin
+the NanoHTTPD thread pool.
+
+Retention: messages older than `MAX_RETENTION` (7 days) are dropped when a
+mailbox is loaded or appended to. A conversation is not an archive — memory
+already is one.
+
+### The tool
+
+One new ar-manager tool, `await_message`:
+
+```python
+await_message(workstream_id="", since=-1, timeout_seconds=300,
+              include_own=False) -> dict
+```
+
+- `since=-1` (the default) means *"only messages from now on"* — it resolves to
+  the current head, so a first call does not replay the whole history. An
+  explicit `since=0` replays everything, which is how a follow-up job catches
+  up.
+- `timeout_seconds` defaults to 300 and is capped at `MAX_AWAIT_SECONDS`
+  (1500 = 25 minutes). **The cap exists because of the 35-minute inactivity
+  watchdog**, and the tool says so in its docstring and in the `hint` it returns
+  on timeout. Internally it issues successive ≤120s long polls against the
+  controller until it has a message or has spent its budget.
+- Returning on timeout is not a failure. It returns `ok=true`,
+  `timed_out=true`, and an unchanged `next_since`, so the agent can call again.
+  Each return writes a line to the agent's stdout, which resets the watchdog —
+  the loop is the mechanism that keeps a waiting agent alive.
+
+`send_message` is unchanged in signature. Its docstring gains the other half of
+the story: messages are now also delivered to peers awaiting on the workstream.
+
+### The protocol
+
+`workstream_submit_task` gains `collaborative: bool = False`, which becomes a
+property of the job itself — set on the factory, carried over the wire, and
+reported in the job record — rather than text spliced into the prompt. What it
+changes at run time is that `InstructionPromptBuilder` emits a **Collaboration
+Protocol** section stating the four things an agent cannot infer:
+
+1. Announce readiness with `send_message` when the preparatory steps in the
+   prompt are done.
+2. Then call `await_message` and act on what comes back.
+3. On `timed_out=true`, call `await_message` again. Do not exit because nothing
+   arrived, and do not busy-work to stay alive.
+4. Long-running work must **outlive this session** — start it detached (`tmux
+   new-session -d`, or `nohup … </dev/null >log 2>&1 &`), record where its logs
+   and markers live with `memory_store`, and report the location with
+   `send_message`. A later job targeting the same `hostname:` label will pick it
+   up from there.
+
+Point 4 is what makes the last requirement in the brief work, and it is
+convention rather than mechanism on purpose: the detached-process patterns are
+already field-tested (see `FLEET.md`), and encoding them as a supervisor would
+be the "new `Job` type plus routing layer" that FlowTree is explicitly not.
+
+### Why a blocking tool call rather than pushed stdin
+
+| | blocking tool call | stdin / stream-json |
+|---|---|---|
+| Runner changes | none | rewrite launch for every job |
+| Works with opencode | yes | unknown; separate CLI |
+| Direction | duplex | agent-inbound only |
+| Message arrives mid-tool-call | at next await | immediately |
+| Failure mode | agent waits a bit longer | wedged subprocess, no stdout |
+
+The one column stdin wins is interruption. That is a real capability, and the
+path to it stays open: a mailbox that already exists is exactly what a future
+pusher would read from.
+
+---
+
+## Failure Modes
+
+| Scenario | Behavior |
+|---|---|
+| Controller unreachable during `await_message` | The tool retries across its budget with backoff; returns `ok=false` with the error if it never succeeds. The agent decides whether to continue alone. |
+| Peer never replies | `await_message` returns `timed_out=true`. The agent loops or gives up per its prompt. Nothing is killed. |
+| Agent waits longer than the watchdog | Cannot happen through the tool: `MAX_AWAIT_SECONDS` (25 min) is below the 35-minute window, and every return emits stdout. A caller passing a larger value is clamped, and told so in the response. |
+| Controller restart mid-conversation | Messages are on disk; the next `await_message` with the reader's `since` returns everything it missed. |
+| Two agents post simultaneously | Serialised under the mailbox monitor; both get distinct `seq` values, total order preserved. |
+| Agent hears its own message | Excluded by `sender` unless `include_own=True`. |
+| Unknown workstream | 404 from the controller, surfaced as `ok=false`. |
+| Slack or ar-memory down | Unchanged from today for the archive/notify path; mailbox append is independent, so collaboration survives a Slack outage. |
+| Job ends with unread messages | They stay in the mailbox for the retention window. A follow-up job reads them with `since=0`. |
+
+---
+
+## Security
+
+Unchanged from the rest of ar-manager. `await_message` requires `read` scope and
+`_require_workstream_in_scope`, the same gate `send_message` applies for writes;
+the controller stays thin and private-network-only. A conversation is readable
+by anything already authorised to read that workstream's memories, which is the
+correct blast radius: the mailbox holds the same class of content the `messages`
+namespace already holds.
+
+---
+
+## What This Is Not
+
+- **Not an interrupt.** A message is seen when the agent next awaits, not
+  mid-tool-call. Sending "stop" to an agent in the middle of a 20-minute build
+  does not stop the build.
+- **Not a supervisor.** Detached work started on a host is the host's business.
+  FlowTree dispatches; it does not keep a vLLM server alive.
+- **Not a replacement for `send_alert`.** Reaching a *human* out of band is
+  still `send_alert`.
+- **Not cross-workstream.** Agents on different workstreams do not share a
+  mailbox. Collaborators are submitted onto the same workstream, which is also
+  what puts them in the same Slack channel and the same memory scope.
+
+---
+
+## Implementation Order
+
+### Phase 1 — the mailbox (controller)
+
+1. `io.flowtree.workstream.WorkstreamMailbox` — append, read-since, long-poll
+   wait, NDJSON persistence, retention.
+2. `MessageEndpointHandler` appends to the mailbox after archive/notify.
+3. `FlowTreeApiEndpoint`: `/mailbox` suffix on `WORKSTREAM_PATH`, GET handler,
+   `setMailbox` injection; `FlowTreeController` constructs it against `dataDir`.
+4. Java tests: ordering, `since` filtering, sender exclusion, persistence across
+   reload, long-poll wakeup, `wait` cap, retention.
+
+Landing here alone is inert and safe: messages accumulate and nothing reads
+them.
+
+### Phase 2 — the tool (ar-manager)
+
+5. `_controller_get` gains a caller-supplied timeout (the existing default of
+   10s is shorter than a long poll).
+6. `await_message` in `messaging_tools.py`; register in
+   `tool_capabilities.GRANTED_TOOLS` and
+   `McpConfigBuilder.AR_MANAGER_TOOL_NAMES` (both are enforced by
+   `allowlistCoversEveryArManagerTool`).
+7. `send_message` docstring updated to describe peer delivery.
+8. Python tests: cap clamping, `since=-1` resolution, self-exclusion, timeout
+   returns `ok=true`, budget looping, scope gate.
+
+### Phase 3 — `collaborative` as a job property
+
+`collaborative` is not prompt decoration; it describes what the job *is*, so it
+lives on the job and travels with it. The full path, all of it in this change:
+
+9.  `collaborative` parameter on `workstream_submit_task`, forwarded as
+    `payload["collaborative"]`. The submitter's prompt is never rewritten.
+10. `FlowTreeApiEndpoint#handleSubmit` reads the field onto the factory, and the
+    submit response reports it back so a caller can confirm what it got.
+11. `CodingAgentJobFactory` field, accessors, and decode case;
+    `CodingAgentJobConfigurer` propagates it to the job; `CodingAgentJob` field
+    and accessors; `CodingAgentJobCodec` encode/decode.
+12. `InstructionPromptBuilder#setCollaborative` emits the Collaboration Protocol
+    section — the four things an agent cannot infer.
+13. Tests: default, toggle, factory→job propagation, **wire round trip in both
+    directions**, protocol present only when set, and the user request left
+    untouched.
+
+**Making room, rather than working around the cap.**
+`CodingAgentJobFactory` was 1591 lines against a 1600-line Checkstyle
+`FileLength` limit — no space for a field. Squeezing the property out of the job
+record to avoid the refactor would have made the feature invisible to the job
+listing, to later jobs, and to anyone debugging a run; a flag that behaves
+correctly while recording nothing is the expensive kind of shortcut.
+
+The room was made where the codebase already pointed. `PhaseRunnerConfig` had
+been extracted from `CodingAgentJob` for exactly this reason, and
+`CodingAgentJobFactory` carried a **second implementation of the same runner /
+phase-bundle consistency logic** — the two differing only in that the factory
+also mirrors changes into its serialized property store. Giving
+`PhaseRunnerConfig` an optional *property sink* (a `BiConsumer<String,String>`
+receiving the wire keys a mutation changed, and `apply*` methods for the decode
+direction that publish nothing) let the factory delegate to it instead. That
+removed the duplication and took the factory from 1591 to 1503 lines, which is
+where the new property fits.
+
+This is now written down as a rule in `flowtree/CLAUDE.md`: a job property
+belongs on the job, "the file is near its cap" is a reason to refactor rather
+than to relocate the property, and that refactoring is in scope for the change
+that needed the room.
+
+### Phase 4 — deferred, not in this pass
+
+11. A `mailbox_peek` tool for humans debugging a stalled conversation.
+12. Per-job inactivity-window override, for sessions that want to wait longer
+    than 25 minutes in one call.
+13. Interruption via `--input-format stream-json`, reading from this same
+    mailbox (the surviving half of `JOB_MESSAGE_INBOX.md`).
+
+---
+
+## Open Questions
+
+1. **Retention of 7 days** is a guess. Long enough that a weekend does not lose
+   a conversation; short enough that a workstream's mailbox does not grow
+   without bound. Tune after use.
+2. **`since=-1` as the default** trades "never miss anything" for "do not
+   replay a week of history on first call". A collaborator that wants the
+   history asks for `since=0`. Is the default right?
+3. **Cap of 25 minutes** is derived from the 35-minute Claude watchdog. When
+   phase 4 item 12 lands, the cap should follow the job's actual configured
+   window rather than a constant.
+4. ~~**Should `collaborative` also raise `max_turns`?**~~ **Resolved: no.**
+   Each await costs a turn, so a long conversation does spend turns on waiting —
+   but `max_turns` is already a per-job submission parameter, and the agent
+   submitting a collaborative job is in the best position to judge how long the
+   conversation will run. Raising it implicitly would override a value the
+   submitter chose deliberately.

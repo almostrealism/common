@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
@@ -161,6 +160,18 @@ public abstract class Constant<T> extends Expression<T> {
 		} else {
 			return new ConstantValue(value.getClass(), value);
 		}
+	}
+
+	/**
+	 * Creates the narrowest integer constant that represents the given value exactly:
+	 * an {@link IntegerConstant} when it fits an {@code int}, otherwise a
+	 * {@link LongConstant}.
+	 *
+	 * @param value the exact integral value
+	 * @return the narrowest integer constant representing {@code value}
+	 */
+	public static Expression<? extends Number> exactInteger(long value) {
+		return value == (int) value ? new IntegerConstant((int) value) : new LongConstant(value);
 	}
 
 	/**

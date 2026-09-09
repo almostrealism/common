@@ -18,7 +18,11 @@ package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.ExpressionArithmetic;
+import io.almostrealism.expression.ExpressionProperties;
 import io.almostrealism.expression.Mask;
+import io.almostrealism.expression.Negation;
+import io.almostrealism.expression.NotEquals;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
@@ -76,6 +80,32 @@ public class IndexRangeEvaluationTests extends TestSuiteBase implements Expressi
 		assertMatchesPointEvaluation(scaled.mod(e(3.0)), kernel(), len);
 		assertMatchesPointEvaluation(scaled.minus().multiply(kernel().toDouble()), kernel(), len);
 		assertMatchesPointEvaluation(scaled.toInt().multiply(3).imod(7), kernel(), len);
+	}
+
+	/**
+	 * Equality, inequality, conjunction and conditional selection are each recognised
+	 * by a dedicated {@code computeValues(IndexRange)} override; every one of them must
+	 * agree with point evaluation, including across block boundaries.
+	 *
+	 * <p>The inequality case uses floating-point operands: an integer {@code !=} is
+	 * canonicalized to {@code !(a == b)} ({@link ExpressionArithmetic#not()}), which is
+	 * never a value over any index ({@link ExpressionProperties#isValue} defaults to
+	 * {@code false} and {@link Negation} does not override it) and so cannot reach
+	 * {@link Expression#sequence(Index, long, long)} at all; that is a pre-existing
+	 * framework limitation unrelated to this expression's own block evaluation.
+	 * Floating-point operands avoid it since {@link NotEquals} then builds a literal
+	 * {@code !=} node directly, exercising {@link NotEquals#compare(double, double)}.</p>
+	 */
+	@Test(timeout = 60000)
+	public void booleanCombinatorsMatchPointEvaluation() {
+		int len = 3 * ScopeSettings.sequenceBlockSize + 11;
+
+		assertMatchesPointEvaluation(kernel().imod(5).eq(e(2)), kernel(), len);
+		assertMatchesPointEvaluation(kernel().toDouble().mod(e(5.0)).neq(e(2.0)), kernel(), len);
+		assertMatchesPointEvaluation(
+				kernel().imod(4).greaterThan(e(0)).and(kernel().imod(3).lessThan(e(2))), kernel(), len);
+		assertMatchesPointEvaluation(
+				kernel().imod(4).greaterThan(e(1)).conditional(kernel().multiply(2), kernel().add(1)), kernel(), len);
 	}
 
 	/**
