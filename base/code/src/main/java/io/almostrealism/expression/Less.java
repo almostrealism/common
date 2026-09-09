@@ -74,6 +74,18 @@ public class Less extends Comparison {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Two comparisons with the same operands are equal only if both are strict or
+	 * both are inclusive: {@code a < b} and {@code a <= b} differ at equality and must
+	 * never be substituted for one another by a structural cache.</p>
+	 */
+	@Override
+	public boolean compare(Expression e) {
+		return super.compare(e) && orEqual == ((Less) e).orEqual;
+	}
+
+	/**
 	 * Creates a strict less-than expression ({@code left < right}), folding constants.
 	 *
 	 * @param left  the left operand
