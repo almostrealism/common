@@ -331,7 +331,6 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_context",
 			"memory_store",
 			"send_message",
-			"await_message",
 			"github_pr_find",
 			"github_pr_review_comments",
 			"github_pr_conversation",
@@ -628,26 +627,6 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 				+ " present) — primary-phase calls omit it",
 			McpToolDiscovery.isOptionalToolParameter(
 				managerSources, "send_message", "activity"));
-
-		List<String> awaitMessageParams =
-			McpToolDiscovery.discoverToolParameters(managerSources, "await_message");
-		assertTrue("await_message must declare since in signature; without it an"
-				+ " agent cannot advance its cursor and would be redelivered"
-				+ " messages it has already acted on",
-			awaitMessageParams.contains("since"));
-		assertTrue("await_message must declare timeout_seconds in signature",
-			awaitMessageParams.contains("timeout_seconds"));
-		assertTrue("await_message workstream_id must be optional (default value"
-				+ " present) so a job-scoped agent can wait with no arguments,"
-				+ " resolving the workstream from its bearer",
-			McpToolDiscovery.isOptionalToolParameter(
-				managerSources, "await_message", "workstream_id"));
-
-		assertTrue("workstream_submit_task must declare collaborative in signature;"
-				+ " without it the submitted agent is never told to announce"
-				+ " readiness and wait, and the conversation cannot start",
-			McpToolDiscovery.discoverToolParameters(
-				managerSources, "workstream_submit_task").contains("collaborative"));
 
 		List<String> workstreamContextParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_context");
@@ -995,5 +974,57 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_update_config");
 		assertTrue("workstream_update_config must declare dispatch_capable parameter",
 			updateParams.contains("dispatch_capable"));
+	}
+
+	/**
+	 * Verifies that {@code await_message} is registered with the {@code @mcp.tool()}
+	 * decorator and declares the parameters an agent-to-agent conversation depends on:
+	 * {@code since} to advance its read cursor and {@code timeout_seconds} to bound the
+	 * long poll. {@code workstream_id} must be optional so a job-scoped agent can wait
+	 * with no arguments, resolving the workstream from its bearer.
+	 */
+	@Test(timeout = 30000)
+	public void managerAwaitMessageToolIsRegisteredWithExpectedParameters() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
+
+		assertTrue("await_message must be registered with @mcp.tool() in server.py"
+				+ " or it is invisible to MCP clients",
+			McpToolDiscovery.discoverToolNames(managerSources).contains("await_message"));
+
+		List<String> awaitMessageParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "await_message");
+		assertTrue("await_message must declare since in signature; without it an"
+				+ " agent cannot advance its cursor and would be redelivered"
+				+ " messages it has already acted on",
+			awaitMessageParams.contains("since"));
+		assertTrue("await_message must declare timeout_seconds in signature",
+			awaitMessageParams.contains("timeout_seconds"));
+		assertTrue("await_message workstream_id must be optional (default value"
+				+ " present) so a job-scoped agent can wait with no arguments,"
+				+ " resolving the workstream from its bearer",
+			McpToolDiscovery.isOptionalToolParameter(
+				managerSources, "await_message", "workstream_id"));
+	}
+
+	/**
+	 * Verifies that {@code workstream_submit_task} declares the {@code collaborative}
+	 * parameter in its signature. Without it, a submitted agent is never told to
+	 * announce readiness and wait, and an agent-to-agent conversation cannot start.
+	 */
+	@Test(timeout = 30000)
+	public void managerSubmitTaskHasCollaborativeParameter() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
+
+		assertTrue("workstream_submit_task must declare collaborative in signature;"
+				+ " without it the submitted agent is never told to announce"
+				+ " readiness and wait, and the conversation cannot start",
+			McpToolDiscovery.discoverToolParameters(
+				managerSources, "workstream_submit_task").contains("collaborative"));
 	}
 }
