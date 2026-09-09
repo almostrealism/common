@@ -121,6 +121,14 @@ public class JobCompletionEvent {
     private String pullRequestUrl;
 
     /**
+     * Whether the completing job asked its own workstream to be notified
+     * with a wake-up job when this event fires. A job-level opt-in,
+     * currently only settable by {@link ShellCommandJob}; see
+     * {@link CompletionListenerFanout#fanoutSelf(String, JobCompletionEvent)}.
+     */
+    private boolean selfNotify;
+
+    /**
      * Total USD cost for this job, populated from per-phase cost accumulation
      * or from the {@code job_timing} table during retrieval.
      */
@@ -396,6 +404,14 @@ public class JobCompletionEvent {
     public String getPullRequestUrl() { return pullRequestUrl; }
 
     /**
+     * Returns whether the completing job asked its own workstream to be
+     * notified with a wake-up job when this event fires.
+     *
+     * @return {@code true} when self-notification was requested
+     */
+    public boolean isSelfNotify() { return selfNotify; }
+
+    /**
      * Returns the human-readable error message, if the job failed.
      *
      * @return the error message, or {@code null} if the job succeeded
@@ -537,6 +553,18 @@ public class JobCompletionEvent {
         return this;
     }
 
+    /**
+     * Sets whether the completing job asked its own workstream to be
+     * notified with a wake-up job when this event fires.
+     *
+     * @param selfNotify {@code true} to request self-notification
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withSelfNotify(boolean selfNotify) {
+        this.selfNotify = selfNotify;
+        return this;
+    }
+
     /** Shared Jackson mapper for {@link #toJson()}. */
     private static final ObjectMapper EVENT_MAPPER = new ObjectMapper();
 
@@ -561,6 +589,7 @@ public class JobCompletionEvent {
         for (String f : skippedFiles) skippedArray.add(f);
 
         root.put("pullRequestUrl", pullRequestUrl);
+        root.put("selfNotify", selfNotify);
         root.put("errorMessage", errorMessage);
 
         root.put("prompt", getPrompt());

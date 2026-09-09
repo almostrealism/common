@@ -26,7 +26,6 @@ import io.flowtree.jobs.CompletionListenerFanout;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.jobs.SensitiveFileBypassTrailer;
-import io.flowtree.jobs.ShellCommandJob;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
@@ -41,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -156,6 +156,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup = id -> null;
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
+
+    /**
+     * Job IDs legitimately submitted with {@code selfNotify=true}, recorded at
+     * submission time by {@link #shellCommandSubmissionHandler()}. A completion
+     * event's self-notify flag is resolved by membership in this set rather than
+     * trusted from the posted status body -- otherwise any caller able to POST a
+     * completion event could set {@code selfNotify=true} on it and trigger a
+     * self-wake even for a job that was never validated as an eligible shell job.
+     */
+    private final Set<String> selfNotifyJobs = ConcurrentHashMap.newKeySet();
 
     /** Handles all {@code /api/github/proxy} requests and GitHub PR creation. */
     private final GitHubProxyHandler githubProxyHandler;
@@ -665,6 +675,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
      * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
      *
+     * <p>{@code selfNotify} is rejected unless {@code jobType=shell}: a shell command has no
+     * agent intelligence to act on its own completion, so a wake-up is the only way that
+     * completion becomes actionable, whereas a coding-agent job can already submit its own
+     * follow-up as its last action. See {@link io.flowtree.jobs.CompletionListenerFanout#fanoutSelf}.</p>
+     *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
      * @return JSON response with {@code ok}, {@code jobId}, and {@code workstreamId}
@@ -691,6 +706,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
         } else if (prompt == null || prompt.isEmpty()) {
             return errorResponse("Missing required field: prompt");
+        }
+
+        // See the javadoc above for why this is shell-job-only.
+        boolean selfNotify = extractJsonBooleanField(body, "selfNotify");
+        if (selfNotify && !shellJob) {
+            return errorResponse("selfNotify is only supported for shell-command jobs (jobType=shell)");
         }
 
         // Reject automated jobs when the gate is closed
@@ -781,8 +802,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int delaySeconds = extractJsonIntField(body, "delaySeconds");
 
         if (shellJob) {
-            return submitShellCommandJob(body, workstream, workstreamId, command,
-                    targetBranch, repoUrl, delaySeconds);
+            return shellCommandSubmissionHandler().handle(body, workstream, workstreamId, command,
+                    targetBranch, repoUrl, delaySeconds, selfNotify);
         }
 
         // Create job factory with workstream defaults, overridden by request values
@@ -1056,78 +1077,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Builds and submits a {@link ShellCommandJob} that runs a single command
-     * against the workstream's repository. Unlike a coding-agent job, it carries
-     * no agent configuration and never commits; only the repository, branch,
-     * working directory, required labels, and workstream URL are propagated.
+     * Builds the shell-command submission handler bound to this endpoint.
+     * See {@link ShellCommandSubmissionHandler}.
      *
-     * @param body          the raw request body (for required-label extraction)
-     * @param workstream    the resolved target workstream
-     * @param workstreamId  the resolved workstream identifier
-     * @param command       the shell command to execute
-     * @param targetBranch  the requested branch, or {@code null} for the default
-     * @param repoUrl       the requested repository URL, or {@code null}
-     * @param delaySeconds  delay before dispatch, or {@code 0} for immediate
-     * @return the JSON submission response
+     * @return a fresh handler reflecting the current notifier registry,
+     *         listener, server, and delayed-dispatch state
      */
-    private Response submitShellCommandJob(String body, Workstream workstream,
-            String workstreamId, String command, String targetBranch,
-            String repoUrl, int delaySeconds) {
-        ShellCommandJob.Factory factory = new ShellCommandJob.Factory(command);
-
-        String effectiveRepoUrl = repoUrl != null ? repoUrl : workstream.getRepoUrl();
-        if (effectiveRepoUrl != null) {
-            factory.setRepoUrl(effectiveRepoUrl);
-        }
-        if (workstream.getWorkingDirectory() != null) {
-            factory.setWorkingDirectory(workstream.getWorkingDirectory());
-        }
-        String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
-        if (effectiveBranch != null) {
-            factory.setTargetBranch(effectiveBranch);
-        }
-
-        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
-        if (requiredLabels.isEmpty() && workstream.getRequiredLabels() != null
-                && !workstream.getRequiredLabels().isEmpty()) {
-            requiredLabels = workstream.getRequiredLabels();
-        }
-        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
-            factory.setRequiredLabel(entry.getKey(), entry.getValue());
-        }
-
-        int listeningPort = getListeningPort();
-        if (listeningPort > 0) {
-            factory.setWorkstreamUrl("http://0.0.0.0:" + listeningPort
-                + "/api/workstreams/" + workstream.getWorkstreamId()
-                + "/jobs/" + factory.getTaskId());
-        }
-
-        JobCompletionEvent startEvent = JobCompletionEvent.started(
-                factory.getTaskId(), ShellCommandJob.summarizeCommand(command));
-        startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.completionListener(workstream.getWorkstreamId())
-                .onJobSubmitted(workstream.getWorkstreamId(), startEvent);
-
-        if (delaySeconds > 0) {
-            pendingDelayedJobs.put(factory.getTaskId(), delayedJobExecutor.schedule(
-                    () -> {
-                        try {
-                            server.addTask(factory);
-                        } finally {
-                            pendingDelayedJobs.remove(factory.getTaskId());
-                        }
-                    }, delaySeconds, TimeUnit.SECONDS));
-            log("Delayed shell-command job via API: " + factory.getTaskId()
-                + " (delaySeconds=" + delaySeconds + ")");
-        } else {
-            server.addTask(factory);
-            log("Submitted shell-command job via API: " + factory.getTaskId());
-        }
-
-        String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
-            + "\",\"workstreamId\":\"" + workstreamId + "\",\"jobType\":\"shell\"}";
-        return newFixedLengthResponse(Response.Status.OK, "application/json", json);
+    private ShellCommandSubmissionHandler shellCommandSubmissionHandler() {
+        return new ShellCommandSubmissionHandler(notifiers, listener, server,
+                pendingDelayedJobs, delayedJobExecutor, this::getListeningPort, this::log,
+                selfNotifyJobs::add);
     }
 
     /**
@@ -1194,6 +1153,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (pullRequestUrl != null) {
             event.withPullRequestUrl(pullRequestUrl);
         }
+        // Resolved from the server-side registry populated at submission time,
+        // NOT from the posted body -- see the selfNotifyJobs javadoc.
+        event.withSelfNotify(jobId != null && selfNotifyJobs.remove(jobId));
 
         if (event instanceof CodingAgentJobEvent) {
             CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;
@@ -1281,6 +1243,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * record the failure while leaving the dependent chain blocked, which is
      * the situation the scanner exists to resolve.</p>
      *
+     * <p>When the event's {@link JobCompletionEvent#isSelfNotify()} is set —
+     * currently only possible for a {@link io.flowtree.jobs.ShellCommandJob}
+     * — the fan-out also wakes the completing job's OWN workstream via
+     * {@link CompletionListenerFanout#fanoutSelf}, subject to the same
+     * ceilings as an ordinary listener.</p>
+     *
      * @param workstreamId the workstream the job belongs to
      * @param event        the terminal event to dispatch
      */
@@ -1294,6 +1262,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 workstreamId, event.getDescription());
         try {
             completionListenerFanout.fanout(workstreamId, event);
+            if (event.isSelfNotify()) {
+                completionListenerFanout.fanoutSelf(workstreamId, event);
+            }
         } catch (RuntimeException ex) {
             log("Completion-listener fanout failed for workstream "
                     + workstreamId + ": " + ex.getMessage());

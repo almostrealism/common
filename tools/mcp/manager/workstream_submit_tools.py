@@ -49,6 +49,7 @@ def workstream_submit_task(
     phase_configs: str = "",
     allow_commit_language: bool = False,
     collaborative: bool = False,
+    self_notify: bool = False,
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
@@ -305,6 +306,18 @@ def workstream_submit_task(
             machine. You reach it by calling ``send_message`` on the same
             workstream, and hear from it with ``await_message``. Defaults
             to ``False``, which submits an ordinary one-shot job.
+        self_notify: When True, this job's own workstream is woken with a
+            follow-up coding-agent job when the command completes -- use
+            this to launch a long-running command and resume automatically
+            instead of polling. Only valid for a shell-command job; rejected
+            for a coding-agent job, which can already submit its own
+            follow-up as its last action. Unlike a standing completion
+            listener (workstream_register's completion_listeners), this is a
+            one-shot, per-job opt-in consumed by this single command's
+            completion -- it does not register anything on the workstream,
+            so it cannot create the standing self-listener loop that
+            registering a workstream as its own listener would. Defaults to
+            False.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -323,6 +336,9 @@ def workstream_submit_task(
         prompt = ""
     elif not prompt:
         return {"ok": False, "error": "prompt is required"}
+    if self_notify and not shell_job:
+        return {"ok": False,
+                "error": "self_notify is only supported for a shell-command job (job_type='shell')"}
     err = server._check_length(command, "command", server.MAX_PROMPT_LEN)
     if err:
         return err
@@ -493,6 +509,8 @@ def workstream_submit_task(
 
     if shell_job:
         payload = {"jobType": "shell", "command": command}
+        if self_notify:
+            payload["selfNotify"] = True
     else:
         payload = {"prompt": prompt}
     if workstream_id:

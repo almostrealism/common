@@ -1249,3 +1249,42 @@ class TestCollaborativeSubmission(unittest.TestCase):
         mock_post.return_value = {"ok": True, "jobId": "j1"}
         server.workstream_submit_task(prompt="Fix the bug.", workstream_id="ws-1")
         self.assertNotIn("collaborative", mock_post.call_args[0][1])
+
+
+class TestSelfNotifySubmission(unittest.TestCase):
+    """``self_notify=True`` must reach the controller, and only for a shell job.
+
+    A shell command has no agent intelligence to act on its own completion,
+    so self-notify is the only way that completion becomes actionable;
+    a coding-agent job can already submit its own follow-up as its last
+    action, so the tool rejects self_notify there before ever contacting
+    the controller.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_controller_post")
+    def test_flag_is_forwarded_for_a_shell_job(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j1"}
+        server.workstream_submit_task(
+            command="sleep 600 && echo done",
+            workstream_id="ws-1",
+            self_notify=True)
+        payload = mock_post.call_args[0][1]
+        self.assertTrue(payload["selfNotify"])
+        self.assertEqual(payload["jobType"], "shell")
+
+    @patch.object(server, "_controller_post")
+    def test_ordinary_shell_submission_omits_the_flag(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j1"}
+        server.workstream_submit_task(command="echo hi", workstream_id="ws-1")
+        self.assertNotIn("selfNotify", mock_post.call_args[0][1])
+
+    @patch.object(server, "_controller_post")
+    def test_rejected_for_a_coding_agent_job_without_reaching_controller(self, mock_post):
+        result = server.workstream_submit_task(
+            prompt="Fix the bug.", workstream_id="ws-1", self_notify=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("self_notify", result["error"])
+        mock_post.assert_not_called()

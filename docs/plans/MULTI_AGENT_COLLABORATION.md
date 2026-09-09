@@ -118,12 +118,15 @@ some rational way on our own work stream."*
   "seq": 7,
   "createdAt": "2026-09-08T19:12:33.129Z",
   "sender": "job:b6e8f404",
-  "workstreamId": "1cef7061-…",
   "jobId": "b6e8f404-…",
   "activity": "",
   "text": "Ready. vLLM is up on halo, rungs bf16 and rtn-w4 are healthy."
 }
 ```
+
+`workstreamId` is not itself a field on the message: the mailbox is already
+scoped to one workstream by the URL path, so it would be redundant on every
+line.
 
 `seq` is a monotonically increasing 64-bit integer assigned by the controller
 under the mailbox's lock, so ordering is total within a workstream. Readers are
@@ -378,3 +381,191 @@ that needed the room.
    submitting a collaborative job is in the best position to judge how long the
    conversation will run. Raising it implicitly would override a value the
    submitter chose deliberately.
+
+---
+
+## Extension — `ShellCommandJob` as a wait/resume primitive
+
+This extension closes the loop the Goal scenario leaves manual: *"by then it
+has started long-running work on that machine that outlives its own session,
+and I can come back to that work later by submitting another job targeted at
+the same host."* Today "coming back to it later" means a human (or another
+agent) remembering to poll. `ShellCommandJob` — the command-execution
+counterpart of `CodingAgentJob`, see `flowtree/runtime/.../jobs/ShellCommandJob.java`
+— is the natural vehicle for "run this long thing and tell me when it's done,"
+but it has two gaps that block that use case. Both are fixed here.
+
+### Problem 1 — working directory does not match the coding-agent job's
+
+Evidence, read side by side in `FlowTreeApiEndpoint#handleSubmit`:
+
+- Coding-agent path (~line 819): `if (listener != null && listener.getDefaultWorkspacePath() != null) factory.setDefaultWorkspacePath(listener.getDefaultWorkspacePath());`
+- Shell path, `submitShellCommandJob` (~line 1073): no equivalent call exists at
+  all, and `ShellCommandJob.Factory` does not even expose
+  `getDefaultWorkspacePath()` / `setDefaultWorkspacePath()` — only
+  `workingDirectory`, `repoUrl`, `branch`, and `workstreamUrl` are threaded from
+  the workstream onto the factory.
+
+`GitManagedJob` (the shared base of both job types) already has a
+`defaultWorkspacePath` field with full wire support in `GitManagedJobCodec`
+(`defaultWsPath` key) — that part of the pipe was never the problem. The break
+is upstream: nothing ever calls `setDefaultWorkspacePath` on the *factory*
+before it builds the shell job, so the job's own field is always null at
+dispatch time regardless of what the operator configured.
+
+Effect: when a workstream has no explicit `workingDirectory` (the common case
+— most workstreams rely on `repoUrl` + the operator's `defaultWorkspacePath`),
+`GitRepositorySetup.resolveWorkspacePath()` falls through to
+`WorkspaceResolver.resolve(null, repoUrl)`, which resolves to
+`/workspace/project/<repo>` (if that directory exists on the node) or the OS
+temp directory — *not* the directory every coding-agent job on the same
+workstream actually clones into. An agent that submits a shell job expecting
+it to run "where my commands execute" (the task's own words) can find it ran
+somewhere else entirely, or triggered a redundant clone.
+
+**Fix:** give `ShellCommandJob.Factory` a `defaultWorkspacePath` property,
+following the exact pattern already used for `repoUrl` (get/set through the
+factory's own base64-encoded property map), and thread it through
+`nextJob()`. In the shell-job submission path (extracted into
+`ShellCommandSubmissionHandler#handle` alongside this change, since
+`FlowTreeApiEndpoint` was already near its file-length cap), add the same
+`listener.getDefaultWorkspacePath()` propagation the coding-agent path already
+has. No change is needed to `GitManagedJob`, `GitManagedJobCodec`, or
+`GitRepositorySetup` — they already do the right thing once the factory
+supplies the value.
+
+### Problem 2 — a shell job cannot ask to be woken up
+
+There is today no way for an agent to say "launch this long-running command
+and resume me when it's done." The only related primitive,
+`docs/plans/COMPLETION_LISTENERS.md`, is a **workstream-level, standing**
+configuration (`Workstream#completionListeners`) explicitly forbidden from
+ever including the workstream itself — `ListenerCycleChecker` rejects
+`A -> A` as `self-listing` at config time, because a standing self-listener
+would fire on *every future job* that finishes on that workstream, forever.
+
+That is the wrong shape for "I'm about to launch one long-running task and
+want to hear back about *that one*." The right primitive is a **per-job,
+opt-in** flag: `selfNotify` on `ShellCommandJob`. When set, the job's own
+completion — and only that job's completion — fans out a wake-up
+`CodingAgentJob` to its own workstream, using the exact same wake-up
+construction, prompt shape, and safety ceilings as
+`CompletionListenerFanout` already builds for cross-workstream listeners
+(`docs/plans/COMPLETION_LISTENERS.md` §2.1.2, §2.2). This also resolves
+`COMPLETION_LISTENERS.md`'s open question 6 ("wake-up for shell-command
+jobs... a v2 can filter") in the opposite direction it was framed: v2 does not
+filter shell jobs out of the *listener* fan-out, it gives shell jobs a
+narrower, job-scoped self-wake-up instead.
+
+### Why this does not reopen the self-listing hole
+
+`ListenerCycleChecker` and `selfNotify` are different mechanisms guarding
+different things, and the config-time one is untouched:
+
+- **Nothing is added to `Workstream#completionListeners`.** `selfNotify` never
+  touches the persisted listener graph, so `ListenerCycleChecker` keeps
+  rejecting `A -> A` in workstream config exactly as it does today. A
+  workstream that never submits a self-notifying shell job never wakes
+  itself, no matter how many other jobs finish on it.
+- **The trigger is one job's completion, not "any job finishes here."** A
+  standing listener fires forever because it is evaluated on every future
+  completion; `selfNotify` is consumed once, by the one job that set it.
+- **The wake-up is a real agent turn, not another self-notifying command.**
+  `fanoutSelf` (see below) submits an ordinary `CodingAgentJob`. Recursion
+  requires that agent to *decide*, on its own initiative, to submit another
+  self-notifying shell job — the same judgment-bounded step that stops the
+  orchestrator loop in `COMPLETION_LISTENERS.md` §2.1.4.
+- **The existing ceilings already cover the worst case.** `fanoutSelf`
+  dispatches through `CompletionListenerFanout#dispatchToListener` with
+  `listenerId == sourceWorkstreamId`. A workstream that keeps re-arming
+  `selfNotify` on every wake-up saturates its own per-listener budget —
+  `DEFAULT_MAX_WAKE_UPS_PER_WINDOW` (6 per 600s) and
+  `DEFAULT_DEBOUNCE_SECONDS` (300s) — exactly as a runaway multi-workstream
+  orchestrator would against a shared listener. No new ceiling logic is
+  needed; the per-listener key does not care whether the listener is also the
+  source.
+- **The kill switch still wins.** `acceptAutomatedJobs=false` stops
+  `fanoutSelf` the same way it stops `fanout`, because both call through the
+  same `dispatchToListener` gate chain.
+
+### Why this is restricted to `ShellCommandJob`
+
+`selfNotify` is rejected by `FlowTreeApiEndpoint#handleSubmit` unless the job
+being submitted is a shell job (`jobType=shell` or `command` present).
+Rationale: a `ShellCommandJob` is a single bounded command with no agent
+intelligence behind it — a wake-up is the *only* way its completion becomes
+actionable to anyone. A `CodingAgentJob`, by contrast, already runs a full
+reasoning session that can call `workstream_submit_task` itself as its last
+action if it wants a follow-up; letting a coding job set `selfNotify` would
+let one agent turn silently re-arm its own automatic continuation, which is a
+strictly less visible way to build the same loop `flowtree/CLAUDE.md`'s "the
+job is the source of truth" rule exists to prevent (a property that describes
+what a job *does* must be visible on the job record, not inferred from
+"the agent probably meant to keep going").
+
+### A correctness gap `selfNotify` exposes: exit code is not reflected in status
+
+`GitManagedJob#createEvent(Exception)` reports `Status.SUCCESS` unless
+`doWork()` threw. `ShellCommandJob#doWork()` catches every `IOException` /
+`InterruptedException` itself and never rethrows — so **every** shell job
+completes with `Status.SUCCESS` regardless of the command's actual exit code.
+This has always been slightly wrong (the completion *message* already prints
+"Note: exit code != 0 indicates command failure" while the completion
+*event* says `SUCCESS`), but it becomes actively misleading once a status is
+the thing a self-notify wake-up prompt reports to the agent that gets woken:
+"did my long-running task actually finish OK?" is exactly the question
+`Finished job status:` is supposed to answer. `ShellCommandJob` needs to
+override `createEvent(Exception)` so a non-zero `exitCode` (with no thrown
+exception) produces a `FAILED` event. This is small and self-contained, but
+it is in scope here because it is required for `selfNotify` to tell the truth.
+
+### Wiring checklist (per `flowtree/CLAUDE.md`'s "the job is the source of truth" rule)
+
+| Layer | File | Change |
+|---|---|---|
+| Submission tool | `tools/mcp/manager/workstream_submit_tools.py` | `self_notify: bool = False` param + docstring; `payload["selfNotify"]`; client-side rejection when not a shell job |
+| HTTP submit | `FlowTreeApiEndpoint#handleSubmit` | extract `selfNotify`; reject with a 400-style error when `!shellJob` |
+| HTTP submit (shell) | `ShellCommandSubmissionHandler#handle` | `factory.setSelfNotify(selfNotify)`; `factory.setDefaultWorkspacePath(listener.getDefaultWorkspacePath())` (Problem 1's fix); submit response reports `selfNotify` back |
+| Factory | `ShellCommandJob.Factory` | `defaultWorkspacePath` and `selfNotify` fields/accessors, mirroring the existing `repoUrl` pattern |
+| Factory -> job | `ShellCommandJob.Factory#nextJob` | `job.setDefaultWorkspacePath(...)`, `job.setSelfNotify(...)` |
+| Job | `ShellCommandJob` | `selfNotify` field + accessors; `createEvent` override (exit-code fix) |
+| Wire | `ShellCommandJob#encode` / `#set` | encode branch + decode case for `selfNotify` |
+| Behaviour | `ShellCommandJob#populateEventDetails` (new override) | `event.withSelfNotify(isSelfNotify())` |
+| Event model | `JobCompletionEvent` | `selfNotify` field, `isSelfNotify()`, `withSelfNotify(...)`, `toJson()` entry |
+| Controller decode | `FlowTreeApiEndpoint#handleStatusEvent` | resolve `selfNotify` by membership in the server-side `selfNotifyJobs` registry (populated at submission time), NOT by trusting the posted JSON — a caller able to POST a completion event must not be able to forge `selfNotify=true` for a job that was never validated as an eligible shell job |
+| Controller dispatch | `FlowTreeApiEndpoint#completeJob` | call `completionListenerFanout.fanoutSelf(...)` when `event.isSelfNotify()`, alongside the existing `fanout(...)` call |
+| Fan-out | `CompletionListenerFanout` | new public `fanoutSelf(sourceWorkstreamId, event)`, delegating to the existing private `dispatchToListener` with `listenerId == sourceWorkstreamId` |
+
+### Test plan
+
+- `ShellCommandJobTest`: `defaultWorkspacePath` round-trips on the job and the
+  factory (mirrors the existing `repoUrl` round-trip tests);
+  `factory.nextJob()` propagates both `defaultWorkspacePath` and `selfNotify`;
+  `createEvent` returns `FAILED` for a non-zero exit code with no thrown
+  exception, and `SUCCESS` for exit code 0.
+- `JobCompletionEventTest` (or nearest equivalent): `withSelfNotify` /
+  `isSelfNotify` round-trip; `toJson()` includes `selfNotify`.
+- `CompletionListenerFanoutTest`: `fanoutSelf` fires a wake-up to the source
+  workstream; respects the kill switch, the per-listener window ceiling, and
+  the debounce identically to `fanout`; a source workstream with no
+  registered `Workstream` entry is a no-op (mirrors `wakeup_source_missing`).
+- An HTTP-level test on `handleSubmit` / `ShellCommandSubmissionHandler#handle`:
+  `selfNotify=true` on a coding-agent job (no `command`) is rejected;
+  `selfNotify=true` on a shell job is accepted and reaches the factory.
+
+### Implementation order
+
+1. Working-directory fix (Problem 1): `ShellCommandJob.Factory` gains
+   `defaultWorkspacePath`; `ShellCommandSubmissionHandler#handle` propagates
+   it. Independent of everything below; lands and is tested on its own.
+2. `createEvent` exit-code fix on `ShellCommandJob`, with its own test —
+   independent of `selfNotify`, but a prerequisite for it to be meaningful.
+3. `selfNotify` wire threading: `JobCompletionEvent` field, `ShellCommandJob`
+   field/accessors/encode/set/`populateEventDetails`, `ShellCommandJob.Factory`
+   field/accessors, `nextJob()` propagation.
+4. Controller wiring: `handleSubmit` validation,
+   `ShellCommandSubmissionHandler#handle` plumbing, `handleStatusEvent`
+   parsing, `completeJob` dispatch, `CompletionListenerFanout#fanoutSelf`.
+5. `workstream_submit_task` MCP parameter + docstring.
+6. Tests per the plan above; `ar-build-validator` (checkstyle, code_policy,
+   test_timeouts, duplicate_code) before declaring done.
