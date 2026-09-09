@@ -79,4 +79,87 @@ public class TimeSeriesPurgeTest extends TestSuiteBase {
 		Assert.assertNull("entry at 1.0 is below the cutoff and must be purged",
 				series.valueAt(1.5));
 	}
+
+	/**
+	 * An empty series has nothing below any cutoff. {@code purge} must be a no-op:
+	 * it must not throw, and the series must remain empty afterward.
+	 */
+	@Test(timeout = 10000)
+	public void purgeOnEmptySeriesIsNoOp() {
+		TimeSeries series = new TimeSeries();
+
+		series.purge(2.0);
+
+		Assert.assertNull("an empty series has no value at any timestamp",
+				series.valueAt(1.0));
+	}
+
+	/**
+	 * A cutoff strictly before every entry's timestamp must remove nothing: the
+	 * boundary loop in {@code purge} counts entries with {@code time < cutoff}, and
+	 * with no entry satisfying that condition {@code toRemove} must stay at its
+	 * initial value of zero rather than underflowing to {@code -1} (which, prior to
+	 * the fix, could remove entries via the {@code -1 < i} loop condition on the
+	 * removal side under different entry counts).
+	 */
+	@Test(timeout = 10000)
+	public void purgeRemovesNothingWhenCutoffPrecedesAllEntries() {
+		TimeSeries series = new TimeSeries();
+		series.add(new TemporalScalar(1.0, 2.0));
+		series.add(new TemporalScalar(2.0, 3.0));
+
+		series.purge(0.0);
+
+		TemporalScalar interpolated = series.valueAt(1.5);
+		Assert.assertNotNull("both entries must survive a cutoff before either of them",
+				interpolated);
+		Assert.assertEquals(2.5, interpolated.getValue(), 1e-9);
+	}
+
+	/**
+	 * A cutoff strictly after every entry's timestamp must remove all of them,
+	 * leaving the series empty.
+	 */
+	@Test(timeout = 10000)
+	public void purgeRemovesEverythingWhenCutoffFollowsAllEntries() {
+		TimeSeries series = new TimeSeries();
+		series.add(new TemporalScalar(0.0, 1.0));
+		series.add(new TemporalScalar(1.0, 2.0));
+
+		series.purge(5.0);
+
+		Assert.assertNull("all entries are below the cutoff and must be purged",
+				series.valueAt(0.5));
+	}
+
+	/**
+	 * The cutoff comparison in {@code purge} is {@code time < cutoff}, so an entry
+	 * whose timestamp exactly equals the cutoff is not "strictly less than" it and
+	 * must be retained, matching the documented contract ("all entries with
+	 * time < this value are removed").
+	 *
+	 * <p>This is checked by interpolating between the cutoff entry and a later entry
+	 * rather than by querying {@code valueAt(cutoff)} directly: {@link TimeSeries#valueAt}
+	 * only interpolates between a point strictly before the query time and one at or
+	 * after it, so a query exactly at the leftmost surviving entry has no predecessor
+	 * to interpolate from and returns {@code null} independent of whether {@code purge}
+	 * behaved correctly. Interpolating past the cutoff entry instead distinguishes the
+	 * two outcomes: if the cutoff entry were wrongly purged, only the later entry would
+	 * remain and the query would return {@code null}; since it is retained, the query
+	 * resolves to a definite interpolated value.</p>
+	 */
+	@Test(timeout = 10000)
+	public void purgeRetainsEntryExactlyAtCutoff() {
+		TimeSeries series = new TimeSeries();
+		series.add(new TemporalScalar(1.0, 2.0));
+		series.add(new TemporalScalar(2.0, 3.0));
+		series.add(new TemporalScalar(4.0, 5.0));
+
+		series.purge(2.0);
+
+		TemporalScalar interpolated = series.valueAt(3.0);
+		Assert.assertNotNull("the entry at the cutoff itself must be retained so that "
+				+ "interpolation past it succeeds", interpolated);
+		Assert.assertEquals(4.0, interpolated.getValue(), 1e-9);
+	}
 }
