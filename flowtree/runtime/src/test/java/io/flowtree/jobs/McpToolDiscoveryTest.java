@@ -1027,4 +1027,24 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(
 				managerSources, "workstream_submit_task").contains("collaborative"));
 	}
+
+	/**
+	 * Verifies that {@code workstream_submit_task} declares the {@code self_notify}
+	 * parameter in its signature. Without it, a shell-command job has no way to
+	 * ask its own workstream to be woken with a follow-up job when the command
+	 * completes.
+	 */
+	@Test(timeout = 30000)
+	public void managerSubmitTaskHasSelfNotifyParameter() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
+
+		assertTrue("workstream_submit_task must declare self_notify in signature;"
+				+ " without it a shell-command job cannot ask its own workstream"
+				+ " to be woken on completion",
+			McpToolDiscovery.discoverToolParameters(
+				managerSources, "workstream_submit_task").contains("self_notify"));
+	}
 }
