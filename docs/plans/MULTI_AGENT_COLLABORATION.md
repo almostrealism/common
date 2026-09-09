@@ -532,7 +532,7 @@ it is in scope here because it is required for `selfNotify` to tell the truth.
 | Wire | `ShellCommandJob#encode` / `#set` | encode branch + decode case for `selfNotify` |
 | Behaviour | `ShellCommandJob#populateEventDetails` (new override) | `event.withSelfNotify(isSelfNotify())` |
 | Event model | `JobCompletionEvent` | `selfNotify` field, `isSelfNotify()`, `withSelfNotify(...)`, `toJson()` entry |
-| Controller decode | `FlowTreeApiEndpoint#handleStatusEvent` | parse `selfNotify` from the posted JSON, apply to the event |
+| Controller decode | `FlowTreeApiEndpoint#handleStatusEvent` | resolve `selfNotify` by membership in the server-side `selfNotifyJobs` registry (populated at submission time), NOT by trusting the posted JSON — a caller able to POST a completion event must not be able to forge `selfNotify=true` for a job that was never validated as an eligible shell job |
 | Controller dispatch | `FlowTreeApiEndpoint#completeJob` | call `completionListenerFanout.fanoutSelf(...)` when `event.isSelfNotify()`, alongside the existing `fanout(...)` call |
 | Fan-out | `CompletionListenerFanout` | new public `fanoutSelf(sourceWorkstreamId, event)`, delegating to the existing private `dispatchToListener` with `listenerId == sourceWorkstreamId` |
 
