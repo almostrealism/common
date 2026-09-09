@@ -491,13 +491,23 @@ class TestRunner:
         # Update metadata
         metadata = self._load_metadata(run_id)
         if metadata and metadata.get("status") == "running":
+            # Collect the reports BEFORE the run is observable as finished.
+            # get_run_status recomputes counts from that directory on every
+            # call, so a caller waiting for a terminal status and reading the
+            # counts the instant it appears would otherwise see a partial copy.
+            try:
+                self._copy_surefire_reports(run_id, module, config.project_root())
+            except Exception as exc:
+                # Collecting results must never decide whether a finished run
+                # is reported as finished; a run wedged at "running" is worse
+                # than one whose counts are incomplete.
+                sys.stderr.write(
+                    f"[ar-test-runner] {run_id}: could not collect reports: {exc}\n")
+
             metadata["completed_at"] = datetime.now().isoformat()
             metadata["exit_code"] = exit_code
             metadata["status"] = "completed" if exit_code == 0 else "failed"
             self._save_metadata_dict(run_id, metadata)
-
-            # Copy surefire reports
-            self._copy_surefire_reports(run_id, module, config.project_root())
 
     def _is_fork_failure(self, run_id: str) -> bool:
         """Check output.txt for Surefire fork failure patterns."""

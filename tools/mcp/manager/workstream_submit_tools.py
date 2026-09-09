@@ -15,7 +15,6 @@ import server
 from server import mcp
 
 
-
 @mcp.tool()
 def workstream_submit_task(
     prompt: str = "",
@@ -49,6 +48,7 @@ def workstream_submit_task(
     default_phase_config: str = "",
     phase_configs: str = "",
     allow_commit_language: bool = False,
+    collaborative: bool = False,
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
@@ -295,6 +295,16 @@ def workstream_submit_task(
             contains such language (e.g. quoting an existing commit message or
             convention) and restructuring is not feasible. Most callers should
             restructure the prompt instead of opting out.
+        collaborative: When ``True``, the submitted agent is told to work
+            with you rather than alone: it announces readiness with
+            ``send_message`` once it has carried out whatever preparatory
+            steps ``prompt`` describes, then waits for your instructions
+            with ``await_message``, acting on each in turn until you tell
+            it to stop. Combine with ``required_labels="hostname:<name>"``
+            to hold that conversation with an agent on a particular
+            machine. You reach it by calling ``send_message`` on the same
+            workstream, and hear from it with ``await_message``. Defaults
+            to ``False``, which submits an ordinary one-shot job.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -519,6 +529,8 @@ def workstream_submit_task(
         payload["retrospectiveEnabled"] = True
     if falsification_enabled:
         payload["falsificationEnabled"] = True
+    if collaborative:
+        payload["collaborative"] = True
     # Presence semantics: forward useTmux only when explicitly set so an
     # explicit False reaches the controller and overrides the workstream
     # default (the controller distinguishes absent from false via hasField).

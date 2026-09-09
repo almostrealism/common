@@ -185,6 +185,13 @@ public class CodingAgentJob extends GitManagedJob {
      * improvement opportunities. Defaults to {@code false}; opt in per-job.
      */
     private boolean retrospectiveEnabled = false;
+    /**
+     * When {@code true}, this job works with a peer rather than alone: the
+     * agent announces readiness, then waits for instructions on the
+     * workstream's conversation and acts on them until told to stop. Defaults
+     * to {@code false}; opt in per-job.
+     */
+    private boolean collaborative = false;
     /** Owns retrospective-phase state and execution. Reset at the top of each {@link #doWork()} call. */
     private final RetrospectivePhase retrospective = new RetrospectivePhase();
 
@@ -645,6 +652,11 @@ public class CodingAgentJob extends GitManagedJob {
         this.maxReviewPasses = maxReviewPasses;
     }
 
+    /** Returns whether this job collaborates with a peer over the workstream; default {@code false}. */
+    public boolean isCollaborative() { return collaborative; }
+    /** Sets whether this job collaborates with a peer; {@code true} to announce readiness and then work from messages. */
+    public void setCollaborative(boolean collaborative) { this.collaborative = collaborative; }
+
     /** Returns whether the retrospective phase is active for this job; default {@code false}. */
     public boolean isRetrospectiveEnabled() { return retrospectiveEnabled; }
     /** Sets whether the retrospective phase is active for this job; {@code true} to enable retrospective analysis. */
@@ -939,6 +951,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .setInvalidFilesViolation(invalidFilesViolation)
                 .setInactivityRestartAttempt(restartGovernor.getInactivityRestartAttempt())
                 .setFalsificationFindings(falsificationFindings)
+                .setCollaborative(collaborative)
                 .build();
     }
 
