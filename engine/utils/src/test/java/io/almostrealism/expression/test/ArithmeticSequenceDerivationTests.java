@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
@@ -216,6 +217,45 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 			Assert.assertEquals(expected % 8, mod8.value(v).longValue());
 			Assert.assertEquals(expected / 288, div288.value(v).longValue());
 		}
+	}
+
+	/**
+	 * A floating-point quotient keeps its remainder even when every constant involved
+	 * has an integral value: {@code (k + 1024.0) / 2048.0} is not {@code 0.5}.
+	 */
+	@Test(timeout = 30000)
+	public void floatingPointQuotientKeepsRemainder() {
+		Expression<?> quotient = Quotient.of(Sum.of(kernel(), e(1024.0)), e(2048.0));
+		log(quotient.getExpression(lang));
+		Assert.assertTrue(quotient.isFP());
+
+		for (int i = 0; i < 2048; i += 341) {
+			Assert.assertEquals("at " + i, (i + 1024.0) / 2048.0,
+					quotient.value(new IndexValues().put(kernel(), i)).doubleValue(), 0.0);
+		}
+	}
+
+	/**
+	 * The bounded-remainder rule must not fire when the coarse terms can be negative,
+	 * because division truncates toward zero: {@code (-4 + 3) / 4} is {@code 0} while
+	 * {@code -4 / 4} is {@code -1}. Both the construction fold and the derivation must
+	 * agree with evaluation on such a sum.
+	 */
+	@Test(timeout = 30000)
+	public void negativeCoarseTermsKeepTheRemainder() {
+		Expression<?> coarse = kernel().imod(2).multiply(-4);
+		Expression<?> remainder = kernel().imod(4);
+		Expression<?> quotient = Quotient.of(Sum.of(coarse, remainder), e(4));
+		log(quotient.getExpression(lang));
+
+		for (int i = 0; i < 16; i++) {
+			long expected = ((i % 2) * -4 + (i % 4)) / 4;
+			Assert.assertEquals("at " + i, expected, quotient.value(new IndexValues().put(kernel(), i)).longValue());
+		}
+
+		Assert.assertTrue("The fold must not fire for a possibly negative coarse term",
+				quotient instanceof Quotient);
+		Assert.assertNull(quotient.arithmeticSequence(kernel(), 16));
 	}
 
 	/**

@@ -275,13 +275,15 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	/**
 	 * Drops the terms of a sum that cannot affect its quotient by the given divisor.
 	 *
-	 * <p>Writing the sum as {@code T + R}, where every term of {@code T} is a multiple of
-	 * some {@code c} that divides the divisor and {@code R} is never negative and always
-	 * below {@code c}, the quotient of the sum equals the quotient of {@code T} alone:
-	 * {@code T} lands on a multiple of {@code c}, and adding less than {@code c} cannot
-	 * carry it past the next multiple of the divisor. The terms sharing a factor with
-	 * the divisor form {@code T}, and {@code c} is the largest factor of the divisor
-	 * dividing all of them.</p>
+	 * <p>Writing the sum as {@code T + R}, where every term of {@code T} is a non-negative
+	 * multiple of some {@code c} that divides the divisor and {@code R} is never negative
+	 * and always below {@code c}, the quotient of the sum equals the quotient of {@code T}
+	 * alone: {@code T} lands on a multiple of {@code c}, and adding less than {@code c}
+	 * cannot carry it past the next multiple of the divisor. Both parts must be
+	 * non-negative because division truncates toward zero: {@code (-4 + 3) / 4} is
+	 * {@code 0} while {@code -4 / 4} is {@code -1}. The terms sharing a factor with the
+	 * divisor form {@code T}, and {@code c} is the largest factor of the divisor dividing
+	 * all of them.</p>
 	 *
 	 * @param terms the progressions of the sum's terms
 	 * @param divisor the positive divisor
@@ -291,6 +293,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		List<ArithmeticIndexSequence> coarse = terms.stream()
 				.filter(t -> gcd(t.commonFactor(), divisor) > 1).collect(Collectors.toList());
 		if (coarse.isEmpty() || coarse.size() == terms.size()) return terms;
+		if (coarse.stream().anyMatch(t -> t.min() < 0)) return terms;
 
 		long c = coarse.stream().mapToLong(t -> gcd(t.commonFactor(), divisor)).reduce(divisor, Quotient::gcd);
 		long remainder = terms.stream().filter(t -> !coarse.contains(t))
@@ -321,28 +324,36 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	/**
 	 * Applies the bounded-remainder rule of {@link #withoutBoundedRemainder} to the
-	 * terms of a sum expression: terms that are structurally multiples of a factor
-	 * {@code c} of the divisor (see {@link Expression#isMultiple(Expression)}) form
-	 * {@code T}; the remaining terms form {@code R} and must be non-negative with known
-	 * upper bounds summing to less than {@code c}.
+	 * terms of a sum expression: non-negative terms that are structurally multiples of a
+	 * factor {@code c} of the divisor form {@code T}; the remaining terms form {@code R}
+	 * and must be non-negative with known upper bounds summing to less than {@code c}.
+	 * Any term that may be negative disqualifies the rule.
+	 *
+	 * <p>Only an integer quotient qualifies; a floating-point quotient keeps its
+	 * remainder, and a floating-point constant with an integral value must not be
+	 * mistaken for an integer term.</p>
 	 *
 	 * @param sum the integer sum being divided
 	 * @param divisor the positive divisor
 	 * @return the quotient of {@code T} alone, or {@code null} if the rule does not apply
 	 */
 	private static Expression<?> tryBoundedRemainderSimplify(Sum<?> sum, long divisor) {
+		if (sum.isFP()) return null;
+
 		List<Expression<?>> coarse = new ArrayList<>();
 		long c = divisor;
 		long remainder = 0;
 
 		for (Expression<?> term : sum.getChildren()) {
+			if (term.isPossiblyNegative()) return null;
+
 			long factor = constantFactor(term);
 			long shared = gcd(factor, divisor);
 
 			if (shared > 1) {
 				coarse.add(term);
 				c = gcd(c, shared);
-			} else if (term.isPossiblyNegative() || term.upperBound().isEmpty()) {
+			} else if (term.upperBound().isEmpty()) {
 				return null;
 			} else {
 				remainder += term.upperBound().getAsLong();
@@ -610,7 +621,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			if (simple != null)
 				return simple;
 
-			if (d.getAsLong() > 0) {
+			if (!fp && d.getAsLong() > 0) {
 				simple = tryBoundedRemainderSimplify((Sum) numerator, d.getAsLong());
 				if (simple != null)
 					return simple;
