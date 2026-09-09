@@ -49,4 +49,30 @@ final class RequestParameters {
 		String value = values.get(0);
 		return value == null || value.isEmpty() ? defaultValue : value;
 	}
+
+	/**
+	 * Returns a parameter's first value as a number.
+	 *
+	 * <p>A value that is not a number is treated the same way an absent one is.
+	 * A query parameter arrives as text from outside the process, so the only
+	 * alternative is failing a request over a typo in a filter, which serves
+	 * nobody.</p>
+	 *
+	 * @param session      the request to read
+	 * @param name         the parameter name
+	 * @param defaultValue the value to return when the parameter is absent,
+	 *                     empty, or not a number
+	 * @return the parameter's first value as a {@code long}, or
+	 *         {@code defaultValue}
+	 */
+	static long number(IHTTPSession session, String name, long defaultValue) {
+		String value = first(session, name, null);
+		if (value == null) return defaultValue;
+
+		try {
+			return Long.parseLong(value.trim());
+		} catch (NumberFormatException e) {
+			return defaultValue;
+		}
+	}
 }

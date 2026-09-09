@@ -160,6 +160,14 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean falsificationEnabled = false;
 
     /**
+     * When {@code true}, jobs created by this factory work with a peer rather
+     * than alone: the agent announces readiness, then waits for instructions on
+     * the workstream's conversation and acts on them until told to stop.
+     * Defaults to {@code false}; opt in per-job.
+     */
+    private boolean collaborative = false;
+
+    /**
      * When {@code true} (the default), jobs created by this factory activate the
      * sensitive-file protections: the harness-side {@link FileStager} refuses to
      * stage test files that exist on the base branch, {@link CodingAgentJob#validateChanges()}
@@ -213,29 +221,16 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private int maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
 
     /**
-     * Legacy single-runner name for jobs created by this factory. Mirrored to
-     * {@link #defaultRunner}; retained for source compatibility with pre-Phase-2
-     * callers that did not understand the per-phase map.
+     * Runner and per-phase model configuration propagated to jobs created by
+     * this factory. The same type backs {@link CodingAgentJob}, so a factory
+     * and the jobs it creates agree on runner resolution by construction
+     * rather than by two implementations staying in step.
+     *
+     * <p>Constructed with {@link #set(String, String)} as its property sink so
+     * that every mutation is mirrored into the serialized property store and
+     * travels to the worker.</p>
      */
-    private String runnerName = AgentRunnerRegistry.CLAUDE;
-
-    /**
-     * Default {@link io.flowtree.jobs.agent.AgentRunner} for jobs created by
-     * this factory; takes effect when {@link #runnerByPhase} has no entry for
-     * the dispatched phase. Defaults to {@link AgentRunnerRegistry#CLAUDE}.
-     */
-    private String defaultRunner = AgentRunnerRegistry.CLAUDE;
-
-    /** Per-phase runner overrides propagated to jobs created by this factory. */
-    private final Map<Phase, String> runnerByPhase = new EnumMap<>(Phase.class);
-
-    /**
-     * Unified per-phase configuration bundle propagated to jobs created by
-     * this factory. Sole source of model, effort, and provider; the
-     * runner-resolution fields {@link #defaultRunner} and
-     * {@link #runnerByPhase} are kept in sync with it.
-     */
-    private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
+    private final PhaseRunnerConfig phaseRunners = new PhaseRunnerConfig(this::set);
 
     /**
      * Default constructor for deserialization.
@@ -927,6 +922,26 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether jobs created by this factory collaborate with a peer.
+     *
+     * @return {@code true} when collaboration is enabled; {@code false} by default
+     */
+    public boolean isCollaborative() {
+        return collaborative;
+    }
+
+    /**
+     * Sets whether jobs created by this factory collaborate with a peer.
+     *
+     * @param collaborative {@code true} to have the agent announce readiness and
+     *                      then work from messages on the workstream
+     */
+    public void setCollaborative(boolean collaborative) {
+        this.collaborative = collaborative;
+        set("collaborative", String.valueOf(collaborative));
+    }
+
+    /**
      * Returns whether the retrospective phase is active for jobs created by this factory.
      *
      * @return {@code true} when retrospective analysis is enabled; {@code false} by default
@@ -1155,7 +1170,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @return the runner identifier; defaults to
      *         {@link AgentRunnerRegistry#CLAUDE}
      */
-    public String getRunnerName() { return runnerName; }
+    public String getRunnerName() { return phaseRunners.getRunnerName(); }
 
     /**
      * Sets the agent runner name applied to jobs created by this factory when
@@ -1169,22 +1184,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @throws IllegalArgumentException when the runner is not registered
      */
     public void setRunnerName(String runnerName) {
-        if (runnerName == null || runnerName.isEmpty()) {
-            this.runnerName = AgentRunnerRegistry.CLAUDE;
-            this.defaultRunner = AgentRunnerRegistry.CLAUDE;
-            set("defaultRunner", null);
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultRunner(null);
-            return;
-        }
-        AgentRunnerRegistry.validateName(runnerName);
-        this.runnerName = runnerName;
-        this.defaultRunner = runnerName;
-        if (AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
-            set("defaultRunner", null);
-        } else {
-            set("defaultRunner", runnerName);
-        }
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultRunner(runnerName);
+        phaseRunners.setRunnerName(runnerName);
     }
 
     /**
@@ -1192,7 +1192,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *
      * @return the runner identifier; defaults to {@link AgentRunnerRegistry#CLAUDE}
      */
-    public String getDefaultRunner() { return defaultRunner; }
+    public String getDefaultRunner() { return phaseRunners.getDefaultRunner(); }
 
     /**
      * Sets the default runner applied to jobs created by this factory.
@@ -1203,17 +1203,19 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @throws IllegalArgumentException when the runner is not registered
      */
     public void setDefaultRunner(String runnerName) {
-        setRunnerName(runnerName);
+        phaseRunners.setDefaultRunner(runnerName);
     }
 
     /**
      * Returns the runner used for {@code phase} on jobs created by this
      * factory. Falls back to {@link #getDefaultRunner()} when no override is
      * set.
+     *
+     * @param phase the phase being dispatched; {@code null} yields the default
+     * @return the runner identifier, never {@code null}
      */
     public String getRunnerForPhase(Phase phase) {
-        if (phase == null) return defaultRunner;
-        return runnerByPhase.getOrDefault(phase, defaultRunner);
+        return phaseRunners.getRunnerForPhase(phase);
     }
 
     /**
@@ -1227,26 +1229,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *                                  {@code runnerName} is not registered
      */
     public void setRunnerForPhase(Phase phase, String runnerName) {
-        if (phase == null) throw new IllegalArgumentException("phase must not be null");
-        if (runnerName == null || runnerName.isEmpty()) {
-            runnerByPhase.remove(phase);
-            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
-            if (existing != null) {
-                phaseConfigBundle = phaseConfigBundle.withPhase(phase, existing.withRunner(null));
-            }
-        } else {
-            AgentRunnerRegistry.validateName(runnerName);
-            runnerByPhase.put(phase, runnerName);
-            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
-            PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
-                    .withRunner(runnerName);
-            phaseConfigBundle = phaseConfigBundle.withPhase(phase, updated);
-        }
-        if (runnerByPhase.isEmpty()) {
-            set("runners", null);
-        } else {
-            set("runners", Phase.encodeRunnerMap(runnerByPhase));
-        }
+        phaseRunners.setRunnerForPhase(phase, runnerName);
     }
 
     /**
@@ -1255,7 +1238,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @return the override map; empty when no overrides are set
      */
     public Map<Phase, String> getRunnerByPhase() {
-        return new EnumMap<>(runnerByPhase);
+        return phaseRunners.getRunnerByPhase();
     }
 
     /**
@@ -1265,49 +1248,22 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @return the bundle, never {@code null}
      */
     public PhaseConfigBundle getPhaseConfigBundle() {
-        return phaseConfigBundle;
+        return phaseRunners.getPhaseConfigBundle();
     }
 
     /**
-     * Replaces the per-phase configuration bundle. Updates the legacy runner
-     * fields ({@code defaultRunner}, {@code runnerByPhase}) to match so
-     * runner-resolution callers see consistent state. Model, effort, and
-     * provider live solely in the bundle.
+     * Replaces the per-phase configuration bundle. The legacy runner fields are
+     * resynced to match and the wire properties are reissued, so model, effort,
+     * and provider survive serialization rather than being re-defaulted on the
+     * receiving side.
      *
      * @param bundle the new bundle; {@code null} resets to
      *               {@link PhaseConfigBundle#EMPTY}
      */
     public void setPhaseConfigBundle(PhaseConfigBundle bundle) {
-        this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
-        PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
-        String r = def.runner();
-        this.defaultRunner = (r != null && !r.isEmpty()) ? r : AgentRunnerRegistry.CLAUDE;
-        this.runnerName = this.defaultRunner;
-        // Update serialised property keys so the wire format stays current.
-        if (AgentRunnerRegistry.CLAUDE.equals(this.defaultRunner)) {
-            set("defaultRunner", null);
-        } else {
-            set("defaultRunner", this.defaultRunner);
-        }
-        runnerByPhase.clear();
-        for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
-            String phaseRunner = e.getValue().runner();
-            if (phaseRunner != null && !phaseRunner.isEmpty()) {
-                runnerByPhase.put(e.getKey(), phaseRunner);
-            }
-        }
-        if (runnerByPhase.isEmpty()) {
-            set("runners", null);
-        } else {
-            set("runners", Phase.encodeRunnerMap(runnerByPhase));
-        }
-        // Persist the full bundle separately. The legacy keys above only
-        // preserve runner identity per phase; per-phase model / effort /
-        // provider — and the default provider — are otherwise dropped on
-        // the wire and re-defaulted on the receiving side.
-        set("phaseConfigBundle", CodingAgentJobCodec.encodePhaseConfigBundle(
-                this.phaseConfigBundle));
+        phaseRunners.setPhaseConfigBundle(bundle);
     }
+
 
     /**
      * Returns whether a pull request should be automatically created
@@ -1471,33 +1427,17 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "enforceChanges":
                 break;
             case "runner":
-                // Legacy single-runner key; honored only when no explicit
-                // defaultRunner has been decoded yet.
-                if (AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
-                    String legacy = (value == null || value.isEmpty())
-                            ? AgentRunnerRegistry.CLAUDE : value;
-                    this.runnerName = legacy;
-                    this.defaultRunner = legacy;
-                }
+                phaseRunners.applyLegacyRunner(value);
                 break;
-            case "defaultRunner":
-                String resolvedDefault = (value == null || value.isEmpty())
-                        ? AgentRunnerRegistry.CLAUDE : value;
-                this.runnerName = resolvedDefault;
-                this.defaultRunner = resolvedDefault;
+            case PhaseRunnerConfig.DEFAULT_RUNNER_KEY:
+                phaseRunners.applyDefaultRunner(value);
                 break;
-            case "runners":
-                runnerByPhase.clear();
-                runnerByPhase.putAll(Phase.decodeRunnerMap(value, this::warn));
+            case PhaseRunnerConfig.RUNNER_MAP_KEY:
+                phaseRunners.applyRunnerMap(value, this::warn);
                 break;
-            case "phaseConfigBundle":
-                // Assign the field directly: setPhaseConfigBundle would
-                // re-emit set("phaseConfigBundle", ...) and recurse. The
-                // defaultRunner / runners keys arrive in their own set() calls;
-                // the bundle here carries model/effort/provider and per-phase
-                // overrides.
-                this.phaseConfigBundle =
-                        CodingAgentJobCodec.decodePhaseConfigBundle(value);
+            case PhaseRunnerConfig.PHASE_CONFIG_BUNDLE_KEY:
+                phaseRunners.applyPhaseConfigBundle(
+                        CodingAgentJobCodec.decodePhaseConfigBundle(value));
                 break;
             default:
                 setEnforcementFlag(key, value);
@@ -1545,6 +1485,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "falsificationEnabled":
                 this.falsificationEnabled = Boolean.parseBoolean(value);
+                return;
+            case "collaborative":
+                this.collaborative = Boolean.parseBoolean(value);
                 return;
             case "sensitiveFileProtectionEnabled":
                 this.sensitiveFileProtectionEnabled = Boolean.parseBoolean(value);

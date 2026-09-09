@@ -139,6 +139,9 @@ public class InstructionPromptBuilder {
      */
     private boolean correctionSession;
 
+    /** Whether a peer agent is waiting to work with this session on the workstream. */
+    private boolean collaborative;
+
     /**
      * Sets the user's request prompt.
      *
@@ -398,6 +401,25 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Marks this session as collaborating with a peer agent rather than
+     * working alone.
+     *
+     * <p>When set, a Collaboration Protocol section is emitted stating the
+     * things an agent cannot work out for itself: that someone is waiting to
+     * hear from it, that an empty wait is normal and must be retried rather
+     * than treated as the end of the conversation, and that work meant to
+     * outlast the session has to be detached from it.</p>
+     *
+     * @param collaborative {@code true} when a peer is waiting on this
+     *                      workstream's conversation
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setCollaborative(boolean collaborative) {
+        this.collaborative = collaborative;
+        return this;
+    }
+
+    /**
      * Marks this prompt as belonging to an enforcement-rule correction
      * session rather than the primary work session.
      *
@@ -641,6 +663,8 @@ public class InstructionPromptBuilder {
             sb.append("- Send an update with your findings or results before you finish\n");
             sb.append("- If you encounter blockers or need clarification, send a message describing the issue\n");
             sb.append("Do not wait for a reply --continue working after sending a message.\n\n");
+
+            if (collaborative) appendCollaborationProtocol(sb);
 
             sb.append("## Permission Denials\n");
             sb.append("If any tool call is denied due to a permission issue, you MUST immediately ");
@@ -989,5 +1013,48 @@ public class InstructionPromptBuilder {
         sb.append("\n--- END USER REQUEST ---");
 
         return sb.toString();
+    }
+
+    /**
+     * Appends the Collaboration Protocol section, which turns a one-shot task
+     * into a conversation with a peer agent.
+     *
+     * <p>Only the parts an agent cannot infer are stated. It cannot know that
+     * someone is waiting to hear from it before it starts real work; that an
+     * {@code await_message} returning {@code timed_out} means "nothing said
+     * yet" rather than "the collaboration is over"; or that work meant to
+     * outlive the session has to be launched detached, because the session's
+     * process tree is destroyed when the job ends.</p>
+     *
+     * @param sb the prompt under construction
+     */
+    private void appendCollaborationProtocol(StringBuilder sb) {
+        sb.append("## Collaboration Protocol\n");
+        sb.append("You are NOT working alone. Another agent session is waiting to work ");
+        sb.append("with you on this workstream, and the request below is a conversation ");
+        sb.append("rather than a one-shot instruction.\n");
+        sb.append("1. Carry out the preparatory steps the request describes. When they are ");
+        sb.append("done -- or if they cannot be done -- call `send_message` to say so. Be ");
+        sb.append("specific about what is now true of this machine: what you started, ");
+        sb.append("where it is, and what you are ready to do next.\n");
+        sb.append("2. Then call `await_message` and act on what comes back. Reply with ");
+        sb.append("`send_message`, and await again. Keep going until your collaborator ");
+        sb.append("tells you the work is finished.\n");
+        sb.append("3. If `await_message` returns `timed_out`, nothing has been said yet. ");
+        sb.append("That is NOT a signal to stop. Call it again, passing the `next_since` ");
+        sb.append("it gave you. Do not invent work to fill the time, and do not end the ");
+        sb.append("session because a wait came back empty.\n");
+        sb.append("4. Anything long-running you start MUST outlive this session, because ");
+        sb.append("this session's process tree is destroyed when the job ends. Launch it ");
+        sb.append("detached -- `tmux new-session -d -s <name> \"<command> > <log> 2>&1\"`, ");
+        sb.append("or `nohup <command> < /dev/null > <log> 2>&1 &` -- and verify from a ");
+        sb.append("separate shell that it is actually running. Record where its logs, ");
+        sb.append("markers, and working directory are with `memory_store`, and say the ");
+        sb.append("same in a `send_message`. A later job submitted to this same machine ");
+        sb.append("picks up from what you wrote down, so write down what you would need ");
+        sb.append("yourself.\n");
+        sb.append("5. When you are told to finish, stop waiting and complete the session ");
+        sb.append("normally. Leave the state of any detached work in a memory before you ");
+        sb.append("go.\n\n");
     }
 }
