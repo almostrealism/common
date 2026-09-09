@@ -27,6 +27,12 @@ from manager_test_support import (  # noqa: E402
 # ``messaging_tools`` imports ``server``, which imports the tools back.
 import messaging_tools  # noqa: E402
 
+# Mirrors AgentRunner.DEFAULT_INACTIVITY_TIMEOUT_MILLIS: the duration of
+# agent stdout silence after which AgentInactivityMonitor destroys the
+# process tree. A blocking await emits nothing, so the await cap has to
+# stay under this.
+INACTIVITY_WATCHDOG_SECONDS = 35 * 60
+
 
 class TestAwaitMessage(unittest.TestCase):
     """Tests for ``await_message``, the receiving half of agent collaboration.
@@ -131,19 +137,25 @@ class TestAwaitMessage(unittest.TestCase):
         self.assertLessEqual(mock_get.call_count, 5)
 
     @patch.object(server, "_controller_get")
-    def test_wait_is_capped_below_the_inactivity_watchdog(self, mock_get):
-        """A caller asking for more than the cap is clamped and told so.
-
-        The cap exists so a waiting agent cannot outlast the orchestrator's
-        35-minute stdout-silence watchdog, which is why the bound is
-        asserted against that number rather than restated as a literal.
-        """
+    def test_wait_beyond_the_cap_is_clamped(self, mock_get):
+        """A caller asking for more than the cap is clamped and told so."""
         mock_get.return_value = {"ok": True, "nextSince": 0, "messages": []}
         with patch.object(messaging_tools, "MAX_AWAIT_SECONDS", 0):
             result = server.await_message(timeout_seconds=99999)
         self.assertTrue(result["clamped_to_max_await_seconds"])
         self.assertTrue(result["timed_out"])
-        self.assertLess(messaging_tools.MAX_AWAIT_SECONDS, 35 * 60)
+
+    def test_max_await_stays_below_the_inactivity_watchdog(self):
+        """The real cap must leave room inside the stdout-silence watchdog.
+
+        Kept apart from the clamping test, and deliberately patching
+        nothing, because this asserts a property of the shipped constant
+        rather than of any one call: raising MAX_AWAIT_SECONDS past the
+        watchdog would let a single await outlast it and have the agent's
+        process tree killed mid-wait.
+        """
+        self.assertLess(messaging_tools.MAX_AWAIT_SECONDS,
+                        INACTIVITY_WATCHDOG_SECONDS)
 
     @patch.object(server, "_controller_get")
     def test_controller_error_is_reported(self, mock_get):

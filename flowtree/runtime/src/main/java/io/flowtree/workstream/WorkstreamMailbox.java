@@ -382,6 +382,11 @@ public class WorkstreamMailbox implements ConsoleFeatures {
         /**
          * Parses a message from one line of a mailbox file.
          *
+         * <p>A line with no usable {@code sender} is attributed to
+         * {@code "unknown"}, the same default {@link #append} applies, so that
+         * a message's identity does not depend on whether it was read back
+         * from disk or is still the one that was appended.</p>
+         *
          * @param json the stored JSON object
          * @return the message, or {@code null} when {@code json} is not a
          *         usable message
@@ -403,8 +408,9 @@ public class WorkstreamMailbox implements ConsoleFeatures {
                 createdAtMillis = System.currentTimeMillis();
             }
 
+            String sender = JsonFieldExtractor.extractString(json, "sender");
             return new Message(seq, createdAtMillis,
-                    JsonFieldExtractor.extractString(json, "sender"),
+                    sender == null || sender.isEmpty() ? "unknown" : sender,
                     JsonFieldExtractor.extractString(json, "jobId"),
                     JsonFieldExtractor.extractString(json, "activity"),
                     text);

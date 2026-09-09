@@ -242,6 +242,31 @@ public class WorkstreamMailboxTest extends TestSuiteBase {
         assertEquals("unknown", mailbox.append("anonymous", null, null, null).sender());
     }
 
+    /**
+     * A stored line with no sender decodes to the same attribution
+     * {@link WorkstreamMailbox#append} gives one, so a message's identity does
+     * not depend on whether it has been through the file yet.
+     */
+    @Test(timeout = 10000)
+    public void storedLineWithoutSenderDecodesAsAttributed() {
+        assertEquals("unknown",
+                WorkstreamMailbox.Message.fromJson("{\"seq\":1,\"text\":\"ok\"}").sender());
+        assertEquals("unknown", WorkstreamMailbox.Message
+                .fromJson("{\"seq\":1,\"text\":\"ok\",\"sender\":\"\"}").sender());
+    }
+
+    /** A decoded message renders again without losing its attribution. */
+    @Test(timeout = 10000)
+    public void senderlessLineSurvivesReloadAndCompaction() throws IOException {
+        File file = directory().resolve(WORKSTREAM + ".ndjson").toFile();
+        Files.write(file.toPath(),
+                "{\"seq\":1,\"text\":\"legacy\"}\n".getBytes(StandardCharsets.UTF_8));
+
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, file);
+        assertEquals("unknown", mailbox.read(0, null, 0).messages().get(0).sender());
+        assertTrue(mailbox.read(0, null, 0).toJson().contains("\"sender\":\"unknown\""));
+    }
+
     /** A stored line without a usable sequence or body is not a message. */
     @Test(timeout = 10000)
     public void malformedMessagesDoNotParse() {
