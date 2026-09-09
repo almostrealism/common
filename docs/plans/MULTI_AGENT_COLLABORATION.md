@@ -426,7 +426,9 @@ somewhere else entirely, or triggered a redundant clone.
 **Fix:** give `ShellCommandJob.Factory` a `defaultWorkspacePath` property,
 following the exact pattern already used for `repoUrl` (get/set through the
 factory's own base64-encoded property map), and thread it through
-`nextJob()`. In `FlowTreeApiEndpoint#submitShellCommandJob`, add the same
+`nextJob()`. In the shell-job submission path (extracted into
+`ShellCommandSubmissionHandler#handle` alongside this change, since
+`FlowTreeApiEndpoint` was already near its file-length cap), add the same
 `listener.getDefaultWorkspacePath()` propagation the coding-agent path already
 has. No change is needed to `GitManagedJob`, `GitManagedJobCodec`, or
 `GitRepositorySetup` — they already do the right thing once the factory
@@ -523,7 +525,7 @@ it is in scope here because it is required for `selfNotify` to tell the truth.
 |---|---|---|
 | Submission tool | `tools/mcp/manager/workstream_submit_tools.py` | `self_notify: bool = False` param + docstring; `payload["selfNotify"]`; client-side rejection when not a shell job |
 | HTTP submit | `FlowTreeApiEndpoint#handleSubmit` | extract `selfNotify`; reject with a 400-style error when `!shellJob` |
-| HTTP submit (shell) | `FlowTreeApiEndpoint#submitShellCommandJob` | `factory.setSelfNotify(selfNotify)`; `factory.setDefaultWorkspacePath(listener.getDefaultWorkspacePath())` (Problem 1's fix); submit response reports `selfNotify` back |
+| HTTP submit (shell) | `ShellCommandSubmissionHandler#handle` | `factory.setSelfNotify(selfNotify)`; `factory.setDefaultWorkspacePath(listener.getDefaultWorkspacePath())` (Problem 1's fix); submit response reports `selfNotify` back |
 | Factory | `ShellCommandJob.Factory` | `defaultWorkspacePath` and `selfNotify` fields/accessors, mirroring the existing `repoUrl` pattern |
 | Factory -> job | `ShellCommandJob.Factory#nextJob` | `job.setDefaultWorkspacePath(...)`, `job.setSelfNotify(...)` |
 | Job | `ShellCommandJob` | `selfNotify` field + accessors; `createEvent` override (exit-code fix) |
@@ -547,23 +549,23 @@ it is in scope here because it is required for `selfNotify` to tell the truth.
   workstream; respects the kill switch, the per-listener window ceiling, and
   the debounce identically to `fanout`; a source workstream with no
   registered `Workstream` entry is a no-op (mirrors `wakeup_source_missing`).
-- An HTTP-level test on `handleSubmit` / `submitShellCommandJob`:
+- An HTTP-level test on `handleSubmit` / `ShellCommandSubmissionHandler#handle`:
   `selfNotify=true` on a coding-agent job (no `command`) is rejected;
   `selfNotify=true` on a shell job is accepted and reaches the factory.
 
 ### Implementation order
 
 1. Working-directory fix (Problem 1): `ShellCommandJob.Factory` gains
-   `defaultWorkspacePath`; `submitShellCommandJob` propagates it. Independent
-   of everything below; lands and is tested on its own.
+   `defaultWorkspacePath`; `ShellCommandSubmissionHandler#handle` propagates
+   it. Independent of everything below; lands and is tested on its own.
 2. `createEvent` exit-code fix on `ShellCommandJob`, with its own test —
    independent of `selfNotify`, but a prerequisite for it to be meaningful.
 3. `selfNotify` wire threading: `JobCompletionEvent` field, `ShellCommandJob`
    field/accessors/encode/set/`populateEventDetails`, `ShellCommandJob.Factory`
    field/accessors, `nextJob()` propagation.
-4. Controller wiring: `handleSubmit` validation, `submitShellCommandJob`
-   plumbing, `handleStatusEvent` parsing, `completeJob` dispatch,
-   `CompletionListenerFanout#fanoutSelf`.
+4. Controller wiring: `handleSubmit` validation,
+   `ShellCommandSubmissionHandler#handle` plumbing, `handleStatusEvent`
+   parsing, `completeJob` dispatch, `CompletionListenerFanout#fanoutSelf`.
 5. `workstream_submit_task` MCP parameter + docstring.
 6. Tests per the plan above; `ar-build-validator` (checkstyle, code_policy,
    test_timeouts, duplicate_code) before declaring done.
