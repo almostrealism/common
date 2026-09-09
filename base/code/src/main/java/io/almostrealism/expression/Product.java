@@ -130,6 +130,7 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalLong.empty();
+		// TODO(review): unguarded overflow, unlike the Math.multiplyExact guard in lowerBound() below
 		long v = values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b);
 
 		// Some of the children may have negative upper bounds, but that does not
@@ -167,15 +168,21 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		long lo = 1;
 		long hi = 1;
 
-		for (int i = 0; i < lower.size(); i++) {
-			long l = lower.get(i).getAsLong();
-			long h = upper.get(i).getAsLong();
-			long a = lo * l;
-			long b = lo * h;
-			long c = hi * l;
-			long d = hi * h;
-			lo = Math.min(Math.min(a, b), Math.min(c, d));
-			hi = Math.max(Math.max(a, b), Math.max(c, d));
+		try {
+			for (int i = 0; i < lower.size(); i++) {
+				long l = lower.get(i).getAsLong();
+				long h = upper.get(i).getAsLong();
+				long a = Math.multiplyExact(lo, l);
+				long b = Math.multiplyExact(lo, h);
+				long c = Math.multiplyExact(hi, l);
+				long d = Math.multiplyExact(hi, h);
+				lo = Math.min(Math.min(a, b), Math.min(c, d));
+				hi = Math.max(Math.max(a, b), Math.max(c, d));
+			}
+		} catch (ArithmeticException e) {
+			// If the interval arithmetic overflows, the bound is unknown rather
+			// than a silently wrapped, incorrect value
+			return OptionalLong.empty();
 		}
 
 		return OptionalLong.of(lo);

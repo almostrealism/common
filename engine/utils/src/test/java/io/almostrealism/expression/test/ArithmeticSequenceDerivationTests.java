@@ -263,6 +263,28 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * The interval arithmetic used by {@link Product#lowerBound} to bound a product with
+	 * a possibly-negative factor multiplies combinations of each factor's lower and upper
+	 * bound together across every child. When two children each carry a bound whose
+	 * magnitude is close to {@code Long.MAX_VALUE}, those intermediate products overflow;
+	 * the bound must be reported as unknown rather than silently wrapping to an incorrect,
+	 * arbitrary value that a caller such as {@link Expression#isPossiblyNegative()} would
+	 * otherwise trust.
+	 */
+	@Test(timeout = 30000)
+	public void productLowerBoundOverflowIsUnknown() {
+		long c = Long.MAX_VALUE / 4;
+		Expression<?> coarse1 = kernel().imod(10).multiply(-c);
+		Expression<?> coarse2 = kernel().imod(10).multiply(-c);
+		Assert.assertTrue(coarse1.isPossiblyNegative());
+		Assert.assertTrue(coarse2.isPossiblyNegative());
+
+		Expression<?> product = Product.of(coarse1, coarse2);
+		Assert.assertTrue("an overflowing product bound must be reported as unknown",
+				product.lowerBound().isEmpty());
+	}
+
+	/**
 	 * A floating-point quotient keeps its remainder even when every constant involved
 	 * has an integral value: {@code (k + 1024.0) / 2048.0} is not {@code 0.5}.
 	 */
