@@ -118,12 +118,15 @@ some rational way on our own work stream."*
   "seq": 7,
   "createdAt": "2026-09-08T19:12:33.129Z",
   "sender": "job:b6e8f404",
-  "workstreamId": "1cef7061-…",
   "jobId": "b6e8f404-…",
   "activity": "",
   "text": "Ready. vLLM is up on halo, rungs bf16 and rtn-w4 are healthy."
 }
 ```
+
+`workstreamId` is not itself a field on the message: the mailbox is already
+scoped to one workstream by the URL path, so it would be redundant on every
+line.
 
 `seq` is a monotonically increasing 64-bit integer assigned by the controller
 under the mailbox's lock, so ordering is total within a workstream. Readers are
