@@ -19,9 +19,9 @@ import sys
 import tempfile
 import time
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 _SERVER_DIR = Path(__file__).resolve().parent
 if str(_SERVER_DIR) not in sys.path:
@@ -568,6 +568,121 @@ class InvocationReportCopyTest(unittest.TestCase):
         inv_dir = self.runs_dir / "run2" / "reports" / "invocation_2"
         counts = reports.SurefireReports(inv_dir).counts()
         self.assertEqual(10, counts["tests_run"])
+
+
+class CompletionReportOrderingTest(unittest.TestCase):
+    """A finished run must already carry all of its reports.
+
+    ``get_run_status`` recomputes the counts from the run's report directory on
+    every call, and a blocking caller reads them the instant the status turns
+    terminal. Marking the run finished before the reports were copied therefore
+    handed that caller whichever fraction of the copy had landed — a real run of
+    1319 tests was reported as 1217, low enough to look plausible and wrong
+    enough to misrepresent the result.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        tmp = Path(self._tmp)
+
+        self.module = "engine/utils"
+        self.project_root = tmp
+        self.reports_src = tmp / self.module / "target" / "surefire-reports"
+        self.reports_src.mkdir(parents=True)
+        # RunConfig.project_root() rejects a directory with no reactor pom.
+        (tmp / "pom.xml").write_text("<project/>\n")
+        self.runs_dir = tmp / "runs"
+        (self.runs_dir / "run1").mkdir(parents=True)
+
+        # RUNS_DIR is read directly for the report directory, while the
+        # metadata store binds its own copy at construction; both have to
+        # point at the temporary directory for a run to be self-consistent.
+        self._patches = [
+            patch.object(server, "RUNS_DIR", self.runs_dir),
+            patch.object(server.runner, "store",
+                         server.run_store.RunStore(self.runs_dir)),
+        ]
+        for p in self._patches:
+            p.start()
+
+        server.runner._save_metadata_dict("run1", {
+            "run_id": "run1",
+            "status": "running",
+            "started_at": (datetime.now() - timedelta(seconds=10)).isoformat(),
+            "repetitions": 1,
+        })
+
+        path = self.reports_src / "TEST-com.example.OneTest.xml"
+        path.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<testsuite name="com.example.OneTest" tests="7" '
+            'failures="0" errors="0" skipped="0"></testsuite>\n')
+
+    def tearDown(self):
+        for p in self._patches:
+            p.stop()
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_reports_are_collected_before_the_status_turns_terminal(self):
+        """The copy must happen while the run still reads as running."""
+        observed = []
+        original = server.runner._copy_surefire_reports
+
+        def recording_copy(run_id, module, project_root):
+            observed.append(server.runner._load_metadata(run_id)["status"])
+            return original(run_id, module, project_root)
+
+        process = MagicMock()
+        process.wait.return_value = 0
+        config = server.RunConfig(module=self.module, project=str(self.project_root))
+
+        with patch.object(server.runner, "_copy_surefire_reports", recording_copy):
+            server.runner._watch_completion(
+                "run1", process, self.module, config, self.runs_dir / "run1")
+
+        self.assertEqual(["running"], observed,
+                         "reports must be copied before the run is marked finished")
+
+    def test_a_completed_run_reports_its_full_count(self):
+        """Once terminal, the counts read back complete.
+
+        An end-to-end check rather than a guard on the ordering — the copy is
+        synchronous here, so this passes either way. The test above is the one
+        that fails if the ordering regresses.
+        """
+        process = MagicMock()
+        process.wait.return_value = 0
+        config = server.RunConfig(module=self.module, project=str(self.project_root))
+
+        server.runner._watch_completion(
+            "run1", process, self.module, config, self.runs_dir / "run1")
+
+        status = server.runner.get_run_status("run1")
+        self.assertEqual("completed", status["status"])
+        self.assertEqual(7, status["tests_run"])
+
+    def test_a_failed_collection_still_finishes_the_run(self):
+        """Collecting results must not decide whether a run is reported done.
+
+        The reorder above put the copy on the path to the terminal status, so
+        an exception there would strand the run at "running" and hang every
+        caller blocking on it — a worse failure than the incomplete counts the
+        reorder was fixing.
+        """
+        process = MagicMock()
+        process.wait.return_value = 0
+        config = server.RunConfig(module=self.module, project=str(self.project_root))
+
+        def failing_copy(run_id, module, project_root):
+            raise OSError("surefire directory vanished")
+
+        with patch.object(server.runner, "_copy_surefire_reports", failing_copy):
+            server.runner._watch_completion(
+                "run1", process, self.module, config, self.runs_dir / "run1")
+
+        status = server.runner.get_run_status("run1")
+        self.assertEqual("completed", status["status"])
+        self.assertEqual(0, status["exit_code"])
 
 
 if __name__ == "__main__":

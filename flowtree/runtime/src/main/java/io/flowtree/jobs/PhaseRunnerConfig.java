@@ -24,6 +24,7 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -42,15 +43,40 @@ import java.util.function.Consumer;
  *
  * <p>Extracted from {@link CodingAgentJob} so the orchestrator class is not
  * burdened with the consistency logic between the legacy runner fields and the
- * {@link PhaseConfigBundle}. {@link CodingAgentJob} exposes the same public API
- * by delegating to an instance of this class. Not thread-safe; owned by a
- * single job.</p>
+ * {@link PhaseConfigBundle}. {@link CodingAgentJob} and
+ * {@link CodingAgentJobFactory} both expose the same public API by delegating
+ * to an instance of this class. Not thread-safe; owned by a single job or
+ * factory.</p>
+ *
+ * <p>A factory additionally has to keep the serialized property store in step
+ * with this state, because its configuration travels to a worker over the
+ * wire. That is what the optional <em>property sink</em> is for: a mutation
+ * publishes the wire keys it changed, and an owner that does not serialize
+ * simply supplies no sink. The decode direction is the {@code apply*} methods,
+ * which assign without publishing, so that reading a property back off the
+ * wire does not re-emit it.</p>
  *
  * @author Michael Murray
  * @see CodingAgentJob
+ * @see CodingAgentJobFactory
  * @see PhaseConfigBundle
  */
 class PhaseRunnerConfig {
+
+    /** Wire key carrying {@link #defaultRunner}. */
+    static final String DEFAULT_RUNNER_KEY = "defaultRunner";
+
+    /** Wire key carrying the encoded {@link #runnerByPhase} map. */
+    static final String RUNNER_MAP_KEY = "runners";
+
+    /** Wire key carrying the encoded {@link #phaseConfigBundle}. */
+    static final String PHASE_CONFIG_BUNDLE_KEY = "phaseConfigBundle";
+
+    /**
+     * Receives {@code (key, value)} for each wire property a mutation changed,
+     * or {@code null} when this configuration is not serialized.
+     */
+    private final BiConsumer<String, String> propertySink;
 
     /**
      * Legacy single-runner field retained for backwards source compatibility.
@@ -74,6 +100,23 @@ class PhaseRunnerConfig {
      * are kept in lockstep with it by {@link #setPhaseConfigBundle(PhaseConfigBundle)}.
      */
     private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
+
+    /** Constructs a configuration whose state is not serialized. */
+    PhaseRunnerConfig() {
+        this(null);
+    }
+
+    /**
+     * Constructs a configuration that publishes its wire properties as they
+     * change.
+     *
+     * @param propertySink receives {@code (key, value)} for each wire property
+     *                     a mutation changed, or {@code null} when this
+     *                     configuration is not serialized
+     */
+    PhaseRunnerConfig(BiConsumer<String, String> propertySink) {
+        this.propertySink = propertySink;
+    }
 
     /**
      * Returns the legacy default-runner alias. Equivalent to
@@ -102,6 +145,7 @@ class PhaseRunnerConfig {
         this.defaultRunner = resolved;
         this.phaseConfigBundle = phaseConfigBundle.withDefaultRunner(
                 (runnerName == null || runnerName.isEmpty()) ? null : runnerName);
+        publishDefaultRunner();
     }
 
     /**
@@ -153,6 +197,7 @@ class PhaseRunnerConfig {
             if (existing != null) {
                 phaseConfigBundle = phaseConfigBundle.withPhase(phase, existing.withRunner(null));
             }
+            publishRunnerMap();
             return;
         }
         AgentRunnerRegistry.validateName(runnerName);
@@ -161,6 +206,7 @@ class PhaseRunnerConfig {
         PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
                 .withRunner(runnerName);
         phaseConfigBundle = phaseConfigBundle.withPhase(phase, updated);
+        publishRunnerMap();
     }
 
     /**
@@ -189,6 +235,23 @@ class PhaseRunnerConfig {
      *               {@link PhaseConfigBundle#EMPTY}
      */
     void setPhaseConfigBundle(PhaseConfigBundle bundle) {
+        applyPhaseConfigBundle(bundle);
+        publishDefaultRunner();
+        publishRunnerMap();
+        publish(PHASE_CONFIG_BUNDLE_KEY,
+                CodingAgentJobCodec.encodePhaseConfigBundle(phaseConfigBundle));
+    }
+
+    /**
+     * Replaces the bundle exactly as {@link #setPhaseConfigBundle} does, but
+     * without publishing anything. This is the decode direction: the value
+     * came off the wire, so re-emitting it would be redundant at best and
+     * recursive at worst.
+     *
+     * @param bundle the new bundle; {@code null} resets to
+     *               {@link PhaseConfigBundle#EMPTY}
+     */
+    void applyPhaseConfigBundle(PhaseConfigBundle bundle) {
         this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
         PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
         // Resync legacy runner fields, bypassing the bundle update path that the
@@ -260,5 +323,60 @@ class PhaseRunnerConfig {
         String name = resolveEffectivePhaseConfig(phase).runner();
         if (name == null || name.isEmpty()) name = getRunnerForPhase(phase);
         return AgentRunnerRegistry.get(name != null ? name : AgentRunnerRegistry.CLAUDE);
+    }
+
+    /**
+     * Sets the default runner from a decoded wire value, without publishing and
+     * without validating against the registry.
+     *
+     * <p>A value that arrived over the wire was already validated by whoever
+     * set it. Rejecting it here would fail a worker that is merely reading what
+     * a controller sent, which is not the worker's decision to make.</p>
+     *
+     * @param value the decoded runner identifier; {@code null}/empty resets to
+     *              {@link AgentRunnerRegistry#CLAUDE}
+     */
+    void applyDefaultRunner(String value) {
+        String resolved = (value == null || value.isEmpty())
+                ? AgentRunnerRegistry.CLAUDE : value;
+        this.runnerName = resolved;
+        this.defaultRunner = resolved;
+    }
+
+    /**
+     * Applies the legacy single-runner wire key, which is honoured only while
+     * no explicit default has been decoded.
+     *
+     * <p>The two keys can both appear in one property stream, in either order.
+     * Deferring to an explicit {@code defaultRunner} means the newer key wins
+     * regardless of which arrives first.</p>
+     *
+     * @param value the decoded runner identifier
+     */
+    void applyLegacyRunner(String value) {
+        if (!AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) return;
+        applyDefaultRunner(value);
+    }
+
+    /** Publishes {@link #defaultRunner}, omitting it when it is the default runner. */
+    private void publishDefaultRunner() {
+        publish(DEFAULT_RUNNER_KEY,
+                AgentRunnerRegistry.CLAUDE.equals(defaultRunner) ? null : defaultRunner);
+    }
+
+    /** Publishes {@link #runnerByPhase}, omitting it when there are no overrides. */
+    private void publishRunnerMap() {
+        publish(RUNNER_MAP_KEY,
+                runnerByPhase.isEmpty() ? null : Phase.encodeRunnerMap(runnerByPhase));
+    }
+
+    /**
+     * Publishes one wire property, when there is anywhere to publish it to.
+     *
+     * @param key   the wire key
+     * @param value the value, or {@code null} to clear the key
+     */
+    private void publish(String key, String value) {
+        if (propertySink != null) propertySink.accept(key, value);
     }
 }

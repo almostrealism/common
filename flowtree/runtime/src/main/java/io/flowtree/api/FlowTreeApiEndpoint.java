@@ -31,6 +31,7 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -54,6 +55,7 @@ import io.flowtree.controller.FlowTreeController;
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.submission.SubmissionConfigResolver;
+import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
@@ -77,6 +79,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the workstream's channel</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/mailbox?since=&amp;wait=&amp;exclude=</td><td>--</td><td>Read the workstream's conversation, blocking until a peer posts — see {@link MailboxEndpointHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
  *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"...","repoUrl":"...","createWorkstreamIfMissing":true}}</td><td>Submit a job, resolving the workstream from the request body and optionally creating it</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
@@ -222,6 +225,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * harness cannot crash the controller.
      */
     private CompletionListenerFanout completionListenerFanout;
+    /**
+     * Holds the per-workstream conversations that {@code /messages} appends to
+     * and {@code /mailbox} reads from. Memory-only until
+     * {@link #setMailboxDirectory(File)} roots it in the controller's data
+     * directory.
+     */
+    private MailboxRegistry mailboxes = new MailboxRegistry();
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
     private String memoryServerUrl;
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
@@ -381,6 +391,28 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Persists workstream conversations under the controller's data directory,
+     * replacing the memory-only default so a conversation survives a restart.
+     *
+     * @param dataDirectory the controller's data directory; conversations are
+     *                      written to its
+     *                      {@value MailboxRegistry#DIRECTORY_NAME} subdirectory
+     */
+    public void setMailboxDirectory(File dataDirectory) {
+        this.mailboxes = new MailboxRegistry(
+                new File(dataDirectory, MailboxRegistry.DIRECTORY_NAME));
+    }
+
+    /**
+     * Returns the registry holding each workstream's conversation.
+     *
+     * @return the mailbox registry; never {@code null}
+     */
+    public MailboxRegistry getMailboxRegistry() {
+        return mailboxes;
+    }
+
+    /**
      * Sets the stats store for the {@code /api/stats} endpoint.
      *
      * @param statsStore the stats store, or null to disable stats queries
@@ -484,6 +516,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return newFixedLengthResponse(Response.Status.OK, "application/json",
                     WorkstreamListing.toJson(session, notifiers.allWorkstreams(),
                             statsQueryHandler.store(), githubProxyHandler));
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
+                && uri.endsWith("/mailbox")) {
+            String workstreamId = uri.substring("/api/workstreams/".length(),
+                    uri.length() - "/mailbox".length());
+            return mailboxEndpointHandler().handle(session, workstreamId);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
@@ -829,6 +868,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "falsificationEnabled"))
             factory.setFalsificationEnabled(
                     extractJsonBooleanField(body, "falsificationEnabled"));
+        // Collaboration with a peer agent — disabled by default; opt in explicitly
+        if (extractJsonHasField(body, "collaborative"))
+            factory.setCollaborative(extractJsonBooleanField(body, "collaborative"));
         // tmux-backed agent launch — per-job use_tmux flag wins when the
         // request body sets it; otherwise the workstream's defaultUseTmux
         // setting applies. The body is parsed here so the schema-alignment
@@ -999,6 +1041,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(factory.isRetrospectiveEnabled());
         json.append(",\"falsificationEnabled\":")
                 .append(factory.isFalsificationEnabled());
+        json.append(",\"collaborative\":").append(factory.isCollaborative());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
         // Report an auto-created workstream so a caller that submitted with
@@ -1478,8 +1521,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *         notifier registry
      */
     private MessageEndpointHandler messageEndpointHandler() {
-        return new MessageEndpointHandler(notifiers, memoryServerUrl,
+        return new MessageEndpointHandler(notifiers, mailboxes, memoryServerUrl,
                 this::readBody, this::errorResponse, this::log, this::warn);
+    }
+
+    /**
+     * Builds the mailbox endpoint handler bound to this endpoint.
+     * See {@link MailboxEndpointHandler}.
+     *
+     * @return a fresh handler reflecting the current mailbox and notifier
+     *         registries
+     */
+    private MailboxEndpointHandler mailboxEndpointHandler() {
+        return new MailboxEndpointHandler(notifiers, mailboxes, this::errorResponse);
     }
 
     /**
