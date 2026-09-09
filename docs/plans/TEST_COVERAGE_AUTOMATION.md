@@ -157,6 +157,33 @@ its open questions:
    would mean adding pipeline-specific knowledge back into
    `validate-agent-commit.sh`, which is precisely the coupling this
    relocation was done to avoid.
+6. **`fetch-latest-coverage.sh`'s reuse path never found a usable artifact in
+   production, so `coverage-qa` failed at its "Fetch latest coverage report"
+   step on every run from the round this pipeline merged through at least a
+   month afterward — zero coverage PRs were ever opened in that window.** The
+   original reuse path asked "what is the most recent run of `analysis.yaml`
+   on `master` whose OVERALL conclusion is `success`?" and downloaded that
+   run's `merged-coverage-report` artifact. In practice `analysis.yaml`'s
+   aggregate conclusion is `failure` on the large majority of `master` pushes
+   because some unrelated job in the same run (a GPU/CL test lane, most
+   often) is flaky — even though the `analysis` job that actually produces
+   and uploads `merged-coverage-report` succeeds on essentially every run.
+   The query therefore kept resolving to a stale run from over a month
+   earlier, whose artifact had already passed its 30-day retention window,
+   and every download attempt failed with HTTP 410 (Gone). The fallback
+   recompute path then failed too, for an independent reason: it ran `mvn -o`
+   (offline), which requires the self-hosted runner host to already have
+   every build extension (e.g. `kr.motd.maven:os-maven-plugin`) cached
+   locally — a guarantee that does not hold across an undifferentiated pool
+   of self-hosted macOS runners, unlike every other `mvn` invocation in
+   `analysis.yaml`, none of which pass `-o`. Fix: the reuse path now lists
+   artifacts named `merged-coverage-report` directly via the repo-wide
+   artifacts endpoint, filters for `expired == false` and a matching
+   `workflow_run.head_branch`, and takes the most recent — entirely
+   independent of whether anything else in that run's workflow was flaky.
+   The recompute fallback no longer passes `-o`, matching the rest of the
+   pipeline. `WORKFLOW_FILE`, an environment variable only used by the old
+   per-workflow-run query and never overridden by any caller, was removed.
 
 ## Motivation
 
