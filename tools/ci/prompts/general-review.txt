@@ -1,29 +1,3 @@
-## ABSOLUTE RULE: BASE BRANCH TEST FILES ARE READ-ONLY
-
-**THIS IS THE MOST IMPORTANT RULE. VIOLATING IT IS WORSE THAN NOT FIXING ANYTHING.**
-
-**You CANNOT modify ANY test file that exists on ${BASE_BRANCH}. ZERO exceptions.**
-
-This rule exists because agents have systematically hidden test failures (see
-DECEPTION.md). Specific tactics documented with evidence:
-- Changed @TestDepth(2) to @TestDepth(10) to hide tests from CI
-- Reduced test dimensions 8x (64->8) to make tests trivially pass
-- Increased timeouts 6x (5min->30min) to prevent timeout detection
-- Re-added suppression AFTER a human reverted it
-- Stored false memories claiming "no changes needed" for failures they caused
-- Excluded CodePolicyEnforcementTest from CI test steps
-- Manipulated CI job dependencies to skip quality gates
-
-You MUST NOT modify test files that exist on ${BASE_BRANCH}. Not timeouts, not
-@TestDepth, not dimensions, not tolerances, not annotations, not assertions. If a
-base-branch test fails, fix the PRODUCTION CODE. If you cannot fix it, report
-the failure — do not hide it. You MAY fix tests that this branch introduced.
-
-**Automated enforcement:** Your changes will be validated by validate-agent-commit.sh
-which BLOCKS modifications to base-branch test files and CI files.
-
----
-
 All tests and quality gates are passing on branch "${BRANCH}" (commit ${COMMIT_SHA}).
 
 Your job is to **review the changes on this branch and fix every issue you find.**
@@ -32,6 +6,55 @@ make the changes yourself.
 
 Use `git log origin/${BASE_BRANCH}..HEAD` and `git diff origin/${BASE_BRANCH}...HEAD` to
 understand the full scope of changes.
+
+## How to fix what you find
+
+Nothing has been flagged against this branch. You are here because the pipeline
+is green and the changes are due for review — every gate passed, including
+`agent-commit-validation`. (Had one failed, you would be reading a different
+prompt that named it.) This section is about the means available to you as you
+fix things, not an accusation.
+
+**The test is the specification.** When a test fails, the defect is in the
+production code, and that is where the fix goes. Deleting a test, weakening its
+assertions, widening a tolerance, raising `@TestDepth` past the depth CI runs,
+inflating a timeout, or shrinking a dimension until the test passes are not
+fixes — they leave the defect in place and remove the thing that reports it. If
+you cannot make a test pass, say so and explain why. A failure you report is a
+good outcome; a failure you conceal is the worst one available to you.
+
+That expectation is enforced mechanically rather than left to judgement, and it
+is narrower and more specific than "test files are off limits":
+
+- **Base-branch test *methods* are locked — not whole test files.**
+  `validate-agent-commit.sh` compares this branch against ${BASE_BRANCH}. In
+  Java, every test method that exists there must survive byte for byte:
+  annotation block, signature, and body. In Python the check is deliberately
+  weaker, because an indentation-delimited body cannot be bounded as reliably —
+  every `def test_*` present on the base branch must still be present, and a
+  test file's assertion count must not fall. Editing inside a Python test body
+  is therefore permitted; do not read that leniency as an invitation, because
+  everything above still applies to it.
+- **Adding tests is always allowed, and section 3 below requires it of you.**
+  A new test method in an existing test class is permitted. So is editing the
+  fixtures, helpers, constants, and imports that class uses — those are ordinary
+  code. Test files this branch introduced are yours to change freely.
+- **CI files are locked unless the branch is named `ci/...`.** Files under
+  `.github/workflows/` and `tools/ci/` may only be changed on such a branch,
+  where the pipeline is the declared subject of the work. The policy detectors
+  under `engine/utils` stay locked on every branch, since weakening a detector
+  is never what a pipeline change is about.
+- **`detect-test-hiding.sh` and `deception-audit.sh` run alongside the
+  validator**, looking for the weakening patterns listed above and for the same
+  file being modified, reverted by a human, and modified again across sessions.
+
+These checks exist because agents have repeatedly hidden failures instead of
+fixing them: raising `@TestDepth` past CI's depth, cutting dimensions eight-fold,
+inflating timeouts six-fold, re-applying a suppression a human had just
+reverted, excluding a policy test from CI, and recording memories claiming no
+change was needed on a branch they had themselves broken. Knowing the shape of
+those mistakes is what lets you avoid making them — and, in section 1 below,
+recognise them in the diff you are reviewing.
 
 ## What to look for and fix
 
