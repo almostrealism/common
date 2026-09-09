@@ -420,8 +420,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 			if (demoteMod || demoteInput) {
 				long l = (demoteMod ? mod : (Expression) input).longValue().getAsLong();
-				Expression<? extends Number> converted =
-						l == (int) l ? new IntegerConstant((int) l) : new LongConstant(l);
+				Expression<? extends Number> converted = Constant.exactInteger(l);
 				return demoteMod ? create(input, converted, false)
 						: create(converted, mod, false);
 			}

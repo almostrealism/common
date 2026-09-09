@@ -324,7 +324,14 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 		} else if (offset % operand == 0 && scale % operand == 0) {
 			return new ArithmeticIndexSequence(offset / operand, scale / operand, granularity, mod, len);
 		} else if (offset == 0 && operand % Math.abs(scale) == 0) {
-			long coarser = granularity * (operand / Math.abs(scale));
+			long coarser;
+
+			try {
+				coarser = Math.multiplyExact(granularity, operand / Math.abs(scale));
+			} catch (ArithmeticException e) {
+				return null;
+			}
+
 			return new ArithmeticIndexSequence(0, Long.signum(scale), coarser, mod, len);
 		}
 

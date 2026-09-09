@@ -189,6 +189,28 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * When a sum has more than one term that cannot be resolved by the simpler
+	 * single-remainder fold in {@link Quotient#create}, the construction-time
+	 * bounded-remainder rule still drops every term below the shared factor, exactly
+	 * as its derivation-time counterpart does for {@link ArithmeticIndexSequence}.
+	 */
+	@Test(timeout = 30000)
+	public void boundedRemainderFoldsMultipleRemainderTermsAtConstruction() {
+		Expression<?> coarse = kernel().imod(10).multiply(8);
+		Expression<?> remainderA = kernel().imod(3);
+		Expression<?> remainderB = kernel().imod(5);
+		Expression<?> quotient = Quotient.of(Sum.of(coarse, remainderA, remainderB), e(8));
+		log(quotient.getExpression(lang));
+
+		Assert.assertEquals(kernel().imod(10).getExpression(lang), quotient.getExpression(lang));
+
+		for (int i = 0; i < 200; i++) {
+			long expected = ((i % 10) * 8 + (i % 3) + (i % 5)) / 8;
+			Assert.assertEquals("at " + i, expected, quotient.value(new IndexValues().put(kernel(), i)).longValue());
+		}
+	}
+
+	/**
 	 * The mixed-radix forms produced by convolution deltas fold at construction: a
 	 * modulus drops the terms that are multiples of it, and a quotient drops a
 	 * remainder term bounded below a factor of the divisor.

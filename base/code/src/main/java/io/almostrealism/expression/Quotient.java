@@ -254,6 +254,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	 * does and the division is exact under
 	 * {@link ArithmeticIndexSequence#dividedExactly(long)}.</p>
 	 */
+	// TODO(review): the bounded-remainder/GCD-based term-dropping logic below (and its
+	// counterpart in ArithmeticIndexSequence) is complex exact-arithmetic reasoning that
+	// warrants dedicated edge-case verification (negative operands, zero divisor, overflow).
 	@Override
 	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
 		if (isFP() || getChildren().size() != 2) return null;
