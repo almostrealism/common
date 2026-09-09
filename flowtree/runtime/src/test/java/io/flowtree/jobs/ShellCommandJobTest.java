@@ -259,8 +259,6 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		factory.setRepoUrl("git@github.com:almostrealism/common.git");
 		factory.setTargetBranch("feature/y");
 		factory.setWorkstreamUrl("http://0.0.0.0:8080/api/workstreams/ws-2/jobs/x");
-		factory.setDefaultWorkspacePath("/workspace/project");
-		factory.setSelfNotify(true);
 
 		assertEquals(0.0, factory.getCompleteness(), 1e-9);
 		Job next = factory.nextJob();
@@ -271,11 +269,23 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		assertEquals("feature/y", job.getTargetBranch());
 		assertEquals("http://0.0.0.0:8080/api/workstreams/ws-2/jobs/x",
 				job.getWorkstreamUrl());
-		assertEquals("/workspace/project", job.getDefaultWorkspacePath());
-		assertTrue(job.isSelfNotify());
 
 		assertNull(factory.nextJob());
 		assertEquals(1.0, factory.getCompleteness(), 1e-9);
+	}
+
+	/** Verifies the factory propagates the default workspace path and self-notify flag onto the dispatched job. */
+	@Test(timeout = 30000)
+	public void testFactoryNextJobPropagatesWorkspacePathAndSelfNotify() {
+		ShellCommandJob.Factory factory = new ShellCommandJob.Factory("echo factory");
+		factory.setDefaultWorkspacePath("/workspace/project");
+		factory.setSelfNotify(true);
+
+		Job next = factory.nextJob();
+		assertNotNull(next);
+		ShellCommandJob job = (ShellCommandJob) next;
+		assertEquals("/workspace/project", job.getDefaultWorkspacePath());
+		assertTrue(job.isSelfNotify());
 	}
 
 	/** Verifies the factory wire encoding preserves the command and repo URL. */
