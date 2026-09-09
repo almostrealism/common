@@ -72,17 +72,25 @@ final class ShellCommandSubmissionHandler {
     private final IntSupplier listeningPort;
     /** Emits a log line via the parent endpoint's logger. */
     private final Consumer<String> log;
+    /**
+     * Records a job ID as legitimately eligible for self-notify on completion.
+     * See {@code FlowTreeApiEndpoint#selfNotifyJobs}: the completion event's
+     * self-notify flag is later resolved by membership in that registry rather
+     * than trusted from the posted status body.
+     */
+    private final Consumer<String> registerSelfNotifyJob;
 
     /**
      * Constructs a new handler bound to the given collaborators.
      *
-     * @param notifiers          the workspace notifier registry
-     * @param listener           Slack listener for the default workspace path (may be {@code null})
-     * @param server             the FlowTree server used to dispatch the job
-     * @param pendingDelayedJobs shared map of pending delayed-dispatch futures
-     * @param delayedJobExecutor executor used to schedule a delayed dispatch
-     * @param listeningPort      supplies the endpoint's current listening port
-     * @param log                log line consumer
+     * @param notifiers             the workspace notifier registry
+     * @param listener              Slack listener for the default workspace path (may be {@code null})
+     * @param server                the FlowTree server used to dispatch the job
+     * @param pendingDelayedJobs    shared map of pending delayed-dispatch futures
+     * @param delayedJobExecutor    executor used to schedule a delayed dispatch
+     * @param listeningPort         supplies the endpoint's current listening port
+     * @param log                   log line consumer
+     * @param registerSelfNotifyJob records a job ID as eligible for self-notify on completion
      */
     ShellCommandSubmissionHandler(NotifierRegistry notifiers,
                                   SlackListener listener,
@@ -90,7 +98,8 @@ final class ShellCommandSubmissionHandler {
                                   Map<String, ScheduledFuture<?>> pendingDelayedJobs,
                                   ScheduledExecutorService delayedJobExecutor,
                                   IntSupplier listeningPort,
-                                  Consumer<String> log) {
+                                  Consumer<String> log,
+                                  Consumer<String> registerSelfNotifyJob) {
         this.notifiers = notifiers;
         this.listener = listener;
         this.server = server;
@@ -98,6 +107,7 @@ final class ShellCommandSubmissionHandler {
         this.delayedJobExecutor = delayedJobExecutor;
         this.listeningPort = listeningPort;
         this.log = log;
+        this.registerSelfNotifyJob = registerSelfNotifyJob;
     }
 
     /**
@@ -120,6 +130,9 @@ final class ShellCommandSubmissionHandler {
             String targetBranch, String repoUrl, int delaySeconds, boolean selfNotify) {
         ShellCommandJob.Factory factory = new ShellCommandJob.Factory(command);
         factory.setSelfNotify(selfNotify);
+        if (selfNotify) {
+            registerSelfNotifyJob.accept(factory.getTaskId());
+        }
 
         String effectiveRepoUrl = repoUrl != null ? repoUrl : workstream.getRepoUrl();
         if (effectiveRepoUrl != null) {

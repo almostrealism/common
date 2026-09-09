@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -155,6 +156,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup = id -> null;
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
+
+    /**
+     * Job IDs legitimately submitted with {@code selfNotify=true}, recorded at
+     * submission time by {@link #shellCommandSubmissionHandler()}. A completion
+     * event's self-notify flag is resolved by membership in this set rather than
+     * trusted from the posted status body -- otherwise any caller able to POST a
+     * completion event could set {@code selfNotify=true} on it and trigger a
+     * self-wake even for a job that was never validated as an eligible shell job.
+     */
+    private final Set<String> selfNotifyJobs = ConcurrentHashMap.newKeySet();
 
     /** Handles all {@code /api/github/proxy} requests and GitHub PR creation. */
     private final GitHubProxyHandler githubProxyHandler;
@@ -1074,7 +1085,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private ShellCommandSubmissionHandler shellCommandSubmissionHandler() {
         return new ShellCommandSubmissionHandler(notifiers, listener, server,
-                pendingDelayedJobs, delayedJobExecutor, this::getListeningPort, this::log);
+                pendingDelayedJobs, delayedJobExecutor, this::getListeningPort, this::log,
+                selfNotifyJobs::add);
     }
 
     /**
@@ -1141,7 +1153,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (pullRequestUrl != null) {
             event.withPullRequestUrl(pullRequestUrl);
         }
-        event.withSelfNotify(extractJsonBooleanField(body, "selfNotify"));
+        // Resolved from the server-side registry populated at submission time,
+        // NOT from the posted body -- see the selfNotifyJobs javadoc.
+        event.withSelfNotify(jobId != null && selfNotifyJobs.remove(jobId));
 
         if (event instanceof CodingAgentJobEvent) {
             CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;

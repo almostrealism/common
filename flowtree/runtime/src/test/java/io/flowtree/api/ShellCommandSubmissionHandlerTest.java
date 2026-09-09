@@ -36,6 +36,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -59,14 +60,26 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
     /**
      * Builds a handler bound to a fresh {@link RecordingServer} and the
      * given listener (may be {@code null}), immediate dispatch (no delay
-     * executor scheduling occurs in these tests).
+     * executor scheduling occurs in these tests). Self-notify job IDs are
+     * discarded; use the four-argument overload to observe them.
      */
     private static ShellCommandSubmissionHandler handler(NotifierRegistry notifiers,
             SlackListener listener, RecordingServer server) {
+        return handler(notifiers, listener, server, ConcurrentHashMap.newKeySet());
+    }
+
+    /**
+     * Builds a handler bound to a fresh {@link RecordingServer} and the
+     * given listener (may be {@code null}), recording self-notify-eligible
+     * job IDs into {@code selfNotifyJobs} exactly as
+     * {@link FlowTreeApiEndpoint#shellCommandSubmissionHandler()} wires it.
+     */
+    private static ShellCommandSubmissionHandler handler(NotifierRegistry notifiers,
+            SlackListener listener, RecordingServer server, Set<String> selfNotifyJobs) {
         Map<String, ScheduledFuture<?>> pending = new ConcurrentHashMap<>();
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         return new ShellCommandSubmissionHandler(notifiers, listener, server,
-                pending, executor, () -> 7780, msg -> { });
+                pending, executor, () -> 7780, msg -> { }, selfNotifyJobs::add);
     }
 
     /** Builds and registers a minimal workstream with the given ID on {@code notifier}. */
@@ -137,6 +150,50 @@ public class ShellCommandSubmissionHandlerTest extends TestSuiteBase {
         assertTrue(json.get("ok").asBoolean());
         assertTrue("submission response must echo selfNotify:true",
                 json.get("selfNotify").asBoolean());
+    }
+
+    /**
+     * A {@code selfNotify=true} submission registers the dispatched job's
+     * task ID into the self-notify registry, and an ordinary submission does
+     * not. {@link FlowTreeApiEndpoint#handleStatusEvent} resolves the
+     * self-notify flag on a completion event by membership in this registry
+     * rather than trusting the posted status body, so a caller able to POST a
+     * completion event cannot forge {@code selfNotify=true} for a job that was
+     * never validated as an eligible shell job.
+     */
+    @Test(timeout = 10000)
+    public void selfNotifySubmissionRegistersJobIdForCompletionValidation() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream workstream = ws("ws-shell-5", notifier);
+        RecordingServer server = new RecordingServer();
+        Set<String> selfNotifyJobs = ConcurrentHashMap.newKeySet();
+
+        handler(new NotifierRegistry(notifier, Collections.emptyMap()), null, server, selfNotifyJobs)
+                .handle("{}", workstream, "ws-shell-5", "sleep 600", null, null, 0, true);
+
+        ShellCommandJob.Factory factory = (ShellCommandJob.Factory) server.added.get(0);
+        assertTrue("selfNotify=true submission must register the task ID",
+                selfNotifyJobs.contains(factory.getTaskId()));
+    }
+
+    /**
+     * An ordinary submission (selfNotify=false) never registers its task ID,
+     * so a later forged {@code selfNotify=true} on that job's completion POST
+     * is ignored by {@link FlowTreeApiEndpoint#handleStatusEvent}.
+     */
+    @Test(timeout = 10000)
+    public void ordinarySubmissionDoesNotRegisterSelfNotifyJobId() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream workstream = ws("ws-shell-6", notifier);
+        RecordingServer server = new RecordingServer();
+        Set<String> selfNotifyJobs = ConcurrentHashMap.newKeySet();
+
+        handler(new NotifierRegistry(notifier, Collections.emptyMap()), null, server, selfNotifyJobs)
+                .handle("{}", workstream, "ws-shell-6", "echo hi", null, null, 0, false);
+
+        ShellCommandJob.Factory factory = (ShellCommandJob.Factory) server.added.get(0);
+        assertTrue("ordinary submission must not register a self-notify job ID",
+                selfNotifyJobs.isEmpty() && !selfNotifyJobs.contains(factory.getTaskId()));
     }
 
     /** An ordinary submission (selfNotify=false) omits the field from the response. */

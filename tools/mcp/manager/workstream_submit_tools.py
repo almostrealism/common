@@ -20,7 +20,6 @@ def workstream_submit_task(
     prompt: str = "",
     job_type: str = "",
     command: str = "",
-    self_notify: bool = False,
     workstream_id: str = "",
     target_branch: str = "",
     repo_url: str = "",
@@ -50,6 +49,7 @@ def workstream_submit_task(
     phase_configs: str = "",
     allow_commit_language: bool = False,
     collaborative: bool = False,
+    self_notify: bool = False,
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
@@ -90,18 +90,6 @@ def workstream_submit_task(
         command: The shell command to run for a shell-command job. Required
             when job_type="shell" (or when used to imply a shell job); ignored
             for a coding-agent job.
-        self_notify: When True, this job's own workstream is woken with a
-            follow-up coding-agent job when the command completes -- use
-            this to launch a long-running command and resume automatically
-            instead of polling. Only valid for a shell-command job; rejected
-            for a coding-agent job, which can already submit its own
-            follow-up as its last action. Unlike a standing completion
-            listener (workstream_register's completion_listeners), this is a
-            one-shot, per-job opt-in consumed by this single command's
-            completion -- it does not register anything on the workstream,
-            so it cannot create the standing self-listener loop that
-            registering a workstream as its own listener would. Defaults to
-            False.
         workstream_id: Explicit workstream to submit to (from workstream_list).
         target_branch: Git branch to resolve workstream by (alternative to
             workstream_id). Must be paired with ``repo_url`` when more than
@@ -318,6 +306,18 @@ def workstream_submit_task(
             machine. You reach it by calling ``send_message`` on the same
             workstream, and hear from it with ``await_message``. Defaults
             to ``False``, which submits an ordinary one-shot job.
+        self_notify: When True, this job's own workstream is woken with a
+            follow-up coding-agent job when the command completes -- use
+            this to launch a long-running command and resume automatically
+            instead of polling. Only valid for a shell-command job; rejected
+            for a coding-agent job, which can already submit its own
+            follow-up as its last action. Unlike a standing completion
+            listener (workstream_register's completion_listeners), this is a
+            one-shot, per-job opt-in consumed by this single command's
+            completion -- it does not register anything on the workstream,
+            so it cannot create the standing self-listener loop that
+            registering a workstream as its own listener would. Defaults to
+            False.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
