@@ -42,6 +42,8 @@ These fields are set during event construction and are always present:
 | `description` | `String` | Constructor | Human-readable description of the job (typically a truncated prompt or task summary). |
 | `timestamp` | `Instant` | Constructor (auto), overwritable by `setTimestamp()` | The instant at which the event was created in memory, set to `Instant.now()` in the constructor. For an event reconstructed from the `job_timing` table, `JobStatsStore.rowToEvent` overwrites this with the persisted `completed_at` (or `started_at` for `STARTED` rows) so readers see the real event time rather than the read-time instant. |
 
+`shortDescription(maxLength)` returns `description` truncated to `maxLength` characters with a trailing ellipsis marking the elision (a description that already fits is returned unchanged, and a missing description yields `""` rather than `null`). A budget too small to hold the ellipsis (3 characters or fewer) yields a plain truncation with no ellipsis instead, and a budget of zero or less yields `""`. Every reporting channel — Slack post, SMS alert, listing row — imposes its own length budget, so each calls this instead of truncating independently.
+
 ### Persisted Timestamp Fields
 
 These fields distinguish "when the event was constructed in memory" from "when the event actually happened," which matter once an event has round-tripped through `job_timing`:
@@ -79,6 +81,12 @@ These fields are set during event construction for `FAILED` status events:
 |---|---|---|---|
 | `pullRequestUrl` | `String` | `null` | The GitHub pull request URL detected after pushing, or `null` if no open PR was found. Set via `withPullRequestUrl()`. |
 
+### Self-Notify Field
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `selfNotify` | `boolean` | `false` | Whether the completing job asked its own workstream to be woken with a follow-up job when this event fires. `withSelfNotify()` is public on the base type, so this is a caller responsibility rather than an invariant `JobCompletionEvent` itself enforces; in practice the only caller is `ShellCommandJob#populateEventDetails`, stamping its own `isSelfNotify()` flag, and the HTTP submission path (`FlowTreeApiEndpoint#handleSubmit`) is what rejects `selfNotify=true` for a coding-agent job before that flag can ever be set to `true` on one. Read by `FlowTreeApiEndpoint#completeJob` to decide whether to call `CompletionListenerFanout#fanoutSelf` in addition to the ordinary listener fan-out. |
+
 ### Claude Code Default Getters
 
 The base class declares getter methods for all Claude Code-specific fields, returning zero/null defaults. This allows consumers (such as `SlackNotifier`) to call these methods uniformly on any `JobCompletionEvent` without type-checking:
@@ -111,6 +119,7 @@ The base class declares getter methods for all Claude Code-specific fields, retu
 |---|---|---|
 | `withGitInfo(branch, commitHash, staged, skipped, pushed)` | `this` | Sets all git-related fields. |
 | `withPullRequestUrl(url)` | `this` | Sets the pull request URL. |
+| `withSelfNotify(selfNotify)` | `this` | Sets whether this event should wake the job's own workstream. |
 
 ### Protected Setters
 
@@ -293,7 +302,11 @@ The `JobCompletionListener` interface makes no thread safety guarantees. Impleme
 
 ### Multiple Listeners
 
-The `JobCompletionListener` interface is designed for a single implementation (typically `SlackNotifier`). However, `FlowTreeApiEndpoint` and `SlackListener` both route events to the same `SlackNotifier` instance. The `FlowTreeApiEndpoint` handles events arriving via HTTP from agents, while `SlackListener` handles events from the Slack message queue. Both call the same `onJobCompleted()` and `onJobStarted()` methods, ensuring consistent Slack notification formatting regardless of the event source.
+`FlowTreeApiEndpoint` routes every status event it receives over HTTP (`onJobStarted`/`onJobCompleted`) through `NotifierRegistry#completionListener(workstreamId)` rather than calling a `SlackNotifier` directly. That returns a fan-out of the `SlackNotifier` resolved for the workstream (or `NotifierRegistry`'s primary, in single-workspace mode) together with every listener registered via `NotifierRegistry#addCompletionListener` — so the interface now has more than one real implementation reached on the same event, not just multiple call sites reaching a single `SlackNotifier`.
+
+The registry seeds one such listener itself — `JobAlertNotifier`, which publishes the event as an `Alert` on the console alert bus so a deployment with no Slack channel (or one that wants alerts to reach a different audience) still hears about job completions. `JobAlertNotifier` is inert until an `AlertDeliveryProvider` is attached, so an unconfigured deployment pays nothing for it being wired in.
+
+`SlackListener` is on a separate path: for a job it submits locally (from a Slack slash command), it resolves and notifies its own `SlackNotifier` directly rather than going through `NotifierRegistry#completionListener`, since that is the notifier acknowledging a submission it just made rather than the registry fanning out a status event received from elsewhere.
 
 ---
 
