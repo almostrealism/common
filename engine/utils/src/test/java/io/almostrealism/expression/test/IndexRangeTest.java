@@ -80,6 +80,36 @@ public class IndexRangeTest extends TestSuiteBase implements ExpressionFeatures 
 	}
 
 	/**
+	 * When the block size and sequence length are both close to {@link Integer#MAX_VALUE},
+	 * the capacity calculation and loop counter must not themselves overflow {@code int}:
+	 * {@code len + size - 1} would go negative and an {@code int} loop counter would wrap
+	 * before reaching {@code len}, even though the method accepts any positive {@code len}.
+	 */
+	@Test(timeout = 30000)
+	public void partitionHandlesSizesNearIntegerOverflow() {
+		int size = 1_400_000_000;
+		int len = 2_000_000_000;
+		int previous = ScopeSettings.sequenceBlockSize;
+		ScopeSettings.sequenceBlockSize = size;
+
+		try {
+			Index index = new DefaultIndex("i", len);
+			List<IndexRange> ranges = IndexRange.partition(index, len);
+
+			Assert.assertEquals(2, ranges.size());
+			Assert.assertEquals(0, ranges.get(0).getStart());
+			Assert.assertEquals(size, ranges.get(0).getLength());
+			Assert.assertEquals(size, ranges.get(1).getStart());
+			Assert.assertEquals(len - size, ranges.get(1).getLength());
+
+			long total = ranges.stream().mapToLong(IndexRange::getLength).sum();
+			Assert.assertEquals(len, total);
+		} finally {
+			ScopeSettings.sequenceBlockSize = previous;
+		}
+	}
+
+	/**
 	 * Partitioning a non-positive length must be rejected.
 	 */
 	@Test(timeout = 30000)

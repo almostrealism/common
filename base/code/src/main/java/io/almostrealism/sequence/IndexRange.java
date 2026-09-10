@@ -115,10 +115,10 @@ public class IndexRange {
 		}
 
 		int size = ScopeSettings.sequenceBlockSize;
-		List<IndexRange> ranges = new ArrayList<>((len + size - 1) / size);
+		List<IndexRange> ranges = new ArrayList<>((len - 1) / size + 1);
 
-		for (int start = 0; start < len; start += size) {
-			ranges.add(new IndexRange(index, start, Math.min(size, len - start)));
+		for (long start = 0; start < len; start += size) {
+			ranges.add(new IndexRange(index, start, (int) Math.min(size, len - start)));
 		}
 
 		return ranges;
@@ -270,6 +270,24 @@ public class IndexRange {
 		}
 
 		return value;
+	}
+
+	/**
+	 * Converts a point-evaluated {@link Number} to its {@code double} representation,
+	 * refusing any integer value the conversion would round. A floating-point value is
+	 * returned as-is, since it was never exact to begin with.
+	 *
+	 * @param value the point-evaluated value
+	 * @return the same value as a {@code double}
+	 * @throws InexactValueException if {@code value} is an integer whose magnitude
+	 *         exceeds {@link #MAX_EXACT}
+	 */
+	public static double exact(Number value) {
+		if (value instanceof Double || value instanceof Float) {
+			return value.doubleValue();
+		}
+
+		return exact(value.longValue());
 	}
 
 	/**

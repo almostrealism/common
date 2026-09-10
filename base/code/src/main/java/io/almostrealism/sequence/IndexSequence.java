@@ -487,8 +487,15 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	default Expression getExpression(Expression index, boolean isInt) {
 		KernelSeriesMatcher matcher = new KernelSeriesMatcher(lengthLong());
 
-		for (long i = 0; i < lengthLong() && matcher.isPossible(); i++) {
-			matcher.accept(valueAt(i).doubleValue());
+		try {
+			for (long i = 0; i < lengthLong() && matcher.isPossible(); i++) {
+				matcher.accept(IndexRange.exact(valueAt(i)));
+			}
+		} catch (IndexRange.InexactValueException e) {
+			// An integer value above the exact-double range would alias a
+			// different value once compared as a double, so no pattern this
+			// matcher recognises can be trusted for this sequence
+			return null;
 		}
 
 		Expression r = matcher.getExpression(index, isInt);

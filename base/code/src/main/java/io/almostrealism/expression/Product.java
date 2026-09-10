@@ -130,8 +130,19 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		// TODO(review): unguarded overflow, unlike the Math.multiplyExact guard in lowerBound() below
-		long v = values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b);
+
+		long v;
+
+		try {
+			v = 1L;
+			for (OptionalLong o : values) {
+				v = Math.multiplyExact(v, o.getAsLong());
+			}
+		} catch (ArithmeticException e) {
+			// If the product of the upper bounds overflows, the bound is unknown
+			// rather than a silently wrapped, incorrect value
+			return OptionalLong.empty();
+		}
 
 		// Some of the children may have negative upper bounds, but that does not
 		// guarantee that the resulting product will have a negative upper bound
@@ -155,9 +166,15 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		if (lower.size() != getChildren().size()) return OptionalLong.empty();
 
 		if (getChildren().stream().noneMatch(Expression::isPossiblyNegative)) {
-			return OptionalLong.of(lower.stream()
-					.map(o -> o.getAsLong())
-					.reduce(1L, (a, b) -> a * b));
+			try {
+				long v = 1L;
+				for (OptionalLong o : lower) {
+					v = Math.multiplyExact(v, o.getAsLong());
+				}
+				return OptionalLong.of(v);
+			} catch (ArithmeticException e) {
+				return OptionalLong.empty();
+			}
 		}
 
 		List<OptionalLong> upper = getChildren().stream()

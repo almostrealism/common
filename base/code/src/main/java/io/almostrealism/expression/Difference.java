@@ -118,6 +118,15 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 		return result;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the result type is {@link Integer}, the running difference is narrowed to
+	 * 32 bits after each term, since truncation to {@code int} commutes with subtraction;
+	 * this reproduces the wraparound that {@link #computeValue(IndexValues)} exhibits when
+	 * every child is an {@link Integer} (e.g. subtracting from {@code Integer.MIN_VALUE}),
+	 * which plain {@code long} arithmetic would not.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[][] c = range.values(getChildren());
@@ -128,6 +137,12 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 				double v = c[0][i];
 				for (int j = 1; j < c.length; j++) v -= c[j][i];
 				out[i] = v;
+			}
+		} else if (getType() == Integer.class) {
+			for (int i = 0; i < out.length; i++) {
+				long l = (long) c[0][i];
+				for (int j = 1; j < c.length; j++) l -= (long) c[j][i];
+				out[i] = IndexRange.exact((int) l);
 			}
 		} else {
 			for (int i = 0; i < out.length; i++) {

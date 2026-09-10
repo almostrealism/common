@@ -20,7 +20,9 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.sequence.ArrayIndexSequence;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.util.TestSuiteBase;
@@ -145,5 +147,26 @@ public class KernelSeriesCacheTest extends TestSuiteBase implements ExpressionFe
 		} finally {
 			KernelSeriesCache.minNodeCountMatch = savedMin;
 		}
+	}
+
+	/**
+	 * A sequence whose values exceed the range a {@code double} can represent
+	 * exactly must not be cached when {@code isInt} is true: the manager stores
+	 * every sequence as a {@code double[]}, so caching it would permanently lose
+	 * the low bits of those values rather than merely rendering them inexact.
+	 */
+	@Test(timeout = 30000)
+	public void sequencesBeyondExactDoubleRangeAreNotCached() {
+		KernelSeriesCache cache = new KernelSeriesCache(
+				new OperationMetadata("kernelSeriesCacheTest", "kernelSeriesCacheTest"),
+				4, true, null);
+
+		long base = Long.MAX_VALUE / 2;
+		IndexSequence seq = ArrayIndexSequence.of(Long.class,
+				new Number[] { base, base + 1, base + 2, base + 3 });
+
+		Expression<?> result = cache.referenceSeries(kernel(), seq, true);
+		Assert.assertNull("A sequence with a value outside the exact double range must not be cached",
+				result);
 	}
 }

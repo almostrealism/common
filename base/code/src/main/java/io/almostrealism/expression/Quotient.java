@@ -555,19 +555,30 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				// When dividing a product that includes a constant value,
 				// by the same constant value, the result can be simplified
 				// to a product of the remaining values without the constant
-				long constant = numerator.getChildren().stream()
-						.mapToLong(e -> e.longValue().orElse(1))
-						.reduce(1, (a, b) -> a * b);
+				// Only the constant factors' own product is exactly checkable here;
+				// guard it against overflow rather than the whole (unbounded) numerator
+				long constant = 1;
+				boolean constantOverflowed = false;
+
+				for (Expression<?> child : numerator.getChildren()) {
+					try {
+						constant = Math.multiplyExact(constant, child.longValue().orElse(1));
+					} catch (ArithmeticException e) {
+						constantOverflowed = true;
+						break;
+					}
+				}
 
 				List<Expression<?>> remaining = numerator.getChildren().stream()
 						.filter(e -> e.longValue().isEmpty()).collect(Collectors.toList());
 
-				if (constant != 0 && constant % d.getAsLong() == 0) {
+				if (!constantOverflowed && constant != 0 && constant % d.getAsLong() == 0) {
 					long quotient = constant / d.getAsLong();
 					if (quotient != 1) remaining.add(ExpressionFeatures.getInstance().e(quotient));
 					if (remaining.isEmpty()) return ExpressionFeatures.getInstance().e(quotient);
 					return Product.of(remaining.toArray(new Expression[0]));
-				} else if (constant != 0 && constant != 1 && d.getAsLong() % constant == 0 && !remaining.isEmpty()) {
+				} else if (!constantOverflowed && constant != 0 && constant != 1 &&
+						d.getAsLong() % constant == 0 && !remaining.isEmpty()) {
 					return Quotient.of(Product.of(remaining.toArray(new Expression[0])),
 							ExpressionFeatures.getInstance().e(d.getAsLong() / constant));
 				}
@@ -647,7 +658,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			Expression<?> u = ((BinaryExpression) numerator).getLeft();
 			OptionalLong m = ((BinaryExpression) numerator).getRight().longValue();
 
-			if (u instanceof Index && m.isPresent()) {
+			// The divisor becomes the generator's granularity, which must be positive;
+			// a negative divisor falls through to the unoptimized Quotient below
+			if (u instanceof Index && m.isPresent() && d.getAsLong() > 0) {
 				return ArithmeticGenerator.create(u, 1, d.getAsLong(), m.getAsLong());
 			}
 		}

@@ -17,6 +17,8 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.And;
+import io.almostrealism.expression.ArithmeticGenerator;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.ExpressionArithmetic;
 import io.almostrealism.expression.ExpressionProperties;
@@ -171,6 +173,55 @@ public class IndexRangeEvaluationTests extends TestSuiteBase implements Expressi
 			long expected = huge.value(new IndexValues().put(kernel(), i)).longValue();
 			Assert.assertEquals(expected, seq.valueAt(i).longValue());
 		}
+	}
+
+	/**
+	 * Negating an {@link Integer}-typed child wraps at 32 bits in point evaluation
+	 * ({@code -Integer.MIN_VALUE} stays {@code Integer.MIN_VALUE}); block evaluation must
+	 * reproduce that instead of negating as an unwrapped {@code long}.
+	 */
+	@Test(timeout = 30000)
+	public void minusWrapsIntegerMinValueLikePointEvaluation() {
+		Expression<?> exp = kernel().add(e(Integer.MIN_VALUE)).minus();
+		assertMatchesPointEvaluation(exp, kernel(), 4);
+	}
+
+	/**
+	 * Subtracting from an {@link Integer}-typed child wraps at 32 bits in point evaluation;
+	 * block evaluation must reproduce that instead of subtracting as an unwrapped
+	 * {@code long}.
+	 */
+	@Test(timeout = 30000)
+	public void differenceWrapsIntegerMinValueLikePointEvaluation() {
+		Expression<?> exp = kernel().subtract((Expression) e(Integer.MIN_VALUE));
+		assertMatchesPointEvaluation(exp, kernel(), 4);
+	}
+
+	/**
+	 * A {@link Sum} whose declared type is {@code Integer.class} may still evaluate to a
+	 * widened {@code Long} at a position where it overflows; {@link And#computeValue} then
+	 * truncates that {@code Long} to its low 32 bits via {@link Number#intValue()}. Block
+	 * evaluation must reproduce that truncation rather than saturating a direct
+	 * {@code double}-to-{@code int} narrowing conversion.
+	 */
+	@Test(timeout = 30000)
+	public void andTruncatesWidenedOperandLikePointEvaluation() {
+		Expression<?> widened = kernel().add(e(Integer.MAX_VALUE));
+		Expression<?> exp = And.of(widened, e(0xFF));
+		assertMatchesPointEvaluation(exp, kernel(), 4);
+	}
+
+	/**
+	 * Dividing an {@link ArithmeticGenerator} with {@code scale == 1} by a negative
+	 * constant must not coarsen the granularity by that negative factor, since a negative
+	 * granularity is not a valid divisor; the result must still agree with point
+	 * evaluation of the original quotient.
+	 */
+	@Test(timeout = 30000)
+	public void arithmeticGeneratorNegativeDivisorMatchesPointEvaluation() {
+		Expression<? extends Number> generator = ArithmeticGenerator.create(kernel(), 1, 1, 100);
+		Expression<?> exp = generator.divide(e(-2));
+		assertMatchesPointEvaluation(exp, kernel(), 20);
 	}
 
 	/**

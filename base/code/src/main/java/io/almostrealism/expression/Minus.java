@@ -117,6 +117,15 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 		return operand == null ? null : operand.negated();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the result type is {@link Integer}, the negation is narrowed to 32 bits
+	 * after computing in {@code long}, since truncation to {@code int} commutes with
+	 * negation; this reproduces the wraparound that {@link #computeValue(IndexValues)}
+	 * exhibits for an {@link Integer} child (e.g. negating {@code Integer.MIN_VALUE}
+	 * yields itself), which plain {@code long} arithmetic would not.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[] c = getChildren().get(0).values(range);
@@ -125,6 +134,10 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 		if (isFP()) {
 			for (int i = 0; i < out.length; i++) {
 				out[i] = -1.0 * c[i];
+			}
+		} else if (getType() == Integer.class) {
+			for (int i = 0; i < out.length; i++) {
+				out[i] = IndexRange.exact((int) (-1L * (long) c[i]));
 			}
 		} else {
 			for (int i = 0; i < out.length; i++) {

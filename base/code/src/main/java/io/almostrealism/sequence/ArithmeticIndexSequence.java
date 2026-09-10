@@ -314,6 +314,13 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 			throw new IllegalArgumentException("Division by zero");
 		}
 
+		if (operand == Long.MIN_VALUE) {
+			// -Long.MIN_VALUE is not representable as a positive long, so the
+			// negate-and-recurse below would repeat forever; there is no
+			// arithmetic sequence representation of this quotient
+			return null;
+		}
+
 		if (operand < 0) {
 			ArithmeticIndexSequence positive = dividedExactly(-operand);
 			return positive == null ? null : positive.negated();

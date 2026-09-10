@@ -193,6 +193,15 @@ public class And extends BinaryExpression<Integer> {
 		return children[0].intValue() & children[1].intValue();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Narrows each operand through {@code long} before narrowing to {@code int}, matching
+	 * {@link Number#intValue()}'s low-32-bit truncation. Narrowing the {@code double} straight
+	 * to {@code int} would instead saturate to {@code Integer.MAX_VALUE}/{@code MIN_VALUE} for
+	 * an operand whose value exceeds the {@code int} range, disagreeing with
+	 * {@link #computeValue(IndexValues)}.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[] left = getChildren().get(0).values(range);
@@ -200,7 +209,7 @@ public class And extends BinaryExpression<Integer> {
 		double[] out = new double[range.getLength()];
 
 		for (int i = 0; i < out.length; i++) {
-			out[i] = ((int) left[i]) & ((int) right[i]);
+			out[i] = ((int) (long) left[i]) & ((int) (long) right[i]);
 		}
 
 		return out;

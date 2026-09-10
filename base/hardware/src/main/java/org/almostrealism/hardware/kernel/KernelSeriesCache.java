@@ -21,6 +21,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.profile.OperationInfo;
@@ -266,10 +267,23 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	 * @param index Loop index expression
 	 * @param seq The complete sequence of values
 	 * @param isInt Whether the result should be integer type
-	 * @return Cached series expression, or null if the sequence could not be stored
+	 * @return Cached series expression, or null if the sequence could not be stored,
+	 *         including when {@code isInt} is true and a value cannot be represented
+	 *         exactly as a {@code double} (the cache stores every sequence as a
+	 *         {@code double[]}, so such a value would lose low bits permanently)
 	 */
 	@Override
 	public Expression referenceSeries(Expression index, IndexSequence seq, boolean isInt) {
+		if (isInt) {
+			try {
+				seq.values().forEach(IndexRange::exact);
+			} catch (IndexRange.InexactValueException e) {
+				if (enableVerbose)
+					warn("Cannot cache a sequence with a value outside the exact double range");
+				return null;
+			}
+		}
+
 		double init = seq.doubleAt(0);
 		if (init != 0.0) {
 			seq = seq.mapDouble(d -> d - init);

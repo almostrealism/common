@@ -263,6 +263,17 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * Dividing by {@link Long#MIN_VALUE} cannot be represented, since negating it
+	 * overflows back to itself; recursing on the negated operand must not loop forever,
+	 * and instead reports that no arithmetic sequence represents the quotient.
+	 */
+	@Test(timeout = 30000)
+	public void dividedExactlyByLongMinValueReturnsNull() {
+		ArithmeticIndexSequence seq = new ArithmeticIndexSequence(2, 1, 8);
+		Assert.assertNull(seq.dividedExactly(Long.MIN_VALUE));
+	}
+
+	/**
 	 * The interval arithmetic used by {@link Product#lowerBound} to bound a product with
 	 * a possibly-negative factor multiplies combinations of each factor's lower and upper
 	 * bound together across every child. When two children each carry a bound whose
@@ -282,6 +293,37 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 		Expression<?> product = Product.of(coarse1, coarse2);
 		Assert.assertTrue("an overflowing product bound must be reported as unknown",
 				product.lowerBound().isEmpty());
+	}
+
+	/**
+	 * The product/divisor fold in {@link Quotient#create} multiplies a numerator's constant
+	 * factors together to see whether the divisor divides them evenly. With
+	 * {@link Product#enableConstantExtraction} disabled, {@link Product#of} keeps multiple
+	 * constant factors unfolded, so this exercises that multiplication directly: two
+	 * constants whose product overflows a {@code long} must not silently wrap into an
+	 * incorrect fold decision, and the quotient must keep agreeing with plain arithmetic
+	 * on the original, unfolded product.
+	 */
+	@Test(timeout = 30000)
+	public void quotientProductDivisorFoldSkippedOnConstantOverflow() {
+		boolean previous = Product.enableConstantExtraction;
+		Product.enableConstantExtraction = false;
+
+		try {
+			long big1 = 3_000_000_000L;
+			long big2 = 4_000_000_000L;
+			Expression<?> a = kernel().imod(4);
+			Expression<?> numerator = Product.of(a, e(big1), e(big2));
+			Expression<?> quotient = numerator.divide(e(big1));
+
+			for (int i = 0; i < 4; i++) {
+				long expected = (i * big1 * big2) / big1;
+				long actual = quotient.value(new IndexValues().put(kernel(), i)).longValue();
+				Assert.assertEquals("at " + i, expected, actual);
+			}
+		} finally {
+			Product.enableConstantExtraction = previous;
+		}
 	}
 
 	/**

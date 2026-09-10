@@ -100,6 +100,13 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 	private long period;
 
 	/**
+	 * Whether an integer value could not be represented exactly as a {@code double}
+	 * even during the point-evaluation fallback, ruling out every form regardless
+	 * of {@link #distinctCount}, {@link #maskPossible} or {@link #arithmeticPossible}.
+	 */
+	private boolean refuted;
+
+	/**
 	 * Creates a matcher for a sequence of the given length.
 	 *
 	 * @param length the number of values the sequence will have; must be positive
@@ -145,7 +152,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 	 * @return whether any form remains viable
 	 */
 	public boolean isPossible() {
-		return distinctCount < 2 || maskPossible || arithmeticPossible;
+		return !refuted && (distinctCount < 2 || maskPossible || arithmeticPossible);
 	}
 
 	/**
@@ -218,8 +225,15 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 		} catch (IndexRange.InexactValueException e) {
 			reset();
 
-			for (int i = 0; i < length && isPossible(); i++) {
-				accept(exp.value(new IndexValues().put(index, i)).doubleValue());
+			try {
+				for (int i = 0; i < length && isPossible(); i++) {
+					accept(IndexRange.exact(exp.value(new IndexValues().put(index, i))));
+				}
+			} catch (IndexRange.InexactValueException fallback) {
+				// Point evaluation is no more exact than block evaluation was; the
+				// sequence cannot be compared as double without aliasing distinct
+				// integer values, so no form can be trusted
+				refuted = true;
 			}
 		}
 
@@ -238,6 +252,7 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 		arithmeticPossible = true;
 		granularity = -1;
 		period = -1;
+		refuted = false;
 	}
 
 	/**

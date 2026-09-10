@@ -209,6 +209,24 @@ public class KernelSeriesMatcherTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * When block evaluation refuses an integer intermediate as inexact, the point-evaluation
+	 * fallback it triggers must be held to the same exactness standard. A constant this large
+	 * added to a small kernel index produces sixteen distinct {@code long} values that all
+	 * round to the same {@code double}; refusing every form is the only safe outcome; aliasing
+	 * them into a false constant would be a silent miscompilation.
+	 */
+	@Test(timeout = 30000)
+	public void inexactFallbackRefusesToAliasDistinctValues() {
+		int len = 16;
+		Expression<?> huge = e(Long.MAX_VALUE / 2).add(kernel());
+
+		KernelSeriesMatcher matcher = huge.matchSeries(kernel(), len, Long.MAX_VALUE);
+		Assert.assertFalse("A sequence that cannot be compared exactly as double must refuse every form",
+				matcher.isPossible());
+		Assert.assertNull(matcher.getExpression(kernel(), true));
+	}
+
+	/**
 	 * Recognising the series of a progression enumerates every kernel index exactly
 	 * once and emits an expression equal to the original sequence.
 	 */
