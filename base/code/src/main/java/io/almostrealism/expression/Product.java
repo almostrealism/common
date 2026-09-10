@@ -244,6 +244,13 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return isFP() ? value : (long) value;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The integer branch accumulates in {@code long} exactly as {@link #computeValue(IndexValues)}
+	 * does, including its unguarded overflow behavior, so the two paths agree even when a
+	 * product of factors exceeds the {@code long} range.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[][] c = range.values(getChildren());

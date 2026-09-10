@@ -101,6 +101,12 @@ public class Conditional<T extends Number> extends Expression<T> {
 		return children[0].doubleValue() != 0.0 ? children[1] : children[2];
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Selects the positive or negative branch value at each position according to
+	 * whether the condition is non-zero there, matching {@link #evaluate(Number...)}.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[] condition = getChildren().get(0).values(range);

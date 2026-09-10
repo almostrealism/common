@@ -144,6 +144,25 @@ public interface ExpressionProperties<T> {
 	}
 
 	/**
+	 * Returns a value every evaluation of this integer expression is structurally known
+	 * to be a multiple of: its own value for a constant, the product of its constant
+	 * factors for a product, and 1 otherwise.
+	 *
+	 * @return a positive value every evaluation of this expression is a multiple of
+	 */
+	public default long constantIntegerFactor() {
+		OptionalLong constant = self().longValue();
+		if (constant.isPresent()) return Math.abs(constant.getAsLong());
+
+		if (self() instanceof Product) {
+			return Math.abs(self().getChildren().stream()
+					.mapToLong(e -> e.longValue().orElse(1)).reduce(1, (a, b) -> a * b));
+		}
+
+		return 1;
+	}
+
+	/**
 	 * Returns the compile-time boolean value of this expression, if known.
 	 *
 	 * <p>This method enables constant folding for boolean expressions. Subclasses

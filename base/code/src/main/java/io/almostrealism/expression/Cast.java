@@ -237,6 +237,14 @@ public class Cast<T> extends UnaryExpression<T> {
 		return getChildren().get(0).arithmeticSequence(index, len);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A cast to {@code int} truncates each value, matching the narrowing
+	 * {@link #computeValue(IndexValues)} performs via {@code (int) v}; any other target
+	 * type leaves the values unchanged, since {@link IndexRange} values are already
+	 * {@code double}.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[] c = getChildren().get(0).values(range);

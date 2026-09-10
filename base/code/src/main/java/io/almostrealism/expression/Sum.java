@@ -322,6 +322,13 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Accumulates in exact {@code long} arithmetic without narrowing to {@code int},
+	 * matching the widening (rather than wraparound) behavior {@link #computeValue(IndexValues)}
+	 * falls back to when an {@link Integer} result overflows 32 bits.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[][] c = range.values(getChildren());

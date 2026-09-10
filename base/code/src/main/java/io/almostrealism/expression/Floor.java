@@ -74,6 +74,12 @@ public class Floor extends Expression<Double> {
 		return Math.floor((double) getChildren().get(0).value(indexValues));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Applies {@link Math#floor(double)} to each value, matching
+	 * {@link #computeValue(IndexValues)}.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[] c = getChildren().get(0).values(range);

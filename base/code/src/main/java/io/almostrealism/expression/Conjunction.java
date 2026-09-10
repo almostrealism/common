@@ -45,6 +45,12 @@ public class Conjunction extends NAryExpression<Boolean> {
 		return 1;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A position is {@code 1.0} only when every operand is non-zero there, matching
+	 * {@link #evaluate(Number...)}.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[][] c = range.values(getChildren());

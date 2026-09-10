@@ -360,7 +360,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		for (Expression<?> term : sum.getChildren()) {
 			if (term.isPossiblyNegative()) return null;
 
-			long factor = constantFactor(term);
+			long factor = term.constantIntegerFactor();
 			long shared = gcd(factor, divisor);
 
 			if (shared > 1) {
@@ -382,25 +382,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	/**
-	 * Returns a value the given integer term is structurally known to be a multiple
-	 * of: its own value for a constant, the product of its constant factors for a
-	 * product, and 1 otherwise.
+	 * {@inheritDoc}
 	 *
-	 * @param term the term to inspect
-	 * @return a value every evaluation of {@code term} is a multiple of
+	 * <p>The integer branch truncates each quotient toward zero via a {@code long} cast
+	 * before division, matching {@link #computeValue(IndexValues)}, and verifies the
+	 * result is exactly representable via {@link IndexRange#exact(long)}.</p>
 	 */
-	private static long constantFactor(Expression<?> term) {
-		OptionalLong constant = term.longValue();
-		if (constant.isPresent()) return Math.abs(constant.getAsLong());
-
-		if (term instanceof Product) {
-			return Math.abs(term.getChildren().stream()
-					.mapToLong(e -> e.longValue().orElse(1)).reduce(1, (a, b) -> a * b));
-		}
-
-		return 1;
-	}
-
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		if (getChildren().size() > 2)

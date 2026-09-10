@@ -253,6 +253,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return dividend == null ? null : dividend.modExactly(m.getAsLong());
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The integer branch folds through {@link #foldIntMod(long, long, boolean)} using
+	 * the same {@link #dividendPossiblyNegative()} decision as {@link #computeValue(IndexValues)},
+	 * so the block and point paths agree on the choice between {@code %} and
+	 * {@link Math#floorMod(long, long)}.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[] dividend = getChildren().get(0).values(range);

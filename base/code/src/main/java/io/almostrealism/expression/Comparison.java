@@ -121,6 +121,13 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		return compare(getLeft().value(indexValues), getRight().value(indexValues)) ? 1 : 0;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Evaluates {@link #compare(double, double)} directly on the primitive block values,
+	 * writing {@code 1.0} where the comparison holds and {@code 0.0} otherwise, matching
+	 * {@link #computeValue(IndexValues)}.</p>
+	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
 		double[] left = getLeft().values(range);
