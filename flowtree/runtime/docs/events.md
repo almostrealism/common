@@ -42,7 +42,7 @@ These fields are set during event construction and are always present:
 | `description` | `String` | Constructor | Human-readable description of the job (typically a truncated prompt or task summary). |
 | `timestamp` | `Instant` | Constructor (auto), overwritable by `setTimestamp()` | The instant at which the event was created in memory, set to `Instant.now()` in the constructor. For an event reconstructed from the `job_timing` table, `JobStatsStore.rowToEvent` overwrites this with the persisted `completed_at` (or `started_at` for `STARTED` rows) so readers see the real event time rather than the read-time instant. |
 
-`shortDescription(maxLength)` returns `description` truncated to `maxLength` characters with a trailing ellipsis marking the elision (a description that already fits is returned unchanged, and a missing description yields `""` rather than `null`). Every reporting channel — Slack post, SMS alert, listing row — imposes its own length budget, so each calls this instead of truncating independently.
+`shortDescription(maxLength)` returns `description` truncated to `maxLength` characters with a trailing ellipsis marking the elision (a description that already fits is returned unchanged, and a missing description yields `""` rather than `null`). A budget too small to hold the ellipsis (3 characters or fewer) yields a plain truncation with no ellipsis instead, and a budget of zero or less yields `""`. Every reporting channel — Slack post, SMS alert, listing row — imposes its own length budget, so each calls this instead of truncating independently.
 
 ### Persisted Timestamp Fields
 
@@ -85,7 +85,7 @@ These fields are set during event construction for `FAILED` status events:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `selfNotify` | `boolean` | `false` | Whether the completing job asked its own workstream to be woken with a follow-up job when this event fires. Only ever `true` for a `ShellCommandJob` that opted in at submission time (`selfNotify` is rejected for a coding-agent job); set via `withSelfNotify()` and read by `FlowTreeApiEndpoint#completeJob` to decide whether to call `CompletionListenerFanout#fanoutSelf` in addition to the ordinary listener fan-out. |
+| `selfNotify` | `boolean` | `false` | Whether the completing job asked its own workstream to be woken with a follow-up job when this event fires. `withSelfNotify()` is public on the base type, so this is a caller responsibility rather than an invariant `JobCompletionEvent` itself enforces; in practice the only caller is `ShellCommandJob#populateEventDetails`, stamping its own `isSelfNotify()` flag, and the HTTP submission path (`FlowTreeApiEndpoint#handleSubmit`) is what rejects `selfNotify=true` for a coding-agent job before that flag can ever be set to `true` on one. Read by `FlowTreeApiEndpoint#completeJob` to decide whether to call `CompletionListenerFanout#fanoutSelf` in addition to the ordinary listener fan-out. |
 
 ### Claude Code Default Getters
 
