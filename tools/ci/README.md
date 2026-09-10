@@ -77,5 +77,10 @@ agent round appends to, not pipeline logic.
 | `verify-completion.txt` | Template for verify-completion prompt |
 
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
-variables named in its header, and writes the result to the path given as its
-only argument. `tools/tests/test_prompt_builders.py` holds them to that contract.
+variables named in its header, and writes the result to an output-file argument.
+Most take that path as their only argument; a few need additional file input first
+— `build-resolve-prompt.sh <failures-file> <output-file>`,
+`build-quality-gate-prompt.sh <failures-file> <output-file>` and
+`build-vm-crash-prompt.sh <crash-reports-dir> <output-file>` — where the output
+file is always the last argument. `tools/tests/test_prompt_builders.py` holds
+them to that contract.
