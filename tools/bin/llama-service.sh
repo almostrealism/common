@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# TODO(review): this file appears unrelated to the exfiltration guard hook
+# feature this branch/PR is about (see docs/plans/EXFILTRATION_GUARD_HOOK.md).
+# Confirm whether it belongs in this PR or should move to its own change.
 # On/off switch for the llama.cpp launchd service.
 #
 # tools/bin/llama.sh is only the LAUNCHER. In normal operation it is supervised

@@ -1053,7 +1053,7 @@ jobs:
       # .claude/hooks/lib; its tests build scratch git repositories and
       # drive the --stdin adapter contract, so they need git and a HOME.
       - name: Run exfiltration guard hook tests
-        run: python3 -m unittest -v .claude/hooks/lib/test_exfiltration_guard_check.py
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_check.py"
 
       - name: Run exfiltration guard CI-verifier tests
         run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh
