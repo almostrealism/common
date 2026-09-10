@@ -115,14 +115,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class LessThanCollection extends CollectionComparisonComputation {
-	/**
-	 * Flag controlling whether the comparison includes equality (<=) or is strict (<).
-	 * When true, performs less-than-or-equal comparison (<=).
-	 * When false, performs strict less-than comparison (<).
-	 */
-	private final boolean includeEqual;
-
+public class LessThanCollection extends InequalityComparisonComputation {
 	/**
 	 * Constructs a less-than comparison computation with strict inequality (<).
 	 *
@@ -156,9 +149,7 @@ public class LessThanCollection extends CollectionComparisonComputation {
 			Producer<PackedCollection> left, Producer<PackedCollection> right,
 			Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 			boolean includeEqual) {
-		super("lessThan", shape,  left, right, trueValue, falseValue);
-		this.includeEqual = includeEqual;
-		init();
+		super("lessThan", shape, left, right, trueValue, falseValue, includeEqual);
 	}
 
 	/**
@@ -216,26 +207,5 @@ public class LessThanCollection extends CollectionComparisonComputation {
 		return (CollectionProducerParallelProcess)
 				lessThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
 						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>The emitted expression is a ternary {@code Conditional(lhs < rhs, truePath, falsePath)}
-	 * &mdash; both branches materialise in the expression tree. The expansion width is
-	 * therefore {@code 2}.</p>
-	 */
-	@Override
-	public long getExpansionWidth() {
-		return 2;
-	}
-
-
-	@Override
-	public String signature() {
-		String signature = super.signature();
-		if (signature == null) return null;
-
-		return signature + "{includeEqual:" +  includeEqual + "}";
 	}
 }
