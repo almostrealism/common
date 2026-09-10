@@ -19,7 +19,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 
 | Script | Purpose |
 |---|---|
+| `archive-stale-workstreams.sh` | Archive the workstreams of a recurring QA job's previous rounds |
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
+| `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
@@ -56,11 +58,24 @@ agent round appends to, not pipeline logic.
 | Script/Template | Purpose |
 |---|---|
 | `build-build-failure-prompt.sh` | Build prompt for agent when compilation fails |
+| `build-consolidation-prompt.sh` | Build prompt for the recurring consolidation (duplication) round |
+| `build-coverage-prompt.sh` | Build prompt for the recurring test-coverage round |
+| `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
+| `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |
 | `build-verify-prompt.sh` | Build prompt for verify-completion workflow |
+| `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
+| `coverage.txt` | Template for the test-coverage round |
+| `defect-hunt.txt` | Template for the defect hunt |
+| `doc-qa.txt` | Template for the documentation-staleness review |
 | `general-review.txt` | Template for general code review prompt |
+| `project-planning.txt` | Template for the planning workflow |
 | `verify-completion.txt` | Template for verify-completion prompt |
+
+Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
+variables named in its header, and writes the result to the path given as its
+only argument. `tools/tests/test_prompt_builders.py` holds them to that contract.

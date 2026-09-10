@@ -2,15 +2,16 @@ name: "Master Agent Dispatch"
 
 # The agent jobs that fire on a merge to master.
 #
-# These were three separate workflows (Project Manager, Quality Assurance,
-# Defect Hunt) with byte-identical triggers. They are one workflow with three
-# jobs because a workflow per lifecycle event keeps the Actions UI navigable;
-# a separate file per job multiplies the sidebar without separating anything.
+# These began as three separate workflows (Project Manager, Quality Assurance,
+# Defect Hunt) with byte-identical triggers. They are one workflow because a
+# workflow per lifecycle event keeps the Actions UI navigable; a separate file
+# per job multiplies the sidebar without separating anything. Every job added
+# since — test coverage, consolidation — belongs here for the same reason.
 #
 # Each job keeps its own concurrency group, so they still serialize
 # independently rather than queueing behind each other. Cadence and cleanup for
-# the two QA-style jobs stay in tools/ci/qa-cadence.sh and
-# tools/ci/archive-stale-workstreams.sh, which they already shared.
+# the QA-style jobs stay in tools/ci/qa-cadence.sh and
+# tools/ci/archive-stale-workstreams.sh, which they all share.
 #
 # A manual run selects one job with the `agent` input, or `all` to run the same
 # set a merge would. Deploy deliberately remains its own workflow: it is
@@ -33,6 +34,7 @@ on:
           - "quality-assurance"
           - "defect-hunt"
           - "coverage"
+          - "consolidation"
       force:
         description: "Submit even if at capacity or one ran recently"
         required: false
@@ -758,6 +760,159 @@ jobs:
             case "${{ steps.decide.outputs.reason }}" in
               pr-open) echo "Skipped: a previous coverage-qa PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
               too-recent) echo "Skipped: the last coverage round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
+              pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
+              *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          fi
+
+  # ── Quality Assurance — Consolidation ────────────────────────────────
+  # Submits a FlowTree coding-agent job that finds one piece of duplicated
+  # logic, replaces every copy with a single shared implementation, and
+  # pins the behavior with tests written against the code as it stands
+  # before the refactor.
+  #
+  # Deliberately broader than the two mechanisms that already exist.
+  # DuplicateCodeDetector fails the build on 10+ identical normalized
+  # lines across files, so exact copies of that size never survive to be
+  # found here; DeduplicationRule (flowtree/runtime) checks the methods a
+  # single branch introduces against what already exists. This round is
+  # for what neither can see: renamed copies, sibling classes edited from
+  # each other, an idiom re-implemented at N call sites, and above all
+  # divergence — two copies that were the same until one of them was
+  # fixed. The agent picks the candidate by judgment; there is no
+  # target-selection step, and an honestly empty-handed round is a valid
+  # outcome (hence no ENFORCE_CHANGES, matching the defect hunt).
+  #
+  # Cadence and cleanup are shared with the other QA-style jobs through
+  # tools/ci/qa-cadence.sh and tools/ci/archive-stale-workstreams.sh:
+  # skip while a previous round's PR is still open, otherwise run at most
+  # once per MIN_INTERVAL_DAYS.
+  consolidation-qa:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'consolidation'
+    runs-on: [self-hosted, macos, ar-ci]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: consolidation-qa
+      cancel-in-progress: false
+
+    env:
+      BRANCH_PREFIX: "qa/consolidate-"
+      MIN_INTERVAL_DAYS: "7"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Decide whether to submit
+        id: decide
+        env:
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          MIN_INTERVAL_DAYS: ${{ env.MIN_INTERVAL_DAYS }}
+          FORCE: ${{ github.event.inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x ./tools/ci/qa-cadence.sh
+          ./tools/ci/qa-cadence.sh
+
+      # Retire the rounds that came before this one. Safe here because the
+      # gate above has already established that none of them has an open
+      # PR: anything still registered has been merged, closed, or
+      # abandoned. Archiving is reversible.
+      - name: Archive previous rounds
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH_PREFIX: ${{ env.BRANCH_PREFIX }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
+
+      - name: Create consolidation branch
+        if: steps.decide.outputs.run == 'true'
+        id: branch
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${BRANCH_PREFIX}${TIMESTAMP}"
+          git checkout -b "$BRANCH_NAME"
+          git push -u origin "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
+      - name: Build consolidation prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+        run: |
+          chmod +x ./tools/ci/prompts/build-consolidation-prompt.sh
+          ./tools/ci/prompts/build-consolidation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # The primary phase is pinned to claude/opus for the same reason the
+      # defect hunt pins it: deciding whether two bodies of code are the
+      # same thing, and where the merged version belongs, is judgment
+      # rather than mechanism. Runner, model and provider are set together
+      # — see the defect hunt's note above for what happens when only one
+      # of the three is overridden.
+      #
+      # PROTECT_TEST_FILES stays "true": a consolidation adds tests and
+      # rewrites production code, and the prompt treats "this can only be
+      # done by editing an existing test" as a signal to pick a different
+      # candidate rather than a reason to unlock the tests.
+      - name: Submit consolidation agent job
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
+          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          DESCRIPTION: "Consolidate duplicated logic behind one implementation"
+          PROTECT_TEST_FILES: "true"
+          AUTO_CREATE_PR: "true"
+          PHASE_CONFIGS: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
+        run: |
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Quality Assurance — Consolidation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Decision:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Minimum interval:** ${{ env.MIN_INTERVAL_DAYS }} days" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.decide.outputs.run }}" = "true" ]; then
+            echo "Created \`${{ steps.branch.outputs.branch }}\` and submitted a consolidation job" >> "$GITHUB_STEP_SUMMARY"
+            echo "with the primary phase pinned to claude/opus (provider anthropic)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            case "${{ steps.decide.outputs.reason }}" in
+              pr-open) echo "Skipped: a previous consolidation PR is still open. Review or close it first." >> "$GITHUB_STEP_SUMMARY" ;;
+              too-recent) echo "Skipped: the last consolidation round is younger than the minimum interval." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-query-failed) echo "Skipped: could not reach the GitHub API to check for an open PR." >> "$GITHUB_STEP_SUMMARY" ;;
               pr-page-limit) echo "Skipped: too many open PRs to page through; assumed a previous round is still open." >> "$GITHUB_STEP_SUMMARY" ;;
               *) echo "Skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY" ;;
