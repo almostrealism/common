@@ -148,6 +148,11 @@ public interface ExpressionProperties<T> {
 	 * to be a multiple of: its own value for a constant, the product of its constant
 	 * factors for a product, and 1 otherwise.
 	 *
+	 * <p>The product's constant factors are multiplied together with overflow checking;
+	 * an overflowing accumulation reports 1 (no known factor) rather than a silently
+	 * wrapped, incorrect value that a caller such as
+	 * {@link Quotient#tryBoundedRemainderSimplify(Sum, long)} would otherwise trust.</p>
+	 *
 	 * @return a positive value every evaluation of this expression is a multiple of
 	 */
 	public default long constantIntegerFactor() {
@@ -155,8 +160,17 @@ public interface ExpressionProperties<T> {
 		if (constant.isPresent()) return Math.abs(constant.getAsLong());
 
 		if (self() instanceof Product) {
-			return Math.abs(self().getChildren().stream()
-					.mapToLong(e -> e.longValue().orElse(1)).reduce(1, (a, b) -> a * b));
+			long factor = 1;
+
+			for (Expression<?> child : self().getChildren()) {
+				try {
+					factor = Math.multiplyExact(factor, child.longValue().orElse(1));
+				} catch (ArithmeticException e) {
+					return 1;
+				}
+			}
+
+			return Math.abs(factor);
 		}
 
 		return 1;

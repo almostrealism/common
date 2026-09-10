@@ -277,7 +277,10 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * {@inheritDoc}
 	 *
 	 * <p>An integer product follows a progression when at most one factor is not a
-	 * constant and that factor follows one; the constants scale it.</p>
+	 * constant and that factor follows one; the constants scale it. The constant
+	 * factors are multiplied together with overflow checking, since an overflowing
+	 * accumulation would otherwise scale the progression by a silently wrapped,
+	 * incorrect value.</p>
 	 */
 	@Override
 	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
@@ -290,7 +293,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			OptionalLong c = child.longValue();
 
 			if (c.isPresent()) {
-				constant *= c.getAsLong();
+				try {
+					constant = Math.multiplyExact(constant, c.getAsLong());
+				} catch (ArithmeticException e) {
+					return null;
+				}
 			} else if (variable != null) {
 				return null;
 			} else {

@@ -253,7 +253,10 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * other's, or {@code null} if that sum is not an arithmetic sequence.
 	 *
 	 * <p>A constant sequence (scale zero) may be added to anything; otherwise the two
-	 * sequences must step at the same granularity and wrap at the same modulus.</p>
+	 * sequences must step at the same granularity and wrap at the same modulus. The
+	 * combined offset and scale are computed with overflow checking; an overflowing
+	 * sum is treated as not representable rather than silently wrapping into an
+	 * incorrect sequence.</p>
 	 *
 	 * @param other the sequence to add; must have the same length
 	 * @return the sum, or {@code null} if it cannot be represented
@@ -264,25 +267,36 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 			throw new IllegalArgumentException("Sequence lengths differ");
 		}
 
-		if (other.scale == 0) {
-			return new ArithmeticIndexSequence(offset + other.offset, scale, granularity, mod, len);
-		} else if (scale == 0) {
-			return new ArithmeticIndexSequence(offset + other.offset, other.scale, other.granularity, other.mod, len);
-		} else if (granularity == other.granularity && mod == other.mod) {
-			return new ArithmeticIndexSequence(offset + other.offset, scale + other.scale, granularity, mod, len);
+		try {
+			if (other.scale == 0) {
+				return new ArithmeticIndexSequence(Math.addExact(offset, other.offset), scale, granularity, mod, len);
+			} else if (scale == 0) {
+				return new ArithmeticIndexSequence(Math.addExact(offset, other.offset), other.scale, other.granularity, other.mod, len);
+			} else if (granularity == other.granularity && mod == other.mod) {
+				return new ArithmeticIndexSequence(Math.addExact(offset, other.offset), Math.addExact(scale, other.scale), granularity, mod, len);
+			}
+		} catch (ArithmeticException e) {
+			return null;
 		}
 
 		return null;
 	}
 
 	/**
-	 * Returns the sequence whose every value is this sequence's value times the operand.
+	 * Returns the sequence whose every value is this sequence's value times the operand,
+	 * or {@code null} if the scaled offset or scale would overflow a {@code long}.
 	 *
 	 * @param operand the multiplier
-	 * @return the scaled sequence
+	 * @return the scaled sequence, or {@code null} if it cannot be represented
 	 */
 	public ArithmeticIndexSequence scaled(long operand) {
-		return new ArithmeticIndexSequence(offset * operand, scale * operand, granularity, mod, len);
+		try {
+			return new ArithmeticIndexSequence(
+					Math.multiplyExact(offset, operand), Math.multiplyExact(scale, operand),
+					granularity, mod, len);
+		} catch (ArithmeticException e) {
+			return null;
+		}
 	}
 
 	/**
@@ -395,11 +409,13 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Delegates to {@link #scaled(long)}.</p>
+	 * <p>Delegates to {@link #scaled(long)}, falling back to element-wise
+	 * multiplication when the scaled offset or scale would overflow.</p>
 	 */
 	@Override
 	public IndexSequence multiply(long operand) {
-		return scaled(operand);
+		ArithmeticIndexSequence exact = scaled(operand);
+		return exact == null ? IndexSequence.super.multiply(operand) : exact;
 	}
 
 	/**

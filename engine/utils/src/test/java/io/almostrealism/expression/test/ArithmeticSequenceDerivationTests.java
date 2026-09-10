@@ -18,6 +18,7 @@ package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.ExpressionProperties;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
@@ -30,6 +31,7 @@ import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -271,6 +273,120 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	public void dividedExactlyByLongMinValueReturnsNull() {
 		ArithmeticIndexSequence seq = new ArithmeticIndexSequence(2, 1, 8);
 		Assert.assertNull(seq.dividedExactly(Long.MIN_VALUE));
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)} combines the scale
+	 * of two non-constant sequences by addition. When that addition overflows, the sum
+	 * must be reported as not representable rather than silently wrapping into an
+	 * arithmetic sequence with an incorrect scale.
+	 */
+	@Test(timeout = 30000)
+	public void plusScaleOverflowReturnsNull() {
+		ArithmeticIndexSequence a = new ArithmeticIndexSequence(0, Long.MAX_VALUE, 1, 8, 8);
+		ArithmeticIndexSequence b = new ArithmeticIndexSequence(0, 1, 1, 8, 8);
+		Assert.assertNull("an overflowing scale addition must not silently wrap", a.plus(b));
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)} combines the offset
+	 * of a sequence with a constant (zero-scale) sequence by addition. When that addition
+	 * overflows, the sum must be reported as not representable.
+	 */
+	@Test(timeout = 30000)
+	public void plusOffsetOverflowReturnsNull() {
+		ArithmeticIndexSequence a = new ArithmeticIndexSequence(Long.MAX_VALUE, 1, 1, 8, 8);
+		ArithmeticIndexSequence constant = new ArithmeticIndexSequence(1, 0, 1, 8, 8);
+		Assert.assertNull("an overflowing offset addition must not silently wrap", a.plus(constant));
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#scaled(long)} multiplies both the offset and the
+	 * scale by the operand. When that multiplication overflows, the result must be
+	 * reported as not representable rather than silently wrapping into an arithmetic
+	 * sequence with an incorrect scale.
+	 */
+	@Test(timeout = 30000)
+	public void scaledOverflowReturnsNull() {
+		ArithmeticIndexSequence seq = new ArithmeticIndexSequence(0, Long.MAX_VALUE, 1, 8, 8);
+		Assert.assertNull("an overflowing scale multiplication must not silently wrap", seq.scaled(2));
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#multiply(long)} delegates to
+	 * {@link ArithmeticIndexSequence#scaled(long)}; when that overflows, it must fall
+	 * back to the default element-wise multiplication rather than propagate {@code null}
+	 * or throw, matching the fallback {@link ArithmeticIndexSequence#divide(long)} and
+	 * {@link ArithmeticIndexSequence#mod(long)} already use for their own exact paths.
+	 */
+	@Test(timeout = 30000)
+	public void multiplyFallsBackWhenScaledOverflows() {
+		ArithmeticIndexSequence seq = new ArithmeticIndexSequence(0, Long.MAX_VALUE, 1, 4, 4);
+		IndexSequence result = seq.multiply(2);
+		Assert.assertNotNull("multiply must not propagate a null result", result);
+		Assert.assertEquals(4, result.lengthLong());
+		Assert.assertEquals("position 0 never touches the overflowing scale",
+				0L, result.valueAt(0).longValue());
+	}
+
+	/**
+	 * {@link Product#arithmeticSequence(Index, long)} multiplies a product's constant
+	 * factors together to scale the progression of its one non-constant factor. With
+	 * {@link Product#enableConstantExtraction} disabled, {@link Product#of} keeps
+	 * multiple constant factors unfolded, so this exercises that accumulation directly:
+	 * two constants whose product overflows a {@code long} must not derive a progression
+	 * with a silently wrapped scale, and ordinary evaluation of the product must still
+	 * agree with plain arithmetic.
+	 */
+	@Test(timeout = 30000)
+	public void productArithmeticSequenceConstantOverflowReturnsNull() {
+		boolean previous = Product.enableConstantExtraction;
+		Product.enableConstantExtraction = false;
+
+		try {
+			long big1 = 3_000_000_000L;
+			long big2 = 4_000_000_000L;
+			Expression<?> a = kernel().imod(4);
+			Expression<?> product = Product.of(a, e(big1), e(big2));
+
+			Assert.assertNull("an overflowing constant accumulation must not derive a wrapped progression",
+					product.arithmeticSequence(kernel(), 4));
+
+			for (int i = 0; i < 4; i++) {
+				long expected = (i % 4) * big1 * big2;
+				long actual = product.value(new IndexValues().put(kernel(), i)).longValue();
+				Assert.assertEquals("at " + i, expected, actual);
+			}
+		} finally {
+			Product.enableConstantExtraction = previous;
+		}
+	}
+
+	/**
+	 * {@link ExpressionProperties#constantIntegerFactor()} multiplies a product's constant
+	 * factors together to report a value every evaluation of the product is a multiple of.
+	 * With {@link Product#enableConstantExtraction} disabled, {@link Product#of} keeps
+	 * multiple constant factors unfolded, so this exercises that accumulation directly:
+	 * two constants whose product overflows a {@code long} must report {@code 1} (no known
+	 * factor) rather than a silently wrapped, incorrect factor that
+	 * {@link Quotient#tryBoundedRemainderSimplify(Sum, long)} would otherwise trust to
+	 * decide which terms of a sum are safe to drop.
+	 */
+	@Test(timeout = 30000)
+	public void constantIntegerFactorOverflowReportsNoFactor() {
+		boolean previous = Product.enableConstantExtraction;
+		Product.enableConstantExtraction = false;
+
+		try {
+			long big1 = 3_000_000_000L;
+			long big2 = 4_000_000_000L;
+			Expression<?> product = Product.of(kernel().imod(2), e(big1), e(big2));
+
+			Assert.assertEquals("an overflowing constant accumulation must report no known factor",
+					1L, product.constantIntegerFactor());
+		} finally {
+			Product.enableConstantExtraction = previous;
+		}
 	}
 
 	/**
