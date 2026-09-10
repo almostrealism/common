@@ -308,6 +308,38 @@ This is why the ar-manager tools live in per-domain `*_tools.py` modules beside
 of the tool surface — see the note on `McpToolDiscovery.locateManagerSources`
 before adding a new one.
 
+## One Maven Run at a Time Per Project
+
+`ar-test-runner` and `ar-build-validator` both invoke Maven against the same
+`target/` directories, and the policy checks walk that tree while they work.
+Two runs overlapping is not merely slow, it is wrong: one deletes and rewrites
+a directory the other is part-way through reading.
+
+The failure is worse than a crash because it looks like a result. A validation
+overlapping a test run exits non-zero with a `NoSuchFileException` under
+`target/` and no violations parsed, which reads as "the check failed" when it
+means "the check never ran".
+
+`common/build_tree.py` is the shared reading of what each server has recorded:
+
+- `in_flight(project_root)` — the runs still using a project's build tree. A
+  run counts while its process is alive, or while its record is inside its own
+  timeout (a server holds no process between one check and the next). A record
+  left behind by a dead parent ages out, so one crash cannot block everything
+  after it.
+- `conflict_message(...)` — what `start_test_run` and `start_validation` return
+  instead of starting.
+- `race_diagnosis(output)` — recognises an overlap that happened anyway, and is
+  attached to the affected check as a `note`. Detection can never be complete:
+  a plain `mvn` in a shell leaves no record to find.
+
+When adding a server that runs Maven, register its runs directory in
+`RUN_DIRECTORIES` and check `in_flight` before starting. Two things worth
+knowing before changing `race_diagnosis`: every Maven run mentions `target`
+constantly, so the lost-file marker and the path must be on the same line; and
+"No source directories found" is **not** a signal — the policy detector logs it
+on runs that go on to pass.
+
 ## Server Directory Map
 
 | Directory | Server name | Tool registration pattern |

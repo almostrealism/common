@@ -66,14 +66,40 @@ public class JobCompletionEvent {
         DEGRADED
     }
 
+    /** Marks an elision in {@link #shortDescription(int)}. */
+    private static final String ellipsis = "...";
+
     /** Unique identifier for the job that produced this event. */
     private final String jobId;
     /** Completion status of the job. */
     private final Status status;
     /** Human-readable description of the job. */
     private final String description;
-    /** Instant at which this event was created. */
-    private final Instant timestamp;
+    /**
+     * Instant at which this event was created in memory.
+     *
+     * <p>Stamped at construction by the live code path (an agent constructing
+     * the event before posting it to the controller). For events reconstructed
+     * from the {@code job_timing} table, this field is overwritten after
+     * construction so the value reflects the persisted {@code completed_at}
+     * (or {@code started_at} for {@code STARTED} rows) rather than the
+     * read-time instant — see {@link JobStatsStore#rowToEvent}.</p>
+     */
+    private Instant timestamp;
+
+    /**
+     * Explicit read-side timestamp applied to events reconstructed from the
+     * {@code job_timing} table. Mirrors {@link #timestamp} once
+     * {@link #setTimestamp(Instant)} has been called by
+     * {@link JobStatsStore#rowToEvent}; before that, the value is whatever
+     * the constructor stamp produced. Tests that assert the in-memory-event
+     * constructor stamp continue to use {@link #getTimestamp()} directly.
+     */
+    private Instant eventTime;
+    /** Persisted {@code started_at} from the {@code job_timing} row, when reconstructed by the store. */
+    private Instant startedAt;
+    /** Persisted {@code completed_at} from the {@code job_timing} row, when reconstructed by the store. */
+    private Instant finishedAt;
 
     /** Name of the git branch targeted by this job. */
     private String targetBranch;
@@ -93,6 +119,14 @@ public class JobCompletionEvent {
 
     /** URL of the GitHub pull request opened by this job, or {@code null}. */
     private String pullRequestUrl;
+
+    /**
+     * Whether the completing job asked its own workstream to be notified
+     * with a wake-up job when this event fires. A job-level opt-in,
+     * currently only settable by {@link ShellCommandJob}; see
+     * {@link CompletionListenerFanout#fanoutSelf(String, JobCompletionEvent)}.
+     */
+    private boolean selfNotify;
 
     /**
      * Total USD cost for this job, populated from per-phase cost accumulation
@@ -134,6 +168,9 @@ public class JobCompletionEvent {
         this.status = status;
         this.description = description;
         this.timestamp = Instant.now();
+        this.eventTime = this.timestamp;
+        this.startedAt = null;
+        this.finishedAt = null;
         this.stagedFiles = Collections.emptyList();
         this.skippedFiles = Collections.emptyList();
     }
@@ -225,11 +262,103 @@ public class JobCompletionEvent {
     public String getDescription() { return description; }
 
     /**
+     * Returns the job description shortened to fit the given length, with an
+     * ellipsis marking the elision. A description that already fits is
+     * returned unchanged, and a missing description yields an empty string
+     * rather than {@code null}, so callers can append the result directly.
+     *
+     * <p>Every channel that reports a job — chat post, SMS alert, listing
+     * row — shows the description under a length budget of its own, so the
+     * shortening belongs to the event rather than to any one reporter.</p>
+     *
+     * <p>A budget too small to hold the ellipsis yields a plain truncation
+     * instead, and a budget of zero or less yields an empty string. Callers
+     * pass a length their own channel imposes, so an awkward budget is a
+     * reason to shorten differently rather than to throw.</p>
+     *
+     * @param maxLength maximum number of characters to retain, including the
+     *                  ellipsis
+     * @return the (possibly shortened) description, never {@code null}
+     */
+    public String shortDescription(int maxLength) {
+        if (description == null || maxLength <= 0) return "";
+        if (description.length() <= maxLength) return description;
+        if (maxLength <= ellipsis.length()) return description.substring(0, maxLength);
+        return description.substring(0, maxLength - ellipsis.length()) + ellipsis;
+    }
+
+    /**
      * Returns the instant at which this event was created.
      *
      * @return the event timestamp
      */
     public Instant getTimestamp() { return timestamp; }
+
+    /**
+     * Returns the persisted event timestamp recorded for this event. Mirrors
+     * {@link #getTimestamp()} once the event has been reconstructed from
+     * {@code job_timing}; equals the constructor stamp before that.
+     *
+     * <p>Distinct from {@link #getTimestamp()} because the constructor stamp
+     * captures the moment an event was instantiated (e.g. an agent's
+     * {@code Instant.now()} on emit), while this field is the authoritative
+     * event time as recorded in the database. The two are separate so the
+     * existing in-memory-event flow keeps working without modification while
+     * readers can consult the persisted time explicitly.</p>
+     *
+     * @return the persisted event timestamp
+     */
+    public Instant getEventTime() { return eventTime != null ? eventTime : timestamp; }
+
+    /**
+     * Returns the persisted start time for this event, or {@code null} when
+     * the event was never persisted through the {@code job_timing} row
+     * reconstruction path. Set by {@link JobStatsStore#rowToEvent} from the
+     * row's {@code started_at} column.
+     *
+     * @return the persisted start time, or {@code null}
+     */
+    public Instant getStartedAt() { return startedAt; }
+
+    /**
+     * Sets the persisted start time. Called by
+     * {@link JobStatsStore#rowToEvent}; ignored when {@code null}.
+     *
+     * @param startedAt the persisted start time
+     */
+    public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
+
+    /**
+     * Returns the persisted finish time for this event, or {@code null} when
+     * the row had no {@code completed_at} (e.g. a {@code STARTED} status that
+     * never completed). Set by {@link JobStatsStore#rowToEvent}.
+     *
+     * @return the persisted finish time, or {@code null}
+     */
+    public Instant getFinishedAt() { return finishedAt; }
+
+    /**
+     * Sets the persisted finish time. Called by
+     * {@link JobStatsStore#rowToEvent}; ignored when {@code null}.
+     *
+     * @param finishedAt the persisted finish time
+     */
+    public void setFinishedAt(Instant finishedAt) { this.finishedAt = finishedAt; }
+
+    /**
+     * Overwrites both {@link #timestamp} and {@link #eventTime} on the event.
+     * Called from {@link JobStatsStore#rowToEvent} so a row reconstructed from
+     * the {@code job_timing} table reports the persisted event time instead of
+     * the read-time instant. {@code null} is silently ignored so a partially
+     * populated row does not erase an existing stamp.
+     *
+     * @param time the authoritative event time from the persisted row
+     */
+    public void setTimestamp(Instant time) {
+        if (time == null) return;
+        this.timestamp = time;
+        this.eventTime = time;
+    }
 
     /**
      * Returns the git branch targeted by this job.
@@ -273,6 +402,14 @@ public class JobCompletionEvent {
      * @return the PR URL, or {@code null} if no PR was created
      */
     public String getPullRequestUrl() { return pullRequestUrl; }
+
+    /**
+     * Returns whether the completing job asked its own workstream to be
+     * notified with a wake-up job when this event fires.
+     *
+     * @return {@code true} when self-notification was requested
+     */
+    public boolean isSelfNotify() { return selfNotify; }
 
     /**
      * Returns the human-readable error message, if the job failed.
@@ -416,6 +553,18 @@ public class JobCompletionEvent {
         return this;
     }
 
+    /**
+     * Sets whether the completing job asked its own workstream to be
+     * notified with a wake-up job when this event fires.
+     *
+     * @param selfNotify {@code true} to request self-notification
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withSelfNotify(boolean selfNotify) {
+        this.selfNotify = selfNotify;
+        return this;
+    }
+
     /** Shared Jackson mapper for {@link #toJson()}. */
     private static final ObjectMapper EVENT_MAPPER = new ObjectMapper();
 
@@ -440,6 +589,7 @@ public class JobCompletionEvent {
         for (String f : skippedFiles) skippedArray.add(f);
 
         root.put("pullRequestUrl", pullRequestUrl);
+        root.put("selfNotify", selfNotify);
         root.put("errorMessage", errorMessage);
 
         root.put("prompt", getPrompt());

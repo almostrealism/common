@@ -109,6 +109,24 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	}
 
 	/**
+	 * Returns whether this provider's memory can only be read.
+	 *
+	 * <p>Asking is not the same as attempting and failing. A caller that is
+	 * about to arrange a write it does not need — copying a value back to
+	 * where it came from, when nothing can have changed it — should find that
+	 * out before arranging it, rather than by an exception raised later on
+	 * whatever thread the copy eventually runs on.</p>
+	 *
+	 * <p>A provider that leaves {@link #setMem} unimplemented is read-only and
+	 * must say so here. The two are one decision expressed twice, and a
+	 * provider that says otherwise reports memory as writable that will throw
+	 * when written.</p>
+	 *
+	 * @return whether writes are rejected
+	 */
+	default boolean isReadOnly() { return false; }
+
+	/**
 	 * Copies data from a source memory region into the destination memory region.
 	 *
 	 * <p>The default implementation rejects the write: memory managed by a

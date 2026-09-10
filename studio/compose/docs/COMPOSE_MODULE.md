@@ -182,6 +182,38 @@ project's internal pitch type, strictly more general than MIDI), and reads
 the live per-member name as `capturedNoteName(layer)` — used by stem
 naming so a name and a rendered pitch can never disagree.
 
+#### Where a group belongs, and which files it claims
+
+The library reasons about one kind of thing: groups. A loose file (one
+no saved group claims) is treated as a one-layer synthetic group, derived
+on demand, never persisted:
+
+```java
+// Build the synthetic group standing for a loose file
+Audio.AudioLayerGroup group = audioLayerGroupLibrary.syntheticGroup(file, identifier);
+
+// True for a group that was synthesized for a loose file rather than saved
+boolean loose = audioLayerGroupLibrary.isSynthetic(group);
+
+// Canonical paths of saved group members currently resolvable through the
+// library's index; missing or unindexed members are omitted. A library that
+// has not yet been indexed therefore claims nothing — the tree shows what it
+// showed before rather than losing rows it cannot yet justify losing.
+Set<String> claimed = audioLayerGroupLibrary.claimedPaths();
+
+// Every member of a group, in layer order, as the files the library finds
+List<File> members = audioLayerGroupLibrary.membersOf(group);
+
+// Most specific directory holding every member that can be found —
+// derived, not stored, so moving a member does not leave stale placement
+File location = audioLayerGroupLibrary.locate(group);
+```
+
+The `matches(FileWaveDataProviderFilter, group)` and `filterValue(FilterOn, group)`
+accessors let user-written `FileWaveDataProviderFilter`s apply to groups as well as
+to the files they were originally written for, since a group carries its
+own name and its own path.
+
 ### Sidecar WaveDetails Files
 
 `AudioLibraryPersistence.saveWaveDetails` writes a sidecar file alongside

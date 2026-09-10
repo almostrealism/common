@@ -32,6 +32,7 @@ import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
+import io.flowtree.github.GitHubOrgs;
 import io.flowtree.github.GitHubProxyHandler;
 
 import java.util.ArrayList;
@@ -468,17 +469,30 @@ final class WorkstreamRegistrationHandler {
                 ? JsonFieldExtractor.extractInt(body, "maxWallClockHours") : 0;
         boolean defaultUseTmux = JsonFieldExtractor.extractBoolean(body, "defaultUseTmux");
         boolean dormantForCompletionListeners = JsonFieldExtractor.extractBoolean(body, "dormantForCompletionListeners");
+        // Explicit kind wins over the heuristic. A missing or empty value means
+        // "infer from branch name below"; an unknown value is rejected here so
+        // the operator learns of the typo at registration time rather than at
+        // the next archive scan. See Workstream.setKind for the vocabulary.
+        String kind = JsonFieldExtractor.extractString(body, "kind");
+        if (kind != null && !kind.isEmpty() && !Workstream.getKnownKinds().contains(kind)) {
+            return Registration.failed(errorResponse.apply(
+                "Unknown workstream kind '" + kind
+                + "'. Expected one of: " + Workstream.getKnownKinds() + "."));
+        }
 
         // Resolve the target workspace: an explicit workspaceId wins, then a
         // workspace derived from the repoUrl's GitHub org, then (in legacy
         // single-workspace mode) null / the primary notifier. In
         // multi-workspace mode failing to resolve a workspace is a 400 — the
         // alternative is silently placing the workstream in the wrong one.
+        // The org comparison ignores case: GitHub org names are themselves
+        // case-insensitive, and the casing in workstreams.yaml routinely
+        // differs from the casing CI puts in the submitted repoUrl.
         String targetWorkspaceId = explicitWorkspaceId;
         if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty()) && repoUrl != null) {
             String org = GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl);
             if (org != null) {
-                targetWorkspaceId = orgToWorkspaceId.get(org);
+                targetWorkspaceId = GitHubOrgs.lookup(orgToWorkspaceId, org);
             }
         }
         if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty())
@@ -582,6 +596,26 @@ final class WorkstreamRegistrationHandler {
         // cascade. Default false on register; mutable on update so
         // the orchestrator can flip its own state mid-run.
         workstream.setDormantForCompletionListeners(dormantForCompletionListeners);
+        // Workstream classification. Explicit kind wins; otherwise infer
+        // from the branch name. orchestrator when defaultBranch equals
+        // baseBranch (the branch is the trunk); standing when defaultBranch
+        // starts with the orchestration/ convention; feature otherwise.
+        // The heuristic is intentionally narrow — it only fires when the
+        // caller did not pass an explicit kind — so an operator who knows
+        // better always wins.
+        if (kind != null && !kind.isEmpty()) {
+            workstream.setKind(kind);
+        } else {
+            String base = workstream.getBaseBranch();
+            String def = workstream.getDefaultBranch();
+            if (base != null && !base.isEmpty() && base.equals(def)) {
+                workstream.setKind("orchestrator");
+            } else if (def != null && def.startsWith("orchestration/")) {
+                workstream.setKind("standing");
+            } else {
+                workstream.setKind("feature");
+            }
+        }
 
         boolean persisted;
         if (listener != null) {
@@ -734,6 +768,23 @@ final class WorkstreamRegistrationHandler {
         if (JsonFieldExtractor.hasField(body, "dormantForCompletionListeners")) {
             workstream.setDormantForCompletionListeners(
                     JsonFieldExtractor.extractBoolean(body, "dormantForCompletionListeners"));
+        }
+        // kind: presence signal. An explicit value (one of
+        // "feature"/"orchestrator"/"standing") sets it; an unknown value
+        // is rejected so a typo does not silently change the lifecycle
+        // verdict. Omitting the field leaves the workstream's existing
+        // classification untouched so an unrelated update does not
+        // downgrade a standing row back to feature.
+        if (JsonFieldExtractor.hasField(body, "kind")) {
+            String updateKind = JsonFieldExtractor.extractString(body, "kind");
+            if (updateKind != null && !updateKind.isEmpty()) {
+                if (!Workstream.getKnownKinds().contains(updateKind)) {
+                    return errorResponse.apply(
+                        "Unknown workstream kind '" + updateKind
+                        + "'. Expected one of: " + Workstream.getKnownKinds() + ".");
+                }
+                workstream.setKind(updateKind);
+            }
         }
 
         if (listener != null && !listener.registerAndPersistWorkstream(workstream)) {

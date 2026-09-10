@@ -115,14 +115,6 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	/**
-	 * Checks if this language supports 64-bit integers.
-	 *
-	 * @return Always true (Metal supports int64_t/long)
-	 */
-	@Override
-	public boolean isInt64() { return true; }
-
-	/**
 	 * Checks if booleans are represented as numeric types.
 	 *
 	 * @return Always false (Metal has native bool type)

@@ -8,8 +8,35 @@ anything defined in ``server`` through the module rather than by import, so
 the suite's patches still apply. Helpers and constants stay in ``server.py``.
 """
 
+import time
+
 import server
 from server import mcp
+
+# Longest a single ``await_message`` call will block, in seconds.
+#
+# The ceiling is not arbitrary. A blocking tool call produces no output
+# on the agent subprocess's stdout, and the orchestrator's inactivity
+# watchdog (``AgentRunner.DEFAULT_INACTIVITY_TIMEOUT_MILLIS``, 35
+# minutes) destroys a process tree that has been silent that long. A
+# wait that stayed under the watchdog only by luck would kill
+# collaborating agents at random, so the cap keeps a comfortable margin
+# and the tool returns rather than approaching it. Returning is what
+# resets the watchdog: the agent calls again.
+MAX_AWAIT_SECONDS = 1500
+
+# Default block for a single ``await_message`` call, in seconds.
+DEFAULT_AWAIT_SECONDS = 300
+
+# Longest single long-poll issued against the controller, in seconds.
+# Kept short enough that no intermediary times the request out; a
+# longer wait is composed from several of these.
+CONTROLLER_POLL_SECONDS = 120
+
+# Floor on the interval between successive controller polls, in seconds.
+# The blocking belongs on the controller; this only bounds the damage when
+# a controller answers a long poll immediately.
+MINIMUM_POLL_INTERVAL_SECONDS = 1.0
 
 
 @mcp.tool()
@@ -19,12 +46,21 @@ def send_message(
     job_id: str = "",
     activity: str = "",
 ) -> dict:
-    """Send a message for archival and optional notification.
+    """Send a message for archival, notification, and delivery to peers.
 
     Messages are stored in the memory database by the controller and
     optionally forwarded to a notification channel.  Use this tool to
     report status updates, results, or errors back to the user who
     initiated this task.
+
+    The message is also appended to the workstream's conversation, where
+    any other agent session working the same workstream can read it with
+    ``await_message``.  That is how two agents on different machines
+    talk to each other: this tool is the only way to send, and
+    ``await_message`` is the only way to receive.  Nothing extra is
+    required to address a peer — a peer awaiting on this workstream sees
+    every message posted to it, and a peer that is not listening loses
+    nothing, because the conversation is durable and it can catch up.
 
     ``workstream_id`` and ``job_id`` are both optional. In a job session
     (Claude Code or opencode launched by the controller) the in-flight
@@ -244,7 +280,255 @@ def send_message(
         path += f"/jobs/{server.quote(effective_job, safe='')}"
     path += "/messages"
 
-    body: dict = {"text": text}
+    body: dict = {"text": text, "sender": _sender_identity(effective_job)}
     if effective_activity:
         body["activity"] = effective_activity
     return server._controller_post(path, body)
+
+
+def _sender_identity(job_id: str) -> str:
+    """Name the caller, so a reader can tell a peer's message from its own.
+
+    A job identifies itself by its job id, which is the identity another
+    agent addresses and the one the controller threads notifications
+    under.  A caller with no job — an operator at an interactive session,
+    or an automation holding a static bearer — identifies itself by its
+    token label instead.
+
+    Args:
+        job_id: The resolved job id, or an empty string when there is
+            none.
+
+    Returns:
+        The sender identity to record on the message.
+    """
+    if job_id:
+        return f"job:{job_id}"
+    return f"caller:{server._get_token_label() or 'unknown'}"
+
+
+@mcp.tool()
+def send_alert(
+    text: str,
+    recipients: str,
+    severity: str = "INFO",
+) -> dict:
+    """Send an alert to named people, out of band from any chat channel.
+
+    Use this to reach a person directly — currently by SMS — when
+    something needs attention now and a message in a channel would not
+    be seen in time.  This is deliberately intrusive and it costs money
+    per message, so prefer ``send_message`` for ordinary status
+    reporting and keep this for things a person actually needs to be
+    interrupted for.
+
+    Recipients are named by handle (``"michael"``, ``"mmurray"``), never
+    by phone number.  The controller resolves each handle to a delivery
+    provider at send time, so handles are stable even when the
+    underlying number or channel changes.  A handle the controller does
+    not know is reported back in ``unknown`` rather than failing the
+    call, and the known handles are listed in ``known`` so a typo is
+    easy to correct.
+
+    The alert body is free-form text.  Nothing is prepended to it, so
+    include whatever context the reader needs to act — which repository,
+    which branch, which job — directly in ``text``.  Alerts are
+    delivered as a single short message; keep it to a sentence or two.
+
+    Rate limits apply at two levels: an account-wide ceiling shared by
+    everyone, and a smaller per-caller budget.  Exceeding either returns
+    ``ok=false`` rather than queuing the alert.
+
+    Args:
+        text: The alert body.  Free-form, self-contained, and short;
+            at most ``MAX_ALERT_TEXT_LEN`` (1000) characters, the same
+            limit the controller enforces.
+        recipients: Comma-separated recipient handles (e.g.
+            ``"michael"`` or ``"michael,mmurray"``).  At least one is
+            required.
+        severity: One of ``INFO``, ``WARNING``, or ``ERROR``.  Defaults
+            to ``INFO``.  Unrecognized values are treated as ``INFO``.
+
+    Returns:
+        Dictionary with ``ok=true`` plus ``delivered``, ``unknown`` and
+        ``known`` recipient lists, or ``ok=false`` with error details.
+    """
+    server._require_scope("write")
+
+    names = [n.strip() for n in (recipients or "").split(",") if n.strip()]
+    if not names:
+        return {
+            "ok": False,
+            "error": "recipients is required; name at least one handle "
+                     "(e.g. recipients=\"michael\")",
+        }
+
+    if not text or not text.strip():
+        return {"ok": False, "error": "text is required"}
+
+    # The controller rejects anything past this length, so check it here:
+    # a caller learns immediately, rather than after a round trip that was
+    # never going to succeed.
+    err = server._check_length(text, "text", server.MAX_ALERT_TEXT_LEN)
+    if err:
+        return err
+
+    server._audit("send_alert", recipients=",".join(names),
+                  severity=severity, text=text[:80])
+
+    # The caller identity is what the per-caller rate limit is keyed on.
+    # The token label is already the identity the audit log records, so
+    # a throttled caller can be traced to the same identity in both
+    # places without correlating anything.
+    return server._controller_post("/api/alerts", {
+        "text": text,
+        "recipients": names,
+        "severity": severity or "INFO",
+        "caller": server._get_token_label(),
+    })
+
+
+@mcp.tool()
+def await_message(
+    workstream_id: str = "",
+    since: int = -1,
+    timeout_seconds: int = DEFAULT_AWAIT_SECONDS,
+    include_own: bool = False,
+) -> dict:
+    """Wait for a message from another agent working this workstream.
+
+    This is the receiving half of ``send_message`` and the way two agent
+    sessions on different machines collaborate.  A typical exchange: you
+    submit a job with ``workstream_submit_task`` (targeting a particular
+    machine with ``required_labels="hostname:<name>"`` when it matters),
+    then call this tool and wait for that agent to report that it is
+    ready.  You reply with ``send_message``; it is waiting in the same
+    way and acts on what you sent.  Repeat until the work is done, then
+    tell it to finish.
+
+    The call BLOCKS until a message arrives or ``timeout_seconds``
+    elapses, and it returns the moment a peer posts — there is no
+    polling interval to wait out.  A timeout is not a failure: it
+    returns ``ok=true`` with ``timed_out=true``, and you call again.
+    Doing so is required rather than optional, because a session that
+    produces no output for long enough is treated as hung and killed;
+    returning from this tool is what proves the session is alive.  Never
+    invent busy-work to stay awake, and never abandon a collaboration
+    just because one wait came back empty.
+
+    Pass ``next_since`` from the previous result back as ``since`` so
+    that nothing is delivered twice and nothing is missed.  The default
+    of ``-1`` starts from the present moment; pass ``0`` to replay the
+    whole conversation, which is how a job submitted later picks up
+    where an earlier one left off.
+
+    Args:
+        workstream_id: Workstream whose conversation to read.  Defaults
+            to the workstream resolved from the in-flight request's HMAC
+            temp token, so a job session can omit it.
+        since: The ``next_since`` from your previous call.  ``-1`` (the
+            default) waits for messages sent from now on; ``0`` replays
+            the conversation from the beginning.
+        timeout_seconds: How long to block.  Defaults to
+            ``DEFAULT_AWAIT_SECONDS`` (300) and is capped at
+            ``MAX_AWAIT_SECONDS`` (1500); a larger value is clamped, and
+            the response says so.
+        include_own: When true, messages you sent are returned as well.
+            Defaults to false, so you do not hear your own echo.
+
+    Returns:
+        Dictionary with ``ok``, ``messages`` (oldest first, each with
+        ``seq``, ``createdAt``, ``sender``, and ``text``), ``next_since``
+        to pass to the next call, and ``timed_out``.
+    """
+    server._require_scope("read")
+
+    per_req_ws, per_req_job, _label, per_req_reason = (
+        server._decode_current_request_token_full())
+    effective_ws = (workstream_id or per_req_ws
+                    or server._request_workstream_id.get(None)
+                    or getattr(server._thread_local, "workstream_id", None) or "")
+    effective_job = (per_req_job or server._request_job_id.get(None)
+                     or getattr(server._thread_local, "job_id", None) or "")
+
+    if not effective_ws:
+        return {
+            "ok": False,
+            "error": (
+                "workstream_id could not be resolved. Pass workstream_id"
+                " explicitly, or call from a job session whose HMAC"
+                " temp token resolves to a registered workstream."
+            ),
+            "per_request_decode_reason": per_req_reason,
+            "next_steps": [
+                "Use workstream_list to find the workstream ID and pass"
+                " workstream_id=<id>",
+                "If calling from a job session, verify the bearer token"
+                " is an armt_tmp_ HMAC token (a static admin bearer"
+                " carries no workstream binding)",
+            ],
+        }
+
+    server._require_workstream_in_scope(effective_ws)
+
+    budget = min(max(int(timeout_seconds), 0), MAX_AWAIT_SECONDS)
+    clamped = int(timeout_seconds) > MAX_AWAIT_SECONDS
+    exclude = "" if include_own else _sender_identity(effective_job)
+
+    server._audit("await_message", workstream_id=effective_ws,
+                  job_id=effective_job, since=since, timeout_seconds=budget)
+
+    base = f"/api/workstreams/{server.quote(effective_ws, safe='')}/mailbox"
+    if exclude:
+        base += f"?exclude={server.quote(exclude, safe='')}&"
+    else:
+        base += "?"
+
+    cursor = int(since)
+    deadline = time.monotonic() + budget
+
+    while True:
+        wait = int(min(CONTROLLER_POLL_SECONDS, max(deadline - time.monotonic(), 0)))
+        started = time.monotonic()
+        result = server._controller_get(
+            f"{base}since={cursor}&wait={wait}", timeout=wait + 15)
+
+        if not result.get("ok"):
+            return {
+                "ok": False,
+                "error": result.get("error", "Controller rejected the mailbox read"),
+                "next_since": cursor,
+            }
+
+        cursor = result.get("nextSince", cursor)
+        messages = result.get("messages", [])
+
+        if messages:
+            return {
+                "ok": True,
+                "messages": messages,
+                "next_since": cursor,
+                "timed_out": False,
+                "clamped_to_max_await_seconds": clamped,
+            }
+
+        if time.monotonic() >= deadline:
+            return {
+                "ok": True,
+                "messages": [],
+                "next_since": cursor,
+                "timed_out": True,
+                "clamped_to_max_await_seconds": clamped,
+                "hint": (
+                    "No message arrived within the wait. This is normal."
+                    " Call await_message again with since=<next_since> to"
+                    " keep waiting, or stop waiting and proceed if the"
+                    " collaboration no longer needs a reply."
+                ),
+            }
+
+        # The wait is meant to happen on the controller. One that answers
+        # without honouring it would otherwise be polled in a tight loop.
+        idle = min(MINIMUM_POLL_INTERVAL_SECONDS, deadline - time.monotonic())
+        if time.monotonic() - started < MINIMUM_POLL_INTERVAL_SECONDS and idle > 0:
+            time.sleep(idle)

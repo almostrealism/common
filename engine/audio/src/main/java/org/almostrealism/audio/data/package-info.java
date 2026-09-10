@@ -23,5 +23,12 @@
  * which provides GPU-resident storage for wave cell state. Also includes
  * {@link org.almostrealism.audio.data.WaveData} for loading and managing audio
  * sample data from files.</p>
+ *
+ * <p>{@link org.almostrealism.audio.data.ContentIndex} provides the identifier
+ * &rarr; file lookup used by {@link org.almostrealism.audio.AudioLibrary} to
+ * resolve a content identifier without walking the file tree. The index is
+ * replaced wholesale by {@code indexFiles()} and the tree-refresh path, and
+ * exposes a generation counter that derivations can compare against to notice
+ * when the library has moved on.</p>
  */
 package org.almostrealism.audio.data;

@@ -67,10 +67,11 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
      * Shared by {@link JobStatsStoreRunnerCostTest} (same package).
      */
     static void recordCompletedJob(JobStatsStore store, String jobId,
-                                         String workstreamId, Instant when, double totalCost) {
+                                    String workstreamId, Instant when, double totalCost) {
         store.recordJobStarted(jobId, workstreamId, "job " + jobId, when);
         store.recordJobCompleted(jobId, workstreamId, "SUCCESS",
-                when.plusMillis(60000), 55000, 30000, totalCost, 10, "sess-" + jobId,
+                when.plusMillis(60000), "job " + jobId,
+                55000, 30000, totalCost, 10, "sess-" + jobId,
                 0, "success", false, 0, null, null, null, null);
     }
 

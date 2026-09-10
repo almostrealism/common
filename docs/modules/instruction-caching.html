@@ -339,10 +339,10 @@ return Signature.md5(combined);
                     </thead>
                     <tbody>
                         <tr><td><code>get(K key)</code></td><td>Retrieves value, updates frequency and clock. Returns <code>null</code> if absent.</td></tr>
-                        <tr><td><code>put(K key, V value)</code></td><td>Inserts or updates mapping. Deduplicates values via reverse map. May trigger eviction.</td></tr>
+                        <tr><td><code>put(K key, V value)</code></td><td>Inserts or updates mapping. Deduplicates values via reverse map. May trigger eviction; on an update, the previous value's last reference is dropped and the eviction listener is notified.</td></tr>
                         <tr><td><code>computeIfAbsent(K key, Supplier&lt;V&gt;)</code></td><td>Returns cached value or computes and caches if absent.</td></tr>
                         <tr><td><code>evict(K key)</code></td><td>Explicitly removes entry and invokes eviction listener.</td></tr>
-                        <tr><td><code>setEvictionListener(BiConsumer)</code></td><td>Registers callback for eviction events (e.g., resource cleanup).</td></tr>
+                        <tr><td><code>setEvictionListener(BiConsumer)</code></td><td>Registers callback for eviction events (e.g., resource cleanup). Fires on capacity evictions, explicit evictions, and value displacements during a <code>put</code> update.</td></tr>
                         <tr><td><code>valuesByFrequency(IntPredicate)</code></td><td>Streams values filtered and sorted by access frequency.</td></tr>
                     </tbody>
                 </table>

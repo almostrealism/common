@@ -59,7 +59,7 @@ if [ "${CHECKSTYLE_PASSED:-true}" != "true" ]; then
 fi
 
 if [ "${AGENT_COMMIT_BLOCKED:-false}" = "true" ]; then
-    echo "- agent-commit-validation: CRITICAL — Agent commit was BLOCKED because it modifies test files or CI files that exist on the base branch. Reason: ${AGENT_BLOCK_REASON:-unknown}. Agents are NEVER allowed to modify test or CI files. Run \`./tools/ci/agent-protection/validate-agent-commit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+    echo "- agent-commit-validation: CRITICAL — Agent commit was BLOCKED. Reason: ${AGENT_BLOCK_REASON:-unknown}. Agents are NEVER allowed to change or remove a test method that exists on the base branch, nor to modify CI files outside a ci/... branch, and a commit dispatched to fix a failure must add something that did not exist before. Adding new test methods to an existing test class is permitted. Run \`./tools/ci/agent-protection/validate-agent-commit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 

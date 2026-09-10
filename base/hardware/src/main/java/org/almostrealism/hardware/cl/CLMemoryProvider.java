@@ -63,6 +63,15 @@ import java.lang.ref.Reference;
  * long used = provider.getAllocatedMemory();
  * }</pre>
  *
+ * <h2>Reading Into Native Memory</h2>
+ *
+ * <p>A {@link org.almostrealism.nio.NativeMemoryProvider.NativeBufferWriter} registered here
+ * lets {@link NativeMemoryProvider} read a {@link CLMemory} directly into a host buffer. It
+ * reproduces the source's bytes, so it is correct only when both providers store elements at
+ * the same width. {@link NativeMemoryProvider#setMem(RAM, int, Memory, int, int)} checks that
+ * before dispatching to it and converts through a {@code double[]} otherwise; the writer's own
+ * {@link UnsupportedOperationException} states the precondition for any other caller.</p>
+ *
  * @see CLMemory
  * @see CLMemoryRef
  * @see CLDataContext
@@ -89,7 +98,8 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		NativeMemoryProvider.registerAdapter(CLMemory.class,
 				(mem, offset, source, srcOffset, length) -> {
 					if (mem.getProvider().getNumberSize() != source.getProvider().getNumberSize()) {
-						throw new UnsupportedOperationException();
+						throw new UnsupportedOperationException(
+								"Cannot copy CLMemory into native memory of a different precision");
 					}
 
 					// Address the position-stable root ByteBuffer rather than the typed view,

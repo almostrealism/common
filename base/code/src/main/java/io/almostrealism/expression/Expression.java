@@ -1312,8 +1312,27 @@ public abstract class Expression<T> implements
 	public boolean equals(Object obj) {
 		if (!(obj instanceof Expression)) return false;
 
-		return timing == null ? compare((Expression) obj) :
-				timing.recordDuration("expressionEquals", () -> compare((Expression) obj));
+		return isTimed() ?
+				timing.recordDuration("expressionEquals", () -> compare((Expression) obj)) :
+				compare((Expression) obj);
+	}
+
+	/**
+	 * Whether this class's own operations should report their durations.
+	 *
+	 * <p>Distinct from {@code timing != null}, which only says a profile is assigned.
+	 * {@link #equals}, {@link #hashCode} and {@link #signature} run often enough and
+	 * briefly enough that timing them changes what is being timed, so they are also
+	 * gated on {@link ScopeSettings#enableExpressionTiming}, and on the listener
+	 * actually keeping what it is given — a profile that collects no scope timings
+	 * supplies {@link ScopeTimingListener#NONE}, and there is nothing to be gained by
+	 * measuring for it.</p>
+	 *
+	 * @return true if a measurement taken here would be recorded
+	 */
+	private static boolean isTimed() {
+		return ScopeSettings.enableExpressionTiming
+				&& timing != null && timing.isRecording();
 	}
 
 	/**
@@ -1326,8 +1345,9 @@ public abstract class Expression<T> implements
 	 */
 	@Override
 	public String signature() {
-		return timing == null ? getExpression(lang) :
-				timing.recordDuration("expressionSignature", () -> getExpression(lang));
+		return isTimed() ?
+				timing.recordDuration("expressionSignature", () -> getExpression(lang)) :
+				getExpression(lang);
 	}
 
 	/**
@@ -1341,7 +1361,7 @@ public abstract class Expression<T> implements
 	 */
 	@Override
 	public int hashCode() {
-		return timing == null ? hash() : timing.recordDuration("expressionHashCode", this::hash);
+		return isTimed() ? timing.recordDuration("expressionHashCode", this::hash) : hash();
 	}
 
 	/**

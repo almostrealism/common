@@ -126,6 +126,7 @@ final class CodingAgentJobConfigurer {
         job.setMaxReviewPasses(factory.getMaxReviewPasses());
         job.setRetrospectiveEnabled(factory.isRetrospectiveEnabled());
         job.setFalsificationEnabled(factory.isFalsificationEnabled());
+        job.setCollaborative(factory.isCollaborative());
         job.setSensitiveFileProtectionEnabled(factory.isSensitiveFileProtectionEnabled());
         job.setSensitiveFileBypassSignature(factory.getSensitiveFileBypassSignature());
         applyPostCompletionConfig(factory, job);

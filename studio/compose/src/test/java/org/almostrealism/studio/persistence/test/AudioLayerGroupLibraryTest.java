@@ -300,6 +300,53 @@ public class AudioLayerGroupLibraryTest extends TestSuiteBase {
 		Assert.assertTrue("Member " + id + " should be findable by HNSW similarity search", found);
 	}
 
+	/**
+	 * A group claims nothing until the library it reads through is indexed.
+	 *
+	 * <p>Claims are resolved through the identifier index, which is what lets
+	 * them be asked for while a tree is being built without that question
+	 * re-entering the build. The cost is that the answer is empty until the
+	 * index exists, and a caller that asks too early is told — accurately — that
+	 * nothing is claimed.</p>
+	 *
+	 * <p>This is a live ordering hazard rather than a theoretical one, because
+	 * the walk that builds the index is the walk that builds the tree: anything
+	 * asking during it asks an empty index. A caller that then keeps the answer
+	 * shows every claimed member as a loose file, and shows every group at the
+	 * root, since a group with no findable members has nowhere else to go. What
+	 * makes it recoverable is that indexing is a change in generation, so the
+	 * claims are worked out again rather than staying empty — but only for
+	 * whoever asks again afterwards.</p>
+	 */
+	@Test(timeout = 180000)
+	public void nothingIsClaimedUntilTheLibraryIsIndexed() throws Exception {
+		File wav = stagingWav("layerA", 220.0);
+		String id = identifier(wav);
+
+		Audio.AudioLayerGroup group = Audio.AudioLayerGroup.newBuilder()
+				.setKey("20260613-100000_Alchemy_abcd1234")
+				.addLayers(audioLayer("layerA", id))
+				.build();
+
+		Ctx ctx = open();
+
+		try {
+			Assert.assertTrue("Group save should succeed",
+					ctx.coordinator.includeGroup(group, byLayerId(Map.of("layerA", wav)))
+							.isPresent());
+
+			Assert.assertTrue("An unindexed library claims nothing",
+					ctx.coordinator.claimedPaths().isEmpty());
+
+			ctx.library.indexFiles();
+
+			Assert.assertFalse("Indexing must make the claim visible",
+					ctx.coordinator.claimedPaths().isEmpty());
+		} finally {
+			ctx.close();
+		}
+	}
+
 	/** Asserts each named layer was rewritten to {@code audio_ref} with the expected MD5. */
 	private void assertSlimLayers(Audio.AudioLayerGroup group, Map<String, String> expectedRefs) {
 		for (Map.Entry<String, String> e : expectedRefs.entrySet()) {

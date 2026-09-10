@@ -67,6 +67,19 @@ public class CollectionDataMemoryProvider implements MemoryProvider<Memory> {
 	public String getName() { return "PROTOBUF"; }
 
 	/**
+	 * Reports that this memory can only be read.
+	 *
+	 * <p>The backing store is a parsed message, which is the asset as it was
+	 * written and not a place to put results. {@link #setMem} is therefore left
+	 * unimplemented, and this says so in advance — a caller that would arrange
+	 * a write finds out while it is deciding rather than when the write runs.</p>
+	 *
+	 * @return true
+	 */
+	@Override
+	public boolean isReadOnly() { return true; }
+
+	/**
 	 * Returns the size of each number in bytes, as served to readers.
 	 *
 	 * @return 8 (values are read as FP64 regardless of the message's encoded precision)

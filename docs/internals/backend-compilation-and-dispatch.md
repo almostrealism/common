@@ -253,7 +253,7 @@ via `DefaultComputer.getContext`.
 | `AR_HARDWARE_LIBS` | Directory for compiled native libraries | Auto-detected (do not set manually) |
 | `AR_HARDWARE_PRECISION` | `FP32` (float) or `FP64` (double) | `FP64` |
 | `AR_HARDWARE_MEMORY_SCALE` | Max memory: precision.bytes() × 2^scale × 64MB | 4 (~4GB FP32) |
-| `AR_HARDWARE_MEMORY_LOCATION` | OpenCL memory strategy | device |
+| `AR_HARDWARE_MEMORY_LOCATION` | OpenCL memory strategy; only `device` is honored, `host`/`heap`/`delegate` are accepted but allocated as `device` (see Hardware.java Javadoc) | `device` |
 | `AR_HARDWARE_NATIVE_COMPILER` | Path to C compiler | clang |
 
 ## ComputeContext — The Compilation Bridge

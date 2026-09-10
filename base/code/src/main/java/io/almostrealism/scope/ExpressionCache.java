@@ -123,7 +123,7 @@ public class ExpressionCache {
 			return e;
 		};
 
-		if (Expression.timing == null) {
+		if (Expression.timing == null || !Expression.timing.isRecording()) {
 			return lookup.get();
 		} else {
 			String title = "expressionCacheMatch_" + expression.treeDepth() +

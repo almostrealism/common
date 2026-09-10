@@ -315,6 +315,15 @@ The commit message is determined by `getCommitMessage()`, which implements a two
 
 The agent's instruction prompt tells it about the `commit.txt` mechanism (in the "Git Commit Instructions" section), so agents that are configured with a target branch know they can control the commit message.
 
+#### Author attribution is removed or the job fails
+
+Commit messages must not attribute authorship of the work: no `Co-Authored-By` (or `Authored-By` / `Assisted-By`) trailer, no "Generated with ..." / "Created by ..." tool credit, no agent name, assistant e-mail address, or product URL. The commit is authored by the configured git identity. Agents add these anyway — their base training and their own default harness instructions tell them to — so the instruction prompt forbids it explicitly *and* `getCommitMessage()` enforces it (`AuthorAttribution`):
+
+- **Removed** when every attribution occurrence is a whole line in the message's trailing block (at or after the last line of real content, blank lines allowed between). This is the shape agents actually produce, and deleting it changes nothing the agent wrote about its work. A warning naming the removed lines is logged.
+- **Refused** in every other position — inline in a line of prose, above further body content, or a message consisting only of attribution. There is no faithful automatic rewrite, so `CommitMessageBuilder.resolve()` throws `IllegalStateException`, which fails the job before any commit is made.
+
+`CommitMessageRule` (the last enforcement rule) reports the refused case as a violation first, so the agent gets correction attempts — with the offending lines quoted back to it — before the job reaches that hard failure. Attribution the harness can strip is deliberately *not* a violation and costs no correction session.
+
 ### Validation: detect-test-hiding.sh
 
 When `protectTestFiles` is enabled, `validateChanges()` runs the `detect-test-hiding.sh` script (located at `tools/ci/agent-protection/detect-test-hiding.sh` relative to the working directory). This script audits the diff against `origin/<baseBranch>` for changes that might "hide" test failures, such as:
@@ -768,11 +777,11 @@ The output contains multiple JSON objects. Per-turn objects appear early with pa
 | `subtype` | `subtype` | `String` | `null` |
 | `isError` | `is_error` | `boolean` | `false` |
 | `permissionDenials` | `permission_denials` (array length) | `int` | `0` |
-| `deniedToolNames` | `permission_denials[*].tool` | `List<String>` | `null` |
+| `deniedToolNames` | `permission_denials[*].tool_name` | `List<String>` | `null` |
 
 The cost field has a two-step lookup: `total_cost_usd` is checked first, falling back to `cost_usd` if the former is zero or absent. This two-step approach handles different Claude Code output format versions, where the field name changed between releases. The method uses `resultNode.path("total_cost_usd").asDouble(0.0)` for the primary lookup, which returns `0.0` for both missing fields and explicit zero values, then checks `cost_usd` as a fallback only when the primary value is zero.
 
-Permission denials are extracted from a JSON array. Each element is expected to have a `"tool"` field, and the tool names are collected into a list. The count is the array's `size()`.
+Permission denials are extracted from a JSON array. Each element is `{tool_name, tool_use_id, tool_input}`; the denied tool's name is carried by the `"tool_name"` field (not `"tool"`), and the tool names are collected into a list. The count is the array's `size()`.
 
 ### JSON Parsing
 

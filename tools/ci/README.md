@@ -8,6 +8,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | Directory | Purpose |
 |---|---|
 | `agent-protection/` | Anti-deception enforcement scripts (test write locks, audit) |
+| `coverage/` | Test-coverage automation: target selection, report fetching, assertion density |
 | `docker/` | Linux CPU runner fleet (`ar-ci`), Docker Compose |
 | `macos/` | macOS GPU runner configuration (`ar-ci`) |
 | `rocm/` | AMD/ROCm OpenCL runner fleet (`ar-ci-cl`), Docker Compose |
@@ -23,6 +24,19 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
+## Coverage (`coverage/`)
+
+| Script | Purpose |
+|---|---|
+| `fetch-latest-coverage.sh` | Reuse (or, with `FORCE=true`, recompute) the merged JaCoCo report and a fresh coverage.py report |
+| `select-target.py` | Rank Java packages / Python directories by coverage and emit one coverage-qa target |
+| `test_select_target.py` | Unit tests for `select-target.py`, driven by the `testdata/` fixtures |
+| `assertion-density-report.sh` | Report-only: assertions-per-new-test-method for a coverage-qa PR |
+
+See `tools/coverage-data/coverage-exclusions.txt` / `tools/coverage-data/coverage-history.tsv`
+for the selector's data files — kept outside `tools/ci/` because they are mutable data an
+agent round appends to, not pipeline logic.
+
 ## Agent Protection (`agent-protection/`)
 
 | Script | Purpose |
@@ -30,10 +44,14 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-test-hiding.sh` | Detect modifications to base-branch tests that hide failures |
-| `validate-agent-commit.sh` | Block agent commits that modify base-branch tests or CI files |
+| `test-method-lines.awk` | Report the test methods of a Java source file, by line or by body |
+| `test-validate-agent-commit.sh` | Regression tests for `validate-agent-commit.sh` |
+| `test-verify-exfiltration-guard.sh` | Regression tests for `verify-exfiltration-guard.sh` |
+| `test-verify-sensitive-bypass.sh` | Regression tests for `verify-sensitive-bypass.sh` |
+| `validate-agent-commit.sh` | Block agent commits that change base-branch test methods or CI files |
 | `verify-exfiltration-guard.sh` | Fail CI if the exfiltration guard hook (`.claude/hooks/block-exfiltration.sh`, its core, tests, allowlist) is missing from HEAD, not registered for `Artifact`/`SendUserFile`/`Bash`, or modified on a PR branch — see `docs/plans/EXFILTRATION_GUARD_HOOK.md` |
-| `test-verify-exfiltration-guard.sh` | Regression tests for the above |
 | `verify-memory-claim.sh` | Cross-reference "no changes needed" claims against git diff |
+| `verify-sensitive-bypass.sh` | Verify a controller-signed `Sensitive-File-Bypass` commit trailer |
 
 ## Prompts (`prompts/`)
 

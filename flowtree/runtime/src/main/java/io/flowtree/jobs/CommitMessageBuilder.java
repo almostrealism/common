@@ -57,8 +57,18 @@ final class CommitMessageBuilder {
      * missing, empty, or unreadable, {@link #buildFallbackMessage(CodingAgentJob)}
      * is returned and the source is tagged {@link #SOURCE_PROMPT_FALLBACK}.</p>
      *
+     * <p>Author attribution the agent added — {@code Co-Authored-By:} trailers,
+     * {@code Generated with ...} tool credits — is removed on the way through
+     * (see {@link AuthorAttribution}). Attribution that cannot be removed
+     * without rewriting the agent's own prose fails the job here rather than
+     * landing in the repository: this is the last point at which the message
+     * can still be rejected, and {@link CommitMessageRule} has already given
+     * the agent correction attempts to fix it.</p>
+     *
      * @param job the orchestrator holding the working directory, prompt, and
      *            session metadata
+     * @throws IllegalStateException if {@code commit.txt} carries author
+     *         attribution that cannot be safely removed
      * @return the commit message text; never {@code null}
      */
     static String resolve(CodingAgentJob job) {
@@ -71,7 +81,7 @@ final class CommitMessageBuilder {
                     if (job.getCommitMessageSource() == null) {
                         job.setCommitMessageSource(SOURCE_AGENT);
                     }
-                    return agentMessage;
+                    return sanitizeAttribution(job, agentMessage);
                 }
             } catch (IOException e) {
                 job.warn("Failed to read commit.txt: " + e.getMessage());
@@ -80,7 +90,40 @@ final class CommitMessageBuilder {
 
         job.warn("No commit.txt found or it was empty — falling back to task prompt as commit message");
         job.setCommitMessageSource(SOURCE_PROMPT_FALLBACK);
-        return buildFallbackMessage(job);
+        return AuthorAttribution.stripLines(buildFallbackMessage(job));
+    }
+
+    /**
+     * Returns {@code message} with agent-added author attribution removed.
+     *
+     * <p>Removal succeeds only when the attribution sits in the message's
+     * trailing block on lines of its own, which is the shape agents produce
+     * and the only shape that can be deleted without editing the agent's
+     * description of its work. Attribution welded into that description —
+     * inline in a line of prose, or above further body content — is refused:
+     * the harness has no way to rewrite it faithfully, and committing it is
+     * not an option, so the job fails with the offending lines named.</p>
+     *
+     * @param job     the orchestrator, used for logging and to name the failure
+     * @param message the trimmed {@code commit.txt} content
+     * @throws IllegalStateException if the attribution is not safely removable
+     * @return the message with attribution removed; never {@code null}
+     */
+    private static String sanitizeAttribution(CodingAgentJob job, String message) {
+        String sanitized = AuthorAttribution.sanitize(message);
+        if (sanitized == null) {
+            throw new IllegalStateException(
+                    "Job failed: commit.txt contains author attribution that cannot be"
+                            + " safely removed: "
+                            + String.join(" / ", AuthorAttribution.attributionLines(message))
+                            + ". Commit messages must not attribute authorship to the agent"
+                            + " or credit the tool that produced them.");
+        }
+        if (!sanitized.equals(message)) {
+            job.warn("Removed author attribution from commit.txt: "
+                    + String.join(" / ", AuthorAttribution.attributionLines(message)));
+        }
+        return sanitized;
     }
 
     /**

@@ -56,6 +56,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Central configuration and initialization point for the Almost Realism hardware acceleration system.
@@ -158,10 +159,14 @@ import java.util.function.Consumer;
  * <p><strong>Purpose:</strong> Memory storage strategy for OpenCL.</p>
  * <p><strong>Values:</strong></p>
  * <ul>
- *   <li><strong>{@code device}</strong> - GPU/accelerator memory (default, fastest)</li>
- *   <li><strong>{@code host}</strong> - System RAM accessible by GPU</li>
- *   <li><strong>{@code heap}</strong> - Java heap (volatile, slowest)</li>
- *   <li><strong>{@code delegate}</strong> - Native buffer delegation</li>
+ *   <li><strong>{@code device}</strong> - OpenCL device memory (the only value
+ *       honored by {@code CLMemoryProvider}; default).</li>
+ *   <li><strong>{@code host}</strong>, <strong>{@code delegate}</strong> -
+ *       recognized at startup but allocate device memory; see
+ *       {@code CLMemoryProvider} Javadoc.</li>
+ *   <li><strong>{@code heap}</strong> - also allocates device memory, but keeps
+ *       {@link #isMemoryVolatile()} {@code true}, which preserves the OpenCL
+ *       {@code volatile} kernel-argument qualifier for callers that rely on it.</li>
  * </ul>
  *
  * <h3>AR_HARDWARE_NIO_MEMORY</h3>
@@ -435,15 +440,14 @@ import java.util.function.Consumer;
  * </pre>
  *
  * <h3>Incompatible Memory Location with NIO</h3>
+ * <p>With NIO memory on, the location is forced to {@code delegate}: an explicit
+ * {@code host} is warned and silently converted, and an explicit {@code device}
+ * or {@code heap} throws {@code IllegalArgumentException}. {@code delegate} is
+ * accepted for source compatibility; {@code CLMemoryProvider} no longer treats
+ * it specially — see its Javadoc.</p>
  * <pre>
- * # BAD: HOST location incompatible with NIO memory
+ * # Enable the cross-backend NIO bridge
  * export AR_HARDWARE_NIO_MEMORY=true
- * export AR_HARDWARE_MEMORY_LOCATION=host
- * # Warning: location will be set to DELEGATE instead
- *
- * # GOOD: Use DELEGATE with NIO memory
- * export AR_HARDWARE_NIO_MEMORY=true
- * export AR_HARDWARE_MEMORY_LOCATION=delegate
  * </pre>
  *
  * <h3>Precision Mismatch with Multiple Backends</h3>
@@ -683,7 +687,7 @@ public final class Hardware implements ConsoleFeatures {
 	private int processRequirements(List<ComputeRequirement> requirements) {
 		Precision precision = Precision.valueOf(SystemUtils.getProperty("AR_HARDWARE_PRECISION", "FP64"));
 
-		if (KernelPreferences.isEnableSharedMemory() || KernelPreferences.isRequireUniformPrecision()) {
+		if (KernelPreferences.isRequireUniformPrecision()) {
 			for (ComputeRequirement r : requirements) {
 				if (r.getMaximumPrecision().bytes() < precision.bytes()) {
 					precision = r.getMaximumPrecision();
@@ -692,6 +696,79 @@ public final class Hardware implements ConsoleFeatures {
 		}
 
 		return processRequirements(requirements, precision);
+	}
+
+	/**
+	 * Constructs the {@link DataContext} for a backend, without initializing it.
+	 *
+	 * @param type      The backend to create a context for
+	 * @param precision The highest precision the context may use
+	 * @return The new context
+	 */
+	private DataContext createContext(ComputeRequirement type, Precision precision) {
+		if (type == ComputeRequirement.CL) {
+			CLDataContext ctx = new CLDataContext("CL", precision, this.maxReservation,
+					getOffHeapSize(type), this.location);
+			ctx.setDelegateMemoryProvider(nioMemory);
+			return ctx;
+		} else if (type == ComputeRequirement.MTL) {
+			return new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
+		}
+
+		return new NativeDataContext("JNI", precision, this.maxReservation, false, nativeDirectBuffers);
+	}
+
+	/**
+	 * Starts the OpenCL context ahead of the others, so that the precision it selects is known
+	 * before any context is created from a prediction of it.
+	 *
+	 * <p>{@link ComputeRequirement#getMaximumPrecision()} predicts what a backend supports, not
+	 * what it selects, and OpenCL is the one backend whose selection is not statically known: it
+	 * uses FP32 when it finds a GPU for kernels and FP64 otherwise, which it cannot know until it
+	 * has identified a device. Creating a {@link NativeDataContext} from the prediction alone
+	 * lets it disagree with the {@link CLDataContext} created afterwards, and contexts at
+	 * different precisions cannot copy memory to one another without converting every element.
+	 * A context that fails to start here is left for the caller to create again and report, so
+	 * that a required backend which cannot load is reported once, in one place.</p>
+	 *
+	 * @param requirements The requirements about to be processed
+	 * @param precision    The precision resolved from configuration and static predictions
+	 * @return The started context, or {@code null} if there is no OpenCL backend to start
+	 */
+	private CLDataContext prepareOpenCL(List<ComputeRequirement> requirements, Precision precision) {
+		if (!KernelPreferences.isRequireUniformPrecision()) return null;
+		if (requirements.stream().map(ComputeRequirement::resolve)
+				.noneMatch(ComputeRequirement.CL::equals)) return null;
+
+		try {
+			CLDataContext ctx = (CLDataContext) createContext(ComputeRequirement.CL, precision);
+			ctx.init();
+
+			Precision selected = ctx.getPrecision();
+			if (enableVerbose) log("Hardware[" + ctx.getName() + "]: Selected " + selected.name());
+			return ctx;
+		} catch (Exception | LinkageError e) {
+			if (enableVerbose) warn("Unable to determine CL precision", e);
+			return null;
+		}
+	}
+
+	/**
+	 * Warns when the initialized contexts did not all settle on the same precision, in a
+	 * configuration that requires them to. Contexts at different precisions have
+	 * {@link MemoryProvider}s with different element widths, so memory copied between them must
+	 * be converted one element at a time. This is reported at startup because the alternative is
+	 * a failure much later, inside an unrelated operation, that says nothing about the cause.
+	 */
+	private void verifyUniformPrecision() {
+		if (!KernelPreferences.isRequireUniformPrecision()) return;
+		if (contexts.stream().map(DataContext::getPrecision).distinct().count() <= 1) return;
+
+		warn("Hardware[" + getName() + "]: Contexts do not agree on precision (" +
+				contexts.stream().map(c -> c.getName() + "=" + c.getPrecision().name())
+						.collect(Collectors.joining(", ")) + "), so memory copied between them" +
+				" must be converted element by element. Set AR_HARDWARE_PRECISION to the lowest" +
+				" of these to avoid it");
 	}
 
 	/**
@@ -715,34 +792,23 @@ public final class Hardware implements ConsoleFeatures {
 		boolean kernelFriendly = defaultKernelFriendly;
 		DataContext<MemoryData> sharedMemoryCtx = null;
 
-		r: for (ComputeRequirement requested : requirements) {
-			ComputeRequirement type = requested;
+		CLDataContext cl = prepareOpenCL(requirements, precision);
+		if (cl != null && cl.getPrecision().bytes() < precision.bytes()) precision = cl.getPrecision();
 
-			if (type == ComputeRequirement.CPU) {
-				type = SystemUtils.isAarch64() ? ComputeRequirement.JNI : ComputeRequirement.CL;
-			} else if (type == ComputeRequirement.GPU) {
-				type = SystemUtils.isMacOS() ? ComputeRequirement.MTL : ComputeRequirement.CL;
-			}
+		r: for (ComputeRequirement requested : requirements) {
+			ComputeRequirement type = requested.resolve();
 
 			if (done.contains(type)) continue r;
 
 			try {
-				boolean locationUsed = false;
-				DataContext ctx;
+				boolean started = cl != null && type == ComputeRequirement.CL;
+				DataContext ctx = started ? cl : createContext(type, precision);
 
-				if (type == ComputeRequirement.CL) {
-					ctx = new CLDataContext("CL", this.maxReservation, getOffHeapSize(type), this.location);
-					((CLDataContext) ctx).setDelegateMemoryProvider(nioMemory);
-					locationUsed = true;
+				if (type == ComputeRequirement.CL || type == ComputeRequirement.MTL) {
 					kernelFriendly = true;
-				} else if (type == ComputeRequirement.MTL) {
-					ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
-					kernelFriendly = true;
-				} else {
-					ctx = new NativeDataContext("JNI", precision, this.maxReservation, false, nativeDirectBuffers);
 				}
 
-				if (locationUsed) {
+				if (type == ComputeRequirement.CL) {
 					if (location == Location.HEAP)
 						log("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
 					if (location == Location.HOST)
@@ -752,7 +818,7 @@ public final class Hardware implements ConsoleFeatures {
 				}
 
 				done.add(type);
-				ctx.init();
+				if (!started) ctx.init();
 
 				log("Hardware[" + ctx.getName() + "]: Max RAM is " +
 						ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes (" +
@@ -812,6 +878,8 @@ public final class Hardware implements ConsoleFeatures {
 			log("Hardware[" + getName() + "]: Kernels will be avoided");
 			KernelPreferences.setPreferKernels(false);
 		}
+
+		verifyUniformPrecision();
 
 		return done.size();
 	}
@@ -1059,7 +1127,7 @@ public final class Hardware implements ConsoleFeatures {
 		DataContext<MemoryData> dc = getDataContext();
 
 		if (dc instanceof CLDataContext) {
-			next = new CLDataContext("CL", maxReservation, getOffHeapSize(ComputeRequirement.CL), location);
+			next = createContext(ComputeRequirement.CL, dc.getPrecision());
 		} else if (dc instanceof MetalDataContext) {
 			next = new MetalDataContext("MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
 		} else if (dc instanceof NativeDataContext) {
@@ -1144,11 +1212,15 @@ public final class Hardware implements ConsoleFeatures {
 	public boolean isAsync() { return async; }
 
 	/**
-	 * Returns whether memory is volatile (stored in JVM heap).
+	 * Returns whether the OpenCL backend should declare kernel memory arguments
+	 * {@code volatile}.
 	 *
-	 * <p>True when {@code AR_HARDWARE_MEMORY_LOCATION=heap}.</p>
+	 * <p>True when {@code AR_HARDWARE_MEMORY_LOCATION=heap}. The heap path no
+	 * longer backs buffers on the JVM heap, but the flag is preserved so the
+	 * OpenCL volatile qualifier stays under caller control; other location
+	 * values leave this {@code false}.</p>
 	 *
-	 * @return true if memory is volatile
+	 * @return true if kernel memory arguments should be qualified volatile
 	 */
 	public boolean isMemoryVolatile() { return memVolatile; }
 

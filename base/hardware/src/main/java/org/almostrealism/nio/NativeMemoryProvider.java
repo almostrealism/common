@@ -324,6 +324,11 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * <p>A registered {@link NativeBufferWriter} can read a foreign source (for example an OpenCL
 	 * buffer) directly into this destination's host buffer, serving either the calloc or the NIO
 	 * backing; otherwise the source is mediated through a {@code double[]}.</p>
+	 *
+	 * <p>A writer performs a bulk transfer that reproduces the source's bytes, so it is only
+	 * usable when the source stores its elements at the same width this provider does. When the
+	 * two precisions differ, the {@code double[]} path is taken instead, converting each element.
+	 * This mirrors what {@code CLMemoryProvider.setMem} does for a copy in the other direction.</p>
 	 */
 	@Override
 	public synchronized void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
@@ -333,8 +338,12 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 		}
 
 		if (mem instanceof DirectMemory buffer && writeAdapters.containsKey(source.getClass())) {
-			writeAdapters.get(source.getClass()).setMem(buffer, offset, source, srcOffset, length);
-			return;
+			if (source.getProvider().getNumberSize() == getNumberSize()) {
+				writeAdapters.get(source.getClass()).setMem(buffer, offset, source, srcOffset, length);
+				return;
+			}
+
+			warn("Unable to copy memory directly due to precision difference");
 		}
 
 		double[] value = new double[length];
