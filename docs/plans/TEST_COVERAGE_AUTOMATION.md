@@ -185,6 +185,21 @@ its open questions:
    pipeline. `WORKFLOW_FILE`, an environment variable only used by the old
    per-workflow-run query and never overridden by any caller, was removed.
 
+   This fix was first committed directly on this branch
+   (`feature/test-coverage-automation`), which is not `ci/...`-named, so
+   `validate-agent-commit.sh`'s RULE 3 correctly blocked the commit's PR:
+   `tools/ci/coverage/fetch-latest-coverage.sh` is genuine pipeline logic,
+   not the kind of pipeline *data* Deviation 1 relocated out from under the
+   lock — there is no non-CI home for a script the `coverage-qa` job
+   actually invokes. Per Deviation 1's own generalized lesson, the fix is
+   not a validator exception; it is landing this change from a dedicated
+   `ci/...` branch, the mechanism RULE 3 already carves out for exactly
+   this case. The change was reverted here; it still needs to be
+   re-applied from a `ci/...` branch and merged through its own PR before
+   `coverage-qa` is actually fixed in production. The diff is preserved
+   verbatim in this branch's history at commit
+   `8fd15072f734ba7aa9494dd58788ecb1b3b0ce47` for that purpose.
+
 ## Motivation
 
 The repository already runs two recurring, autonomous quality jobs that fire on

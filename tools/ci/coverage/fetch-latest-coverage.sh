@@ -10,22 +10,11 @@
 # latest "Build and Test" run into one report and uploads it as the
 # `merged-coverage-report` artifact (`.qodana/code-coverage/coverage.xml`).
 # Re-running the whole suite here would cost hours for a report that
-# already exists, so the default path downloads the most recent unexpired
-# `merged-coverage-report` artifact for BRANCH. Set FORCE=true to recompute
-# it fresh instead (a full `mvn test` across every module, then the same
-# jacococli merge analysis.yaml performs) — slow, but authoritative as of
-# right now rather than "as of the last master run".
-#
-# The artifact is looked up directly by name via the repo-wide artifacts
-# endpoint, not by first finding a workflow run whose OVERALL conclusion is
-# "success". The `analysis` job that uploads this artifact can — and
-# routinely does — succeed even when an unrelated job elsewhere in the same
-# `analysis.yaml` run is flaky (e.g. a GPU/CL test lane), which makes the
-# run's aggregate conclusion "failure" while the artifact this script needs
-# was still produced. Gating on whole-run success instead of the artifact's
-# own presence meant this path almost never found a recent (unexpired)
-# artifact in practice, and every round fell through to the offline
-# recompute below instead.
+# already exists, so the default path downloads that one artifact from
+# the most recent SUCCESSFUL run of WORKFLOW_FILE on BRANCH. Set FORCE=true
+# to recompute it fresh instead (a full `mvn test` across every module,
+# then the same jacococli merge analysis.yaml performs) — slow, but
+# authoritative as of right now rather than "as of the last master run".
 #
 # Python: always computed fresh. The Python suites (tools/mcp/manager,
 # tools/mcp/common, tools/tests) run in seconds, so there is no
@@ -45,8 +34,9 @@
 # Optional environment variables:
 #   FORCE              - "true" recomputes Java coverage fresh instead of
 #                        reusing the latest master artifact (default: false)
-#   BRANCH             - branch whose most recent merged-coverage-report
-#                        artifact is reused (default: master)
+#   BRANCH             - branch to read the latest successful run from
+#                        (default: master)
+#   WORKFLOW_FILE      - workflow filename to query (default: analysis.yaml)
 #   OUTPUT_DIR         - where to write coverage.xml / python-coverage.xml
 #                        (default: current directory)
 #
@@ -60,6 +50,7 @@ set -euo pipefail
 
 FORCE="${FORCE:-false}"
 BRANCH="${BRANCH:-master}"
+WORKFLOW_FILE="${WORKFLOW_FILE:-analysis.yaml}"
 OUTPUT_DIR="${OUTPUT_DIR:-.}"
 JACOCO_VERSION="0.8.11"
 
@@ -82,33 +73,25 @@ fetch_merged_report() {
         return 1
     fi
 
-    local artifacts_json artifact_id run_id download_url tmp_zip tmp_dir selected
+    local runs_json run_id artifacts_json artifact_id download_url tmp_zip tmp_dir
 
-    # List artifacts by name directly (repo-wide), rather than finding a
-    # workflow run by overall status first: an unrelated flaky job elsewhere
-    # in the same analysis.yaml run must not hide an artifact that the
-    # analysis job itself already produced successfully.
-    # TODO(review): this endpoint has no server-side branch filter, and
-    # analysis.yaml's `analysis` job uploads this same artifact name on
-    # every pull_request run too, not just master pushes. If more than
-    # per_page=30 merged-coverage-report artifacts (across all branches)
-    # accumulate between master runs, the master artifact can scroll off
-    # this page and the jq filter below will find nothing to reuse. See
-    # review-followup memory for workstream c9ad5512.
-    artifacts_json=$(api_get "${API_BASE}/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=merged-coverage-report&per_page=30") \
-        || { echo "::warning::Could not list merged-coverage-report artifacts"; return 1; }
+    runs_json=$(api_get "${API_BASE}/repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW_FILE}/runs?branch=${BRANCH}&status=success&per_page=1") \
+        || { echo "::warning::Could not list workflow runs for ${WORKFLOW_FILE} on ${BRANCH}"; return 1; }
 
-    selected=$(echo "$artifacts_json" | jq -r --arg branch "$BRANCH" '
-        [.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)]
-        | sort_by(.created_at) | reverse | .[0]
-        | if . == null then "" else (.id|tostring) + " " + (.workflow_run.id|tostring) end
-    ')
-    if [ -z "$selected" ]; then
-        echo "::warning::No unexpired merged-coverage-report artifact found for branch ${BRANCH}"
+    run_id=$(echo "$runs_json" | jq -r '.workflow_runs[0].id // empty')
+    if [ -z "$run_id" ]; then
+        echo "::warning::No successful ${WORKFLOW_FILE} run found on ${BRANCH}"
         return 1
     fi
-    artifact_id=${selected%% *}
-    run_id=${selected##* }
+
+    artifacts_json=$(api_get "${API_BASE}/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100") \
+        || { echo "::warning::Could not list artifacts for run ${run_id}"; return 1; }
+
+    artifact_id=$(echo "$artifacts_json" | jq -r '[.artifacts[] | select(.name == "merged-coverage-report")][0].id // empty')
+    if [ -z "$artifact_id" ]; then
+        echo "::warning::Run ${run_id} has no merged-coverage-report artifact (expired, or coverage was skipped)"
+        return 1
+    fi
 
     tmp_zip=$(mktemp)
     tmp_dir=$(mktemp -d)
@@ -129,27 +112,21 @@ fetch_merged_report() {
 
     cp "$tmp_dir/coverage.xml" "${OUTPUT_DIR}/coverage.xml"
     rm -f "$tmp_zip"; rm -rf "$tmp_dir"
-    echo "::notice::Reused merged Java coverage report from artifact ${artifact_id} (run ${run_id} on ${BRANCH})"
+    echo "::notice::Reused merged Java coverage report from run ${run_id} (${WORKFLOW_FILE} on ${BRANCH})"
     return 0
 }
 
 recompute_java_report() {
     echo "::notice::Recomputing Java coverage fresh — this runs the full test suite and can take hours"
 
-    # Online, matching every other mvn invocation in analysis.yaml: a
-    # self-hosted runner host that has never built this reactor before has
-    # no local cache to run offline against (build extensions such as
-    # kr.motd.maven:os-maven-plugin are resolved before any module's POM is
-    # even read, so offline mode fails immediately on a cold host rather
-    # than degrading gracefully).
-    mvn install -DskipTests -Dcheckstyle.skip=true
+    mvn -o install -DskipTests -Dcheckstyle.skip=true
 
     # This runs every module's tests (jacoco-maven-plugin's prepare-agent +
     # report executions are already bound to the test phase in the root
     # pom), which is exactly the expensive step the reuse path exists to
     # avoid. failIfNoTests=false so modules with no tests do not fail the
     # reactor build.
-    mvn test -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.test.failure.ignore=true
+    mvn -o test -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.test.failure.ignore=true
 
     local exec_files_txt merged_exec
     exec_files_txt=$(mktemp)
