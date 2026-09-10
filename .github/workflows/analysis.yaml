@@ -293,6 +293,12 @@ jobs:
             "tools/ci/agent-protection/deception-audit.sh"
             "tools/ci/agent-protection/verify-sensitive-bypass.sh"
             "tools/ci/agent-protection/verify-memory-claim.sh"
+            "tools/ci/agent-protection/verify-exfiltration-guard.sh"
+            "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"
+            ".claude/hooks/block-exfiltration.sh"
+            ".claude/hooks/lib/exfiltration_guard_check.py"
+            ".claude/hooks/lib/test_exfiltration_guard_check.py"
+            ".claude/hooks/exfil-allowlist.txt"
           )
 
           # The grandfathered violation baseline is a burn-down ledger rather
@@ -344,6 +350,33 @@ jobs:
           else
             echo "No enforcement infrastructure modifications detected."
           fi
+
+      # The exfiltration guard hook is enforcement infrastructure of a
+      # different kind: it runs inside every agent session and is the only
+      # thing stopping session data from leaving the machine through the
+      # assistant's tools. It must exist on HEAD, be registered for every
+      # tool it covers, and be untouched on a PR branch. Same override as
+      # the tampering check above; same rule — a policy change is a human's
+      # separate PR.
+      - name: Verify exfiltration guard hook
+        id: exfil_guard
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
+        run: |
+          chmod +x ./tools/ci/agent-protection/verify-exfiltration-guard.sh
+          BASE=""
+          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            BASE="origin/master"
+          fi
+          ./tools/ci/agent-protection/verify-exfiltration-guard.sh $BASE || {
+            EXIT_CODE=$?
+            echo "::error::Exfiltration guard check failed (exit ${EXIT_CODE}): the hook is missing, unregistered, or modified"
+            if [ "$OVERRIDE_INTEGRITY" = "true" ] && [ "$EXIT_CODE" -eq 4 ]; then
+              echo "::warning::Exfiltration guard modification detected but IGNORED via the override_integrity_checks input"
+            else
+              exit 1
+            fi
+          }
 
       - name: Check for test-hiding modifications
         id: check
@@ -779,6 +812,15 @@ jobs:
 
       - name: Run migration tool tests
         run: python3 -m unittest discover -v -s tools/tests -p "test_*.py"
+
+      # The exfiltration guard's decision logic is Python under
+      # .claude/hooks/lib; its tests build scratch git repositories and
+      # drive the --stdin adapter contract, so they need git and a HOME.
+      - name: Run exfiltration guard hook tests
+        run: python3 -m unittest -v .claude/hooks/lib/test_exfiltration_guard_check.py
+
+      - name: Run exfiltration guard CI-verifier tests
+        run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh
 
   # ─── Agent Volume Isolation ────────────────────────────────────────
   # Enforces the hard invariant that FlowTree agent containers can never

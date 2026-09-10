@@ -31,6 +31,8 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-test-hiding.sh` | Detect modifications to base-branch tests that hide failures |
 | `validate-agent-commit.sh` | Block agent commits that modify base-branch tests or CI files |
+| `verify-exfiltration-guard.sh` | Fail CI if the exfiltration guard hook (`.claude/hooks/block-exfiltration.sh`, its core, tests, allowlist) is missing from HEAD, not registered for `Artifact`/`SendUserFile`/`Bash`, or modified on a PR branch — see `docs/plans/EXFILTRATION_GUARD_HOOK.md` |
+| `test-verify-exfiltration-guard.sh` | Regression tests for the above |
 | `verify-memory-claim.sh` | Cross-reference "no changes needed" claims against git diff |
 
 ## Prompts (`prompts/`)
