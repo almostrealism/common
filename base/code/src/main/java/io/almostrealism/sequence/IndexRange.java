@@ -107,7 +107,8 @@ public class IndexRange {
 	 * @param index the index to vary
 	 * @param len the number of index values to cover; must be positive
 	 * @return the ranges, in order, together covering positions {@code 0} to {@code len - 1}
-	 * @throws IllegalArgumentException if {@code len} is not positive
+	 * @throws IllegalArgumentException if {@code len} is not positive, or if
+	 * {@link ScopeSettings#sequenceBlockSize} is not positive
 	 */
 	public static List<IndexRange> partition(Index index, int len) {
 		if (len <= 0) {
@@ -115,6 +116,11 @@ public class IndexRange {
 		}
 
 		int size = ScopeSettings.sequenceBlockSize;
+
+		if (size <= 0) {
+			throw new IllegalArgumentException("ScopeSettings.sequenceBlockSize must be positive, was " + size);
+		}
+
 		List<IndexRange> ranges = new ArrayList<>((len - 1) / size + 1);
 
 		for (long start = 0; start < len; start += size) {

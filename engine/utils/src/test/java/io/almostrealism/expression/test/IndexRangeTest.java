@@ -125,6 +125,38 @@ public class IndexRangeTest extends TestSuiteBase implements ExpressionFeatures 
 	}
 
 	/**
+	 * {@link ScopeSettings#sequenceBlockSize} is public and mutable; a non-positive value
+	 * must be rejected rather than dividing by zero or partitioning incorrectly.
+	 */
+	@Test(timeout = 30000)
+	public void partitionRejectsNonPositiveBlockSize() {
+		Index index = new DefaultIndex("i", 100);
+		int previous = ScopeSettings.sequenceBlockSize;
+
+		try {
+			ScopeSettings.sequenceBlockSize = 0;
+
+			try {
+				IndexRange.partition(index, 100);
+				Assert.fail("A zero block size must be rejected");
+			} catch (IllegalArgumentException e) {
+				log("zeroBlockSizeMessage=" + e.getMessage());
+			}
+
+			ScopeSettings.sequenceBlockSize = -8;
+
+			try {
+				IndexRange.partition(index, 100);
+				Assert.fail("A negative block size must be rejected");
+			} catch (IllegalArgumentException e) {
+				log("negativeBlockSizeMessage=" + e.getMessage());
+			}
+		} finally {
+			ScopeSettings.sequenceBlockSize = previous;
+		}
+	}
+
+	/**
 	 * A range's own {@link IndexRange#positions()} run from {@link IndexRange#getStart()}
 	 * for {@link IndexRange#getLength()} consecutive values.
 	 */
