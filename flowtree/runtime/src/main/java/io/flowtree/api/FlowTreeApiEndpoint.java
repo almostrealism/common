@@ -114,6 +114,10 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td><td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
  *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, and the built-in default runner</td></tr>
+ *   <tr><td>GET</td><td>/api/stats</td><td>--</td><td>Weekly job statistics ({@code thisWeek}/{@code lastWeek}, computed in UTC) from the configured
+ *       {@link io.flowtree.controller.JobStatsStore} — see {@link StatsQueryHandler}</td></tr>
+ *   <tr><td>POST</td><td>/api/alerts</td><td>{@code {"text":"...","recipients":["..."],"severity":"INFO"}}</td><td>Deliver free-form text to named
+ *       recipients, subject to a per-caller rate limit — see {@link AlertRequestHandler}</td></tr>
  * </table>
  *
  * @author Michael Murray
