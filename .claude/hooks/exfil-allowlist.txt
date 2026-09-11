@@ -1,0 +1,36 @@
+# Exfiltration guard allowlist — see docs/plans/EXFILTRATION_GUARD_HOOK.md
+#
+# The guard (.claude/hooks/block-exfiltration.sh) reads this file from HEAD
+# via `git show`, never from the working tree. An edit made during a session
+# has NO effect until a human reviews and commits it. That is deliberate.
+#
+# Format: one entry per line under a section header. Entries are matched
+# case-insensitively after stripping user@, :port and IPv6 brackets.
+#   hostname           exact host name (amd-halo, github.com)
+#   *.suffix           any host ending in .suffix
+#   a.b.c.d/nn         IPv4 CIDR range
+#   a.b.c.d            single IPv4 address
+#   host/owner/repo    ([git-remotes] only) pins the repository that may
+#                      be pushed to; a bare host accepts any repository
+#
+# [lab-hosts]   destinations that may receive data by any transport
+#               (scp/rsync/ssh/curl uploads/nc/...). Machines the owner
+#               controls, on the same lab network or tailnet.
+# [git-remotes] hosts that may ONLY be reached through `git push origin`
+#               and the sanctioned `gh pr` / `gh issue` operations.
+#               Nothing else (curl uploads, gh gist, gh api with a body)
+#               is allowed to these hosts.
+
+[lab-hosts]
+localhost
+127.0.0.1
+::1
+amd-halo
+amd-halo.local
+macbook-pro
+macbook-pro.local
+100.64.0.0/10
+
+[git-remotes]
+github.com/almostrealism/common
+api.github.com

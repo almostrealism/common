@@ -16,6 +16,7 @@
 
 package org.almostrealism.persist.index.test;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.persist.test.TestRecordProto;
 import org.almostrealism.util.TestSuiteBase;
@@ -26,6 +27,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -98,6 +100,33 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 			Assert.assertNull(store.get("key1"));
 			Assert.assertEquals(0, store.size());
 		}
+	}
+
+	/**
+	 * Once a store creates an HNSW index (by indexing a vectored record),
+	 * closing the store must release the index's native memory rather than
+	 * leaking it. The index holds real native buffers (the contiguous vector
+	 * store, the score destination, the query staging buffer) as of the
+	 * producer-based redesign, so the store — as the sole owner of that
+	 * field — is responsible for destroying it.
+	 */
+	@Test(timeout = 30000)
+	public void closeReleasesHnswIndexNativeResources() throws Exception {
+		ProtobufDiskStore<TestRecordProto.TestRecord> store =
+				new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser());
+		store.put("a", makeRecord("a", "alpha", 1),
+				new PackedCollection(3).fill(1.0, 0.0, 0.0));
+
+		Field hnswIndexField = ProtobufDiskStore.class.getDeclaredField("hnswIndex");
+		hnswIndexField.setAccessible(true);
+		Assert.assertNotNull("HNSW index should be created once a vectored record is inserted",
+				hnswIndexField.get(store));
+
+		store.close();
+
+		Assert.assertNull("Store must release its HNSW index (and the native "
+						+ "memory it holds) once closed",
+				hnswIndexField.get(store));
 	}
 
 	/**
