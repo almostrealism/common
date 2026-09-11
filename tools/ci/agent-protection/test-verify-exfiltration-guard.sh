@@ -29,6 +29,8 @@ GUARD_FILES=(
     ".claude/hooks/exfil-allowlist.txt"
     "tools/ci/agent-protection/verify-exfiltration-guard.sh"
     "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"
+    "tools/ci/agent-protection/exfil_guard_registration.py"
+    "tools/ci/agent-protection/test_exfil_guard_registration.py"
 )
 
 # Writes a settings.json registering the adapter with the given matcher
@@ -114,6 +116,12 @@ run_case "deleted allowlist is blocked" 2 "$r" master
 
 r=$(make_repo); git -C "$r" rm -q .claude/hooks/lib/test_exfiltration_guard_check.py; commit_all "$r" "delete tests"
 run_case "deleted hook tests are blocked" 2 "$r" master
+
+r=$(make_repo); git -C "$r" rm -q tools/ci/agent-protection/exfil_guard_registration.py; commit_all "$r" "delete registration helper"
+run_case "deleted registration helper is blocked" 2 "$r" master
+
+r=$(make_repo); echo "x" >> "$r/tools/ci/agent-protection/exfil_guard_registration.py"; commit_all "$r" "edit registration helper"
+run_case "edited registration helper is blocked" 4 "$r" master
 
 r=$(make_repo); write_settings "$r" ""; commit_all "$r" "unregister"
 run_case "removed registration is blocked" 3 "$r" master

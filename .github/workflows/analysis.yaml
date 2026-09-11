@@ -214,6 +214,8 @@ jobs:
             '.claude/settings.json' '.claude/hooks/' \
             'tools/ci/agent-protection/verify-exfiltration-guard.sh' \
             'tools/ci/agent-protection/test-verify-exfiltration-guard.sh' \
+            'tools/ci/agent-protection/exfil_guard_registration.py' \
+            'tools/ci/agent-protection/test_exfil_guard_registration.py' \
             'tools/ci/agent-protection/check-quality-gates.sh' \
             'tools/ci/agent-protection/test-check-quality-gates.sh' || true)
           if [ -n "$GUARD_FILES" ]; then
@@ -385,6 +387,8 @@ jobs:
             "tools/ci/agent-protection/verify-memory-claim.sh"
             "tools/ci/agent-protection/verify-exfiltration-guard.sh"
             "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"
+            "tools/ci/agent-protection/exfil_guard_registration.py"
+            "tools/ci/agent-protection/test_exfil_guard_registration.py"
             ".claude/hooks/block-exfiltration.sh"
             ".claude/hooks/lib/exfiltration_guard_check.py"
             ".claude/hooks/lib/test_exfiltration_guard_check.py"
@@ -1124,6 +1128,9 @@ jobs:
 
       - name: Run exfiltration guard CI-verifier tests
         run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh
+
+      - name: Run exfiltration guard registration helper tests
+        run: python3 -m unittest discover -v -s tools/ci/agent-protection -p "test_exfil_guard_registration.py"
 
       # check-quality-gates.sh selects the test-integrity-check failure
       # message from the guard's own job outputs (ENFORCEMENT_TAMPERED,

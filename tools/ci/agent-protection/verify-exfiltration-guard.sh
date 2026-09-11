@@ -54,6 +54,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 BASE_BRANCH="${1:-}"
 
 GUARD_FILES=(
@@ -63,6 +65,8 @@ GUARD_FILES=(
     ".claude/hooks/exfil-allowlist.txt"
     "tools/ci/agent-protection/verify-exfiltration-guard.sh"
     "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"
+    "tools/ci/agent-protection/exfil_guard_registration.py"
+    "tools/ci/agent-protection/test_exfil_guard_registration.py"
 )
 SETTINGS_FILE=".claude/settings.json"
 ADAPTER_NAME="block-exfiltration.sh"
@@ -120,14 +124,19 @@ HEAD_SETTINGS=$(git show "HEAD:${SETTINGS_FILE}" 2>/dev/null || true)
 
 # The settings text travels through an environment variable rather than a
 # pipe: the python program itself arrives on stdin (heredoc), so stdin is
-# not available for data.
+# not available for data. PYTHONPATH points at this script's own directory
+# so the heredoc can import the invokes_adapter() helper shared with the
+# registration_json() heredoc below, instead of duplicating it.
 REGISTRATION_STATUS=$(SETTINGS_JSON="$HEAD_SETTINGS" ADAPTER_NAME="$ADAPTER_NAME" \
-    REQUIRED_TOOLS="${REQUIRED_TOOLS[*]}" python3 - <<'PY' || echo "unreadable"
+    REQUIRED_TOOLS="${REQUIRED_TOOLS[*]}" PYTHONPATH="$SCRIPT_DIR" \
+    python3 - <<'PY' || echo "unreadable"
 import json
 import os
 import re
-import shlex
 import sys
+
+sys.path.insert(0, os.environ["PYTHONPATH"])
+from exfil_guard_registration import invokes_adapter
 
 try:
     settings = json.loads(os.environ["SETTINGS_JSON"])
@@ -138,34 +147,13 @@ except Exception:
 adapter = os.environ["ADAPTER_NAME"]
 required = os.environ["REQUIRED_TOOLS"].split()
 
-
-# TODO(review): invokes_adapter() is duplicated verbatim in the registration_json()
-# heredoc below (~line 237+13). See review-followup memory for the full note.
-def invokes_adapter(command):
-    """Whether ``command`` actually executes the adapter script, as opposed
-    to merely mentioning its name (e.g. inside an ``echo`` or a comment)."""
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return False
-    if not tokens:
-        return False
-    prog = tokens[0]
-    if os.path.basename(prog) in ("bash", "sh", "zsh", "ksh", "dash", "env"):
-        rest = [t for t in tokens[1:] if not t.startswith("-")]
-        if not rest:
-            return False
-        prog = rest[0]
-    return os.path.basename(prog) == adapter
-
-
 groups = (settings.get("hooks") or {}).get("PreToolUse") or []
 covered = set()
 for group in groups:
     if not isinstance(group, dict):
         continue
     commands = [h.get("command", "") for h in group.get("hooks") or [] if isinstance(h, dict)]
-    if not any(invokes_adapter(c) for c in commands):
+    if not any(invokes_adapter(c, adapter) for c in commands):
         continue
     matcher = group.get("matcher")
     if matcher is None:
@@ -222,11 +210,14 @@ done
 registration_json() {
     local text
     text=$(git show "$1:${SETTINGS_FILE}" 2>/dev/null || true)
-    SETTINGS_JSON="$text" ADAPTER_NAME="$ADAPTER_NAME" python3 - <<'PY' || echo "unreadable"
+    SETTINGS_JSON="$text" ADAPTER_NAME="$ADAPTER_NAME" PYTHONPATH="$SCRIPT_DIR" \
+        python3 - <<'PY' || echo "unreadable"
 import json
 import os
-import shlex
 import sys
+
+sys.path.insert(0, os.environ["PYTHONPATH"])
+from exfil_guard_registration import invokes_adapter
 
 try:
     settings = json.loads(os.environ["SETTINGS_JSON"])
@@ -235,31 +226,9 @@ except Exception:
     sys.exit(0)
 adapter = os.environ["ADAPTER_NAME"]
 
-
-# TODO(review): duplicate of invokes_adapter() defined earlier in this script
-# (the CHECK 2 REGISTRATION_STATUS heredoc, ~line 142). Both copies must be
-# kept in sync by hand; a shared Python helper (sourced or imported by both
-# heredocs) would remove the duplication but is a restructuring change, not
-# a surgical fix.
-def invokes_adapter(command):
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return False
-    if not tokens:
-        return False
-    prog = tokens[0]
-    if os.path.basename(prog) in ("bash", "sh", "zsh", "ksh", "dash", "env"):
-        rest = [t for t in tokens[1:] if not t.startswith("-")]
-        if not rest:
-            return False
-        prog = rest[0]
-    return os.path.basename(prog) == adapter
-
-
 groups = (settings.get("hooks") or {}).get("PreToolUse") or []
 entries = [g for g in groups if isinstance(g, dict)
-           and any(invokes_adapter(h.get("command", "") if isinstance(h, dict) else "")
+           and any(invokes_adapter(h.get("command", "") if isinstance(h, dict) else "", adapter)
                    for h in g.get("hooks") or [])]
 print(json.dumps(entries, sort_keys=True))
 PY
