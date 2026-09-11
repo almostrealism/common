@@ -141,6 +141,32 @@ public class IndexChild extends Sum<Integer> implements Index {
 		return super.computeValue(indexValues);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index varied directly by the range takes its positions; otherwise
+	 * its value is derived from the parent and child indices as for any {@link Sum}.</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		if (range.isRangeIndex(this)) return range.positions();
+
+		return super.computeValues(range);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index varied directly is the identity progression; otherwise the
+	 * progression is derived from the parent and child indices as for any {@link Sum}.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (index.getName().equals(getName())) return new ArithmeticIndexSequence(1, 1, len);
+
+		return super.arithmeticSequence(index, len);
+	}
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (renderAlias) return getName();

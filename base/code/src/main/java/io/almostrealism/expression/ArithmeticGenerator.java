@@ -259,7 +259,8 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 	 * <ul>
 	 *   <li>If the generator's upper bound is less than the divisor (and non-negative),
 	 *       the result is always zero</li>
-	 *   <li>If the scale is 1, the granularity is increased by the divisor factor</li>
+	 *   <li>If the scale is 1 and the divisor is positive, the granularity is increased
+	 *       by the divisor factor</li>
 	 *   <li>If the scale is evenly divisible by the operand, the scale is reduced</li>
 	 * </ul>
 	 * <p>
@@ -279,10 +280,17 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 
 			if (!isPossiblyNegative() && bound < d.getAsLong()) {
 				return new IntegerConstant(0);
-			} else if (getScale() == 1) {
+			} else if (getScale() == 1 && d.getAsLong() > 0) {
+				// Coarsening the granularity by a negative divisor would produce a
+				// negative granularity, which is not a valid divisor; fall through
+				// to the scale-reduction branches, or ultimately the Quotient fallback
 				return ArithmeticGenerator.create(getIndex(), 1, d.getAsLong() * getGranularity(), getMod());
 			} else if (getScale() % d.getAsLong() == 0) {
 				return ArithmeticGenerator.create(getIndex(), getScale() / d.getAsLong(), getGranularity(), getMod());
+			} else if (d.getAsLong() > 0 && d.getAsLong() % Math.abs(getScale()) == 0) {
+				// (s * k) / (|s| * q) == sign(s) * (k / q)
+				long q = d.getAsLong() / Math.abs(getScale());
+				return ArithmeticGenerator.create(getIndex(), Long.signum(getScale()), q * getGranularity(), getMod());
 			}
 		}
 
@@ -339,6 +347,11 @@ public class ArithmeticGenerator<T extends Number> extends Product<T> {
 	 *         or an {@link IntegerConstant} of zero if the result would always be zero
 	 */
 	public static Expression<? extends Number> create(Expression<?> index, long scale, long granularity, long mod) {
+		if (scale == 0) {
+			// Nothing survives a zero scale
+			return new IntegerConstant(0);
+		}
+
 		if (!index.isPossiblyNegative() && Math.abs(granularity) >= Math.abs(mod)) {
 			// If the granularity is greater than the modulus, the result would
 			// divide an expression which is always below the denominoator and

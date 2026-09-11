@@ -17,13 +17,13 @@
 package io.almostrealism.sequence;
 
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.expression.Expression;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.stream.Stream;
 
 /**
@@ -168,8 +168,10 @@ public class IndexValues {
 		} else {
 			values.put(idx.getName(), value);
 
-			if (idx instanceof KernelIndexChild) {
-				int ki = ((KernelIndexChild) idx).kernelIndex(value.intValue());
+			OptionalLong implied = idx.impliedKernelIndex(value);
+
+			if (implied.isPresent()) {
+				int ki = Math.toIntExact(implied.getAsLong());
 
 				if (kernelIndex == null) {
 					kernelIndex = ki;
