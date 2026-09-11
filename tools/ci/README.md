@@ -46,6 +46,7 @@ agent round appends to, not pipeline logic.
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-test-hiding.sh` | Detect modifications to base-branch tests that hide failures |
+| `test-check-quality-gates.sh` | Regression tests for `check-quality-gates.sh` |
 | `test-method-lines.awk` | Report the test methods of a Java source file, by line or by body |
 | `test-validate-agent-commit.sh` | Regression tests for `validate-agent-commit.sh` |
 | `test-verify-exfiltration-guard.sh` | Regression tests for `verify-exfiltration-guard.sh` |

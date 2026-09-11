@@ -206,10 +206,16 @@ jobs:
           # guard's effective behavior without touching a .py file, so they
           # need their own path-based flag to keep the guard's tests wired
           # to every file that can affect it.
+          # check-quality-gates.sh reports which test-integrity-check step
+          # failed (enforcement tampering, the guard, or test-hiding) from
+          # the guard's own job outputs, so a change to either the script or
+          # its regression test is guard-related the same way the adapter is.
           GUARD_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '.claude/settings.json' '.claude/hooks/' \
             'tools/ci/agent-protection/verify-exfiltration-guard.sh' \
-            'tools/ci/agent-protection/test-verify-exfiltration-guard.sh' || true)
+            'tools/ci/agent-protection/test-verify-exfiltration-guard.sh' \
+            'tools/ci/agent-protection/check-quality-gates.sh' \
+            'tools/ci/agent-protection/test-check-quality-gates.sh' || true)
           if [ -n "$GUARD_FILES" ]; then
             echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Exfiltration guard control files changed — running guard regression suites"
@@ -329,6 +335,14 @@ jobs:
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
       violation_count: ${{ steps.check.outputs.violation_count }}
+      # Distinct failure reasons for this job's three sequential steps, so a
+      # downstream consumer of `passed` can report which one actually failed
+      # instead of defaulting to the test-hiding message for every case. A
+      # step's `outcome` is only 'failure' or 'success' once it has run; an
+      # earlier step failing leaves later steps 'skipped', which reads as
+      # not-'failure' here, correctly leaving their flag false.
+      enforcement_failed: ${{ steps.enforcement.outcome == 'failure' }}
+      exfil_guard_failed: ${{ steps.exfil_guard.outcome == 'failure' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -521,6 +535,12 @@ jobs:
               cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
               echo '```' >> "$GITHUB_STEP_SUMMARY"
             fi
+          elif [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
+            echo "**FAILED: The exfiltration guard hook is missing, unregistered, or was modified.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The guard is the only barrier between an agent's tools and the outside" >> "$GITHUB_STEP_SUMMARY"
+            echo "world. Changes to it are made and committed by a human, never by an agent." >> "$GITHUB_STEP_SUMMARY"
+            echo "Run \`./tools/ci/agent-protection/verify-exfiltration-guard.sh origin/master\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.check.outcome }}" != "success" ]; then
             echo "**FAILED: Existing tests were modified in ways that hide failures.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -1104,6 +1124,13 @@ jobs:
 
       - name: Run exfiltration guard CI-verifier tests
         run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh
+
+      # check-quality-gates.sh selects the test-integrity-check failure
+      # message from the guard's own job outputs (ENFORCEMENT_TAMPERED,
+      # EXFIL_GUARD_FAILED); this pins that selection down independently of
+      # the guard's own regression suite above.
+      - name: Run quality-gate messaging regression tests
+        run: bash tools/ci/agent-protection/test-check-quality-gates.sh
 
   # ─── Agent Volume Isolation ────────────────────────────────────────
   # Enforces the hard invariant that FlowTree agent containers can never
@@ -2656,6 +2683,8 @@ jobs:
           TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
           DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
           TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
+          ENFORCEMENT_TAMPERED: ${{ needs.test-integrity-check.outputs.enforcement_failed }}
+          EXFIL_GUARD_FAILED: ${{ needs.test-integrity-check.outputs.exfil_guard_failed }}
           AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}

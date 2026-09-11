@@ -13,6 +13,8 @@
 #   TIMEOUT_PASSED          - "true" or "false"
 #   DUPLICATE_PASSED        - "true" or "false"
 #   TEST_INTEGRITY_PASSED   - "true" or "false" (optional; defaults to "true")
+#   ENFORCEMENT_TAMPERED    - "true" or "false" (optional; defaults to "false")
+#   EXFIL_GUARD_FAILED      - "true" or "false" (optional; defaults to "false")
 #   CHECKSTYLE_PASSED       - "true" or "false" (optional; defaults to "true")
 #
 # Outputs (to GITHUB_OUTPUT):
@@ -49,7 +51,19 @@ if [ "${DUPLICATE_PASSED:-true}" != "true" ]; then
 fi
 
 if [ "${TEST_INTEGRITY_PASSED:-true}" != "true" ]; then
-    echo "- test-integrity-check: CRITICAL — Existing test files were modified in ways that hide failures (e.g., adding @Ignore, deleting assertions, weakening checks). This is NEVER acceptable for tests that exist on the base branch. Revert the test modifications and fix the production code instead. Run \`./tools/ci/agent-protection/detect-test-hiding.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+    # test-integrity-check runs three sequential steps (enforcement tampering,
+    # the exfiltration guard, then test-hiding) and a failure in an earlier
+    # step skips the later ones, so TEST_INTEGRITY_PASSED alone cannot say
+    # which one actually failed. Report the specific reason when it is known;
+    # fall back to the test-hiding message only when neither of the more
+    # specific flags is set, so this stays correct for the common case.
+    if [ "${ENFORCEMENT_TAMPERED:-false}" = "true" ]; then
+        echo "- test-integrity-check: CRITICAL — Enforcement infrastructure (policy detectors, agent-protection scripts, or the exfiltration guard) was modified on this branch. These files are protected and cannot be edited on PR branches; fix the production code that violates the policy instead. Run \`./tools/ci/agent-protection/validate-agent-commit.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+    elif [ "${EXFIL_GUARD_FAILED:-false}" = "true" ]; then
+        echo "- test-integrity-check: CRITICAL — The exfiltration guard hook is missing, unregistered, or was modified on this branch. The guard is the only barrier between an agent's tools and the outside world; changes to it are made and committed by a human, never by an agent. Run \`./tools/ci/agent-protection/verify-exfiltration-guard.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+    else
+        echo "- test-integrity-check: CRITICAL — Existing test files were modified in ways that hide failures (e.g., adding @Ignore, deleting assertions, weakening checks). This is NEVER acceptable for tests that exist on the base branch. Revert the test modifications and fix the production code instead. Run \`./tools/ci/agent-protection/detect-test-hiding.sh origin/master\` locally to see details." >> "$OUTPUT_FILE"
+    fi
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 
