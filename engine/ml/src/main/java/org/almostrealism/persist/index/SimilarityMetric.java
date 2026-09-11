@@ -71,6 +71,31 @@ public interface SimilarityMetric extends MatrixFeatures {
 	CollectionProducer normalize(Producer<PackedCollection> vector);
 
 	/**
+	 * Convenience overload that evaluates the similarity of two vectors
+	 * immediately, for callers that need a single scalar result rather
+	 * than a composable graph (e.g. tests exercising the metric directly).
+	 *
+	 * @param a first vector
+	 * @param b second vector
+	 * @return similarity score (higher is more similar)
+	 */
+	default float similarity(PackedCollection a, PackedCollection b) {
+		return (float) similarity(cp(a), cp(b)).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Convenience overload that evaluates the normalized vector immediately,
+	 * for callers that need a result rather than a composable graph (e.g.
+	 * tests exercising the metric directly).
+	 *
+	 * @param vector the vector to normalize
+	 * @return a normalized copy of the vector
+	 */
+	default PackedCollection normalize(PackedCollection vector) {
+		return normalize(cp(vector)).evaluate();
+	}
+
+	/**
 	 * Cosine similarity metric. Vectors are L2-normalized on insert,
 	 * so similarity reduces to a dot product.
 	 */
