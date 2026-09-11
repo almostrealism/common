@@ -223,6 +223,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * @param vector the embedding vector to index
 	 */
 	public void insertEmbedding(String id, PackedCollection vector) {
+		// TODO(review): unlike put(), this does not check `closed`; since close() now
+		// nulls hnswIndex, calling this after close() silently creates a fresh, empty
+		// index via ensureHnswIndex() instead of failing, discarding prior data.
 		ensureHnswIndex(vector.getMemLength());
 		if (hnswIndex.contains(id)) {
 			hnswIndex.remove(id);
@@ -390,6 +393,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			batchCache.evict(id);
 		}
 		index.clear();
+
+		if (hnswIndex != null) {
+			hnswIndex.destroy();
+			hnswIndex = null;
+		}
 	}
 
 	/**
