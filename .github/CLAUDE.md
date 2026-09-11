@@ -133,6 +133,32 @@ deployment to the default-branch context instead, keeping it off the PR while
 preserving the required-reviewers approval gate. `auto-resolve` is excluded from
 `all-checks`; neither it nor the submit workflow is a quality signal.
 
+**A gate is reported to an agent only when its cause is known.** The message
+`auto-resolve` builds becomes an instruction, and an agent handed "this branch
+weakened its tests" will act on it. `test-integrity-check` therefore publishes
+`failure_reason` — `enforcement-tampering`, `exfil-guard`, `test-hiding`
+(a detector ran and found something), `infrastructure` (a detector could not
+run), or empty — written by the step that reached the verdict, since only that
+step knows whether a non-zero exit was a finding or a crash.
+`check-quality-gates.sh` lists the three findings and reports nothing for
+anything else, so a missing script, a skipped job, or a detector that died
+blocks the pipeline for a human instead of dispatching an agent against an
+innocent branch. When adding a detector to that job: emit a reason for the
+finding, emit `infrastructure` for every other non-zero exit, and add the arm
+to `check-quality-gates.sh` — `tools/tests/test_integrity_check_wiring.py`
+holds the two ends together.
+
+**A step must not assume its own scripts are in the checkout.** On a
+`pull_request` the workflow file comes from the merge with the base, while the
+checkout is `github.event.pull_request.head.sha` — the PR head alone. A step
+added today therefore runs against every open PR's older tree, including PRs
+whose head predates the script that step invokes; an unguarded
+`chmod +x ./tools/ci/...` on such a run fails with "No such file or directory"
+and, before this was fixed, reported that failure as an integrity violation.
+Check the file is there first, and date its absence against the merge base:
+absent there too means the branch predates it (benign), present there means it
+was removed (a real finding).
+
 ### What the `build` job covers
 
 The `build` job always runs when `code_changed=true`. It is the critical path
