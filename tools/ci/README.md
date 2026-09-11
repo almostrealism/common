@@ -52,7 +52,7 @@ agent round appends to, not pipeline logic.
 | `test-verify-exfiltration-guard.sh` | Regression tests for `verify-exfiltration-guard.sh` |
 | `test-verify-sensitive-bypass.sh` | Regression tests for `verify-sensitive-bypass.sh` |
 | `validate-agent-commit.sh` | Block agent commits that change base-branch test methods or CI files |
-| `verify-exfiltration-guard.sh` | Fail CI if the exfiltration guard hook (`.claude/hooks/block-exfiltration.sh`, its core, tests, allowlist) is missing from HEAD, not registered for `Artifact`/`SendUserFile`/`Bash`, or modified on a PR branch — see `docs/plans/EXFILTRATION_GUARD_HOOK.md` |
+| `verify-exfiltration-guard.sh` | Fail CI if the exfiltration guard hook (`.claude/hooks/block-exfiltration.sh`, its core, tests, allowlist) is missing from HEAD, not registered for `Artifact`/`SendUserFile`/`Bash`, or modified on a PR branch |
 | `verify-memory-claim.sh` | Cross-reference "no changes needed" claims against git diff |
 | `verify-sensitive-bypass.sh` | Verify a controller-signed `Sensitive-File-Bypass` commit trailer |
 

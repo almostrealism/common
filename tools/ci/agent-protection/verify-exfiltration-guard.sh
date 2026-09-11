@@ -38,19 +38,15 @@
 #   3 - BLOCKED: the guard is not registered for every required tool
 #   4 - BLOCKED: a guard file or its registration changed on this branch
 #
-# TODO(review): this file, and several others in the guard feature
-# (.claude/hooks/lib/exfiltration_guard_check.py, .claude/hooks/block-exfiltration.sh,
-# .claude/hooks/exfil-allowlist.txt, .claude/settings.json, tools/bin/llama-service.sh,
-# tools/ci/README.md), reference docs/plans/EXFILTRATION_GUARD_HOOK.md in comments,
-# banners, or block messages shown to the model/human. docs/plans/CLAUDE.md states
-# plan documents are temporary and forbids exactly this: "no code, test, or durable
-# documentation that is meant to persist may refer to a file in docs/plans/" and
-# explicitly disallows "a string constant or resource shipped in an artifact that
-# names a docs/plans/ document." If EXFILTRATION_GUARD_HOOK.md is later deleted or
-# superseded (the normal lifecycle for docs/plans/), these become dangling pointers.
-# See review-followup memory for the full file list; a human should decide whether
-# to move the durable parts of that doc under docs/ (formal docs) or strip the
-# cross-references.
+# NOTE(review): four files in the guard feature that agents cannot edit —
+# .claude/hooks/lib/exfiltration_guard_check.py, .claude/hooks/block-exfiltration.sh,
+# .claude/hooks/exfil-allowlist.txt, .claude/settings.json — still name the design
+# plan document for this feature in comments, docstrings, or block messages shown
+# to the model/human. docs/plans/CLAUDE.md forbids durable code referencing a plan
+# document (it is temporary and may be deleted or superseded once the feature
+# lands, leaving a dangling pointer). This file, tools/bin/llama-service.sh, and
+# tools/ci/README.md have had those references removed since a human can edit
+# those four remaining files; the same cleanup is still owed there.
 #
 # Outputs (to GITHUB_OUTPUT if available):
 #   blocked=true|false
@@ -92,7 +88,6 @@ banner() {
     echo "║  The exfiltration guard is the only barrier between an agent's  ║"
     echo "║  tools and the outside world. It is read-only for agents: it   ║"
     echo "║  cannot be deleted, unregistered, or edited on a PR branch.    ║"
-    echo "║  See docs/plans/EXFILTRATION_GUARD_HOOK.md                     ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo ""
 }
@@ -144,6 +139,8 @@ adapter = os.environ["ADAPTER_NAME"]
 required = os.environ["REQUIRED_TOOLS"].split()
 
 
+# TODO(review): invokes_adapter() is duplicated verbatim in the registration_json()
+# heredoc below (~line 237+13). See review-followup memory for the full note.
 def invokes_adapter(command):
     """Whether ``command`` actually executes the adapter script, as opposed
     to merely mentioning its name (e.g. inside an ``echo`` or a comment)."""
@@ -239,6 +236,11 @@ except Exception:
 adapter = os.environ["ADAPTER_NAME"]
 
 
+# TODO(review): duplicate of invokes_adapter() defined earlier in this script
+# (the CHECK 2 REGISTRATION_STATUS heredoc, ~line 142). Both copies must be
+# kept in sync by hand; a shared Python helper (sourced or imported by both
+# heredocs) would remove the duplication but is a restructuring change, not
+# a surgical fix.
 def invokes_adapter(command):
     try:
         tokens = shlex.split(command)
