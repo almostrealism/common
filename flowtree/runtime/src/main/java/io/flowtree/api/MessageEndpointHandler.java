@@ -29,7 +29,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkstreamMailbox;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
 
@@ -46,13 +48,23 @@ import io.flowtree.slack.NotifierRegistry;
  * channel on a best-effort basis: a missing or unconfigured channel
  * does not fail the request.</p>
  *
+ * <p>Finally the message is appended to the workstream's
+ * {@link WorkstreamMailbox}, which is what makes it readable by another
+ * agent rather than only by a human. Every message sent through this
+ * endpoint is therefore both a notification and a turn in whatever
+ * conversation the workstream's participants are having; there is no
+ * separate way to address a peer.</p>
+ *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
+ * @see WorkstreamMailbox
  */
 public final class MessageEndpointHandler {
 
     /** Aggregates the per-workspace notifiers used to resolve message routing. */
     private final NotifierRegistry notifiers;
+    /** Holds the per-workstream conversation each message is appended to. */
+    private final MailboxRegistry mailboxes;
     /** Base URL of the ar-memory HTTP server; {@code null}/empty disables memory storage. */
     private final String memoryServerUrl;
     /** Reads the POST body from a NanoHTTPD session; reused from the parent endpoint. */
@@ -68,6 +80,7 @@ public final class MessageEndpointHandler {
      * Constructs a new handler bound to the given notifier registry.
      *
      * @param notifiers       the workspace notifier registry
+     * @param mailboxes       the workstream conversation registry
      * @param memoryServerUrl base URL of the ar-memory HTTP server, or
      *                        {@code null}/empty to disable memory storage
      * @param readBody        body reader supplied by the parent endpoint
@@ -75,11 +88,13 @@ public final class MessageEndpointHandler {
      * @param log             log line consumer
      * @param warn            warn line consumer
      */
-    MessageEndpointHandler(NotifierRegistry notifiers, String memoryServerUrl,
+    MessageEndpointHandler(NotifierRegistry notifiers, MailboxRegistry mailboxes,
+                           String memoryServerUrl,
                            Function<IHTTPSession, String> readBody,
                            Function<String, Response> errorResponse,
                            Consumer<String> log, Consumer<String> warn) {
         this.notifiers = notifiers;
+        this.mailboxes = mailboxes;
         this.memoryServerUrl = memoryServerUrl;
         this.readBody = readBody;
         this.errorResponse = errorResponse;
@@ -135,6 +150,11 @@ public final class MessageEndpointHandler {
             log.accept("Message not archived (memory server not configured): " + storeError);
         }
 
+        // Appended before the notification so a Slack outage cannot cost a
+        // collaborator its instruction
+        WorkstreamMailbox.Message delivered = mailboxes.mailboxFor(workstreamId)
+                .append(text, senderOf(body, jobId), jobId, activity);
+
         // Secondary: forward to notification channel (best-effort)
         String threadTs = jobId != null ? targetNotifier.getThreadTs(jobId) : null;
         String resultTs;
@@ -151,11 +171,33 @@ public final class MessageEndpointHandler {
                 + " but no notification channel is configured");
         }
 
+        String seq = ",\"seq\":" + delivered.seq();
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json",
                 resultTs != null
-                    ? "{\"ok\":true}"
-                    : "{\"ok\":true,\"warning\":\"no notification channel configured\"}");
+                    ? "{\"ok\":true" + seq + "}"
+                    : "{\"ok\":true" + seq
+                        + ",\"warning\":\"no notification channel configured\"}");
+    }
+
+    /**
+     * Determines the identity to record as the sender of a message, which is
+     * what lets a reader skip its own messages.
+     *
+     * <p>The caller names itself with a {@code sender} field, since only the
+     * caller knows whether it is an agent, an operator, or an automation. When
+     * it does not, the job the message came from is the best available
+     * identity, and a message with neither is attributed to the workstream.</p>
+     *
+     * @param body  the request body
+     * @param jobId the job identifier from the URL path, or {@code null}
+     * @return the sender identity; never {@code null}
+     */
+    private String senderOf(String body, String jobId) {
+        String declared = JsonFieldExtractor.extractString(body, "sender");
+        if (declared != null && !declared.isEmpty()) return declared;
+        if (jobId != null && !jobId.isEmpty()) return "job:" + jobId;
+        return "workstream";
     }
 
     /**

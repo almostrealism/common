@@ -178,6 +178,9 @@ final class CodingAgentJobCodec {
         if (job.isFalsificationEnabled()) {
             sb.append("::falsificationEnabled:=true");
         }
+        if (job.isCollaborative()) {
+            sb.append("::collaborative:=true");
+        }
         // sensitiveFileProtectionEnabled defaults to TRUE; emit only when false.
         if (!job.isSensitiveFileProtectionEnabled()) {
             sb.append("::sensitiveFileProtectionEnabled:=false");
@@ -294,6 +297,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "falsificationEnabled":
                 job.setFalsificationEnabled(Boolean.parseBoolean(value));
+                return true;
+            case "collaborative":
+                job.setCollaborative(Boolean.parseBoolean(value));
                 return true;
             case "sensitiveFileProtectionEnabled":
                 job.setSensitiveFileProtectionEnabled(Boolean.parseBoolean(value));

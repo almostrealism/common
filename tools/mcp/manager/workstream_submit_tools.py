@@ -15,7 +15,6 @@ import server
 from server import mcp
 
 
-
 @mcp.tool()
 def workstream_submit_task(
     prompt: str = "",
@@ -49,6 +48,8 @@ def workstream_submit_task(
     default_phase_config: str = "",
     phase_configs: str = "",
     allow_commit_language: bool = False,
+    collaborative: bool = False,
+    self_notify: bool = False,
     # Removed legacy config parameters (model / effort / default_runner /
     # runners). Declared without type hints so they stay out of the tool's
     # declared parameter schema while still being captured here for a clear
@@ -295,6 +296,28 @@ def workstream_submit_task(
             contains such language (e.g. quoting an existing commit message or
             convention) and restructuring is not feasible. Most callers should
             restructure the prompt instead of opting out.
+        collaborative: When ``True``, the submitted agent is told to work
+            with you rather than alone: it announces readiness with
+            ``send_message`` once it has carried out whatever preparatory
+            steps ``prompt`` describes, then waits for your instructions
+            with ``await_message``, acting on each in turn until you tell
+            it to stop. Combine with ``required_labels="hostname:<name>"``
+            to hold that conversation with an agent on a particular
+            machine. You reach it by calling ``send_message`` on the same
+            workstream, and hear from it with ``await_message``. Defaults
+            to ``False``, which submits an ordinary one-shot job.
+        self_notify: When True, this job's own workstream is woken with a
+            follow-up coding-agent job when the command completes -- use
+            this to launch a long-running command and resume automatically
+            instead of polling. Only valid for a shell-command job; rejected
+            for a coding-agent job, which can already submit its own
+            follow-up as its last action. Unlike a standing completion
+            listener (workstream_register's completion_listeners), this is a
+            one-shot, per-job opt-in consumed by this single command's
+            completion -- it does not register anything on the workstream,
+            so it cannot create the standing self-listener loop that
+            registering a workstream as its own listener would. Defaults to
+            False.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -313,6 +336,9 @@ def workstream_submit_task(
         prompt = ""
     elif not prompt:
         return {"ok": False, "error": "prompt is required"}
+    if self_notify and not shell_job:
+        return {"ok": False,
+                "error": "self_notify is only supported for a shell-command job (job_type='shell')"}
     err = server._check_length(command, "command", server.MAX_PROMPT_LEN)
     if err:
         return err
@@ -483,6 +509,8 @@ def workstream_submit_task(
 
     if shell_job:
         payload = {"jobType": "shell", "command": command}
+        if self_notify:
+            payload["selfNotify"] = True
     else:
         payload = {"prompt": prompt}
     if workstream_id:
@@ -519,6 +547,8 @@ def workstream_submit_task(
         payload["retrospectiveEnabled"] = True
     if falsification_enabled:
         payload["falsificationEnabled"] = True
+    if collaborative:
+        payload["collaborative"] = True
     # Presence semantics: forward useTmux only when explicitly set so an
     # explicit False reaches the controller and overrides the workstream
     # default (the controller distinguishes absent from false via hasField).

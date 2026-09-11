@@ -1136,6 +1136,7 @@ class TestToolRegistration(unittest.TestCase):
             "workstream_context",
             "memory_store",
             "send_message",
+            "await_message",
             "send_alert",
             "github_pr_find",
             "github_pr_review_comments",

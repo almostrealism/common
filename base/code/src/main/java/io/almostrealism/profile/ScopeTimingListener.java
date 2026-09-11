@@ -52,6 +52,33 @@ import java.util.function.Supplier;
 @FunctionalInterface
 public interface ScopeTimingListener {
 	/**
+	 * A listener that keeps nothing it is given.
+	 *
+	 * <p>Returned by profiles that collect no scope timings, so that the code being
+	 * timed can recognise the case and skip the measurement entirely rather than
+	 * paying for one whose result is discarded.</p>
+	 */
+	ScopeTimingListener NONE = new ScopeTimingListener() {
+		@Override
+		public void recordDuration(OperationMetadata root, OperationMetadata metadata,
+								   String stage, long nanos) { }
+
+		@Override
+		public boolean isRecording() { return false; }
+	};
+
+	/**
+	 * Whether this listener does anything with the durations it is given.
+	 *
+	 * <p>Timing is not free — a measurement costs two clock reads, and recording one
+	 * costs a map write — so on a path hot enough to care, ask this before measuring.
+	 * The default is {@code true}: a listener that keeps its durations has no reason
+	 * to answer otherwise.</p>
+	 *
+	 * @return true if durations passed to this listener are retained
+	 */
+	default boolean isRecording() { return true; }
+	/**
 	 * Times the given supplier and records the duration for the named stage
 	 * with no associated metadata.
 	 *

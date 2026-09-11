@@ -595,6 +595,55 @@ public class CompletionListenerFanout implements ConsoleFeatures {
     }
 
     /**
+     * Fans a terminal completion event out to the completing job's OWN
+     * workstream, for jobs that opt into a job-level "self notify" (see
+     * {@link JobCompletionEvent#isSelfNotify()} — currently only settable by
+     * {@link ShellCommandJob}). Unlike {@link #fanout}, which reads the
+     * persistent listener graph on {@link Workstream#getCompletionListeners()}
+     * and can therefore never target the source workstream (a standing
+     * self-listener entry is rejected at config time by
+     * {@link io.flowtree.workstream.ListenerCycleChecker} because it would
+     * fire on <em>every</em> future completion, forever), this method is
+     * invoked only when the completing job itself asked to be woken — a
+     * one-shot, job-scoped request consumed by that single completion, not a
+     * standing configuration.
+     *
+     * <p>It reuses the exact same dispatch path and safety ceilings (kill
+     * switch, listener dormancy, coalesce window, per-listener flood window,
+     * chain-depth and chain-breadth ceilings, and the per-listener debounce)
+     * as {@link #fanout} by calling {@link #dispatchToListener} with the
+     * listener ID set to the source workstream ID, so a self-notifying job
+     * cannot bypass any of the flood protections that bound an ordinary
+     * listener.</p>
+     *
+     * @param sourceWorkstreamId the workstream that owns the finished job and
+     *                           asked to be woken by it
+     * @param event              the terminal completion event
+     */
+    public void fanoutSelf(String sourceWorkstreamId, JobCompletionEvent event) {
+        if (sourceWorkstreamId == null || sourceWorkstreamId.isEmpty()
+                || event == null
+                || event.getStatus() == JobCompletionEvent.Status.STARTED) {
+            return;
+        }
+        try {
+            Map<String, Workstream> snapshot = allWorkstreams.get();
+            if (snapshot == null) snapshot = Collections.emptyMap();
+            if (!snapshot.containsKey(sourceWorkstreamId)) {
+                warn("wakeup_source_missing source=" + sourceWorkstreamId);
+                return;
+            }
+            String chainId = "ch-" + UUID.randomUUID();
+            int chainDepth = computeChainDepth(event);
+            dispatchToListener(sourceWorkstreamId, sourceWorkstreamId, event,
+                    snapshot, chainId, chainDepth);
+        } catch (RuntimeException ex) {
+            warn("wakeup_self_notify_failed source=" + sourceWorkstreamId
+                    + ": " + ex.getMessage());
+        }
+    }
+
+    /**
      * Computes a coarse chain depth from the source event's commit hash
      * or other signal. Wake-up jobs do not yet carry a depth field
      * on the source event; v1 uses 0 for any finished job that is

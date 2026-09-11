@@ -26,11 +26,11 @@ import io.flowtree.jobs.CompletionListenerFanout;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.jobs.SensitiveFileBypassTrailer;
-import io.flowtree.jobs.ShellCommandJob;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -54,6 +55,7 @@ import io.flowtree.controller.FlowTreeController;
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.submission.SubmissionConfigResolver;
+import io.flowtree.workstream.MailboxRegistry;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
@@ -77,6 +79,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the workstream's channel</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/mailbox?since=&amp;wait=&amp;exclude=</td><td>--</td><td>Read the workstream's conversation, blocking until a peer posts — see {@link MailboxEndpointHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
  *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"...","repoUrl":"...","createWorkstreamIfMissing":true}}</td><td>Submit a job, resolving the workstream from the request body and optionally creating it</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
@@ -111,6 +114,10 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td><td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
  *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, and the built-in default runner</td></tr>
+ *   <tr><td>GET</td><td>/api/stats</td><td>--</td><td>Weekly job statistics ({@code thisWeek}/{@code lastWeek}, computed in UTC) from the configured
+ *       {@link io.flowtree.controller.JobStatsStore} — see {@link StatsQueryHandler}</td></tr>
+ *   <tr><td>POST</td><td>/api/alerts</td><td>{@code {"text":"...","recipients":["..."],"severity":"INFO"}}</td><td>Deliver free-form text to named
+ *       recipients, subject to a per-caller rate limit — see {@link AlertRequestHandler}</td></tr>
  * </table>
  *
  * @author Michael Murray
@@ -153,6 +160,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup = id -> null;
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
+
+    /**
+     * Job IDs legitimately submitted with {@code selfNotify=true}, recorded at
+     * submission time by {@link #shellCommandSubmissionHandler()}. A completion
+     * event's self-notify flag is resolved by membership in this set rather than
+     * trusted from the posted status body -- otherwise any caller able to POST a
+     * completion event could set {@code selfNotify=true} on it and trigger a
+     * self-wake even for a job that was never validated as an eligible shell job.
+     */
+    private final Set<String> selfNotifyJobs = ConcurrentHashMap.newKeySet();
 
     /** Handles all {@code /api/github/proxy} requests and GitHub PR creation. */
     private final GitHubProxyHandler githubProxyHandler;
@@ -222,6 +239,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * harness cannot crash the controller.
      */
     private CompletionListenerFanout completionListenerFanout;
+    /**
+     * Holds the per-workstream conversations that {@code /messages} appends to
+     * and {@code /mailbox} reads from. Memory-only until
+     * {@link #setMailboxDirectory(File)} roots it in the controller's data
+     * directory.
+     */
+    private MailboxRegistry mailboxes = new MailboxRegistry();
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
     private String memoryServerUrl;
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
@@ -381,6 +405,28 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Persists workstream conversations under the controller's data directory,
+     * replacing the memory-only default so a conversation survives a restart.
+     *
+     * @param dataDirectory the controller's data directory; conversations are
+     *                      written to its
+     *                      {@value MailboxRegistry#DIRECTORY_NAME} subdirectory
+     */
+    public void setMailboxDirectory(File dataDirectory) {
+        this.mailboxes = new MailboxRegistry(
+                new File(dataDirectory, MailboxRegistry.DIRECTORY_NAME));
+    }
+
+    /**
+     * Returns the registry holding each workstream's conversation.
+     *
+     * @return the mailbox registry; never {@code null}
+     */
+    public MailboxRegistry getMailboxRegistry() {
+        return mailboxes;
+    }
+
+    /**
      * Sets the stats store for the {@code /api/stats} endpoint.
      *
      * @param statsStore the stats store, or null to disable stats queries
@@ -484,6 +530,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return newFixedLengthResponse(Response.Status.OK, "application/json",
                     WorkstreamListing.toJson(session, notifiers.allWorkstreams(),
                             statsQueryHandler.store(), githubProxyHandler));
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
+                && uri.endsWith("/mailbox")) {
+            String workstreamId = uri.substring("/api/workstreams/".length(),
+                    uri.length() - "/mailbox".length());
+            return mailboxEndpointHandler().handle(session, workstreamId);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/")
@@ -626,6 +679,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
      * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
      *
+     * <p>{@code selfNotify} is rejected unless {@code jobType=shell}: a shell command has no
+     * agent intelligence to act on its own completion, so a wake-up is the only way that
+     * completion becomes actionable, whereas a coding-agent job can already submit its own
+     * follow-up as its last action. See {@link io.flowtree.jobs.CompletionListenerFanout#fanoutSelf}.</p>
+     *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
      * @return JSON response with {@code ok}, {@code jobId}, and {@code workstreamId}
@@ -652,6 +710,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
         } else if (prompt == null || prompt.isEmpty()) {
             return errorResponse("Missing required field: prompt");
+        }
+
+        // See the javadoc above for why this is shell-job-only.
+        boolean selfNotify = extractJsonBooleanField(body, "selfNotify");
+        if (selfNotify && !shellJob) {
+            return errorResponse("selfNotify is only supported for shell-command jobs (jobType=shell)");
         }
 
         // Reject automated jobs when the gate is closed
@@ -742,8 +806,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int delaySeconds = extractJsonIntField(body, "delaySeconds");
 
         if (shellJob) {
-            return submitShellCommandJob(body, workstream, workstreamId, command,
-                    targetBranch, repoUrl, delaySeconds);
+            return shellCommandSubmissionHandler().handle(body, workstream, workstreamId, command,
+                    targetBranch, repoUrl, delaySeconds, selfNotify);
         }
 
         // Create job factory with workstream defaults, overridden by request values
@@ -829,6 +893,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "falsificationEnabled"))
             factory.setFalsificationEnabled(
                     extractJsonBooleanField(body, "falsificationEnabled"));
+        // Collaboration with a peer agent — disabled by default; opt in explicitly
+        if (extractJsonHasField(body, "collaborative"))
+            factory.setCollaborative(extractJsonBooleanField(body, "collaborative"));
         // tmux-backed agent launch — per-job use_tmux flag wins when the
         // request body sets it; otherwise the workstream's defaultUseTmux
         // setting applies. The body is parsed here so the schema-alignment
@@ -999,6 +1066,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(factory.isRetrospectiveEnabled());
         json.append(",\"falsificationEnabled\":")
                 .append(factory.isFalsificationEnabled());
+        json.append(",\"collaborative\":").append(factory.isCollaborative());
         json.append(",\"sensitiveFileProtectionEnabled\":")
                 .append(factory.isSensitiveFileProtectionEnabled());
         // Report an auto-created workstream so a caller that submitted with
@@ -1013,78 +1081,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Builds and submits a {@link ShellCommandJob} that runs a single command
-     * against the workstream's repository. Unlike a coding-agent job, it carries
-     * no agent configuration and never commits; only the repository, branch,
-     * working directory, required labels, and workstream URL are propagated.
+     * Builds the shell-command submission handler bound to this endpoint.
+     * See {@link ShellCommandSubmissionHandler}.
      *
-     * @param body          the raw request body (for required-label extraction)
-     * @param workstream    the resolved target workstream
-     * @param workstreamId  the resolved workstream identifier
-     * @param command       the shell command to execute
-     * @param targetBranch  the requested branch, or {@code null} for the default
-     * @param repoUrl       the requested repository URL, or {@code null}
-     * @param delaySeconds  delay before dispatch, or {@code 0} for immediate
-     * @return the JSON submission response
+     * @return a fresh handler reflecting the current notifier registry,
+     *         listener, server, and delayed-dispatch state
      */
-    private Response submitShellCommandJob(String body, Workstream workstream,
-            String workstreamId, String command, String targetBranch,
-            String repoUrl, int delaySeconds) {
-        ShellCommandJob.Factory factory = new ShellCommandJob.Factory(command);
-
-        String effectiveRepoUrl = repoUrl != null ? repoUrl : workstream.getRepoUrl();
-        if (effectiveRepoUrl != null) {
-            factory.setRepoUrl(effectiveRepoUrl);
-        }
-        if (workstream.getWorkingDirectory() != null) {
-            factory.setWorkingDirectory(workstream.getWorkingDirectory());
-        }
-        String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
-        if (effectiveBranch != null) {
-            factory.setTargetBranch(effectiveBranch);
-        }
-
-        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
-        if (requiredLabels.isEmpty() && workstream.getRequiredLabels() != null
-                && !workstream.getRequiredLabels().isEmpty()) {
-            requiredLabels = workstream.getRequiredLabels();
-        }
-        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
-            factory.setRequiredLabel(entry.getKey(), entry.getValue());
-        }
-
-        int listeningPort = getListeningPort();
-        if (listeningPort > 0) {
-            factory.setWorkstreamUrl("http://0.0.0.0:" + listeningPort
-                + "/api/workstreams/" + workstream.getWorkstreamId()
-                + "/jobs/" + factory.getTaskId());
-        }
-
-        JobCompletionEvent startEvent = JobCompletionEvent.started(
-                factory.getTaskId(), ShellCommandJob.summarizeCommand(command));
-        startEvent.withGitInfo(effectiveBranch, null, null, null, false);
-        notifiers.completionListener(workstream.getWorkstreamId())
-                .onJobSubmitted(workstream.getWorkstreamId(), startEvent);
-
-        if (delaySeconds > 0) {
-            pendingDelayedJobs.put(factory.getTaskId(), delayedJobExecutor.schedule(
-                    () -> {
-                        try {
-                            server.addTask(factory);
-                        } finally {
-                            pendingDelayedJobs.remove(factory.getTaskId());
-                        }
-                    }, delaySeconds, TimeUnit.SECONDS));
-            log("Delayed shell-command job via API: " + factory.getTaskId()
-                + " (delaySeconds=" + delaySeconds + ")");
-        } else {
-            server.addTask(factory);
-            log("Submitted shell-command job via API: " + factory.getTaskId());
-        }
-
-        String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
-            + "\",\"workstreamId\":\"" + workstreamId + "\",\"jobType\":\"shell\"}";
-        return newFixedLengthResponse(Response.Status.OK, "application/json", json);
+    private ShellCommandSubmissionHandler shellCommandSubmissionHandler() {
+        return new ShellCommandSubmissionHandler(notifiers, listener, server,
+                pendingDelayedJobs, delayedJobExecutor, this::getListeningPort, this::log,
+                selfNotifyJobs::add);
     }
 
     /**
@@ -1151,6 +1157,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (pullRequestUrl != null) {
             event.withPullRequestUrl(pullRequestUrl);
         }
+        // Resolved from the server-side registry populated at submission time,
+        // NOT from the posted body -- see the selfNotifyJobs javadoc.
+        event.withSelfNotify(jobId != null && selfNotifyJobs.remove(jobId));
 
         if (event instanceof CodingAgentJobEvent) {
             CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;
@@ -1238,6 +1247,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * record the failure while leaving the dependent chain blocked, which is
      * the situation the scanner exists to resolve.</p>
      *
+     * <p>When the event's {@link JobCompletionEvent#isSelfNotify()} is set —
+     * currently only possible for a {@link io.flowtree.jobs.ShellCommandJob}
+     * — the fan-out also wakes the completing job's OWN workstream via
+     * {@link CompletionListenerFanout#fanoutSelf}, subject to the same
+     * ceilings as an ordinary listener.</p>
+     *
      * @param workstreamId the workstream the job belongs to
      * @param event        the terminal event to dispatch
      */
@@ -1251,6 +1266,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 workstreamId, event.getDescription());
         try {
             completionListenerFanout.fanout(workstreamId, event);
+            if (event.isSelfNotify()) {
+                completionListenerFanout.fanoutSelf(workstreamId, event);
+            }
         } catch (RuntimeException ex) {
             log("Completion-listener fanout failed for workstream "
                     + workstreamId + ": " + ex.getMessage());
@@ -1478,8 +1496,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *         notifier registry
      */
     private MessageEndpointHandler messageEndpointHandler() {
-        return new MessageEndpointHandler(notifiers, memoryServerUrl,
+        return new MessageEndpointHandler(notifiers, mailboxes, memoryServerUrl,
                 this::readBody, this::errorResponse, this::log, this::warn);
+    }
+
+    /**
+     * Builds the mailbox endpoint handler bound to this endpoint.
+     * See {@link MailboxEndpointHandler}.
+     *
+     * @return a fresh handler reflecting the current mailbox and notifier
+     *         registries
+     */
+    private MailboxEndpointHandler mailboxEndpointHandler() {
+        return new MailboxEndpointHandler(notifiers, mailboxes, this::errorResponse);
     }
 
     /**

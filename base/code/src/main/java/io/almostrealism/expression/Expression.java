@@ -23,9 +23,11 @@ import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.ArrayIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.sequence.KernelSeries;
+import io.almostrealism.sequence.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
@@ -774,20 +776,61 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Evaluates this expression in batch for multiple sets of child values.
+	 * Computes the values of this expression across a range of index values.
 	 *
-	 * <p>This method enables parallel evaluation across many input values, which is
-	 * more efficient than calling {@link #evaluate(Number...)} repeatedly. The default
-	 * implementation uses parallel streams.</p>
+	 * <p>This method is {@code final}; subclasses customize evaluation by overriding
+	 * {@link #computeValues(IndexRange)}. Results are memoized in the range by node
+	 * identity, so a node shared by many paths of the expression graph is evaluated
+	 * once per range rather than once per path. This is the block counterpart of
+	 * {@link #value(IndexValues)} and agrees with it at every position of the range.</p>
 	 *
-	 * @param children list of arrays, where each array contains one child's values across all iterations
-	 * @param len the number of evaluations to perform
-	 * @return an array of results, one for each evaluation
+	 * @param range the index values to evaluate over
+	 * @return the value at each position of the range
 	 */
-	public Number[] batchEvaluate(List<Number[]> children, int len) {
-		return IntStream.range(0, len).parallel()
-				.mapToObj(i -> evaluate(children.stream().map(c -> c[i]).toArray(Number[]::new)))
-				.toArray(Number[]::new);
+	public final double[] values(IndexRange range) {
+		double[] cached = range.getCachedValues(this);
+		if (cached != null) return cached;
+
+		double[] result = computeValues(range);
+		range.putCachedValues(this, result);
+		return result;
+	}
+
+	/**
+	 * Computes the values of this expression across a range of index values by
+	 * evaluating the children across the range and combining them position by
+	 * position via {@link #evaluate(Number...)}.
+	 *
+	 * <p>Subclasses that override {@link #computeValue(IndexValues)} must override this
+	 * method as well so that the two agree; those relying on the default point
+	 * evaluation inherit the matching block evaluation here. Overrides should compute in
+	 * a tight loop over the range using primitive arithmetic, integer-typed expressions
+	 * in exact {@code long} converted with {@link IndexRange#exact(long)}, and should
+	 * obtain child values through {@link #values(IndexRange)} so they are memoized.</p>
+	 *
+	 * @param range the index values to evaluate over
+	 * @return the value at each position of the range
+	 * @throws UnsupportedOperationException if this is a leaf that does not define its values
+	 */
+	protected double[] computeValues(IndexRange range) {
+		if (getChildren().isEmpty()) {
+			throw new UnsupportedOperationException(getClass().getSimpleName() +
+					" cannot be evaluated over an index range");
+		}
+
+		double[][] children = range.values(getChildren());
+		double[] out = new double[range.getLength()];
+		Number[] args = new Number[children.length];
+
+		for (int i = 0; i < out.length; i++) {
+			for (int j = 0; j < args.length; j++) {
+				args[j] = children[j][i];
+			}
+
+			out[i] = evaluate(args).doubleValue();
+		}
+
+		return out;
 	}
 
 	/**
@@ -877,8 +920,9 @@ public abstract class Expression<T> implements
 	 * Generates an index sequence for this expression varying the specified index.
 	 *
 	 * <p>This method computes the expression's value for each integer assignment
-	 * to the given index from 0 to len-1. Results are cached when caching is enabled
-	 * in {@link ScopeSettings}.</p>
+	 * to the given index from 0 to len-1, evaluating in blocks via
+	 * {@link #values(IndexRange)} (see {@link ArrayIndexSequence#of(Class, Expression, Index, int)}).
+	 * Results are cached when caching is enabled in {@link ScopeSettings}.</p>
 	 *
 	 * <p>For expressions that are simple arithmetic progressions, an optimized
 	 * {@link ArithmeticIndexSequence} may be returned instead of computing all values.</p>
@@ -917,17 +961,42 @@ public abstract class Expression<T> implements
 
 		IndexSequence seq;
 
-		if (ScopeSettings.enableBatchEvaluation) {
-			seq = ArrayIndexSequence.of(type, batchEvaluate(getChildren().stream()
-					.map(e -> e.sequence(index, len, limit).toArray())
-					.collect(Collectors.toList()), Math.toIntExact(len)));
-		} else {
-			seq = ArrayIndexSequence.of(type, IntStream.range(0, Math.toIntExact(len)).parallel()
-					.mapToObj(i -> value(new IndexValues().put(index, i))).toArray(Number[]::new));
+		try {
+			seq = ArrayIndexSequence.of(type, this, index, Math.toIntExact(len));
+		} catch (IndexRange.InexactValueException e) {
+			seq = ArrayIndexSequence.of(type, (SequenceGenerator) this, index, len);
 		}
 
 		cacheSeq(exp, seq);
 		return seq;
+	}
+
+	/**
+	 * Recognises the kernel series of this expression over the first {@code len}
+	 * values of the given index, without necessarily enumerating all of them.
+	 *
+	 * <p>The values are produced block by block via {@link #values(IndexRange)} and
+	 * consumed by a {@link KernelSeriesMatcher}, which stops as soon as no recognisable
+	 * form remains possible (see {@link KernelSeriesMatcher#consume(Expression, Index)}).
+	 * The returned matcher is either complete or already refuted; in both cases
+	 * {@link KernelSeriesMatcher#getExpression(Expression, boolean)} gives the result.</p>
+	 *
+	 * @param index the index to vary
+	 * @param len the number of elements in the sequence
+	 * @param limit maximum allowed sequence length; returns {@code null} if len exceeds this
+	 * @return the matcher holding the recognition result, or {@code null} if len exceeds limit
+	 * @throws IllegalArgumentException if len is negative or the expression cannot be evaluated
+	 */
+	public KernelSeriesMatcher matchSeries(Index index, long len, long limit) {
+		if (len < 0 || !isValue(new IndexValues().put(index, 0))) {
+			throw new IllegalArgumentException();
+		}
+
+		if (len > limit) {
+			return null;
+		}
+
+		return new KernelSeriesMatcher(len).consume(this, index);
 	}
 
 	/**
@@ -1312,8 +1381,27 @@ public abstract class Expression<T> implements
 	public boolean equals(Object obj) {
 		if (!(obj instanceof Expression)) return false;
 
-		return timing == null ? compare((Expression) obj) :
-				timing.recordDuration("expressionEquals", () -> compare((Expression) obj));
+		return isTimed() ?
+				timing.recordDuration("expressionEquals", () -> compare((Expression) obj)) :
+				compare((Expression) obj);
+	}
+
+	/**
+	 * Whether this class's own operations should report their durations.
+	 *
+	 * <p>Distinct from {@code timing != null}, which only says a profile is assigned.
+	 * {@link #equals}, {@link #hashCode} and {@link #signature} run often enough and
+	 * briefly enough that timing them changes what is being timed, so they are also
+	 * gated on {@link ScopeSettings#enableExpressionTiming}, and on the listener
+	 * actually keeping what it is given — a profile that collects no scope timings
+	 * supplies {@link ScopeTimingListener#NONE}, and there is nothing to be gained by
+	 * measuring for it.</p>
+	 *
+	 * @return true if a measurement taken here would be recorded
+	 */
+	private static boolean isTimed() {
+		return ScopeSettings.enableExpressionTiming
+				&& timing != null && timing.isRecording();
 	}
 
 	/**
@@ -1326,8 +1414,9 @@ public abstract class Expression<T> implements
 	 */
 	@Override
 	public String signature() {
-		return timing == null ? getExpression(lang) :
-				timing.recordDuration("expressionSignature", () -> getExpression(lang));
+		return isTimed() ?
+				timing.recordDuration("expressionSignature", () -> getExpression(lang)) :
+				getExpression(lang);
 	}
 
 	/**
@@ -1341,7 +1430,7 @@ public abstract class Expression<T> implements
 	 */
 	@Override
 	public int hashCode() {
-		return timing == null ? hash() : timing.recordDuration("expressionHashCode", this::hash);
+		return isTimed() ? timing.recordDuration("expressionHashCode", this::hash) : hash();
 	}
 
 	/**

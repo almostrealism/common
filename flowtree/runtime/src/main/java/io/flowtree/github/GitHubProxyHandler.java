@@ -569,13 +569,8 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * @return the resolved token, or {@code null} if none is available
      */
     public String resolveGithubToken(String org) {
-        if (org != null && !org.isEmpty()) {
-            for (Map.Entry<String, String> entry : githubOrgTokens.entrySet()) {
-                if (entry.getKey().equalsIgnoreCase(org)) {
-                    return entry.getValue();
-                }
-            }
-        }
+        String token = GitHubOrgs.lookup(githubOrgTokens, org);
+        if (token != null) return token;
 
         // When there is exactly one configured org, use it as the default
         if (githubOrgTokens.size() == 1) {

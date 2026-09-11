@@ -280,7 +280,8 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	 *
 	 * <p>Uses only per-org tokens from workstreams.yaml. The org is
 	 * determined from the workstream's {@code githubOrg} field or by
-	 * extracting the owner from the repo URL.</p>
+	 * extracting the owner from the repo URL, and is matched against the
+	 * configured orgs without regard to case — see {@link GitHubOrgs}.</p>
 	 *
 	 * @param ws        the workstream entry
 	 * @param orgTokens map of org name to token
@@ -289,19 +290,15 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	private String resolveWorkstreamToken(WorkstreamConfig.WorkstreamEntry ws,
 										  Map<String, String> orgTokens) {
 		// Per-org token via explicit githubOrg field
-		if (ws.getGithubOrg() != null && orgTokens.containsKey(ws.getGithubOrg())) {
-			return orgTokens.get(ws.getGithubOrg());
-		}
+		String token = GitHubOrgs.lookup(orgTokens, ws.getGithubOrg());
+		if (token != null) return token;
 
 		// Infer org from repo URL owner
 		String ownerRepo = extractOwnerRepo(ws.getRepoUrl());
 		if (ownerRepo != null) {
 			int slash = ownerRepo.indexOf('/');
 			if (slash > 0) {
-				String owner = ownerRepo.substring(0, slash);
-				if (orgTokens.containsKey(owner)) {
-					return orgTokens.get(owner);
-				}
+				return GitHubOrgs.lookup(orgTokens, ownerRepo.substring(0, slash));
 			}
 		}
 

@@ -35,8 +35,12 @@ public class Bits {
 	/**
 	 * Places a value at a specific bit position within an integer.
 	 *
-	 * <p>The value is masked to fit within the specified number of bits
-	 * (using modulo), then shifted to the specified position.</p>
+	 * <p>The value is masked to the low {@code bits} bits of its two's-complement
+	 * representation, then shifted to the specified position. Masking (rather
+	 * than a sign-flip via {@code Math.abs}) is what keeps a negative value
+	 * confined to its field without collapsing distinct values: {@code -1} and
+	 * {@code 0xFFFF} share the same low 16 bits and therefore pack identically,
+	 * as any bit-field extraction requires.</p>
 	 *
 	 * @param position the bit position to place the value (0 = least significant)
 	 * @param bits the number of bits allocated for the value
@@ -44,7 +48,10 @@ public class Bits {
 	 * @return the packed value at the specified position
 	 */
 	public static int put(int position, int bits, int value) {
-		int max = 1 << bits;
-		return (Math.abs(value) % max) << position;
+		// Java masks shift counts to 5 bits for int, so (1 << 32) evaluates to
+		// (1 << 0) == 1 rather than overflowing to 0. bits == 32 is special-cased
+		// to an all-ones mask so a full-width field keeps every bit of value.
+		int mask = bits == 32 ? -1 : (1 << bits) - 1;
+		return (value & mask) << position;
 	}
 }
