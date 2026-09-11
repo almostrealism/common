@@ -52,16 +52,11 @@ agent round appends to, not pipeline logic.
 | `test-validate-agent-commit.sh` | Regression tests for `validate-agent-commit.sh` |
 | `test-verify-exfiltration-guard.sh` | Regression tests for `verify-exfiltration-guard.sh` |
 | `test-verify-sensitive-bypass.sh` | Regression tests for `verify-sensitive-bypass.sh` |
+| `test_exfil_guard_registration.py` | Regression tests for `exfil_guard_registration.py` |
 | `validate-agent-commit.sh` | Block agent commits that change base-branch test methods or CI files |
 | `verify-exfiltration-guard.sh` | Fail CI if the exfiltration guard hook (`.claude/hooks/block-exfiltration.sh`, its core, tests, allowlist) is missing from HEAD, not registered for `Artifact`/`SendUserFile`/`Bash`, or modified on a PR branch |
 | `verify-memory-claim.sh` | Cross-reference "no changes needed" claims against git diff |
 | `verify-sensitive-bypass.sh` | Verify a controller-signed `Sensitive-File-Bypass` commit trailer |
-
-<!-- TODO(review): table above documents every other *test* file in this
-     directory (test-check-quality-gates.sh, test-validate-agent-commit.sh,
-     test-verify-exfiltration-guard.sh, test-verify-sensitive-bypass.sh) but
-     is missing a row for test_exfil_guard_registration.py, the unit-test
-     file for exfil_guard_registration.py added alongside it. -->
 
 ## Prompts (`prompts/`)
 
