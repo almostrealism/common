@@ -179,7 +179,7 @@ public class TimeSeries {
 	 * @param time The cutoff timestamp; all entries with time < this value are removed
 	 */
 	public synchronized void purge(double time) {
-		int toRemove = -1;
+		int toRemove = 0;
 
 		s: for (TemporalScalar s : sorted) {
 			if (s.getTime() >= time) {
