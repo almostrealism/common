@@ -191,6 +191,53 @@ write_settings "$r" 'Artifact.*|SendUserFile|Bash'
 commit_all "$r" "introduce the guard for the first time"
 run_case "first-time introduction of the guard on a PR branch is not flagged as tampering" 0 "$r" master
 
+# ── Branches cut before the guard existed ───────────────────────────
+#
+# The guard's absence on HEAD has two possible causes, and they are
+# opposite: the branch removed it, or the branch is older than it. Both
+# look identical on HEAD, so the merge base decides. Reporting the second
+# as the first accuses an untouched branch of disabling the guard — and
+# that accusation is what dispatches an agent to "fix" it.
+
+make_predating_repo() {
+    local repo
+    repo=$(mktemp -d)
+    git -C "$repo" init -q -b master
+    git -C "$repo" config user.email guard@test
+    git -C "$repo" config user.name guard
+    git -C "$repo" config commit.gpgsign false
+    echo "prod" > "$repo/prod.txt"
+    git -C "$repo" add -A
+    git -C "$repo" commit -q -m "master before the guard existed"
+    # The branch is cut here, from a tree that has no guard in it.
+    git -C "$repo" checkout -q -b pr
+    git -C "$repo" checkout -q master
+    for f in "${GUARD_FILES[@]}"; do
+        mkdir -p "$repo/$(dirname "$f")"
+        printf '# %s\n' "$f" > "$repo/$f"
+    done
+    write_settings "$repo" 'Artifact.*|SendUserFile|Bash'
+    git -C "$repo" add -A
+    git -C "$repo" commit -q -m "the guard lands on master"
+    git -C "$repo" checkout -q pr
+    echo "$repo"
+}
+
+r=$(make_predating_repo)
+run_case "branch cut before the guard existed is not applicable, not a violation" 5 "$r" master
+
+r=$(make_predating_repo); echo "work" >> "$r/prod.txt"; commit_all "$r" "ordinary work on the old branch"
+run_case "an old branch doing ordinary work is still not applicable" 5 "$r" master
+
+# Merging the base branch brings the guard in, and from that commit on the
+# branch is held to it like any other.
+r=$(make_predating_repo); git -C "$r" merge -q --no-edit master
+run_case "once the base is merged the guard is verified again" 0 "$r" master
+
+r=$(make_predating_repo); git -C "$r" merge -q --no-edit master
+git -C "$r" rm -q .claude/hooks/block-exfiltration.sh; commit_all "$r" "delete the adapter after merging"
+run_case "deleting the guard after merging it in is still blocked" 2 "$r" master
+
 # The real repository must satisfy CHECK 1 and CHECK 2 on HEAD once the
 # guard is committed; before that first commit the files are only staged
 # and HEAD legitimately lacks them, so this case is informational.

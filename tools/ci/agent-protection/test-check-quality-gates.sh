@@ -4,12 +4,18 @@
 # check-quality-gates.sh turns a set of pass/fail environment variables
 # (job outputs from analysis.yaml) into a human-readable failure list for
 # the auto-resolve prompt. The test-integrity-check job runs three
-# sequential steps under one boolean output (enforcement tampering, the
-# exfiltration guard, then test-hiding); an earlier step failing skips
-# the later ones, so TEST_INTEGRITY_PASSED=false alone does not say which
-# one actually failed. These tests pin down that ENFORCEMENT_TAMPERED and
-# EXFIL_GUARD_FAILED select the correct specific message, and that the
-# generic test-hiding message remains the fallback when neither is set.
+# sequential detectors under one boolean output (enforcement tampering,
+# the exfiltration guard, then test-hiding) and stops at the first
+# failure, so TEST_INTEGRITY_PASSED=false alone does not say which one
+# failed — or even whether one reached a verdict at all.
+#
+# TEST_INTEGRITY_REASON carries that verdict, and these tests pin the two
+# halves of its contract: each named reason selects its own message, and
+# every other value — a detector that could not run, a skipped job, an
+# empty string — produces NO entry in the failure list. The second half
+# is the one that matters most. An entry in that list becomes an
+# instruction to an agent, and an agent told a branch weakened its tests
+# has twice gone and "fixed" a branch that had done nothing wrong.
 #
 # Usage:
 #   test-check-quality-gates.sh
@@ -73,23 +79,47 @@ run_case "all gates passing produces no failures" "false" "" "" \
 
 run_case "enforcement tampering reports the tampering message, not test-hiding" "true" \
     "Enforcement infrastructure" "Existing test files were modified" \
-    TEST_INTEGRITY_PASSED=false ENFORCEMENT_TAMPERED=true EXFIL_GUARD_FAILED=false
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=enforcement-tampering
 
 run_case "exfiltration guard failure reports the guard message, not test-hiding" "true" \
     "exfiltration guard hook is missing, unregistered, or was modified" "Existing test files were modified" \
-    TEST_INTEGRITY_PASSED=false ENFORCEMENT_TAMPERED=false EXFIL_GUARD_FAILED=true
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=exfil-guard
 
-run_case "plain test-hiding failure falls back to the generic message" "true" \
+run_case "test-hiding reports the test-hiding message" "true" \
     "Existing test files were modified in ways that hide failures" "" \
-    TEST_INTEGRITY_PASSED=false ENFORCEMENT_TAMPERED=false EXFIL_GUARD_FAILED=false
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=test-hiding
 
-run_case "test-hiding fallback also applies when the two flags are unset" "true" \
-    "Existing test files were modified in ways that hide failures" "" \
+# ── Nothing is reported when nothing was established ────────────────
+#
+# Each of these is a failing test-integrity-check job that reached no
+# verdict about the branch. None may produce a failure entry: the entry
+# is what dispatches an agent, and there is nothing here for one to fix.
+
+run_case "a detector that could not run is not reported as a violation" "false" \
+    "" "test-integrity-check" \
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=infrastructure
+
+run_case "a failure with no recorded reason is not reported as a violation" "false" \
+    "" "test-integrity-check" \
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=
+
+run_case "a failure with the reason variable unset is not reported either" "false" \
+    "" "test-integrity-check" \
     TEST_INTEGRITY_PASSED=false
 
-run_case "enforcement flag takes priority when both specific flags are set" "true" \
-    "Enforcement infrastructure" "exfiltration guard hook is missing" \
-    TEST_INTEGRITY_PASSED=false ENFORCEMENT_TAMPERED=true EXFIL_GUARD_FAILED=true
+run_case "a skipped job (empty passed output) accuses the branch of nothing" "false" \
+    "" "test-integrity-check" \
+    TEST_INTEGRITY_PASSED= TEST_INTEGRITY_REASON=
+
+run_case "an unrecognised reason is treated as unattributed, not as test-hiding" "false" \
+    "" "Existing test files were modified" \
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=something-new
+
+# An unattributed integrity failure must not suppress the gates that DID
+# reach a verdict: those are still reported and still worth an agent.
+run_case "other gates are still reported alongside an unattributed integrity failure" "true" \
+    "checkstyle" "test-integrity-check" \
+    TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=infrastructure CHECKSTYLE_PASSED=false
 
 echo ""
 echo "Passed: $PASS  Failed: $FAIL"

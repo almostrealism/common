@@ -337,14 +337,27 @@ jobs:
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
       violation_count: ${{ steps.check.outputs.violation_count }}
-      # Distinct failure reasons for this job's three sequential steps, so a
-      # downstream consumer of `passed` can report which one actually failed
-      # instead of defaulting to the test-hiding message for every case. A
-      # step's `outcome` is only 'failure' or 'success' once it has run; an
-      # earlier step failing leaves later steps 'skipped', which reads as
-      # not-'failure' here, correctly leaving their flag false.
-      enforcement_failed: ${{ steps.enforcement.outcome == 'failure' }}
-      exfil_guard_failed: ${{ steps.exfil_guard.outcome == 'failure' }}
+      # What this job concluded, named rather than inferred. One of
+      # enforcement-tampering, exfil-guard, test-hiding (a detector ran and
+      # found something), infrastructure (a detector could not run), or
+      # empty (nothing failed, or the job never got far enough to say).
+      #
+      # It is a step output, written by the step that reached the verdict,
+      # rather than a guess assembled from step outcomes downstream: only
+      # the step knows whether a non-zero exit was a finding or a crash,
+      # and that difference decides whether an agent is dispatched to
+      # "fix" the branch. Empty is the safe value — a consumer that cannot
+      # name the cause must not accuse the branch of anything. The steps
+      # run in sequence and stop at the first failure, so at most one of
+      # these is ever set.
+      #
+      # Written on one folded line with no extra indentation on the
+      # continuation: a more-indented line in a folded scalar keeps its
+      # newline, and a newline inside ${{ }} is not an expression.
+      failure_reason: >-
+        ${{ steps.enforcement.outputs.reason ||
+        steps.exfil_guard.outputs.reason ||
+        steps.check.outputs.reason }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -470,6 +483,7 @@ jobs:
             if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
               echo "::warning::Enforcement infrastructure tampering detected but IGNORED via the override_integrity_checks input"
             else
+              echo "reason=enforcement-tampering" >> "$GITHUB_OUTPUT"
               exit 1
             fi
           else
@@ -483,24 +497,70 @@ jobs:
       # tool it covers, and be untouched on a PR branch. Same override as
       # the tampering check above; same rule — a policy change is a human's
       # separate PR.
+      #
+      # The verifier is invoked from the checked-out tree, and on a
+      # pull_request that tree is the PR head alone — while the workflow
+      # file running it comes from the merge with the base. A PR opened
+      # before this step existed therefore runs it against a checkout that
+      # has no copy of the script, and `chmod` on a path that is not there
+      # ends the step. That is the branch being old, not the guard being
+      # touched, and it must never be reported as the latter: the script's
+      # own absence is dated against the merge base exactly the way the
+      # script dates the guard (exit 5). Any new script a step reaches for
+      # has the same exposure until every open PR has merged the base.
       - name: Verify exfiltration guard hook
         id: exfil_guard
         env:
           OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
-          chmod +x ./tools/ci/agent-protection/verify-exfiltration-guard.sh
+          VERIFIER=./tools/ci/agent-protection/verify-exfiltration-guard.sh
           BASE=""
           if [ "${{ github.ref }}" != "refs/heads/master" ]; then
             BASE="origin/master"
           fi
-          ./tools/ci/agent-protection/verify-exfiltration-guard.sh $BASE || {
+
+          if [ ! -f "$VERIFIER" ]; then
+            MERGE_BASE=""
+            if [ -n "$BASE" ]; then
+              MERGE_BASE=$(git merge-base "$BASE" HEAD 2>/dev/null || true)
+            fi
+            if [ -n "$MERGE_BASE" ] && ! git cat-file -e "${MERGE_BASE}:${VERIFIER#./}" 2>/dev/null; then
+              echo "::notice::The exfiltration guard does not exist at this branch's merge base — the branch predates it and there is nothing to verify. Merge ${BASE} to bring the guard in."
+              echo "not_applicable=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::${VERIFIER} is missing from this branch but exists at its merge base — the guard verifier was removed."
+            echo "reason=exfil-guard" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          chmod +x "$VERIFIER"
+          "$VERIFIER" $BASE || {
             EXIT_CODE=$?
-            echo "::error::Exfiltration guard check failed (exit ${EXIT_CODE}): the hook is missing, unregistered, or modified"
-            if [ "$OVERRIDE_INTEGRITY" = "true" ] && [ "$EXIT_CODE" -eq 4 ]; then
-              echo "::warning::Exfiltration guard modification detected but IGNORED via the override_integrity_checks input"
-            else
+            # 2, 3 and 4 are the verifier's own findings — the guard is
+            # missing, unregistered, or modified — and only those are a
+            # finding about this branch. 5 means the branch predates the
+            # guard: nothing to check, and a pass. Anything else is the
+            # check failing to run (no python3, no merge base, a bug in
+            # the script), which is a problem with the pipeline and is
+            # reported as one rather than as a verdict on the branch.
+            if [ "$EXIT_CODE" -eq 5 ]; then
+              echo "::notice::Exfiltration guard check not applicable — this branch predates the guard"
+              echo "not_applicable=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$EXIT_CODE" -ge 2 ] && [ "$EXIT_CODE" -le 4 ]; then
+              echo "::error::Exfiltration guard check failed (exit ${EXIT_CODE}): the hook is missing, unregistered, or modified"
+              echo "reason=exfil-guard" >> "$GITHUB_OUTPUT"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ] && [ "$EXIT_CODE" -eq 4 ]; then
+                echo "::warning::Exfiltration guard modification detected but IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
               exit 1
             fi
+            echo "::error::The exfiltration guard check could not run (exit ${EXIT_CODE}). This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+            exit 1
           }
 
       - name: Check for test-hiding modifications
@@ -509,17 +569,35 @@ jobs:
         env:
           OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
-          chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
-          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
+          DETECTOR=./tools/ci/agent-protection/detect-test-hiding.sh
+
+          # Same reasoning as the guard step above: a detector that is not
+          # in the checkout cannot have found anything, so its absence is
+          # reported as a pipeline problem and never as a finding about
+          # the branch's tests.
+          if [ ! -f "$DETECTOR" ]; then
+            echo "::error::${DETECTOR} is missing from this checkout — the test-hiding detector could not run. This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          chmod +x "$DETECTOR"
+          "$DETECTOR" origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
             EXIT_CODE=$?
+            # Exit 2 is the detector's finding; every other non-zero code
+            # is the detector failing to complete. Only the first is
+            # evidence that a test was weakened.
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
+              echo "reason=test-hiding" >> "$GITHUB_OUTPUT"
               if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
                 echo "::warning::Test integrity violations IGNORED via the override_integrity_checks input"
                 exit 0
               fi
               exit 1
             fi
+            echo "::error::The test-hiding detector could not complete (exit ${EXIT_CODE}). This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
             exit "$EXIT_CODE"
           }
 
@@ -528,37 +606,64 @@ jobs:
         run: |
           echo "## Test Integrity Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.enforcement.outcome }}" = "failure" ]; then
-            echo "**FAILED: Enforcement infrastructure was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
-            echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f ${RUNNER_TEMP}/enforcement-report.txt ]; then
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-            fi
-          elif [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
-            echo "**FAILED: The exfiltration guard hook is missing, unregistered, or was modified.**" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "The guard is the only barrier between an agent's tools and the outside" >> "$GITHUB_STEP_SUMMARY"
-            echo "world. Changes to it are made and committed by a human, never by an agent." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`./tools/ci/agent-protection/verify-exfiltration-guard.sh origin/master\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ steps.check.outcome }}" != "success" ]; then
-            echo "**FAILED: Existing tests were modified in ways that hide failures.**" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
-            echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f ${RUNNER_TEMP}/test-integrity-report.txt ]; then
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat ${RUNNER_TEMP}/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-            fi
-          else
-            echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # At most one step reaches a verdict, so concatenating their
+          # reasons yields that one (or the empty string when none did).
+          REASON="${{ steps.enforcement.outputs.reason }}${{ steps.exfil_guard.outputs.reason }}${{ steps.check.outputs.reason }}"
+
+          case "$REASON" in
+            enforcement-tampering)
+              echo "**FAILED: Enforcement infrastructure was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
+              echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ -f ${RUNNER_TEMP}/enforcement-report.txt ]; then
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+                cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
+            exfil-guard)
+              echo "**FAILED: The exfiltration guard hook is missing, unregistered, or was modified.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "The guard is the only barrier between an agent's tools and the outside" >> "$GITHUB_STEP_SUMMARY"
+              echo "world. Changes to it are made and committed by a human, never by an agent." >> "$GITHUB_STEP_SUMMARY"
+              echo "Run \`./tools/ci/agent-protection/verify-exfiltration-guard.sh origin/master\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            test-hiding)
+              echo "**FAILED: Existing tests were modified in ways that hide failures.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
+              echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ -f ${RUNNER_TEMP}/test-integrity-report.txt ]; then
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+                cat ${RUNNER_TEMP}/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
+            infrastructure)
+              echo "**COULD NOT RUN: a check in this job failed to execute.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "This says nothing about the branch — no detector reached a verdict about" >> "$GITHUB_STEP_SUMMARY"
+              echo "it. The job log names the step that could not run. Nothing is dispatched" >> "$GITHUB_STEP_SUMMARY"
+              echo "to \"fix\" a branch on this outcome; the pipeline itself needs the fix." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              if [ "${{ steps.check.outcome }}" = "failure" ] || [ "${{ steps.enforcement.outcome }}" = "failure" ] || [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
+                echo "**INCONCLUSIVE: this job failed without recording why.**" >> "$GITHUB_STEP_SUMMARY"
+                echo "" >> "$GITHUB_STEP_SUMMARY"
+                echo "Treat it as a pipeline problem rather than a finding about the branch," >> "$GITHUB_STEP_SUMMARY"
+                echo "and read the job log for the step that ended the run." >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
+                if [ "${{ steps.exfil_guard.outputs.not_applicable }}" = "true" ]; then
+                  echo "" >> "$GITHUB_STEP_SUMMARY"
+                  echo "The exfiltration guard check did not apply: this branch was cut before the guard existed." >> "$GITHUB_STEP_SUMMARY"
+                fi
+              fi
+              ;;
+          esac
 
   # ─── Checkstyle Config Integrity Check ──────────────────────────────
   # Confirms the checkstyle configuration has not been tampered with on a
@@ -1133,9 +1238,10 @@ jobs:
         run: python3 -m unittest discover -v -s tools/ci/agent-protection -p "test_exfil_guard_registration.py"
 
       # check-quality-gates.sh selects the test-integrity-check failure
-      # message from the guard's own job outputs (ENFORCEMENT_TAMPERED,
-      # EXFIL_GUARD_FAILED); this pins that selection down independently of
-      # the guard's own regression suite above.
+      # message from that job's failure_reason output, and — more
+      # importantly — reports nothing at all when the reason is absent or
+      # says a detector could not run. This pins both halves down
+      # independently of the guard's own regression suite above.
       - name: Run quality-gate messaging regression tests
         run: bash tools/ci/agent-protection/test-check-quality-gates.sh
 
@@ -2690,8 +2796,7 @@ jobs:
           TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
           DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
           TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
-          ENFORCEMENT_TAMPERED: ${{ needs.test-integrity-check.outputs.enforcement_failed }}
-          EXFIL_GUARD_FAILED: ${{ needs.test-integrity-check.outputs.exfil_guard_failed }}
+          TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
           AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}

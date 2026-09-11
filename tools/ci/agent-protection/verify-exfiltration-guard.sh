@@ -9,7 +9,12 @@
 # mirrors how validate-agent-commit.sh protects CI files: the guard's
 # files are read-only for agents, and their registration must survive.
 #
-# Three checks, in order:
+# Four checks, in order:
+#
+# CHECK 0 (Applicability, PR branches only): the guard exists at the
+#   merge base with <base-branch>. When it does not, the branch predates
+#   the guard entirely and the remaining checks have nothing to measure;
+#   see exit code 5 below.
 #
 # CHECK 1 (Presence): every guard file exists on HEAD — the adapter, the
 #   shared core, its unit tests, the allowlist, and this script's own test.
@@ -37,6 +42,19 @@
 #   2 - BLOCKED: a guard file is missing from HEAD
 #   3 - BLOCKED: the guard is not registered for every required tool
 #   4 - BLOCKED: a guard file or its registration changed on this branch
+#   5 - NOT APPLICABLE: the branch was cut before the guard existed
+#
+# Exit 5 is not a pass and not a block: there is nothing to verify. A
+# branch whose merge base with the base branch predates the guard cannot
+# be missing it, deleting it, or weakening it — the guard was simply not
+# in the tree the branch was cut from, and every guard file is absent for
+# the same benign reason an old branch lacks any other recent file. The
+# distinction matters because the two states are otherwise identical on
+# HEAD, and reporting "the guard is missing" for a branch that predates
+# it accuses the branch of the one thing this script exists to catch.
+# Merging the base branch (or rebasing onto it) brings the guard in and
+# the checks apply again from that moment; agent branches are cut from a
+# current base and so are never in this state to begin with.
 #
 # NOTE(review): four files in the guard feature that agents cannot edit —
 # .claude/hooks/lib/exfiltration_guard_check.py, .claude/hooks/block-exfiltration.sh,
@@ -69,6 +87,7 @@ GUARD_FILES=(
     "tools/ci/agent-protection/test_exfil_guard_registration.py"
 )
 SETTINGS_FILE=".claude/settings.json"
+ADAPTER_PATH=".claude/hooks/block-exfiltration.sh"
 ADAPTER_NAME="block-exfiltration.sh"
 REQUIRED_TOOLS=("Artifact" "SendUserFile" "Bash")
 
@@ -95,6 +114,39 @@ banner() {
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo ""
 }
+
+# ── CHECK 0: is the guard established at the branch point? ──────────
+#
+# Asked before anything else, and only when a base branch was given (on
+# the base branch itself the guard must always be present, so there is
+# nothing to date it against). The adapter stands for the whole feature:
+# every guard file landed in the same commit, so its absence at the merge
+# base means the branch was cut before any of them existed.
+
+if [ -n "$BASE_BRANCH" ]; then
+    MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>/dev/null || true)
+
+    if [ -z "$MERGE_BASE" ]; then
+        echo "verify-exfiltration-guard: no merge base between ${BASE_BRANCH} and HEAD;" >&2
+        echo "cannot tell a branch that predates the guard from one that removed it." >&2
+        exit 1
+    fi
+
+    # Only a branch that has no guard AND never had one is dated out. A
+    # branch that carries the guard is verified in full whether it
+    # inherited it or introduced it — the branch that first adds the
+    # guard still has to add it correctly, and CHECK 3 already exempts
+    # first-time files from the integrity comparison.
+    if ! git cat-file -e "HEAD:${ADAPTER_PATH}" 2>/dev/null \
+            && ! git cat-file -e "${MERGE_BASE}:${ADAPTER_PATH}" 2>/dev/null; then
+        echo "The exfiltration guard does not exist at this branch's merge base with"
+        echo "${BASE_BRANCH} (${MERGE_BASE}) — the branch was cut before the guard"
+        echo "landed, so there is nothing on it to verify. Merge ${BASE_BRANCH} to"
+        echo "bring the guard in; the checks apply from that point on."
+        emit_output false predates_guard
+        exit 5
+    fi
+fi
 
 # ── CHECK 1: presence on HEAD ───────────────────────────────────────
 
