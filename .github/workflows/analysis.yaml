@@ -529,6 +529,11 @@ jobs:
               echo "not_applicable=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            # TODO(review): when BASE is set but `git merge-base` itself fails (empty
+            # MERGE_BASE, e.g. a shallow checkout), this falls through to "removed" below
+            # even though nothing was actually established about the branch — it should be
+            # reason=infrastructure instead, matching the fallback used everywhere else in
+            # this step for a check that could not run.
             echo "::error::${VERIFIER} is missing from this branch but exists at its merge base — the guard verifier was removed."
             echo "reason=exfil-guard" >> "$GITHUB_OUTPUT"
             exit 1
