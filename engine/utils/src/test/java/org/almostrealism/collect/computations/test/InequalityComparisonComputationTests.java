@@ -113,12 +113,10 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 	 * <p>The rejection happens in the shared {@code CollectionProducerComputationBase}
 	 * constructor (invoked via {@code super(...)} before either operator's own body
 	 * runs), so both operators were already consistent for this input even before the
-	 * consolidation. What the consolidation fixes is a different, narrower divergence:
-	 * {@link GreaterThanCollection} carried an additional {@code getCountLong() <= 0}
-	 * guard that {@link LessThanCollection} lacked. That guard now lives once on the
-	 * shared {@link org.almostrealism.collect.computations.InequalityComparisonComputation}
-	 * superclass, but it is unreachable for a genuinely zero-sized shape — the shared
-	 * base class validation above always fires first.</p>
+	 * consolidation. Prior to the consolidation, {@link GreaterThanCollection} additionally
+	 * carried a {@code getCountLong() <= 0} guard that {@link LessThanCollection} lacked;
+	 * that guard was unreachable (the base class validation above always fires first for a
+	 * genuinely zero-sized shape) and has been removed rather than shared.</p>
 	 */
 	@Test(timeout = 30000)
 	public void zeroCountShapeRejectedByBothOperators() {
