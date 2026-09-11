@@ -374,9 +374,9 @@ public class LearnedTokensTest extends TestSuiteBase implements LearnedTokenFeat
 	/**
 	 * Builds the complete set of weights a {@link DiffusionTransformer} consumes for the synthetic
 	 * configuration (no cross-attention, with global conditioning), including the {@code memory_tokens}
-	 * parameter and, optionally, the per-layer {@code to_scale_shift_gate.weight} adaLN parameter.
+	 * parameter and, optionally, the per-layer {@code to_scale_shift_gate} adaLN parameter.
 	 *
-	 * @param includeScaleShiftGate whether to include the per-layer {@code to_scale_shift_gate.weight}
+	 * @param includeScaleShiftGate whether to include the per-layer {@code to_scale_shift_gate}
 	 * @param numMemoryTokens       number of memory tokens (the {@code memory_tokens} weight rows)
 	 * @return the weight map for a {@link StateDictionary}
 	 */
@@ -423,9 +423,18 @@ public class LearnedTokensTest extends TestSuiteBase implements LearnedTokenFeat
 			put(w, p + ".ff.ff.2.weight", DIT_EMBED_DIM, hiddenDim);
 			put(w, p + ".ff.ff.2.bias", DIT_EMBED_DIM);
 			if (includeScaleShiftGate) {
-				put(w, p + ".to_scale_shift_gate.weight",
-						AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, DIT_EMBED_DIM);
+				put(w, p + ".to_scale_shift_gate",
+						AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * DIT_EMBED_DIM);
 			}
+		}
+
+		if (includeScaleShiftGate) {
+			put(w, "model.model.transformer.global_cond_embedder.0.weight", DIT_EMBED_DIM, DIT_EMBED_DIM);
+			put(w, "model.model.transformer.global_cond_embedder.0.bias", DIT_EMBED_DIM);
+			put(w, "model.model.transformer.global_cond_embedder.2.weight",
+					AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * DIT_EMBED_DIM, DIT_EMBED_DIM);
+			put(w, "model.model.transformer.global_cond_embedder.2.bias",
+					AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * DIT_EMBED_DIM);
 		}
 		return w;
 	}

@@ -95,6 +95,33 @@ public class BottleneckInterfaceTest extends TestSuiteBase implements LayerFeatu
 	}
 
 	/**
+	 * The VAE mean split has no invertible part, so its decode-side transform is the identity over
+	 * the {@value #VAE_OUTPUT_DIM}-channel latent.
+	 */
+	@Test(timeout = 120000)
+	public void vaeDecodeIsIdentity() {
+		int batch = 2;
+		int length = 3;
+		TraversalPolicy latentShape = shape(batch, VAE_OUTPUT_DIM, length);
+
+		Model model = new Model(latentShape);
+		model.sequential().add(new VAEBottleneck(batch, length).decode(batch, length));
+		CompiledModel compiled = model.compile(false);
+
+		PackedCollection latent = new PackedCollection(latentShape).randnFill();
+		PackedCollection output = compiled.forward(latent);
+		assertEquals(latentShape.getTotalSize(), output.getShape().getTotalSize());
+
+		for (int b = 0; b < batch; b++) {
+			for (int c = 0; c < VAE_OUTPUT_DIM; c++) {
+				for (int l = 0; l < length; l++) {
+					assertEquals(latent.valueAt(b, c, l), output.valueAt(b, c, l), 1e-6);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Compiles the given bottleneck block, runs a known {@value #VAE_INPUT_DIM}-channel input
 	 * through it, and asserts the output equals the first {@value #VAE_OUTPUT_DIM} input channels.
 	 *

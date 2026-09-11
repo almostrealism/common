@@ -723,3 +723,38 @@ extend an existing component in place; the two genuinely new primitives (`Bottle
 text-to-audio is the integration proof that each block works — and the reused `DiffusionSampler` +
 rectified-flow `PingPongSamplingStrategy` + `CompiledModelAutoEncoder` + `WaveData` confirm how much of
 the existing pipeline carries straight over.
+
+---
+
+## 9. Implementation status (2026-09-10, branch `feature/sa3-prep`)
+
+Landed on `master` before this pass: A1 (`DifferentialAttentionFeatures`), A2 (`dynamicTanh`), B1
+(`AdaptiveLayerNormFeatures` / `ConditioningMode`), B2 (`LearnedTokenFeatures`), C1 (`Bottleneck`,
+`SoftNormBottleneck`), C2 (`TransformerResamplingFeatures`; encoder parity asserted, decoder parity
+asserted per stage), D1 (`NumberConditioner`), E (`safetensors_extractor.py`, `extract_sa3_weights.py`).
+
+Corrected in this pass after re-reading the reference source (`Stability-AI/stable-audio-3` @
+`bccf5b7b`, `models/transformer.py:1020-1050`, `models/dit.py`, `inference/sampling.py`,
+`inference/distribution_shift.py`):
+
+| Item | Reference behaviour | State before this pass | Now |
+|---|---|---|---|
+| B1 modulation algebra | `x = norm(x) * (1 + scale) + shift`, branch output `* sigmoid(1 - gate)` | `x * scale + shift`, `* gate` | `residualScale` / `residualGate` applied in `transformerBlock` |
+| B1 global cond embedder | `global_cond_embedder = Linear(dim,dim) . SiLU . Linear(dim, 6*dim)` shared by all blocks, added to each block's `to_scale_shift_gate` | absent (the `[batch, dim]` cond was broadcast to all six slots) | `globalConditioningEmbedding` + `packedModulation`; keys `model.model.transformer.global_cond_embedder.{0,2}.{weight,bias}` consumed |
+| B1 weight key | `layers.N.to_scale_shift_gate` (bare parameter of `6*dim`) | `layers.N.to_scale_shift_gate.weight` (`[6, dim]`) | bare key, `6*dim` |
+| Timestep features | `timestep_features_type = expo`: deterministic `ExpoFourierFeatures(256, 0.5, 10000)`, no checkpoint key | learned `model.model.timestep_features.weight` only | `TimestepFeatures.EXPO` via `expoFourierFeatures` |
+| B3 local-add cond | per block `to_local_embed = Linear(257,dim) . SiLU . Linear(dim,dim)` applied after attention, before FF; plain generation feeds **zeros** but the MLP biases make the contribution non-zero | absent | `localConditioningEmbedding` + `transformerBlock(..., localAddition)`; `DiffusionTransformer.getLocalAddCond()` buffer |
+| Sampler schedule | `linspace(1,0)` warped by `LogSNRShift` (default `rate 0, anchor -6.2, end 2`), first point pinned | fixed log-SNR `-6 .. 2` | `DistributionShift` (`LogSNRShift`, `FluxDistributionShift`, `LogitDistributionShift`); `PingPongSamplingStrategy(DistributionShift)`; the sampler passes the latent length |
+| Bottleneck decode | `x * running_std` | not modelled | `Bottleneck.decode` |
+| Patched pretransform | fold 256 samples into channels | not modelled | `PatchedPretransform` |
+| SAME-S assembly (C3) | pretransform → resampling block → `Linear(768,256)` → bottleneck; decoder mirror | not modelled | `SAMEAutoEncoder` (shape-tested with synthetic weights; real-weight round trip still to run) |
+
+`DiffusionTransformerConfig` now carries every architectural option; the SA3 small DiT is
+`new DiffusionTransformerConfig(256, 1024, 20, 16, 1, 768, 768, "rf_denoiser", latentLen, 257)
+.withConditioningMode(ADALN).withMemoryTokens(64).withLocalAddCondDim(257).withTimestepFeatures(EXPO)`.
+
+Still open: D2 (T5Gemma encoder + conditioner wiring), the DiT attention padding mask
+(`mask_padding_attention` zeroes values at padded latent positions), the `timestep_features_logsnr`
+flag (check the released `model_config.json`), classifier-free guidance (`cfg_scale != 1`), the
+studio-level `CompiledModelAutoEncoder` wiring of `SAMEAutoEncoder`, and the real-weight parity runs
+for the SAME-S round trip and the corrected DiT.

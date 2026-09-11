@@ -20,75 +20,95 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.Random;
-
 /**
  * Ping-pong (rectified flow) sampling strategy.
  *
- * <p>This strategy uses a sigmoid-based noise schedule and updates samples
- * by interpolating between the denoised prediction and fresh noise.
+ * <p>The schedule is a uniform grid from {@code sigmaMax} down to {@code sigmaMin} warped by a
+ * {@link DistributionShift}. The default shift is a fixed log-SNR spacing from {@code -6} to
+ * {@code 2}; a length-adaptive {@link LogSNRShift} or any other warp can be supplied to match a
+ * particular model's sampling schedule.
  *
- * <p>Formula: x_{t-1} = (1 - sigma_{t-1}) * denoised + sigma_{t-1} * noise
+ * <p>Each step interpolates between the denoised prediction and fresh noise:
+ * {@code x_{t-1} = (1 - sigma_{t-1}) * denoised + sigma_{t-1} * noise}.
  *
  * @see SamplingStrategy
+ * @see DistributionShift
  * @author Michael Murray
  */
 public class PingPongSamplingStrategy implements SamplingStrategy, CodeFeatures {
 
-	/** Maximum log signal-to-noise ratio (used as the start of the timestep linspace). */
-	private final float logSnrMax;
-
-	/** Minimum log signal-to-noise ratio (used as the end of the timestep linspace). */
-	private final float logSnrMin;
+	/** Warp applied to the uniform timestep grid. */
+	private final DistributionShift shift;
 
 	/** Maximum sigma value, clamped onto the first timestep boundary. */
-	private final float sigmaMax;
+	private final double sigmaMax;
 
 	/** Minimum sigma value, clamped onto the last timestep boundary (typically 0). */
-	private final float sigmaMin;
+	private final double sigmaMin;
 
 	/**
-	 * Creates a ping-pong sampling strategy with default parameters.
+	 * Creates a ping-pong sampling strategy with the fixed log-SNR schedule from {@code -6} to {@code 2}.
 	 */
 	public PingPongSamplingStrategy() {
 		this(-6.0f, 2.0f, 1.0f, 0.0f);
 	}
 
 	/**
-	 * Creates a ping-pong sampling strategy with custom parameters.
+	 * Creates a ping-pong sampling strategy with a fixed log-SNR schedule.
 	 *
-	 * @param logSnrMax Maximum log-SNR value (typically negative, e.g., -6)
-	 * @param logSnrMin Minimum log-SNR value (typically positive, e.g., 2)
+	 * @param logSnrMax Log-SNR value at the noise end of the schedule (typically negative, e.g., -6)
+	 * @param logSnrMin Log-SNR value at the data end of the schedule (typically positive, e.g., 2)
 	 * @param sigmaMax Maximum sigma value (typically 1.0)
 	 * @param sigmaMin Minimum sigma value (typically 0.0)
 	 */
 	public PingPongSamplingStrategy(float logSnrMax, float logSnrMin,
 									float sigmaMax, float sigmaMin) {
-		this.logSnrMax = logSnrMax;
-		this.logSnrMin = logSnrMin;
+		this(LogSNRShift.fixed(logSnrMax, logSnrMin), sigmaMax, sigmaMin);
+	}
+
+	/**
+	 * Creates a ping-pong sampling strategy whose schedule is warped by the given shift and runs
+	 * from {@code 1} to {@code 0}.
+	 *
+	 * @param shift Warp applied to the uniform timestep grid
+	 */
+	public PingPongSamplingStrategy(DistributionShift shift) {
+		this(shift, 1.0, 0.0);
+	}
+
+	/**
+	 * Creates a ping-pong sampling strategy whose schedule is warped by the given shift.
+	 *
+	 * @param shift Warp applied to the uniform timestep grid
+	 * @param sigmaMax Maximum sigma value (typically 1.0)
+	 * @param sigmaMin Minimum sigma value (typically 0.0)
+	 */
+	public PingPongSamplingStrategy(DistributionShift shift, double sigmaMax, double sigmaMin) {
+		if (shift == null) {
+			throw new IllegalArgumentException("A DistributionShift is required");
+		}
+
+		this.shift = shift;
 		this.sigmaMax = sigmaMax;
 		this.sigmaMin = sigmaMin;
 	}
 
+	/**
+	 * The warp applied to the timestep grid.
+	 *
+	 * @return the distribution shift
+	 */
+	public DistributionShift getShift() { return shift; }
+
 	@Override
 	public double[] getTimesteps(int numSteps, int numInferenceSteps) {
-		double[] timesteps = new double[numInferenceSteps + 1];
-		float step = (logSnrMin - logSnrMax) / numInferenceSteps;
+		return getTimesteps(numSteps, numInferenceSteps, 0);
+	}
 
-		// Generate linspace from logSnrMax to logSnrMin
-		for (int i = 0; i <= numInferenceSteps; i++) {
-			timesteps[i] = logSnrMax + i * step;
-		}
-
-		// Apply sigmoid transformation
-		for (int i = 0; i <= numInferenceSteps; i++) {
-			timesteps[i] = 1.0 / (1.0 + Math.exp(timesteps[i]));
-		}
-
-		// Set boundaries
-		timesteps[0] = sigmaMax;
+	@Override
+	public double[] getTimesteps(int numSteps, int numInferenceSteps, int sequenceLength) {
+		double[] timesteps = shift.schedule(numInferenceSteps, sigmaMax, sequenceLength);
 		timesteps[numInferenceSteps] = sigmaMin;
-
 		return timesteps;
 	}
 

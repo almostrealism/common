@@ -231,7 +231,10 @@ public class DiffusionSampler implements ConsoleFeatures {
 	private PackedCollection runSamplingLoop(PackedCollection x, int startStep,
 											 Random random, PackedCollection crossAttnCond,
 											 PackedCollection globalCond) {
-		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps);
+		// The latent is channels-first, so its sequence length is the final axis; length-adaptive
+		// schedules warp the timestep grid according to it.
+		int sequenceLength = latentShape.length(latentShape.getDimensions() - 1);
+		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps, sequenceLength);
 		int[] shapeArray = latentShape.extent();
 
 		if (verbose) {

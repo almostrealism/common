@@ -92,13 +92,29 @@ public interface DiffusionTransformerFeatures extends AttentionFeatures, Diffusi
 	 */
 	default CollectionProducer fourierFeatures(int batchSize, int outFeatures,
 											   Producer<PackedCollection> input, PackedCollection learnedWeights) {
+		return fourierFeatures(batchSize, outFeatures, input, cp(learnedWeights));
+	}
+
+	/**
+	 * Builds the Fourier feature projection over a frequency matrix supplied as a producer, so that
+	 * a computed (rather than learned) frequency ladder can drive it without leaving the graph.
+	 *
+	 * @param batchSize   batch dimension
+	 * @param outFeatures number of output features; must be even for sin/cos pairs
+	 * @param input       the scalar input producer of shape {@code [batchSize, inFeatures]}
+	 * @param frequencies the projection matrix producer of shape {@code [outFeatures/2, inFeatures]}
+	 * @return a producer of the Fourier feature projection
+	 */
+	default CollectionProducer fourierFeatures(int batchSize, int outFeatures,
+											   Producer<PackedCollection> input,
+											   Producer<PackedCollection> frequencies) {
 		// Output dim should be even for sin/cos pairs
 		if (outFeatures % 2 != 0) {
 			throw new IllegalArgumentException("Output features must be even for Fourier features");
 		}
 
 		CollectionProducer values = c(input);
-		CollectionProducer weights = cp(learnedWeights);
+		CollectionProducer weights = c(frequencies);
 
 		CollectionProducer f = multiply(
 				c(2.0 * Math.PI),
@@ -129,11 +145,106 @@ public interface DiffusionTransformerFeatures extends AttentionFeatures, Diffusi
 									PackedCollection timestepFeaturesWeight,
 									PackedCollection weight0, PackedCollection bias0,
 									PackedCollection weight2, PackedCollection bias2) {
+		return timestepEmbedding(batchSize, embedDim,
+				fourierFeatures(batchSize, 1, 2 * timestepFeaturesWeight.getShape().length(0), timestepFeaturesWeight),
+				weight0, bias0, weight2, bias2);
+	}
+
+	/**
+	 * Builds the timestep-embedding MLP {@code linear . silu . linear} over an arbitrary Fourier
+	 * feature block, mapping a {@code [batch, 1]} timestep to a {@code [batch, embedDim]} embedding.
+	 *
+	 * @param batchSize batch size
+	 * @param embedDim  embedding dimension
+	 * @param features  the Fourier feature block mapping {@code [batch, 1]} to {@code [batch, featureDim]}
+	 * @param weight0   first linear weight, shape {@code [embedDim, featureDim]}
+	 * @param bias0     first linear bias, shape {@code [embedDim]}
+	 * @param weight2   second linear weight, shape {@code [embedDim, embedDim]}
+	 * @param bias2     second linear bias, shape {@code [embedDim]}
+	 * @return the embedding block
+	 */
+	default Block timestepEmbedding(int batchSize, int embedDim, Block features,
+									PackedCollection weight0, PackedCollection bias0,
+									PackedCollection weight2, PackedCollection bias2) {
 		SequentialBlock embedding = new SequentialBlock(shape(batchSize, 1));
-		embedding.add(fourierFeatures(batchSize, 1, 256, timestepFeaturesWeight));
+		embedding.add(features);
 		embedding.add(dense(weight0, bias0));
 		embedding.add(silu(shape(batchSize, embedDim)));
 		embedding.add(dense(weight2, bias2));
 		return embedding;
+	}
+
+	/**
+	 * The geometric frequency ladder used by {@link #expoFourierFeatures}: {@code outFeatures / 2}
+	 * frequencies spaced uniformly in log space from {@code minFreq} to {@code maxFreq}, stored as a
+	 * {@code [outFeatures / 2, 1]} matrix so it can drive {@link #fourierFeatures} directly.
+	 *
+	 * @param outFeatures number of output features (even)
+	 * @param minFreq     lowest frequency
+	 * @param maxFreq     highest frequency
+	 * @return a producer of the frequency matrix
+	 */
+	default CollectionProducer expoFourierFrequencies(int outFeatures, double minFreq, double maxFreq) {
+		if (outFeatures % 2 != 0) {
+			throw new IllegalArgumentException("Output features must be even for Fourier features");
+		}
+
+		int half = outFeatures / 2;
+		double logMin = Math.log(minFreq);
+		double logMax = Math.log(maxFreq);
+		double logStep = half == 1 ? 0.0 : (logMax - logMin) / (half - 1);
+
+		return exp(integers(0, half).multiply(logStep).add(logMin)).reshape(half, 1);
+	}
+
+	/**
+	 * Deterministic Fourier features of a scalar: {@code [cos(2 pi t f), sin(2 pi t f)]} over the
+	 * geometric frequency ladder of {@link #expoFourierFrequencies}. This is
+	 * {@link #fourierFeatures} with a fixed rather than learned frequency matrix.
+	 *
+	 * @param batchSize   batch size
+	 * @param outFeatures number of output features (even)
+	 * @param minFreq     lowest frequency
+	 * @param maxFreq     highest frequency
+	 * @return a block mapping {@code [batch, 1]} to {@code [batch, outFeatures]}
+	 */
+	default Block expoFourierFeatures(int batchSize, int outFeatures, double minFreq, double maxFreq) {
+		CollectionProducer frequencies = expoFourierFrequencies(outFeatures, minFreq, maxFreq);
+		return layer("expoFourierFeatures",
+				shape(batchSize, 1),
+				shape(batchSize, outFeatures),
+				in -> fourierFeatures(batchSize, outFeatures, in, frequencies));
+	}
+
+	/**
+	 * Projects a per-position local conditioning tensor to the transformer width for additive
+	 * injection into a block, as {@code siluMlp} over each position, and left-pads the result with
+	 * zeros so that any prepended tokens (memory tokens, conditioning tokens) at the head of the
+	 * sequence receive no local conditioning.
+	 *
+	 * @param localCond       the local conditioning, shape {@code [batch, positions, condDim]}
+	 * @param weightIn        first linear weight, shape {@code [dim, condDim]}
+	 * @param biasIn          first linear bias, shape {@code [dim]}
+	 * @param weightOut       second linear weight, shape {@code [dim, dim]}
+	 * @param biasOut         second linear bias, shape {@code [dim]}
+	 * @param batchSize       batch size
+	 * @param positions       number of conditioned (audio) positions
+	 * @param prependedTokens number of leading sequence positions that receive zeros
+	 * @param dim             transformer embedding dimension
+	 * @return a producer of shape {@code [batch, prependedTokens + positions, dim]}
+	 */
+	default CollectionProducer localConditioningEmbedding(Producer<PackedCollection> localCond,
+														  PackedCollection weightIn, PackedCollection biasIn,
+														  PackedCollection weightOut, PackedCollection biasOut,
+														  int batchSize, int positions, int prependedTokens, int dim) {
+		int condDim = weightIn.getShape().length(1);
+		CollectionProducer embedded = siluMlp(c(localCond).reshape(batchSize, positions, condDim),
+				weightIn, biasIn, weightOut, biasOut).reshape(batchSize, positions, dim);
+
+		if (prependedTokens == 0) {
+			return embedded;
+		}
+
+		return concat(1, zeros(shape(batchSize, prependedTokens, dim)), embedded);
 	}
 }

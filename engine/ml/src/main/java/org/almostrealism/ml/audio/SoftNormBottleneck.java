@@ -142,6 +142,27 @@ public class SoftNormBottleneck implements Bottleneck, LayerFeatures {
 	}
 
 	/**
+	 * The decode-side transform: the inverse of the optional running-standard-deviation rescale,
+	 * {@code x * runningStd}. The learned per-channel affine is not undone (the decoder was trained
+	 * on the affine-transformed latent), so without a {@code runningStd} this is the identity.
+	 * The reference implementation may additionally add a small amount of Gaussian noise here at
+	 * inference time; that stochastic regularization is omitted so that decoding is deterministic.
+	 *
+	 * @param batchSize Batch size
+	 * @param seqLength Latent sequence length
+	 * @return A {@link Block} over shape {@code (batchSize, dim, seqLength)}
+	 */
+	@Override
+	public Block decode(int batchSize, int seqLength) {
+		TraversalPolicy shape = shape(batchSize, dim, seqLength);
+
+		return layer("softNormBottleneckDecode", shape, shape, input -> {
+			CollectionProducer in = c(input);
+			return runningStd == null ? in : in.multiply(cp(runningStd));
+		});
+	}
+
+	/**
 	 * Returns the latent channel dimensionality consumed from the encoder output.
 	 *
 	 * @return the input channel count ({@code dim})
