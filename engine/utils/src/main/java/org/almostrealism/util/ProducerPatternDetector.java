@@ -140,6 +140,16 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			"SkyTntMidi.java", Set.of(
 					"embedAndSumNet"            // Step-boundary: materializes the summed token
 					                            // embedding fed into netCompiledModel.forward
+			),
+			"HnswIndex.java", Set.of(
+					"insert",                   // Step boundary: one dispatch normalizes the
+					                            // vector into the store, one scores it against
+					                            // every stored vector
+					"search"                    // Step boundary: same two dispatches for the query
+			),
+			"SimilarityMetric.java", Set.of(
+					"similarity",               // Immediate-result overload, boundary by design
+					"normalize"                 // Immediate-result overload, boundary by design
 			)
 	);
 
@@ -178,6 +188,9 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 					                            // PackedCollection at a control-plane boundary, used
 					                            // to detect a change in loop length and rephase the
 					                            // per-channel clock; not a hot-loop GPU concern.
+			),
+			"SimilarityMetric.java", Set.of(
+					"similarity"                // Immediate-result overload, boundary by design
 			)
 	);
 

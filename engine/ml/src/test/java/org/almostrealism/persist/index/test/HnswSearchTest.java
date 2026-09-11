@@ -16,12 +16,15 @@
 
 package org.almostrealism.persist.index.test;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.persist.index.HnswIndex;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.persist.index.SearchResult;
 import org.almostrealism.persist.index.SimilarityMetric;
 import org.almostrealism.persist.test.TestRecordProto;
+import org.almostrealism.protobuf.Diskstore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
@@ -29,6 +32,8 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -654,6 +659,157 @@ public class HnswSearchTest extends TestSuiteBase {
 					"Search should return empty when all vectored records are deleted",
 					results.isEmpty());
 		}
+	}
+
+	/**
+	 * {@link SimilarityMetric#similarities} scores a whole candidate batch
+	 * against one query in a single call; each candidate's score must match
+	 * what scoring it individually via {@link SimilarityMetric#similarity}
+	 * would produce, and results must be ordered by row.
+	 */
+	@Test(timeout = 30000)
+	public void cosineSimilaritiesBatchMatchesPerPairSimilarity() {
+		PackedCollection query = SimilarityMetric.COSINE.normalize(vec(1.0, 0.0, 0.0));
+		PackedCollection candidateA = SimilarityMetric.COSINE.normalize(vec(1.0, 0.0, 0.0));
+		PackedCollection candidateB = SimilarityMetric.COSINE.normalize(vec(0.0, 1.0, 0.0));
+		PackedCollection candidateC = SimilarityMetric.COSINE.normalize(vec(0.5, 0.5, 0.0));
+
+		PackedCollection candidates = new PackedCollection(3, 3);
+		candidates.setFrom(0, candidateA, 0, 3);
+		candidates.setFrom(3, candidateB, 0, 3);
+		candidates.setFrom(6, candidateC, 0, 3);
+
+		PackedCollection scores = (PackedCollection)
+				SimilarityMetric.COSINE.similarities(cp(candidates), cp(query)).evaluate();
+
+		Assert.assertEquals(3, scores.getMemLength());
+		Assert.assertEquals(SimilarityMetric.COSINE.similarity(candidateA, query),
+				(float) scores.toDouble(0), 0.001f);
+		Assert.assertEquals(SimilarityMetric.COSINE.similarity(candidateB, query),
+				(float) scores.toDouble(1), 0.001f);
+		Assert.assertEquals(SimilarityMetric.COSINE.similarity(candidateC, query),
+				(float) scores.toDouble(2), 0.001f);
+	}
+
+	/**
+	 * A layer's edge list must never grow past its configured connection
+	 * limit ({@code 2 * m} at layer 0, {@code m} above it): when an insert
+	 * pushes an existing node past that limit, {@code Node.connect} must
+	 * prune the lowest-scored edge rather than let the list grow unbounded.
+	 */
+	@Test(timeout = 30000)
+	public void hnswConnectPrunesEdgesToRespectConnectionLimit() throws Exception {
+		int dimension = 4;
+		int m = 2;
+		int maxM0 = 2 * m;
+		HnswIndex index = new HnswIndex(dimension, m, 50, SimilarityMetric.COSINE);
+
+		// Many identical vectors so every insertion is an equally strong
+		// candidate neighbor for every other node, forcing backlink overflow.
+		for (int i = 0; i < 20; i++) {
+			index.insert("n-" + i, vec(1.0, 0.0, 0.0, 0.0));
+		}
+
+		Path file = tempDir.toPath().resolve("connection-limit.bin");
+		index.save(file);
+
+		Diskstore.HnswIndexData data;
+		try (InputStream is = Files.newInputStream(file)) {
+			data = Diskstore.HnswIndexData.parseFrom(is);
+		}
+
+		boolean sawNodeAtLimit = false;
+		for (Diskstore.HnswNodeData node : data.getNodesList()) {
+			List<Diskstore.HnswLayerNeighbors> layers = node.getLayersList();
+			for (int lc = 0; lc < layers.size(); lc++) {
+				int limit = (lc == 0) ? maxM0 : m;
+				int count = layers.get(lc).getNeighborIdsCount();
+				Assert.assertTrue(
+						"Layer " + lc + " adjacency for " + node.getId()
+								+ " must respect the configured connection limit",
+						count <= limit);
+				if (lc == 0 && count == maxM0) {
+					sawNodeAtLimit = true;
+				}
+			}
+		}
+		Assert.assertTrue(
+				"Expected at least one layer-0 adjacency list to reach the connection "
+						+ "limit, otherwise this test does not exercise pruning",
+				sawNodeAtLimit);
+	}
+
+	/**
+	 * Edge scores are a field added alongside neighbor IDs; a file written
+	 * before that field existed has {@code neighbor_ids} without matching
+	 * {@code neighbor_scores}. Loading such a file must treat the missing
+	 * scores as unknown ({@link Float#NaN}) rather than failing, and those
+	 * unknown scores must round-trip through a subsequent save.
+	 */
+	@Test(timeout = 30000)
+	public void hnswLoadLegacyFileWithoutNeighborScoresPreservesNanOnResave() throws Exception {
+		int dimension = 3;
+
+		PackedCollection normalizedA = SimilarityMetric.COSINE.normalize(vec(1.0, 0.0, 0.0));
+		PackedCollection normalizedB = SimilarityMetric.COSINE.normalize(vec(0.0, 1.0, 0.0));
+
+		Diskstore.HnswNodeData.Builder nodeA = Diskstore.HnswNodeData.newBuilder()
+				.setId("a")
+				.setVector(CollectionEncoder.encode(normalizedA, Precision.FP32))
+				.setLevel(0)
+				.setDeleted(false)
+				.addLayers(Diskstore.HnswLayerNeighbors.newBuilder().addNeighborIds("b"));
+
+		Diskstore.HnswNodeData.Builder nodeB = Diskstore.HnswNodeData.newBuilder()
+				.setId("b")
+				.setVector(CollectionEncoder.encode(normalizedB, Precision.FP32))
+				.setLevel(0)
+				.setDeleted(false)
+				.addLayers(Diskstore.HnswLayerNeighbors.newBuilder().addNeighborIds("a"));
+
+		Diskstore.HnswIndexData legacyData = Diskstore.HnswIndexData.newBuilder()
+				.setDimension(dimension)
+				.setM(8)
+				.setEfConstruction(50)
+				.setMaxLevel(0)
+				.setEntryPointId("a")
+				.addNodes(nodeA)
+				.addNodes(nodeB)
+				.build();
+
+		Path legacyFile = tempDir.toPath().resolve("legacy-no-scores.bin");
+		try (OutputStream os = Files.newOutputStream(legacyFile)) {
+			legacyData.writeTo(os);
+		}
+
+		HnswIndex loaded = HnswIndex.load(legacyFile, SimilarityMetric.COSINE);
+		Assert.assertNotNull(loaded);
+		Assert.assertEquals(2, loaded.size());
+
+		List<HnswIndex.IdScore> results = loaded.search(vec(1.0, 0.0, 0.0), 1);
+		Assert.assertEquals("a", results.get(0).id);
+
+		Path resaved = tempDir.toPath().resolve("legacy-resaved.bin");
+		loaded.save(resaved);
+
+		Diskstore.HnswIndexData resavedData;
+		try (InputStream is = Files.newInputStream(resaved)) {
+			resavedData = Diskstore.HnswIndexData.parseFrom(is);
+		}
+
+		int scoresChecked = 0;
+		for (Diskstore.HnswNodeData node : resavedData.getNodesList()) {
+			for (Diskstore.HnswLayerNeighbors layer : node.getLayersList()) {
+				for (float score : layer.getNeighborScoresList()) {
+					Assert.assertTrue(
+							"An edge restored from a file with no persisted score "
+									+ "must round-trip as NaN",
+							Float.isNaN(score));
+					scoresChecked++;
+				}
+			}
+		}
+		Assert.assertEquals("Expected both legacy edges to be checked", 2, scoresChecked);
 	}
 
 	/**

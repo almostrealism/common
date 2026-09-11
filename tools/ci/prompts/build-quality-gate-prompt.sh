@@ -43,6 +43,38 @@ ${FAILURE_LIST}
 
 These are code quality and style issues, not functional test failures. Fix them using the MCP build validator.
 
+## First: confirm the gate is right
+
+This list is produced by a pipeline, and a pipeline can be wrong about a
+branch. A gate has failed for reasons that had nothing to do with the code
+under review — a script a step expected was missing from an older checkout, a
+detector could not run, a job was skipped and read as a failure. So before you
+change anything, reproduce the reported failure yourself with the command given
+for that gate.
+
+**If you reproduce it, fix it.** That is the normal case and the rest of this
+prompt is about doing it well.
+
+**If you cannot reproduce it, stop and report.** Exiting without a single
+change is a correct, expected outcome here, and it is the right one whenever
+the evidence says the branch is clean. Say what you ran, what it printed, and
+why you believe the gate misfired. That report is worth far more than a
+speculative edit: a human can act on it, and it is how the pipeline gets fixed.
+
+What you must never do is make the failure go away without understanding it.
+Do not revert or delete the branch's work, do not weaken or remove a test, do
+not edit CI configuration or an enforcement script, and do not change unrelated
+code hoping the gate turns green. A "fix" aimed at an unexplained gate has
+twice damaged a pull request whose code was never at fault — the change was
+harder to undo than the failure it was chasing. When in doubt, do nothing and
+explain: nobody is disadvantaged by an agent that declines to guess.
+
+This applies with particular force to any `test-integrity-check` item above.
+It is an accusation that this branch weakened a test, disabled a detector, or
+touched the exfiltration guard. If the named command reports the branch clean,
+then the accusation is false and there is nothing to fix — report that plainly
+and change nothing at all.
+
 ## How to reproduce and fix each gate
 
 Run the build validator to see the exact violations. Choose the checks that match the failing gate(s):
