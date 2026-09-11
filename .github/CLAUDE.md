@@ -396,22 +396,35 @@ it.
 
 ### What the `Master Agent Dispatch` workflow does
 
-Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the three
-agent jobs that fire on a merge to master: `plan-next-task` (Project Manager),
-`doc-qa` (Quality Assurance) and `defect-hunt`. They were three separate
-workflows with byte-identical triggers; merging them keeps the Actions sidebar
-navigable without changing what any of them does.
+Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
+that fire on a merge to master: `plan-next-task` (Project Manager), `doc-qa`
+(Quality Assurance), `defect-hunt`, `coverage-qa` and `consolidation-qa`. The
+first three were separate workflows with byte-identical triggers; merging them
+keeps the Actions sidebar navigable without changing what any of them does, and
+each job added since lands here for the same reason.
+
+The four QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
+`consolidation-qa`) share a shape: `tools/ci/qa-cadence.sh` decides whether to
+run from the job's own `BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`,
+`qa/coverage-`, `qa/consolidate-`), `tools/ci/archive-stale-workstreams.sh`
+retires the previous rounds, then a branch is created, a workstream registered,
+a prompt built from `tools/ci/prompts/`, and a coding-agent job submitted with
+`AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
+cadence logic.
 
 Each job carries its **own** `concurrency` group (`project-manager`,
-`quality-assurance`, `defect-hunt`, none cancelling in progress), so they
-serialize independently rather than queueing behind one another. Workflow-level
-concurrency would couple them — do not add one.
+`quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`, none
+cancelling in progress), so they serialize independently rather than queueing
+behind one another. Workflow-level concurrency would couple them — do not add
+one.
 
 A `workflow_dispatch` selects a single job via the `agent` input
-(`all` | `project-manager` | `quality-assurance` | `defect-hunt`); `force` is
-passed through to whichever job runs. Each job's `if` is written as
-`github.event_name != 'workflow_dispatch' || ...` so a push to master runs all
-three.
+(`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `coverage` |
+`consolidation`); `force` is passed through to whichever job runs. Each job's
+`if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push
+to master runs all of them. Adding a job means adding its selector to that
+`options` list as well — a job whose selector is missing can never be dispatched
+alone.
 
 `tools/mcp/manager/project_tools.py` dispatches this workflow by filename with
 `agent: project-manager` (the `project_create_branch` MCP tool). Renaming the

@@ -18,6 +18,9 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
@@ -92,6 +95,64 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 		}
 
 		return value;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer difference follows a progression when every term does and the
+	 * negated subtrahends combine with the first term under
+	 * {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)}.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (isFP()) return null;
+
+		ArithmeticIndexSequence result = getChildren().get(0).arithmeticSequence(index, len);
+
+		for (int i = 1; result != null && i < getChildren().size(); i++) {
+			ArithmeticIndexSequence term = getChildren().get(i).arithmeticSequence(index, len);
+			result = term == null ? null : result.plus(term.negated());
+		}
+
+		return result;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the result type is {@link Integer}, the running difference is narrowed to
+	 * 32 bits after each term, since truncation to {@code int} commutes with subtraction;
+	 * this reproduces the wraparound that {@link #computeValue(IndexValues)} exhibits when
+	 * every child is an {@link Integer} (e.g. subtracting from {@code Integer.MIN_VALUE}),
+	 * which plain {@code long} arithmetic would not.</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[][] c = range.values(getChildren());
+		double[] out = new double[range.getLength()];
+
+		if (isFP()) {
+			for (int i = 0; i < out.length; i++) {
+				double v = c[0][i];
+				for (int j = 1; j < c.length; j++) v -= c[j][i];
+				out[i] = v;
+			}
+		} else if (getType() == Integer.class) {
+			for (int i = 0; i < out.length; i++) {
+				long l = (long) c[0][i];
+				for (int j = 1; j < c.length; j++) l -= (long) c[j][i];
+				out[i] = IndexRange.exact((int) l);
+			}
+		} else {
+			for (int i = 0; i < out.length; i++) {
+				long l = (long) c[0][i];
+				for (int j = 1; j < c.length; j++) l -= (long) c[j][i];
+				out[i] = IndexRange.exact(l);
+			}
+		}
+
+		return out;
 	}
 
 	@Override

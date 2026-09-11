@@ -20,10 +20,12 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.ArrayIndexSequence;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.sequence.KernelSeries;
 
@@ -129,6 +131,40 @@ public class KernelIndex extends DefaultIndex {
 	@Override
 	public boolean isValue(IndexValues values) { return values.getKernelIndex() != null; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return the value itself, since this is the kernel index
+	 */
+	@Override
+	public OptionalLong impliedKernelIndex(long value) {
+		return OptionalLong.of(value);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return 1, since every value of the kernel index is a distinct kernel index
+	 */
+	@Override
+	public OptionalLong kernelIndexGranularity() {
+		return OptionalLong.of(1);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Over a range that determines the kernel index, the kernel index is the
+	 * position divided by the range index's {@link Index#kernelIndexGranularity()}.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		OptionalLong granularity = index.kernelIndexGranularity();
+		if (granularity.isEmpty()) return null;
+
+		return new ArithmeticIndexSequence(0, 1, granularity.getAsLong(), len, len);
+	}
+
 	/** {@inheritDoc} */
 	@Override
 	public Expression<Integer> withIndex(Index index, Expression<?> e) {
@@ -172,6 +208,17 @@ public class KernelIndex extends DefaultIndex {
 		Number idx = values.getKernelIndex();
 		if (idx != null) return idx;
 		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The kernel index takes the kernel positions implied by the range, whichever
+	 * index the range varies (see {@link IndexRange#kernelPositions()}).</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		return range.kernelPositions();
 	}
 
 	/** {@inheritDoc} */

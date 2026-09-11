@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
@@ -98,6 +99,26 @@ public class Conditional<T extends Number> extends Expression<T> {
 	@Override
 	public Number evaluate(Number... children) {
 		return children[0].doubleValue() != 0.0 ? children[1] : children[2];
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Selects the positive or negative branch value at each position according to
+	 * whether the condition is non-zero there, matching {@link #evaluate(Number...)}.</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[] condition = getChildren().get(0).values(range);
+		double[] positive = getChildren().get(1).values(range);
+		double[] negative = getChildren().get(2).values(range);
+		double[] out = new double[range.getLength()];
+
+		for (int i = 0; i < out.length; i++) {
+			out[i] = condition[i] != 0.0 ? positive[i] : negative[i];
+		}
+
+		return out;
 	}
 
 	@Override

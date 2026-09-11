@@ -17,8 +17,11 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexValues;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
@@ -100,6 +103,78 @@ public interface ExpressionProperties<T> {
 	 *         default implementation returns {@code false}
 	 */
 	public default boolean isValue(IndexValues values) { return false; }
+
+	/**
+	 * Returns the arithmetic progression this expression follows over the first
+	 * {@code len} values of the given index, derived from its structure alone.
+	 *
+	 * <p>Index arithmetic built from an index, integer constants, sums, products and
+	 * quotients by constants, moduli by constants and negations follows the form
+	 * {@code offset + scale * ((i % mod) / granularity)}, and that form composes under
+	 * those operations by exact rules (see {@link ArithmeticIndexSequence}). When every
+	 * step of the derivation is exact the result describes the expression at every
+	 * position without evaluating it; when any step is not, or the expression involves
+	 * anything else (floating point, comparisons, masks, several variable factors), the
+	 * result is {@code null} and the sequence must be enumerated instead. The default
+	 * returns {@code null}.</p>
+	 *
+	 * @param index the index to vary
+	 * @param len the number of index values, starting from zero
+	 * @return the progression, or {@code null} if it cannot be established structurally
+	 */
+	public default ArithmeticIndexSequence arithmeticSequence(Index index, long len) { return null; }
+
+	/**
+	 * Returns the progressions of the terms this expression is a sum of, over the first
+	 * {@code len} values of the given index, or {@code null} if any term has none.
+	 *
+	 * <p>A sum reports one progression per addend; anything else reports its own
+	 * {@link #arithmeticSequence(Index, long)} as the single term. Consumers such as
+	 * a modulus or a quotient can reason about the terms separately, dropping those
+	 * that cannot affect the result, where the combined progression alone would
+	 * establish nothing.</p>
+	 *
+	 * @param index the index to vary
+	 * @param len the number of index values, starting from zero
+	 * @return the term progressions, or {@code null} if any term cannot be established
+	 */
+	public default List<ArithmeticIndexSequence> arithmeticTerms(Index index, long len) {
+		ArithmeticIndexSequence seq = arithmeticSequence(index, len);
+		return seq == null ? null : List.of(seq);
+	}
+
+	/**
+	 * Returns a value every evaluation of this integer expression is structurally known
+	 * to be a multiple of: its own value for a constant, the product of its constant
+	 * factors for a product, and 1 otherwise.
+	 *
+	 * <p>The product's constant factors are multiplied together with overflow checking;
+	 * an overflowing accumulation reports 1 (no known factor) rather than a silently
+	 * wrapped, incorrect value that a caller such as
+	 * {@link Quotient#tryBoundedRemainderSimplify(Sum, long)} would otherwise trust.</p>
+	 *
+	 * @return a positive value every evaluation of this expression is a multiple of
+	 */
+	public default long constantIntegerFactor() {
+		OptionalLong constant = self().longValue();
+		if (constant.isPresent()) return Math.abs(constant.getAsLong());
+
+		if (self() instanceof Product) {
+			long factor = 1;
+
+			for (Expression<?> child : self().getChildren()) {
+				try {
+					factor = Math.multiplyExact(factor, child.longValue().orElse(1));
+				} catch (ArithmeticException e) {
+					return 1;
+				}
+			}
+
+			return Math.abs(factor);
+		}
+
+		return 1;
+	}
 
 	/**
 	 * Returns the compile-time boolean value of this expression, if known.

@@ -20,9 +20,9 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
-import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
-import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -130,30 +130,79 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		long v = values.stream().map(o -> o.getAsLong()).reduce(1L, (a, b) -> a * b);
+
+		long v;
+
+		try {
+			v = 1L;
+			for (OptionalLong o : values) {
+				v = Math.multiplyExact(v, o.getAsLong());
+			}
+		} catch (ArithmeticException e) {
+			// If the product of the upper bounds overflows, the bound is unknown
+			// rather than a silently wrapped, incorrect value
+			return OptionalLong.empty();
+		}
 
 		// Some of the children may have negative upper bounds, but that does not
 		// guarantee that the resulting product will have a negative upper bound
 		return OptionalLong.of(Math.abs(v));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When no factor can be negative the lower bound is the product of the factors'
+	 * lower bounds. Otherwise the product is bounded by interval arithmetic over every
+	 * factor's lower and upper bound, so a factor with a non-negative lower bound
+	 * multiplied by a negative constant is correctly reported as possibly negative
+	 * rather than as bounded below by zero.</p>
+	 */
 	@Override
 	public OptionalLong lowerBound(KernelStructureContext context) {
-		List<OptionalLong> values = getChildren().stream()
+		List<OptionalLong> lower = getChildren().stream()
 				.map(e -> e.lowerBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
-		if (values.size() != getChildren().size()) return OptionalLong.empty();
-		long v = values.stream()
-				.map(o -> o.getAsLong())
-				.reduce(1L, (a, b) -> a * b);
+		if (lower.size() != getChildren().size()) return OptionalLong.empty();
 
-		if (v > 0 && getChildren().stream().anyMatch(Expression::isPossiblyNegative)) {
-			// If any of the children can be negative, the resulting product could
-			// be negative, so a more conservative lower bound should be negative
-			return OptionalLong.of(-v);
+		if (getChildren().stream().noneMatch(Expression::isPossiblyNegative)) {
+			try {
+				long v = 1L;
+				for (OptionalLong o : lower) {
+					v = Math.multiplyExact(v, o.getAsLong());
+				}
+				return OptionalLong.of(v);
+			} catch (ArithmeticException e) {
+				return OptionalLong.empty();
+			}
 		}
 
-		return OptionalLong.of(v);
+		List<OptionalLong> upper = getChildren().stream()
+				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
+				.collect(Collectors.toList());
+		if (upper.size() != getChildren().size()) return OptionalLong.empty();
+
+		long lo = 1;
+		long hi = 1;
+
+		try {
+			for (int i = 0; i < lower.size(); i++) {
+				long l = lower.get(i).getAsLong();
+				long h = upper.get(i).getAsLong();
+				long a = Math.multiplyExact(lo, l);
+				long b = Math.multiplyExact(lo, h);
+				long c = Math.multiplyExact(hi, l);
+				long d = Math.multiplyExact(hi, h);
+				lo = Math.min(Math.min(a, b), Math.min(c, d));
+				hi = Math.max(Math.max(a, b), Math.max(c, d));
+			}
+		} catch (ArithmeticException e) {
+			// If the interval arithmetic overflows, the bound is unknown rather
+			// than a silently wrapped, incorrect value
+			return OptionalLong.empty();
+		}
+
+		return OptionalLong.of(lo);
 	}
 
 	@Override
@@ -195,31 +244,70 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return isFP() ? value : (long) value;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The integer branch accumulates in {@code long} exactly as {@link #computeValue(IndexValues)}
+	 * does, including its unguarded overflow behavior, so the two paths agree even when a
+	 * product of factors exceeds the {@code long} range.</p>
+	 */
 	@Override
-	public IndexSequence sequence(Index index, long len, long limit) {
-		if (isFP()) return super.sequence(index, len, limit);
+	protected double[] computeValues(IndexRange range) {
+		double[][] c = range.values(getChildren());
+		double[] out = new double[range.getLength()];
 
-		List<Expression<?>> constant = new ArrayList<>();
-		List<Expression<?>> variable = new ArrayList<>();
-
-		getChildren().forEach(e -> {
-			if (e.doubleValue().isPresent()) {
-				constant.add(e);
-			} else {
-				variable.add(e);
+		if (isFP()) {
+			for (int i = 0; i < out.length; i++) {
+				double v = 1.0;
+				for (int j = 0; j < c.length; j++) v *= c[j][i];
+				out[i] = v;
 			}
-		});
+		} else {
+			for (int i = 0; i < out.length; i++) {
+				long l = 1;
+				for (int j = 0; j < c.length; j++) l *= (long) c[j][i];
+				out[i] = IndexRange.exact(l);
+			}
+		}
 
-		long value = constant.stream()
-				.mapToLong(e -> e.longValue().getAsLong())
-				.reduce(1L, (a, b) -> a * b);
-		if (variable.isEmpty()) return ArrayIndexSequence.of(value, len);
-		if (variable.size() != 1) return super.sequence(index, len, limit);
+		return out;
+	}
 
-		IndexSequence seq = variable.get(0).sequence(index, len, limit);
-		if (seq == null) return null;
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An integer product follows a progression when at most one factor is not a
+	 * constant and that factor follows one; the constants scale it. The constant
+	 * factors are multiplied together with overflow checking, since an overflowing
+	 * accumulation would otherwise scale the progression by a silently wrapped,
+	 * incorrect value.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (isFP()) return null;
 
-		return seq.multiply(value);
+		long constant = 1;
+		ArithmeticIndexSequence variable = null;
+
+		for (Expression<?> child : getChildren()) {
+			OptionalLong c = child.longValue();
+
+			if (c.isPresent()) {
+				try {
+					constant = Math.multiplyExact(constant, c.getAsLong());
+				} catch (ArithmeticException e) {
+					return null;
+				}
+			} else if (variable != null) {
+				return null;
+			} else {
+				variable = child.arithmeticSequence(index, len);
+				if (variable == null) return null;
+			}
+		}
+
+		if (variable == null) return new ArithmeticIndexSequence(constant, 0, 1, len, len);
+		return variable.scaled(constant);
 	}
 
 	@Override
