@@ -150,6 +150,39 @@ PY
 commit_all "$r" "unrelated settings change"
 run_case "unrelated settings.json change passes" 0 "$r" master
 
+r=$(make_repo)
+MATCHER='Artifact.*|SendUserFile|Bash' python3 - "$r/.claude/settings.json" <<'PY'
+import json, os, sys
+settings = {"hooks": {"PreToolUse": [
+    {"matcher": "Bash", "hooks": [{"type": "command",
+                                   "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-commit.sh"}]},
+    {"matcher": os.environ["MATCHER"], "hooks": [{"type": "command",
+                                                  "command": "echo block-exfiltration.sh",
+                                                  "description": "decoy"}]},
+]}}
+with open(sys.argv[1], "w") as handle:
+    json.dump(settings, handle, indent=2)
+PY
+commit_all "$r" "decoy registration"
+run_case "command that only mentions the adapter name is not a real registration" 3 "$r" master
+
+r=$(mktemp -d)
+git -C "$r" init -q -b master
+git -C "$r" config user.email guard@test
+git -C "$r" config user.name guard
+git -C "$r" config commit.gpgsign false
+echo "prod" > "$r/prod.txt"
+git -C "$r" add -A
+git -C "$r" commit -q -m "master without the guard"
+git -C "$r" checkout -q -b pr
+for f in "${GUARD_FILES[@]}"; do
+    mkdir -p "$r/$(dirname "$f")"
+    printf '# %s\n' "$f" > "$r/$f"
+done
+write_settings "$r" 'Artifact.*|SendUserFile|Bash'
+commit_all "$r" "introduce the guard for the first time"
+run_case "first-time introduction of the guard on a PR branch is not flagged as tampering" 0 "$r" master
+
 # The real repository must satisfy CHECK 1 and CHECK 2 on HEAD once the
 # guard is committed; before that first commit the files are only staged
 # and HEAD legitimately lacks them, so this case is informational.

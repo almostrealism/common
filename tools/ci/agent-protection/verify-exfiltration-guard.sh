@@ -38,6 +38,20 @@
 #   3 - BLOCKED: the guard is not registered for every required tool
 #   4 - BLOCKED: a guard file or its registration changed on this branch
 #
+# TODO(review): this file, and several others in the guard feature
+# (.claude/hooks/lib/exfiltration_guard_check.py, .claude/hooks/block-exfiltration.sh,
+# .claude/hooks/exfil-allowlist.txt, .claude/settings.json, tools/bin/llama-service.sh,
+# tools/ci/README.md), reference docs/plans/EXFILTRATION_GUARD_HOOK.md in comments,
+# banners, or block messages shown to the model/human. docs/plans/CLAUDE.md states
+# plan documents are temporary and forbids exactly this: "no code, test, or durable
+# documentation that is meant to persist may refer to a file in docs/plans/" and
+# explicitly disallows "a string constant or resource shipped in an artifact that
+# names a docs/plans/ document." If EXFILTRATION_GUARD_HOOK.md is later deleted or
+# superseded (the normal lifecycle for docs/plans/), these become dangling pointers.
+# See review-followup memory for the full file list; a human should decide whether
+# to move the durable parts of that doc under docs/ (formal docs) or strip the
+# cross-references.
+#
 # Outputs (to GITHUB_OUTPUT if available):
 #   blocked=true|false
 #   block_reason=<reason>
@@ -117,6 +131,7 @@ REGISTRATION_STATUS=$(SETTINGS_JSON="$HEAD_SETTINGS" ADAPTER_NAME="$ADAPTER_NAME
 import json
 import os
 import re
+import shlex
 import sys
 
 try:
@@ -127,13 +142,33 @@ except Exception:
 
 adapter = os.environ["ADAPTER_NAME"]
 required = os.environ["REQUIRED_TOOLS"].split()
+
+
+def invokes_adapter(command):
+    """Whether ``command`` actually executes the adapter script, as opposed
+    to merely mentioning its name (e.g. inside an ``echo`` or a comment)."""
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+    prog = tokens[0]
+    if os.path.basename(prog) in ("bash", "sh", "zsh", "ksh", "dash", "env"):
+        rest = [t for t in tokens[1:] if not t.startswith("-")]
+        if not rest:
+            return False
+        prog = rest[0]
+    return os.path.basename(prog) == adapter
+
+
 groups = (settings.get("hooks") or {}).get("PreToolUse") or []
 covered = set()
 for group in groups:
     if not isinstance(group, dict):
         continue
     commands = [h.get("command", "") for h in group.get("hooks") or [] if isinstance(h, dict)]
-    if not any(adapter in c for c in commands):
+    if not any(invokes_adapter(c) for c in commands):
         continue
     matcher = group.get("matcher")
     if matcher is None:
@@ -171,6 +206,14 @@ fi
 
 CHANGED=""
 for f in "${GUARD_FILES[@]}"; do
+    # Not present on the base branch at all: this is the guard's first-time
+    # introduction, not a modification of an established file. Nothing is
+    # hidden by it — the whole file is visible as new content in the PR
+    # diff, the same as any other addition. Once merged, every subsequent
+    # change to it is caught below as usual.
+    if ! git cat-file -e "${BASE_BRANCH}:${f}" 2>/dev/null; then
+        continue
+    fi
     if git diff --name-only "${BASE_BRANCH}...HEAD" -- "$f" | grep -q .; then
         CHANGED="${CHANGED}  - ${f}\n"
     fi
@@ -185,6 +228,7 @@ registration_json() {
     SETTINGS_JSON="$text" ADAPTER_NAME="$ADAPTER_NAME" python3 - <<'PY' || echo "unreadable"
 import json
 import os
+import shlex
 import sys
 
 try:
@@ -193,20 +237,47 @@ except Exception:
     print("unreadable")
     sys.exit(0)
 adapter = os.environ["ADAPTER_NAME"]
+
+
+def invokes_adapter(command):
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+    prog = tokens[0]
+    if os.path.basename(prog) in ("bash", "sh", "zsh", "ksh", "dash", "env"):
+        rest = [t for t in tokens[1:] if not t.startswith("-")]
+        if not rest:
+            return False
+        prog = rest[0]
+    return os.path.basename(prog) == adapter
+
+
 groups = (settings.get("hooks") or {}).get("PreToolUse") or []
 entries = [g for g in groups if isinstance(g, dict)
-           and any(adapter in (h.get("command", "") if isinstance(h, dict) else "")
+           and any(invokes_adapter(h.get("command", "") if isinstance(h, dict) else "")
                    for h in g.get("hooks") or [])]
 print(json.dumps(entries, sort_keys=True))
 PY
 }
 
-BASE_REGISTRATION=$(registration_json "$BASE_BRANCH")
-HEAD_REGISTRATION=$(registration_json HEAD)
-
-if [ "$BASE_REGISTRATION" != "$HEAD_REGISTRATION" ]; then
-    CHANGED="${CHANGED}  - ${SETTINGS_FILE} (the ${ADAPTER_NAME} registration entry)\n"
+if git cat-file -e "${BASE_BRANCH}:${SETTINGS_FILE}" 2>/dev/null; then
+    BASE_REGISTRATION=$(registration_json "$BASE_BRANCH")
+    HEAD_REGISTRATION=$(registration_json HEAD)
+    # "[]" means the adapter had no registration entry at all on the base
+    # branch — this is the registration's first-time introduction, not a
+    # removal or weakening of one that already existed, so it is not
+    # flagged. Any change starting from an existing, non-empty
+    # registration still is.
+    if [ "$BASE_REGISTRATION" != "$HEAD_REGISTRATION" ] && [ "$BASE_REGISTRATION" != "[]" ]; then
+        CHANGED="${CHANGED}  - ${SETTINGS_FILE} (the ${ADAPTER_NAME} registration entry)\n"
+    fi
 fi
+# When settings.json does not exist on the base branch at all, there is no
+# prior registration to weaken — whatever HEAD introduces is by definition
+# new, not a modification, so the comparison above is skipped entirely.
 
 if [ -n "$CHANGED" ]; then
     banner "BLOCKED: EXFILTRATION GUARD MODIFIED ON THIS BRANCH"

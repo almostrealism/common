@@ -86,6 +86,7 @@ jobs:
       extern_changed: ${{ steps.filter.outputs.extern_changed }}
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
       python_changed: ${{ steps.filter.outputs.python_changed }}
+      exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
       images_changed: ${{ steps.filter.outputs.images_changed }}
     steps:
@@ -105,6 +106,7 @@ jobs:
               echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
             done
             echo "python_changed=true" >> "$GITHUB_OUTPUT"
+            echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
             echo "images_changed=true" >> "$GITHUB_OUTPUT"
           }
@@ -142,9 +144,18 @@ jobs:
           # properties, Dockerfiles). Dockerfiles have no extension but are
           # build code — a Dockerfile-only change must set code_changed so the
           # gated jobs (e.g. python-tests, which ANDs code_changed) still run.
+          #
+          # The exfiltration guard's control surface includes two files with
+          # no recognized code extension: .claude/settings.json (the hook
+          # registration) and .claude/hooks/exfil-allowlist.txt (the
+          # destination allowlist). Without listing them explicitly, a PR
+          # that only edits one of these can slip through with code_changed
+          # left false, which skips build/test-integrity-check entirely —
+          # including the guard verification and enforcement-tampering steps
+          # that would otherwise catch a weakened registration or allowlist.
           CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
-            '*/Dockerfile' 'Dockerfile' \
+            '*/Dockerfile' 'Dockerfile' '.claude/settings.json' '.claude/hooks/' \
             | grep -v '^docs/' | grep -v '\.md$' || true)
           if [ -z "$CODE_FILES" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -184,6 +195,26 @@ jobs:
             echo "::notice::Python sources changed — running python-tests"
           else
             echo "python_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Exfiltration guard control-surface detection. The guard's
+          # regression suites (the Python unit tests and the CI-verifier
+          # shell tests) live inside the python-tests job, which is
+          # otherwise gated on python_changed — a flag that only reacts to
+          # *.py files. The shell adapter, the allowlist, and the hook
+          # registration in .claude/settings.json can all change the
+          # guard's effective behavior without touching a .py file, so they
+          # need their own path-based flag to keep the guard's tests wired
+          # to every file that can affect it.
+          GUARD_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '.claude/settings.json' '.claude/hooks/' \
+            'tools/ci/agent-protection/verify-exfiltration-guard.sh' \
+            'tools/ci/agent-protection/test-verify-exfiltration-guard.sh' || true)
+          if [ -n "$GUARD_FILES" ]; then
+            echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Exfiltration guard control files changed — running guard regression suites"
+          else
+            echo "exfil_guard_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Agent volume isolation detection. The agent-volume-isolation job
@@ -372,6 +403,17 @@ jobs:
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
             if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+              continue
+            fi
+            # A file that does not exist on origin/master at all is being
+            # introduced for the first time, not modified — there is no
+            # established check to weaken, and the entire file is visible
+            # as new content in the PR diff the same as any other addition.
+            # This is what lets a branch add new enforcement infrastructure
+            # (e.g. a new protected detector or guard file) without tripping
+            # the check that protects it from then on. Once merged, every
+            # subsequent change to the file is fully protected as usual.
+            if ! git cat-file -e "origin/master:${f}" 2>/dev/null; then
               continue
             fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
@@ -1012,12 +1054,17 @@ jobs:
   #   - tools/mcp/manager/test_server.py (ar-manager MCP tools)
   #   - tools/mcp/common/test_memory_text.py (shared MCP libraries)
   #   - tools/tests/test_migrate_workstreams.py (workstreams migration tool)
+  #   - the exfiltration guard's Python and CI-verifier regression suites
   # These are pure Python — no Maven build needed, so this job only depends
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
-  # when any test fails.
+  # when any test fails. Gated on python_changed OR exfil_guard_changed so
+  # the guard suites still run when only its shell adapter, allowlist, or
+  # settings.json registration changed — none of which set python_changed.
   python-tests:
     needs: changes
-    if: needs.changes.outputs.code_changed == 'true' && needs.changes.outputs.python_changed == 'true'
+    if: >-
+      needs.changes.outputs.code_changed == 'true' &&
+      (needs.changes.outputs.python_changed == 'true' || needs.changes.outputs.exfil_guard_changed == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
