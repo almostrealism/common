@@ -30,7 +30,7 @@ import java.util.List;
  * A computation that performs element-wise less-than comparison between two {@link PackedCollection}s,
  * returning conditional values based on the comparison result.
  *
- * <p>This class extends {@link CollectionComparisonComputation} to implement the less-than
+ * <p>This class extends {@link InequalityComparisonComputation} to implement the less-than
  * relational operator with optional equality checking (&lt;=). It evaluates the comparison for each
  * corresponding element pair and selects between true and false values accordingly.</p>
  *
@@ -109,7 +109,7 @@ import java.util.List;
  *   <li><strong>Branching:</strong> Uses conditional expressions in generated code</li>
  * </ul>
  *
- * @see CollectionComparisonComputation
+ * @see InequalityComparisonComputation
  * @see GreaterThanCollection
  * @see org.almostrealism.collect.CollectionFeatures#lessThan
  *
