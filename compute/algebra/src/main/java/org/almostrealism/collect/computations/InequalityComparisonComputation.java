@@ -81,6 +81,7 @@ public abstract class InequalityComparisonComputation extends CollectionComparis
 		this.includeEqual = includeEqual;
 		init();
 
+		// TODO(review): unreachable — super() already rejects a zero-size shape
 		long count = getCountLong();
 		if (count <= 0) {
 			throw new IllegalStateException(

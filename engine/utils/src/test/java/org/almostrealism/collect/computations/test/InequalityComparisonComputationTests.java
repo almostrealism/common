@@ -30,11 +30,10 @@ import org.junit.Test;
  * {@link org.almostrealism.collect.computations.InequalityComparisonComputation}.
  *
  * <p>These tests exercise the strict versus inclusive operator selection, the
- * expansion width, the signature contribution, and — most importantly — the
- * construction-time zero-count shape guard. Prior to consolidation the guard
- * existed only on {@link GreaterThanCollection}; {@link LessThanCollection} had
- * silently omitted it. {@link #zeroCountShapeRejectedByBothOperators()} records
- * that both operators now reject a zero-count shape identically.</p>
+ * expansion width, the signature contribution, and the construction-time
+ * zero-shape rejection. {@link #zeroCountShapeRejectedByBothOperators()} records
+ * that both operators reject a zero-sized shape identically, via the shared
+ * {@code CollectionProducerComputationBase} shape validation.</p>
  */
 public class InequalityComparisonComputationTests extends TestSuiteBase {
 	/**
@@ -108,28 +107,33 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Records that both greater-than and less-than reject a zero-count shape at
-	 * construction time with a fail-loud {@link IllegalStateException}.
+	 * Records that both greater-than and less-than reject a zero-sized shape at
+	 * construction time, identically, with a fail-loud {@link IllegalArgumentException}.
 	 *
-	 * <p>This is the consolidation's divergence fix: the guard was previously present
-	 * only on {@link GreaterThanCollection}. Before the shared superclass was
-	 * introduced, the {@link LessThanCollection} assertion below would have failed
-	 * because that constructor silently accepted a zero-count shape.</p>
+	 * <p>The rejection happens in the shared {@code CollectionProducerComputationBase}
+	 * constructor (invoked via {@code super(...)} before either operator's own body
+	 * runs), so both operators were already consistent for this input even before the
+	 * consolidation. What the consolidation fixes is a different, narrower divergence:
+	 * {@link GreaterThanCollection} carried an additional {@code getCountLong() <= 0}
+	 * guard that {@link LessThanCollection} lacked. That guard now lives once on the
+	 * shared {@link org.almostrealism.collect.computations.InequalityComparisonComputation}
+	 * superclass, but it is unreachable for a genuinely zero-sized shape — the shared
+	 * base class validation above always fires first.</p>
 	 */
 	@Test(timeout = 30000)
 	public void zeroCountShapeRejectedByBothOperators() {
 		try {
 			new GreaterThanCollection(shape(0), c(1.0), c(1.0), c(1.0), c(1.0));
-			Assert.fail("GreaterThanCollection should reject a zero-count shape");
-		} catch (IllegalStateException expected) {
-			// expected: fail-loud guard on a zero-count shape
+			Assert.fail("GreaterThanCollection should reject a zero-sized shape");
+		} catch (IllegalArgumentException expected) {
+			// expected: shared CollectionProducerComputationBase shape validation
 		}
 
 		try {
 			new LessThanCollection(shape(0), c(1.0), c(1.0), c(1.0), c(1.0));
-			Assert.fail("LessThanCollection should reject a zero-count shape");
-		} catch (IllegalStateException expected) {
-			// expected: fail-loud guard on a zero-count shape (added by consolidation)
+			Assert.fail("LessThanCollection should reject a zero-sized shape");
+		} catch (IllegalArgumentException expected) {
+			// expected: shared CollectionProducerComputationBase shape validation
 		}
 	}
 }
