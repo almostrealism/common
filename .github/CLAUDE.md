@@ -157,7 +157,17 @@ whose head predates the script that step invokes; an unguarded
 and, before this was fixed, reported that failure as an integrity violation.
 Check the file is there first, and date its absence against the merge base:
 absent there too means the branch predates it (benign), present there means it
-was removed (a real finding).
+was removed (a real finding) — and only once a merge base has actually been
+established, since without one nothing about the branch is known.
+
+**The `ci/...` carve-out covers `.claude/hooks/` too.** Both the
+enforcement-tampering check and the exfiltration guard's verification treat a
+`ci/` branch as out of scope, for the reason the carve-out has always rested
+on: a change permitted to rewrite the workflow could delete the step that runs
+the check, so enforcing it there obstructs pipeline work without policing
+anything. The policy detectors under `engine/utils` stay locked on every
+branch, and the guard's session-time block on editing its own files is
+unaffected — a branch name lifts the CI check, not the runtime one.
 
 ### What the `build` job covers
 

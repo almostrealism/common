@@ -84,11 +84,18 @@ commit_all() {
     git -C "$1" commit -q -m "$2"
 }
 
-# run_case NAME EXPECTED_EXIT REPO [BASE]
+# run_case NAME EXPECTED_EXIT REPO [BASE] [BRANCH_NAME]
 run_case() {
-    local name="$1" expected="$2" repo="$3" base="${4:-}"
+    local name="$1" expected="$2" repo="$3" base="${4:-}" branch="${5:-}"
     local actual=0
-    (cd "$repo" && bash "$VERIFY" $base >/dev/null 2>&1) || actual=$?
+    # An empty base must pass NO arguments: word-splitting an empty first
+    # argument would slide the branch name into the base position, which
+    # is the same mistake the workflow step had to be fixed for.
+    if [ -n "$base" ]; then
+        (cd "$repo" && bash "$VERIFY" "$base" "$branch" >/dev/null 2>&1) || actual=$?
+    else
+        (cd "$repo" && bash "$VERIFY" >/dev/null 2>&1) || actual=$?
+    fi
     if [ "$actual" -eq "$expected" ]; then
         PASS=$((PASS + 1))
         echo "  PASS: $name (exit $actual)"
@@ -104,6 +111,37 @@ echo "verify-exfiltration-guard.sh tests"
 
 r=$(make_repo); echo "unrelated" >> "$r/prod.txt"; commit_all "$r" "prod change"
 run_case "unrelated production change passes" 0 "$r" master
+
+# ── The ci/... carve-out ────────────────────────────────────────────
+#
+# A branch named for the pipeline may change the pipeline, including the
+# files that enforce it — the same declaration validate-agent-commit.sh
+# RULE 3 and the enforcement-tampering check already honour. Holding the
+# guard's files against such a branch polices nothing, since the same
+# change could delete the step that runs this script; it only blocks the
+# work. The guard itself still runs in every agent session on ci/
+# branches, which is where it actually does its job.
+
+r=$(make_repo); echo "weakened" >> "$r/.claude/hooks/lib/exfiltration_guard_check.py"; commit_all "$r" "edit core on a ci branch"
+run_case "edited core on a ci/ branch is not applicable" 5 "$r" master ci/guard-work
+
+r=$(make_repo); git -C "$r" rm -q .claude/hooks/block-exfiltration.sh; commit_all "$r" "delete adapter on a ci branch"
+run_case "deleted adapter on a ci/ branch is not applicable" 5 "$r" master ci/guard-work
+
+r=$(make_repo); write_settings "$r" ""; commit_all "$r" "unregister on a ci branch"
+run_case "unregistered guard on a ci/ branch is not applicable" 5 "$r" master ci/guard-work
+
+# The exemption is the branch name, and nothing else grants it.
+r=$(make_repo); echo "weakened" >> "$r/.claude/hooks/lib/exfiltration_guard_check.py"; commit_all "$r" "edit core"
+run_case "the same edit on a feature branch is still blocked" 4 "$r" master feature/guard-work
+
+r=$(make_repo); echo "weakened" >> "$r/.claude/hooks/lib/exfiltration_guard_check.py"; commit_all "$r" "edit core"
+run_case "a branch merely containing ci/ in its name is not exempt" 4 "$r" master feature/ci/guard-work
+
+# On the base branch itself there is no carve-out to apply: master must
+# satisfy presence and registration whatever it is called.
+r=$(make_repo); git -C "$r" rm -q .claude/hooks/block-exfiltration.sh; commit_all "$r" "delete adapter"
+run_case "no base branch: the ci/ name grants nothing" 2 "$r" "" ci/guard-work
 
 r=$(make_repo)
 run_case "no base branch: presence and registration only" 0 "$r"
@@ -237,6 +275,21 @@ run_case "once the base is merged the guard is verified again" 0 "$r" master
 r=$(make_predating_repo); git -C "$r" merge -q --no-edit master
 git -C "$r" rm -q .claude/hooks/block-exfiltration.sh; commit_all "$r" "delete the adapter after merging"
 run_case "deleting the guard after merging it in is still blocked" 2 "$r" master
+
+# Both endpoints can be empty while a deletion sits between them: an old
+# branch that introduces the guard and then removes it again looks, at
+# HEAD and at the merge base, exactly like one that never had it. The
+# branch's own history is what separates them.
+r=$(make_predating_repo)
+for f in "${GUARD_FILES[@]}"; do
+    mkdir -p "$r/$(dirname "$f")"
+    printf '# %s\n' "$f" > "$r/$f"
+done
+write_settings "$r" 'Artifact.*|SendUserFile|Bash'
+commit_all "$r" "introduce the guard on the old branch"
+git -C "$r" rm -q .claude/hooks/block-exfiltration.sh
+commit_all "$r" "and delete it again"
+run_case "introducing the guard then deleting it is blocked, not treated as predating" 2 "$r" master
 
 # The real repository must satisfy CHECK 1 and CHECK 2 on HEAD once the
 # guard is committed; before that first commit the files are only staged

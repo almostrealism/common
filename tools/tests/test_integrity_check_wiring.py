@@ -87,10 +87,12 @@ class IntegrityCheckWiringTests(unittest.TestCase):
         step is the only place that knows which: the detector ran and found
         something, or it never got that far. Only the step that invokes one
         is held to this — the checks written inline in the workflow have no
-        such script to misread.
+        such script to misread, and a step is recognised as invoking one by
+        the `chmod +x` it must perform first, not by a path appearing
+        somewhere in its text.
         """
         for script in _detector_steps():
-            if "./tools/ci/" not in script:
+            if "chmod +x" not in script:
                 continue
             with self.subTest(step=script.splitlines()[0]):
                 causes = set(_EMITTED.findall(script))

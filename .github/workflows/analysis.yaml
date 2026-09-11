@@ -418,9 +418,16 @@ jobs:
 
           # A branch named ci/... declares the pipeline as the subject of
           # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks only the protected files that ARE the
-          # pipeline — those under .github/workflows/ and tools/ci/. The
-          # policy detectors stay locked on every branch: weakening a
+          # accepts. It unlocks the protected files that ARE the pipeline —
+          # those under .github/workflows/, tools/ci/ and .claude/hooks/.
+          # The last of those is here because a branch permitted to rewrite
+          # the workflow may equally delete the step that checks a hook, so
+          # locking the hook only obstructs the pipeline work it cannot
+          # police; the exfiltration guard's CI check makes the same
+          # judgement for the same reason, and the guard still runs in every
+          # agent session regardless of branch.
+          #
+          # The policy detectors stay locked on every branch: weakening a
           # detector is never what a pipeline change is about. The branch is
           # read from GITHUB_HEAD_REF first because the workspace is a
           # detached checkout of the pull request head.
@@ -428,12 +435,12 @@ jobs:
           CI_BRANCH=false
           if echo "$BRANCH" | grep -qE '^ci/'; then
             CI_BRANCH=true
-            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/, tools/ci/ and .claude/hooks/ may be modified on it."
           fi
 
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
-            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/|^\.claude/hooks/)'; then
               continue
             fi
             # A file that does not exist on origin/master at all is being
@@ -519,23 +526,66 @@ jobs:
             BASE="origin/master"
           fi
 
+          # The checkout is detached, so the branch name has to be handed
+          # to the verifier rather than read from the repository. It uses
+          # it for one decision — the ci/... exemption — which is stated
+          # once, in the verifier, where the regression suite covers it.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+
+          # The exception is a verifier that is not in the tree at all: it
+          # cannot apply its own exemption then, so the same rule is
+          # applied here for that one case.
+          if [ ! -f "$VERIFIER" ] && [ -n "$BASE" ] && echo "$BRANCH" | grep -qE '^ci/'; then
+            echo "::notice::${BRANCH} is a CI branch and ${VERIFIER} is not in this tree — the pipeline is the subject of the change, so this is not held against it."
+            echo "not_applicable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ ! -f "$VERIFIER" ]; then
-            MERGE_BASE=""
-            if [ -n "$BASE" ]; then
-              MERGE_BASE=$(git merge-base "$BASE" HEAD 2>/dev/null || true)
+            # "Removed" is a claim about this branch, and it may only be
+            # made once a merge base has actually placed the file there.
+            # Without one — on the base branch itself, or when merge-base
+            # fails — nothing is known about how the file came to be
+            # absent, and the honest report is that the check could not
+            # run. Guessing "removed" here would be the accusation this
+            # whole step exists to stop making.
+            if [ -z "$BASE" ]; then
+              echo "::error::${VERIFIER} is missing from ${{ github.ref }} itself. The guard verification could not run; this is a pipeline problem, not a finding about a branch."
+              echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+              exit 1
             fi
-            if [ -n "$MERGE_BASE" ] && ! git cat-file -e "${MERGE_BASE}:${VERIFIER#./}" 2>/dev/null; then
+
+            MERGE_BASE=$(git merge-base "$BASE" HEAD 2>/dev/null || true)
+            if [ -z "$MERGE_BASE" ]; then
+              echo "::error::No merge base between ${BASE} and HEAD, so the absence of ${VERIFIER} cannot be dated. The guard verification could not run; this is a pipeline problem, not a finding about this branch."
+              echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            if ! git cat-file -e "${MERGE_BASE}:${VERIFIER#./}" 2>/dev/null; then
               echo "::notice::The exfiltration guard does not exist at this branch's merge base — the branch predates it and there is nothing to verify. Merge ${BASE} to bring the guard in."
               echo "not_applicable=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+
             echo "::error::${VERIFIER} is missing from this branch but exists at its merge base — the guard verifier was removed."
             echo "reason=exfil-guard" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           chmod +x "$VERIFIER"
-          "$VERIFIER" $BASE || {
+
+          # Built as an array so the master case passes no arguments at
+          # all: with a bare "$VERIFIER" $BASE "$BRANCH" an empty BASE
+          # drops out and the branch name slides into the base-branch
+          # position, which would compare HEAD against a ref that does
+          # not exist.
+          ARGS=()
+          if [ -n "$BASE" ]; then
+            ARGS+=("$BASE" "$BRANCH")
+          fi
+
+          "$VERIFIER" "${ARGS[@]}" || {
             EXIT_CODE=$?
             # 2, 3 and 4 are the verifier's own findings — the guard is
             # missing, unregistered, or modified — and only those are a
@@ -701,9 +751,16 @@ jobs:
 
           # A branch named ci/... declares the pipeline as the subject of
           # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks only the protected files that ARE the
-          # pipeline — those under .github/workflows/ and tools/ci/. The
-          # policy detectors stay locked on every branch: weakening a
+          # accepts. It unlocks the protected files that ARE the pipeline —
+          # those under .github/workflows/, tools/ci/ and .claude/hooks/.
+          # The last of those is here because a branch permitted to rewrite
+          # the workflow may equally delete the step that checks a hook, so
+          # locking the hook only obstructs the pipeline work it cannot
+          # police; the exfiltration guard's CI check makes the same
+          # judgement for the same reason, and the guard still runs in every
+          # agent session regardless of branch.
+          #
+          # The policy detectors stay locked on every branch: weakening a
           # detector is never what a pipeline change is about. The branch is
           # read from GITHUB_HEAD_REF first because the workspace is a
           # detached checkout of the pull request head.
@@ -711,12 +768,12 @@ jobs:
           CI_BRANCH=false
           if echo "$BRANCH" | grep -qE '^ci/'; then
             CI_BRANCH=true
-            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/, tools/ci/ and .claude/hooks/ may be modified on it."
           fi
 
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
-            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/|^\.claude/hooks/)'; then
               continue
             fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then

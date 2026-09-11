@@ -11,10 +11,21 @@
 #
 # Four checks, in order:
 #
-# CHECK 0 (Applicability, PR branches only): the guard exists at the
-#   merge base with <base-branch>. When it does not, the branch predates
-#   the guard entirely and the remaining checks have nothing to measure;
-#   see exit code 5 below.
+# CHECK 0 (Applicability, PR branches only): this is a branch the guard
+#   can say anything about. Two cases are not, and both exit 5:
+#
+#     - A ci/... branch. The pipeline IS the declared subject of the work
+#       there, the same declaration validate-agent-commit.sh RULE 3 and
+#       the enforcement-tampering check already accept. Enforcing the
+#       guard's files against such a branch protects nothing: a change
+#       that may rewrite the workflow may equally delete the step that
+#       runs this script, so the check would only obstruct the pipeline
+#       work it cannot actually police. The name is chosen before the
+#       work starts and is visible in the PR title, and the guard still
+#       blocks agent sessions at runtime on every branch, ci/ included.
+#
+#     - A branch cut before the guard existed, which has nothing to
+#       measure.
 #
 # CHECK 1 (Presence): every guard file exists on HEAD — the adapter, the
 #   shared core, its unit tests, the allowlist, and this script's own test.
@@ -31,10 +42,16 @@
 #   files (override_integrity_checks) applies here the same way.
 #
 # Usage:
-#   verify-exfiltration-guard.sh [<base-branch>]
+#   verify-exfiltration-guard.sh [<base-branch> [<branch-name>]]
 #
 #   With no base branch only CHECK 1 and CHECK 2 run (what master should
 #   satisfy at all times). With a base branch CHECK 3 runs as well.
+#
+#   <branch-name> is the branch under review, used only to recognise a
+#   ci/... branch (see CHECK 0). CI must pass it explicitly: the workspace
+#   is a detached checkout, where the branch name is not recoverable from
+#   the repository. When omitted it is read from the checkout, which is
+#   what a developer running this by hand wants.
 #
 # Exit codes:
 #   0 - guard present, registered, and (if a base was given) unchanged
@@ -42,7 +59,7 @@
 #   2 - BLOCKED: a guard file is missing from HEAD
 #   3 - BLOCKED: the guard is not registered for every required tool
 #   4 - BLOCKED: a guard file or its registration changed on this branch
-#   5 - NOT APPLICABLE: the branch was cut before the guard existed
+#   5 - NOT APPLICABLE: a ci/... branch, or one cut before the guard existed
 #
 # Exit 5 is not a pass and not a block: there is nothing to verify. A
 # branch whose merge base with the base branch predates the guard cannot
@@ -75,6 +92,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 BASE_BRANCH="${1:-}"
+BRANCH_NAME="${2:-}"
+
+if [ -z "$BRANCH_NAME" ]; then
+    # "HEAD" on a detached checkout, which matches no policy and so
+    # exempts nothing — the safe answer when the name is unknown.
+    BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")
+fi
 
 GUARD_FILES=(
     ".claude/hooks/block-exfiltration.sh"
@@ -124,6 +148,14 @@ banner() {
 # base means the branch was cut before any of them existed.
 
 if [ -n "$BASE_BRANCH" ]; then
+    if echo "$BRANCH_NAME" | grep -qE '^ci/'; then
+        echo "${BRANCH_NAME} is a CI branch: the pipeline is the declared subject of"
+        echo "the change, so the guard's files are not held against it here. The guard"
+        echo "still runs in every agent session; this is the CI-time check only."
+        emit_output false ci_branch
+        exit 5
+    fi
+
     MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>/dev/null || true)
 
     if [ -z "$MERGE_BASE" ]; then
@@ -137,7 +169,18 @@ if [ -n "$BASE_BRANCH" ]; then
     # inherited it or introduced it — the branch that first adds the
     # guard still has to add it correctly, and CHECK 3 already exempts
     # first-time files from the integrity comparison.
-    if ! git cat-file -e "HEAD:${ADAPTER_PATH}" 2>/dev/null \
+    #
+    # The two endpoints alone are not enough to establish "never had
+    # one": a branch cut before the guard could add the adapter and
+    # delete it again, leaving both endpoints empty while the deletion
+    # sits in the middle. So the branch's own history is consulted too,
+    # and any commit that touched the adapter disqualifies the branch
+    # from being treated as predating it — the checks below then report
+    # the deletion as what it is.
+    TOUCHED_ADAPTER=$(git log --format=%H "${MERGE_BASE}..HEAD" -- "${ADAPTER_PATH}" 2>/dev/null | head -1 || true)
+
+    if [ -z "$TOUCHED_ADAPTER" ] \
+            && ! git cat-file -e "HEAD:${ADAPTER_PATH}" 2>/dev/null \
             && ! git cat-file -e "${MERGE_BASE}:${ADAPTER_PATH}" 2>/dev/null; then
         echo "The exfiltration guard does not exist at this branch's merge base with"
         echo "${BASE_BRANCH} (${MERGE_BASE}) — the branch was cut before the guard"
