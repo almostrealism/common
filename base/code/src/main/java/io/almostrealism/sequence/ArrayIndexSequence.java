@@ -24,6 +24,7 @@ import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
@@ -505,11 +506,59 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 * @see SequenceGenerator#value(IndexValues)
 	 */
 	public static IndexSequence of(SequenceGenerator source, Index index, long len) {
+		return of(null, source, index, len);
+	}
+
+	/**
+	 * Creates an IndexSequence by evaluating a SequenceGenerator for each index position,
+	 * with an explicit element type.
+	 *
+	 * <p>Each position is evaluated independently via {@link SequenceGenerator#value(IndexValues)},
+	 * so the exact numeric type of every result is preserved. Prefer
+	 * {@link #of(Class, Expression, Index, int)} for an {@link Expression}, which evaluates
+	 * in blocks; this form is its fallback when block evaluation cannot be exact.</p>
+	 *
+	 * @param type the numeric type class, or {@code null} to infer from values
+	 * @param source the sequence generator to evaluate
+	 * @param index the index variable to use when evaluating the generator
+	 * @param len the length of the resulting sequence
+	 * @return an IndexSequence containing the evaluated values
+	 * @throws IllegalArgumentException if len exceeds {@code Integer.MAX_VALUE}
+	 */
+	public static IndexSequence of(Class<? extends Number> type, SequenceGenerator source, Index index, long len) {
 		if (len > Integer.MAX_VALUE)
 			throw new IllegalArgumentException();
 
-		return of(IntStream.range(0, Math.toIntExact(len)).parallel()
+		return of(type, IntStream.range(0, Math.toIntExact(len)).parallel()
 				.mapToObj(i -> source.value(new IndexValues().put(index, i))).toArray(Number[]::new));
+	}
+
+	/**
+	 * Creates an IndexSequence by evaluating an Expression over the first {@code len}
+	 * values of an index in blocks.
+	 *
+	 * <p>The index positions are partitioned via {@link IndexRange#partition(Index, int)},
+	 * every block is evaluated in parallel via {@link Expression#values(IndexRange)}, and
+	 * the results are boxed by {@link #of(Class, double[])}.</p>
+	 *
+	 * @param type the numeric type class of the expression
+	 * @param exp the expression to evaluate
+	 * @param index the index variable to vary
+	 * @param len the length of the resulting sequence; must be positive
+	 * @return an IndexSequence containing the evaluated values
+	 * @throws IndexRange.InexactValueException if an integer intermediate cannot be represented exactly
+	 */
+	public static IndexSequence of(Class<? extends Number> type, Expression<?> exp, Index index, int len) {
+		List<IndexRange> blocks = IndexRange.partition(index, len);
+		double[][] values = blocks.parallelStream().map(exp::values).toArray(double[][]::new);
+		if (values.length == 1) return of(type, values[0]);
+
+		double[] all = new double[len];
+		for (int b = 0; b < values.length; b++) {
+			System.arraycopy(values[b], 0, all, (int) blocks.get(b).getStart(), blocks.get(b).getLength());
+		}
+
+		return of(type, all);
 	}
 
 	/**
@@ -561,6 +610,35 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	 */
 	public static IndexSequence of(Class<? extends Number> type, Number[] values) {
 		return new ArrayIndexSequence((Class) type, values, 1, values.length);
+	}
+
+	/**
+	 * Creates an IndexSequence from primitive values produced by block evaluation.
+	 *
+	 * <p>Floating-point sequences box each value as a {@link Double}. Integer sequences
+	 * box each value as an {@link Integer} when it fits, otherwise as a {@link Long},
+	 * matching the values point evaluation produces for the same expression.</p>
+	 *
+	 * @param type the numeric type class of the expression the values came from
+	 * @param values the values; must not be empty
+	 * @return an IndexSequence containing the boxed values
+	 * @throws IllegalArgumentException if values is empty
+	 */
+	public static IndexSequence of(Class<? extends Number> type, double[] values) {
+		Number[] boxed = new Number[values.length];
+
+		if (type == Double.class) {
+			for (int i = 0; i < values.length; i++) {
+				boxed[i] = values[i];
+			}
+		} else {
+			for (int i = 0; i < values.length; i++) {
+				long l = (long) values[i];
+				boxed[i] = (l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) ? (Number) (int) l : (Number) l;
+			}
+		}
+
+		return of(type, boxed);
 	}
 
 	/**

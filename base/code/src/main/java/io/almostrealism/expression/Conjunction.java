@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.sequence.IndexRange;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -41,6 +43,28 @@ public class Conjunction extends NAryExpression<Boolean> {
 		}
 
 		return 1;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A position is {@code 1.0} only when every operand is non-zero there, matching
+	 * {@link #evaluate(Number...)}.</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[][] c = range.values(getChildren());
+		double[] out = new double[range.getLength()];
+
+		i: for (int i = 0; i < out.length; i++) {
+			for (int j = 0; j < c.length; j++) {
+				if (c[j][i] == 0.0) continue i;
+			}
+
+			out[i] = 1.0;
+		}
+
+		return out;
 	}
 
 	@Override

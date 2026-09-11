@@ -20,7 +20,6 @@ import io.almostrealism.collect.IndexSet;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.Console;
@@ -91,13 +90,6 @@ import java.util.stream.LongStream;
  * @see SequenceGenerator
  */
 public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatures {
-
-	/**
-	 * Flag to enable automatic granularity detection in pattern analysis.
-	 * When {@code true}, the {@link #getExpression} method will attempt to detect
-	 * the granularity (number of consecutive identical values) in the sequence.
-	 */
-	boolean enableGranularityDetection = true;
 
 	/**
 	 * Flag to enable validation of modulus-based optimizations.
@@ -240,6 +232,41 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 				.mapToObj(i -> valueAt(i).doubleValue() == other.valueAt(i).doubleValue() ?
 						Integer.valueOf(1) : Integer.valueOf(0))
 				.toArray(Number[]::new));
+	}
+
+	/**
+	 * Checks a sample of positions spread over the whole sequence against the values
+	 * the given expression takes there, as a guard on a sequence that was derived
+	 * rather than enumerated.
+	 *
+	 * <p>Up to 32 blocks of up to 64 consecutive positions are compared, with block
+	 * starts evenly spaced from the first position to the last, so a disagreement
+	 * anywhere within that resolution is found at a cost of about two thousand
+	 * evaluations regardless of the sequence length.</p>
+	 *
+	 * @param exp the expression this sequence is claimed to describe
+	 * @param index the index the expression is varied over
+	 * @return {@code true} if every sampled position agrees
+	 */
+	default boolean agreesWith(Expression<?> exp, Index index) {
+		long len = lengthLong();
+		int block = (int) Math.min(64, len);
+		int samples = (int) Math.min(32, (len + block - 1) / block);
+
+		try {
+			for (int s = 0; s < samples; s++) {
+				long start = samples == 1 ? 0 : (len - block) * s / (samples - 1);
+				double[] values = exp.values(new IndexRange(index, start, block));
+
+				for (int i = 0; i < block; i++) {
+					if (values[i] != valueAt(start + i).doubleValue()) return false;
+				}
+			}
+		} catch (IndexRange.InexactValueException e) {
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -441,8 +468,9 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * Generates an {@link Expression} that computes the values of this sequence.
 	 *
 	 * <p>This is the core method for converting index sequences into expressions.
-	 * It performs pattern detection and generates optimized expressions based on
-	 * the detected pattern type:
+	 * The values are fed to a {@link KernelSeriesMatcher}, which stops consuming as
+	 * soon as no recognisable form remains and otherwise generates an optimized
+	 * expression for the detected pattern type:
 	 * <ul>
 	 *   <li><b>Constant sequences</b>: Returns an {@link IntegerConstant} or {@link DoubleConstant}</li>
 	 *   <li><b>Binary sequences</b>: Sequences with only two distinct values are converted
@@ -457,115 +485,32 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 *         if no pattern is detected and no expression can be generated
 	 */
 	default Expression getExpression(Expression index, boolean isInt) {
-		long start = System.nanoTime();
+		KernelSeriesMatcher matcher = new KernelSeriesMatcher(lengthLong());
 
 		try {
-			if (isConstant()) {
-				return isInt ? new IntegerConstant(intAt(0)) : new DoubleConstant(doubleAt(0));
+			for (long i = 0; i < lengthLong() && matcher.isPossible(); i++) {
+				matcher.accept(IndexRange.exact(valueAt(i)));
 			}
-
-			Number distinct[] = distinct();
-			if (distinct.length == 1) {
-				warn("Constant sequence not detected by IndexSequence");
-				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0].doubleValue());
-			}
-
-			if (distinct.length == 2 && distinct[0].intValue() == 0 && !fractionalValue(distinct)) {
-				int first = (int) matchingIndices(distinct[1].intValue())
-						.filter(i -> i < Integer.MAX_VALUE)
-						.findFirst().orElse(-1);
-				if (first < 0)
-					throw new UnsupportedOperationException();
-
-				int tot = doubleStream().mapToInt(v -> v == distinct[1].intValue() ? 1 : 0).sum();
-
-				long cont = doubleStream().skip(first).limit(tot).distinct().count();
-
-				Expression<Boolean> condition = null;
-
-				if (tot == 1) {
-					condition = index.eq(new IntegerConstant(first));
-				} else if (cont == 1) {
-					condition =
-							index.greaterThanOrEqual(new IntegerConstant(first)).and(
-									index.lessThan(new IntegerConstant(first + tot)));
-				}
-
-				if (condition != null) {
-					if (isInt) {
-						if (distinct[1].longValue() < Integer.MAX_VALUE && distinct[1].longValue() > Integer.MIN_VALUE) {
-							return Mask.of(condition, new IntegerConstant(distinct[1].intValue()));
-						} else {
-							return Mask.of(condition, new LongConstant(distinct[1].longValue()));
-						}
-					} else {
-						return Mask.of(condition, new DoubleConstant(distinct[1].doubleValue()));
-					}
-				}
-			}
-
-			int granularity = enableGranularityDetection ? getGranularity() : 1;
-			if (lengthLong() % granularity != 0) {
-				granularity = 1;
-			}
-
-			double initial = doubleAt(0);
-			double delta = doubleAt(granularity) - doubleAt(0);
-			boolean isArithmetic = true;
-			long m = getMod();
-			long end = m;
-			i: for (int i = 2 * granularity; i < m; i += granularity) {
-				double actual = doubleAt(i);
-				double prediction = arithmeticSequenceValue(i, end, granularity, initial, delta);
-
-				if (end == m && prediction != actual) {
-					end = i;
-					prediction = arithmeticSequenceValue(i, end, granularity, initial, delta);
-				}
-
-				if (prediction != actual) {
-					isArithmetic = false;
-					break i;
-				}
-			}
-
-			if (isArithmetic) {
-				Expression<?> r = index;
-
-				if (end != lengthLong()) {
-					r = r.imod(end);
-				}
-
-				if (granularity > 1) {
-					r = r.toInt().divide(new IntegerConstant(granularity));
-				}
-
-				if (isInt) {
-					if (delta != 1.0) r = r.multiply(new IntegerConstant((int) delta));
-					if (initial != 0.0) r = r.add(new IntegerConstant((int) initial));
-				} else {
-					if (delta != 1.0) r = r.multiply(new DoubleConstant(delta));
-					if (initial != 0.0) r = r.add(new DoubleConstant(initial));
-				}
-
-				if (enableModValidation && end != lengthLong()) {
-					IndexSequence newSeq = r.sequence((Index) index, lengthLong());
-
-					if (!newSeq.congruent(this)) {
-						r.sequence((Index) index, lengthLong());
-						throw new RuntimeException();
-					} else {
-						warn("Sequence replacement using mod is experimental");
-					}
-				}
-
-				return r;
-			}
-
+		} catch (IndexRange.InexactValueException e) {
+			// An integer value above the exact-double range would alias a
+			// different value once compared as a double, so no pattern this
+			// matcher recognises can be trusted for this sequence
 			return null;
-		} finally {
-			timing.addEntry(isInt ? "int" : "fp", System.nanoTime() - start);
 		}
+
+		Expression r = matcher.getExpression(index, isInt);
+
+		if (enableModValidation && r != null && matcher.isModular()) {
+			IndexSequence newSeq = r.sequence((Index) index, lengthLong());
+
+			if (!newSeq.congruent(this)) {
+				throw new RuntimeException();
+			} else {
+				warn("Sequence replacement using mod is experimental");
+			}
+		}
+
+		return r;
 	}
 
 	/**
@@ -578,42 +523,4 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		return Scope.console;
 	}
 
-	/**
-	 * Computes the value of an arithmetic sequence at the given index position.
-	 *
-	 * <p>The arithmetic sequence is defined by the formula:
-	 * <pre>{@code
-	 * value = initial + ((index % mod) / granularity) * delta
-	 * }</pre>
-	 *
-	 * @param index the index position
-	 * @param mod the modulus (cycle length)
-	 * @param granularity the number of consecutive identical values
-	 * @param initial the initial value (value at index 0)
-	 * @param delta the difference between consecutive distinct values
-	 * @return the computed value at the given index
-	 */
-	static double arithmeticSequenceValue(int index, long mod, int granularity,
-										  double initial, double delta) {
-		long position = (index % mod) / granularity;
-		return initial + position * delta;
-	}
-
-	/**
-	 * Determines whether any of the given values has a fractional component.
-	 *
-	 * <p>This is used to decide whether to generate integer or floating-point
-	 * expressions for sequence values.
-	 *
-	 * @param distinct the array of values to check
-	 * @return {@code true} if any value has a non-zero fractional part
-	 */
-	static boolean fractionalValue(Number[] distinct) {
-		for (Number n : distinct) {
-			double d = Math.abs(n.doubleValue() - n.intValue());
-			if (d > 0) return true;
-		}
-
-		return false;
-	}
 }

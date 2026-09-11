@@ -63,16 +63,26 @@ public class Greater extends Comparison {
 	}
 
 	@Override
-	protected boolean compare(Number left, Number right) {
-		return orEqual ?
-				(left.doubleValue() >= right.doubleValue()) :
-				(left.doubleValue() > right.doubleValue());
+	protected boolean compare(double left, double right) {
+		return orEqual ? left >= right : left > right;
 	}
 
 	@Override
 	public Expression<Boolean> recreate(List<Expression<?>> children) {
 		if (children.size() != 2) throw new UnsupportedOperationException();
 		return new Greater(children.get(0), children.get(1), orEqual);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Two comparisons with the same operands are equal only if both are strict or
+	 * both are inclusive: {@code a > b} and {@code a >= b} differ at equality and must
+	 * never be substituted for one another by a structural cache.</p>
+	 */
+	@Override
+	public boolean compare(Expression e) {
+		return super.compare(e) && orEqual == ((Greater) e).orEqual;
 	}
 
 	/**

@@ -125,6 +125,30 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index takes the positions of a range that varies it, and has no value
+	 * over a range that varies any other index.</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		if (range.isRangeIndex(this)) return range.positions();
+
+		throw new IllegalStateException(getName() + " is not a value over " + range.getIndex().getName());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The index varied by the range is the identity progression; any other index
+	 * has no progression over it.</p>
+	 */
+	@Override
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		return index.getName().equals(getName()) ? new ArithmeticIndexSequence(1, 1, len) : null;
+	}
+
+	/**
 	 * Returns a new {@code DefaultIndex} with the same name but the given limit.
 	 *
 	 * @param limit the new exclusive upper bound

@@ -92,6 +92,26 @@ public class KernelIndexChild extends IndexChild {
 		return Math.toIntExact(index / getChildIndex().getLimit().getAsLong());
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return the kernel index that owns the given child position
+	 */
+	@Override
+	public OptionalLong impliedKernelIndex(long value) {
+		return OptionalLong.of(kernelIndex(Math.toIntExact(value)));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @return the child index limit, the number of child positions per kernel index
+	 */
+	@Override
+	public OptionalLong kernelIndexGranularity() {
+		return getChildIndex().getLimit();
+	}
+
 	/** {@inheritDoc} */
 	@Override
 	public OptionalLong upperBound(KernelStructureContext context) {

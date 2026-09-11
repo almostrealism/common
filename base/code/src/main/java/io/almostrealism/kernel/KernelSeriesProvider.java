@@ -16,14 +16,13 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
-import io.almostrealism.code.CachedValue;
+import io.almostrealism.sequence.KernelSeriesMatcher;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.scope.ScopeSettings;
@@ -33,28 +32,39 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.function.IntSupplier;
-import java.util.function.Supplier;
 
 /**
  * Converts arbitrary kernel expressions to series form for more efficient code generation.
  *
  * <p>A {@code KernelSeriesProvider} inspects an {@link Expression} that depends on the
- * kernel index, evaluates its sequence of values at every kernel position, and (where
- * possible) returns a simpler expression that produces the same sequence — for example,
- * a constant, an arithmetic progression, or a lookup table.</p>
+ * kernel index and, where possible, returns a simpler expression that produces the same
+ * sequence of values at every kernel position. Two mechanisms are involved:</p>
+ * <ul>
+ *   <li><b>derivation</b> — index arithmetic that follows an arithmetic progression is
+ *       recognised from its structure alone via
+ *       {@link Expression#arithmeticSequence(Index, long)}, in time proportional to the
+ *       expression rather than to the kernel size;</li>
+ *   <li><b>recognition</b> — otherwise the sequence is matched against the closed forms a
+ *       {@link KernelSeriesMatcher} knows (a constant, a mask, an arithmetic progression).
+ *       This is generic and needs nothing from the provider. The values are enumerated
+ *       only as far as necessary: a sequence matching no form is abandoned at the first
+ *       position that rules every form out;</li>
+ *   <li><b>storage</b> — a provider that can hold the sequence as kernel-resident data
+ *       (see {@link #isSeriesStorable(int, long)} and
+ *       {@link #referenceSeries(Expression, IndexSequence, boolean)}) receives the fully
+ *       enumerated sequence when recognition fails, and returns a lookup into the stored
+ *       copy. The default provider stores nothing.</li>
+ * </ul>
  *
  * <p>Implementations are obtained from a {@link KernelStructureContext} and are invoked
  * automatically during expression simplification via
  * {@link KernelStructureContext#simplify(Expression)}.</p>
  *
  * @see KernelStructureContext
+ * @see KernelSeriesMatcher
  * @see ScopeSettings
  */
 public interface KernelSeriesProvider extends OperationInfo, Destroyable {
-	/** A stub language backend used to render expression strings for matching. */
-	LanguageOperations lang = new LanguageOperationsStub();
-
 	/**
 	 * Returns the maximum number of element-wise operations the provider will execute
 	 * when computing a sequence for matching.
@@ -63,6 +73,50 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 	 */
 	default long getSequenceComputationLimit() {
 		return Integer.MAX_VALUE;
+	}
+
+	/**
+	 * Returns the smallest {@link Expression#countNodes() node count} an expression
+	 * must have to be worth converting. Smaller expressions are returned unchanged
+	 * without enumerating anything.
+	 *
+	 * @return the minimum node count; defaults to 0 (every expression is considered)
+	 */
+	default int getMinimumNodeCount() {
+		return 0;
+	}
+
+	/**
+	 * Returns {@code true} if this provider could store the sequence of an expression
+	 * with the given node count and length, should recognition find no closed form.
+	 *
+	 * <p>When this is {@code true} the sequence is enumerated completely before
+	 * recognition, since the values are needed either way. When it is {@code false}
+	 * recognition stops as soon as every form is refuted.</p>
+	 *
+	 * @param nodes the expression's node count
+	 * @param len   the sequence length
+	 * @return whether {@link #referenceSeries} may produce a result; defaults to {@code false}
+	 */
+	default boolean isSeriesStorable(int nodes, long len) {
+		return false;
+	}
+
+	/**
+	 * Stores the fully enumerated sequence of an expression that matched no closed
+	 * form and returns an expression reading the stored copy at the given index.
+	 *
+	 * <p>Called only when {@link #isSeriesStorable(int, long)} returned {@code true}
+	 * for the expression. A provider without storage returns {@code null}, which is
+	 * the default.</p>
+	 *
+	 * @param index the index expression over which the sequence was enumerated
+	 * @param seq   the complete sequence of values
+	 * @param isInt {@code true} if the expression produces integer values
+	 * @return an expression reading the stored sequence, or {@code null} if it was not stored
+	 */
+	default Expression referenceSeries(Expression index, IndexSequence seq, boolean isInt) {
+		return null;
 	}
 
 	/**
@@ -92,10 +146,13 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 	/**
 	 * Attempts to convert the given expression to a series form using the specified index.
 	 *
-	 * <p>The provider evaluates the expression's sequence over all positions of the index
-	 * (up to the index limit or the provider's maximum length) and delegates to the
-	 * underlying matching implementation. For boolean expressions the result is wrapped
-	 * in an equality test. Returns {@code exp} unchanged if conversion is not possible.</p>
+	 * <p>The progression of the expression over all positions of the index (up to the
+	 * index limit or the provider's maximum length) is first derived structurally via
+	 * {@link Expression#arithmeticSequence(Index, long)} and confirmed on a sample of
+	 * positions. Failing that, the values are recognised by a {@link KernelSeriesMatcher};
+	 * if that fails too and the provider can store the sequence, {@link #referenceSeries}
+	 * is offered the enumerated values. For boolean expressions the result is wrapped in
+	 * an equality test. Returns {@code exp} unchanged if conversion is not possible.</p>
 	 *
 	 * @param exp   the expression to convert
 	 * @param index the index variable to use for sequence evaluation
@@ -120,32 +177,42 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 		Expression result = null;
 
 		try {
-			if (exp.isValue(new IndexValues().put(index, 0))) {
-				CachedValue<IndexSequence> seq = new CachedValue<>(args ->
-						exp.sequence(index, ((Number) args[0]).longValue(), getSequenceComputationLimit()));
-				seq.setAllowNull(true);
+			int nodes = exp.countNodes();
 
+			if (nodes >= getMinimumNodeCount() && exp.isValue(new IndexValues().put(index, 0))) {
 				int l = Math.toIntExact(len.getAsLong());
+				boolean isInt = !exp.isFP();
 
-				if (exp.getType() == Boolean.class) {
-					result = getSeries((Expression) index,
-									() -> exp.getExpression(lang),
-									() -> seq.evaluate(Integer.valueOf(l)),
-								true, exp::countNodes);
+				ArithmeticIndexSequence derived = exp.arithmeticSequence(index, l);
 
-					if (result != null) {
-						OptionalDouble d = result.doubleValue();
-						if (d.isPresent()) {
-							return d.getAsDouble() == 1.0 ? new BooleanConstant(true) : new BooleanConstant(false);
-						} else {
-							result = result.eq(1.0);
-						}
+				if (derived != null && !derived.agreesWith(exp, index)) {
+					derived.warn("Derived series " + derived + " disagrees with " +
+							exp.getExpression(Expression.defaultLanguage()));
+					derived = null;
+				}
+
+				if (derived != null) {
+					result = derived.getExpression((Expression) index, isInt);
+				} else if (isSeriesStorable(nodes, l)) {
+					IndexSequence seq = exp.sequence(index, l, getSequenceComputationLimit());
+
+					if (seq != null) {
+						result = seq.getExpression((Expression) index, isInt);
+						if (result == null) result = referenceSeries((Expression) index, seq, isInt);
 					}
 				} else {
-					result = getSeries((Expression) index,
-								() -> exp.getExpression(lang),
-								() -> seq.evaluate(Integer.valueOf(l)),
-								!exp.isFP(), exp::countNodes);
+					KernelSeriesMatcher matcher = exp.matchSeries(index, l, getSequenceComputationLimit());
+					if (matcher != null) result = matcher.getExpression((Expression) index, isInt);
+				}
+
+				if (result != null && exp.getType() == Boolean.class) {
+					OptionalDouble d = result.doubleValue();
+
+					if (d.isPresent()) {
+						result = new BooleanConstant(d.getAsDouble() == 1.0);
+					} else {
+						result = result.eq(1.0);
+					}
 				}
 			}
 		} finally {
@@ -160,19 +227,6 @@ public interface KernelSeriesProvider extends OperationInfo, Destroyable {
 
 		return result == null ? exp : result;
 	}
-
-	/**
-	 * Core matching method that takes a pre-computed sequence and attempts to return
-	 * a simpler expression producing the same values.
-	 *
-	 * @param index  the index expression over which the sequence was computed
-	 * @param exp    supplier for the expression's rendered string (used for matching)
-	 * @param seq    supplier for the pre-computed sequence of values
-	 * @param isInt  {@code true} if the expression produces integer values
-	 * @param nodes  supplier for the expression's node count (used for threshold checks)
-	 * @return a simpler expression, or {@code null} if no match was found
-	 */
-	Expression getSeries(Expression index, Supplier<String> exp, Supplier<IndexSequence> seq, boolean isInt, IntSupplier nodes);
 
 	/**
 	 * Returns the maximum sequence length this provider will evaluate, or empty if unbounded.

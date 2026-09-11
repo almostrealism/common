@@ -18,8 +18,9 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
-import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 
@@ -103,12 +104,48 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 		return -1 * children[0].doubleValue();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The negation of a progression is a progression.</p>
+	 */
 	@Override
-	public IndexSequence sequence(Index index, long len, long limit) {
-		IndexSequence seq = getChildren().get(0).sequence(index, len, limit);
-		if (seq == null) return null;
+	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
+		if (isFP()) return null;
 
-		return seq.minus();
+		ArithmeticIndexSequence operand = getChildren().get(0).arithmeticSequence(index, len);
+		return operand == null ? null : operand.negated();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>When the result type is {@link Integer}, the negation is narrowed to 32 bits
+	 * after computing in {@code long}, since truncation to {@code int} commutes with
+	 * negation; this reproduces the wraparound that {@link #computeValue(IndexValues)}
+	 * exhibits for an {@link Integer} child (e.g. negating {@code Integer.MIN_VALUE}
+	 * yields itself), which plain {@code long} arithmetic would not.</p>
+	 */
+	@Override
+	protected double[] computeValues(IndexRange range) {
+		double[] c = getChildren().get(0).values(range);
+		double[] out = new double[range.getLength()];
+
+		if (isFP()) {
+			for (int i = 0; i < out.length; i++) {
+				out[i] = -1.0 * c[i];
+			}
+		} else if (getType() == Integer.class) {
+			for (int i = 0; i < out.length; i++) {
+				out[i] = IndexRange.exact((int) (-1L * (long) c[i]));
+			}
+		} else {
+			for (int i = 0; i < out.length; i++) {
+				out[i] = IndexRange.exact(-1L * (long) c[i]);
+			}
+		}
+
+		return out;
 	}
 
 	@Override
