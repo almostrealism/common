@@ -114,22 +114,35 @@ run_case "unrelated production change passes" 0 "$r" master
 
 # ── The ci/... carve-out ────────────────────────────────────────────
 #
-# A branch named for the pipeline may change the pipeline, including the
-# files that enforce it — the same declaration validate-agent-commit.sh
-# RULE 3 and the enforcement-tampering check already honour. Holding the
-# guard's files against such a branch polices nothing, since the same
-# change could delete the step that runs this script; it only blocks the
-# work. The guard itself still runs in every agent session on ci/
-# branches, which is where it actually does its job.
+# A branch named for the pipeline may change the files that enforce the
+# pipeline — the same declaration validate-agent-commit.sh RULE 3 and the
+# enforcement-tampering check already honour. Comparing its edits against
+# the base polices nothing, since the same branch could delete the step
+# that runs this script, and only blocks the work.
+#
+# The carve-out stops there. Presence and registration are not a claim
+# about what this branch edited; they are what says the guard is in the
+# tree an agent session will run with. Lifting those would let a branch
+# name switch the runtime guard off for every session on the branch —
+# the opposite of what the carve-out is for.
 
 r=$(make_repo); echo "weakened" >> "$r/.claude/hooks/lib/exfiltration_guard_check.py"; commit_all "$r" "edit core on a ci branch"
-run_case "edited core on a ci/ branch is not applicable" 5 "$r" master ci/guard-work
+run_case "edited core on a ci/ branch is allowed" 0 "$r" master ci/guard-work
+
+r=$(make_repo); write_settings "$r" 'Artifact.*|SendUserFile|Bash|Read'; commit_all "$r" "reword registration on a ci branch"
+run_case "reworded registration on a ci/ branch is allowed" 0 "$r" master ci/guard-work
 
 r=$(make_repo); git -C "$r" rm -q .claude/hooks/block-exfiltration.sh; commit_all "$r" "delete adapter on a ci branch"
-run_case "deleted adapter on a ci/ branch is not applicable" 5 "$r" master ci/guard-work
+run_case "a ci/ branch still may not delete the adapter" 2 "$r" master ci/guard-work
+
+r=$(make_repo); git -C "$r" rm -q .claude/hooks/lib/exfiltration_guard_check.py; commit_all "$r" "delete core on a ci branch"
+run_case "a ci/ branch still may not delete the guard core" 2 "$r" master ci/guard-work
 
 r=$(make_repo); write_settings "$r" ""; commit_all "$r" "unregister on a ci branch"
-run_case "unregistered guard on a ci/ branch is not applicable" 5 "$r" master ci/guard-work
+run_case "a ci/ branch still may not unregister the guard" 3 "$r" master ci/guard-work
+
+r=$(make_repo); write_settings "$r" "Bash"; commit_all "$r" "narrow matcher on a ci branch"
+run_case "a ci/ branch still may not narrow the matcher" 3 "$r" master ci/guard-work
 
 # The exemption is the branch name, and nothing else grants it.
 r=$(make_repo); echo "weakened" >> "$r/.claude/hooks/lib/exfiltration_guard_check.py"; commit_all "$r" "edit core"

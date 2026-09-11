@@ -11,21 +11,9 @@
 #
 # Four checks, in order:
 #
-# CHECK 0 (Applicability, PR branches only): this is a branch the guard
-#   can say anything about. Two cases are not, and both exit 5:
-#
-#     - A ci/... branch. The pipeline IS the declared subject of the work
-#       there, the same declaration validate-agent-commit.sh RULE 3 and
-#       the enforcement-tampering check already accept. Enforcing the
-#       guard's files against such a branch protects nothing: a change
-#       that may rewrite the workflow may equally delete the step that
-#       runs this script, so the check would only obstruct the pipeline
-#       work it cannot actually police. The name is chosen before the
-#       work starts and is visible in the PR title, and the guard still
-#       blocks agent sessions at runtime on every branch, ci/ included.
-#
-#     - A branch cut before the guard existed, which has nothing to
-#       measure.
+# CHECK 0 (Applicability, PR branches only): the branch is one the guard
+#   can be measured against at all. A branch cut before the guard existed
+#   is not — it has nothing to measure — and exits 5.
 #
 # CHECK 1 (Presence): every guard file exists on HEAD — the adapter, the
 #   shared core, its unit tests, the allowlist, and this script's own test.
@@ -35,11 +23,21 @@
 #   tools Artifact, SendUserFile and Bash. A registration that is present
 #   but no longer covers one of them counts as disabled.
 #
-# CHECK 3 (Integrity, PR branches only): none of the guard files, and not
-#   the guard's registration entry, changed between <base-branch> and HEAD.
-#   Any change — even a "strengthening" one — must be made and committed
-#   by a human. The override the workflow already offers for enforcement
-#   files (override_integrity_checks) applies here the same way.
+# CHECK 3 (Integrity, PR branches only, and not on a ci/... branch): none
+#   of the guard files, and not the guard's registration entry, changed
+#   between <base-branch> and HEAD. Any change — even a "strengthening"
+#   one — must be made and committed by a human. The override the workflow
+#   already offers for enforcement files (override_integrity_checks)
+#   applies here the same way.
+#
+#   A ci/... branch is exempt from this comparison only. The pipeline is
+#   the declared subject of the work there — the same declaration
+#   validate-agent-commit.sh RULE 3 and the enforcement-tampering check
+#   already accept — and a branch that may rewrite the workflow could
+#   equally delete the step that runs this script, so comparing its edits
+#   obstructs the work without policing it. CHECK 1 and CHECK 2 still
+#   apply: they are what says the guard is present and registered in the
+#   tree an agent session runs with, and no branch name lifts that.
 #
 # Usage:
 #   verify-exfiltration-guard.sh [<base-branch> [<branch-name>]]
@@ -48,7 +46,7 @@
 #   satisfy at all times). With a base branch CHECK 3 runs as well.
 #
 #   <branch-name> is the branch under review, used only to recognise a
-#   ci/... branch (see CHECK 0). CI must pass it explicitly: the workspace
+#   ci/... branch (see CHECK 3). CI must pass it explicitly: the workspace
 #   is a detached checkout, where the branch name is not recoverable from
 #   the repository. When omitted it is read from the checkout, which is
 #   what a developer running this by hand wants.
@@ -59,7 +57,7 @@
 #   2 - BLOCKED: a guard file is missing from HEAD
 #   3 - BLOCKED: the guard is not registered for every required tool
 #   4 - BLOCKED: a guard file or its registration changed on this branch
-#   5 - NOT APPLICABLE: a ci/... branch, or one cut before the guard existed
+#   5 - NOT APPLICABLE: the branch was cut before the guard existed
 #
 # Exit 5 is not a pass and not a block: there is nothing to verify. A
 # branch whose merge base with the base branch predates the guard cannot
@@ -148,14 +146,6 @@ banner() {
 # base means the branch was cut before any of them existed.
 
 if [ -n "$BASE_BRANCH" ]; then
-    if echo "$BRANCH_NAME" | grep -qE '^ci/'; then
-        echo "${BRANCH_NAME} is a CI branch: the pipeline is the declared subject of"
-        echo "the change, so the guard's files are not held against it here. The guard"
-        echo "still runs in every agent session; this is the CI-time check only."
-        emit_output false ci_branch
-        exit 5
-    fi
-
     MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>/dev/null || true)
 
     if [ -z "$MERGE_BASE" ]; then
@@ -281,6 +271,26 @@ fi
 if [ -z "$BASE_BRANCH" ]; then
     echo "Exfiltration guard present and registered on HEAD (no base branch given; integrity check skipped)."
     emit_output false none
+    exit 0
+fi
+
+# The ci/... carve-out applies to this comparison and to nothing above it.
+# A branch named for the pipeline may change the files that enforce the
+# pipeline — that is the declaration the name makes, and holding an edit
+# against it would only obstruct work the check cannot police anyway,
+# since the same branch could delete the step that runs this script.
+#
+# Presence and registration are a different claim, and they are NOT
+# lifted: they say the guard is in the tree an agent session will run
+# with. Exempting those would disable the guard at runtime for every
+# session on the branch, which is the opposite of what the carve-out is
+# for — the carve-out exists so pipeline work is not obstructed, not so
+# the protection can be switched off by choosing a branch name.
+if echo "$BRANCH_NAME" | grep -qE '^ci/'; then
+    echo "Exfiltration guard present and registered on HEAD. ${BRANCH_NAME} is a CI"
+    echo "branch — the pipeline is the declared subject of the change, so edits to the"
+    echo "guard's files are not compared against ${BASE_BRANCH}."
+    emit_output false ci_branch
     exit 0
 fi
 

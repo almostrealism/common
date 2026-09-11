@@ -160,14 +160,23 @@ absent there too means the branch predates it (benign), present there means it
 was removed (a real finding) — and only once a merge base has actually been
 established, since without one nothing about the branch is known.
 
-**The `ci/...` carve-out covers `.claude/hooks/` too.** Both the
-enforcement-tampering check and the exfiltration guard's verification treat a
-`ci/` branch as out of scope, for the reason the carve-out has always rested
-on: a change permitted to rewrite the workflow could delete the step that runs
-the check, so enforcing it there obstructs pipeline work without policing
-anything. The policy detectors under `engine/utils` stay locked on every
-branch, and the guard's session-time block on editing its own files is
-unaffected — a branch name lifts the CI check, not the runtime one.
+**The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
+only.** Both the enforcement-tampering check and the exfiltration guard's
+integrity comparison treat a `ci/` branch as out of scope, for the reason the
+carve-out has always rested on: a change permitted to rewrite the workflow
+could delete the step that runs the check, so comparing its edits obstructs
+pipeline work without policing anything.
+
+The guard's presence and registration checks (CHECK 1 and CHECK 2 in
+`verify-exfiltration-guard.sh`) are **not** exempt on any branch, and the
+distinction is the whole safety of the carve-out. An edit compared against the
+base is a question about this branch's diff; whether the guard exists and is
+registered in `.claude/settings.json` is a question about the tree an agent
+session will run with. Lifting the first unblocks pipeline work. Lifting the
+second would let a branch name disable the runtime guard for every session on
+the branch — so a `ci/` branch may rewrite the guard, and may not remove or
+unregister it. The policy detectors under `engine/utils` stay locked on every
+branch.
 
 ### What the `build` job covers
 
