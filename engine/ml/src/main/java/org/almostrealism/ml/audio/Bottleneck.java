@@ -63,7 +63,7 @@ public interface Bottleneck {
 	 * information in {@link #bottleneck(int, int)} (a VAE mean split, for example) cannot restore
 	 * it, so the decoder always starts from the latent width and this block undoes only the
 	 * invertible part of the transform (an affine rescale, say). Bottlenecks with no invertible part
-	 * return an identity block.</p>
+	 * return a pass-through block.</p>
 	 *
 	 * @param batchSize  the number of examples processed together
 	 * @param seqLength  the latent sequence length (number of frames)

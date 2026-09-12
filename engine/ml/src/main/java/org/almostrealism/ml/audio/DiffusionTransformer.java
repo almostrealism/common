@@ -128,13 +128,13 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	/** Width of the timestep Fourier feature vector consumed by the timestep-embedding MLP. */
 	private static final int TIMESTEP_FEATURE_DIM = 256;
 
-	/** Key of the learned timestep Fourier frequency matrix ({@link TimestepFeatures#LEARNED}). */
+	/** Key of the learned timestep Fourier frequency matrix ({@link TimestepEncoding#LEARNED}). */
 	private static final String TIMESTEP_FEATURES_KEY = "model.model.timestep_features.weight";
 
-	/** Lowest frequency of the deterministic timestep features ({@link TimestepFeatures#EXPO}). */
+	/** Lowest frequency of the deterministic timestep features ({@link TimestepEncoding#EXPO}). */
 	private static final double EXPO_TIMESTEP_MIN_FREQ = 0.5;
 
-	/** Highest frequency of the deterministic timestep features ({@link TimestepFeatures#EXPO}). */
+	/** Highest frequency of the deterministic timestep features ({@link TimestepEncoding#EXPO}). */
 	private static final double EXPO_TIMESTEP_MAX_FREQ = 10000.0;
 
 	/**
@@ -180,7 +180,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	private final int localAddCondDim;
 
 	/** How the scalar timestep is turned into Fourier features. */
-	private final TimestepFeatures timestepFeatures;
+	private final TimestepEncoding timestepEncoding;
 
 	/**
 	 * The local additive conditioning input, shape {@code [batch, localAddCondDim, audioSeqLen]},
@@ -432,7 +432,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		this.conditioningMode = config.getConditioningMode();
 		this.numMemoryTokens = config.getNumMemoryTokens();
 		this.localAddCondDim = config.getLocalAddCondDim();
-		this.timestepFeatures = config.getTimestepFeatures();
+		this.timestepEncoding = config.getTimestepEncoding();
 		this.audioSeqLen = config.getAudioSeqLen();
 		this.condSeqLen = config.getCondSeqLen();
 		this.localAddCond = localAddCondDim > 0 ?
@@ -575,7 +575,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 		Block features;
 
-		if (timestepFeatures == TimestepFeatures.EXPO) {
+		if (timestepEncoding == TimestepEncoding.EXPO) {
 			unusedWeights.remove(TIMESTEP_FEATURES_KEY);
 			features = expoFourierFeatures(batchSize, TIMESTEP_FEATURE_DIM,
 					EXPO_TIMESTEP_MIN_FREQ, EXPO_TIMESTEP_MAX_FREQ);

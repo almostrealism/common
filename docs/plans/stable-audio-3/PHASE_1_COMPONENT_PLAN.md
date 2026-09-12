@@ -742,7 +742,7 @@ Corrected in this pass after re-reading the reference source (`Stability-AI/stab
 | B1 modulation algebra | `x = norm(x) * (1 + scale) + shift`, branch output `* sigmoid(1 - gate)` | `x * scale + shift`, `* gate` | `residualScale` / `residualGate` applied in `transformerBlock` |
 | B1 global cond embedder | `global_cond_embedder = Linear(dim,dim) . SiLU . Linear(dim, 6*dim)` shared by all blocks, added to each block's `to_scale_shift_gate` | absent (the `[batch, dim]` cond was broadcast to all six slots) | `globalConditioningEmbedding` + `packedModulation`; keys `model.model.transformer.global_cond_embedder.{0,2}.{weight,bias}` consumed |
 | B1 weight key | `layers.N.to_scale_shift_gate` (bare parameter of `6*dim`) | `layers.N.to_scale_shift_gate.weight` (`[6, dim]`) | bare key, `6*dim` |
-| Timestep features | `timestep_features_type = expo`: deterministic `ExpoFourierFeatures(256, 0.5, 10000)`, no checkpoint key | learned `model.model.timestep_features.weight` only | `TimestepFeatures.EXPO` via `expoFourierFeatures` |
+| Timestep features | `timestep_features_type = expo`: deterministic `ExpoFourierFeatures(256, 0.5, 10000)`, no checkpoint key | learned `model.model.timestep_features.weight` only | `TimestepEncoding.EXPO` via `expoFourierFeatures` |
 | B3 local-add cond | per block `to_local_embed = Linear(257,dim) . SiLU . Linear(dim,dim)` applied after attention, before FF; plain generation feeds **zeros** but the MLP biases make the contribution non-zero | absent | `localConditioningEmbedding` + `transformerBlock(..., localAddition)`; `DiffusionTransformer.getLocalAddCond()` buffer |
 | Sampler schedule | `linspace(1,0)` warped by `LogSNRShift` (default `rate 0, anchor -6.2, end 2`), first point pinned | fixed log-SNR `-6 .. 2` | `DistributionShift` (`LogSNRShift`, `FluxDistributionShift`, `LogitDistributionShift`); `PingPongSamplingStrategy(DistributionShift)`; the sampler passes the latent length |
 | Bottleneck decode | `x * running_std` | not modelled | `Bottleneck.decode` |
@@ -751,7 +751,7 @@ Corrected in this pass after re-reading the reference source (`Stability-AI/stab
 
 `DiffusionTransformerConfig` now carries every architectural option; the SA3 small DiT is
 `new DiffusionTransformerConfig(256, 1024, 20, 16, 1, 768, 768, "rf_denoiser", latentLen, 257)
-.withConditioningMode(ADALN).withMemoryTokens(64).withLocalAddCondDim(257).withTimestepFeatures(EXPO)`.
+.withConditioningMode(ADALN).withMemoryTokens(64).withLocalAddCondDim(257).withTimestepEncoding(EXPO)`.
 
 Still open: D2 (T5Gemma encoder + conditioner wiring), the DiT attention padding mask
 (`mask_padding_attention` zeroes values at padded latent positions), the `timestep_features_logsnr`

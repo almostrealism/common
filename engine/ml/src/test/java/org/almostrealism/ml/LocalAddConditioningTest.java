@@ -25,7 +25,7 @@ import org.almostrealism.ml.audio.ConditioningMode;
 import org.almostrealism.ml.audio.DiffusionTransformer;
 import org.almostrealism.ml.audio.DiffusionTransformerConfig;
 import org.almostrealism.ml.audio.DiffusionTransformerFeatures;
-import org.almostrealism.ml.audio.TimestepFeatures;
+import org.almostrealism.ml.audio.TimestepEncoding;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -152,7 +152,7 @@ public class LocalAddConditioningTest extends TestSuiteBase implements Diffusion
 				.withConditioningMode(ConditioningMode.ADALN)
 				.withMemoryTokens(memoryTokens)
 				.withLocalAddCondDim(localDim)
-				.withTimestepFeatures(TimestepFeatures.EXPO);
+				.withTimestepEncoding(TimestepEncoding.EXPO);
 
 		DiffusionTransformer transformer = new DiffusionTransformer(config,
 				new StateDictionary(ditWeights(config)));

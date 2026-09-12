@@ -30,7 +30,7 @@ package org.almostrealism.ml.audio;
  *         .withConditioningMode(ConditioningMode.ADALN)
  *         .withMemoryTokens(64)
  *         .withLocalAddCondDim(257)
- *         .withTimestepFeatures(TimestepFeatures.EXPO);
+ *         .withTimestepEncoding(TimestepEncoding.EXPO);
  * </pre>
  */
 public final class DiffusionTransformerConfig {
@@ -62,7 +62,7 @@ public final class DiffusionTransformerConfig {
 	/** Channel count of the local additive conditioning input ({@code 0} = path absent). */
 	private final int localAddCondDim;
 	/** How the timestep is turned into Fourier features. */
-	private final TimestepFeatures timestepFeatures;
+	private final TimestepEncoding timestepEncoding;
 
 	/**
 	 * Creates a configuration with the default features: prepended conditioning, no memory tokens,
@@ -84,7 +84,7 @@ public final class DiffusionTransformerConfig {
 									  String diffusionObjective, int audioSeqLen, int condSeqLen) {
 		this(ioChannels, embedDim, depth, numHeads, patchSize, condTokenDim, globalCondDim,
 				diffusionObjective, audioSeqLen, condSeqLen,
-				ConditioningMode.PREPEND, 0, 0, TimestepFeatures.LEARNED);
+				ConditioningMode.PREPEND, 0, 0, TimestepEncoding.LEARNED);
 	}
 
 	/**
@@ -103,13 +103,13 @@ public final class DiffusionTransformerConfig {
 	 * @param conditioningMode   how timestep and global conditioning are injected
 	 * @param numMemoryTokens    number of learned memory tokens
 	 * @param localAddCondDim    channels of the local additive conditioning input
-	 * @param timestepFeatures   how the timestep becomes Fourier features
+	 * @param timestepEncoding   how the timestep becomes Fourier features
 	 */
 	private DiffusionTransformerConfig(int ioChannels, int embedDim, int depth, int numHeads,
 									   int patchSize, int condTokenDim, int globalCondDim,
 									   String diffusionObjective, int audioSeqLen, int condSeqLen,
 									   ConditioningMode conditioningMode, int numMemoryTokens,
-									   int localAddCondDim, TimestepFeatures timestepFeatures) {
+									   int localAddCondDim, TimestepEncoding timestepEncoding) {
 		if (ioChannels <= 0 || embedDim <= 0 || depth <= 0 || numHeads <= 0 || patchSize <= 0) {
 			throw new IllegalArgumentException("ioChannels, embedDim, depth, numHeads and patchSize must be positive");
 		}
@@ -135,7 +135,7 @@ public final class DiffusionTransformerConfig {
 		this.conditioningMode = conditioningMode == null ? ConditioningMode.PREPEND : conditioningMode;
 		this.numMemoryTokens = numMemoryTokens;
 		this.localAddCondDim = localAddCondDim;
-		this.timestepFeatures = timestepFeatures == null ? TimestepFeatures.LEARNED : timestepFeatures;
+		this.timestepEncoding = timestepEncoding == null ? TimestepEncoding.LEARNED : timestepEncoding;
 	}
 
 	/**
@@ -147,7 +147,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withConditioningMode(ConditioningMode mode) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				mode, numMemoryTokens, localAddCondDim, timestepFeatures);
+				mode, numMemoryTokens, localAddCondDim, timestepEncoding);
 	}
 
 	/**
@@ -159,7 +159,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withMemoryTokens(int count) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				conditioningMode, count, localAddCondDim, timestepFeatures);
+				conditioningMode, count, localAddCondDim, timestepEncoding);
 	}
 
 	/**
@@ -171,7 +171,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withLocalAddCondDim(int dim) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				conditioningMode, numMemoryTokens, dim, timestepFeatures);
+				conditioningMode, numMemoryTokens, dim, timestepEncoding);
 	}
 
 	/**
@@ -180,7 +180,7 @@ public final class DiffusionTransformerConfig {
 	 * @param features how the timestep becomes Fourier features
 	 * @return the modified configuration
 	 */
-	public DiffusionTransformerConfig withTimestepFeatures(TimestepFeatures features) {
+	public DiffusionTransformerConfig withTimestepEncoding(TimestepEncoding features) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
 				conditioningMode, numMemoryTokens, localAddCondDim, features);
@@ -196,7 +196,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withSequenceLengths(int audioSeqLen, int condSeqLen) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				conditioningMode, numMemoryTokens, localAddCondDim, timestepFeatures);
+				conditioningMode, numMemoryTokens, localAddCondDim, timestepEncoding);
 	}
 
 	/**
@@ -295,5 +295,5 @@ public final class DiffusionTransformerConfig {
 	 *
 	 * @return the timestep feature type
 	 */
-	public TimestepFeatures getTimestepFeatures() { return timestepFeatures; }
+	public TimestepEncoding getTimestepEncoding() { return timestepEncoding; }
 }

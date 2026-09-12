@@ -23,7 +23,7 @@ package org.almostrealism.ml.audio;
  * @see DiffusionTransformerFeatures#fourierFeatures
  * @see DiffusionTransformerFeatures#expoFourierFeatures
  */
-public enum TimestepFeatures {
+public enum TimestepEncoding {
 	/**
 	 * Random Fourier features with a learned (checkpointed) frequency matrix, read from the
 	 * {@code timestep_features.weight} parameter.

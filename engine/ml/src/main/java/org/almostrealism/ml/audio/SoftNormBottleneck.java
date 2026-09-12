@@ -154,12 +154,7 @@ public class SoftNormBottleneck implements Bottleneck, LayerFeatures {
 	 */
 	@Override
 	public Block decode(int batchSize, int seqLength) {
-		TraversalPolicy shape = shape(batchSize, dim, seqLength);
-
-		return layer("softNormBottleneckDecode", shape, shape, input -> {
-			CollectionProducer in = c(input);
-			return runningStd == null ? in : in.multiply(cp(runningStd));
-		});
+		return scale(shape(batchSize, dim, seqLength), runningStd);
 	}
 
 	/**

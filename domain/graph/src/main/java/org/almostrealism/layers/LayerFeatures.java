@@ -702,12 +702,7 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 			y = y.add(cp(bias).reshape(out).repeat(0, rows));
 		}
 
-		int[] outDims = new int[rank];
-		for (int i = 0; i < rank - 1; i++) {
-			outDims[i] = xs.length(i);
-		}
-		outDims[rank - 1] = out;
-		return y.reshape(shape(outDims));
+		return y.reshape(xs.replaceDimension(rank - 1, out));
 	}
 
 	/**
@@ -906,6 +901,29 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 */
 	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
 		return layer("scale", shape, shape, input -> multiply(c(input).each(), c(scale)), requirements);
+	}
+
+	/**
+	 * Creates a scaling block that multiplies every element of the input by a stored scalar
+	 * parameter (a single-value collection, typically a learned or running statistic), or passes the
+	 * input through unchanged when no parameter is supplied.
+	 *
+	 * @param shape        the input and output shape
+	 * @param scale        the scalar multiplier as a one-element collection, or {@code null} for the identity
+	 * @param requirements optional compute requirements
+	 * @return the scaling {@link Block}, or a {@link #passThrough(TraversalPolicy) pass-through} when {@code scale} is {@code null}
+	 */
+	default Block scale(TraversalPolicy shape, PackedCollection scale, ComputeRequirement... requirements) {
+		if (scale == null) {
+			return passThrough(shape);
+		}
+
+		if (scale.getShape().getTotalSize() != 1) {
+			throw new IllegalArgumentException("scale must be a single value, not " + scale.getShape());
+		}
+
+		return layer("scale", shape, shape, input -> multiply(c(input).each(), cp(scale)),
+				List.of(scale), requirements);
 	}
 
 	/**

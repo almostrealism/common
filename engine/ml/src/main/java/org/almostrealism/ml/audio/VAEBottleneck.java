@@ -140,8 +140,7 @@ public class VAEBottleneck implements Bottleneck, LayerFeatures {
 	 */
 	@Override
 	public Block decode(int batchSize, int seqLength) {
-		TraversalPolicy shape = shape(batchSize, LATENT_DIM, seqLength);
-		return layer("vaeBottleneckDecode", shape, shape, input -> c(input));
+		return passThrough(shape(batchSize, LATENT_DIM, seqLength));
 	}
 
 	/**
