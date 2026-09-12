@@ -30,7 +30,7 @@ import java.util.List;
  * A computation that performs element-wise less-than comparison between two {@link PackedCollection}s,
  * returning conditional values based on the comparison result.
  *
- * <p>This class extends {@link CollectionComparisonComputation} to implement the less-than
+ * <p>This class extends {@link InequalityComparisonComputation} to implement the less-than
  * relational operator with optional equality checking (&lt;=). It evaluates the comparison for each
  * corresponding element pair and selects between true and false values accordingly.</p>
  *
@@ -109,20 +109,13 @@ import java.util.List;
  *   <li><strong>Branching:</strong> Uses conditional expressions in generated code</li>
  * </ul>
  *
- * @see CollectionComparisonComputation
+ * @see InequalityComparisonComputation
  * @see GreaterThanCollection
  * @see org.almostrealism.collect.CollectionFeatures#lessThan
  *
  * @author Michael Murray
  */
-public class LessThanCollection extends CollectionComparisonComputation {
-	/**
-	 * Flag controlling whether the comparison includes equality (<=) or is strict (<).
-	 * When true, performs less-than-or-equal comparison (<=).
-	 * When false, performs strict less-than comparison (<).
-	 */
-	private final boolean includeEqual;
-
+public class LessThanCollection extends InequalityComparisonComputation {
 	/**
 	 * Constructs a less-than comparison computation with strict inequality (<).
 	 *
@@ -156,9 +149,7 @@ public class LessThanCollection extends CollectionComparisonComputation {
 			Producer<PackedCollection> left, Producer<PackedCollection> right,
 			Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 			boolean includeEqual) {
-		super("lessThan", shape,  left, right, trueValue, falseValue);
-		this.includeEqual = includeEqual;
-		init();
+		super("lessThan", shape, left, right, trueValue, falseValue, includeEqual);
 	}
 
 	/**
@@ -216,26 +207,5 @@ public class LessThanCollection extends CollectionComparisonComputation {
 		return (CollectionProducerParallelProcess)
 				lessThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
 						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * <p>The emitted expression is a ternary {@code Conditional(lhs < rhs, truePath, falsePath)}
-	 * &mdash; both branches materialise in the expression tree. The expansion width is
-	 * therefore {@code 2}.</p>
-	 */
-	@Override
-	public long getExpansionWidth() {
-		return 2;
-	}
-
-
-	@Override
-	public String signature() {
-		String signature = super.signature();
-		if (signature == null) return null;
-
-		return signature + "{includeEqual:" +  includeEqual + "}";
 	}
 }
