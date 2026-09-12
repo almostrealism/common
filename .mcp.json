@@ -24,12 +24,6 @@
       "command": "python3",
       "args": ["tools/mcp/jmx/server.py"],
       "description": "JVM memory analysis and leak detection via JDK diagnostic tools"
-    },
-    "onyx": {
-      "command": "/Users/Shared/flowtree/tools/OnyxMCP",
-      "env": {
-        "ONYX_MCP_PORT": "19432"
-      }
     }
   }
 }
