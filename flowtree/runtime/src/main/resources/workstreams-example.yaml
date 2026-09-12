@@ -121,7 +121,10 @@ workstreams:
     baseBranch: "master"               # New branches are created from origin/<baseBranch>
     repoUrl: "https://github.com/your-org/project-alpha.git"  # REQUIRED for message storage
     pushToOrigin: true
-    allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
+    # Omit to inherit CodingAgentJob.DEFAULT_TOOLS, which is this list.
+    # Spelling it out here pins the set: a later addition to the default
+    # will not reach a workstream that copied this line.
+    allowedTools: "Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop"
     maxTurns: 50
     maxBudgetUsd: 10.0
     # completionListeners:              # Workstream IDs to notify with automated wake-up jobs when this workstream completes.

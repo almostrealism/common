@@ -1155,6 +1155,6 @@ embeds the user's actual request between `--- BEGIN USER REQUEST ---` and
 | `ENTRY_SEPARATOR` | `JobFactory` / `JobOutput` | `"::"` | Separates entries in wire format |
 | `KEY_VALUE_SEPARATOR` | `JobFactory` | `":="` | Separates key from value |
 | `PROMPT_SEPARATOR` | `ClaudeCodeJob` | `";;PROMPT;;"` | Separates prompts in the factory |
-| `DEFAULT_TOOLS` | `ClaudeCodeJob` | `"Read,Edit,Write,Bash,Glob,Grep"` | Default allowed tools |
+| `DEFAULT_TOOLS` | `ClaudeCodeJob` | `"Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop"` | Default allowed tools |
 | `DEFAULT_MAX_FILE_SIZE` | `GitJobConfig` | 1,048,576 (1 MB) | Max file size for staging |
 | `FALLBACK_WORKSPACE_DIR` | `WorkspaceResolver` | `"/tmp/flowtree-workspaces"` | Fallback checkout path |

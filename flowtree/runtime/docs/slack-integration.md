@@ -250,7 +250,7 @@ workstreams:
     defaultBranch: "feature/work"
     baseBranch: "master"             # New branches created from origin/<baseBranch>
     pushToOrigin: true
-    allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
+    allowedTools: "Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop"
     maxTurns: 50
     maxBudgetUsd: 10.0
     # Optional: jobs on this workstream may run up to 12 hours of wall-clock

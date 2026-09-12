@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -33,6 +34,46 @@ import static org.junit.Assert.assertTrue;
  * cleanup jobs opt in explicitly.</p>
  */
 public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
+
+    // ── Allowed tools — one default, in one place ───────────────────────────
+
+    /**
+     * Pins the exact default tool list.
+     *
+     * <p>Every other test of a default compares against the constant, which
+     * says a caller follows it but not what it is. This is the one place that
+     * states the value, so a change to the tool surface every agent session
+     * receives cannot pass unnoticed — change it here deliberately or not at
+     * all. A tool absent from the list is refused by the harness before any
+     * hook sees it, which is why the two background-task tools are in it: an
+     * agent without them can start a long command in the background and then
+     * neither read its output nor stop it.</p>
+     */
+    @Test(timeout = 30000)
+    public void defaultToolsAreExactlyTheseEight() {
+        assertEquals("Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop",
+                CodingAgentJob.DEFAULT_TOOLS);
+    }
+
+    /**
+     * Verifies that a workstream configured with no tool list of its own uses
+     * the same default as a job, rather than a copy of it that can drift.
+     */
+    @Test(timeout = 30000)
+    public void workstreamDefaultToolsComeFromTheJobDefault() {
+        assertEquals(CodingAgentJob.DEFAULT_TOOLS, new Workstream().getAllowedTools());
+        assertEquals(CodingAgentJob.DEFAULT_TOOLS,
+                new Workstream("ws-id", "C0", "#channel").getAllowedTools());
+    }
+
+    /**
+     * Verifies that a newly created factory starts from the same default.
+     */
+    @Test(timeout = 30000)
+    public void factoryDefaultToolsComeFromTheJobDefault() {
+        assertEquals(CodingAgentJob.DEFAULT_TOOLS,
+                new CodingAgentJobFactory("prompt").getAllowedTools());
+    }
 
     // ── Deduplication — disabled by default ─────────────────────────────────
 

@@ -23,6 +23,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -34,8 +35,6 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -60,7 +59,7 @@ import io.flowtree.submission.SubmissionRunnerResolver;
  *     channelName: "#project-agent"
  *     defaultBranch: "feature/work"
  *     pushToOrigin: true
- *     allowedTools: "Read,Edit,Write,Bash,Glob,Grep"
+ *     allowedTools: "Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop"
  *     maxTurns: 800
  *     maxBudgetUsd: 100.0
  *     gitUserName: "CI Bot"
@@ -392,7 +391,7 @@ public class WorkstreamConfig {
         /** Git clone URL for automatic repository checkout. */
         private String repoUrl;
         /** Comma-separated list of Claude Code tool names the agent may use. */
-        private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
+        private String allowedTools = CodingAgentJob.DEFAULT_TOOLS;
         /** Maximum number of agent turns per job. */
         private int maxTurns = 800;
         /** Maximum spending budget per job in USD. */

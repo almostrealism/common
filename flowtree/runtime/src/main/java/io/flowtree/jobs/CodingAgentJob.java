@@ -56,8 +56,21 @@ import java.util.Map;
 public class CodingAgentJob extends GitManagedJob {
     /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
-    /** Default comma-separated list of tools permitted for Claude Code sessions. */
-    public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
+    /**
+     * Default comma-separated list of tools permitted for Claude Code sessions.
+     *
+     * <p>The file and shell tools an agent needs to do the work, plus the two
+     * that manage a background task it started: {@code TaskOutput} reads such a
+     * task's output back, and {@code TaskStop} ends one. Without them an agent
+     * that backgrounds a long build can neither read its result nor stop it,
+     * and a tool absent from this list is refused by the harness before any
+     * hook sees it.</p>
+     *
+     * <p>This is the only place the default is written down. A workstream that
+     * has not configured its own list, and the CLI client, both read it from
+     * here — a second copy would drift the moment one of them was updated.</p>
+     */
+    public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop";
 
     /**
      * Valid values for the {@code --effort} flag exposed by the Claude Code runner.
