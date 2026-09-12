@@ -285,29 +285,6 @@ public class SawtoothWaveCell extends CollectionTemporalCellAdapter implements S
 	}
 
 	/**
-	 * PolyBLEP (Polynomial Band-Limited Step) anti-aliasing function.
-	 * Smooths discontinuities in geometric waveforms to reduce aliasing.
-	 *
-	 * @param t   Phase position (0-1)
-	 * @param dt  Phase increment per sample (frequency/sampleRate)
-	 * @return Correction value to apply to the raw waveform
-	 */
-	private CollectionProducer polyBlep(CollectionProducer t, Producer<PackedCollection> dt) {
-		// When t < dt: -(t/dt - 1)^2
-		CollectionProducer belowDt = lessThan(t, dt,
-				multiply(pow(subtract(divide(t, dt), c(1.0)), c(2.0)), c(-1.0)),
-				c(0.0));
-
-		// When t > 1-dt: ((t-1)/dt + 1)^2
-		CollectionProducer oneMinusDt = subtract(c(1.0), dt);
-		CollectionProducer aboveOneMinusDt = greaterThan(t, oneMinusDt,
-				pow(add(divide(subtract(t, c(1.0)), dt), c(1.0)), c(2.0)),
-				c(0.0));
-
-		return add(belowDt, aboveOneMinusDt);
-	}
-
-	/**
 	 * Creates a compiled operation that advances the wave and note positions.
 	 *
 	 * @return a Supplier that, when executed, advances positions for the next sample
