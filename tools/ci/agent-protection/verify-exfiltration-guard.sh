@@ -25,8 +25,9 @@
 #
 # CHECK 3 (Integrity, PR branches only, and not on a ci/... branch): none
 #   of the guard files, and not the guard's registration entry, changed
-#   between <base-branch> and HEAD. Any change — even a "strengthening"
-#   one — must be made and committed by a human. The override the workflow
+#   between the merge base with <base-branch> and HEAD — what this branch
+#   did, not what has landed on the base branch since it diverged. Any
+#   change — even a "strengthening" one — must be made by a human. The override the workflow
 #   already offers for enforcement files (override_integrity_checks)
 #   applies here the same way.
 #
@@ -288,17 +289,26 @@ if echo "$BRANCH_NAME" | grep -qE '^ci/'; then
     exit 0
 fi
 
+# Everything below asks one question: what did THIS branch do to the
+# guard since it diverged? That is a comparison against the merge base,
+# never against the base branch's tip — the tip includes whatever landed
+# on the base branch afterwards, and blaming a branch for those is the
+# same mistake as blaming it for a check that could not run. The file
+# loop already had this right through the three-dot diff, whose left side
+# is the merge base by definition; MERGE_BASE is now named explicitly so
+# the file and registration comparisons visibly share one reference
+# point, which is what they failed to do.
 CHANGED=""
 for f in "${GUARD_FILES[@]}"; do
-    # Not present on the base branch at all: this is the guard's first-time
+    # Not present at the merge base at all: this is the guard's first-time
     # introduction, not a modification of an established file. Nothing is
     # hidden by it — the whole file is visible as new content in the PR
     # diff, the same as any other addition. Once merged, every subsequent
     # change to it is caught below as usual.
-    if ! git cat-file -e "${BASE_BRANCH}:${f}" 2>/dev/null; then
+    if ! git cat-file -e "${MERGE_BASE}:${f}" 2>/dev/null; then
         continue
     fi
-    if git diff --name-only "${BASE_BRANCH}...HEAD" -- "$f" | grep -q .; then
+    if git diff --name-only "${MERGE_BASE}..HEAD" -- "$f" | grep -q .; then
         CHANGED="${CHANGED}  - ${f}\n"
     fi
 done
@@ -333,19 +343,19 @@ print(json.dumps(entries, sort_keys=True))
 PY
 }
 
-if git cat-file -e "${BASE_BRANCH}:${SETTINGS_FILE}" 2>/dev/null; then
-    BASE_REGISTRATION=$(registration_json "$BASE_BRANCH")
+if git cat-file -e "${MERGE_BASE}:${SETTINGS_FILE}" 2>/dev/null; then
+    BASE_REGISTRATION=$(registration_json "$MERGE_BASE")
     HEAD_REGISTRATION=$(registration_json HEAD)
-    # "[]" means the adapter had no registration entry at all on the base
-    # branch — this is the registration's first-time introduction, not a
-    # removal or weakening of one that already existed, so it is not
+    # "[]" means the adapter had no registration entry at all where this
+    # branch started — this is the registration's first-time introduction,
+    # not a removal or weakening of one that already existed, so it is not
     # flagged. Any change starting from an existing, non-empty
     # registration still is.
     if [ "$BASE_REGISTRATION" != "$HEAD_REGISTRATION" ] && [ "$BASE_REGISTRATION" != "[]" ]; then
         CHANGED="${CHANGED}  - ${SETTINGS_FILE} (the ${ADAPTER_NAME} registration entry)\n"
     fi
 fi
-# When settings.json does not exist on the base branch at all, there is no
+# When settings.json does not exist at the merge base at all, there is no
 # prior registration to weaken — whatever HEAD introduces is by definition
 # new, not a modification, so the comparison above is skipped entirely.
 
