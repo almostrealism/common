@@ -59,6 +59,7 @@ Processes incoming Slack messages. Extracts the prompt from `@bot` mentions, loo
 | `/status` | Show workstream status |
 | `/task <prompt>`, `/do <prompt>`, `/run <prompt>` | Submit a prompt |
 | `/stats` | Show weekly job statistics (this week and last week) |
+| `/archive [keep-channel]` | Archive this channel's workstream, and archive the Slack channel itself unless `keep-channel` is passed |
 
 ### SlackNotifier
 
