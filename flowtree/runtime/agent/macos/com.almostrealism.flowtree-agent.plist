@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd service definition for a native FlowTree agent on macOS.
+
+  This is a template: install.sh substitutes @AGENT_HOME@ and @ENV_FILE@ and
+  writes the result to ~/Library/LaunchAgents/. KeepAlive makes launchd
+  restart the agent whenever it exits, which is what turns "start the
+  agent by hand after every reboot or crash" into something that just runs.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.almostrealism.flowtree-agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>@AGENT_HOME@/bin/run.sh</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>FLOWTREE_AGENT_ENV</key>
+        <string>@ENV_FILE@</string>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>@AGENT_HOME@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <!-- Back off rather than spin when the env file is broken. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>@AGENT_HOME@/logs/agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>@AGENT_HOME@/logs/agent.log</string>
+</dict>
+</plist>

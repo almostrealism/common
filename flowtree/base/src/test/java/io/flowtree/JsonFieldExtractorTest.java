@@ -69,4 +69,89 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		Assert.assertEquals(1, fromArray.size());
 		Assert.assertEquals(fromScalar, fromArray.get(0));
 	}
+
+	/**
+	 * A {@code ']'} inside a string element is a literal character, not an
+	 * array terminator — {@code ["ssh://git@[::1]/repo.git", "other"]} is
+	 * valid JSON. Locating the array end with the first {@code ']'} (as the
+	 * old implementation did) truncates the list and corrupts the element
+	 * that carries the bracket, which is exactly what an IPv6 git URL in
+	 * {@code dependentRepos} would trigger.
+	 */
+	@Test(timeout = 10000)
+	public void arrayElementContainingCloseBracket() {
+		String json = "{\"dependentRepos\":[\"ssh://git@[::1]/repo.git\", \"other\"]}";
+
+		List<String> values = JsonFieldExtractor.extractStringArray(json, "dependentRepos");
+
+		Assert.assertEquals(2, values.size());
+		Assert.assertEquals("ssh://git@[::1]/repo.git", values.get(0));
+		Assert.assertEquals("other", values.get(1));
+	}
+
+	/**
+	 * A {@code ']'} reached via an escaped quote must still be treated as
+	 * being inside the string: the escape closes over the quote, not the
+	 * string, so {@code inString} must remain {@code true} through the
+	 * {@code ']'} that follows it.
+	 */
+	@Test(timeout = 10000)
+	public void arrayElementContainingEscapedQuoteAndBracket() {
+		String json = "{\"v\":[\"a\\\"]b\", \"c\"]}";
+
+		List<String> values = JsonFieldExtractor.extractStringArray(json, "v");
+
+		Assert.assertEquals(2, values.size());
+		Assert.assertEquals("a\"]b", values.get(0));
+		Assert.assertEquals("c", values.get(1));
+	}
+
+	/**
+	 * An array with no closing bracket has no match for
+	 * {@link JsonFieldExtractor#extractStringArray(String, String)} to find,
+	 * so it must return an empty list rather than throwing or scanning past
+	 * the end of the input.
+	 */
+	@Test(timeout = 10000)
+	public void unclosedArrayReturnsEmptyList() {
+		String json = "{\"v\":[\"a\", \"b\"";
+
+		List<String> values = JsonFieldExtractor.extractStringArray(json, "v");
+
+		Assert.assertTrue(values.isEmpty());
+	}
+
+	/**
+	 * {@link JsonFieldExtractor#countArrayEntries(String, String)} shares the
+	 * same {@code matchingBracket} array-end lookup as
+	 * {@link JsonFieldExtractor#extractStringArray(String, String)}, so a
+	 * {@code ']'} inside a string field of one of the counted objects must
+	 * not be mistaken for the array's own closing bracket.
+	 */
+	@Test(timeout = 10000)
+	public void countArrayEntriesWithBracketInStringField() {
+		String json = "{\"items\":[{\"url\":\"ssh://git@[::1]/repo.git\"},{\"url\":\"b\"}]}";
+
+		int count = JsonFieldExtractor.countArrayEntries(json, "items");
+
+		Assert.assertEquals(2, count);
+	}
+
+	/**
+	 * {@link JsonFieldExtractor#extractFieldFromArrayObjects(String, String, String)}
+	 * also shares {@code matchingBracket}; a {@code ']'} inside a sibling
+	 * field's string value must not truncate the array before every object
+	 * is visited.
+	 */
+	@Test(timeout = 10000)
+	public void extractFieldFromArrayObjectsWithBracketInOtherField() {
+		String json = "{\"items\":[{\"name\":\"a\",\"url\":\"ssh://git@[::1]/repo.git\"},"
+				+ "{\"name\":\"b\",\"url\":\"c\"}]}";
+
+		List<String> names = JsonFieldExtractor.extractFieldFromArrayObjects(json, "items", "name");
+
+		Assert.assertEquals(2, names.size());
+		Assert.assertEquals("a", names.get(0));
+		Assert.assertEquals("b", names.get(1));
+	}
 }

@@ -379,6 +379,103 @@ JARs and then composes the images on that host. `.env` is read once at wrapper
 start, so restart the wrapper after changing `RUNNER_LABELS` — re-registration
 between jobs does not re-read it.
 
+## Deploying the native macOS agent
+
+`Deploy Controller Stack` has a second job, `deploy-macos-agent`, that keeps a
+**native** FlowTree agent — a JVM under launchd, with Metal — on the same JARs
+as the Docker pool. It runs whenever the pool is rebuilt (`redeploy_agents`, or
+the `FLOWTREE_DEPLOY_AGENTS` variable) and asks for
+`[self-hosted, macos, ar-deploy-agent]`.
+
+That is a **third label and a third runner**, and the reason is the account.
+The job installs the agent by writing a launchd plist into
+`~/Library/LaunchAgents` and loading it into the session of *whoever runs the
+runner*. It never elevates or switches user, so:
+
+- The agent runs as the account the runner runs as. It is meant to run as the
+  `worker` service account, so the runner must be started as `worker`.
+- The Docker deploy runner (`ar-deploy`) is a different account — the one
+  that administers Docker — and cannot do this job. Do not add
+  `ar-deploy-agent` to it: the job would fail the account check below rather
+  than install anything for it.
+- A runner registered as the wrong account would install the agent for the
+  wrong account. The job's first step prints `Installing the native agent as
+  <account> on <host>` and then fails the job if `<account>` does not match
+  the expected service account (`worker` by default, overridable with the
+  repository variable `FLOWTREE_MACOS_AGENT_ACCOUNT`), so a mis-registered
+  runner is caught rather than silently installing in the wrong place.
+
+### Setting up the `worker` runner
+
+Everything below is done **as `worker`**. If you are logged in as someone
+else, start with `sudo -iu worker` and stay there.
+
+```bash
+# as worker
+mkdir -p ~/flowtree-agent
+
+# 1. The env file the agent service will load. It lives OUTSIDE any checkout
+#    because it holds the Claude Code credential.
+cp /path/to/common/flowtree/runtime/agent/macos/agent.env.example ~/flowtree-agent/agent.env
+$EDITOR ~/flowtree-agent/agent.env    # CLAUDE_CODE_OAUTH_TOKEN, FLOWTREE_ROOT_HOST, FLOWTREE_NODE_ID
+
+# 2. The runner env file. The labels are what route the job here, and the
+#    absolute RUNNER_DIR keeps the runner in worker's home whoever launches it.
+cat > ~/.runner-deploy-agent.env <<'ENV'
+GITHUB_PAT=ghp_your_token_here
+GITHUB_OWNER=almostrealism
+GITHUB_REPO=common
+RUNNER_NAME=mac-studio-deploy-agent
+RUNNER_LABELS=self-hosted,macos,ar-deploy-agent
+RUNNER_DIR=/Users/worker/actions-runner-deploy-agent
+ENV
+
+# 3. Start the runner — as worker, with that env file and directory.
+/path/to/common/tools/ci/macos/runner.sh ~/.runner-deploy-agent.env /Users/worker/actions-runner-deploy-agent
+```
+
+The startup banner should show `Labels: self-hosted,macos,ar-deploy-agent
+[from ~/.runner-deploy-agent.env]` and a runner directory under
+`/Users/worker`. If either says `[from built-in default]`, the runner is about
+to advertise the test-lane labels or install into the wrong home; fix the env
+file before it registers.
+
+The runner's own account needs, on PATH for a non-interactive shell: JDK 17,
+Maven and `lsof` (ships with macOS). The **agent** it installs additionally
+needs the Claude Code CLI, Node.js, git and python3 — launchd starts services
+with almost no PATH, so `bin/run.sh` puts Homebrew and `~/.npm-global/bin`
+ahead of it by default; set `FLOWTREE_AGENT_PATH` in `agent.env` if worker's
+tools live elsewhere.
+
+To keep the runner itself up across reboots, use the launchd service under
+"launchd Service (Auto-Start on Boot)" above, installed **as worker** and
+pointing at the two arguments in step 3.
+
+### Where the agent lives, and how to check on it
+
+`install.sh` (`flowtree/runtime/agent/macos/install.sh`) installs into
+`~/flowtree-agent` by default — `lib/` (the JARs), `conf/`, `bin/run.sh`,
+`logs/agent.log`, and `workspace/` for checkouts. Override the location with
+the repository variable `FLOWTREE_MACOS_AGENT_HOME`, and the env file path with
+`FLOWTREE_MACOS_AGENT_ENV`; both are read by the workflow and passed through.
+
+The service label is `com.almostrealism.flowtree-agent`. As worker:
+
+```bash
+launchctl print gui/$(id -u)/com.almostrealism.flowtree-agent | grep -E 'state|pid'
+tail -f ~/flowtree-agent/logs/agent.log
+```
+
+If `gui/<uid>` reports no such service, the runner had no window-server
+session when it installed (started over SSH, for instance) and the service is
+in `user/<uid>` instead; `install.sh` picks whichever domain accepts a
+bootstrap and prints it. The job fails unless the new process is running
+**and** holds a connection to the controller port within three minutes, so a
+green run means the agent is actually on the network, not merely started.
+
+You can run `install.sh` by hand as worker from a checkout to do the same
+thing outside CI — it is the whole deployment, not a helper the workflow wraps.
+
 ## Sharing Runners Across Repositories (Org-Level)
 
 A repository-scoped runner only serves the one repo it registered against. To

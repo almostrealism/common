@@ -55,6 +55,13 @@
 #                       config, e.g. '{"primary":{"model":"opus"}}'. Each named
 #                       phase overrides DEFAULT_PHASE_CONFIG field-by-field.
 #                       Use this to pin one phase without disturbing the rest.
+#   REQUIRED_LABELS   - JSON object of capability labels the executing Node
+#                       must carry, e.g. '{"platform":"macos"}'. Omitted →
+#                       the workstream's own requiredLabels apply, and when
+#                       it has none any Node may take the job. Use this when
+#                       the work only makes sense on a particular machine
+#                       (a GPU-backed performance measurement, a toolchain
+#                       that exists on one platform).
 #
 # Exit codes:
 #   0 - submission succeeded
@@ -164,6 +171,15 @@ fi
 if [ -n "${PHASE_CONFIGS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson c "$PHASE_CONFIGS" \
         '. + {phaseConfigs: $c}')
+fi
+
+# Node routing labels, parsed the same way and for the same reason: a job
+# that was meant for the GPU fleet but ran on whatever Node was free would
+# report measurements from the wrong machine as though they were the ones
+# asked for.
+if [ -n "${REQUIRED_LABELS:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson l "$REQUIRED_LABELS" \
+        '. + {requiredLabels: $l}')
 fi
 
 if [ -n "${STARTED_AFTER:-}" ]; then
