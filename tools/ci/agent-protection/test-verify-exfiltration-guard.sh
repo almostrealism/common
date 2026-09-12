@@ -159,6 +159,48 @@ run_case "no base branch: the ci/ name grants nothing" 2 "$r" "" ci/guard-work
 r=$(make_repo)
 run_case "no base branch: presence and registration only" 0 "$r"
 
+# ── What the BASE branch did is not the branch's doing ──────────────
+#
+# The file comparison uses a three-dot diff, which asks what this branch
+# changed since it diverged. The registration comparison did not: it read
+# the base branch's TIP, so a registration edit made on master after the
+# branch point was reported as this branch modifying the guard. A branch
+# that has touched nothing must pass no matter what master does behind it.
+
+# Commits a change on master after the branch was cut, leaving pr untouched.
+advance_master() {
+    local repo="$1" what="$2"
+    git -C "$repo" checkout -q master
+    if [ "$what" = "registration" ]; then
+        write_settings "$repo" 'Artifact.*|SendUserFile|Bash|Read'
+    else
+        echo "# tightened on master" >> "$repo/.claude/hooks/lib/exfiltration_guard_check.py"
+    fi
+    git -C "$repo" add -A
+    git -C "$repo" commit -q -m "change the guard on master"
+    git -C "$repo" checkout -q pr
+}
+
+r=$(make_repo); advance_master "$r" registration
+run_case "a registration change on master is not blamed on an untouched branch" 0 "$r" master
+
+r=$(make_repo); advance_master "$r" file
+run_case "a guard-file change on master is not blamed on an untouched branch" 0 "$r" master
+
+r=$(make_repo); advance_master "$r" registration
+echo "work" >> "$r/prod.txt"; commit_all "$r" "ordinary work on the branch"
+run_case "nor when the branch has done unrelated work" 0 "$r" master
+
+# The branch's own registration edit is still caught, master having moved
+# or not — the comparison moves to the merge base, it does not go away.
+r=$(make_repo); advance_master "$r" registration
+write_settings "$r" "Bash"; commit_all "$r" "narrow the matcher on the branch"
+run_case "the branch's own registration change is still blocked" 3 "$r" master
+
+r=$(make_repo); advance_master "$r" file
+write_settings "$r" 'Artifact.*|SendUserFile|Bash|Write'; commit_all "$r" "reword on the branch"
+run_case "the branch's own reword is still blocked after master moved" 4 "$r" master
+
 r=$(make_repo); git -C "$r" rm -q .claude/hooks/block-exfiltration.sh; commit_all "$r" "delete adapter"
 run_case "deleted adapter is blocked" 2 "$r" master
 

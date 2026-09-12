@@ -95,7 +95,7 @@ keep working when any of those rules is changed.
 | `cp` into iCloud/Dropbox/OneDrive/`/Volumes` | block |
 | `python -m http.server`, `nc -l`, `socat …-LISTEN`, `php -S` | serving is exposing → block |
 | Editing the allowlist during the session | the allowlist is read from `HEAD`, never the working tree — the edit has no effect until a human commits it |
-| Deleting, unregistering or editing the guard | `guard-enforcement-files.sh` announces the edit; `verify-exfiltration-guard.sh` fails CI when a guard file is missing from `HEAD`, when the registration no longer covers `Artifact`, `SendUserFile` and `Bash`, or when either changed against the base branch |
+| Deleting, unregistering or editing the guard | `guard-enforcement-files.sh` announces the edit; `verify-exfiltration-guard.sh` fails CI when a guard file is missing from `HEAD`, when the registration no longer covers `Artifact`, `SendUserFile` and `Bash`, or when either changed between the merge base with the base branch and HEAD |
 | Setting an environment variable to disable the guard | no such variable exists |
 | Making the audit log unwritable | an allow becomes a block |
 
