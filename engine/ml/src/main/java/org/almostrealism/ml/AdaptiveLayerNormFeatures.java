@@ -76,7 +76,7 @@ public interface AdaptiveLayerNormFeatures extends LayerFeatures {
 	/**
 	 * The shared global conditioning embedder that maps a {@code [batch, dim]} global conditioning
 	 * vector to the {@code [batch, 6 * dim]} tensor of raw modulation components, as a two-layer MLP
-	 * {@code linear(dim, 6 * dim) . silu . linear(dim, dim)}.
+	 * {@code linear(dim, dim) . silu . linear(dim, 6 * dim)}.
 	 *
 	 * <p>The embedder is shared by every block; each block then adds its own
 	 * {@code to_scale_shift_gate} parameter (see {@link #packedModulation}).</p>

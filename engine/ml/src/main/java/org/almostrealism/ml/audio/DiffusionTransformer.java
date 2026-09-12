@@ -184,7 +184,9 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 	/**
 	 * The local additive conditioning input, shape {@code [batch, localAddCondDim, audioSeqLen]},
-	 * captured as a leaf of the compiled graph; {@code null} when the path is absent.
+	 * captured as a leaf of the compiled graph; {@code null} when the path is absent. Explicitly
+	 * zeroed at construction, since allocation does not guarantee zero-filled memory on every
+	 * backend, and released in {@link #destroy()}.
 	 */
 	private final PackedCollection localAddCond;
 
@@ -437,6 +439,9 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		this.condSeqLen = config.getCondSeqLen();
 		this.localAddCond = localAddCondDim > 0 ?
 				new PackedCollection(shape(batchSize, localAddCondDim, audioSeqLen)) : null;
+		if (this.localAddCond != null) {
+			this.localAddCond.clear();
+		}
 		this.stateDictionary = stateDictionary;
 		this.unusedWeights = new HashSet<>();
 
@@ -738,6 +743,17 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		Producer<PackedCollection> localCondInput = localAddCondDim > 0 ?
 				cp(localAddCond).reshape(batchSize, localAddCondDim, audioSeqLen).permute(0, 2, 1) : null;
 
+		// Disabled local-add conditioning leaves to_local_embed weights expected-unused.
+		if (localCondInput == null) {
+			for (int i = 0; i < depth; i++) {
+				String localPrefix = "model.model.transformer.layers." + i + ".to_local_embed.";
+				unusedWeights.remove(localPrefix + "0.weight");
+				unusedWeights.remove(localPrefix + "0.bias");
+				unusedWeights.remove(localPrefix + "2.weight");
+				unusedWeights.remove(localPrefix + "2.bias");
+			}
+		}
+
 		for (int i = 0; i < depth; i++) {
 			// Create and track all weights for this transformer block
 			PackedCollection preNormWeight = createWeight("model.model.transformer.layers." + i + ".pre_norm.gamma", dim);
@@ -981,6 +997,10 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 		if (compiled != null) {
 			compiled.destroy();
+		}
+
+		if (localAddCond != null) {
+			localAddCond.destroy();
 		}
 	}
 

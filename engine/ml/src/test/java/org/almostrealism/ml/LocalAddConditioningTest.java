@@ -30,6 +30,7 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
@@ -182,6 +183,97 @@ public class LocalAddConditioningTest extends TestSuiteBase implements Diffusion
 		transformer.destroy();
 		log("local conditioning changed the output by up to " + diff);
 		assertTrue("A non-zero local conditioning must change the model output", diff > 1e-6);
+	}
+
+	/**
+	 * A {@link DiffusionTransformer} with local additive conditioning disabled must ignore per-layer
+	 * {@code to_local_embed} weights present in a full checkpoint: {@code validateWeights()} must not
+	 * reject them, and {@link DiffusionTransformer#getLocalAddCond()} must report the path as absent.
+	 */
+	@Test(timeout = 240000)
+	public void diffusionTransformerIgnoresLocalCondWeightsWhenDisabled() {
+		int ioChannels = 2;
+		int embedDim = 32;
+		int depth = 2;
+		int numHeads = 2;
+		int globalCondDim = 16;
+		int audioSeqLen = 8;
+		int memoryTokens = 3;
+		int localDim = 3;
+
+		DiffusionTransformerConfig withLocal = new DiffusionTransformerConfig(
+				ioChannels, embedDim, depth, numHeads, 1, 0, globalCondDim, "rf_denoiser", audioSeqLen, 4)
+				.withConditioningMode(ConditioningMode.ADALN)
+				.withMemoryTokens(memoryTokens)
+				.withLocalAddCondDim(localDim)
+				.withTimestepFeatures(TimestepFeatures.EXPO);
+
+		// A full checkpoint that happens to carry the per-layer to_local_embed weights.
+		Map<String, PackedCollection> weights = ditWeights(withLocal);
+
+		DiffusionTransformerConfig withoutLocal = withLocal.withLocalAddCondDim(0);
+		DiffusionTransformer transformer =
+				new DiffusionTransformer(withoutLocal, new StateDictionary(weights));
+
+		int batchSize = DiffusionTransformer.batchSize;
+		PackedCollection input = new PackedCollection(shape(batchSize, ioChannels, audioSeqLen)).randnFill();
+		PackedCollection timestep = new PackedCollection(shape(batchSize, 1)).fill(0.5);
+		PackedCollection globalCond = new PackedCollection(shape(batchSize, globalCondDim)).randnFill();
+
+		PackedCollection output = transformer.forward(input, timestep, null, globalCond);
+		assertEquals(input.getShape().getTotalSize(), output.getShape().getTotalSize());
+		Assert.assertNull("Local conditioning must be absent when disabled", transformer.getLocalAddCond());
+
+		transformer.destroy();
+	}
+
+	/**
+	 * The local additive conditioning buffer must start zero-filled, since plain (unconditioned)
+	 * generation relies on the default contents of {@link DiffusionTransformer#getLocalAddCond()}
+	 * rather than an explicit write.
+	 */
+	@Test(timeout = 120000)
+	public void localAddCondBufferStartsZeroed() {
+		int embedDim = 16;
+		int numHeads = 2;
+		int audioSeqLen = 4;
+		int localDim = 3;
+
+		DiffusionTransformerConfig config = new DiffusionTransformerConfig(
+				2, embedDim, 1, numHeads, 1, 0, 0, "rf_denoiser", audioSeqLen, 0)
+				.withLocalAddCondDim(localDim);
+
+		DiffusionTransformer transformer = new DiffusionTransformer(config, null);
+		PackedCollection localCond = transformer.getLocalAddCond();
+
+		int batchSize = DiffusionTransformer.batchSize;
+		assertEquals(batchSize * localDim * audioSeqLen, localCond.getShape().getTotalSize());
+
+		double[] values = localCond.toArray(0, localCond.getShape().getTotalSize());
+		for (double v : values) {
+			assertEquals(0.0, v, 0.0);
+		}
+
+		transformer.destroy();
+	}
+
+	/**
+	 * {@link DiffusionTransformer#destroy()} must release the local additive conditioning buffer's
+	 * native memory rather than leaking it, since the buffer is captured by reference into the
+	 * compiled graph and has no other owner.
+	 */
+	@Test(timeout = 120000)
+	public void destroyReleasesLocalAddCondBuffer() {
+		DiffusionTransformerConfig config = new DiffusionTransformerConfig(
+				2, 16, 1, 2, 1, 0, 0, "rf_denoiser", 4, 0)
+				.withLocalAddCondDim(3);
+
+		DiffusionTransformer transformer = new DiffusionTransformer(config, null);
+		PackedCollection localCond = transformer.getLocalAddCond();
+		assertFalse("Buffer must be live before destroy", localCond.isDestroyed());
+
+		transformer.destroy();
+		assertTrue("destroy() must release the local-add-cond buffer", localCond.isDestroyed());
 	}
 
 	/**
