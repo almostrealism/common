@@ -12,6 +12,7 @@ own history and silently follows its schedule instead.
 None of that is visible in a passing workflow run, so it is checked here.
 """
 
+import json
 import os
 import re
 import unittest
@@ -130,6 +131,26 @@ class MasterAgentDispatchTests(unittest.TestCase):
                 self.assertIn("all", found)
                 selectors.update(found)
         self.assertEqual(selectors, set(options))
+
+    def test_the_performance_round_is_routed_to_a_gpu_node_at_max_effort(self):
+        """The workflow's runs-on says where the *submission* happens; only
+        REQUIRED_LABELS says where the *agent* runs, and a performance
+        measurement taken on a Node without Metal is the wrong measurement
+        presented as the right one. The effort pin is what buys the
+        planning the round asks for; losing it does not fail anything
+        visible either."""
+        job = self.qa_jobs["performance-qa"]
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        self.assertEqual({"platform": "macos"}, json.loads(env["REQUIRED_LABELS"]))
+        primary = json.loads(env["PHASE_CONFIGS"])["primary"]
+        self.assertEqual("max", primary["effort"])
+        self.assertEqual("opus", primary["model"])
+        # Runner, model and provider must be set together; see the defect
+        # hunt's note in the workflow for why one alone misroutes the phase.
+        self.assertEqual({"runner", "model", "effort", "provider"}, set(primary))
+        self.assertEqual("true", env["PROTECT_TEST_FILES"])
 
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""

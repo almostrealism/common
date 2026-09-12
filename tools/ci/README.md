@@ -23,7 +23,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `parse-surefire-failures.sh` | Extract failing tests from Surefire XML reports |
 | `qa-cadence.sh` | Decide whether a recurring QA round (`BRANCH_PREFIX`) is due |
 | `register-workstream.sh` | Register a workstream with the FlowTree controller |
-| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered |
+| `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Coverage (`coverage/`)
@@ -72,6 +72,7 @@ it knowingly does not cover are in
 | `build-coverage-prompt.sh` | Build prompt for the recurring test-coverage round |
 | `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
 | `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
+| `build-performance-prompt.sh` | Build prompt for the recurring performance round |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
@@ -83,6 +84,7 @@ it knowingly does not cover are in
 | `defect-hunt.txt` | Template for the defect hunt |
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `general-review.txt` | Template for general code review prompt |
+| `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
 | `project-planning.txt` | Template for the planning workflow |
 | `verify-completion.txt` | Template for verify-completion prompt |
 

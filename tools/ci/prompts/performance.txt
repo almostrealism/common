@@ -1,0 +1,141 @@
+You are making one part of this system meaningfully faster, and proving
+that you did.
+
+This is not a code review and it is not a tidy-up. The deliverable is a
+measured reduction in the time an existing test takes to run, produced by
+improving the code the test exercises — never by changing what the test
+does. A speed-up you cannot show with numbers, taken on the machine you
+are running on, is not a finding.
+
+Branch: ${BRANCH}
+Base:   ${BASE_BRANCH}
+
+## Where you are running, and why it matters
+
+This job is routed to a macOS node so that Metal is available. That is
+the point of the exercise: the framework compiles computation graphs to
+native kernels, and the circumstances that matter most are the ones where
+a GPU is present. An optimization that looks good on the CPU backend and
+is neutral or worse on Metal is a regression for the case we care about.
+
+So the ground rules for every measurement you take:
+
+- Confirm at the start that you actually have Metal. Run something small
+  and check the backend it reports before you trust any timing. If Metal
+  is not available, say so, report that the round could not be carried
+  out under the intended conditions, and stop — do not fall back to
+  optimizing for the CPU and presenting the result as though it were the
+  GPU result.
+- Measure on Metal (`AR_HARDWARE_DRIVER=mtl`, passed through the test
+  runner's `jvm_args` as `-DAR_HARDWARE_DRIVER=mtl`), and measure the
+  same test on the native CPU backend (`-DAR_HARDWARE_DRIVER=native`) as
+  well. A change is only acceptable if Metal is faster and native is not
+  meaningfully slower. Both numbers go in your report.
+- Timing is noisy. Use the test runner's `repetitions` option and
+  `get_run_timing` to get more than one sample, and compare distributions
+  rather than single runs. Say how many repetitions you took.
+
+## How to go about it
+
+**1. Find a test that should be faster than it is.**
+
+Every test in this repository carries a `timeout` on its `@Test`
+annotation. Those values are a rough map of where the time goes: a test
+with a large timeout was given one because it was slow when it was
+written. Use them to build a shortlist, then check the shortlist against
+reality by actually running the candidates — the annotation records what
+someone once expected, and expectation and fact drift apart. Where a
+test's real duration is wildly out of line with its timeout in either
+direction — a ten-minute allowance on a test that finishes in seconds,
+or a test that routinely runs close to its limit — call that out in your
+summary. Those deviations are useful in their own right, whether or not
+you end up working on that test.
+
+Prefer a test whose time is spent in the framework rather than in test
+scaffolding: a test that compiles and runs a large computation graph is
+a candidate; a test that is slow because it writes a big file is not
+interesting here. Prefer a test whose slowness reflects something many
+callers pay for, so that the improvement is worth more than the one
+test. `ar-profile-analyzer` is the primary tool for this: run the
+candidate so an operation profile is produced, load it, and use
+`get_timing_breakdown` and `find_slowest` to see which operations the
+time actually goes to, and `get_source` to see what the compiled kernel
+does. Do not guess at where the time goes from reading Java; the
+profile is the evidence.
+
+Say which test you chose, what its timeout is, what it actually takes on
+Metal and on native, and where the profile says the time goes, before
+you change anything.
+
+**2. Form a plan before you edit.**
+
+Write down what you intend to change and why you expect it to be
+faster: which operation, what about its compiled form or its scheduling
+is wasteful, and what the improved version would do instead. Consider
+more than one approach, and prefer the one that improves the framework
+over the one that special-cases this test's shape. A plan that only
+makes this one test fast is worth less than one that makes a class of
+computations faster.
+
+Keep the fundamental rule in view: Java is orchestration, not execution.
+The computation is described as `Producer` compositions and compiled to
+native code, and that is where the time goes. The improvements that
+count are ones that change what gets compiled or how it is scheduled —
+a fused kernel, an avoided copy, a redundant compilation cached, a
+better traversal — not ones that move work into Java loops, which is
+the single worst thing you could do here.
+
+**3. Make the change and measure it.**
+
+Take your baseline measurements first, on both backends, with enough
+repetitions to be meaningful. Then make the change. Then measure again
+under exactly the same conditions. Report both sets of numbers, and the
+profile after the change, so that a reader can see that the operation
+you targeted is the one that got cheaper.
+
+"Meaningfully faster" means a reduction that is clearly outside the
+noise of your repeated runs, on Metal, and that you can attribute to
+the change. A five percent improvement that is inside run-to-run
+variance is not a result. If the change does not produce a measurable
+improvement, say so, revert it, and either try the next approach in
+your plan or report honestly that the target did not yield.
+
+**4. Do not break anything.**
+
+The test you chose must still pass, with its assertions unchanged. The
+tests around the code you touched must still pass. Run them and report
+the output. If a test elsewhere starts failing because of your change,
+that is a defect in the change, not an obstacle to remove.
+
+## What counts as success
+
+In descending order:
+
+1. A measured, reproducible reduction in the test's time on Metal, with
+   native no worse, from a change to the framework, with the tests
+   around it still passing.
+2. A careful account of which test you chose, what the profile showed,
+   what you tried, and why it did not yield — plus any timeout
+   annotations you found to be badly out of line with reality.
+
+The second outcome is a real result and you should be willing to return
+it. Reporting a speed-up you did not measure, or one measured only on
+the CPU, is worse than an honest empty-handed round.
+
+## Constraints
+
+- Do not edit any existing test method. Not its timeout, not its
+  dimensions, not its assertions, not its `@TestDepth`. Making a test
+  faster by making it do less is the thing this round exists to avoid,
+  and it is detected mechanically. If you believe a timeout annotation is
+  wrong, say so in your summary; changing it is not yours to do.
+- Do not move computation out of `Producer` compositions into Java. Do
+  not call `.evaluate()`, `.toDouble()` or friends inside computation
+  code. Any change that does this is a regression regardless of what the
+  stopwatch says on the CPU.
+- Report what you ran and what it printed. "It felt faster" and
+  "verified locally" are not evidence; the timing output on this machine,
+  on both backends, is.
+- Keep the change focused on one improvement. If the profile shows
+  several opportunities, take the most valuable and note the others in
+  your summary.

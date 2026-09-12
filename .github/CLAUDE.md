@@ -443,29 +443,39 @@ it.
 
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
 that fire on a merge to master: `plan-next-task` (Project Manager), `doc-qa`
-(Quality Assurance), `defect-hunt`, `coverage-qa` and `consolidation-qa`. The
-first three were separate workflows with byte-identical triggers; merging them
-keeps the Actions sidebar navigable without changing what any of them does, and
-each job added since lands here for the same reason.
+(Quality Assurance), `defect-hunt`, `coverage-qa`, `consolidation-qa` and
+`performance-qa`. The first three were separate workflows with byte-identical
+triggers; merging them keeps the Actions sidebar navigable without changing
+what any of them does, and each job added since lands here for the same reason.
 
-The four QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
-`consolidation-qa`) share a shape: `tools/ci/qa-cadence.sh` decides whether to
-run from the job's own `BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`,
-`qa/coverage-`, `qa/consolidate-`), `tools/ci/archive-stale-workstreams.sh`
-retires the previous rounds, then a branch is created, a workstream registered,
-a prompt built from `tools/ci/prompts/`, and a coding-agent job submitted with
-`AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
-cadence logic.
+The five QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
+`consolidation-qa`, `performance-qa`) share a shape: `tools/ci/qa-cadence.sh`
+decides whether to run from the job's own `BRANCH_PREFIX` (`qa/docs-`,
+`qa/defect-`, `qa/coverage-`, `qa/consolidate-`, `qa/performance-`),
+`tools/ci/archive-stale-workstreams.sh` retires the previous rounds, then a
+branch is created, a workstream registered, a prompt built from
+`tools/ci/prompts/`, and a coding-agent job submitted with `AUTO_CREATE_PR`. A
+new QA job follows that sequence; it does not need new cadence logic.
+
+`performance-qa` is the one round whose result depends on the machine the
+*agent* runs on, not just the runner that submits it. Its measurements are only
+meaningful with Metal available, so its submission carries
+`REQUIRED_LABELS='{"platform": "macos"}'` (a job-level `requiredLabels` override
+matched against the Node's auto-detected `platform` label) and pins the primary
+phase to `claude/opus` at `effort: max`. The `runs-on` label of the workflow job
+says nothing about where the agent executes; `REQUIRED_LABELS` does. Keep both
+in place when copying this job.
 
 Each job carries its **own** `concurrency` group (`project-manager`,
-`quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`, none
-cancelling in progress), so they serialize independently rather than queueing
-behind one another. Workflow-level concurrency would couple them — do not add
-one.
+`quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+`performance-qa`, none cancelling in progress), so they serialize independently
+rather than queueing behind one another. Workflow-level concurrency would
+couple them — do not add one.
 
 A `workflow_dispatch` selects a single job via the `agent` input
 (`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `coverage` |
-`consolidation`); `force` is passed through to whichever job runs. Each job's
+`consolidation` | `performance`); `force` is passed through to whichever job
+runs. Each job's
 `if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push
 to master runs all of them. Adding a job means adding its selector to that
 `options` list as well — a job whose selector is missing can never be dispatched
