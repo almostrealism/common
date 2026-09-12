@@ -54,7 +54,9 @@ public class ExpoFourierFeaturesTest extends TestSuiteBase implements DiffusionT
 
 	/**
 	 * The feature block maps each timestep to {@code [cos(2 pi t f_k), sin(2 pi t f_k)]} for the ladder
-	 * frequencies, matching a host-side reference.
+	 * frequencies, matching a host-side reference. The kernel evaluates the phase in single precision,
+	 * so the permitted error grows with the phase: a phase of several hundred radians carries a
+	 * rounding error of a few times {@code ulp(1) * phase}, which the tolerance allows for.
 	 */
 	@Test(timeout = 120000)
 	public void featuresMatchReference() {
@@ -79,8 +81,9 @@ public class ExpoFourierFeaturesTest extends TestSuiteBase implements DiffusionT
 			for (int k = 0; k < half; k++) {
 				double f = Math.exp(logMin + (double) k / (half - 1) * (logMax - logMin));
 				double arg = 2.0 * Math.PI * t.valueAt(b, 0) * f;
-				assertEquals(Math.cos(arg), out.valueAt(b, k), 1e-4);
-				assertEquals(Math.sin(arg), out.valueAt(b, half + k), 1e-4);
+				double phaseTolerance = 1e-4 + 8.0 * Math.ulp(1.0f) * Math.abs(arg);
+				assertEquals(Math.cos(arg), out.valueAt(b, k), phaseTolerance);
+				assertEquals(Math.sin(arg), out.valueAt(b, half + k), phaseTolerance);
 			}
 		}
 	}
