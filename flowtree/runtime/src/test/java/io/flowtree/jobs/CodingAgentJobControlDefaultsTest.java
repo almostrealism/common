@@ -38,16 +38,21 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
     // ── Allowed tools — one default, in one place ───────────────────────────
 
     /**
-     * Verifies that the default tool list grants the two background-task tools.
+     * Pins the exact default tool list.
      *
-     * <p>A tool absent from this list is refused by the harness before any hook
-     * sees it, so an agent without them cannot read back or stop a task it
-     * started in the background.</p>
+     * <p>Every other test of a default compares against the constant, which
+     * says a caller follows it but not what it is. This is the one place that
+     * states the value, so a change to the tool surface every agent session
+     * receives cannot pass unnoticed — change it here deliberately or not at
+     * all. A tool absent from the list is refused by the harness before any
+     * hook sees it, which is why the two background-task tools are in it: an
+     * agent without them can start a long command in the background and then
+     * neither read its output nor stop it.</p>
      */
     @Test(timeout = 30000)
-    public void defaultToolsGrantTheBackgroundTaskTools() {
-        assertTrue(CodingAgentJob.DEFAULT_TOOLS.contains("TaskOutput"));
-        assertTrue(CodingAgentJob.DEFAULT_TOOLS.contains("TaskStop"));
+    public void defaultToolsAreExactlyTheseEight() {
+        assertEquals("Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop",
+                CodingAgentJob.DEFAULT_TOOLS);
     }
 
     /**

@@ -16,6 +16,7 @@
 
 package io.flowtree.workstream;
 
+import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -194,8 +195,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(800, entry.getMaxTurns()); // default turns
         assertEquals(100.0, entry.getMaxBudgetUsd(), 0.001); // default budget
         assertTrue(entry.isPushToOrigin()); // default push
-        assertEquals("Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop",
-                entry.getAllowedTools()); // default tools
+        assertEquals(CodingAgentJob.DEFAULT_TOOLS, entry.getAllowedTools()); // default tools
     }
 
     /**
