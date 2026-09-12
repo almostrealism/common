@@ -16,6 +16,7 @@
 
 package io.flowtree.workstream;
 
+import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
@@ -331,7 +332,7 @@ public class Workstream {
         this.workstreamId = UUID.randomUUID().toString();
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
-        this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
+        this.allowedTools = CodingAgentJob.DEFAULT_TOOLS;
         this.maxTurns = 800;
         this.maxBudgetUsd = 100.0;
         this.gitUserName = DEFAULT_GIT_USER_NAME;
@@ -354,7 +355,7 @@ public class Workstream {
         this.channelName = channelName;
         this.agents = new ArrayList<>();
         this.pushToOrigin = true;
-        this.allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
+        this.allowedTools = CodingAgentJob.DEFAULT_TOOLS;
         this.maxTurns = 800;
         this.maxBudgetUsd = 100.0;
     }

@@ -64,7 +64,7 @@ ClaudeCodeJob (io.flowtree.jobs)
 | Method | Type | Default | Description |
 |---|---|---|---|
 | `getPrompt()` / `setPrompt(String)` | `String` | `null` | The prompt to send to Claude Code. |
-| `getAllowedTools()` / `setAllowedTools(String)` | `String` | `"Read,Edit,Write,Bash,Glob,Grep"` | Comma-separated list of base tool names. MCP tools are appended automatically. |
+| `getAllowedTools()` / `setAllowedTools(String)` | `String` | `"Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop"` | Comma-separated list of base tool names. MCP tools are appended automatically. |
 | `getMaxTurns()` / `setMaxTurns(int)` | `int` | `50` | Maximum number of agentic turns before Claude Code stops. |
 | `getMaxBudgetUsd()` / `setMaxBudgetUsd(double)` | `double` | `10.0` | Maximum spend in USD. Set to 0 to disable the budget cap. |
 | `getCentralizedMcpConfig()` / `setCentralizedMcpConfig(String)` | `String` | `null` | JSON mapping centralized MCP server names to HTTP URLs and tool lists. |
@@ -90,7 +90,7 @@ Additional timing and session detail fields are extracted internally and forward
 | Constant | Value | Description |
 |---|---|---|
 | `PROMPT_SEPARATOR` | `";;PROMPT;;"` | Delimiter used to join multiple prompts into a single encoded string in the Factory. This delimiter was chosen to be unlikely to appear in natural language prompts. |
-| `DEFAULT_TOOLS` | `"Read,Edit,Write,Bash,Glob,Grep"` | The base set of tools available to every Claude Code session. These are Claude Code's built-in file and shell tools. MCP tools are appended to this base set by `McpConfigBuilder.buildAllowedTools()`. |
+| `DEFAULT_TOOLS` | `"Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop"` | The base set of tools available to every Claude Code session: Claude Code's built-in file and shell tools, plus the two that manage a background task the agent started (`TaskOutput` reads one's output back, `TaskStop` ends one). MCP tools are appended to this base set by `McpConfigBuilder.buildAllowedTools()`. |
 | `DEDUP_LOCAL` | `"local"` | Deduplication mode: run an inline Claude Code session with the deduplication prompt before the commit. All existing session machinery (tools, budget, MCP config) is reused. The dedup edits land in the same working tree and are committed together with the original work. |
 | `DEDUP_SPAWN` | `"spawn"` | Deduplication mode: post a follow-up `ClaudeCodeJob` to the same workstream via `POST /api/submit` with `automated: true`. Fire-and-forget; requires a workstream URL to be configured. |
 
@@ -980,7 +980,7 @@ Requests NDJSON output (one JSON object per line). This enables structured metri
 
 A comma-separated string listing every tool the agent is allowed to use. Constructed by `mcpConfigBuilder.buildAllowedTools(allowedTools)`:
 
-- Starts with the base tools (default: `Read,Edit,Write,Bash,Glob,Grep`)
+- Starts with the base tools (default: `Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop`)
 - Appends the ar-manager allowlist as `mcp__ar-manager__<tool>` when the URL and bearer are set
 - Appends tools from any other centralized servers as `mcp__<server>__<tool>`
 - Appends pushed server tools in the same format

@@ -194,7 +194,8 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(800, entry.getMaxTurns()); // default turns
         assertEquals(100.0, entry.getMaxBudgetUsd(), 0.001); // default budget
         assertTrue(entry.isPushToOrigin()); // default push
-        assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
+        assertEquals("Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop",
+                entry.getAllowedTools()); // default tools
     }
 
     /**

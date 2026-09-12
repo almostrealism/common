@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -33,6 +34,41 @@ import static org.junit.Assert.assertTrue;
  * cleanup jobs opt in explicitly.</p>
  */
 public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
+
+    // ── Allowed tools — one default, in one place ───────────────────────────
+
+    /**
+     * Verifies that the default tool list grants the two background-task tools.
+     *
+     * <p>A tool absent from this list is refused by the harness before any hook
+     * sees it, so an agent without them cannot read back or stop a task it
+     * started in the background.</p>
+     */
+    @Test(timeout = 30000)
+    public void defaultToolsGrantTheBackgroundTaskTools() {
+        assertTrue(CodingAgentJob.DEFAULT_TOOLS.contains("TaskOutput"));
+        assertTrue(CodingAgentJob.DEFAULT_TOOLS.contains("TaskStop"));
+    }
+
+    /**
+     * Verifies that a workstream configured with no tool list of its own uses
+     * the same default as a job, rather than a copy of it that can drift.
+     */
+    @Test(timeout = 30000)
+    public void workstreamDefaultToolsComeFromTheJobDefault() {
+        assertEquals(CodingAgentJob.DEFAULT_TOOLS, new Workstream().getAllowedTools());
+        assertEquals(CodingAgentJob.DEFAULT_TOOLS,
+                new Workstream("ws-id", "C0", "#channel").getAllowedTools());
+    }
+
+    /**
+     * Verifies that a newly created factory starts from the same default.
+     */
+    @Test(timeout = 30000)
+    public void factoryDefaultToolsComeFromTheJobDefault() {
+        assertEquals(CodingAgentJob.DEFAULT_TOOLS,
+                new CodingAgentJobFactory("prompt").getAllowedTools());
+    }
 
     // ── Deduplication — disabled by default ─────────────────────────────────
 

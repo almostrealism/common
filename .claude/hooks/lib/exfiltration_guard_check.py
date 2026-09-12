@@ -109,6 +109,13 @@ SEND_FILE_PATH_KEYS = ("file_path", "filePath", "path", "file")
 
 SHELLS = frozenset({"bash", "sh", "zsh", "ksh", "dash", "fish", "eval", "source", "."})
 
+# Tools that cannot move anything off the machine, and so are allowed
+# without inspection rather than denied as unrecognised. TaskStop ends a
+# background task; TaskOutput reads one's output back into the session.
+# Both move data inward or not at all, and whatever the task itself does
+# was inspected when the tool that started it ran.
+INERT_TOOLS = frozenset({"TaskStop", "TaskOutput"})
+
 # Programs whose leading tokens are dropped to find the real command.
 WRAPPERS = frozenset({
     "env", "sudo", "doas", "nohup", "time", "nice", "ionice", "timeout",
@@ -1057,8 +1064,45 @@ def _check_stdin_program(prog, piped, bodies, ctx, depth):
             _scan_code(body, f"{prog} heredoc program")
 
 
+def _shell_is_noexec(args):
+    """True when the shell was told to parse its input without running it.
+
+    ``bash -n script.sh`` is a syntax check: the shell reads the file,
+    parses it, and exits. Nothing in it executes, so nothing in it can
+    send anything anywhere — including a file the guard cannot read,
+    which otherwise blocks on the reasoning that a program it cannot
+    inspect must not run. Under ``-n`` no program runs at all.
+
+    Only the option cluster is examined, since a shell stops treating
+    words as options at ``--`` or at the first operand. ``-c`` alongside
+    ``-n`` is still inert: the command string is parsed, not run.
+    """
+    index = 0
+    while index < len(args):
+        tok = args[index]
+        index += 1
+        if tok == "--" or not tok.startswith(("-", "+")) or tok in ("-", "+"):
+            return False
+        # `-o noexec` is the long spelling of -n; `+o noexec` turns it
+        # off again, and a `+` cluster never turns an option on, so
+        # neither of those may be read as a syntax check.
+        if tok in ("-o", "+o"):
+            value = args[index] if index < len(args) else ""
+            index += 1
+            if tok == "-o" and value == "noexec":
+                return True
+            continue
+        if tok.startswith("--") or tok.startswith("+"):
+            continue
+        if "n" in tok[1:]:
+            return True
+    return False
+
+
 def _check_shell(prog, argv, piped, bodies, ctx, depth):
     args = argv[1:]
+    if prog not in ("eval", "source", ".") and _shell_is_noexec(args):
+        return f"{prog}:-n"
     if prog == "eval":
         nested = " ".join(args)
         reason = analyze_command(nested, ctx, depth + 1)
@@ -1405,7 +1449,9 @@ def decide(payload, hook_cwd=None, log_path=AUDIT_LOG_PATH):
     try:
         git = Git(hook_cwd)
         project_toplevel = git.toplevel()
-        if tool.startswith("Artifact"):
+        if tool in INERT_TOOLS:
+            verdict, rule, target = "allow", f"inert-tool:{tool}", ""
+        elif tool.startswith("Artifact"):
             verdict, rule, target = decide_artifact(tool_input, git, project_toplevel)
         elif tool == "SendUserFile":
             verdict, rule, target = decide_send_user_file(tool_input, git, project_toplevel)
