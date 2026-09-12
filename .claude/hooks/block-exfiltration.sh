@@ -6,7 +6,7 @@
 #
 # This is a thin shell wrapper. The decision logic lives in
 # .claude/hooks/lib/exfiltration_guard_check.py — the single source of
-# truth for the policy (docs/plans/EXFILTRATION_GUARD_HOOK.md).
+# truth for the policy (docs/internals/exfiltration-guard.md).
 #
 # The guard fails CLOSED: unparsable input, a missing git binary, an
 # unresolvable path, a subprocess failure, an unknown action, an

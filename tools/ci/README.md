@@ -41,6 +41,11 @@ agent round appends to, not pipeline logic.
 
 ## Agent Protection (`agent-protection/`)
 
+The exfiltration guard's scripts here are the CI half of a hook that runs in
+every agent session. Its policy, the bypasses it was designed against, and what
+it knowingly does not cover are in
+[docs/internals/exfiltration-guard.md](../../docs/internals/exfiltration-guard.md).
+
 | Script | Purpose |
 |---|---|
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |

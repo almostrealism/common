@@ -1,4 +1,4 @@
-# Exfiltration guard allowlist — see docs/plans/EXFILTRATION_GUARD_HOOK.md
+# Exfiltration guard allowlist — see docs/internals/exfiltration-guard.md
 #
 # The guard (.claude/hooks/block-exfiltration.sh) reads this file from HEAD
 # via `git show`, never from the working tree. An edit made during a session
