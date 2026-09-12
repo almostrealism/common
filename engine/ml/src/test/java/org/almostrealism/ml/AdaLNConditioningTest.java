@@ -162,12 +162,14 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 	}
 
 	/**
-	 * An adaLN block whose modulation is the identity (raw {@code scale=0}, {@code shift=0} and a very
-	 * negative raw {@code gate}, so that {@code 1 + scale = 1} and {@code sigmoid(1 - gate) = 1}, for both
+	 * An adaLN block whose modulation is the identity ({@code scale=1, shift=0, gate=1} for both
 	 * sub-layers) must be numerically equal to the unmodulated block. Because the unmodulated block is
 	 * exactly the pre-change pre-norm residual block (the {@code modulation == null} path used by
 	 * {@link ConditioningMode#PREPEND}), this proves the default conditioning path is behaviour-preserving
-	 * while the modulation algebra reduces to identity as documented.
+	 * while the modulation algebra reduces to identity as documented. {@link #scaleShiftGate} takes these
+	 * arguments in their effective, post-transform sense and converts them to the raw pre-transform values
+	 * {@link AdaptiveLayerNormFeatures#residualScale} and {@link AdaptiveLayerNormFeatures#residualGate}
+	 * actually consume.
 	 */
 	@Test(timeout = 240000)
 	public void identityModulationEqualsUnmodulatedBlock() {
@@ -176,8 +178,8 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 
 		PackedCollection unmodulated = run(w.block(null), input);
 
-		// Identity modulation: raw scales = 0, shifts = 0, raw gates = -40, with a zero conditioning vector.
-		PackedCollection identity = scaleShiftGate(0.0, 0.0, -40.0, 0.0, 0.0, -40.0);
+		// Identity modulation: scales = 1, shifts = 0, gates = 1, with a zero conditioning vector.
+		PackedCollection identity = scaleShiftGate(1.0, 0.0, 1.0, 1.0, 0.0, 1.0);
 		Producer<PackedCollection> modulation =
 				adaptiveModulationParameters(zeroConditioning(), identity, BATCH, DIM);
 		PackedCollection modulated = run(w.block(modulation), input);
@@ -189,24 +191,25 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 	}
 
 	/**
-	 * With a very positive raw {@code gate} for both sub-layers ({@code sigmoid(1 - gate) = 0}), every
-	 * residual branch contributes zero and the block must reduce to the identity function (output equal
-	 * to input), regardless of the scale/shift values or the sub-layer weights.
+	 * With {@code gate=0} for both sub-layers, every residual branch contributes zero and the block must
+	 * reduce to the identity function (output equal to input), regardless of the scale/shift values or
+	 * the sub-layer weights. As above, {@link #scaleShiftGate} interprets {@code gate=0} as "fully closed"
+	 * in the effective, post-transform sense.
 	 */
 	@Test(timeout = 240000)
 	public void gateZeroMakesBlockIdentity() {
 		BlockWeights w = new BlockWeights();
 		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
 
-		// Raw gates = 40 close the branches; the scale/shift values are immaterial.
-		PackedCollection gated = scaleShiftGate(1.0, 0.0, 40.0, 1.0, 0.0, 40.0);
+		// Gates = 0 (scales = 1, shifts = 0 are immaterial since the gated branch is zeroed out).
+		PackedCollection gated = scaleShiftGate(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
 		Producer<PackedCollection> modulation =
 				adaptiveModulationParameters(zeroConditioning(), gated, BATCH, DIM);
 		PackedCollection out = run(w.block(modulation), input);
 
 		double diff = compare(input, out);
-		log("closed-gate block vs input difference = " + diff);
-		assertTrue("adaLN with closed gates must collapse the block to the identity function", diff < 1e-4);
+		log("gate=0 block vs input difference = " + diff);
+		assertTrue("adaLN with gate=0 must collapse the block to the identity function", diff < 1e-4);
 	}
 
 	/**
@@ -583,26 +586,52 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 		return cp(new PackedCollection(shape(BATCH, DIM)));
 	}
 
+	/** Raw pre-sigmoid gate magnitude used to saturate {@link #rawGate} at the {@code 0}/{@code 1}
+	 * extremes {@code sigmoid} only approaches asymptotically; {@code sigmoid(41)} and {@code
+	 * sigmoid(-39)} are within double-precision rounding of {@code 1} and {@code 0} respectively. */
+	private static final double GATE_SATURATION = 40.0;
+
 	/**
 	 * Builds a {@code [6, dim]} {@code to_scale_shift_gate} parameter with the six per-component values
-	 * broadcast across the {@code dim} channels.
+	 * broadcast across the {@code dim} channels. Each {@code scale} and {@code gate} argument is given in
+	 * its effective, post-transform sense ({@code scale=1} is "no change"; {@code gate=1}/{@code gate=0}
+	 * is "fully open"/"fully closed") and converted here to the raw pre-transform value the model actually
+	 * stores, inverting {@link AdaptiveLayerNormFeatures#residualScale} ({@code 1 + raw}) and
+	 * {@link AdaptiveLayerNormFeatures#residualGate} ({@code sigmoid(1 - raw)}).
 	 *
-	 * @param scaleSelf scale for the self-attention sub-layer
+	 * @param scaleSelf effective scale for the self-attention sub-layer
 	 * @param shiftSelf shift for the self-attention sub-layer
-	 * @param gateSelf  gate for the self-attention sub-layer
-	 * @param scaleFf   scale for the feed-forward sub-layer
+	 * @param gateSelf  effective gate for the self-attention sub-layer
+	 * @param scaleFf   effective scale for the feed-forward sub-layer
 	 * @param shiftFf   shift for the feed-forward sub-layer
-	 * @param gateFf    gate for the feed-forward sub-layer
-	 * @return the {@code [6, dim]} parameter collection
+	 * @param gateFf    effective gate for the feed-forward sub-layer
+	 * @return the {@code [6, dim]} raw parameter collection
 	 */
 	private PackedCollection scaleShiftGate(double scaleSelf, double shiftSelf, double gateSelf,
 											double scaleFf, double shiftFf, double gateFf) {
 		PackedCollection ssg =
 				new PackedCollection(shape(AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, DIM));
-		cp(pack(scaleSelf, shiftSelf, gateSelf, scaleFf, shiftFf, gateFf))
+		double rawGateSelf = rawGate(gateSelf);
+		double rawGateFf = rawGate(gateFf);
+		cp(pack(scaleSelf - 1.0, shiftSelf, rawGateSelf,
+				scaleFf - 1.0, shiftFf, rawGateFf))
 				.reshape(shape(AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, 1)).repeat(1, DIM)
 				.into(ssg.traverseEach()).evaluate();
 		return ssg;
+	}
+
+	/**
+	 * Inverts {@link AdaptiveLayerNormFeatures#residualGate} ({@code sigmoid(1 - raw)}) to find the raw
+	 * value that produces the given effective gate, saturating at {@link #GATE_SATURATION} for the
+	 * {@code 0} and {@code 1} extremes the sigmoid only approaches asymptotically.
+	 *
+	 * @param effectiveGate the desired {@code sigmoid(1 - raw)} value, in {@code [0, 1]}
+	 * @return the raw pre-sigmoid gate value
+	 */
+	private double rawGate(double effectiveGate) {
+		if (effectiveGate >= 1.0) return -GATE_SATURATION;
+		if (effectiveGate <= 0.0) return GATE_SATURATION;
+		return 1.0 - Math.log(effectiveGate / (1.0 - effectiveGate));
 	}
 
 	/**

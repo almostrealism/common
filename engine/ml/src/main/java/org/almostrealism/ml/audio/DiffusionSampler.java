@@ -193,7 +193,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 		}
 
 		Random random = new Random(seed);
-		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps);
+		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps, latentSequenceLength());
 
 		// Calculate start step based on strength
 		int startStep = (int) ((1.0 - strength) * numInferenceSteps);
@@ -231,10 +231,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 	private PackedCollection runSamplingLoop(PackedCollection x, int startStep,
 											 Random random, PackedCollection crossAttnCond,
 											 PackedCollection globalCond) {
-		// The latent is channels-first, so its sequence length is the final axis; length-adaptive
-		// schedules warp the timestep grid according to it.
-		int sequenceLength = latentShape.length(latentShape.getDimensions() - 1);
-		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps, sequenceLength);
+		double[] timesteps = strategy.getTimesteps(numSteps, numInferenceSteps, latentSequenceLength());
 		int[] shapeArray = latentShape.extent();
 
 		if (verbose) {
@@ -289,6 +286,17 @@ public class DiffusionSampler implements ConsoleFeatures {
 		}
 
 		return x;
+	}
+
+	/**
+	 * The sequence length of the sampler's latent, used to drive length-adaptive schedules.
+	 *
+	 * <p>The latent is channels-first, so its sequence length is the final axis.</p>
+	 *
+	 * @return the latent sequence length
+	 */
+	private int latentSequenceLength() {
+		return latentShape.length(latentShape.getDimensions() - 1);
 	}
 
 	/**

@@ -122,6 +122,48 @@ public class BottleneckInterfaceTest extends TestSuiteBase implements LayerFeatu
 	}
 
 	/**
+	 * A {@link Bottleneck} implementation that does not override {@link Bottleneck#decode(int, int)}
+	 * must fall back to the interface's default identity implementation. This preserves source
+	 * compatibility for implementers written before {@code decode} was added to the interface.
+	 */
+	@Test(timeout = 120000)
+	public void defaultDecodeIsIdentityForBareImplementation() {
+		int batch = 2;
+		int length = 5;
+		int dim = 6;
+
+		Bottleneck bare = new Bottleneck() {
+			@Override
+			public Block bottleneck(int batchSize, int seqLength) {
+				throw new UnsupportedOperationException();
+			}
+
+			@Override
+			public int getInputDim() { return dim; }
+
+			@Override
+			public int getOutputDim() { return dim; }
+		};
+
+		TraversalPolicy latentShape = shape(batch, dim, length);
+		Model model = new Model(latentShape);
+		model.sequential().add(bare.decode(batch, length));
+		CompiledModel compiled = model.compile(false);
+
+		PackedCollection latent = new PackedCollection(latentShape).randnFill();
+		PackedCollection output = compiled.forward(latent);
+		assertEquals(latentShape.getTotalSize(), output.getShape().getTotalSize());
+
+		for (int b = 0; b < batch; b++) {
+			for (int c = 0; c < dim; c++) {
+				for (int l = 0; l < length; l++) {
+					assertEquals(latent.valueAt(b, c, l), output.valueAt(b, c, l), 1e-6);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Compiles the given bottleneck block, runs a known {@value #VAE_INPUT_DIM}-channel input
 	 * through it, and asserts the output equals the first {@value #VAE_OUTPUT_DIM} input channels.
 	 *

@@ -133,6 +133,51 @@ deployment to the default-branch context instead, keeping it off the PR while
 preserving the required-reviewers approval gate. `auto-resolve` is excluded from
 `all-checks`; neither it nor the submit workflow is a quality signal.
 
+**A gate is reported to an agent only when its cause is known.** The message
+`auto-resolve` builds becomes an instruction, and an agent handed "this branch
+weakened its tests" will act on it. `test-integrity-check` therefore publishes
+`failure_reason` — `enforcement-tampering`, `exfil-guard`, `test-hiding`
+(a detector ran and found something), `infrastructure` (a detector could not
+run), or empty — written by the step that reached the verdict, since only that
+step knows whether a non-zero exit was a finding or a crash.
+`check-quality-gates.sh` lists the three findings and reports nothing for
+anything else, so a missing script, a skipped job, or a detector that died
+blocks the pipeline for a human instead of dispatching an agent against an
+innocent branch. When adding a detector to that job: emit a reason for the
+finding, emit `infrastructure` for every other non-zero exit, and add the arm
+to `check-quality-gates.sh` — `tools/tests/test_integrity_check_wiring.py`
+holds the two ends together.
+
+**A step must not assume its own scripts are in the checkout.** On a
+`pull_request` the workflow file comes from the merge with the base, while the
+checkout is `github.event.pull_request.head.sha` — the PR head alone. A step
+added today therefore runs against every open PR's older tree, including PRs
+whose head predates the script that step invokes; an unguarded
+`chmod +x ./tools/ci/...` on such a run fails with "No such file or directory"
+and, before this was fixed, reported that failure as an integrity violation.
+Check the file is there first, and date its absence against the merge base:
+absent there too means the branch predates it (benign), present there means it
+was removed (a real finding) — and only once a merge base has actually been
+established, since without one nothing about the branch is known.
+
+**The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
+only.** Both the enforcement-tampering check and the exfiltration guard's
+integrity comparison treat a `ci/` branch as out of scope, for the reason the
+carve-out has always rested on: a change permitted to rewrite the workflow
+could delete the step that runs the check, so comparing its edits obstructs
+pipeline work without policing anything.
+
+The guard's presence and registration checks (CHECK 1 and CHECK 2 in
+`verify-exfiltration-guard.sh`) are **not** exempt on any branch, and the
+distinction is the whole safety of the carve-out. An edit compared against the
+base is a question about this branch's diff; whether the guard exists and is
+registered in `.claude/settings.json` is a question about the tree an agent
+session will run with. Lifting the first unblocks pipeline work. Lifting the
+second would let a branch name disable the runtime guard for every session on
+the branch — so a `ci/` branch may rewrite the guard, and may not remove or
+unregister it. The policy detectors under `engine/utils` stay locked on every
+branch.
+
 ### What the `build` job covers
 
 The `build` job always runs when `code_changed=true`. It is the critical path

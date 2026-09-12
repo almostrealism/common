@@ -131,19 +131,6 @@ public class VAEBottleneck implements Bottleneck, LayerFeatures {
 	}
 
 	/**
-	 * The VAE mean split has no invertible part: the decoder consumes the {@value #LATENT_DIM}
-	 * channel latent directly, so the decode-side transform is the identity.
-	 *
-	 * @param batchSize Batch size
-	 * @param seqLength Latent sequence length
-	 * @return An identity {@link Block} over the latent shape
-	 */
-	@Override
-	public Block decode(int batchSize, int seqLength) {
-		return passThrough(shape(batchSize, LATENT_DIM, seqLength));
-	}
-
-	/**
 	 * Gets the input dimension (encoder output channels).
 	 *
 	 * @return Input dimension (128)

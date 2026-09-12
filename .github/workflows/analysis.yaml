@@ -86,6 +86,7 @@ jobs:
       extern_changed: ${{ steps.filter.outputs.extern_changed }}
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
       python_changed: ${{ steps.filter.outputs.python_changed }}
+      exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
       images_changed: ${{ steps.filter.outputs.images_changed }}
     steps:
@@ -105,6 +106,7 @@ jobs:
               echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
             done
             echo "python_changed=true" >> "$GITHUB_OUTPUT"
+            echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
             echo "images_changed=true" >> "$GITHUB_OUTPUT"
           }
@@ -142,9 +144,18 @@ jobs:
           # properties, Dockerfiles). Dockerfiles have no extension but are
           # build code — a Dockerfile-only change must set code_changed so the
           # gated jobs (e.g. python-tests, which ANDs code_changed) still run.
+          #
+          # The exfiltration guard's control surface includes two files with
+          # no recognized code extension: .claude/settings.json (the hook
+          # registration) and .claude/hooks/exfil-allowlist.txt (the
+          # destination allowlist). Without listing them explicitly, a PR
+          # that only edits one of these can slip through with code_changed
+          # left false, which skips build/test-integrity-check entirely —
+          # including the guard verification and enforcement-tampering steps
+          # that would otherwise catch a weakened registration or allowlist.
           CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
-            '*/Dockerfile' 'Dockerfile' \
+            '*/Dockerfile' 'Dockerfile' '.claude/settings.json' '.claude/hooks/' \
             | grep -v '^docs/' | grep -v '\.md$' || true)
           if [ -z "$CODE_FILES" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -184,6 +195,34 @@ jobs:
             echo "::notice::Python sources changed — running python-tests"
           else
             echo "python_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Exfiltration guard control-surface detection. The guard's
+          # regression suites (the Python unit tests and the CI-verifier
+          # shell tests) live inside the python-tests job, which is
+          # otherwise gated on python_changed — a flag that only reacts to
+          # *.py files. The shell adapter, the allowlist, and the hook
+          # registration in .claude/settings.json can all change the
+          # guard's effective behavior without touching a .py file, so they
+          # need their own path-based flag to keep the guard's tests wired
+          # to every file that can affect it.
+          # check-quality-gates.sh reports which test-integrity-check step
+          # failed (enforcement tampering, the guard, or test-hiding) from
+          # the guard's own job outputs, so a change to either the script or
+          # its regression test is guard-related the same way the adapter is.
+          GUARD_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '.claude/settings.json' '.claude/hooks/' \
+            'tools/ci/agent-protection/verify-exfiltration-guard.sh' \
+            'tools/ci/agent-protection/test-verify-exfiltration-guard.sh' \
+            'tools/ci/agent-protection/exfil_guard_registration.py' \
+            'tools/ci/agent-protection/test_exfil_guard_registration.py' \
+            'tools/ci/agent-protection/check-quality-gates.sh' \
+            'tools/ci/agent-protection/test-check-quality-gates.sh' || true)
+          if [ -n "$GUARD_FILES" ]; then
+            echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Exfiltration guard control files changed — running guard regression suites"
+          else
+            echo "exfil_guard_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Agent volume isolation detection. The agent-volume-isolation job
@@ -298,6 +337,27 @@ jobs:
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
       violation_count: ${{ steps.check.outputs.violation_count }}
+      # What this job concluded, named rather than inferred. One of
+      # enforcement-tampering, exfil-guard, test-hiding (a detector ran and
+      # found something), infrastructure (a detector could not run), or
+      # empty (nothing failed, or the job never got far enough to say).
+      #
+      # It is a step output, written by the step that reached the verdict,
+      # rather than a guess assembled from step outcomes downstream: only
+      # the step knows whether a non-zero exit was a finding or a crash,
+      # and that difference decides whether an agent is dispatched to
+      # "fix" the branch. Empty is the safe value — a consumer that cannot
+      # name the cause must not accuse the branch of anything. The steps
+      # run in sequence and stop at the first failure, so at most one of
+      # these is ever set.
+      #
+      # Written on one folded line with no extra indentation on the
+      # continuation: a more-indented line in a folded scalar keeps its
+      # newline, and a newline inside ${{ }} is not an expression.
+      failure_reason: >-
+        ${{ steps.enforcement.outputs.reason ||
+        steps.exfil_guard.outputs.reason ||
+        steps.check.outputs.reason }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -338,6 +398,14 @@ jobs:
             "tools/ci/agent-protection/deception-audit.sh"
             "tools/ci/agent-protection/verify-sensitive-bypass.sh"
             "tools/ci/agent-protection/verify-memory-claim.sh"
+            "tools/ci/agent-protection/verify-exfiltration-guard.sh"
+            "tools/ci/agent-protection/test-verify-exfiltration-guard.sh"
+            "tools/ci/agent-protection/exfil_guard_registration.py"
+            "tools/ci/agent-protection/test_exfil_guard_registration.py"
+            ".claude/hooks/block-exfiltration.sh"
+            ".claude/hooks/lib/exfiltration_guard_check.py"
+            ".claude/hooks/lib/test_exfiltration_guard_check.py"
+            ".claude/hooks/exfil-allowlist.txt"
           )
 
           # The grandfathered violation baseline is a burn-down ledger rather
@@ -350,9 +418,16 @@ jobs:
 
           # A branch named ci/... declares the pipeline as the subject of
           # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks only the protected files that ARE the
-          # pipeline — those under .github/workflows/ and tools/ci/. The
-          # policy detectors stay locked on every branch: weakening a
+          # accepts. It unlocks the protected files that ARE the pipeline —
+          # those under .github/workflows/, tools/ci/ and .claude/hooks/.
+          # The last of those is here because a branch permitted to rewrite
+          # the workflow may equally delete the step that checks a hook, so
+          # locking the hook only obstructs the pipeline work it cannot
+          # police; the exfiltration guard's CI check makes the same
+          # judgement for the same reason, and the guard still runs in every
+          # agent session regardless of branch.
+          #
+          # The policy detectors stay locked on every branch: weakening a
           # detector is never what a pipeline change is about. The branch is
           # read from GITHUB_HEAD_REF first because the workspace is a
           # detached checkout of the pull request head.
@@ -360,12 +435,23 @@ jobs:
           CI_BRANCH=false
           if echo "$BRANCH" | grep -qE '^ci/'; then
             CI_BRANCH=true
-            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/, tools/ci/ and .claude/hooks/ may be modified on it."
           fi
 
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
-            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/|^\.claude/hooks/)'; then
+              continue
+            fi
+            # A file that does not exist on origin/master at all is being
+            # introduced for the first time, not modified — there is no
+            # established check to weaken, and the entire file is visible
+            # as new content in the PR diff the same as any other addition.
+            # This is what lets a branch add new enforcement infrastructure
+            # (e.g. a new protected detector or guard file) without tripping
+            # the check that protects it from then on. Once merged, every
+            # subsequent change to the file is fully protected as usual.
+            if ! git cat-file -e "origin/master:${f}" 2>/dev/null; then
               continue
             fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
@@ -404,11 +490,128 @@ jobs:
             if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
               echo "::warning::Enforcement infrastructure tampering detected but IGNORED via the override_integrity_checks input"
             else
+              echo "reason=enforcement-tampering" >> "$GITHUB_OUTPUT"
               exit 1
             fi
           else
             echo "No enforcement infrastructure modifications detected."
           fi
+
+      # The exfiltration guard hook is enforcement infrastructure of a
+      # different kind: it runs inside every agent session and is the only
+      # thing stopping session data from leaving the machine through the
+      # assistant's tools. It must exist on HEAD, be registered for every
+      # tool it covers, and be untouched on a PR branch. Same override as
+      # the tampering check above; same rule — a policy change is a human's
+      # separate PR.
+      #
+      # The verifier is invoked from the checked-out tree, and on a
+      # pull_request that tree is the PR head alone — while the workflow
+      # file running it comes from the merge with the base. A PR opened
+      # before this step existed therefore runs it against a checkout that
+      # has no copy of the script, and `chmod` on a path that is not there
+      # ends the step. That is the branch being old, not the guard being
+      # touched, and it must never be reported as the latter: the script's
+      # own absence is dated against the merge base exactly the way the
+      # script dates the guard (exit 5). Any new script a step reaches for
+      # has the same exposure until every open PR has merged the base.
+      - name: Verify exfiltration guard hook
+        id: exfil_guard
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
+        run: |
+          VERIFIER=./tools/ci/agent-protection/verify-exfiltration-guard.sh
+          BASE=""
+          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            BASE="origin/master"
+          fi
+
+          # The checkout is detached, so the branch name has to be handed
+          # to the verifier rather than read from the repository. It uses
+          # it for one decision — the ci/... exemption — which is stated
+          # once, in the verifier, where the regression suite covers it.
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+
+          # The exception is a verifier that is not in the tree at all: it
+          # cannot apply its own exemption then, so the same rule is
+          # applied here for that one case.
+          if [ ! -f "$VERIFIER" ] && [ -n "$BASE" ] && echo "$BRANCH" | grep -qE '^ci/'; then
+            echo "::notice::${BRANCH} is a CI branch and ${VERIFIER} is not in this tree — the pipeline is the subject of the change, so this is not held against it."
+            echo "not_applicable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ ! -f "$VERIFIER" ]; then
+            # "Removed" is a claim about this branch, and it may only be
+            # made once a merge base has actually placed the file there.
+            # Without one — on the base branch itself, or when merge-base
+            # fails — nothing is known about how the file came to be
+            # absent, and the honest report is that the check could not
+            # run. Guessing "removed" here would be the accusation this
+            # whole step exists to stop making.
+            if [ -z "$BASE" ]; then
+              echo "::error::${VERIFIER} is missing from ${{ github.ref }} itself. The guard verification could not run; this is a pipeline problem, not a finding about a branch."
+              echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            MERGE_BASE=$(git merge-base "$BASE" HEAD 2>/dev/null || true)
+            if [ -z "$MERGE_BASE" ]; then
+              echo "::error::No merge base between ${BASE} and HEAD, so the absence of ${VERIFIER} cannot be dated. The guard verification could not run; this is a pipeline problem, not a finding about this branch."
+              echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+
+            if ! git cat-file -e "${MERGE_BASE}:${VERIFIER#./}" 2>/dev/null; then
+              echo "::notice::The exfiltration guard does not exist at this branch's merge base — the branch predates it and there is nothing to verify. Merge ${BASE} to bring the guard in."
+              echo "not_applicable=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "::error::${VERIFIER} is missing from this branch but exists at its merge base — the guard verifier was removed."
+            echo "reason=exfil-guard" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          chmod +x "$VERIFIER"
+
+          # Built as an array so the master case passes no arguments at
+          # all: with a bare "$VERIFIER" $BASE "$BRANCH" an empty BASE
+          # drops out and the branch name slides into the base-branch
+          # position, which would compare HEAD against a ref that does
+          # not exist.
+          ARGS=()
+          if [ -n "$BASE" ]; then
+            ARGS+=("$BASE" "$BRANCH")
+          fi
+
+          "$VERIFIER" "${ARGS[@]}" || {
+            EXIT_CODE=$?
+            # 2, 3 and 4 are the verifier's own findings — the guard is
+            # missing, unregistered, or modified — and only those are a
+            # finding about this branch. 5 means the branch predates the
+            # guard: nothing to check, and a pass. Anything else is the
+            # check failing to run (no python3, no merge base, a bug in
+            # the script), which is a problem with the pipeline and is
+            # reported as one rather than as a verdict on the branch.
+            if [ "$EXIT_CODE" -eq 5 ]; then
+              echo "::notice::Exfiltration guard check not applicable — this branch predates the guard"
+              echo "not_applicable=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$EXIT_CODE" -ge 2 ] && [ "$EXIT_CODE" -le 4 ]; then
+              echo "::error::Exfiltration guard check failed (exit ${EXIT_CODE}): the hook is missing, unregistered, or modified"
+              echo "reason=exfil-guard" >> "$GITHUB_OUTPUT"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ] && [ "$EXIT_CODE" -eq 4 ]; then
+                echo "::warning::Exfiltration guard modification detected but IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
+              exit 1
+            fi
+            echo "::error::The exfiltration guard check could not run (exit ${EXIT_CODE}). This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+            exit 1
+          }
 
       - name: Check for test-hiding modifications
         id: check
@@ -416,17 +619,35 @@ jobs:
         env:
           OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
-          chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
-          ./tools/ci/agent-protection/detect-test-hiding.sh origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
+          DETECTOR=./tools/ci/agent-protection/detect-test-hiding.sh
+
+          # Same reasoning as the guard step above: a detector that is not
+          # in the checkout cannot have found anything, so its absence is
+          # reported as a pipeline problem and never as a finding about
+          # the branch's tests.
+          if [ ! -f "$DETECTOR" ]; then
+            echo "::error::${DETECTOR} is missing from this checkout — the test-hiding detector could not run. This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          chmod +x "$DETECTOR"
+          "$DETECTOR" origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
             EXIT_CODE=$?
+            # Exit 2 is the detector's finding; every other non-zero code
+            # is the detector failing to complete. Only the first is
+            # evidence that a test was weakened.
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
+              echo "reason=test-hiding" >> "$GITHUB_OUTPUT"
               if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
                 echo "::warning::Test integrity violations IGNORED via the override_integrity_checks input"
                 exit 0
               fi
               exit 1
             fi
+            echo "::error::The test-hiding detector could not complete (exit ${EXIT_CODE}). This is a pipeline problem, not a finding about this branch."
+            echo "reason=infrastructure" >> "$GITHUB_OUTPUT"
             exit "$EXIT_CODE"
           }
 
@@ -435,31 +656,64 @@ jobs:
         run: |
           echo "## Test Integrity Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.enforcement.outcome }}" = "failure" ]; then
-            echo "**FAILED: Enforcement infrastructure was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
-            echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f ${RUNNER_TEMP}/enforcement-report.txt ]; then
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-            fi
-          elif [ "${{ steps.check.outcome }}" != "success" ]; then
-            echo "**FAILED: Existing tests were modified in ways that hide failures.**" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
-            echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            if [ -f ${RUNNER_TEMP}/test-integrity-report.txt ]; then
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-              cat ${RUNNER_TEMP}/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
-              echo '```' >> "$GITHUB_STEP_SUMMARY"
-            fi
-          else
-            echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # At most one step reaches a verdict, so concatenating their
+          # reasons yields that one (or the empty string when none did).
+          REASON="${{ steps.enforcement.outputs.reason }}${{ steps.exfil_guard.outputs.reason }}${{ steps.check.outputs.reason }}"
+
+          case "$REASON" in
+            enforcement-tampering)
+              echo "**FAILED: Enforcement infrastructure was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "The code policy enforcement files are protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
+              echo "Fix the policy violations in your production code instead." >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ -f ${RUNNER_TEMP}/enforcement-report.txt ]; then
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+                cat ${RUNNER_TEMP}/enforcement-report.txt >> "$GITHUB_STEP_SUMMARY"
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
+            exfil-guard)
+              echo "**FAILED: The exfiltration guard hook is missing, unregistered, or was modified.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "The guard is the only barrier between an agent's tools and the outside" >> "$GITHUB_STEP_SUMMARY"
+              echo "world. Changes to it are made and committed by a human, never by an agent." >> "$GITHUB_STEP_SUMMARY"
+              echo "Run \`./tools/ci/agent-protection/verify-exfiltration-guard.sh origin/master\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            test-hiding)
+              echo "**FAILED: Existing tests were modified in ways that hide failures.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "Tests that exist on the base branch are the specification. If the branch breaks" >> "$GITHUB_STEP_SUMMARY"
+              echo "them, the production code must be fixed — not the tests." >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              if [ -f ${RUNNER_TEMP}/test-integrity-report.txt ]; then
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+                cat ${RUNNER_TEMP}/test-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+                echo '```' >> "$GITHUB_STEP_SUMMARY"
+              fi
+              ;;
+            infrastructure)
+              echo "**COULD NOT RUN: a check in this job failed to execute.**" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "This says nothing about the branch — no detector reached a verdict about" >> "$GITHUB_STEP_SUMMARY"
+              echo "it. The job log names the step that could not run. Nothing is dispatched" >> "$GITHUB_STEP_SUMMARY"
+              echo "to \"fix\" a branch on this outcome; the pipeline itself needs the fix." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              if [ "${{ steps.check.outcome }}" = "failure" ] || [ "${{ steps.enforcement.outcome }}" = "failure" ] || [ "${{ steps.exfil_guard.outcome }}" = "failure" ]; then
+                echo "**INCONCLUSIVE: this job failed without recording why.**" >> "$GITHUB_STEP_SUMMARY"
+                echo "" >> "$GITHUB_STEP_SUMMARY"
+                echo "Treat it as a pipeline problem rather than a finding about the branch," >> "$GITHUB_STEP_SUMMARY"
+                echo "and read the job log for the step that ended the run." >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
+                if [ "${{ steps.exfil_guard.outputs.not_applicable }}" = "true" ]; then
+                  echo "" >> "$GITHUB_STEP_SUMMARY"
+                  echo "The exfiltration guard check did not apply: this branch was cut before the guard existed." >> "$GITHUB_STEP_SUMMARY"
+                fi
+              fi
+              ;;
+          esac
 
   # ─── Checkstyle Config Integrity Check ──────────────────────────────
   # Confirms the checkstyle configuration has not been tampered with on a
@@ -497,9 +751,16 @@ jobs:
 
           # A branch named ci/... declares the pipeline as the subject of
           # the change, the same declaration validate-agent-commit.sh RULE 3
-          # accepts. It unlocks only the protected files that ARE the
-          # pipeline — those under .github/workflows/ and tools/ci/. The
-          # policy detectors stay locked on every branch: weakening a
+          # accepts. It unlocks the protected files that ARE the pipeline —
+          # those under .github/workflows/, tools/ci/ and .claude/hooks/.
+          # The last of those is here because a branch permitted to rewrite
+          # the workflow may equally delete the step that checks a hook, so
+          # locking the hook only obstructs the pipeline work it cannot
+          # police; the exfiltration guard's CI check makes the same
+          # judgement for the same reason, and the guard still runs in every
+          # agent session regardless of branch.
+          #
+          # The policy detectors stay locked on every branch: weakening a
           # detector is never what a pipeline change is about. The branch is
           # read from GITHUB_HEAD_REF first because the workspace is a
           # detached checkout of the pull request head.
@@ -507,12 +768,12 @@ jobs:
           CI_BRANCH=false
           if echo "$BRANCH" | grep -qE '^ci/'; then
             CI_BRANCH=true
-            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/ and tools/ci/ may be modified on it."
+            echo "Branch ${BRANCH} is a CI branch — pipeline files under .github/workflows/, tools/ci/ and .claude/hooks/ may be modified on it."
           fi
 
           TAMPERED=""
           for f in "${PROTECTED_FILES[@]}"; do
-            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/)'; then
+            if [ "$CI_BRANCH" = "true" ] && echo "$f" | grep -qE '(^\.github/workflows/|^tools/ci/|^\.claude/hooks/)'; then
               continue
             fi
             if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
@@ -979,12 +1240,17 @@ jobs:
   #   - tools/mcp/manager/test_server.py (ar-manager MCP tools)
   #   - tools/mcp/common/test_memory_text.py (shared MCP libraries)
   #   - tools/tests/test_migrate_workstreams.py (workstreams migration tool)
+  #   - the exfiltration guard's Python and CI-verifier regression suites
   # These are pure Python — no Maven build needed, so this job only depends
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
-  # when any test fails.
+  # when any test fails. Gated on python_changed OR exfil_guard_changed so
+  # the guard suites still run when only its shell adapter, allowlist, or
+  # settings.json registration changed — none of which set python_changed.
   python-tests:
     needs: changes
-    if: needs.changes.outputs.code_changed == 'true' && needs.changes.outputs.python_changed == 'true'
+    if: >-
+      needs.changes.outputs.code_changed == 'true' &&
+      (needs.changes.outputs.python_changed == 'true' || needs.changes.outputs.exfil_guard_changed == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -1015,6 +1281,26 @@ jobs:
 
       - name: Run migration tool tests
         run: python3 -m unittest discover -v -s tools/tests -p "test_*.py"
+
+      # The exfiltration guard's decision logic is Python under
+      # .claude/hooks/lib; its tests build scratch git repositories and
+      # drive the --stdin adapter contract, so they need git and a HOME.
+      - name: Run exfiltration guard hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_check.py"
+
+      - name: Run exfiltration guard CI-verifier tests
+        run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh
+
+      - name: Run exfiltration guard registration helper tests
+        run: python3 -m unittest discover -v -s tools/ci/agent-protection -p "test_exfil_guard_registration.py"
+
+      # check-quality-gates.sh selects the test-integrity-check failure
+      # message from that job's failure_reason output, and — more
+      # importantly — reports nothing at all when the reason is absent or
+      # says a detector could not run. This pins both halves down
+      # independently of the guard's own regression suite above.
+      - name: Run quality-gate messaging regression tests
+        run: bash tools/ci/agent-protection/test-check-quality-gates.sh
 
   # ─── Agent Volume Isolation ────────────────────────────────────────
   # Enforces the hard invariant that FlowTree agent containers can never
@@ -2567,6 +2853,7 @@ jobs:
           TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
           DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
           TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
+          TEST_INTEGRITY_REASON: ${{ needs.test-integrity-check.outputs.failure_reason }}
           AGENT_COMMIT_BLOCKED: ${{ needs.agent-commit-validation.outputs.blocked }}
           AGENT_BLOCK_REASON: ${{ needs.agent-commit-validation.outputs.block_reason }}
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
