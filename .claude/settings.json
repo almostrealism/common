@@ -358,7 +358,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-exfiltration.sh",
-            "description": "Exfiltration guard (fail-closed): the ONLY thing that may leave this machine through the assistant's tools is a repository-tracked, unmodified file published as an artifact. Blocks scratchpad/untracked/modified publishes, artifact replies and inline db writes, SendUserFile of untracked files, and Bash uploads (curl/wget bodies, scp/rsync/ssh/nc to non-lab hosts, git push to non-origin, gh gist/release/api bodies, network one-liners, pipes into shells). Allowlist: .claude/hooks/exfil-allowlist.txt as committed on HEAD. Audit log: ~/.ar-hooks/exfiltration-guard.log. Guarded in CI by tools/ci/agent-protection/verify-exfiltration-guard.sh \u2014 see docs/plans/EXFILTRATION_GUARD_HOOK.md"
+            "description": "Exfiltration guard (fail-closed): the ONLY thing that may leave this machine through the assistant's tools is a repository-tracked, unmodified file published as an artifact. Blocks scratchpad/untracked/modified publishes, artifact replies and inline db writes, SendUserFile of untracked files, and Bash uploads (curl/wget bodies, scp/rsync/ssh/nc to non-lab hosts, git push to non-origin, gh gist/release/api bodies, network one-liners, pipes into shells). Allowlist: .claude/hooks/exfil-allowlist.txt as committed on HEAD. Audit log: ~/.ar-hooks/exfiltration-guard.log. Guarded in CI by tools/ci/agent-protection/verify-exfiltration-guard.sh \u2014 see docs/internals/exfiltration-guard.md"
           }
         ]
       }

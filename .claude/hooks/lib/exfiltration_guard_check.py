@@ -2,7 +2,7 @@
 """Decide whether a tool call could move session data off this machine.
 
 This module is the single source of truth for the exfiltration policy
-described in docs/plans/EXFILTRATION_GUARD_HOOK.md. It is invoked by
+described in docs/internals/exfiltration-guard.md. It is invoked by
 
   - .claude/hooks/block-exfiltration.sh   (Claude Code PreToolUse, --stdin)
 
@@ -94,7 +94,7 @@ POLICY_STATEMENT = (
     "this machine through the assistant's tools. If the content belongs in the\n"
     "repository, add it and stage it (git add) and leave it unmodified; then\n"
     "publish. If it does not belong in the repository, it does not get\n"
-    "published. See docs/plans/EXFILTRATION_GUARD_HOOK.md.\n"
+    "published. See docs/internals/exfiltration-guard.md.\n"
     "\n" + RULE_CHANGE_INVITATION
 )
 
@@ -105,7 +105,7 @@ BASH_POLICY_STATEMENT = (
     "committed on HEAD); `git push` only to origin; `gh` only for pr/issue\n"
     "reads and writes with an inline body. If this command is legitimate, the\n"
     "developer can run it by hand — do not try to rephrase it past the guard.\n"
-    "See docs/plans/EXFILTRATION_GUARD_HOOK.md.\n"
+    "See docs/internals/exfiltration-guard.md.\n"
     "\n" + RULE_CHANGE_INVITATION
 )
 

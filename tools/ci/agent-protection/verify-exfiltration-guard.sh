@@ -71,15 +71,9 @@
 # the checks apply again from that moment; agent branches are cut from a
 # current base and so are never in this state to begin with.
 #
-# NOTE(review): four files in the guard feature that agents cannot edit —
-# .claude/hooks/lib/exfiltration_guard_check.py, .claude/hooks/block-exfiltration.sh,
-# .claude/hooks/exfil-allowlist.txt, .claude/settings.json — still name the design
-# plan document for this feature in comments, docstrings, or block messages shown
-# to the model/human. docs/plans/CLAUDE.md forbids durable code referencing a plan
-# document (it is temporary and may be deleted or superseded once the feature
-# lands, leaving a dangling pointer). This file, tools/bin/llama-service.sh, and
-# tools/ci/README.md have had those references removed since a human can edit
-# those four remaining files; the same cleanup is still owed there.
+# The reasoning behind the policy, the bypasses it was designed against,
+# and what it knowingly does not cover live in
+# docs/internals/exfiltration-guard.md.
 #
 # Outputs (to GITHUB_OUTPUT if available):
 #   blocked=true|false
