@@ -56,7 +56,10 @@ public abstract class InequalityComparisonComputation extends CollectionComparis
 	 *
 	 * <p>A non-positive output count (indicating a zero-sized operand shape) is rejected
 	 * by {@link CollectionProducerComputationBase}'s shape validation, which runs as part
-	 * of the {@code super(...)} call below.</p>
+	 * of the {@code super(...)} call below. {@link GreaterThanCollection} previously carried
+	 * its own {@code getCountLong() <= 0} guard for this same case; that guard could never
+	 * fire, because the base class validation above always rejects a zero-sized shape first,
+	 * so it was removed rather than shared onto {@link LessThanCollection} as well.</p>
 	 *
 	 * @param name The operation identifier (e.g. "greaterThan", "lessThan")
 	 * @param shape The {@link TraversalPolicy} defining the output shape and traversal pattern
