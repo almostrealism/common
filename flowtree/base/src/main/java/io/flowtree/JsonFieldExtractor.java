@@ -258,7 +258,7 @@ public final class JsonFieldExtractor {
 		int arrayStart = json.indexOf("[", colonPos);
 		if (arrayStart < 0) return result;
 
-		int arrayEnd = json.indexOf("]", arrayStart);
+		int arrayEnd = matchingBracket(json, arrayStart);
 		if (arrayEnd < 0) return result;
 
 		String arrayContent = json.substring(arrayStart + 1, arrayEnd);
@@ -311,17 +311,7 @@ public final class JsonFieldExtractor {
 		int arrStart = json.indexOf("[", colonIdx);
 		if (arrStart < 0) return 0;
 
-		int arrEnd = -1;
-		int depth = 1;
-		for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
-			char c = json.charAt(i);
-			if (c == '[') depth++;
-			else if (c == ']') {
-				depth--;
-				if (depth == 0) arrEnd = i;
-			}
-		}
-
+		int arrEnd = matchingBracket(json, arrStart);
 		if (arrEnd < 0) return 0;
 
 		String arrContent = json.substring(arrStart + 1, arrEnd).trim();
@@ -365,18 +355,7 @@ public final class JsonFieldExtractor {
 		int arrStart = json.indexOf("[", colonIdx);
 		if (arrStart < 0) return result;
 
-		// Find matching closing bracket
-		int arrEnd = -1;
-		int depth = 1;
-		for (int i = arrStart + 1; i < json.length() && depth > 0; i++) {
-			char c = json.charAt(i);
-			if (c == '[') depth++;
-			else if (c == ']') {
-				depth--;
-				if (depth == 0) arrEnd = i;
-			}
-		}
-
+		int arrEnd = matchingBracket(json, arrStart);
 		if (arrEnd < 0) return result;
 
 		// Walk through each object in the array and extract the target field
@@ -673,6 +652,49 @@ public final class JsonFieldExtractor {
 			}
 		}
 		return numStr.toString();
+	}
+
+	/**
+	 * Finds the index of the {@code ]} that closes the array whose opening
+	 * {@code [} is at {@code openIndex}. Nested arrays are matched by depth,
+	 * and brackets that appear inside a string literal — {@code ["a]b"]} is
+	 * valid JSON, since {@code ]} needs no escaping inside a string — are
+	 * ignored, as are escaped quotes within such strings.
+	 *
+	 * <p>Shared by {@link #extractStringArray(String, String)},
+	 * {@link #countArrayEntries(String, String)}, and
+	 * {@link #extractFieldFromArrayObjects(String, String, String)} so the
+	 * three agree on where an array ends rather than each stopping at the
+	 * first {@code ]} regardless of context.</p>
+	 *
+	 * @param s         the source text
+	 * @param openIndex the index of the opening {@code [}
+	 * @return the index of the matching {@code ]}, or {@code -1} when the
+	 *         array is not closed
+	 */
+	private static int matchingBracket(CharSequence s, int openIndex) {
+		int depth = 0;
+		boolean inString = false;
+		for (int i = openIndex; i < s.length(); i++) {
+			char c = s.charAt(i);
+			if (inString) {
+				if (c == '\\') {
+					i++;
+				} else if (c == '"') {
+					inString = false;
+				}
+				continue;
+			}
+			if (c == '"') {
+				inString = true;
+			} else if (c == '[') {
+				depth++;
+			} else if (c == ']') {
+				depth--;
+				if (depth == 0) return i;
+			}
+		}
+		return -1;
 	}
 
 	/**
