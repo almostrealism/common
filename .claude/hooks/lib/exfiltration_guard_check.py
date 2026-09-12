@@ -69,6 +69,22 @@ MAX_URL_LENGTH = 512
 MAX_SCRIPT_BYTES = 2 * 1024 * 1024
 MAX_NESTING_DEPTH = 3
 
+# Appended to every block message. A guard that offers no way to
+# disagree with it invites the other kind of disagreement — the quiet
+# rephrasing that ends up teaching a model to route around its own
+# safety rules. The rules here have been relaxed before when a block
+# turned out to be wrong, so this is a real offer, not a formality.
+RULE_CHANGE_INVITATION = (
+    "If you think this rule is wrong — it is stopping ordinary work rather\n"
+    "than an attempt to send data off this machine — say so and ask for it to\n"
+    "be changed. Explain what you were doing and why the block does not fit\n"
+    "it. That is a request with a real answer: these rules have been relaxed\n"
+    "before, for exactly that reason. What is never acceptable is quietly\n"
+    "working around a rule you disagree with — rewording the command, moving\n"
+    "the same action to a tool that is not checked, or splitting it up to\n"
+    "stay under the pattern. Ask, or stop and report that you are blocked.\n"
+)
+
 POLICY_STATEMENT = (
     "Policy: artifacts exist for ONE purpose — showing a file that is already\n"
     "tracked in this repository in the Claude app. The file must be inside the\n"
@@ -79,6 +95,7 @@ POLICY_STATEMENT = (
     "repository, add it and stage it (git add) and leave it unmodified; then\n"
     "publish. If it does not belong in the repository, it does not get\n"
     "published. See docs/plans/EXFILTRATION_GUARD_HOOK.md.\n"
+    "\n" + RULE_CHANGE_INVITATION
 )
 
 BASH_POLICY_STATEMENT = (
@@ -89,6 +106,7 @@ BASH_POLICY_STATEMENT = (
     "reads and writes with an inline body. If this command is legitimate, the\n"
     "developer can run it by hand — do not try to rephrase it past the guard.\n"
     "See docs/plans/EXFILTRATION_GUARD_HOOK.md.\n"
+    "\n" + RULE_CHANGE_INVITATION
 )
 
 ARTIFACT_READ_ONLY_ACTIONS = frozenset({
@@ -108,6 +126,13 @@ SEND_FILE_PATH_KEYS = ("file_path", "filePath", "path", "file")
 # ---------------------------------------------------------------------------
 
 SHELLS = frozenset({"bash", "sh", "zsh", "ksh", "dash", "fish", "eval", "source", "."})
+
+# Tools that cannot move anything off the machine, and so are allowed
+# without inspection rather than denied as unrecognised. TaskStop ends a
+# background task; TaskOutput reads one's output back into the session.
+# Both move data inward or not at all, and whatever the task itself does
+# was inspected when the tool that started it ran.
+INERT_TOOLS = frozenset({"TaskStop", "TaskOutput"})
 
 # Programs whose leading tokens are dropped to find the real command.
 WRAPPERS = frozenset({
@@ -146,6 +171,20 @@ NETWORK_MODULES = frozenset({
 })
 
 # Patterns that mark an inline program (or a script file) as network-capable.
+#
+# What is matched is the means, not a mention. A bare `https://…` used to
+# be on this list, which reads a URL anywhere in the program — including
+# one inside a string the program merely writes to a file — as an attempt
+# to reach it. That cost more than it bought: quoting a URL in prose is
+# ordinary, and every way of actually fetching one still appears here as
+# a module, an API, or a shell-out (`urllib`, `requests`, `fetch(`,
+# `open("https:`, `subprocess`, `os.system`, …).
+#
+# The trade is deliberate and it is not free: a program using a network
+# API nobody listed, against a URL literal, now passes where the bare URL
+# would have caught it. That is the accepted cost of a guard people can
+# work with — one that blocks prose teaches its way around itself, which
+# buys nothing at all.
 NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
     r"\brequests\.", r"\burllib\b", r"\bhttp\.client\b", r"\bhttplib\b",
     r"\bhttpx\b", r"\baiohttp\b", r"\bsocket\b", r"\bsmtplib\b", r"\bftplib\b",
@@ -158,7 +197,7 @@ NETWORK_CODE_PATTERNS = [re.compile(p) for p in (
     r"\bInvoke-WebRequest\b", r"\bInvoke-RestMethod\b", r"\bNet\.WebClient\b",
     r"\bSystem\.Net\b", r"\bHttpClient\b", r"\bURLConnection\b", r"\bjava\.net\b",
     r"\bnew\s+URL\s*\(", r"\bSocket\s*\(", r"\bdo shell script\b",
-    r"https?://", r"\bsystem\s*\(", r"\bsubprocess\b", r"\bos\.system\b",
+    r"\bsystem\s*\(", r"\bsubprocess\b", r"\bos\.system\b",
     r"\bchild_process\b", r"\bexec\s*\(", r"\bpopen\b", r"/inet/",
     r"\|\s*getline\b", r"\bopen\s*\(\s*['\"]https?:",
 )]
@@ -1057,6 +1096,72 @@ def _check_stdin_program(prog, piped, bodies, ctx, depth):
             _scan_code(body, f"{prog} heredoc program")
 
 
+def _shell_invocation(args):
+    """Parse a shell's invocation options once, for everything that reads them.
+
+    Returns ``(noexec, command, operands)``: whether the shell was asked
+    to parse without running anything, the ``-c`` string if one was
+    given (``None`` otherwise), and the words left after the options —
+    the script to run and its arguments.
+
+    An option that takes a value swallows the rest of its token, so the
+    letters are walked one at a time rather than searched. Missing that
+    is not cosmetic: in ``-c'curl … /in'`` the whole command string is
+    part of the ``-c`` token, so a token-wide search for ``n`` finds one
+    in the URL and calls a live command a syntax check, and a scan for
+    the first word that does not start with ``-`` picks an option's
+    value as the script to inspect.
+
+    ``bash -n script.sh`` is a syntax check: the shell reads the file,
+    parses it, and exits. Nothing in it executes, so nothing in it can
+    send anything anywhere — including a file the guard cannot read,
+    which otherwise blocks on the reasoning that a program it cannot
+    inspect must not run. Under ``-n`` no program runs at all, and that
+    holds for ``-c`` too: the command string is parsed, not run.
+    """
+    # The invocation options that consume a value: the rest of the token
+    # when something follows the letter, otherwise the next word.
+    takes_argument = "co"
+
+    noexec = False
+    command = None
+    index = 0
+    while index < len(args):
+        tok = args[index]
+        if tok == "--":
+            index += 1
+            break
+        if not tok.startswith(("-", "+")) or tok in ("-", "+"):
+            break
+        index += 1
+        if tok.startswith("--"):
+            if tok == "--command" and command is None and index < len(args):
+                command = args[index]
+                index += 1
+            continue
+
+        # A `+` cluster turns options OFF — `+o noexec` is the opposite
+        # of a syntax check — so it can never establish noexec. Its
+        # value is still consumed so it is not read as an operand.
+        enabling = tok.startswith("-")
+        for position, letter in enumerate(tok[1:]):
+            if letter == "n" and enabling:
+                noexec = True
+                continue
+            if letter in takes_argument:
+                value = tok[position + 2:]
+                if not value and index < len(args):
+                    value = args[index]
+                    index += 1
+                if letter == "c" and command is None:
+                    command = value
+                elif letter == "o" and enabling and value == "noexec":
+                    noexec = True
+                break
+
+    return noexec, command, args[index:]
+
+
 def _check_shell(prog, argv, piped, bodies, ctx, depth):
     args = argv[1:]
     if prog == "eval":
@@ -1070,23 +1175,23 @@ def _check_shell(prog, argv, piped, bodies, ctx, depth):
             raise GuardError("source without a file")
         _scan_shell_script(_read_script(args[0], ctx), f"sourced script {args[0]!r}")
         return f"source:{args[0]}"
-    for i, tok in enumerate(args):
-        if tok in ("-c", "--command"):
-            nested = args[i + 1] if i + 1 < len(args) else ""
-            reason = analyze_command(nested, ctx, depth + 1)
-            if reason:
-                raise GuardError(f"{prog} -c: {reason}")
-            return f"{prog}:-c"
-        if tok.startswith("-") and len(tok) > 1 and "c" in tok[1:] and not tok.startswith("--"):
-            nested = args[i + 1] if i + 1 < len(args) else ""
-            reason = analyze_command(nested, ctx, depth + 1)
-            if reason:
-                raise GuardError(f"{prog} -c: {reason}")
-            return f"{prog}:-c"
-    positionals = [a for a in args if not a.startswith("-")]
-    if positionals:
-        _scan_shell_script(_read_script(positionals[0], ctx), f"{prog} script {positionals[0]!r}")
-        return f"{prog}:{positionals[0]}"
+    noexec, command, operands = _shell_invocation(args)
+
+    # Nothing executes under -n, so there is nothing here to police —
+    # not the command string, not the script, not a script the guard
+    # cannot even read.
+    if noexec:
+        return f"{prog}:-n"
+
+    if command is not None:
+        reason = analyze_command(command, ctx, depth + 1)
+        if reason:
+            raise GuardError(f"{prog} -c: {reason}")
+        return f"{prog}:-c"
+
+    if operands:
+        _scan_shell_script(_read_script(operands[0], ctx), f"{prog} script {operands[0]!r}")
+        return f"{prog}:{operands[0]}"
     _check_stdin_program(prog, piped, bodies, ctx, depth)
     return f"{prog}:stdin"
 
@@ -1405,7 +1510,9 @@ def decide(payload, hook_cwd=None, log_path=AUDIT_LOG_PATH):
     try:
         git = Git(hook_cwd)
         project_toplevel = git.toplevel()
-        if tool.startswith("Artifact"):
+        if tool in INERT_TOOLS:
+            verdict, rule, target = "allow", f"inert-tool:{tool}", ""
+        elif tool.startswith("Artifact"):
             verdict, rule, target = decide_artifact(tool_input, git, project_toplevel)
         elif tool == "SendUserFile":
             verdict, rule, target = decide_send_user_file(tool_input, git, project_toplevel)

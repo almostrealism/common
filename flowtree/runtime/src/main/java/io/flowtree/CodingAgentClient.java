@@ -389,7 +389,7 @@ public class CodingAgentClient implements ConsoleFeatures {
 		Console.root().println("  --host, -h <host>       Agent hostname (default: localhost)");
 		Console.root().println("  --port, -p <port,...>   Agent port(s), comma-separated (default: 7766)");
 		Console.root().println("  --prompt <text>         The prompt to execute (required)");
-		Console.root().println("  --tools <list>          Allowed tools (default: Read,Edit,Write,Bash,Glob,Grep)");
+		Console.root().println("  --tools <list>          Allowed tools (default: " + CodingAgentJob.DEFAULT_TOOLS + ")");
 		Console.root().println("  --max-turns <n>         Maximum agent turns (default: 50)");
 		Console.root().println("  --max-budget <usd>      Maximum budget in USD (default: 10.0)");
 		Console.root().println("  --help                  Show this help");
