@@ -439,33 +439,63 @@ variable `FLOWTREE_AGENT_ENV` overrides that. Without it the script fails with
 the missing key rather than blocking on a prompt that has no terminal to answer
 it.
 
+**The native macOS agent is the second job, on a third runner.** The Docker
+pool has no GPU, so `deploy-macos-agent` keeps a native agent — a JVM under
+launchd on a Mac, with Metal — on the same JARs, via
+`flowtree/runtime/agent/macos/install.sh`. It `needs: deploy` (two drains
+racing would let one job reopen intake while the other is still rebuilding),
+is gated on the same `DEPLOY_AGENTS` decision, and shares the `production`
+environment (one approval covers both jobs). It asks for
+`[self-hosted, macos, ar-deploy-agent]` — **not** `ar-deploy` — because the
+agent must run as the `worker` account and the job installs the launchd
+service for whichever account the runner runs as. A runner registered as the
+Docker owner would install the agent for the Docker owner, so the job checks
+`id -un` against the expected account (`worker` by default, overridable with
+the repository variable `FLOWTREE_MACOS_AGENT_ACCOUNT`) and fails before
+`install.sh` runs if they do not match. Never add `ar-deploy-agent` to the
+`ar-deploy` runner; register a separate runner as `worker` (see
+`tools/ci/macos/README.md`, "Deploying the native macOS agent"). The job also
+fails unless the new agent process holds a connection to the controller port —
+there is no controller endpoint listing connected agents, so that check is
+made from the agent's side with `lsof`.
+
 ### What the `Master Agent Dispatch` workflow does
 
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
 that fire on a merge to master: `plan-next-task` (Project Manager), `doc-qa`
-(Quality Assurance), `defect-hunt`, `coverage-qa` and `consolidation-qa`. The
-first three were separate workflows with byte-identical triggers; merging them
-keeps the Actions sidebar navigable without changing what any of them does, and
-each job added since lands here for the same reason.
+(Quality Assurance), `defect-hunt`, `coverage-qa`, `consolidation-qa` and
+`performance-qa`. The first three were separate workflows with byte-identical
+triggers; merging them keeps the Actions sidebar navigable without changing
+what any of them does, and each job added since lands here for the same reason.
 
-The four QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
-`consolidation-qa`) share a shape: `tools/ci/qa-cadence.sh` decides whether to
-run from the job's own `BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`,
-`qa/coverage-`, `qa/consolidate-`), `tools/ci/archive-stale-workstreams.sh`
-retires the previous rounds, then a branch is created, a workstream registered,
-a prompt built from `tools/ci/prompts/`, and a coding-agent job submitted with
-`AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
-cadence logic.
+The five QA-style jobs (`doc-qa`, `defect-hunt`, `coverage-qa`,
+`consolidation-qa`, `performance-qa`) share a shape: `tools/ci/qa-cadence.sh`
+decides whether to run from the job's own `BRANCH_PREFIX` (`qa/docs-`,
+`qa/defect-`, `qa/coverage-`, `qa/consolidate-`, `qa/performance-`),
+`tools/ci/archive-stale-workstreams.sh` retires the previous rounds, then a
+branch is created, a workstream registered, a prompt built from
+`tools/ci/prompts/`, and a coding-agent job submitted with `AUTO_CREATE_PR`. A
+new QA job follows that sequence; it does not need new cadence logic.
+
+`performance-qa` is the one round whose result depends on the machine the
+*agent* runs on, not just the runner that submits it. Its measurements are only
+meaningful with Metal available, so its submission carries
+`REQUIRED_LABELS='{"platform": "macos"}'` (a job-level `requiredLabels` override
+matched against the Node's auto-detected `platform` label) and pins the primary
+phase to `claude/opus` at `effort: max`. The `runs-on` label of the workflow job
+says nothing about where the agent executes; `REQUIRED_LABELS` does. Keep both
+in place when copying this job.
 
 Each job carries its **own** `concurrency` group (`project-manager`,
-`quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`, none
-cancelling in progress), so they serialize independently rather than queueing
-behind one another. Workflow-level concurrency would couple them — do not add
-one.
+`quality-assurance`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
+`performance-qa`, none cancelling in progress), so they serialize independently
+rather than queueing behind one another. Workflow-level concurrency would
+couple them — do not add one.
 
 A `workflow_dispatch` selects a single job via the `agent` input
 (`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `coverage` |
-`consolidation`); `force` is passed through to whichever job runs. Each job's
+`consolidation` | `performance`); `force` is passed through to whichever job
+runs. Each job's
 `if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push
 to master runs all of them. Adding a job means adding its selector to that
 `options` list as well — a job whose selector is missing can never be dispatched
