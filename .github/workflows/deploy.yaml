@@ -16,6 +16,15 @@ name: "Deploy Controller Stack"
 # corpus that grounds memory_recall. Under hand-run deploys that corpus drifts
 # from the repository with no signal — answers stay confident while going stale.
 #
+# Two jobs, two runners, one approval gate. `deploy` rebuilds the containers
+# and needs Docker, so it runs as the account that administers Docker on the
+# host. `deploy-macos-agent` installs a native agent under launchd as the
+# account that agent must run as (`worker`), which is not that account and
+# must not be: a job that restarted the worker's launchd services from the
+# Docker owner's session would either fail or land the service in the wrong
+# user's domain. Each job therefore has its own runner label, and the macOS
+# runner README explains how to register a runner as the right account.
+#
 # Only master, and only after a green pipeline.
 
 on:
@@ -25,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       redeploy_agents:
-        description: 'Rebuild and recreate the agent pool (flowtree-agent-1/-2) as well as the controller stack'
+        description: 'Rebuild and recreate the agent pool (flowtree-agent-1/-2 and the native macOS agent) as well as the controller stack'
         required: false
         default: 'true'
         type: choice
@@ -222,6 +231,99 @@ jobs:
         if: always() && steps.quiesce.outputs.reopen == 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+        run: |
+          curl -fsS -X POST "$CONTROLLER_URL/api/config/accept-automated-jobs" \
+            -H 'Content-Type: application/json' -d '{"accept":true}' >/dev/null \
+            && echo "::notice::Job intake reopened" \
+            || echo "::error::FAILED to reopen job intake — do this manually: POST {\"accept\":true} to $CONTROLLER_URL/api/config/accept-automated-jobs"
+
+  # ── Native macOS agent ────────────────────────────────────────────
+  # The Docker pool has no GPU. This job keeps a third agent — a plain JVM
+  # under launchd on a Mac, with Metal — on the same JARs as the pool, so
+  # jobs that require `platform=macos` (the performance round, anything
+  # that must measure on a GPU) have somewhere to run without anyone
+  # starting an agent by hand after every deploy or reboot.
+  #
+  # It follows `deploy` rather than running beside it. Both jobs drain the
+  # controller before replacing an agent, and two drains racing each other
+  # would let the first job reopen intake while the second is still
+  # rebuilding — a fresh job would then land on the native agent moments
+  # before it was restarted. Sequenced, each quiesce sees a settled
+  # controller. Skipped, like the pool rebuild, when DEPLOY_AGENTS is
+  # false; a controller-only deploy leaves every agent alone.
+  #
+  # The runner label is the load-bearing part. `ar-deploy-agent` is
+  # carried only by a runner registered as the `worker` account (see
+  # tools/ci/macos/README.md, "Deploying the native macOS agent"). Nothing
+  # in this job elevates or switches user: whichever account the runner
+  # runs as is the account the agent is installed for, so a runner
+  # registered as the wrong account installs the agent for the wrong
+  # account, silently. install.sh prints the account it is acting as.
+  deploy-macos-agent:
+    needs: deploy
+    if: >-
+      needs.deploy.result == 'success' &&
+      (github.event.inputs.redeploy_agents || vars.FLOWTREE_DEPLOY_AGENTS || 'true') == 'true'
+    runs-on: [self-hosted, macos, ar-deploy-agent]
+    # Same approval gate as the container deploy. Approving the run
+    # approves both jobs; there is no second prompt.
+    environment: production
+    permissions:
+      contents: read
+    env:
+      CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
+      # Where the agent is installed, as seen by the runner's account. The
+      # env file the service loads lives beside it (agent.env) unless
+      # FLOWTREE_MACOS_AGENT_ENV points elsewhere. Both are locations
+      # outside the checkout, like the pool's agent.env.
+      FLOWTREE_AGENT_HOME: ${{ vars.FLOWTREE_MACOS_AGENT_HOME || '' }}
+      FLOWTREE_AGENT_ENV: ${{ vars.FLOWTREE_MACOS_AGENT_ENV || '' }}
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      # The same quiesce/drain/reopen bracket as `deploy`, for the same
+      # reason: restarting the agent kills whatever job it is running.
+      - name: Stop accepting new agent jobs
+        id: quiesce
+        run: |
+          if curl -fsS -X POST "$CONTROLLER_URL/api/config/accept-automated-jobs" \
+               -H 'Content-Type: application/json' -d '{"accept":false}' >/dev/null; then
+            echo "reopen=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Job intake closed for the duration of the agent install"
+          else
+            echo "reopen=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Controller unreachable — skipping drain"
+          fi
+
+      - name: Wait for in-flight agent jobs to finish
+        if: >-
+          steps.quiesce.outputs.reopen == 'true' &&
+          github.event.inputs.skip_drain != 'true'
+        env:
+          DRAIN_TIMEOUT_SECONDS: '1800'
+        run: ./tools/ci/drain-agent-jobs.sh
+
+      - name: Report the account and host
+        run: |
+          echo "::notice::Installing the native agent as $(id -un) on $(hostname)"
+
+      # install.sh builds the JARs, swaps them into FLOWTREE_AGENT_HOME/lib,
+      # re-renders the launchd plist, reloads the service, and fails unless
+      # the new process opens its connection to the controller. Empty
+      # FLOWTREE_AGENT_HOME / FLOWTREE_AGENT_ENV fall through to the
+      # script's defaults under the runner account's home.
+      - name: Build, install and restart the native agent
+        run: |
+          [ -n "${FLOWTREE_AGENT_HOME}" ] || unset FLOWTREE_AGENT_HOME
+          [ -n "${FLOWTREE_AGENT_ENV}" ] || unset FLOWTREE_AGENT_ENV
+          ./flowtree/runtime/agent/macos/install.sh
+
+      - name: Resume accepting agent jobs
+        if: always() && steps.quiesce.outputs.reopen == 'true'
         run: |
           curl -fsS -X POST "$CONTROLLER_URL/api/config/accept-automated-jobs" \
             -H 'Content-Type: application/json' -d '{"accept":true}' >/dev/null \

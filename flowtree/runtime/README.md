@@ -169,6 +169,24 @@ Agents read `FLOWTREE_ROOT_HOST` to find the controller and connect outbound on 
 ```
 
 Requires Java 17, Maven, Node.js, and the Claude Code CLI installed locally.
+This runs in the foreground from the checkout; it is for trying things out.
+
+### Native macOS agent (launchd, with Metal)
+
+The Docker pool runs Linux containers and has no GPU. For jobs that require
+`platform=macos`, a native agent runs as a launchd service on a Mac and is
+deployed by the same workflow that rebuilds the pool:
+
+```bash
+# as the account the agent should run as
+cp agent/macos/agent.env.example ~/flowtree-agent/agent.env   # then fill it in
+./agent/macos/install.sh
+```
+
+`install.sh` builds the JARs, installs them under `~/flowtree-agent`, loads
+`com.almostrealism.flowtree-agent` into launchd (`KeepAlive`, so it survives
+crashes and reboots), and fails unless the new process connects to the
+controller. `tools/ci/macos/README.md` covers the runner that lets CI do this.
 
 ---
 
@@ -225,6 +243,11 @@ flowtree/
     docker-compose.yml
     Dockerfile
     start.sh
+    macos/                  # Native macOS agent (launchd service)
+      install.sh
+      run.sh
+      com.almostrealism.flowtree-agent.plist
+      agent.env.example
   bin/                      # Bare-metal startup scripts
     start-agent.sh
     start-controller.sh

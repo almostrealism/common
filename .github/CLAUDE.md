@@ -439,6 +439,23 @@ variable `FLOWTREE_AGENT_ENV` overrides that. Without it the script fails with
 the missing key rather than blocking on a prompt that has no terminal to answer
 it.
 
+**The native macOS agent is the second job, on a third runner.** The Docker
+pool has no GPU, so `deploy-macos-agent` keeps a native agent — a JVM under
+launchd on a Mac, with Metal — on the same JARs, via
+`flowtree/runtime/agent/macos/install.sh`. It `needs: deploy` (two drains
+racing would let one job reopen intake while the other is still rebuilding),
+is gated on the same `DEPLOY_AGENTS` decision, and shares the `production`
+environment (one approval covers both jobs). It asks for
+`[self-hosted, macos, ar-deploy-agent]` — **not** `ar-deploy` — because the
+agent must run as the `worker` account and the job installs the launchd
+service for whichever account the runner runs as. A runner registered as the
+Docker owner would install the agent for the Docker owner and report success.
+Never add `ar-deploy-agent` to the `ar-deploy` runner; register a separate
+runner as `worker` (see `tools/ci/macos/README.md`, "Deploying the native
+macOS agent"). The job fails unless the new agent process holds a connection
+to the controller port — there is no controller endpoint listing connected
+agents, so the check is made from the agent's side with `lsof`.
+
 ### What the `Master Agent Dispatch` workflow does
 
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
