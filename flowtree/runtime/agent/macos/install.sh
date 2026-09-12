@@ -113,12 +113,16 @@ if [ -z "$(read_env_key CLAUDE_CODE_OAUTH_TOKEN)" ] && [ -z "$(read_env_key ANTH
     exit 1
 fi
 
-for cmd in java mvn launchctl lsof; do
+for cmd in java launchctl lsof; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
         echo "ERROR: ${cmd} is not on PATH for $(id -un)." >&2
         exit 1
     fi
 done
+if [ "${BUILD}" = true ] && ! command -v mvn >/dev/null 2>&1; then
+    echo "ERROR: mvn is not on PATH for $(id -un)." >&2
+    exit 1
+fi
 
 echo "Installing native FlowTree agent"
 echo "  Account:     $(id -un)"
@@ -201,18 +205,27 @@ else
 fi
 SERVICE="${DOMAIN}/${LABEL}"
 
-if launchctl print "${SERVICE}" >/dev/null 2>&1; then
-    echo "Stopping the running agent (${SERVICE})..."
-    launchctl bootout "${SERVICE}" || true
-    # bootout returns before the process is gone; wait for it so the new
-    # service does not race the old one for the controller connection.
-    for _ in $(seq 1 30); do
-        if ! launchctl print "${SERVICE}" >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-fi
+# Stop any existing instance in EITHER domain, not just the one just chosen.
+# An install can move between domains across runs — a first install over SSH
+# (no window-server session, so the per-user domain) followed by a run where
+# a GUI session exists (the gui domain) — and the previous domain's instance
+# does not go away on its own. Leaving it running would mean two processes
+# with the same node identity both connected to the controller.
+for candidate_domain in "gui/${UID_NUM}" "user/${UID_NUM}"; do
+    candidate_service="${candidate_domain}/${LABEL}"
+    if launchctl print "${candidate_service}" >/dev/null 2>&1; then
+        echo "Stopping the running agent (${candidate_service})..."
+        launchctl bootout "${candidate_service}" || true
+        # bootout returns before the process is gone; wait for it so the new
+        # service does not race the old one for the controller connection.
+        for _ in $(seq 1 30); do
+            if ! launchctl print "${candidate_service}" >/dev/null 2>&1; then
+                break
+            fi
+            sleep 1
+        done
+    fi
+done
 
 echo "Starting the agent (${SERVICE})..."
 launchctl bootstrap "${DOMAIN}" "${PLIST}"

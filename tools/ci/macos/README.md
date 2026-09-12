@@ -396,12 +396,14 @@ runner*. It never elevates or switches user, so:
   `worker` service account, so the runner must be started as `worker`.
 - The Docker deploy runner (`ar-deploy`) is a different account — the one
   that administers Docker — and cannot do this job. Do not add
-  `ar-deploy-agent` to it: the agent would be installed for that account
-  instead, and the workflow would report success while doing so.
-- A runner registered as the wrong account installs the agent for the wrong
-  account, silently. The job's first step prints `Installing the native agent
-  as <account> on <host>` so this is visible in the run log; check it the
-  first time.
+  `ar-deploy-agent` to it: the job would fail the account check below rather
+  than install anything for it.
+- A runner registered as the wrong account would install the agent for the
+  wrong account. The job's first step prints `Installing the native agent as
+  <account> on <host>` and then fails the job if `<account>` does not match
+  the expected service account (`worker` by default, overridable with the
+  repository variable `FLOWTREE_MACOS_AGENT_ACCOUNT`), so a mis-registered
+  runner is caught rather than silently installing in the wrong place.
 
 ### Setting up the `worker` runner
 

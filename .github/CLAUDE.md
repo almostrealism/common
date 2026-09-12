@@ -449,12 +449,15 @@ environment (one approval covers both jobs). It asks for
 `[self-hosted, macos, ar-deploy-agent]` — **not** `ar-deploy` — because the
 agent must run as the `worker` account and the job installs the launchd
 service for whichever account the runner runs as. A runner registered as the
-Docker owner would install the agent for the Docker owner and report success.
-Never add `ar-deploy-agent` to the `ar-deploy` runner; register a separate
-runner as `worker` (see `tools/ci/macos/README.md`, "Deploying the native
-macOS agent"). The job fails unless the new agent process holds a connection
-to the controller port — there is no controller endpoint listing connected
-agents, so the check is made from the agent's side with `lsof`.
+Docker owner would install the agent for the Docker owner, so the job checks
+`id -un` against the expected account (`worker` by default, overridable with
+the repository variable `FLOWTREE_MACOS_AGENT_ACCOUNT`) and fails before
+`install.sh` runs if they do not match. Never add `ar-deploy-agent` to the
+`ar-deploy` runner; register a separate runner as `worker` (see
+`tools/ci/macos/README.md`, "Deploying the native macOS agent"). The job also
+fails unless the new agent process holds a connection to the controller port —
+there is no controller endpoint listing connected agents, so that check is
+made from the agent's side with `lsof`.
 
 ### What the `Master Agent Dispatch` workflow does
 

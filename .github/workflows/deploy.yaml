@@ -256,9 +256,9 @@ jobs:
   # carried only by a runner registered as the `worker` account (see
   # tools/ci/macos/README.md, "Deploying the native macOS agent"). Nothing
   # in this job elevates or switches user: whichever account the runner
-  # runs as is the account the agent is installed for, so a runner
-  # registered as the wrong account installs the agent for the wrong
-  # account, silently. install.sh prints the account it is acting as.
+  # runs as is the account the agent is installed for, so the job checks
+  # that account against EXPECTED_AGENT_ACCOUNT before install.sh runs and
+  # fails rather than installing for the wrong account.
   deploy-macos-agent:
     needs: deploy
     if: >-
@@ -278,6 +278,12 @@ jobs:
       # outside the checkout, like the pool's agent.env.
       FLOWTREE_AGENT_HOME: ${{ vars.FLOWTREE_MACOS_AGENT_HOME || '' }}
       FLOWTREE_AGENT_ENV: ${{ vars.FLOWTREE_MACOS_AGENT_ENV || '' }}
+      # The account the runner is documented to run as (see
+      # tools/ci/macos/README.md, "Deploying the native macOS agent"). This
+      # job never elevates or switches user, so a runner mis-registered under
+      # a different account would otherwise install and validate the launchd
+      # service there instead — silently, and reported as success.
+      EXPECTED_AGENT_ACCOUNT: ${{ vars.FLOWTREE_MACOS_AGENT_ACCOUNT || 'worker' }}
     steps:
       - name: Checkout master
         uses: actions/checkout@v4
@@ -307,9 +313,14 @@ jobs:
           DRAIN_TIMEOUT_SECONDS: '1800'
         run: ./tools/ci/drain-agent-jobs.sh
 
-      - name: Report the account and host
+      - name: Verify the runner account and report the host
         run: |
-          echo "::notice::Installing the native agent as $(id -un) on $(hostname)"
+          ACCOUNT="$(id -un)"
+          echo "::notice::Installing the native agent as ${ACCOUNT} on $(hostname)"
+          if [ "${ACCOUNT}" != "${EXPECTED_AGENT_ACCOUNT}" ]; then
+            echo "::error::This runner is registered as '${ACCOUNT}', not the documented service account '${EXPECTED_AGENT_ACCOUNT}'. Installing here would put the launchd service in the wrong account's home. See tools/ci/macos/README.md, 'Deploying the native macOS agent'." >&2
+            exit 1
+          fi
 
       # install.sh builds the JARs, swaps them into FLOWTREE_AGENT_HOME/lib,
       # re-renders the launchd plist, reloads the service, and fails unless
