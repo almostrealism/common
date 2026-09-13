@@ -701,7 +701,7 @@ Integrated into `ProtobufDiskStore` via the `put(id, record, vector)` overload:
 ```java
 // Store with embedding vector
 PackedCollection<?> vector = new PackedCollection<>(shape(768));
-vector.setMem(embedding);  // load a 768-dim embedding
+vector.set(0, embedding);  // load a 768-dim embedding
 store.put("id-1", myRecord, vector);
 
 // Search by vector similarity
