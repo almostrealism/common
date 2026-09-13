@@ -452,7 +452,7 @@ PackedCollection output = model.forward(
 - Rotary Position Embeddings (RoPE)
 - Timestep embeddings via Fourier features
 - Optional cross-attention conditioning
-- Prepended conditioning approach (not AdaLayerNorm)
+- Configurable conditioning mode: prepended conditioning (default) or adaLN-Zero modulation
 
 ### LoRA Fine-Tuning
 
@@ -497,24 +497,35 @@ Block attention = sequenceAttention(shape, weights, factory);
 
 ### Conditioning Approach: Prepended Conditioning vs AdaLayerNorm
 
-DiffusionTransformer uses **prepended conditioning** instead of Adaptive Layer Normalization (AdaLayerNorm).
+`DiffusionTransformer` selects its conditioning scheme via `ConditioningMode`: `PREPEND` (the
+default) or `ADALN`.
 
-**What is AdaLayerNorm?**
-AdaLayerNorm is a technique where normalization parameters (scale/shift) are computed from conditioning signals like timestep. Formula: `y = gamma(cond) * norm(x) + beta(cond)`. Some diffusion models use this for timestep conditioning.
+**What is AdaLayerNorm (adaLN)?**
+AdaLayerNorm is a technique where normalization parameters (scale/shift/gate) are computed from
+conditioning signals like timestep. Formula: `y = gamma(cond) * norm(x) + beta(cond)`. Many
+diffusion transformers (including adaLN-Zero variants) use this for timestep and global
+conditioning.
 
-**Why AR uses prepended conditioning instead:**
+**`ConditioningMode.PREPEND` (default):**
 - **Simpler architecture**: No per-layer conditioning projections needed
 - **Standard normalization**: Regular LayerNorm throughout, less complexity
 - **Attention-based integration**: Conditioning tokens participate in self-attention naturally
 - **Flexibility**: Easy to add/remove conditioning types without architecture changes
 
-**How it works:**
+How it works:
 1. Timestep and global conditioning projected to embedding dimension
 2. Prepended as extra tokens to the input sequence
 3. Self-attention integrates conditioning information
 4. Conditioning tokens removed before output
 
 See `DiffusionTransformer.prependConditioning()` for implementation.
+
+**`ConditioningMode.ADALN`:**
+adaLN-Zero modulation derives per-block scale/shift/gate vectors from the combined timestep and
+global conditioning embedding and modulates each sub-layer (self-attention and feed-forward) in
+place, without lengthening the sequence. When no global conditioning is configured, the timestep
+embedding alone drives the modulation. See `DiffusionTransformer.adaptiveConditioning()` and
+`AdaptiveLayerNormFeatures`.
 
 ## Integration with Other Modules
 
@@ -666,12 +677,17 @@ Top-level entry point that wires together:
 Generic over `T extends com.google.protobuf.Message`. Records are written in protobuf wire format using `writeDelimitedTo` — no wrapper messages, no double serialization. The store is already available in `ar-ml` (which has the protobuf-maven-plugin and dependency).
 
 ```java
-// Construct with root directory, protobuf parser, and memory budget
+// Construct with root directory, protobuf parser, and memory/batch budget
 ProtobufDiskStore<MyRecord> store = new ProtobufDiskStore<>(
     new File("/data/store"),
     MyRecord.parser(),
-    500 * 1024 * 1024L  // 500 MB max in memory
+    500 * 1024 * 1024L,  // 500 MB max in memory
+    4 * 1024 * 1024      // target batch file size in bytes (4 MB)
 );
+
+// Or use the two-argument constructor for the default memory/batch budget
+ProtobufDiskStore<MyRecord> defaultStore = new ProtobufDiskStore<>(
+    new File("/data/store"), MyRecord.parser());
 
 store.put("id-1", myRecord);
 MyRecord r = store.get("id-1");
