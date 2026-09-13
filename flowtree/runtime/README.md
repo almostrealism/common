@@ -6,6 +6,12 @@ FlowTree is a distributed processing framework built on a decentralized peer-to-
 
 A full FlowTree deployment has two parts — a **controller stack** running on a server and an **agent pool** running wherever compute is available. The controller coordinates job dispatch and integrates with external services; the agents do the actual work.
 
+The agent pool itself has two kinds of members: a Docker Compose pool of Linux
+containers (no GPU), and a native macOS agent running as a launchd service for
+jobs that require `platform=macos` (see
+[Native macOS agent](#native-macos-agent-launchd-with-metal) below). Both are
+deployed by the same workflow and connect outbound to the same controller.
+
 ```
   External triggers
   (Slack, CI, API)
@@ -39,6 +45,9 @@ A full FlowTree deployment has two parts — a **controller stack** running on a
 │  └───────────┘   └───────────┘   └───────────┘        │
 └────────────────────────────────────────────────────────┘
 ```
+
+Not pictured above: a native macOS agent (launchd service, not Docker) that
+runs alongside this pool and receives jobs labeled `platform=macos`.
 
 ### Component Roles
 
@@ -227,7 +236,7 @@ Servers discover each other through explicit connection (host + port) or through
 - **[Slack Integration](docs/slack-integration.md)** — Operate coding agents through Slack, with real-time status updates and bidirectional messaging via MCP tools. Includes dynamic workstream registration with auto-created private Slack channels.
 - **[CI Integration](docs/ci-integration.md)** — Auto-resolve CI failures and implement plan goals via the verify-completion workflow, with workstream registration, prompt generation, and quality gates.
 - **[Node Relay and Job Routing](docs/node-relay.md)** — How jobs move through the network: server vs. peer connections, the relay loop, label-based routing, and the controller's relay Node. **Read this before modifying Node, NodeGroup, or Connection.**
-- **[Agent Pool](docs/agent-pool.md)** — Self-contained Docker setup for running a scalable pool of agent nodes.
+- **[Agent Pool](docs/agent-pool.md)** — Self-contained Docker setup for running a scalable pool of agent nodes, plus a native macOS agent (launchd) for jobs that require `platform=macos`.
 - **[MCP Tools for Agent Jobs](../tools/mcp/README.md)** — Which MCP tools are available to coding agents, how they are delivered, and how to configure `workstreams.yaml`.
 
 ---
