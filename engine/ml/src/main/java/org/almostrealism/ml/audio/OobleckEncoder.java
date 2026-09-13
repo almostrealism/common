@@ -55,7 +55,7 @@ import org.almostrealism.model.SequentialBlock;
  * @see OobleckDecoder
  * @see OobleckAutoEncoder
  */
-public class OobleckEncoder extends SequentialBlock {
+public class OobleckEncoder extends OobleckCodec {
 
 	/** Downsampling strides for each of the five encoder blocks. */
 	private static final int[] STRIDES = {4, 8, 8, 16, 16};
@@ -72,9 +72,6 @@ public class OobleckEncoder extends SequentialBlock {
 	/** Number of residual blocks within each encoder block. */
 	private static final int NUM_RES_BLOCKS = 3;
 
-	/** Weights loaded from the Stable Audio Open checkpoint format. */
-	private final StateDictionary stateDict;
-
 	/** Batch size this encoder was configured for. */
 	private final int batchSize;
 
@@ -90,8 +87,7 @@ public class OobleckEncoder extends SequentialBlock {
 	 * @param seqLength Input audio sequence length
 	 */
 	public OobleckEncoder(StateDictionary stateDict, int batchSize, int seqLength) {
-		super(new TraversalPolicy(batchSize, 2, seqLength));
-		this.stateDict = stateDict;
+		super(new TraversalPolicy(batchSize, 2, seqLength), stateDict);
 		this.batchSize = batchSize;
 		this.outputLength = computeOutputLength(seqLength);
 		buildEncoder(batchSize, seqLength);
@@ -195,43 +191,6 @@ public class OobleckEncoder extends SequentialBlock {
 				kernel, stride, padding, conv_g, conv_v, conv_b));
 
 		return block;
-	}
-
-	/**
-	 * Builds one residual block: two Snake+Conv1d pairs whose output is added to
-	 * the block input (skip connection).
-	 *
-	 * @param batchSize Batch size
-	 * @param channels  Number of channels (constant throughout)
-	 * @param seqLength Sequence length (constant throughout)
-	 * @param prefix    Weight key prefix (e.g., {@code encoder.layers.1.layers.0})
-	 * @return Assembled residual block
-	 */
-	private Block buildResidualBlock(int batchSize, int channels, int seqLength, String prefix) {
-		TraversalPolicy inputShape = shape(batchSize, channels, seqLength);
-		SequentialBlock mainPath = new SequentialBlock(inputShape);
-
-		PackedCollection snake0_alpha = stateDict.get(prefix + ".layers.0.alpha");
-		PackedCollection snake0_beta = stateDict.get(prefix + ".layers.0.beta");
-		mainPath.add(snake(inputShape, snake0_alpha, snake0_beta));
-
-		PackedCollection conv1_g = stateDict.get(prefix + ".layers.1.weight_g");
-		PackedCollection conv1_v = stateDict.get(prefix + ".layers.1.weight_v");
-		PackedCollection conv1_b = stateDict.get(prefix + ".layers.1.bias");
-		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 7, 1, 3,
-				conv1_g, conv1_v, conv1_b));
-
-		PackedCollection snake2_alpha = stateDict.get(prefix + ".layers.2.alpha");
-		PackedCollection snake2_beta = stateDict.get(prefix + ".layers.2.beta");
-		mainPath.add(snake(inputShape, snake2_alpha, snake2_beta));
-
-		PackedCollection conv3_g = stateDict.get(prefix + ".layers.3.weight_g");
-		PackedCollection conv3_v = stateDict.get(prefix + ".layers.3.weight_v");
-		PackedCollection conv3_b = stateDict.get(prefix + ".layers.3.bias");
-		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 1, 1, 0,
-				conv3_g, conv3_v, conv3_b));
-
-		return residual(mainPath);
 	}
 
 	/**
