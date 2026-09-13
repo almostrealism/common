@@ -50,7 +50,8 @@ def main():
     shapes = {}
     written = 0
     for key, array in state.items():
-        if not (key.startswith("encoder.") or key.startswith("decoder.")):
+        if not (key.startswith("encoder.") or key.startswith("decoder.")
+                or key.startswith("bottleneck.")):
             continue
         value = np.asarray(array, dtype=np.float32)
         core.save_reference_output(value, os.path.join(args.out, key + ".bin"))

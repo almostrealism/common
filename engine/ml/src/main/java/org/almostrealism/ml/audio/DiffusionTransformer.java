@@ -125,6 +125,30 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	/** Batch size used for all model input/output shapes. */
 	public static int batchSize = 1;
 
+	/** Width of the timestep Fourier feature vector consumed by the timestep-embedding MLP. */
+	private static final int TIMESTEP_FEATURE_DIM = 256;
+
+	/** Key of the learned timestep Fourier frequency matrix ({@link TimestepEncoding#LEARNED}). */
+	private static final String TIMESTEP_FEATURES_KEY = "model.model.timestep_features.weight";
+
+	/** Lowest frequency of the deterministic timestep features ({@link TimestepEncoding#EXPO}). */
+	private static final double EXPO_TIMESTEP_MIN_FREQ = 0.5;
+
+	/** Highest frequency of the deterministic timestep features ({@link TimestepEncoding#EXPO}). */
+	private static final double EXPO_TIMESTEP_MAX_FREQ = 10000.0;
+
+	/**
+	 * Weight keys of the shared adaLN global conditioning embedder, in the order consumed by
+	 * {@link #globalConditioningEmbedding}: first linear weight and bias, then second linear weight
+	 * and bias.
+	 */
+	private static final String[] GLOBAL_COND_EMBEDDER_KEYS = {
+			"model.model.transformer.global_cond_embedder.0.weight",
+			"model.model.transformer.global_cond_embedder.0.bias",
+			"model.model.transformer.global_cond_embedder.2.weight",
+			"model.model.transformer.global_cond_embedder.2.bias"
+	};
+
 	/** Number of input and output audio channels (e.g., 64 for latent stereo). */
 	private final int ioChannels;
 
@@ -151,6 +175,20 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 	/** Number of learned memory/register tokens prepended to the sequence (0 disables them). */
 	private final int numMemoryTokens;
+
+	/** Channel count of the local additive conditioning input (0 means the path is absent). */
+	private final int localAddCondDim;
+
+	/** How the scalar timestep is turned into Fourier features. */
+	private final TimestepEncoding timestepEncoding;
+
+	/**
+	 * The local additive conditioning input, shape {@code [batch, localAddCondDim, audioSeqLen]},
+	 * captured as a leaf of the compiled graph; {@code null} when the path is absent. Explicitly
+	 * zeroed at construction, since allocation does not guarantee zero-filled memory on every
+	 * backend, and released in {@link #destroy()}.
+	 */
+	private final PackedCollection localAddCond;
 
 	/** Number of patches in the audio sequence (audio length divided by patch size). */
 	private final int audioSeqLen;
@@ -360,17 +398,50 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 								String diffusionObjective, int audioSeqLen, int condSeqLen,
 								ConditioningMode conditioningMode, int numMemoryTokens,
 								StateDictionary stateDictionary, boolean captureAttentionScores) {
-		this.ioChannels = ioChannels;
-		this.embedDim = embedDim;
-		this.depth = depth;
-		this.numHeads = numHeads;
-		this.patchSize = patchSize;
-		this.condTokenDim = condTokenDim;
-		this.globalCondDim = globalCondDim;
-		this.conditioningMode = conditioningMode == null ? ConditioningMode.PREPEND : conditioningMode;
-		this.numMemoryTokens = numMemoryTokens;
-		this.audioSeqLen = audioSeqLen;
-		this.condSeqLen = condSeqLen;
+		this(new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
+						condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen)
+						.withConditioningMode(conditioningMode)
+						.withMemoryTokens(numMemoryTokens),
+				stateDictionary, captureAttentionScores);
+	}
+
+	/**
+	 * Creates a diffusion transformer from a complete configuration.
+	 *
+	 * @param config          The architecture configuration
+	 * @param stateDictionary Weights to load, or {@code null} for freshly allocated weights
+	 */
+	public DiffusionTransformer(DiffusionTransformerConfig config, StateDictionary stateDictionary) {
+		this(config, stateDictionary, false);
+	}
+
+	/**
+	 * Creates a diffusion transformer from a complete configuration.
+	 *
+	 * @param config                The architecture configuration
+	 * @param stateDictionary       Weights to load, or {@code null} for freshly allocated weights
+	 * @param captureAttentionScores Whether to capture cross-attention scores for inspection
+	 */
+	public DiffusionTransformer(DiffusionTransformerConfig config, StateDictionary stateDictionary,
+								boolean captureAttentionScores) {
+		this.ioChannels = config.getIoChannels();
+		this.embedDim = config.getEmbedDim();
+		this.depth = config.getDepth();
+		this.numHeads = config.getNumHeads();
+		this.patchSize = config.getPatchSize();
+		this.condTokenDim = config.getCondTokenDim();
+		this.globalCondDim = config.getGlobalCondDim();
+		this.conditioningMode = config.getConditioningMode();
+		this.numMemoryTokens = config.getNumMemoryTokens();
+		this.localAddCondDim = config.getLocalAddCondDim();
+		this.timestepEncoding = config.getTimestepEncoding();
+		this.audioSeqLen = config.getAudioSeqLen();
+		this.condSeqLen = config.getCondSeqLen();
+		this.localAddCond = localAddCondDim > 0 ?
+				new PackedCollection(shape(batchSize, localAddCondDim, audioSeqLen)) : null;
+		if (this.localAddCond != null) {
+			this.localAddCond.clear();
+		}
 		this.stateDictionary = stateDictionary;
 		this.unusedWeights = new HashSet<>();
 
@@ -502,14 +573,23 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	 * @return A block that takes a scalar diffusion timestep and returns an embedding of size {@link #embedDim}
 	 */
 	protected Block timestampEmbedding() {
-		PackedCollection timestepFeaturesWeight = createWeight("model.model.timestep_features.weight", 128, 1);
-		PackedCollection timestampEmbeddingInWeight = createWeight("model.model.to_timestep_embed.0.weight", embedDim, 256);
+		PackedCollection timestampEmbeddingInWeight = createWeight("model.model.to_timestep_embed.0.weight", embedDim, TIMESTEP_FEATURE_DIM);
 		PackedCollection timestampEmbeddingInBias = createWeight("model.model.to_timestep_embed.0.bias", embedDim);
 		PackedCollection timestampEmbeddingOutWeight = createWeight("model.model.to_timestep_embed.2.weight", embedDim, embedDim);
 		PackedCollection timestampEmbeddingOutBias = createWeight("model.model.to_timestep_embed.2.bias", embedDim);
 
-		return timestepEmbedding(batchSize, embedDim,
-				timestepFeaturesWeight,
+		Block features;
+
+		if (timestepEncoding == TimestepEncoding.EXPO) {
+			unusedWeights.remove(TIMESTEP_FEATURES_KEY);
+			features = expoFourierFeatures(batchSize, TIMESTEP_FEATURE_DIM,
+					EXPO_TIMESTEP_MIN_FREQ, EXPO_TIMESTEP_MAX_FREQ);
+		} else {
+			features = fourierFeatures(batchSize, 1, TIMESTEP_FEATURE_DIM,
+					createWeight(TIMESTEP_FEATURES_KEY, TIMESTEP_FEATURE_DIM / 2, 1));
+		}
+
+		return timestepEmbedding(batchSize, embedDim, features,
 				timestampEmbeddingInWeight, timestampEmbeddingInBias,
 				timestampEmbeddingOutWeight, timestampEmbeddingOutBias);
 	}
@@ -613,17 +693,28 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		boolean adaLN = conditioningMode == ConditioningMode.ADALN;
 		Producer<PackedCollection> conditioning = null;
 
-		// When adaLN conditioning is disabled, the per-layer to_scale_shift_gate weights are irrelevant;
-		// mark those keys as expected-unused so that validateWeights() does not reject checkpoints that
-		// happen to include them (mirroring the cross-attention handling above).
+		// When adaLN conditioning is disabled, the adaLN weights are irrelevant; mark those keys as
+		// expected-unused so that validateWeights() does not reject checkpoints that include them.
 		if (!adaLN) {
 			for (int i = 0; i < depth; i++) {
-				unusedWeights.remove("model.model.transformer.layers." + i + ".to_scale_shift_gate.weight");
+				unusedWeights.remove(scaleShiftGateKey(i));
+			}
+
+			for (String key : GLOBAL_COND_EMBEDDER_KEYS) {
+				unusedWeights.remove(key);
 			}
 		}
 
+		Producer<PackedCollection> embeddedConditioning = null;
+
 		if (adaLN) {
 			conditioning = adaptiveConditioning(timestepEmbed, globalEmbed);
+			embeddedConditioning = globalConditioningEmbedding(conditioning,
+					requireAdaLNWeight(GLOBAL_COND_EMBEDDER_KEYS[0], dim, dim),
+					requireAdaLNWeight(GLOBAL_COND_EMBEDDER_KEYS[1], dim),
+					requireAdaLNWeight(GLOBAL_COND_EMBEDDER_KEYS[2], MODULATION_COMPONENTS * dim, dim),
+					requireAdaLNWeight(GLOBAL_COND_EMBEDDER_KEYS[3], MODULATION_COMPONENTS * dim),
+					batchSize, dim);
 		} else if (globalCondDim > 0) {
 			main.add(prependConditioning(timestepEmbed, globalEmbed));
 		}
@@ -647,6 +738,21 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		// Capture state before transformer blocks for test validation
 		preTransformerState = new PackedCollection(main.getOutputShape());
 		main.branch().andThen(into(preTransformerState));
+
+		int prependedTokens = seqLen - audioSeqLen;
+		Producer<PackedCollection> localCondInput = localAddCondDim > 0 ?
+				cp(localAddCond).reshape(batchSize, localAddCondDim, audioSeqLen).permute(0, 2, 1) : null;
+
+		// Disabled local-add conditioning leaves to_local_embed weights expected-unused.
+		if (localCondInput == null) {
+			for (int i = 0; i < depth; i++) {
+				String localPrefix = "model.model.transformer.layers." + i + ".to_local_embed.";
+				unusedWeights.remove(localPrefix + "0.weight");
+				unusedWeights.remove(localPrefix + "0.bias");
+				unusedWeights.remove(localPrefix + "2.weight");
+				unusedWeights.remove(localPrefix + "2.bias");
+			}
+		}
 
 		for (int i = 0; i < depth; i++) {
 			// Create and track all weights for this transformer block
@@ -698,22 +804,24 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 				attentionCapture = into(scores);
 			}
 
-			// adaLN modulation for this block (null in PREPEND mode): the learned per-block
-			// to_scale_shift_gate parameter is combined with the captured conditioning vector to
-			// produce the packed [batch, 6, dim] scale/shift/gate modulation consumed by the block.
 			Producer<PackedCollection> modulation = null;
 
 			if (adaLN) {
-				String scaleShiftGateKey =
-						"model.model.transformer.layers." + i + ".to_scale_shift_gate.weight";
-				if (stateDictionary != null && !stateDictionary.containsKey(scaleShiftGateKey)) {
-					throw new IllegalArgumentException(scaleShiftGateKey +
-							" not found in StateDictionary; to_scale_shift_gate weights are required for " +
-							"ConditioningMode.ADALN. Use ConditioningMode.PREPEND for older checkpoints " +
-							"that do not provide adaLN modulation weights.");
-				}
-				PackedCollection scaleShiftGate = createWeight(scaleShiftGateKey, 6, dim);
-				modulation = adaptiveModulationParameters(conditioning, scaleShiftGate, batchSize, dim);
+				PackedCollection scaleShiftGate =
+						requireAdaLNWeight(scaleShiftGateKey(i), MODULATION_COMPONENTS * dim);
+				modulation = packedModulation(embeddedConditioning, scaleShiftGate, batchSize, dim);
+			}
+
+			Producer<PackedCollection> localAddition = null;
+
+			if (localCondInput != null) {
+				String localPrefix = "model.model.transformer.layers." + i + ".to_local_embed.";
+				localAddition = localConditioningEmbedding(localCondInput,
+						createWeight(localPrefix + "0.weight", dim, localAddCondDim),
+						createWeight(localPrefix + "0.bias", dim),
+						createWeight(localPrefix + "2.weight", dim, dim),
+						createWeight(localPrefix + "2.bias", dim),
+						batchSize, audioSeqLen, prependedTokens, dim);
 			}
 
 			// Add transformer block with updated sequence length
@@ -735,7 +843,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 					ffnPreNormWeight, ffnPreNormBias,
 					w1, w2, ffW1Bias, ffW2Bias,
 					attentionCapture, getProjectionFactory(),
-					AttentionVariant.STANDARD, null, modulation
+					AttentionVariant.STANDARD, null, modulation, localAddition
 			));
 		}
 
@@ -809,6 +917,17 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	public PackedCollection getPostTransformerState() { return postTransformerState; }
 
 	/**
+	 * Returns the local additive conditioning input buffer, shape
+	 * {@code [batch, localAddCondDim, audioSeqLen]}. Callers that condition on a per-position
+	 * control signal (an inpainting mask concatenated with the masked latent, for example) write it
+	 * into this buffer before {@link #forward}; it is read by every forward pass. The buffer starts
+	 * zero-filled, which is the value plain generation supplies.
+	 *
+	 * @return the buffer, or {@code null} when the configuration has no local additive conditioning
+	 */
+	public PackedCollection getLocalAddCond() { return localAddCond; }
+
+	/**
 	 * Sets the pre-transformer state tensor (for use by subclasses or debugging hooks).
 	 *
 	 * @param state The state tensor to store
@@ -879,6 +998,41 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		if (compiled != null) {
 			compiled.destroy();
 		}
+
+		if (localAddCond != null) {
+			localAddCond.destroy();
+		}
+	}
+
+	/**
+	 * The key of the per-layer adaLN {@code to_scale_shift_gate} parameter (a bare parameter of
+	 * {@code 6 * embedDim} values, not a module weight).
+	 *
+	 * @param layer transformer layer index
+	 * @return the weight key
+	 */
+	protected String scaleShiftGateKey(int layer) {
+		return "model.model.transformer.layers." + layer + ".to_scale_shift_gate";
+	}
+
+	/**
+	 * Retrieves a weight required by {@link ConditioningMode#ADALN}, failing with a mode-specific
+	 * message when a non-null state dictionary lacks it.
+	 *
+	 * @param key  Weight key in the state dictionary
+	 * @param dims Expected tensor dimensions
+	 * @return The weight tensor, wrapped in a range view matching the expected shape
+	 */
+	protected PackedCollection requireAdaLNWeight(String key, int... dims) {
+		if (stateDictionary != null && !stateDictionary.containsKey(key)) {
+			throw new IllegalArgumentException(key +
+					" not found in StateDictionary; the global_cond_embedder and per-layer " +
+					"to_scale_shift_gate weights are required for ConditioningMode.ADALN. " +
+					"Use ConditioningMode.PREPEND for older checkpoints that do not provide " +
+					"adaLN modulation weights.");
+		}
+
+		return createWeight(key, dims);
 	}
 
 	/**

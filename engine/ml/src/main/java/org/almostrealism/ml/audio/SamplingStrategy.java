@@ -57,6 +57,22 @@ public interface SamplingStrategy {
 	double[] getTimesteps(int numSteps, int numInferenceSteps);
 
 	/**
+	 * Returns the timestep schedule for a latent of a particular sequence length.
+	 *
+	 * <p>Strategies whose schedule is warped by a length-dependent {@link DistributionShift} override
+	 * this method; the default ignores the length and delegates to
+	 * {@link #getTimesteps(int, int)}.</p>
+	 *
+	 * @param numSteps Total number of diffusion steps
+	 * @param numInferenceSteps Number of inference steps (may be fewer than numSteps)
+	 * @param sequenceLength Length of the latent sequence being sampled
+	 * @return Array of timestep values for each inference step
+	 */
+	default double[] getTimesteps(int numSteps, int numInferenceSteps, int sequenceLength) {
+		return getTimesteps(numSteps, numInferenceSteps);
+	}
+
+	/**
 	 * Performs one sampling step.
 	 *
 	 * <p>Returns a {@link CollectionProducer} for GPU-accelerated computation.

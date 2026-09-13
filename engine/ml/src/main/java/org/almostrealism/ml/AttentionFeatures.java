@@ -1404,7 +1404,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 				ffnNormWeight, ffnNormBias,
 				w1, w2, w1Bias, w2Bias,
 				attentionScores, projectionFactory,
-				AttentionVariant.STANDARD, null, null);
+				AttentionVariant.STANDARD, null, null, null);
 	}
 
 	/**
@@ -1506,9 +1506,14 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	 * @param variant Attention variant for the self-attention sub-block
 	 * @param diffLambda Learned lambda supplied to variants that require it (may be {@code null})
 	 * @param modulation Optional packed adaLN modulation, shape {@code [batch, 6, dim]}, whose six
-	 *                   {@code [batch, dim]} components are scale/shift/gate for self-attention followed
-	 *                   by scale/shift/gate for the feed-forward. When {@code null} no modulation is
-	 *                   applied and the block is the standard pre-norm residual block (the prepend path).
+	 *                   {@code [batch, dim]} components are the raw scale/shift/gate for self-attention
+	 *                   followed by the raw scale/shift/gate for the feed-forward; each sub-layer is
+	 *                   applied as {@code x + sigmoid(1 - gate) * f((1 + scale) * norm(x) + shift)}.
+	 *                   When {@code null} no modulation is applied and the block is the standard
+	 *                   pre-norm residual block (the prepend path).
+	 * @param localAddition Optional per-position additive conditioning, shape {@code [batch, seqLen, dim]},
+	 *                      added to the hidden state after the attention sub-layers and before the
+	 *                      feed-forward; {@code null} when absent.
 	 * @return Complete transformer block
 	 */
 	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
@@ -1533,21 +1538,21 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 								   ProjectionFactory projectionFactory,
 								   AttentionVariant variant,
 								   Producer<PackedCollection> diffLambda,
-								   Producer<PackedCollection> modulation) {
+								   Producer<PackedCollection> modulation,
+								   Producer<PackedCollection> localAddition) {
 		TraversalPolicy blockShape = shape(batchSize, seqLen, dim);
 		SequentialBlock block = new SequentialBlock(blockShape);
 
 		// adaLN-Zero modulation components (null when unmodulated): scale/shift/gate for self-attention
 		// followed by scale/shift/gate for the feed-forward.
-		Producer<PackedCollection> scaleSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 0);
+		Producer<PackedCollection> scaleSelf = modulation == null ? null : residualScale(modulationComponent(modulation, batchSize, dim, 0));
 		Producer<PackedCollection> shiftSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 1);
-		Producer<PackedCollection> gateSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 2);
-		Producer<PackedCollection> scaleFf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 3);
+		Producer<PackedCollection> gateSelf = modulation == null ? null : residualGate(modulationComponent(modulation, batchSize, dim, 2));
+		Producer<PackedCollection> scaleFf = modulation == null ? null : residualScale(modulationComponent(modulation, batchSize, dim, 3));
 		Producer<PackedCollection> shiftFf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 4);
-		Producer<PackedCollection> gateFf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 5);
+		Producer<PackedCollection> gateFf = modulation == null ? null : residualGate(modulationComponent(modulation, batchSize, dim, 5));
 
-		// Self-attention with pre-normalization inside residual branch
-		// Python: x = x + gate_self * self_attn(scale_self * pre_norm(x) + shift_self)
+		// Python: x = x + sigmoid(1 - gate_self) * self_attn((1 + scale_self) * pre_norm(x) + shift_self)
 		SequentialBlock selfAttentionWithNorm = new SequentialBlock(blockShape);
 		selfAttentionWithNorm.add(norm(preNormWeight, preNormBias));
 		if (modulation != null) {
@@ -1583,8 +1588,12 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 			block.add(residual(crossAttentionWithNorm));
 		}
 
+		if (localAddition != null) {
+			block.add(layer("localAddCond", blockShape, blockShape, in -> add(c(in), c(localAddition))));
+		}
+
 		// Feed-forward with normalization inside residual branch
-		// Python: x = x + gate_ff * ff(scale_ff * ff_norm(x) + shift_ff)
+		// Python: x = x + sigmoid(1 - gate_ff) * ff((1 + scale_ff) * ff_norm(x) + shift_ff)
 		Block feedForward = gatedLinearFeedForward(block.getOutputShape(),
 				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias,
 				scaleFf, shiftFf, projectionFactory);
