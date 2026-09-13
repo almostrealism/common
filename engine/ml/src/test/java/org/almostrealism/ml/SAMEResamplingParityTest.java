@@ -20,9 +20,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.SequentialBlock;
 import org.junit.Test;
 
-import java.io.DataInputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
@@ -33,7 +31,6 @@ import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.RAM;
 import io.almostrealism.collect.TraversalPolicy;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -315,12 +312,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @throws IOException if the file cannot be read
 	 */
 	protected float[] loadFlat(Path path) throws IOException {
-		ByteBuffer buffer = loadBuffer(path);
-		float[] values = new float[buffer.remaining() / 4];
-		for (int i = 0; i < values.length; i++) {
-			values[i] = buffer.getFloat(i * 4);
-		}
-		return values;
+		return ReferenceActivations.load(path);
 	}
 
 	/**
@@ -332,14 +324,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @throws IOException if the file cannot be read
 	 */
 	protected ByteBuffer loadBuffer(Path path) throws IOException {
-		try (DataInputStream in = new DataInputStream(new FileInputStream(path.toFile()))) {
-			byte[] header = new byte[4];
-			in.readFully(header);
-			int count = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt();
-			byte[] payload = new byte[count * 4];
-			in.readFully(payload);
-			return ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
-		}
+		return ReferenceActivations.loadBuffer(path);
 	}
 
 	/**
@@ -351,14 +336,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @return the resolved directory, or {@code null}
 	 */
 	protected File firstExisting(String[] candidates, String marker) {
-		for (String candidate : candidates) {
-			if (candidate == null) continue;
-			File dir = new File(candidate);
-			if (dir.isDirectory() && new File(dir, marker).exists()) {
-				return dir;
-			}
-		}
-		return null;
+		return ReferenceActivations.firstExisting(candidates, marker);
 	}
 
 	/**

@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.audio;
 
+import org.almostrealism.layers.NormalizationType;
+
 /**
  * The complete architectural configuration of a {@link DiffusionTransformer}: the tensor
  * dimensions of the model plus the optional features (conditioning mode, memory tokens, local
@@ -64,6 +66,12 @@ public final class DiffusionTransformerConfig {
 	/** How the timestep is turned into Fourier features. */
 	private final TimestepEncoding timestepEncoding;
 
+	/** Family of every normalization layer in the transformer blocks. */
+	private final NormalizationType normalization;
+
+	/** Whether self-attention takes a per-position padding mask. */
+	private final boolean maskPadding;
+
 	/**
 	 * Creates a configuration with the default features: prepended conditioning, no memory tokens,
 	 * no local additive conditioning and learned timestep features.
@@ -84,7 +92,7 @@ public final class DiffusionTransformerConfig {
 									  String diffusionObjective, int audioSeqLen, int condSeqLen) {
 		this(ioChannels, embedDim, depth, numHeads, patchSize, condTokenDim, globalCondDim,
 				diffusionObjective, audioSeqLen, condSeqLen,
-				ConditioningMode.PREPEND, 0, 0, TimestepEncoding.LEARNED);
+				ConditioningMode.PREPEND, 0, 0, TimestepEncoding.LEARNED, NormalizationType.LAYER, false);
 	}
 
 	/**
@@ -104,12 +112,15 @@ public final class DiffusionTransformerConfig {
 	 * @param numMemoryTokens    number of learned memory tokens
 	 * @param localAddCondDim    channels of the local additive conditioning input
 	 * @param timestepEncoding   how the timestep becomes Fourier features
+	 * @param normalization      family of the transformer blocks' normalization layers
+	 * @param maskPadding        whether self-attention takes a per-position padding mask
 	 */
 	private DiffusionTransformerConfig(int ioChannels, int embedDim, int depth, int numHeads,
 									   int patchSize, int condTokenDim, int globalCondDim,
 									   String diffusionObjective, int audioSeqLen, int condSeqLen,
 									   ConditioningMode conditioningMode, int numMemoryTokens,
-									   int localAddCondDim, TimestepEncoding timestepEncoding) {
+									   int localAddCondDim, TimestepEncoding timestepEncoding,
+									   NormalizationType normalization, boolean maskPadding) {
 		if (ioChannels <= 0 || embedDim <= 0 || depth <= 0 || numHeads <= 0 || patchSize <= 0) {
 			throw new IllegalArgumentException("ioChannels, embedDim, depth, numHeads and patchSize must be positive");
 		}
@@ -136,6 +147,8 @@ public final class DiffusionTransformerConfig {
 		this.numMemoryTokens = numMemoryTokens;
 		this.localAddCondDim = localAddCondDim;
 		this.timestepEncoding = timestepEncoding == null ? TimestepEncoding.LEARNED : timestepEncoding;
+		this.normalization = normalization == null ? NormalizationType.LAYER : normalization;
+		this.maskPadding = maskPadding;
 	}
 
 	/**
@@ -147,7 +160,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withConditioningMode(ConditioningMode mode) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				mode, numMemoryTokens, localAddCondDim, timestepEncoding);
+				mode, numMemoryTokens, localAddCondDim, timestepEncoding, normalization, maskPadding);
 	}
 
 	/**
@@ -159,7 +172,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withMemoryTokens(int count) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				conditioningMode, count, localAddCondDim, timestepEncoding);
+				conditioningMode, count, localAddCondDim, timestepEncoding, normalization, maskPadding);
 	}
 
 	/**
@@ -171,7 +184,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withLocalAddCondDim(int dim) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				conditioningMode, numMemoryTokens, dim, timestepEncoding);
+				conditioningMode, numMemoryTokens, dim, timestepEncoding, normalization, maskPadding);
 	}
 
 	/**
@@ -183,7 +196,34 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withTimestepEncoding(TimestepEncoding features) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				conditioningMode, numMemoryTokens, localAddCondDim, features);
+				conditioningMode, numMemoryTokens, localAddCondDim, features, normalization, maskPadding);
+	}
+
+	/**
+	 * Returns a copy whose transformer blocks use the given normalization family. With
+	 * {@link NormalizationType#RMS} the checkpoint carries only the scale ({@code gamma}) of each
+	 * norm and the query/key norms are RMS norms as well.
+	 *
+	 * @param type family of the normalization layers
+	 * @return the modified configuration
+	 */
+	public DiffusionTransformerConfig withNormalization(NormalizationType type) {
+		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
+				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
+				conditioningMode, numMemoryTokens, localAddCondDim, timestepEncoding, type, maskPadding);
+	}
+
+	/**
+	 * Returns a copy whose self-attention takes a per-position padding mask over the latent
+	 * sequence, exposed by {@link DiffusionTransformer#getPaddingMask()}.
+	 *
+	 * @param enabled whether the padding mask input is present
+	 * @return the modified configuration
+	 */
+	public DiffusionTransformerConfig withPaddingMask(boolean enabled) {
+		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
+				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
+				conditioningMode, numMemoryTokens, localAddCondDim, timestepEncoding, normalization, enabled);
 	}
 
 	/**
@@ -196,7 +236,7 @@ public final class DiffusionTransformerConfig {
 	public DiffusionTransformerConfig withSequenceLengths(int audioSeqLen, int condSeqLen) {
 		return new DiffusionTransformerConfig(ioChannels, embedDim, depth, numHeads, patchSize,
 				condTokenDim, globalCondDim, diffusionObjective, audioSeqLen, condSeqLen,
-				conditioningMode, numMemoryTokens, localAddCondDim, timestepEncoding);
+				conditioningMode, numMemoryTokens, localAddCondDim, timestepEncoding, normalization, maskPadding);
 	}
 
 	/**
@@ -296,4 +336,18 @@ public final class DiffusionTransformerConfig {
 	 * @return the timestep feature type
 	 */
 	public TimestepEncoding getTimestepEncoding() { return timestepEncoding; }
+
+	/**
+	 * Returns the family of the transformer blocks' normalization layers.
+	 *
+	 * @return the normalization family
+	 */
+	public NormalizationType getNormalization() { return normalization; }
+
+	/**
+	 * Returns whether self-attention takes a per-position padding mask.
+	 *
+	 * @return true when the padding mask input is present
+	 */
+	public boolean isPaddingMasked() { return maskPadding; }
 }

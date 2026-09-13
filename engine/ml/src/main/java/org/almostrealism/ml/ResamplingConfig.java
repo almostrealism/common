@@ -16,6 +16,9 @@
 
 package org.almostrealism.ml;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Configuration for a learned-resampling transformer block (see
  * {@link TransformerResamplingFeatures#transformerResamplingBlock(int, int, ResamplingConfig,
@@ -249,6 +252,52 @@ public class ResamplingConfig {
 	 */
 	public int getInnerFfDim() {
 		return (int) Math.round(getDim() * ffMult);
+	}
+
+	/**
+	 * The parameters a resampling block with this configuration reads from a checkpoint, mapped
+	 * from weight key to tensor shape: the channel-mapping convolution, the learned resampling token,
+	 * and per transformer layer the {@code DynamicTanh} norms (block, query and key), the fused
+	 * differential-attention projection ({@code 5 * dim}), the output projection, the rotary
+	 * frequencies and the gated feed-forward. The map is insertion-ordered as listed here.
+	 *
+	 * @param prefix the weight key prefix of the block (for example {@code "encoder.layers.0"})
+	 * @return weight key to shape, for every parameter the block consumes
+	 */
+	public Map<String, int[]> weightShapes(String prefix) {
+		int dim = getDim();
+		int inner = getInnerFfDim();
+		int invFreqLen = Math.max(1, dimHead / 4);
+
+		Map<String, int[]> shapes = new LinkedHashMap<>();
+		shapes.put(prefix + ".mapping.weight", new int[]{outChannels, inChannels, mappingKernel});
+		shapes.put(prefix + ".mapping.bias", new int[]{outChannels});
+		shapes.put(prefix + ".new_tokens", new int[]{1, 1, dim});
+
+		for (int i = 0; i < depth; i++) {
+			String lk = prefix + ".transformers." + i;
+			shapes.put(lk + ".pre_norm.alpha", new int[]{1});
+			shapes.put(lk + ".pre_norm.gamma", new int[]{dim});
+			shapes.put(lk + ".pre_norm.beta", new int[]{dim});
+			shapes.put(lk + ".ff_norm.alpha", new int[]{1});
+			shapes.put(lk + ".ff_norm.gamma", new int[]{dim});
+			shapes.put(lk + ".ff_norm.beta", new int[]{dim});
+			shapes.put(lk + ".self_attn.to_qkv.weight", new int[]{5 * dim, dim});
+			shapes.put(lk + ".self_attn.to_out.weight", new int[]{dim, dim});
+			shapes.put(lk + ".self_attn.q_norm.alpha", new int[]{1});
+			shapes.put(lk + ".self_attn.q_norm.gamma", new int[]{dimHead});
+			shapes.put(lk + ".self_attn.q_norm.beta", new int[]{dimHead});
+			shapes.put(lk + ".self_attn.k_norm.alpha", new int[]{1});
+			shapes.put(lk + ".self_attn.k_norm.gamma", new int[]{dimHead});
+			shapes.put(lk + ".self_attn.k_norm.beta", new int[]{dimHead});
+			shapes.put(lk + ".rope.inv_freq", new int[]{invFreqLen});
+			shapes.put(lk + ".ff.ff.0.proj.weight", new int[]{2 * inner, dim});
+			shapes.put(lk + ".ff.ff.0.proj.bias", new int[]{2 * inner});
+			shapes.put(lk + ".ff.ff.2.weight", new int[]{dim, inner});
+			shapes.put(lk + ".ff.ff.2.bias", new int[]{dim});
+		}
+
+		return shapes;
 	}
 
 	/**

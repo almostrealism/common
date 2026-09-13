@@ -177,6 +177,49 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 		return shape -> norm(shape, 1, weights, biases, eps, false, requirements);
 	}
 
+	/**
+	 * Creates a normalization layer factory of the given family with pre-allocated weights,
+	 * optional biases and an explicit epsilon, so that a block builder can be parameterized by
+	 * the normalization its checkpoint was trained with.
+	 * @param type         the normalization family
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters, or {@code null} for none
+	 * @param eps          small constant for numerical stability
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the normalization {@link CellularLayer} for any input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> norm(NormalizationType type,
+														  PackedCollection weights,
+														  PackedCollection biases,
+														  double eps,
+														  ComputeRequirement... requirements) {
+		if (type == NormalizationType.RMS) {
+			return shape -> rmsnorm(shape, weights, biases, eps, requirements);
+		}
+
+		return norm(weights, biases, eps, requirements);
+	}
+
+	/**
+	 * Creates a normalization layer factory of the given family with pre-allocated weights and
+	 * optional biases, using each family's default epsilon.
+	 * @param type         the normalization family
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters, or {@code null} for none
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the normalization {@link CellularLayer} for any input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> norm(NormalizationType type,
+														  PackedCollection weights,
+														  PackedCollection biases,
+														  ComputeRequirement... requirements) {
+		if (type == NormalizationType.RMS) {
+			return shape -> rmsnorm(shape, weights, biases, requirements);
+		}
+
+		return norm(weights, biases, requirements);
+	}
+
 
 	/**
 	 * Creates a trainable group-normalization layer for the given shape.
@@ -582,24 +625,22 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 		}
 
 		int size = weights.getShape().getTotalSize();
-		int axis = shape.getDimensions() - 1;
 
+		// Every vector of `size` features is one row: its root mean square is reduced per row and
+		// applied per row, so inputs holding many vectors (a sequence of positions, for example)
+		// normalize each vector by its own statistic.
 		return layer("rmsnorm", shape, shape, input -> {
-			CollectionProducer ss = pow(traverseEach(input), c(2.0)).traverse(axis).sum();
-			ss = ss.divide(c(size)).add(c(epsilon));
-			ss = c(1.0).divide(ss.pow(c(0.5)));
+			CollectionProducer rows = c(input).reshape(-1, 1, size).traverse(2);
+			CollectionProducer out = rows.divide(rows.pow(2.0).mean(2).add(c(epsilon)).sqrt());
+			out = out.reshape(-1, size).traverse(1);
 
-			if (weights == null) {
-				ss = ss.multiply(traverseEach(input));
-			} else {
-				ss = multiply(traverseEach(cp(weights)), traverseEach(input)).multiply(ss);
-			}
+			out = out.multiply(cp(weights.flatten()));
 
 			if (biases != null) {
-				ss = ss.add(traverseEach(cp(biases)));
+				out = out.add(cp(biases.flatten()));
 			}
 
-			return ss.reshape(shape);
+			return out.reshape(shape);
 		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
 	}
 

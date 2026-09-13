@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -67,25 +68,23 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 	 * implementation, so the default path remains unchanged.</p>
 	 */
 	@Override
-	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
-								AttentionVariant variant,
+	default Block selfAttention(int batchSize, int seqLen, int dim, int heads, AttentionVariant variant,
 								PackedCollection toQkvWeight, PackedCollection toOutWeight,
 								PackedCollection qNormWeight, PackedCollection qNormBias,
-								PackedCollection kNormWeight, PackedCollection kNormBias,
-								PackedCollection invFreq,
-								Producer<PackedCollection> diffLambda,
-								ProjectionFactory projectionFactory) {
+								PackedCollection kNormWeight, PackedCollection kNormBias, PackedCollection invFreq,
+								Producer<PackedCollection> diffLambda, ProjectionFactory projectionFactory,
+								NormalizationType qkNorm, Producer<PackedCollection> paddingMask) {
 		if (variant == AttentionVariant.DIFFERENTIAL) {
 			return differentialSequenceAttention(batchSize, seqLen, dim, heads,
 					toQkvWeight, toOutWeight,
 					qNormWeight, qNormBias, kNormWeight, kNormBias,
-					invFreq, diffLambda, projectionFactory);
+					invFreq, diffLambda, projectionFactory, qkNorm, paddingMask);
 		}
 
 		return AttentionFeatures.super.selfAttention(batchSize, seqLen, dim, heads, variant,
 				toQkvWeight, toOutWeight,
 				qNormWeight, qNormBias, kNormWeight, kNormBias,
-				invFreq, diffLambda, projectionFactory);
+				invFreq, diffLambda, projectionFactory, qkNorm, paddingMask);
 	}
 
 	/**
@@ -150,6 +149,45 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 												PackedCollection invFreq,
 												Producer<PackedCollection> diffLambda,
 												ProjectionFactory projectionFactory) {
+		return differentialSequenceAttention(batchSize, seqLen, dim, heads,
+				toQkvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias,
+				invFreq, diffLambda, projectionFactory, NormalizationType.LAYER, null);
+	}
+
+	/**
+	 * Builds a differential self-attention block with a selectable query/key normalization family
+	 * and an optional padding mask; this is the fully specified overload the others route to.
+	 * The mask zeroes the shared value vectors at padded positions, exactly as
+	 * {@link AttentionFeatures#sequenceAttention} does for standard attention.
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param toQkvWeight       fused {@code dim*5} projection weights ({@code [Q1, K1, K2, V, Q2]})
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights
+	 * @param qNormBias         query normalization biases ({@code null} for none)
+	 * @param kNormWeight       key normalization weights
+	 * @param kNormBias         key normalization biases ({@code null} for none)
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        learned per-head lambda (shape {@code [heads]})
+	 * @param projectionFactory factory for creating projection layers
+	 * @param qkNorm            family of the query/key normalization
+	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or
+	 *                          {@code null} for no masking
+	 * @return the differential self-attention block
+	 */
+	default Block differentialSequenceAttention(int batchSize, int seqLen, int dim, int heads,
+												PackedCollection toQkvWeight, PackedCollection toOutWeight,
+												PackedCollection qNormWeight, PackedCollection qNormBias,
+												PackedCollection kNormWeight, PackedCollection kNormBias,
+												PackedCollection invFreq,
+												Producer<PackedCollection> diffLambda,
+												ProjectionFactory projectionFactory,
+												NormalizationType qkNorm,
+												Producer<PackedCollection> paddingMask) {
 		if (diffLambda == null) {
 			throw new IllegalArgumentException("Differential attention requires a lambda producer");
 		}
@@ -183,10 +221,14 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 		q2.permute(0, 2, 1, 3);
 
 		// 4. QK normalization (both queries share q_norm, both keys share k_norm)
-		q1.add(norm(qNormWeight, qNormBias, 1e-6));
-		q2.add(norm(qNormWeight, qNormBias, 1e-6));
-		k1.add(norm(kNormWeight, kNormBias, 1e-6));
-		k2.add(norm(kNormWeight, kNormBias, 1e-6));
+		q1.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
+		q2.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
+		k1.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
+		k2.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
+
+		if (paddingMask != null) {
+			v.add(scale(headShape, 2, paddingMask));
+		}
 
 		// 5. Rotary position embeddings on queries and keys
 		q1.add(applyRotaryPositionEmbedding(headShape, invFreq));

@@ -22,7 +22,9 @@ import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.AttentionVariant;
 import org.almostrealism.ml.StateDictionary;
@@ -181,6 +183,17 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 	/** How the scalar timestep is turned into Fourier features. */
 	private final TimestepEncoding timestepEncoding;
+
+	/** Family of every normalization layer in the transformer blocks. */
+	private final NormalizationType normalization;
+
+	/**
+	 * Per-position validity of the latent sequence, shape {@code [batch, audioSeqLen]} with one for
+	 * a valid position and zero for padding, captured as a leaf of the compiled graph; {@code null}
+	 * when the model takes no padding mask. Filled with ones at construction so that a caller who
+	 * never writes it gets unmasked attention, and released in {@link #destroy()}.
+	 */
+	private final PackedCollection paddingMask;
 
 	/**
 	 * The local additive conditioning input, shape {@code [batch, localAddCondDim, audioSeqLen]},
@@ -435,6 +448,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		this.numMemoryTokens = config.getNumMemoryTokens();
 		this.localAddCondDim = config.getLocalAddCondDim();
 		this.timestepEncoding = config.getTimestepEncoding();
+		this.normalization = config.getNormalization();
 		this.audioSeqLen = config.getAudioSeqLen();
 		this.condSeqLen = config.getCondSeqLen();
 		this.localAddCond = localAddCondDim > 0 ?
@@ -442,6 +456,8 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		if (this.localAddCond != null) {
 			this.localAddCond.clear();
 		}
+		this.paddingMask = config.isPaddingMasked() ?
+				new PackedCollection(shape(batchSize, audioSeqLen)).fill(1.0) : null;
 		this.stateDictionary = stateDictionary;
 		this.unusedWeights = new HashSet<>();
 
@@ -683,8 +699,10 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 				unusedWeights.remove(prefix + ".cross_attn.to_out.weight");
 				unusedWeights.remove(prefix + ".cross_attn.q_norm.weight");
 				unusedWeights.remove(prefix + ".cross_attn.q_norm.bias");
+				unusedWeights.remove(prefix + ".cross_attn.q_norm.gamma");
 				unusedWeights.remove(prefix + ".cross_attn.k_norm.weight");
 				unusedWeights.remove(prefix + ".cross_attn.k_norm.bias");
+				unusedWeights.remove(prefix + ".cross_attn.k_norm.gamma");
 			}
 		}
 
@@ -742,6 +760,8 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		int prependedTokens = seqLen - audioSeqLen;
 		Producer<PackedCollection> localCondInput = localAddCondDim > 0 ?
 				cp(localAddCond).reshape(batchSize, localAddCondDim, audioSeqLen).permute(0, 2, 1) : null;
+		Producer<PackedCollection> attentionMask = paddingMask == null ? null :
+				extendedPaddingMask(prependedTokens);
 
 		// Disabled local-add conditioning leaves to_local_embed weights expected-unused.
 		if (localCondInput == null) {
@@ -756,14 +776,14 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 
 		for (int i = 0; i < depth; i++) {
 			// Create and track all weights for this transformer block
-			PackedCollection preNormWeight = createWeight("model.model.transformer.layers." + i + ".pre_norm.gamma", dim);
-			PackedCollection preNormBias = createWeight("model.model.transformer.layers." + i + ".pre_norm.beta", dim);
+			PackedCollection preNormWeight = normScale("model.model.transformer.layers." + i + ".pre_norm", dim);
+			PackedCollection preNormBias = normShift("model.model.transformer.layers." + i + ".pre_norm", dim);
 			PackedCollection qkv = createWeight("model.model.transformer.layers." + i + ".self_attn.to_qkv.weight", dim * 3, dim);
 			PackedCollection wo = createWeight("model.model.transformer.layers." + i + ".self_attn.to_out.weight", dim, dim);
-			PackedCollection selfAttQNormWeight = createWeight("model.model.transformer.layers." + i + ".self_attn.q_norm.weight", dimHead);
-			PackedCollection selfAttQNormBias = createWeight("model.model.transformer.layers." + i + ".self_attn.q_norm.bias", dimHead);
-			PackedCollection selfAttKNormWeight = createWeight("model.model.transformer.layers." + i + ".self_attn.k_norm.weight", dimHead);
-			PackedCollection selfAttKNormBias = createWeight("model.model.transformer.layers." + i + ".self_attn.k_norm.bias", dimHead);
+			PackedCollection selfAttQNormWeight = qkNormScale("model.model.transformer.layers." + i + ".self_attn.q_norm", dimHead);
+			PackedCollection selfAttQNormBias = qkNormShift("model.model.transformer.layers." + i + ".self_attn.q_norm", dimHead);
+			PackedCollection selfAttKNormWeight = qkNormScale("model.model.transformer.layers." + i + ".self_attn.k_norm", dimHead);
+			PackedCollection selfAttKNormBias = qkNormShift("model.model.transformer.layers." + i + ".self_attn.k_norm", dimHead);
 
 			// Cross-attention weights (if needed)
 			PackedCollection crossAttPreNormWeight = null;
@@ -777,20 +797,20 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			PackedCollection crossAttKNormBias = null;
 
 			if (hasCrossAttention) {
-				crossAttPreNormWeight = createWeight("model.model.transformer.layers." + i + ".cross_attend_norm.gamma", dim);
-				crossAttPreNormBias = createWeight("model.model.transformer.layers." + i + ".cross_attend_norm.beta", dim);
+				crossAttPreNormWeight = normScale("model.model.transformer.layers." + i + ".cross_attend_norm", dim);
+				crossAttPreNormBias = normShift("model.model.transformer.layers." + i + ".cross_attend_norm", dim);
 				crossWq = createWeight("model.model.transformer.layers." + i + ".cross_attn.to_q.weight", dim, dim);
 				crossKv = createWeight("model.model.transformer.layers." + i + ".cross_attn.to_kv.weight", 2 * dim, dim);
 				crossWo = createWeight("model.model.transformer.layers." + i + ".cross_attn.to_out.weight", dim, dim);
-				crossAttQNormWeight = createWeight("model.model.transformer.layers." + i + ".cross_attn.q_norm.weight", dimHead);
-				crossAttQNormBias = createWeight("model.model.transformer.layers." + i + ".cross_attn.q_norm.bias", dimHead);
-				crossAttKNormWeight = createWeight("model.model.transformer.layers." + i + ".cross_attn.k_norm.weight", dimHead);
-				crossAttKNormBias = createWeight("model.model.transformer.layers." + i + ".cross_attn.k_norm.bias", dimHead);
+				crossAttQNormWeight = qkNormScale("model.model.transformer.layers." + i + ".cross_attn.q_norm", dimHead);
+				crossAttQNormBias = qkNormShift("model.model.transformer.layers." + i + ".cross_attn.q_norm", dimHead);
+				crossAttKNormWeight = qkNormScale("model.model.transformer.layers." + i + ".cross_attn.k_norm", dimHead);
+				crossAttKNormBias = qkNormShift("model.model.transformer.layers." + i + ".cross_attn.k_norm", dimHead);
 			}
 
 			int hiddenDim = dim * 4;
-			PackedCollection ffnPreNormWeight = createWeight("model.model.transformer.layers." + i + ".ff_norm.gamma", dim);
-			PackedCollection ffnPreNormBias = createWeight("model.model.transformer.layers." + i + ".ff_norm.beta", dim);
+			PackedCollection ffnPreNormWeight = normScale("model.model.transformer.layers." + i + ".ff_norm", dim);
+			PackedCollection ffnPreNormBias = normShift("model.model.transformer.layers." + i + ".ff_norm", dim);
 			PackedCollection w1 = createWeight("model.model.transformer.layers." + i + ".ff.ff.0.proj.weight", 2 * hiddenDim, dim);
 			PackedCollection ffW1Bias = createWeight("model.model.transformer.layers." + i + ".ff.ff.0.proj.bias", 2 * hiddenDim);
 			PackedCollection w2 = createWeight("model.model.transformer.layers." + i + ".ff.ff.2.weight", dim, hiddenDim);
@@ -843,7 +863,8 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 					ffnPreNormWeight, ffnPreNormBias,
 					w1, w2, ffW1Bias, ffW2Bias,
 					attentionCapture, getProjectionFactory(),
-					AttentionVariant.STANDARD, null, modulation, localAddition
+					AttentionVariant.STANDARD, null, modulation, localAddition,
+					normalization, attentionMask
 			));
 		}
 
@@ -928,6 +949,17 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	public PackedCollection getLocalAddCond() { return localAddCond; }
 
 	/**
+	 * The per-position padding mask over the latent sequence, shape {@code [batch, audioSeqLen]},
+	 * or {@code null} when the model was configured without one. It starts filled with ones (every
+	 * position valid); a caller generating less than the full sequence writes zeros over the
+	 * padded tail before {@link #forward}, and self-attention then ignores those positions'
+	 * values. Any prepended conditioning or memory tokens are always treated as valid.
+	 *
+	 * @return the padding mask buffer, or {@code null}
+	 */
+	public PackedCollection getPaddingMask() { return paddingMask; }
+
+	/**
 	 * Sets the pre-transformer state tensor (for use by subclasses or debugging hooks).
 	 *
 	 * @param state The state tensor to store
@@ -1002,6 +1034,73 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		if (localAddCond != null) {
 			localAddCond.destroy();
 		}
+
+		if (paddingMask != null) {
+			paddingMask.destroy();
+		}
+	}
+
+	/**
+	 * The padding mask over the full transformer sequence: the prepended conditioning and memory
+	 * token positions are always valid, followed by the caller-controlled latent mask.
+	 *
+	 * @param prependedTokens number of positions ahead of the latent sequence
+	 * @return the mask producer, shape {@code [batch, prependedTokens + audioSeqLen]}
+	 */
+	private Producer<PackedCollection> extendedPaddingMask(int prependedTokens) {
+		CollectionProducer latentMask = cp(paddingMask).reshape(batchSize, audioSeqLen);
+		if (prependedTokens == 0) {
+			return latentMask;
+		}
+
+		CollectionProducer prependedValid = integers(0, batchSize * prependedTokens)
+				.multiply(0.0).add(1.0).reshape(batchSize, prependedTokens);
+		return concat(1, prependedValid, latentMask);
+	}
+
+	/**
+	 * The scale parameter of a block normalization layer, which every normalization family carries.
+	 *
+	 * @param prefix key prefix of the normalization module
+	 * @param size   number of features
+	 * @return the scale weight
+	 */
+	private PackedCollection normScale(String prefix, int size) {
+		return createWeight(prefix + ".gamma", size);
+	}
+
+	/**
+	 * The shift parameter of a block normalization layer, which only layer normalization carries.
+	 *
+	 * @param prefix key prefix of the normalization module
+	 * @param size   number of features
+	 * @return the shift weight, or {@code null} under RMS normalization
+	 */
+	private PackedCollection normShift(String prefix, int size) {
+		return normalization == NormalizationType.RMS ? null : createWeight(prefix + ".beta", size);
+	}
+
+	/**
+	 * The scale parameter of a query/key normalization, stored as {@code weight} by the layer
+	 * normalization module and as {@code gamma} by the RMS normalization module.
+	 *
+	 * @param prefix key prefix of the normalization module
+	 * @param size   number of features
+	 * @return the scale weight
+	 */
+	private PackedCollection qkNormScale(String prefix, int size) {
+		return createWeight(prefix + (normalization == NormalizationType.RMS ? ".gamma" : ".weight"), size);
+	}
+
+	/**
+	 * The shift parameter of a query/key normalization, which only layer normalization carries.
+	 *
+	 * @param prefix key prefix of the normalization module
+	 * @param size   number of features
+	 * @return the shift weight, or {@code null} under RMS normalization
+	 */
+	private PackedCollection qkNormShift(String prefix, int size) {
+		return normalization == NormalizationType.RMS ? null : createWeight(prefix + ".bias", size);
 	}
 
 	/**

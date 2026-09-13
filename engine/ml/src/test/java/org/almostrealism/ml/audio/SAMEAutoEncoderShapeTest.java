@@ -141,8 +141,8 @@ public class SAMEAutoEncoderShapeTest extends TransformerResamplingShapeTest {
 				w.put(key, new PackedCollection(shape(dims)).randnFill()));
 
 		int dim = smallConfig(true).getOutChannels();
-		w.put("encoder.layers.1.weight", new PackedCollection(shape(LATENT, dim)).randnFill());
-		w.put("encoder.layers.1.bias", new PackedCollection(shape(LATENT)).randnFill());
+		w.put("encoder.layers.2.weight", new PackedCollection(shape(LATENT, dim)).randnFill());
+		w.put("encoder.layers.2.bias", new PackedCollection(shape(LATENT)).randnFill());
 		w.put("decoder.layers.1.weight", new PackedCollection(shape(dim, LATENT)).randnFill());
 		w.put("decoder.layers.1.bias", new PackedCollection(shape(dim)).randnFill());
 		w.put("bottleneck.scaling_factor", new PackedCollection(shape(1, LATENT, 1)).randnFill());
