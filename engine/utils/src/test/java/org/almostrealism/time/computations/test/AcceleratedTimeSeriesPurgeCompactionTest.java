@@ -152,7 +152,10 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 			ops.get().run();
 
 			if (i >= delayFrames) {
-				double expected = inputs[i - delayFrames];
+				// The pushed value is compiled to an FP32 literal before it ever reaches the
+				// buffer, so the value actually stored (and expected back out unchanged by
+				// compaction) is the float-rounded input, not the original double.
+				double expected = (float) inputs[i - delayFrames];
 				Assert.assertEquals("tick " + i, expected, out.toDouble(), 1e-9);
 			}
 		}
