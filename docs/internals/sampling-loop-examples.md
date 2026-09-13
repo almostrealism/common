@@ -23,9 +23,9 @@ public class AudioDiffusionGenerator {
         this.autoEncoder = autoEncoder;
     }
 
-    public WaveData generate(long seed) {
+    public WaveData generate(long seed, PackedCollection crossAttnCond, PackedCollection globalCond) {
         // Delegate to DiffusionSampler - NO LOOP HERE
-        PackedCollection latent = sampler.sample(seed);
+        PackedCollection latent = sampler.sample(seed, crossAttnCond, globalCond);
 
         // Decode to audio
         return decodeLatent(latent);

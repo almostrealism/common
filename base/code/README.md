@@ -117,7 +117,7 @@ The kernel package provides abstractions for parallel computation patterns.
 
 ```java
 // Create an arithmetic sequence
-IndexSequence seq = ArithmeticIndexSequence.of(0, 1, 100); // 0, 1, 2, ..., 99
+IndexSequence seq = new ArithmeticIndexSequence(1, 1, 100); // 0, 1, 2, ..., 99
 
 // Generate expression for the sequence
 Expression<Integer> expr = seq.getExpression(index);
