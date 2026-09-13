@@ -57,15 +57,25 @@ import java.util.Map;
  */
 public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 
-	/** Candidate locations for the gated weight directory (first existing wins). */
+	/**
+	 * Candidate locations for the gated weight directory (first existing wins). The system
+	 * property is checked first so a sandbox without a writable {@code /workspace} (no env-var
+	 * passthrough to the forked test JVM) can still point at it via the MCP test runner's
+	 * {@code jvm_args}, e.g. {@code -DAR_SAME_WEIGHTS=/tmp/same-weights} (same pattern as
+	 * {@code DiffusionTransformerTests#ditWeightsDir}); the env var remains supported for callers
+	 * that can set it directly.
+	 */
 	private static final String[] WEIGHT_DIRS = {
-			System.getenv("AR_SAME_WEIGHTS"),
+			System.getProperty("AR_SAME_WEIGHTS", System.getenv("AR_SAME_WEIGHTS")),
 			"/workspace/same-weights"
 	};
 
-	/** Candidate locations for the per-stage reference directory (first existing wins). */
+	/**
+	 * Candidate locations for the per-stage reference directory (first existing wins). See
+	 * {@link #WEIGHT_DIRS} for why the system property is checked first.
+	 */
 	private static final String[] REFERENCE_DIRS = {
-			System.getenv("AR_SAME_REFERENCES"),
+			System.getProperty("AR_SAME_REFERENCES", System.getenv("AR_SAME_REFERENCES")),
 			"src/test/resources/same-s-references",
 			"engine/ml/src/test/resources/same-s-references",
 			"target/test-classes/same-s-references"
@@ -362,7 +372,9 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 */
 	protected void assertWithin(String stage, PackedCollection actual, float[] reference, double tolerance) {
 		double maxAbs = maxAbsDiff(actual, reference);
-		if (maxAbs > tolerance) {
+		// maxAbs > tolerance is false when maxAbs is NaN, so a NaN result (a real computation
+		// failure) would otherwise silently pass; negating a <= comparison catches it.
+		if (!(maxAbs <= tolerance)) {
 			throw new AssertionError(stage + " parity failed: maxAbs=" + maxAbs + " > tolerance=" + tolerance);
 		}
 	}
