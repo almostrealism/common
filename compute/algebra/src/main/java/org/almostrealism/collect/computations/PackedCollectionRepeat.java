@@ -361,8 +361,11 @@ public class PackedCollectionRepeat
 	 *     {@link PackedCollection#repeat(int)} method</li>
 	 * <li><strong>Provider optimization:</strong> When the input is a Provider,
 	 *     creates an optimized evaluable that applies repetition directly</li>
-	 * <li><strong>Hardware optimization:</strong> Uses hardware-accelerated
-	 *     evaluation with short-circuit capabilities when possible</li>
+	 * <li><strong>Hardware optimization:</strong> For a kernel-backed input, the
+	 *     repetition is attached as a {@link HardwareEvaluable#setResultProcessor
+	 *     result processor}, since it only re-views the handle the kernel produces;
+	 *     as an argument of a dependent kernel the dispatch therefore stays chained
+	 *     on the device instead of being completed on the host first</li>
 	 * </ul>
 	 * 
 	 * <h4>Performance Notes:</h4>
@@ -391,10 +394,7 @@ public class PackedCollectionRepeat
 		}
 
 		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable(getInputs().get(1)::get, null, null, false);
-		hev.setShortCircuit(args -> {
-			PackedCollection out = hev.getKernel().getValue().evaluate(args);
-			return out.repeat(r);
-		});
+		hev.setResultProcessor(out -> out.repeat(r));
 		return hev;
 	}
 

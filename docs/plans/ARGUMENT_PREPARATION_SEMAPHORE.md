@@ -139,6 +139,21 @@ reshape-wrapped arguments behind it can chain rather than wait.
 Sequencing: hazard-aware subdivision first (it unblocks the parked migration and its
 parity gates), this delegation immediately after.
 
+**Status: landed.** `HardwareEvaluable` carries a `resultProcessor` (a handle-only
+transform applied in `evaluate()` and, on the streaming path, composed around the
+downstream through `CompletionConsumer.compose` so the completion passes through
+untouched), and `StreamingEvaluable.request(args, dependsOn, downstream)` lets a wrapper
+hand its consumer to the kernel evaluable without installing itself as the kernel's
+downstream. `ReshapeProducer.get()` and `PackedCollectionRepeat.get()` set the transform
+instead of a short-circuit, so a reshape- or repeat-wrapped argument chains on the device
+like any other. Measured on `TrainingStepProfileTest` (the training step of
+`SyntheticNormTrainingTest.denseMultiLayerWithNorm`, 780 steps) on an M1 Ultra: Metal
+33.8-34.2 ms/step to 21.7-22.1 ms/step, host-forced command-buffer commits per step 87.7
+to 37.7 (every `f_packedCollectionEnumerate_*` entry left `hostCompleteRequesters`);
+native unchanged at 19.5-21.8 ms/step. The remaining host-forced commits are the
+`MemoryDataCopy` layer records (`mtlBlitCopy`, 42%) and the composite latches
+`Semaphore.all()` builds when a kernel has several asynchronously delivered arguments.
+
 ## 6. Relationship to the follow-on (A)
 
 With (B) in place, the hazard-aware subdivision of fused `OperationList`s (cut only at
