@@ -521,9 +521,11 @@ How it works:
 See `DiffusionTransformer.prependConditioning()` for implementation.
 
 **`ConditioningMode.ADALN`:**
-adaLN-Zero modulation derives per-block scale/shift/gate vectors from the global conditioning and
-modulates each sub-layer (self-attention and feed-forward) in place, without lengthening the
-sequence. See `DiffusionTransformer.adaptiveConditioning()` and `AdaptiveLayerNormFeatures`.
+adaLN-Zero modulation derives per-block scale/shift/gate vectors from the combined timestep and
+global conditioning embedding and modulates each sub-layer (self-attention and feed-forward) in
+place, without lengthening the sequence. When no global conditioning is configured, the timestep
+embedding alone drives the modulation. See `DiffusionTransformer.adaptiveConditioning()` and
+`AdaptiveLayerNormFeatures`.
 
 ## Integration with Other Modules
 
@@ -680,7 +682,7 @@ ProtobufDiskStore<MyRecord> store = new ProtobufDiskStore<>(
     new File("/data/store"),
     MyRecord.parser(),
     500 * 1024 * 1024L,  // 500 MB max in memory
-    1000                 // target batch size
+    4 * 1024 * 1024      // target batch file size in bytes (4 MB)
 );
 
 // Or use the two-argument constructor for the default memory/batch budget

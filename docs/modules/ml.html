@@ -555,7 +555,7 @@ for (int step = 0; step < maxTokens; step++) {
                     <li><strong>Rotary Position Embeddings (RoPE)</strong> for positional information</li>
                     <li><strong>Timestep Embeddings</strong> using Fourier features</li>
                     <li><strong>Cross-Attention Conditioning</strong> for conditional generation</li>
-                    <li><strong>Prepended Conditioning</strong> approach (not AdaLayerNorm)</li>
+                    <li><strong>Configurable Conditioning</strong> via <code>ConditioningMode</code>: prepended tokens (default) or AdaLayerNorm (adaLN-Zero) modulation</li>
                     <li><strong>Configurable depth, heads, and patch sizes</strong></li>
                 </ul>
 
@@ -569,7 +569,7 @@ for (int step = 0; step < maxTokens; step++) {
                     &nbsp;&nbsp;&nbsp;- Timestep Embedding (Fourier features → MLP)<br>
                     &nbsp;&nbsp;&nbsp;- Cross-Attention Conditioning (optional)<br>
                     &nbsp;&nbsp;&nbsp;- Global Conditioning (optional)<br>
-                    &nbsp;&nbsp;&nbsp;- Prepended as tokens to sequence<br>
+                    &nbsp;&nbsp;&nbsp;- Prepended as tokens to sequence (ConditioningMode.PREPEND) or fed into adaLN-Zero modulation (ConditioningMode.ADALN)<br>
                     3. Transformer Blocks (×depth)<br>
                     &nbsp;&nbsp;&nbsp;- LayerNorm + Self-Attention (with RoPE)<br>
                     &nbsp;&nbsp;&nbsp;- LayerNorm + Cross-Attention (optional, QK-normalized)<br>
@@ -676,7 +676,7 @@ PackedCollection output = model.forward(
                 <p>See <code>DiffusionTransformer.prependConditioning()</code> for implementation details. Cross-attention provides additional conditioning via a separate attention mechanism when <code>condTokenDim &gt; 0</code>.</p>
 
                 <h4>ConditioningMode.ADALN</h4>
-                <p>adaLN-Zero modulation derives per-block scale/shift/gate vectors from the global conditioning and modulates each sub-layer (self-attention and feed-forward) in place, without lengthening the sequence. See <code>DiffusionTransformer.adaptiveConditioning()</code> and <code>AdaptiveLayerNormFeatures</code>.</p>
+                <p>adaLN-Zero modulation derives per-block scale/shift/gate vectors from the combined timestep and global conditioning embedding and modulates each sub-layer (self-attention and feed-forward) in place, without lengthening the sequence. When no global conditioning is configured, the timestep embedding alone drives the modulation. See <code>DiffusionTransformer.adaptiveConditioning()</code> and <code>AdaptiveLayerNormFeatures</code>.</p>
 
                 <h3>LoRA Fine-Tuning</h3>
                 <p>For parameter-efficient fine-tuning, use <code>LoRADiffusionTransformer</code> which extends DiffusionTransformer with <code>LowRankAdapterSupport</code>:</p>
