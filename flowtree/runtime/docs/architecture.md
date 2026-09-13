@@ -1126,6 +1126,7 @@ configuration:
 | Section | Condition |
 |---------|-----------|
 | Slack Communication | workstreamUrl is set |
+| Collaboration Protocol | workstreamUrl is set and collaborative is true |
 | Permission Denials | workstreamUrl is set |
 | Non-Code Requests | workstreamUrl is set |
 | Justifying No Code Changes | workstreamUrl is set |
