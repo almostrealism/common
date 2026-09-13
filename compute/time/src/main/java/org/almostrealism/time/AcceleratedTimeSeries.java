@@ -329,6 +329,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
+		// TODO(review): writes at the post-increment index, unlike add(TemporalScalar); pre-existing, out of scope here.
 		setEndCursorIndex(getEndCursorIndex() + 1);
 		set(getEndCursorIndex(), time, value);
 	}
@@ -338,7 +339,12 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 *
 	 * <p>This method returns a compiled operation that can add temporal scalars
 	 * to the series on GPU/accelerator hardware. The operation increments the
-	 * end cursor and writes the new data.</p>
+	 * end cursor and writes the new data, unless the end cursor has already
+	 * reached {@link #getFullCursorIndex()}, in which case the write is dropped
+	 * rather than writing outside the series allocation. This differs from the
+	 * CPU path ({@link #add(TemporalScalar)}), which throws when the series is
+	 * full; a compiled kernel cannot throw, so a full series silently discards
+	 * further hardware-accelerated adds until it is purged.</p>
 	 *
 	 * <h3>Example</h3>
 	 * <pre>{@code
@@ -353,7 +359,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 * @return A compilable add operation
 	 */
 	public Supplier<Runnable> add(Producer<TemporalScalar> value) {
-		return new AcceleratedTimeSeriesAdd(() -> new Provider<>(this), value);
+		return new AcceleratedTimeSeriesAdd(() -> new Provider<>(this), value, getFullCursorIndex());
 	}
 
 	/**

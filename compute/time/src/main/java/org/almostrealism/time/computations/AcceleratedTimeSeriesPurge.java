@@ -80,9 +80,14 @@ import java.util.List;
  *
  * <h2>Performance</h2>
  * <ul>
- *   <li><strong>Complexity:</strong> O(n) linear scan through series</li>
- *   <li><strong>Hardware:</strong> GPU-compatible (single-threaded loop)</li>
- *   <li><strong>Memory:</strong> No deallocation, just cursor adjustment</li>
+ *   <li><strong>Complexity:</strong> O(n) linear scan through series to advance the begin
+ *       cursor; when the end cursor reaches the full-series index, an additional
+ *       O(live-entry) copy compacts the live entries to the front of storage</li>
+ *   <li><strong>Hardware:</strong> GPU-compatible (single-threaded loops)</li>
+ *   <li><strong>Memory:</strong> No deallocation. Ordinarily only cursor adjustment, but
+ *       once the series has filled its allocation, compaction copies every live entry to
+ *       a new position before the cursors are rebased — a substantial cost compared to the
+ *       ordinary cursor-only case, though still amortized across the entries it frees</li>
  * </ul>
  *
  * <h2>Use Cases</h2>
@@ -104,6 +109,30 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 
 	/** The end cursor value at which the series is full and its live entries are compacted. */
 	private final int fullCursorIndex;
+
+	/**
+	 * Sentinel {@code fullCursorIndex} used by the legacy three-argument constructor. The end
+	 * cursor of an {@link AcceleratedTimeSeries} can never reach this value, so compaction is
+	 * never triggered, matching the no-compaction behavior the three-argument constructor had
+	 * before compaction was introduced.
+	 */
+	public static final int NO_COMPACTION = Integer.MAX_VALUE;
+
+	/**
+	 * Constructs a purge operation with frequency control and no compaction of freed slots.
+	 *
+	 * @param series Producer providing the target time-series
+	 * @param cursors Producer providing the purge cursor (time threshold)
+	 * @param frequency How often to purge (1.0 = every call, 0.5 = every other call, etc.)
+	 * @deprecated Use {@link #AcceleratedTimeSeriesPurge(Producer, Producer, double, int)} so
+	 *             that the slots freed by purging are reclaimed once the series fills its
+	 *             allocation
+	 */
+	@Deprecated
+	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors,
+									  double frequency) {
+		this(series, cursors, frequency, NO_COMPACTION);
+	}
 
 	/**
 	 * Constructs a purge operation with frequency control.
