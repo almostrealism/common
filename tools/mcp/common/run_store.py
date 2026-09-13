@@ -60,15 +60,23 @@ class RunStore:
         return self.run_dir(run_id) / "metadata.json"
 
     def load(self, run_id: str) -> Optional[dict]:
-        """Return a run's stored metadata, or None if it cannot be read."""
+        """Return a run's stored metadata, or None if it cannot be read.
+
+        None covers every way the file can fail to yield metadata: missing,
+        unreadable, undecodable as UTF-8, not valid JSON, or valid JSON whose
+        root is not an object (``json.JSONDecodeError`` and
+        ``UnicodeDecodeError`` are both ``ValueError`` subclasses, so one
+        except clause catches either).
+        """
         path = self.metadata_path(run_id)
         if not path.exists():
             return None
         try:
             with open(path) as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError):
+                data = json.load(f)
+        except (OSError, ValueError):
             return None
+        return data if isinstance(data, dict) else None
 
     def save(self, run_id: str, metadata: dict) -> None:
         """Write a run's metadata."""

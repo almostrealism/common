@@ -54,6 +54,21 @@ class RunStoreMetadataTest(unittest.TestCase):
         # unreadable metadata file must read as absent, never raise.
         self.assertIsNone(self.store.load("bad"))
 
+    def test_load_non_utf8_metadata_returns_none(self):
+        run_dir = self._make_run("badenc")
+        # A UnicodeDecodeError is a ValueError, not an OSError or
+        # json.JSONDecodeError; load() must still treat it as absent rather
+        # than letting the exception escape to the caller.
+        (run_dir / "metadata.json").write_bytes(b"\xff\xfe\x00\x01garbage")
+        self.assertIsNone(self.store.load("badenc"))
+
+    def test_load_non_dict_json_root_returns_none(self):
+        run_dir = self._make_run("badroot")
+        # Valid JSON whose root is not an object still cannot serve as
+        # metadata: every caller assumes a dict and calls .get() on it.
+        (run_dir / "metadata.json").write_text(json.dumps(["not", "a", "dict"]))
+        self.assertIsNone(self.store.load("badroot"))
+
     def test_metadata_path_layout(self):
         self.assertEqual(self.dir / "r1" / "metadata.json",
                          self.store.metadata_path("r1"))
