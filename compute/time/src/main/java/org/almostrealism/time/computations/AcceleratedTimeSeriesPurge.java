@@ -48,6 +48,8 @@ import java.util.List;
  * 2. Find first entry with timestamp >= purge cursor
  * 3. Update beginCursor to that index
  * 4. Old entries become inaccessible (memory not freed, just cursors adjusted)
+ * 5. If endCursor has reached the last slot, move the live entries to the front
+ *    of the storage and rebase both cursors so the freed slots are reused
  * </pre>
  *
  * <h2>Frequency-Based Execution</h2>
@@ -100,32 +102,41 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	/** The minimum wavelength (in samples) below which entries are considered stale and purged. */
 	private final double wavelength;
 
+	/** The end cursor value at which the series is full and its live entries are compacted. */
+	private final int fullCursorIndex;
+
 	/**
 	 * Constructs a purge operation with frequency control.
 	 *
 	 * @param series Producer providing the target time-series
 	 * @param cursors Producer providing the purge cursor (time threshold)
 	 * @param frequency How often to purge (1.0 = every call, 0.5 = every other call, etc.)
+	 * @param fullCursorIndex The end cursor value at which the series is full; reaching it
+	 *                        triggers compaction of the live entries to the front of storage
 	 */
-	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors, double frequency) {
+	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors,
+									  double frequency, int fullCursorIndex) {
 		super(new Producer[] { series, cursors, () -> new Provider<>(new PackedCollection(1)) });
 		this.wavelength = 1.0 / frequency;
+		this.fullCursorIndex = fullCursorIndex;
 	}
 
 	/**
 	 * Private constructor for internal regeneration.
 	 *
 	 * @param wavelength Inverse of frequency (wavelength = 1 / frequency)
+	 * @param fullCursorIndex The end cursor value at which the series is full
 	 * @param arguments Producer arguments (series, cursors, counter)
 	 */
-	private AcceleratedTimeSeriesPurge(double wavelength, Producer<PackedCollection>... arguments) {
+	private AcceleratedTimeSeriesPurge(double wavelength, int fullCursorIndex, Producer<PackedCollection>... arguments) {
 		super(arguments);
 		this.wavelength = wavelength;
+		this.fullCursorIndex = fullCursorIndex;
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new AcceleratedTimeSeriesPurge(wavelength, children.toArray(Producer[]::new));
+		return new AcceleratedTimeSeriesPurge(wavelength, fullCursorIndex, children.toArray(Producer[]::new));
 	}
 
 	/**
@@ -167,10 +178,11 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
+		Expression left = getArgument(0).valueAt(0);
+		Expression right = getArgument(0).valueAt(1);
+
 		// Purge only when not throttled; throttling is currently disabled (see javadoc).
 		if (wavelength == 1.0) {
-			Expression left = getArgument(0).valueAt(0);
-			Expression right = getArgument(0).valueAt(1);
 			Expression cursor0 = getArgument(1).valueAt(0);
 
 			Scope<Void> guard = new Scope<>();
@@ -194,6 +206,49 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 			scope.addCase(right.subtract(left).greaterThan(e(0)), guard);
 		}
 
+		// Reclaim the slots freed by purging once the end cursor reaches the last slot.
+		// TODO(review): fires even when wavelength != 1.0 skipped the purge above; unverified under throttling.
+		scope.addCase(right.greaterThanOrEqual(e(fullCursorIndex)).and(left.greaterThan(e(1))), compact());
 		return scope;
+	}
+
+	/**
+	 * Builds the scope that compacts the live entries down to the front of the storage.
+	 * Purging only advances the begin cursor, so without this step the end cursor grows
+	 * monotonically across the life of the series and, once it passes the allocation,
+	 * every subsequent add writes outside the storage. The live entries are copied down
+	 * to start at slot 1 and both cursors are rebased; the copy walks upward, which is
+	 * safe because the destination of every element precedes its source.
+	 *
+	 * @return the compaction scope
+	 */
+	protected Scope<Void> compact() {
+		Expression left = getArgument(0).valueAt(0);
+		Expression right = getArgument(0).valueAt(1);
+		Expression length = right.subtract(left);
+
+		Repeated copy = new Repeated<>();
+		InstanceReference offset = Variable.integer("j").ref();
+		copy.setIndex(offset.getReferent());
+		copy.setCondition(offset.lessThan(length));
+		copy.setInterval(e(1));
+
+		Expression dest = offset.add(e(1)).multiply(2);
+		Expression src = left.add(offset).toInt().multiply(2);
+		Scope<Void> move = new Scope<>();
+		move.assign(getArgument(0).reference(dest), getArgument(0).reference(src));
+		move.assign(getArgument(0).reference(dest.add(1)), getArgument(0).reference(src.add(1)));
+		copy.add(move);
+
+		// Rebase the cursors only after the copy; the end cursor is derived from the
+		// begin cursor, so it has to be written first.
+		Scope<Void> rebase = new Scope<>();
+		rebase.assign(getArgument(0).reference(e(1)), length.add(e(1)));
+		rebase.assign(getArgument(0).reference(e(0)), e(1));
+
+		Scope<Void> compact = new Scope<>();
+		compact.add(copy);
+		compact.add(rebase);
+		return compact;
 	}
 }
