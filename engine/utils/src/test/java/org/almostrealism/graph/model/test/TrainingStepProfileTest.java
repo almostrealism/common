@@ -28,6 +28,7 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.ModelTestFeatures;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -68,8 +69,8 @@ public class TrainingStepProfileTest extends TestSuiteBase implements ModelTestF
 	 * Runs a fixed number of epochs of the multi-layer norm model under a profile,
 	 * reports the per-step cost, and checks that the training loss went down.
 	 */
-	// TODO(review): missing @TestDepth, unlike other training tests in this package (see denseMultiLayerWithNorm)
 	@Test(timeout = 300000)
+	@TestDepth(2)
 	public void profileTrainingStep() throws IOException {
 		int inputSize = 6;
 		int hiddenSize = 6;

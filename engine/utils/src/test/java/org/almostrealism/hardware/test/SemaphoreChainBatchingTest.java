@@ -29,6 +29,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationListRunner;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
@@ -261,6 +262,68 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 
 		for (int i = 0; i < n; i++) {
 			assertEquals(2.0 * a.toDouble(i), result.toDouble(i));
+		}
+	}
+
+	/**
+	 * Verifies the {@link HardwareEvaluable#setResultProcessor(java.util.function.UnaryOperator)
+	 * result processor} contract that {@link org.almostrealism.collect.computations.PackedCollectionRepeat}
+	 * and {@link org.almostrealism.collect.computations.ReshapeProducer} rely on: wrapping a
+	 * kernel-backed evaluable and requesting it through the
+	 * {@link HardwareEvaluable#request(Object[], Semaphore, java.util.function.Consumer)} overload
+	 * must deliver the processed value together with the dispatch's completion, without forcing a
+	 * host wait (no command-buffer commit), and the processed value must match what the processor
+	 * would produce from a direct, synchronous evaluation.
+	 */
+	@Test(timeout = 60000)
+	public void resultProcessorDeliveryAvoidsCommit() {
+		MetalComputeContext metal = metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		int n = 16;
+
+		PackedCollection a = new PackedCollection(n);
+		rand(a.getShape()).add(1.0).into(a.traverseEach()).evaluate();
+
+		Evaluable<PackedCollection> ev;
+		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(ComputeRequirement.MTL));
+
+		try {
+			ev = (Evaluable<PackedCollection>) (Evaluable) cp(a).multiply(2.0).get();
+		} finally {
+			Hardware.getLocalHardware().getComputer().popRequirements();
+		}
+
+		HardwareEvaluable<PackedCollection> wrapper = new HardwareEvaluable<>(() -> ev, null, null, false);
+		wrapper.setResultProcessor(out -> out.repeat(2));
+
+		Object[] delivered = new Object[1];
+		Semaphore[] completion = new Semaphore[1];
+
+		MetalCommandRunner runner = metal.getCommandRunner();
+		long baseline = runner.getCommitCount();
+
+		wrapper.request(new Object[0], null, (CompletionConsumer<PackedCollection>) (value, c) -> {
+			delivered[0] = value;
+			completion[0] = c;
+		});
+
+		assertEquals((double) baseline, (double) runner.getCommitCount());
+		assertTrue(delivered[0] instanceof PackedCollection);
+		assertTrue(completion[0] != null);
+
+		completion[0].waitFor();
+
+		PackedCollection direct = ev.evaluate(new Object[0]);
+		PackedCollection expected = direct.repeat(2);
+		PackedCollection result = (PackedCollection) delivered[0];
+
+		assertEquals((double) expected.getMemLength(), (double) result.getMemLength());
+		for (int i = 0; i < expected.getMemLength(); i++) {
+			assertEquals(expected.toDouble(i), result.toDouble(i));
 		}
 	}
 
