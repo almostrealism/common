@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.AdjustableDelayCell;
@@ -23,10 +24,13 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
+import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
+import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 /**
@@ -114,5 +118,98 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 				Assert.assertEquals("tick " + i, 0.1, out.toDouble(), 1e-6);
 			}
 		});
+	}
+
+	/**
+	 * A delay line fed distinct values (rather than a constant) must reproduce every
+	 * pushed sample after the configured delay, even across the buffer-full compaction
+	 * boundary. A constant input cannot distinguish a dropped sample from a surviving
+	 * one, since every entry carries the same value; this test uses a distinct value
+	 * per tick so a dropped or corrupted entry changes the observed output.
+	 */
+	@Test(timeout = 60000)
+	public void delayCellPreservesDistinctSamplesAcrossCompaction() {
+		int sampleRate = 100;
+		int delayFrames = 4;
+		int bufferSize = 2 * delayFrames;
+
+		AdjustableDelayCell delay = new AdjustableDelayCell(sampleRate,
+				c(delayFrames / (double) sampleRate), c(1.0), bufferSize);
+		PackedCollection out = new PackedCollection(1);
+		delay.setReceptor(protein -> a(1, p(out), protein));
+		delay.setup().get().run();
+
+		int ticks = 6 * bufferSize;
+		double[] inputs = new double[ticks];
+		for (int i = 0; i < ticks; i++) {
+			inputs[i] = (i + 1) * 0.001;
+		}
+
+		for (int i = 0; i < ticks; i++) {
+			OperationList ops = new OperationList("Delay Push and Tick");
+			ops.add(delay.push(c(inputs[i])));
+			ops.add(delay.tick());
+			ops.get().run();
+
+			if (i >= delayFrames) {
+				double expected = inputs[i - delayFrames];
+				Assert.assertEquals("tick " + i, expected, out.toDouble(), 1e-9);
+			}
+		}
+	}
+
+	/**
+	 * The deprecated two-argument {@link AcceleratedTimeSeriesAdd} constructor must still add
+	 * entries correctly, delegating to the guarded constructor with the {@code NO_CAPACITY_GUARD}
+	 * sentinel so existing callers keep working unmodified.
+	 */
+	@Test(timeout = 10000)
+	public void deprecatedAddConstructorStillAdds() {
+		AcceleratedTimeSeries series = new AcceleratedTimeSeries(6);
+		CursorPair cursors = new CursorPair(0.0, 1.0);
+
+		Supplier<Runnable> op = new AcceleratedTimeSeriesAdd(p(series),
+				(Producer) temporal(r(p(cursors)), c(42.0)));
+		op.get().run();
+
+		int expectedEntries = 1;
+		Assert.assertEquals(expectedEntries, series.getLength());
+		Assert.assertEquals(42.0, series.valueAt(1.0).getValue(), 1e-10);
+	}
+
+	/**
+	 * The deprecated three-argument {@link AcceleratedTimeSeriesPurge} constructor must preserve
+	 * the pre-compaction behavior: the begin cursor still advances past stale entries, but the
+	 * slots it frees are never reclaimed, since it uses the {@code NO_COMPACTION} sentinel. A
+	 * series purged through this constructor therefore stays full even after entries are purged.
+	 */
+	@Test(timeout = 10000)
+	public void deprecatedPurgeConstructorNeverCompacts() {
+		AcceleratedTimeSeries series = new AcceleratedTimeSeries(6);
+
+		int added = 0;
+		while (true) {
+			try {
+				series.add(new TemporalScalar(added + 1.0, (added + 1) * 10.0));
+				added++;
+			} catch (RuntimeException e) {
+				break;
+			}
+		}
+
+		Assert.assertEquals(added, series.getLength());
+
+		double everyCall = 1.0;
+		new AcceleratedTimeSeriesPurge(p(series), p(new CursorPair(3.5, 4.5)), everyCall).get().run();
+
+		int surviving = added - 2;
+		Assert.assertEquals(surviving, series.getLength());
+
+		try {
+			series.add(new TemporalScalar(added + 1.0, (added + 1) * 10.0));
+			Assert.fail("Expected the series to remain full because compaction is disabled");
+		} catch (RuntimeException expected) {
+			// Legacy behavior: freed slots are not reclaimed without compaction.
+		}
 	}
 }
