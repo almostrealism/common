@@ -112,6 +112,66 @@ public class T5GemmaEncoderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A weight whose total element count matches but whose per-axis lengths do not (a checkpoint
+	 * layout bug transposing or misdividing a dimension) is rejected rather than silently accepted
+	 * with its actual, mismatched shape.
+	 */
+	@Test(timeout = 120000)
+	public void weightWithWrongAxisLengthsIsRejected() {
+		T5GemmaConfig config = smallConfig(8);
+		Map<String, PackedCollection> weights = syntheticWeights(config, 3);
+
+		// o_proj.weight is declared [hidden, hidden] = [16, 16] = 256 elements; substitute a
+		// same-rank, same-total-size tensor shaped [8, 32] instead.
+		weights.put("encoder.layers.0.self_attn.o_proj.weight", new PackedCollection(shape(8, 32)).fill(1.0));
+
+		try {
+			new T5GemmaEncoder(config, new StateDictionary(weights)).block();
+			throw new AssertionError("a weight with mismatched axis lengths must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage().contains("o_proj"));
+		}
+	}
+
+	/** {@link T5GemmaEncoder#destroy()} releases the weight dictionary, not just the compiled graph. */
+	@Test(timeout = 120000)
+	public void destroyReleasesWeightDictionary() {
+		T5GemmaConfig config = smallConfig(8);
+		Map<String, PackedCollection> weights = syntheticWeights(config, 3);
+		PackedCollection normWeight = weights.get("encoder.norm.weight");
+		T5GemmaEncoder encoder = new T5GemmaEncoder(config, new StateDictionary(weights));
+
+		assertFalse("weight must be live before destroy", normWeight.isDestroyed());
+		encoder.destroy();
+		assertTrue("destroy() must release the weight dictionary", normWeight.isDestroyed());
+	}
+
+	/** A token id outside the vocabulary is rejected before it reaches the embedding gather. */
+	@Test(timeout = 120000)
+	public void outOfVocabularyTokenIsRejected() {
+		T5GemmaConfig config = smallConfig(8);
+		T5GemmaEncoder encoder = new T5GemmaEncoder(config, new StateDictionary(syntheticWeights(config, 3)));
+
+		try {
+			try {
+				encoder.forward(new long[]{5, -1, 9});
+				throw new AssertionError("a negative token id must be rejected");
+			} catch (IllegalArgumentException e) {
+				assertTrue(e.getMessage().contains("-1"));
+			}
+
+			try {
+				encoder.forward(new long[]{5, config.getVocabularySize(), 9});
+				throw new AssertionError("a token id beyond the vocabulary must be rejected");
+			} catch (IllegalArgumentException e) {
+				assertTrue(e.getMessage().contains(String.valueOf(config.getVocabularySize())));
+			}
+		} finally {
+			encoder.destroy();
+		}
+	}
+
+	/**
 	 * A two-layer configuration of the small encoder compiled for the given length.
 	 *
 	 * @param maxLength number of token positions

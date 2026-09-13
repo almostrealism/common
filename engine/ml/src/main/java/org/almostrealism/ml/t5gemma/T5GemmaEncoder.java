@@ -30,6 +30,7 @@ import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -145,6 +146,11 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 		ByteBuffer mask = ByteBuffer.allocate(Double.BYTES * length);
 		for (int i = 0; i < length; i++) {
 			boolean present = i < tokens.length;
+			if (present && (tokens[i] < 0 || tokens[i] >= config.getVocabularySize())) {
+				throw new IllegalArgumentException("Token id " + tokens[i] + " at position " + i
+						+ " is outside the vocabulary [0, " + config.getVocabularySize() + ")");
+			}
+
 			ids.putDouble(present ? (double) tokens[i] : (double) PAD_TOKEN);
 			mask.putDouble(present ? 1.0 : 0.0);
 		}
@@ -278,18 +284,23 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 			throw new IllegalArgumentException("Missing weight " + key);
 		}
 
+		TraversalPolicy actual = value.getShape();
 		TraversalPolicy expected = shape(dims);
-		if (value.getShape().getTotalSize() != expected.getTotalSize()) {
-			throw new IllegalArgumentException("Weight " + key + " has shape " + value.getShape()
+		boolean sameRank = actual.getDimensions() == expected.getDimensions();
+		if (actual.getTotalSize() != expected.getTotalSize()
+				|| (sameRank && !Arrays.equals(actual.extent(), expected.extent()))) {
+			throw new IllegalArgumentException("Weight " + key + " has shape " + actual
 					+ " but " + expected + " was expected");
 		}
 
 		unusedWeights.remove(key);
-		return value.getShape().getDimensions() == expected.getDimensions() ? value : value.reshape(expected);
+		return sameRank ? value : value.reshape(expected);
 	}
 
 	@Override
 	public void destroy() {
+		weights.destroy();
+
 		if (compiled != null) {
 			compiled.destroy();
 		}

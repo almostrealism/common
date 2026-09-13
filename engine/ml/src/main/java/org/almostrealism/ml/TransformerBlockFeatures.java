@@ -478,7 +478,7 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 					crossWq, crossKv, crossWo,
 					crossQNormWeight, crossQNormBias,
 					crossKNormWeight, crossKNormBias,
-					context, attentionScores, projectionFactory));
+					context, attentionScores, projectionFactory, normType));
 			block.add(residual(crossAttentionWithNorm));
 		}
 
