@@ -32,6 +32,10 @@ for var in BRANCH COMMIT_SHA; do
     fi
 done
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=prompt-render.sh
+source "${SCRIPT_DIR}/prompt-render.sh"
+
 cat > "$OUTPUT_FILE" <<'PROMPT'
 ## CODE POLICY VIOLATIONS DETECTED
 
@@ -140,3 +144,5 @@ Start by examining what this branch changed:
 
 Then run the enforcement test to see the specific violations.
 EOF
+
+append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH

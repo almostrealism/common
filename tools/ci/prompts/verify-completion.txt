@@ -5,12 +5,20 @@ This is NOT a review task. You are a **coding agent**. Your job is to **implemen
 whatever is missing, write tests that prove the implementation works, and only report
 completion once the branch is genuinely done.
 
+@include pr-feedback.txt
+
+On a branch whose changes are documents — a plan, a design, a write-up — the
+review feedback is usually the whole of what needs doing: a reviewer's
+correction to the plan is a requirement of the plan, and answering it means
+changing the document, not just the reply.
+
 ## Your Task
 
 ### Step 1: Understand the Plan
 
 Read the planning document (the workstream's system instructions tell you where it is).
-Extract every goal, requirement, and deliverable.
+Extract every goal, requirement, and deliverable. Treat every review comment on the
+plan that you found above as one more requirement of it.
 
 ### Step 2: Assess Current State
 
