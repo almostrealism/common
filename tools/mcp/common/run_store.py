@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""The on-disk record of test runs.
+"""The on-disk record of MCP runs.
 
 Every run owns a directory holding its ``metadata.json``, its captured
-``output.txt``, and its copied surefire ``reports/``. That directory outlives
-the process that created it, which is the whole point: an agent can start a run,
-lose its context, and still ask what happened. This module is the only thing
-that knows the layout — reading and writing metadata, serving output back with
-the truncation the MCP responses need, retiring old runs, and marking runs the
-parent process abandoned.
+``output.txt``, and (for the test runner) its copied surefire ``reports/``. That
+directory outlives the process that created it, which is the whole point: an
+agent can start a run, lose its context, and still ask what happened. This
+module is the only thing that knows the layout — reading and writing metadata,
+serving output back with the truncation the MCP responses need, retiring old
+runs, and marking runs the parent process abandoned. Both ar-test-runner and
+ar-build-validator keep their runs this way, so the layout lives here in the
+shared ``common`` package rather than in either server.
 
-Nothing here starts or watches a process; that belongs to the runner.
+Nothing here starts or watches a process; that belongs to the server that owns
+the run.
 """
 
 import json

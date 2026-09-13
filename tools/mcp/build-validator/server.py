@@ -30,7 +30,6 @@ Usage:
 import json
 import os
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -53,6 +52,7 @@ if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
 import build_tree  # noqa: E402
+import run_store  # noqa: E402
 
 # Project root: tools/mcp/build-validator/server.py is 4 levels deep
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
@@ -156,6 +156,7 @@ class BuildValidator:
         self._active_pids: dict[str, int] = {}
         self._cancel_flags: dict[str, bool] = {}
         self._timeout_timers: dict[str, threading.Timer] = {}
+        self.store = run_store.RunStore(RUNS_DIR)
 
     # ──────────────────────────────────────────────────────────────────
     # Public API
@@ -940,16 +941,10 @@ class BuildValidator:
     # ──────────────────────────────────────────────────────────────────
 
     def _save_metadata(self, run_id: str, metadata: dict):
-        meta_file = RUNS_DIR / run_id / "metadata.json"
-        with open(meta_file, "w") as f:
-            json.dump(metadata, f, indent=2)
+        self.store.save(run_id, metadata)
 
     def _load_metadata(self, run_id: str) -> Optional[dict]:
-        meta_file = RUNS_DIR / run_id / "metadata.json"
-        if not meta_file.exists():
-            return None
-        with open(meta_file) as f:
-            return json.load(f)
+        return self.store.load(run_id)
 
     # ──────────────────────────────────────────────────────────────────
     # Lifecycle helpers
@@ -990,28 +985,7 @@ class BuildValidator:
             timer.cancel()
 
     def _cleanup_old_runs(self):
-        if not RUNS_DIR.exists():
-            return
-        runs = []
-        for run_dir in RUNS_DIR.iterdir():
-            if not run_dir.is_dir():
-                continue
-            meta = run_dir / "metadata.json"
-            started_at = ""
-            if meta.exists():
-                try:
-                    with open(meta) as f:
-                        started_at = json.load(f).get("started_at", "")
-                except Exception:
-                    pass
-            runs.append((run_dir, started_at))
-        runs.sort(key=lambda x: x[1])
-        while len(runs) >= MAX_RUNS:
-            old_dir, _ = runs.pop(0)
-            try:
-                shutil.rmtree(old_dir)
-            except Exception:
-                pass
+        self.store.cleanup(MAX_RUNS)
 
 
 # ──────────────────────────────────────────────────────────────────────
