@@ -450,9 +450,12 @@ PackedCollection output = model.forward(
 
 **Key Features:**
 - Rotary Position Embeddings (RoPE)
-- Timestep embeddings via Fourier features
+- Timestep embeddings via Fourier features, either a learned frequency matrix or a deterministic
+  geometric ladder (see `TimestepEncoding`)
 - Optional cross-attention conditioning
 - Configurable conditioning mode: prepended conditioning (default) or adaLN-Zero modulation
+- Optional per-position local additive conditioning (e.g. an inpainting mask), summed into the
+  hidden state of every block independently of the conditioning mode
 
 ### LoRA Fine-Tuning
 
@@ -526,6 +529,14 @@ global conditioning embedding and modulates each sub-layer (self-attention and f
 place, without lengthening the sequence. When no global conditioning is configured, the timestep
 embedding alone drives the modulation. See `DiffusionTransformer.adaptiveConditioning()` and
 `AdaptiveLayerNormFeatures`.
+
+**Local additive conditioning** is orthogonal to the two modes above: when `DiffusionTransformerConfig`
+is given a `localAddCondDim > 0`, `DiffusionTransformer.getLocalAddCond()` exposes a
+`[batch, localAddCondDim, audioSeqLen]` buffer that the caller writes a per-position control signal
+into (an inpainting mask concatenated with the masked latent, for example) before `forward()`. Each
+block projects it to the transformer width and adds it to the hidden state between the self-attention
+and feed-forward sub-layers; positions occupied by prepended or memory tokens receive no local
+conditioning. The buffer starts zero-filled, which is the value plain generation supplies.
 
 ## Integration with Other Modules
 
