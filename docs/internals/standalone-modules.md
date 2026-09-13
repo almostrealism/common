@@ -212,7 +212,7 @@ compute stack. It enables:
 - `ClaudeCodeJob` — an AI-powered job type that uses Claude Code to implement tasks
 - `ExternalProcessJob` — run arbitrary shell commands as distributed tasks
 - Workstream management (groups of related jobs)
-- Agent pool management with Docker Compose (`flowtree/runtime/agent/`)
+- Agent pool management with Docker Compose (`flowtree/runtime/agent/`), plus a native macOS agent running as a launchd service (`flowtree/runtime/agent/macos/`) for jobs that require `platform=macos`
 - MCP server integration for controller management (`tools/mcp/manager/`)
 
 #### Key classes
