@@ -988,7 +988,7 @@ A comma-separated string listing every tool the agent is allowed to use. Constru
 
 Example output:
 ```
-Read,Edit,Write,Bash,Glob,Grep,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__consult
+Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__consult
 ```
 
 #### `--max-turns <N>`
@@ -1054,7 +1054,7 @@ claude -p "You are working autonomously as a coding agent...
 Fix the memory leak in CacheManager
 --- END USER REQUEST ---" \
 --output-format json \
---allowedTools Read,Edit,Write,Bash,Glob,Grep,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__memory_store,mcp__ar-manager__memory_namespaces,mcp__ar-manager__workstream_context,mcp__ar-manager__consult \
+--allowedTools Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__memory_store,mcp__ar-manager__memory_namespaces,mcp__ar-manager__workstream_context,mcp__ar-manager__consult \
 --max-turns 50 \
 --max-budget-usd 10.00 \
 --mcp-config '{"mcpServers":{"ar-manager":{"type":"http","url":"http://controller:8010","headers":{"Authorization":"Bearer armt_tmp_..."}}}}'
@@ -1080,7 +1080,7 @@ Throughout execution, `ClaudeCodeJob` logs extensively using the `ConsoleFeature
 Log messages are formatted by `GitManagedJob.formatMessage()`, which prepends the class name and task ID:
 ```
 ClaudeCodeJob [abc123]: Starting: Fix the bug in Parser...
-ClaudeCodeJob [abc123]: Tools: Read,Edit,Write,Bash,Glob,Grep
+ClaudeCodeJob [abc123]: Tools: Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop
 ClaudeCodeJob [abc123]: [ClaudeCode] {"type":"assistant","content":"..."}
 ClaudeCodeJob [abc123]: Completed with exit code: 0
 ```

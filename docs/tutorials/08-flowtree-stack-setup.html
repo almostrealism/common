@@ -214,6 +214,16 @@
                     also serves as a Claude Code MCP server, making it the correct
                     entrypoint for every external caller.
                 </div>
+
+                <div class="info">
+                    <strong>What about jobs that need Metal?</strong>
+                    The agent pool above is Docker containers running Linux, which have
+                    no GPU. Jobs labeled <code>platform=macos</code> are instead routed to
+                    a native macOS agent running as a launchd service alongside this pool
+                    (not covered by this Docker-focused tutorial) — see
+                    <a href="../../flowtree/runtime/docs/agent-pool.md">Agent Pool
+                    Documentation</a> for how it is deployed.
+                </div>
             </section>
 
             <!-- ── Step 1: Directory structure ──────────────────────── -->

@@ -50,22 +50,20 @@ DIT_PREFIX = "model.model."
 def sa3_dit_rules():
     """Rule list mapping a released SA3 checkpoint to the DiT StateDictionary.
 
-    Block-B (adaLN / memory tokens / local-add cond) keys are ALREADY present in
-    the released ``model.model.*`` namespace and pass through unchanged here:
+    The adaLN, memory-token and local-add conditioning keys are read by
+    ``DiffusionTransformer`` under exactly their released names, so they ride
+    through ``select_prefix`` untouched:
 
-    * ``model.model.transformer.layers.N.to_scale_shift_gate``  (adaLN)
-    * ``model.model.transformer.memory_tokens``                 (register tokens)
-    * ``model.model.transformer.layers.N.to_local_embed.*``     (local-add cond)
+    * ``model.model.transformer.global_cond_embedder.{0,2}.{weight,bias}``
+    * ``model.model.transformer.layers.N.to_scale_shift_gate``  (bare 6*dim parameter)
+    * ``model.model.transformer.memory_tokens``
+    * ``model.model.transformer.layers.N.to_local_embed.{0,2}.{weight,bias}``
 
-    When Block B lands, attach any rename / shape-check rules for these keys to
-    the list returned here (e.g. if AR's consumer adopts different local key
-    names). Today they require no transformation, so no rule consumes them
-    explicitly -- they ride through ``select_prefix``.
+    The released DiTs use deterministic (``expo``) timestep features, so no
+    ``timestep_features.weight`` key exists or is expected.
     """
     return [
         core.select_prefix(DIT_PREFIX),
-        # (Block B attachment point: insert rename/check rules for
-        #  to_scale_shift_gate / memory_tokens / to_local_embed here.)
     ]
 
 
@@ -89,7 +87,9 @@ SA3_DIT_EXPECTED_KEYS = frozenset([
     "model.model.transformer.rotary_pos_emb.inv_freq",
     "model.model.transformer.memory_tokens",
     "model.model.transformer.global_cond_embedder.0.weight",
+    "model.model.transformer.global_cond_embedder.0.bias",
     "model.model.transformer.global_cond_embedder.2.weight",
+    "model.model.transformer.global_cond_embedder.2.bias",
     "model.model.transformer.layers.0.pre_norm.gamma",
     "model.model.transformer.layers.0.self_attn.to_qkv.weight",
     "model.model.transformer.layers.0.self_attn.to_out.weight",
@@ -97,9 +97,11 @@ SA3_DIT_EXPECTED_KEYS = frozenset([
     "model.model.transformer.layers.0.cross_attn.to_kv.weight",
     "model.model.transformer.layers.0.ff.ff.0.proj.weight",
     "model.model.transformer.layers.0.ff.ff.2.weight",
-    # Block-B keys (present today; consumed when B lands):
     "model.model.transformer.layers.0.to_scale_shift_gate",
     "model.model.transformer.layers.0.to_local_embed.0.weight",
+    "model.model.transformer.layers.0.to_local_embed.0.bias",
+    "model.model.transformer.layers.0.to_local_embed.2.weight",
+    "model.model.transformer.layers.0.to_local_embed.2.bias",
 ])
 
 

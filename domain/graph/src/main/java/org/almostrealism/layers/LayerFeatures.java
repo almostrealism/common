@@ -675,6 +675,55 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * The producer-level affine map {@code x @ weight^T + bias} over the last axis of {@code x}.
+	 * Every leading axis is treated as a row, so a {@code [..., in]} input yields a
+	 * {@code [..., out]} output. This is the graph-composition counterpart of the {@link #dense}
+	 * layer for use inside a single kernel expression.
+	 *
+	 * @param x      the input, shape {@code [..., in]}
+	 * @param weight the weight matrix, shape {@code [out, in]}
+	 * @param bias   the bias vector, shape {@code [out]}, or {@code null} for none
+	 * @return a producer of shape {@code [..., out]}
+	 */
+	default CollectionProducer linear(CollectionProducer x, PackedCollection weight, PackedCollection bias) {
+		TraversalPolicy xs = x.getShape();
+		int rank = xs.getDimensions();
+		int in = xs.length(rank - 1);
+		int rows = xs.getTotalSize() / in;
+		int out = weight.getShape().length(0);
+
+		if (weight.getShape().getTotalSize() != out * in) {
+			throw new IllegalArgumentException("Weight " + weight.getShape() +
+					" does not map " + in + " input features");
+		}
+
+		CollectionProducer y = matmul(x.reshape(rows, in), cp(weight).reshape(out, in).transpose(1));
+		if (bias != null) {
+			y = y.add(cp(bias).reshape(out).repeat(0, rows));
+		}
+
+		return y.reshape(xs.replaceDimension(rank - 1, out));
+	}
+
+	/**
+	 * The producer-level two-layer perceptron {@code linear(silu(linear(x)))}, where
+	 * {@code silu(z) = z * sigmoid(z)}, applied over the last axis of {@code x}.
+	 *
+	 * @param x         the input, shape {@code [..., in]}
+	 * @param weightIn  first linear weight, shape {@code [hidden, in]}
+	 * @param biasIn    first linear bias, shape {@code [hidden]}, or {@code null} for none
+	 * @param weightOut second linear weight, shape {@code [out, hidden]}
+	 * @param biasOut   second linear bias, shape {@code [out]}, or {@code null} for none
+	 * @return a producer of shape {@code [..., out]}
+	 */
+	default CollectionProducer siluMlp(CollectionProducer x,
+									  PackedCollection weightIn, PackedCollection biasIn,
+									  PackedCollection weightOut, PackedCollection biasOut) {
+		CollectionProducer hidden = linear(x, weightIn, biasIn);
+		return linear(hidden.multiply(sigmoid(hidden)), weightOut, biasOut);
+	}
+
+	/**
 	 * Creates a dense layer factory using the input shape's size as the node count.
 	 *
 	 * @param nodes the number of output nodes
@@ -852,6 +901,29 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 */
 	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
 		return layer("scale", shape, shape, input -> multiply(c(input).each(), c(scale)), requirements);
+	}
+
+	/**
+	 * Creates a scaling block that multiplies every element of the input by a stored scalar
+	 * parameter (a single-value collection, typically a learned or running statistic), or passes the
+	 * input through unchanged when no parameter is supplied.
+	 *
+	 * @param shape        the input and output shape
+	 * @param scale        the scalar multiplier as a one-element collection, or {@code null} for the identity
+	 * @param requirements optional compute requirements
+	 * @return the scaling {@link Block}, or a {@link #passThrough(TraversalPolicy) pass-through} when {@code scale} is {@code null}
+	 */
+	default Block scale(TraversalPolicy shape, PackedCollection scale, ComputeRequirement... requirements) {
+		if (scale == null) {
+			return passThrough(shape);
+		}
+
+		if (scale.getShape().getTotalSize() != 1) {
+			throw new IllegalArgumentException("scale must be a single value, not " + scale.getShape());
+		}
+
+		return layer("scale", shape, shape, input -> multiply(c(input).each(), cp(scale)),
+				List.of(scale), requirements);
 	}
 
 	/**

@@ -4,6 +4,13 @@ A self-contained Docker setup for running a pool of FlowTree agent nodes.
 Each container runs a FlowTree `Server` that connects outbound to your
 controller and executes `ClaudeCodeJob` instances via the Claude Code CLI.
 
+The Docker pool runs Linux containers and has no GPU. Jobs that require
+`platform=macos` (for example, jobs that need Metal) are routed instead to a
+native macOS agent running as a launchd service alongside this pool — see
+[Native macOS agent](../README.md#native-macos-agent-launchd-with-metal) in
+the runtime README and [tools/ci/macos/README.md](../../../tools/ci/macos/README.md)
+for the runner that deploys it.
+
 ## Prerequisites
 
 - Docker and Docker Compose

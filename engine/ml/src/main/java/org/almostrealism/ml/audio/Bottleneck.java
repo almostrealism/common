@@ -16,6 +16,8 @@
 
 package org.almostrealism.ml.audio;
 
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Block;
 
 /**
@@ -40,7 +42,7 @@ import org.almostrealism.model.Block;
  * @see VAEBottleneck
  * @see SoftNormBottleneck
  */
-public interface Bottleneck {
+public interface Bottleneck extends LayerFeatures {
 
 	/**
 	 * Builds the bottleneck transform as a {@link Block} mapping the encoder output to the latent.
@@ -53,6 +55,25 @@ public interface Bottleneck {
 	 * @return the bottleneck transform as a {@link Block}
 	 */
 	Block bottleneck(int batchSize, int seqLength);
+
+	/**
+	 * Builds the inverse transform as a {@link Block} mapping a latent back to the representation the
+	 * decoder consumes.
+	 *
+	 * <p>The returned block maps an input of shape {@code (batchSize, getOutputDim(), seqLength)} to
+	 * an output of shape {@code (batchSize, getOutputDim(), seqLength)}: a bottleneck that discards
+	 * information in {@link #bottleneck(int, int)} (a VAE mean split, for example) cannot restore
+	 * it, so the decoder always starts from the latent width and this block undoes only the
+	 * invertible part of the transform (an affine rescale, say). Bottlenecks with no invertible part
+	 * return a pass-through block.</p>
+	 *
+	 * @param batchSize  the number of examples processed together
+	 * @param seqLength  the latent sequence length (number of frames)
+	 * @return the decode-side transform as a {@link Block}
+	 */
+	default Block decode(int batchSize, int seqLength) {
+		return passThrough(shape(batchSize, getOutputDim(), seqLength));
+	}
 
 	/**
 	 * Returns the number of channels in the encoder output consumed by this bottleneck.

@@ -40,14 +40,16 @@ import java.util.Map;
  * <p>adaLN modulation derives, per transformer block, six {@code [batch, dim]} components
  * (scale/shift/gate for self-attention followed by scale/shift/gate for the feed-forward) from a
  * global conditioning vector combined with a learned {@code to_scale_shift_gate} parameter, and
- * applies them as {@code x = x + gate * sublayer(scale * norm(x) + shift)}. The tests verify:</p>
+ * applies them as {@code x = x + sigmoid(1 - gate) * sublayer((1 + scale) * norm(x) + shift)}. The
+ * tests verify:</p>
  * <ul>
  *   <li>the scale/shift ({@link AdaptiveLayerNormFeatures#adaptiveModulate}) and gate
  *       ({@link AdaptiveLayerNormFeatures#adaptiveGate}) algebra against a direct host-side reference,
- *       and the modulation-parameter combination + component split against the same;</li>
- *   <li>that an adaLN block with identity modulation ({@code scale=1, shift=0, gate=1}) is numerically
+ *       the {@code 1 + scale} and {@code sigmoid(1 - gate)} multipliers, the global conditioning
+ *       embedder MLP, and the modulation-parameter combination + component split against the same;</li>
+ *   <li>that an adaLN block with identity modulation ({@code scale=0, shift=0}, gate open) is numerically
  *       equal to the unmodulated block — i.e. the default (prepend) path is behaviour-preserving — and
- *       that {@code gate=0} collapses the block to the identity function;</li>
+ *       that a closed gate collapses the block to the identity function;</li>
  *   <li>that the modulation threads through the compiled computation graph as a {@link Producer}, both
  *       at the block level and end-to-end through a {@link DiffusionTransformer} in
  *       {@link ConditioningMode#ADALN} mode, with the default {@link ConditioningMode#PREPEND} path
@@ -164,7 +166,10 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 	 * sub-layers) must be numerically equal to the unmodulated block. Because the unmodulated block is
 	 * exactly the pre-change pre-norm residual block (the {@code modulation == null} path used by
 	 * {@link ConditioningMode#PREPEND}), this proves the default conditioning path is behaviour-preserving
-	 * while the modulation algebra reduces to identity as documented.
+	 * while the modulation algebra reduces to identity as documented. {@link #scaleShiftGate} takes these
+	 * arguments in their effective, post-transform sense and converts them to the raw pre-transform values
+	 * {@link AdaptiveLayerNormFeatures#residualScale} and {@link AdaptiveLayerNormFeatures#residualGate}
+	 * actually consume.
 	 */
 	@Test(timeout = 240000)
 	public void identityModulationEqualsUnmodulatedBlock() {
@@ -188,7 +193,8 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 	/**
 	 * With {@code gate=0} for both sub-layers, every residual branch contributes zero and the block must
 	 * reduce to the identity function (output equal to input), regardless of the scale/shift values or
-	 * the sub-layer weights.
+	 * the sub-layer weights. As above, {@link #scaleShiftGate} interprets {@code gate=0} as "fully closed"
+	 * in the effective, post-transform sense.
 	 */
 	@Test(timeout = 240000)
 	public void gateZeroMakesBlockIdentity() {
@@ -204,6 +210,67 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 		double diff = compare(input, out);
 		log("gate=0 block vs input difference = " + diff);
 		assertTrue("adaLN with gate=0 must collapse the block to the identity function", diff < 1e-4);
+	}
+
+	/**
+	 * {@link AdaptiveLayerNormFeatures#residualScale} must produce {@code 1 + scale} and
+	 * {@link AdaptiveLayerNormFeatures#residualGate} must produce {@code sigmoid(1 - gate)}.
+	 */
+	@Test(timeout = 120000)
+	public void residualScaleAndGateMatchReference() {
+		PackedCollection raw = new PackedCollection(shape(BATCH, DIM)).randnFill();
+		PackedCollection scale = evaluate(residualScale(cp(raw))).reshape(shape(BATCH, DIM));
+		PackedCollection gate = evaluate(residualGate(cp(raw))).reshape(shape(BATCH, DIM));
+
+		for (int b = 0; b < BATCH; b++) {
+			for (int d = 0; d < DIM; d++) {
+				double r = raw.valueAt(b, d);
+				assertEquals(1.0 + r, scale.valueAt(b, d), 1e-5);
+				assertEquals(1.0 / (1.0 + Math.exp(-(1.0 - r))), gate.valueAt(b, d), 1e-5);
+			}
+		}
+	}
+
+	/**
+	 * {@link AdaptiveLayerNormFeatures#globalConditioningEmbedding} must compute the two-layer MLP
+	 * {@code linear(silu(linear(cond)))} producing {@code 6 * dim} raw components, and
+	 * {@link AdaptiveLayerNormFeatures#packedModulation} must add the per-block parameter to it.
+	 */
+	@Test(timeout = 120000)
+	public void globalConditioningEmbeddingMatchesReference() {
+		int packed = AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * DIM;
+		PackedCollection cond = new PackedCollection(shape(BATCH, DIM)).randnFill();
+		PackedCollection w0 = new PackedCollection(shape(DIM, DIM)).randnFill();
+		PackedCollection b0 = new PackedCollection(shape(DIM)).randnFill();
+		PackedCollection w2 = new PackedCollection(shape(packed, DIM)).randnFill();
+		PackedCollection b2 = new PackedCollection(shape(packed)).randnFill();
+		PackedCollection ssg = new PackedCollection(shape(packed)).randnFill();
+
+		Producer<PackedCollection> embedded =
+				globalConditioningEmbedding(cp(cond), w0, b0, w2, b2, BATCH, DIM);
+		PackedCollection out = evaluate(embedded);
+		PackedCollection modulation = evaluate(packedModulation(embedded, ssg, BATCH, DIM));
+
+		for (int b = 0; b < BATCH; b++) {
+			double[] hidden = new double[DIM];
+			for (int i = 0; i < DIM; i++) {
+				double h = b0.valueAt(i);
+				for (int j = 0; j < DIM; j++) {
+					h += cond.valueAt(b, j) * w0.valueAt(i, j);
+				}
+				hidden[i] = h / (1.0 + Math.exp(-h));
+			}
+
+			for (int o = 0; o < packed; o++) {
+				double expected = b2.valueAt(o);
+				for (int i = 0; i < DIM; i++) {
+					expected += hidden[i] * w2.valueAt(o, i);
+				}
+				assertEquals(expected, out.valueAt(b, o), 1e-3);
+				assertEquals(expected + ssg.valueAt(o),
+						modulation.valueAt(b, o / DIM, o % DIM), 1e-3);
+			}
+		}
 	}
 
 	/**
@@ -312,7 +379,7 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 
 	/**
 	 * In {@link ConditioningMode#ADALN} mode, a non-null {@link StateDictionary} that is missing the
-	 * per-layer {@code to_scale_shift_gate.weight} key must fail with a mode-specific, descriptive error
+	 * per-layer {@code to_scale_shift_gate} key must fail with a mode-specific, descriptive error
 	 * (rather than the generic {@code createWeight} "not found" message) that names the missing weight,
 	 * states the weights are required for ADALN, and points to {@link ConditioningMode#PREPEND} for older
 	 * checkpoints that lack them.
@@ -350,7 +417,7 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 
 	/**
 	 * A {@link ConditioningMode#PREPEND} load of a {@link StateDictionary} that contains per-layer
-	 * {@code to_scale_shift_gate.weight} entries must not be rejected by {@code validateWeights()}: those
+	 * {@code to_scale_shift_gate} entries must not be rejected by {@code validateWeights()}: those
 	 * weights are irrelevant when adaLN is disabled and are marked expected-unused, so the forward pass
 	 * builds and runs and the output keeps the input shape.
 	 */
@@ -435,11 +502,11 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 	/**
 	 * Builds the complete set of weights a {@link DiffusionTransformer} consumes for the synthetic
 	 * configuration above (no cross-attention, with global conditioning), optionally including the
-	 * per-layer {@code to_scale_shift_gate.weight} adaLN parameter. The shapes exactly match the
+	 * per-layer {@code to_scale_shift_gate} adaLN parameter. The shapes exactly match the
 	 * {@code createWeight} calls in {@code DiffusionTransformer} so that {@code validateWeights()} sees no
 	 * extraneous keys (other than the optional adaLN weights, which exercise the expected-unused handling).
 	 *
-	 * @param includeScaleShiftGate whether to include the per-layer {@code to_scale_shift_gate.weight}
+	 * @param includeScaleShiftGate whether to include the per-layer {@code to_scale_shift_gate}
 	 * @return the weight map for a {@link StateDictionary}
 	 */
 	private Map<String, PackedCollection> ditWeights(boolean includeScaleShiftGate) {
@@ -482,9 +549,18 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 			put(w, p + ".ff.ff.2.weight", DIT_EMBED_DIM, hiddenDim);
 			put(w, p + ".ff.ff.2.bias", DIT_EMBED_DIM);
 			if (includeScaleShiftGate) {
-				put(w, p + ".to_scale_shift_gate.weight",
-						AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, DIT_EMBED_DIM);
+				put(w, p + ".to_scale_shift_gate",
+						AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * DIT_EMBED_DIM);
 			}
+		}
+
+		if (includeScaleShiftGate) {
+			put(w, "model.model.transformer.global_cond_embedder.0.weight", DIT_EMBED_DIM, DIT_EMBED_DIM);
+			put(w, "model.model.transformer.global_cond_embedder.0.bias", DIT_EMBED_DIM);
+			put(w, "model.model.transformer.global_cond_embedder.2.weight",
+					AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * DIT_EMBED_DIM, DIT_EMBED_DIM);
+			put(w, "model.model.transformer.global_cond_embedder.2.bias",
+					AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * DIT_EMBED_DIM);
 		}
 		return w;
 	}
@@ -510,26 +586,52 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 		return cp(new PackedCollection(shape(BATCH, DIM)));
 	}
 
+	/** Raw pre-sigmoid gate magnitude used to saturate {@link #rawGate} at the {@code 0}/{@code 1}
+	 * extremes {@code sigmoid} only approaches asymptotically; {@code sigmoid(41)} and {@code
+	 * sigmoid(-39)} are within double-precision rounding of {@code 1} and {@code 0} respectively. */
+	private static final double GATE_SATURATION = 40.0;
+
 	/**
 	 * Builds a {@code [6, dim]} {@code to_scale_shift_gate} parameter with the six per-component values
-	 * broadcast across the {@code dim} channels.
+	 * broadcast across the {@code dim} channels. Each {@code scale} and {@code gate} argument is given in
+	 * its effective, post-transform sense ({@code scale=1} is "no change"; {@code gate=1}/{@code gate=0}
+	 * is "fully open"/"fully closed") and converted here to the raw pre-transform value the model actually
+	 * stores, inverting {@link AdaptiveLayerNormFeatures#residualScale} ({@code 1 + raw}) and
+	 * {@link AdaptiveLayerNormFeatures#residualGate} ({@code sigmoid(1 - raw)}).
 	 *
-	 * @param scaleSelf scale for the self-attention sub-layer
+	 * @param scaleSelf effective scale for the self-attention sub-layer
 	 * @param shiftSelf shift for the self-attention sub-layer
-	 * @param gateSelf  gate for the self-attention sub-layer
-	 * @param scaleFf   scale for the feed-forward sub-layer
+	 * @param gateSelf  effective gate for the self-attention sub-layer
+	 * @param scaleFf   effective scale for the feed-forward sub-layer
 	 * @param shiftFf   shift for the feed-forward sub-layer
-	 * @param gateFf    gate for the feed-forward sub-layer
-	 * @return the {@code [6, dim]} parameter collection
+	 * @param gateFf    effective gate for the feed-forward sub-layer
+	 * @return the {@code [6, dim]} raw parameter collection
 	 */
 	private PackedCollection scaleShiftGate(double scaleSelf, double shiftSelf, double gateSelf,
 											double scaleFf, double shiftFf, double gateFf) {
 		PackedCollection ssg =
 				new PackedCollection(shape(AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, DIM));
-		cp(pack(scaleSelf, shiftSelf, gateSelf, scaleFf, shiftFf, gateFf))
+		double rawGateSelf = rawGate(gateSelf);
+		double rawGateFf = rawGate(gateFf);
+		cp(pack(scaleSelf - 1.0, shiftSelf, rawGateSelf,
+				scaleFf - 1.0, shiftFf, rawGateFf))
 				.reshape(shape(AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, 1)).repeat(1, DIM)
 				.into(ssg.traverseEach()).evaluate();
 		return ssg;
+	}
+
+	/**
+	 * Inverts {@link AdaptiveLayerNormFeatures#residualGate} ({@code sigmoid(1 - raw)}) to find the raw
+	 * value that produces the given effective gate, saturating at {@link #GATE_SATURATION} for the
+	 * {@code 0} and {@code 1} extremes the sigmoid only approaches asymptotically.
+	 *
+	 * @param effectiveGate the desired {@code sigmoid(1 - raw)} value, in {@code [0, 1]}
+	 * @return the raw pre-sigmoid gate value
+	 */
+	private double rawGate(double effectiveGate) {
+		if (effectiveGate >= 1.0) return -GATE_SATURATION;
+		if (effectiveGate <= 0.0) return GATE_SATURATION;
+		return 1.0 - Math.log(effectiveGate / (1.0 - effectiveGate));
 	}
 
 	/**
@@ -622,7 +724,7 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 					ffnNormWeight, ffnNormBias,
 					w1, w2, w1Bias, w2Bias,
 					null, ProjectionFactory.dense(),
-					AttentionVariant.STANDARD, null, modulation);
+					AttentionVariant.STANDARD, null, modulation, null);
 		}
 	}
 }

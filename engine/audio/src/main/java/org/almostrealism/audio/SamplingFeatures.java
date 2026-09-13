@@ -262,4 +262,39 @@ public interface SamplingFeatures extends CodeFeatures {
 		CollectionProducer generate = interpolate(input, pos, rate);
 		return generate.multiply(sinw(series, w, phase, amp));
 	}
+
+	/**
+	 * PolyBLEP (Polynomial Band-Limited Step) anti-aliasing correction for geometric
+	 * waveforms.
+	 *
+	 * <p>Geometric oscillators (sawtooth, square, ...) contain sharp discontinuities
+	 * that alias when sampled. PolyBLEP smooths the two sample regions adjacent to a
+	 * discontinuity with a second-order polynomial so the step is band-limited without
+	 * significant computational overhead. The result is the correction value to add to
+	 * the raw waveform at the discontinuity located at phase {@code 0}/{@code 1}.</p>
+	 *
+	 * <ul>
+	 *   <li>When {@code t < dt}: {@code -(t/dt - 1)^2}</li>
+	 *   <li>When {@code t > 1 - dt}: {@code ((t-1)/dt + 1)^2}</li>
+	 *   <li>Otherwise: {@code 0}</li>
+	 * </ul>
+	 *
+	 * @param t  phase position within the cycle (0 to 1)
+	 * @param dt phase increment per sample (frequency / sampleRate)
+	 * @return a CollectionProducer yielding the correction value to apply to the raw waveform
+	 */
+	default CollectionProducer polyBlep(CollectionProducer t, Producer<PackedCollection> dt) {
+		// When t < dt: -(t/dt - 1)^2
+		CollectionProducer belowDt = lessThan(t, dt,
+				multiply(pow(subtract(divide(t, dt), c(1.0)), c(2.0)), c(-1.0)),
+				c(0.0));
+
+		// When t > 1-dt: ((t-1)/dt + 1)^2
+		CollectionProducer oneMinusDt = subtract(c(1.0), dt);
+		CollectionProducer aboveOneMinusDt = greaterThan(t, oneMinusDt,
+				pow(add(divide(subtract(t, c(1.0)), dt), c(1.0)), c(2.0)),
+				c(0.0));
+
+		return add(belowDt, aboveOneMinusDt);
+	}
 }

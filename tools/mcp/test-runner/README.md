@@ -25,7 +25,7 @@ the other concerns it used to carry inline is a collaborator:
 | Module | Concern |
 |--------|---------|
 | `project.py` | Which Maven project and module a run targets: root resolution, and the per-module CI test-group count read from the project's own workflow |
-| `run_store.py` | The on-disk record of runs: metadata, captured output, listing, retiring old runs, marking abandoned ones |
+| `common/run_store.py` | The on-disk record of runs: metadata, captured output, listing, retiring old runs, marking abandoned ones. Shared with ar-build-validator, so it lives in the `common` package rather than here. |
 | `reports.py` | Surefire XML: collecting reports out of the project, and reading counts, failures, and per-test times back |
 | `timing.py` | Statistics over a repeated run — duration spread and per-test pass rates |
 | `preflight.py` | What the upstream artifact state *is*: which are missing, how stale, how to seed them |

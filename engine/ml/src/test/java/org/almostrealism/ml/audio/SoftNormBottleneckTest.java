@@ -122,6 +122,41 @@ public class SoftNormBottleneckTest extends TestSuiteBase implements LayerFeatur
 	}
 
 	/**
+	 * The decode-side transform multiplies by the running standard deviation, and is the identity
+	 * when no running standard deviation is configured; composed with the encode transform it
+	 * therefore undoes exactly the rescale and leaves the learned affine in place.
+	 */
+	@Test(timeout = 120000)
+	public void decodeInvertsRunningStdRescale() {
+		int batch = 2;
+		int dim = 4;
+		int length = 3;
+		TraversalPolicy shape = shape(batch, dim, length);
+
+		PackedCollection scale = new PackedCollection(shape(dim)).randnFill();
+		PackedCollection bias = new PackedCollection(shape(dim)).randnFill();
+		PackedCollection runningStd = new PackedCollection(shape(1)).fill(2.5);
+		PackedCollection latent = new PackedCollection(shape).randnFill();
+
+		Model withStd = new Model(shape);
+		withStd.sequential().add(new SoftNormBottleneck(dim, scale, bias, runningStd).decode(batch, length));
+		PackedCollection decoded = withStd.compile(false).forward(latent);
+
+		Model withoutStd = new Model(shape);
+		withoutStd.sequential().add(new SoftNormBottleneck(dim, scale, bias).decode(batch, length));
+		PackedCollection identity = withoutStd.compile(false).forward(latent);
+
+		for (int b = 0; b < batch; b++) {
+			for (int c = 0; c < dim; c++) {
+				for (int l = 0; l < length; l++) {
+					assertEquals(latent.valueAt(b, c, l) * 2.5, decoded.valueAt(b, c, l), TOLERANCE);
+					assertEquals(latent.valueAt(b, c, l), identity.valueAt(b, c, l), TOLERANCE);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Builds the SoftNorm bottleneck for the given parameters, runs a forward pass through a
 	 * compiled model, and asserts every output element matches
 	 * {@code (x * scalingFactor + bias) / runningStd}.

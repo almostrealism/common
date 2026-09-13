@@ -54,11 +54,15 @@ Processes incoming Slack messages. Extracts the prompt from `@bot` mentions, loo
 
 **Built-in commands:**
 
+The first two rows are recognized directly in an `@bot` mention message. The rest are
+only recognized as subcommands of the `/flowtree` slash command (e.g. `/flowtree stats`).
+
 | Command | Description |
 |---------|-------------|
 | `/status` | Show workstream status |
 | `/task <prompt>`, `/do <prompt>`, `/run <prompt>` | Submit a prompt |
-| `/stats` | Show weekly job statistics (this week and last week) |
+| `/flowtree stats [global]` | Show weekly job statistics (this week and last week) |
+| `/flowtree archive [keep-channel]` | Archive this channel's workstream, and archive the Slack channel itself unless `keep-channel` is passed |
 
 ### SlackNotifier
 
