@@ -694,22 +694,26 @@ Batch files default to ~4 MB each. The index is loaded into memory on startup. R
 
 ### HnswIndex — Vector Search
 
-`HnswIndex` implements HNSW (Hierarchical Navigable Small World) for approximate nearest-neighbor search. Integrated into `ProtobufDiskStore` via the `put(id, record, vector)` overload:
+`HnswIndex` builds a Hierarchical Navigable Small World graph over `PackedCollection` vectors, all held in one contiguous `[capacity, dimension]` store. Every similarity computation — normalizing a vector on insert, or scoring a query against the whole store — is a single compiled `Evaluable` dispatch; at the scales this index currently serves, that whole-store dispatch is cheap enough that both construction and search use exact scores rather than walking the layered graph. The graph is still built and persisted from those exact neighbors so a batched graph traversal can become the search strategy later without a format change.
+
+Integrated into `ProtobufDiskStore` via the `put(id, record, vector)` overload:
 
 ```java
 // Store with embedding vector
-store.put("id-1", myRecord, new float[]{0.1f, 0.2f, ...});
+PackedCollection<?> vector = new PackedCollection<>(shape(768));
+vector.set(0, embedding);  // load a 768-dim embedding
+store.put("id-1", myRecord, vector);
 
 // Search by vector similarity
 List<SearchResult<MyRecord>> results = store.search(queryVector, 10);  // top-10
 // SearchResult<T> has: id, record, similarity (cosine by default)
 ```
 
-**Parameters:** `M=16` (connections per node, higher = better recall, more memory), `efConstruction=200` (build quality), `efSearch=50` (query-time candidate list, tunable).
+Use `insertEmbedding(id, vector)` to add a vector for a record that is already persisted, without rewriting the record itself — useful for backfilling an index onto an existing store.
 
-**Memory:** For 768-dimensional vectors with M=16, each node uses ~3.2 KB. The index is persisted as `hnsw.bin` and reloaded on startup.
+**Parameters:** `M=16` (connections per node, higher = better recall, more memory), `efConstruction=200` (build quality), `efSearch=50` (query-time candidate list, tunable via `setEfSearch`/`getEfSearch`, currently unused by the exact-scoring search path).
 
-When the index exceeds `maxIndexSize`, new vectors are still stored but not indexed — `search()` falls back to brute-force scan for un-indexed vectors so correctness is preserved at all dataset sizes.
+**Memory:** Vectors are held once in the contiguous store (`capacity * dimension * 4` bytes), not duplicated per node; each node's additional cost is its per-layer neighbor lists (ID + score per edge). The index is persisted as `hnsw.bin` and reloaded on startup.
 
 ### Collection Data Memory
 
