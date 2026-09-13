@@ -34,6 +34,10 @@ for var in FAILURE_COUNT BRANCH COMMIT_SHA; do
     fi
 done
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=prompt-render.sh
+source "${SCRIPT_DIR}/prompt-render.sh"
+
 FAILURE_LIST=$(cat "$FAILURES_FILE")
 
 cat > "$OUTPUT_FILE" <<EOF
@@ -69,7 +73,7 @@ twice damaged a pull request whose code was never at fault — the change was
 harder to undo than the failure it was chasing. When in doubt, do nothing and
 explain: nobody is disadvantaged by an agent that declines to guess.
 
-This applies with particular force to any `test-integrity-check` item above.
+This applies with particular force to any \`test-integrity-check\` item above.
 It is an accusation that this branch weakened a test, disabled a detector, or
 touched the exfiltration guard. If the named command reports the branch clean,
 then the accusation is false and there is nothing to fix — report that plainly
@@ -107,3 +111,5 @@ Then get structured violations (file, line, rule) with:
 Fix the violations in production code, then re-run the validator with skip_build:true
 to verify (since the project is already built at that point).
 EOF
+
+append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH

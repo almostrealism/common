@@ -34,6 +34,10 @@ for var in BRANCH COMMIT_SHA; do
     fi
 done
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=prompt-render.sh
+source "${SCRIPT_DIR}/prompt-render.sh"
+
 # ── Read crash summary if available ────────────────────────────────
 CRASH_SUMMARY=""
 if [ -f "${CRASH_DIR}/crash-summary.txt" ]; then
@@ -144,6 +148,8 @@ Your commit will be validated by `validate-agent-commit.sh` which BLOCKS:
 ---
 
 PROMPT_HEADER
+
+append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 
 cat >> "$OUTPUT_FILE" <<EOF
 ## Crash details

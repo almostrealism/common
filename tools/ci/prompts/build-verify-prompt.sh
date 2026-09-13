@@ -43,13 +43,8 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMPLATE="${SCRIPT_DIR}/verify-completion.txt"
 
-if [ ! -f "$TEMPLATE" ]; then
-    echo "ERROR: Template not found at ${TEMPLATE}" >&2
-    exit 1
-fi
+# shellcheck source=prompt-render.sh
+source "${SCRIPT_DIR}/prompt-render.sh"
 
-# Substitute scalar environment variables in the template.
-sed -e "s|\${BRANCH}|${BRANCH}|g" \
-    -e "s|\${BASE_BRANCH}|${BASE_BRANCH}|g" \
-    -e "s|\${COMMIT_SHA}|${COMMIT_SHA}|g" \
-    "$TEMPLATE" > "$OUTPUT_FILE"
+# Expand the template's @include lines and substitute its placeholders.
+render_prompt "$TEMPLATE" BRANCH BASE_BRANCH COMMIT_SHA > "$OUTPUT_FILE"

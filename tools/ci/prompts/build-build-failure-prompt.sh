@@ -32,6 +32,10 @@ for var in BRANCH COMMIT_SHA; do
     fi
 done
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=prompt-render.sh
+source "${SCRIPT_DIR}/prompt-render.sh"
+
 cat > "$OUTPUT_FILE" <<PROMPT
 ## ABSOLUTE RULE: DO NOT MODIFY EXISTING TESTS TO HIDE FAILURES
 
@@ -66,3 +70,5 @@ failure is equivalent to every test in the project failing.
 5. Do NOT modify tests or weaken assertions — the build must compile cleanly
    with all existing code intact.
 PROMPT
+
+append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
