@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * Serves the read-only job record endpoints for {@link FlowTreeApiEndpoint}.
@@ -50,12 +51,22 @@ public final class JobQueryHandler {
     private final NotifierRegistry notifiers;
 
     /**
+     * Supplies the stats handler holding each running job's recorded phase.
+     * A supplier because the endpoint's stats store is attached after
+     * construction.
+     */
+    private final Supplier<StatsQueryHandler> stats;
+
+    /**
      * Creates a handler reading job records through the given registry.
      *
      * @param notifiers the registry owning the job history
+     * @param stats     supplies the stats handler, whose recorded phase is
+     *                  reported on a single-job lookup; may supply {@code null}
      */
-    JobQueryHandler(NotifierRegistry notifiers) {
+    JobQueryHandler(NotifierRegistry notifiers, Supplier<StatsQueryHandler> stats) {
         this.notifiers = notifiers;
+        this.stats = stats;
     }
 
     /**
@@ -97,8 +108,16 @@ public final class JobQueryHandler {
                     "application/json", "{\"ok\":false,\"error\":\"Job not found\"}");
         }
         String workstreamId = notifiers.findWorkstreamIdForJob(jobId);
-        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
-                "application/json", jobEventToJson(event, workstreamId));
+        String json = jobEventToJson(event, workstreamId);
+
+        StatsQueryHandler statsHandler = stats != null ? stats.get() : null;
+        String phase = statsHandler != null ? statsHandler.jobPhase(jobId) : null;
+        if (phase != null && !phase.isEmpty()) {
+            json = json.substring(0, json.length() - 1) + ",\"phase\":\""
+                    + JsonFieldExtractor.escapeJson(phase) + "\"}";
+        }
+
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json", json);
     }
 
     /**

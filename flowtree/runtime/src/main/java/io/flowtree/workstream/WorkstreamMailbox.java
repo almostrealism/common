@@ -66,6 +66,14 @@ public class WorkstreamMailbox implements ConsoleFeatures {
     public static final long RETENTION_MILLIS = 7L * 24 * 60 * 60 * 1000;
 
     /**
+     * Window within which a message carrying the same {@code messageId} as an
+     * earlier one is a retry of it rather than a new message. A sender
+     * retries a timed-out post promptly; a repeat this long after the
+     * original is a repeat the sender meant.
+     */
+    public static final long DEDUPE_WINDOW_MILLIS = 15L * 60 * 1000;
+
+    /**
      * Readers permitted to wait on one mailbox at a time. Each waiter occupies
      * an HTTP request thread, so the ceiling keeps a runaway client from
      * exhausting the server's pool.
@@ -141,13 +149,31 @@ public class WorkstreamMailbox implements ConsoleFeatures {
      * @return the appended message, carrying its assigned {@code seq}
      */
     public synchronized Message append(String text, String sender, String jobId, String activity) {
+        return append(text, sender, jobId, activity, null);
+    }
+
+    /**
+     * Appends a message that carries an identity, and wakes every reader
+     * waiting for one. The identity is what {@link #recent(String)} matches a
+     * retry against; this method does not itself refuse a repeat, so the
+     * caller decides whether a match is a duplicate.
+     *
+     * @param text      the message body; must not be {@code null} or empty
+     * @param sender    identity of the sender; {@code null} becomes {@code "unknown"}
+     * @param jobId     job the message was sent from, or {@code null}
+     * @param activity  enforcement phase the message belongs to, or {@code null}
+     * @param messageId caller-supplied identity of the message, or {@code null}
+     * @return the appended message, carrying its assigned {@code seq}
+     */
+    public synchronized Message append(String text, String sender, String jobId,
+                                       String activity, String messageId) {
         if (text == null || text.isEmpty()) {
             throw new IllegalArgumentException("text must not be null or empty");
         }
 
         Message message = new Message(nextSeq++, System.currentTimeMillis(),
                 sender == null || sender.isEmpty() ? "unknown" : sender,
-                jobId, activity, text);
+                jobId, activity, text, messageId);
         messages.add(message);
 
         if (pruneExpired()) {
@@ -203,6 +229,30 @@ public class WorkstreamMailbox implements ConsoleFeatures {
                 waiters--;
             }
         }
+    }
+
+    /**
+     * Finds the message a retry would repeat: the most recent one carrying
+     * {@code messageId}, provided it was appended within
+     * {@link #DEDUPE_WINDOW_MILLIS}.
+     *
+     * @param messageId the identity to look for; {@code null} or empty
+     *                  matches nothing, since an unnamed message is never a
+     *                  retry
+     * @return the recent message with that identity, or {@code null}
+     */
+    public synchronized Message recent(String messageId) {
+        if (messageId == null || messageId.isEmpty()) return null;
+
+        long oldest = System.currentTimeMillis() - DEDUPE_WINDOW_MILLIS;
+
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Message message = messages.get(i);
+            if (message.createdAtMillis() < oldest) return null;
+            if (messageId.equals(message.messageId())) return message;
+        }
+
+        return null;
     }
 
     /**
@@ -349,9 +399,27 @@ public class WorkstreamMailbox implements ConsoleFeatures {
      * @param jobId           job the message was sent from, or {@code null}
      * @param activity        enforcement phase, or {@code null} for primary work
      * @param text            the message body
+     * @param messageId       caller-supplied identity, by which a retry is
+     *                        recognised; {@code null} for a message that
+     *                        carried none
      */
     public record Message(long seq, long createdAtMillis, String sender,
-                          String jobId, String activity, String text) {
+                          String jobId, String activity, String text, String messageId) {
+
+        /**
+         * Creates a message that carries no caller-supplied identity.
+         *
+         * @param seq             position in the total order
+         * @param createdAtMillis wall-clock time the message was appended
+         * @param sender          identity of the sender
+         * @param jobId           job the message was sent from, or {@code null}
+         * @param activity        enforcement phase, or {@code null}
+         * @param text            the message body
+         */
+        public Message(long seq, long createdAtMillis, String sender,
+                       String jobId, String activity, String text) {
+            this(seq, createdAtMillis, sender, jobId, activity, text, null);
+        }
 
         /**
          * Renders this message as a JSON object, which is both its wire form
@@ -368,6 +436,11 @@ public class WorkstreamMailbox implements ConsoleFeatures {
 
             if (jobId != null && !jobId.isEmpty()) {
                 out.append(",\"jobId\":\"").append(JsonFieldExtractor.escapeJson(jobId)).append('"');
+            }
+
+            if (messageId != null && !messageId.isEmpty()) {
+                out.append(",\"messageId\":\"")
+                        .append(JsonFieldExtractor.escapeJson(messageId)).append('"');
             }
 
             if (activity != null && !activity.isEmpty()) {
@@ -413,7 +486,8 @@ public class WorkstreamMailbox implements ConsoleFeatures {
                     sender == null || sender.isEmpty() ? "unknown" : sender,
                     JsonFieldExtractor.extractString(json, "jobId"),
                     JsonFieldExtractor.extractString(json, "activity"),
-                    text);
+                    text,
+                    JsonFieldExtractor.extractString(json, "messageId"));
         }
     }
 }

@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.job.Job;
+import io.flowtree.node.AutomaticLabel;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.HostFingerprint;
 import org.almostrealism.io.JobOutput;
@@ -1194,6 +1195,35 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     String getCurrentBranch() throws IOException, InterruptedException {
         return executeGitWithOutput("rev-parse", "--abbrev-ref", "HEAD").trim();
+    }
+
+    /**
+     * Describes where this job is running, for its first status message: the
+     * machine's automatic labels (the terms a submitter would target it with
+     * again) and the branch head it checked out (the commit its claims are
+     * about). Best-effort — whichever parts can be determined are reported.
+     *
+     * @return e.g. {@code "platform=linux, hostname=halo at feature/x@abc1234"};
+     *         empty when nothing can be determined
+     */
+    String describePlacement() {
+        StringBuilder placement = new StringBuilder(AutomaticLabel.describeMachine());
+
+        try {
+            // Output is merged with stderr, so a failed rev-parse yields prose rather than a hash
+            String head = executeGitWithOutput("rev-parse", "--short", "HEAD").trim();
+            if (head.matches("[0-9a-f]{4,40}")) {
+                if (placement.length() > 0) placement.append(" at ");
+                if (getTargetBranch() != null) placement.append(getTargetBranch()).append('@');
+                placement.append(head);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException | RuntimeException e) {
+            log("Branch head unavailable for placement: " + e.getMessage());
+        }
+
+        return placement.toString();
     }
 
     /**

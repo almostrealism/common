@@ -965,7 +965,22 @@ public class CodingAgentJob extends GitManagedJob {
                 .setInactivityRestartAttempt(restartGovernor.getInactivityRestartAttempt())
                 .setFalsificationFindings(falsificationFindings)
                 .setCollaborative(collaborative)
+                .setConversationCatchUp(conversationCatchUp())
                 .build();
+    }
+
+    /**
+     * Renders the conversation a relaunched collaborative session missed, or
+     * {@code null} when this is the job's first session or the job is not
+     * collaborative. Every restart path — inactivity, enforcement retry,
+     * guardrail violation — loses the conversation the same way, so the test
+     * is simply whether a session has run before.
+     *
+     * @return the rendered catch-up block, or {@code null}
+     */
+    String conversationCatchUp() {
+        if (!collaborative || restartGovernor.getSessionsLaunched() <= 1) return null;
+        return new ConversationCatchUp(resolveWorkstreamUrl(), getTaskId()).render();
     }
 
     /**
@@ -1222,7 +1237,7 @@ public class CodingAgentJob extends GitManagedJob {
         Phase currentPhase = resolveCurrentPhase();
         AgentRunner runner = resolveRunner(currentPhase);
         harnessStatus().phaseEntry(currentPhase, runner.getName(),
-                resolveEffectivePhaseConfig(currentPhase));
+                resolveEffectivePhaseConfig(currentPhase), describePlacement());
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();

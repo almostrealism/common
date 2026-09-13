@@ -121,6 +121,29 @@ public class CodingAgentJobCollaborativeTest extends TestSuiteBase {
         assertTrue(text.contains("memory_store"));
     }
 
+    /**
+     * The protocol tells the agent it sees only what is on origin, so a
+     * collaborator's local fix is taken at their word rather than re-verified,
+     * and that it may wait the full cap per call.
+     */
+    @Test(timeout = 30000)
+    public void protocolExplainsTheOriginOnlyViewAndTheFullWait() {
+        String text = prompt(true);
+        assertTrue(text.contains("pushed to `origin`"));
+        assertTrue(text.contains("git rev-parse --short HEAD"));
+        assertTrue(text.contains("timeout_seconds=1500"));
+        assertFalse("not part of a non-collaborative prompt", prompt(false).contains("pushed to `origin`"));
+    }
+
+    /** Every job is told where credentials come from, so a denied ar-manager secret tool is not a mystery. */
+    @Test(timeout = 30000)
+    public void promptPointsJobsAtTheSecretsServer() {
+        String text = prompt(false);
+        assertTrue(text.contains("`ar-secrets`"));
+        assertTrue(text.contains("secret_render_file"));
+        assertTrue(text.contains("`workspace_secret_*`"));
+    }
+
     /** The submitter's own request is never altered by the protocol. */
     @Test(timeout = 30000)
     public void protocolDoesNotDisturbTheUserRequest() {

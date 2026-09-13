@@ -19,6 +19,7 @@ package io.flowtree.api;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.controller.JobStatsStore;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
@@ -26,12 +27,15 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.time.Instant;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -104,6 +108,70 @@ public class MailboxEndpointTest extends TestSuiteBase {
         assertEquals("job:a", messages.get(0).get("sender").asText());
         assertEquals(seq, messages.get(0).get("seq").asLong());
         assertEquals(seq, delivery.get("nextSince").asLong());
+    }
+
+    /** A retry carrying the same {@code messageId} is answered with the original seq and not delivered again. */
+    @Test(timeout = 10000)
+    public void testRetryWithTheSameMessageIdIsNotPostedTwice() throws Exception {
+        JsonNode first = postMessage(
+                "{\"text\":\"final report\",\"sender\":\"job:a\",\"messageId\":\"m-1\"}");
+        JsonNode retry = postMessage(
+                "{\"text\":\"final report\",\"sender\":\"job:a\",\"messageId\":\"m-1\"}");
+
+        assertTrue(retry.get("ok").asBoolean());
+        assertTrue(retry.get("duplicate").asBoolean());
+        assertEquals(first.get("seq").asLong(), retry.get("seq").asLong());
+        assertFalse("the original is not a duplicate", first.has("duplicate"));
+
+        JsonNode delivery = getMailbox("since=0");
+        assertEquals(1, delivery.get("messages").size());
+        assertEquals("m-1", delivery.get("messages").get(0).get("messageId").asText());
+    }
+
+    /** A harness message carrying a phase updates the job record a poller reads. */
+    @Test(timeout = 10000)
+    public void testPhaseOnAJobMessageIsReportedOnTheJobRecord() throws Exception {
+        File tempDir = Files.createTempDirectory("mailbox-phase").toFile();
+        tempDir.deleteOnExit();
+        JobStatsStore store = new JobStatsStore(new File(tempDir, "stats").getAbsolutePath());
+        store.initialize();
+        try {
+            notifier.setStatsStore(store);
+            endpoint.setStatsStore(store);
+            store.recordJobStarted("job-7", workstream.getWorkstreamId(), "collaborate", Instant.now());
+
+            HttpURLConnection conn = openPost(
+                    "/api/workstreams/" + workstream.getWorkstreamId() + "/jobs/job-7/messages",
+                    "{\"text\":\"entering primary\",\"activity\":\"harness_status\",\"phase\":\"primary\"}");
+            assertEquals(200, conn.getResponseCode());
+            readBody(conn);
+
+            JsonNode job = MAPPER.readTree(readBody(openGet("/api/jobs/job-7")));
+            assertEquals("STARTED", job.get("status").asText());
+            assertEquals("primary", job.get("phase").asText());
+
+            conn = openPost(
+                    "/api/workstreams/" + workstream.getWorkstreamId() + "/jobs/job-7/messages",
+                    "{\"text\":\"primary done\",\"activity\":\"harness_status\",\"phase\":\"primary complete\"}");
+            assertEquals(200, conn.getResponseCode());
+            readBody(conn);
+
+            job = MAPPER.readTree(readBody(openGet("/api/jobs/job-7")));
+            assertEquals("primary complete", job.get("phase").asText());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** Distinct ids, and posts that carry no id at all, are never collapsed. */
+    @Test(timeout = 10000)
+    public void testDistinctOrAbsentMessageIdsAreAllDelivered() throws Exception {
+        postMessage("{\"text\":\"same text\",\"sender\":\"job:a\",\"messageId\":\"m-1\"}");
+        postMessage("{\"text\":\"same text\",\"sender\":\"job:a\",\"messageId\":\"m-2\"}");
+        postMessage("{\"text\":\"same text\",\"sender\":\"job:a\"}");
+        postMessage("{\"text\":\"same text\",\"sender\":\"job:a\"}");
+
+        assertEquals(4, getMailbox("since=0").get("messages").size());
     }
 
     /** A sender's own messages are omitted by {@code exclude} but still advance the cursor. */

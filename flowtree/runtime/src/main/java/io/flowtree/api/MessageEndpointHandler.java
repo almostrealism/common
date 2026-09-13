@@ -27,6 +27,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import io.flowtree.workstream.MailboxRegistry;
@@ -55,6 +56,19 @@ import io.flowtree.slack.NotifierRegistry;
  * conversation the workstream's participants are having; there is no
  * separate way to address a peer.</p>
  *
+ * <p>A body may carry a {@code messageId}. When the mailbox already holds a
+ * message with that identity from within
+ * {@link WorkstreamMailbox#DEDUPE_WINDOW_MILLIS}, the request is a retry of a
+ * post whose response was lost — the usual outcome of a tool call timing out
+ * on the caller's side — and it is answered with the original {@code seq} and
+ * {@code duplicate=true} without archiving, notifying, or delivering again.
+ * A body without a {@code messageId} is never deduplicated.</p>
+ *
+ * <p>A body posted under a job may also carry a {@code phase}: the job's own
+ * harness saying which lifecycle phase it has entered or finished. It is
+ * handed to the phase recorder so the job record can answer "what is it
+ * doing now" while the status is still {@code STARTED}.</p>
+ *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
  * @see WorkstreamMailbox
@@ -75,6 +89,8 @@ public final class MessageEndpointHandler {
     private final Consumer<String> log;
     /** Emits a warning line via the parent endpoint's logger. */
     private final Consumer<String> warn;
+    /** Records the phase a job's harness reports, keyed by job id. */
+    private final BiConsumer<String, String> phaseRecorder;
 
     /**
      * Constructs a new handler bound to the given notifier registry.
@@ -87,12 +103,15 @@ public final class MessageEndpointHandler {
      * @param errorResponse   400-error response factory
      * @param log             log line consumer
      * @param warn            warn line consumer
+     * @param phaseRecorder   receives {@code (jobId, phase)} when a message
+     *                        carries a {@code phase} field
      */
     MessageEndpointHandler(NotifierRegistry notifiers, MailboxRegistry mailboxes,
                            String memoryServerUrl,
                            Function<IHTTPSession, String> readBody,
                            Function<String, Response> errorResponse,
-                           Consumer<String> log, Consumer<String> warn) {
+                           Consumer<String> log, Consumer<String> warn,
+                           BiConsumer<String, String> phaseRecorder) {
         this.notifiers = notifiers;
         this.mailboxes = mailboxes;
         this.memoryServerUrl = memoryServerUrl;
@@ -100,6 +119,7 @@ public final class MessageEndpointHandler {
         this.errorResponse = errorResponse;
         this.log = log;
         this.warn = warn;
+        this.phaseRecorder = phaseRecorder;
     }
 
     /**
@@ -132,8 +152,23 @@ public final class MessageEndpointHandler {
             return errorResponse.apply("Unknown workstream: " + workstreamId);
         }
 
+        WorkstreamMailbox mailbox = mailboxes.mailboxFor(workstreamId);
+        String messageId = JsonFieldExtractor.extractString(body, "messageId");
+        WorkstreamMailbox.Message earlier = mailbox.recent(messageId);
+        if (earlier != null) {
+            log.accept("Duplicate message " + messageId + " for workstream " + workstreamId
+                    + " repeats seq " + earlier.seq() + "; not posted again");
+            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
+                    "{\"ok\":true,\"seq\":" + earlier.seq() + ",\"duplicate\":true}");
+        }
+
         log.accept("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: "
                 + SlackNotifier.truncate(text, 80));
+
+        String phase = JsonFieldExtractor.extractString(body, "phase");
+        if (jobId != null && phase != null && !phase.isEmpty() && phaseRecorder != null) {
+            phaseRecorder.accept(jobId, phase);
+        }
 
         // Store as memory — hard error if memory server is configured but fails,
         // warning if memory server is not configured at all (minimal deployment)
@@ -152,8 +187,8 @@ public final class MessageEndpointHandler {
 
         // Appended before the notification so a Slack outage cannot cost a
         // collaborator its instruction
-        WorkstreamMailbox.Message delivered = mailboxes.mailboxFor(workstreamId)
-                .append(text, senderOf(body, jobId), jobId, activity);
+        WorkstreamMailbox.Message delivered =
+                mailbox.append(text, senderOf(body, jobId), jobId, activity, messageId);
 
         // Secondary: forward to notification channel (best-effort)
         String threadTs = jobId != null ? targetNotifier.getThreadTs(jobId) : null;

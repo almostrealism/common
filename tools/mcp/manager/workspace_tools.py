@@ -9,6 +9,7 @@ anything defined in ``server`` through the module rather than by import, so
 the suite's patches still apply. Helpers and constants stay in ``server.py``.
 """
 
+import socket
 from urllib.parse import quote
 
 import server
@@ -273,6 +274,12 @@ def workspace_secret_render_file(
     After this call the agent can run AWS CLI commands without ever having
     seen the credential values.
 
+    The file lands on the machine that runs ar-manager — the result names
+    it in ``host`` — which is the caller's machine only when they are the
+    same. Coding-agent jobs are not granted this tool for that reason:
+    inside a job, render credentials with the ``ar-secrets`` MCP server's
+    ``secret_render_file``, which writes into the job's own filesystem.
+
     Args:
         workstream_id: The workstream whose workspace owns the secret.
         secret_name: Name of the secret to fetch.
@@ -385,7 +392,18 @@ def workspace_secret_render_file(
         "output_path=%s result=OK",
         secret_name, workstream_id, expanded,
     )
-    return {"ok": True, "output_path": expanded}
+    host = socket.gethostname()
+    return {
+        "ok": True,
+        "output_path": expanded,
+        "host": host,
+        "note": (
+            f"The file was written on the ar-manager host ({host}), not on"
+            " the machine you are calling from. Inside a job session use the"
+            " ar-secrets MCP server (secret_render_file), which writes into"
+            " the job's own filesystem."
+        ),
+    }
 
 @mcp.tool()
 def workstream_introspect(workstream_id: str = "") -> dict:
