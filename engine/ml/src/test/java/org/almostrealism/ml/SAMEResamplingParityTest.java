@@ -20,9 +20,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.SequentialBlock;
 import org.junit.Test;
 
-import java.io.DataInputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
@@ -33,7 +31,6 @@ import org.almostrealism.hardware.mem.DirectMemory;
 import org.almostrealism.hardware.mem.RAM;
 import io.almostrealism.collect.TraversalPolicy;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -60,15 +57,25 @@ import java.util.Map;
  */
 public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 
-	/** Candidate locations for the gated weight directory (first existing wins). */
+	/**
+	 * Candidate locations for the gated weight directory (first existing wins). The system
+	 * property is checked first so a sandbox without a writable {@code /workspace} (no env-var
+	 * passthrough to the forked test JVM) can still point at it via the MCP test runner's
+	 * {@code jvm_args}, e.g. {@code -DAR_SAME_WEIGHTS=/tmp/same-weights} (same pattern as
+	 * {@code DiffusionTransformerTests#ditWeightsDir}); the env var remains supported for callers
+	 * that can set it directly.
+	 */
 	private static final String[] WEIGHT_DIRS = {
-			System.getenv("AR_SAME_WEIGHTS"),
+			System.getProperty("AR_SAME_WEIGHTS", System.getenv("AR_SAME_WEIGHTS")),
 			"/workspace/same-weights"
 	};
 
-	/** Candidate locations for the per-stage reference directory (first existing wins). */
+	/**
+	 * Candidate locations for the per-stage reference directory (first existing wins). See
+	 * {@link #WEIGHT_DIRS} for why the system property is checked first.
+	 */
 	private static final String[] REFERENCE_DIRS = {
-			System.getenv("AR_SAME_REFERENCES"),
+			System.getProperty("AR_SAME_REFERENCES", System.getenv("AR_SAME_REFERENCES")),
 			"src/test/resources/same-s-references",
 			"engine/ml/src/test/resources/same-s-references",
 			"target/test-classes/same-s-references"
@@ -315,12 +322,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @throws IOException if the file cannot be read
 	 */
 	protected float[] loadFlat(Path path) throws IOException {
-		ByteBuffer buffer = loadBuffer(path);
-		float[] values = new float[buffer.remaining() / 4];
-		for (int i = 0; i < values.length; i++) {
-			values[i] = buffer.getFloat(i * 4);
-		}
-		return values;
+		return ReferenceActivations.load(path);
 	}
 
 	/**
@@ -332,14 +334,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @throws IOException if the file cannot be read
 	 */
 	protected ByteBuffer loadBuffer(Path path) throws IOException {
-		try (DataInputStream in = new DataInputStream(new FileInputStream(path.toFile()))) {
-			byte[] header = new byte[4];
-			in.readFully(header);
-			int count = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN).getInt();
-			byte[] payload = new byte[count * 4];
-			in.readFully(payload);
-			return ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN);
-		}
+		return ReferenceActivations.loadBuffer(path);
 	}
 
 	/**
@@ -351,14 +346,7 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 * @return the resolved directory, or {@code null}
 	 */
 	protected File firstExisting(String[] candidates, String marker) {
-		for (String candidate : candidates) {
-			if (candidate == null) continue;
-			File dir = new File(candidate);
-			if (dir.isDirectory() && new File(dir, marker).exists()) {
-				return dir;
-			}
-		}
-		return null;
+		return ReferenceActivations.firstExisting(candidates, marker);
 	}
 
 	/**
@@ -384,7 +372,9 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	 */
 	protected void assertWithin(String stage, PackedCollection actual, float[] reference, double tolerance) {
 		double maxAbs = maxAbsDiff(actual, reference);
-		if (maxAbs > tolerance) {
+		// maxAbs > tolerance is false when maxAbs is NaN, so a NaN result (a real computation
+		// failure) would otherwise silently pass; negating a <= comparison catches it.
+		if (!(maxAbs <= tolerance)) {
 			throw new AssertionError(stage + " parity failed: maxAbs=" + maxAbs + " > tolerance=" + tolerance);
 		}
 	}

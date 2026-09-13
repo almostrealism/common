@@ -16,6 +16,8 @@
 
 package org.almostrealism.studio.ml;
 import org.almostrealism.ml.audio.AutoEncoder;
+import org.almostrealism.ml.audio.SAMEAutoEncoder;
+import org.almostrealism.model.Model;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
@@ -90,6 +92,33 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 		this.sampleRate = sampleRate;
 		this.latentSampleRate = latentSampleRate;
 		this.maxDuration = maxDuration;
+	}
+
+	/**
+	 * Compiles a {@link SAMEAutoEncoder} for a fixed clip length into an {@link AutoEncoder}: the
+	 * encoder maps {@code [batch, channels, samples]} audio to {@code [batch, latentDim, latentLen]}
+	 * latents and the decoder maps them back, with the latent rate derived from the autoencoder's
+	 * downsampling ratio.
+	 *
+	 * @param autoencoder the autoencoder definition
+	 * @param batchSize   the number of clips processed together
+	 * @param samples     the clip length in samples, aligned per {@link SAMEAutoEncoder#alignedAudioLength(int)}
+	 * @param sampleRate  the audio sample rate in Hz
+	 * @param maxDuration the maximum duration in seconds this autoencoder is used for
+	 * @return the compiled autoencoder
+	 */
+	public static CompiledModelAutoEncoder of(SAMEAutoEncoder autoencoder, int batchSize, int samples,
+											  double sampleRate, double maxDuration) {
+		int latentLen = autoencoder.latentLength(samples);
+
+		Model encoder = new Model(new TraversalPolicy(batchSize, autoencoder.getChannels(), samples));
+		encoder.add(autoencoder.encoder(batchSize, samples));
+
+		Model decoder = new Model(new TraversalPolicy(batchSize, autoencoder.getLatentDim(), latentLen));
+		decoder.add(autoencoder.decoder(batchSize, latentLen));
+
+		return new CompiledModelAutoEncoder(encoder.compile(false), decoder.compile(false),
+				sampleRate, sampleRate / autoencoder.getDownsamplingRatio(), maxDuration);
 	}
 
 	/**

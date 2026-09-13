@@ -25,7 +25,6 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -95,40 +94,7 @@ public abstract class SAMEResamplingTestBase extends TestSuiteBase implements Tr
 	 * @return an insertion-ordered map of weight key to shape
 	 */
 	protected Map<String, int[]> blockWeightShapes(ResamplingConfig config, String prefix) {
-		int dim = config.getDim();
-		int dimHead = config.getDimHead();
-		int inner = config.getInnerFfDim();
-		int invFreqLen = Math.max(1, dimHead / 4);
-
-		Map<String, int[]> shapes = new LinkedHashMap<>();
-		shapes.put(prefix + ".mapping.weight",
-				new int[]{config.getOutChannels(), config.getInChannels(), config.getMappingKernel()});
-		shapes.put(prefix + ".mapping.bias", new int[]{config.getOutChannels()});
-		shapes.put(prefix + ".new_tokens", new int[]{1, 1, dim});
-
-		for (int i = 0; i < config.getDepth(); i++) {
-			String lk = prefix + ".transformers." + i;
-			shapes.put(lk + ".pre_norm.alpha", new int[]{1});
-			shapes.put(lk + ".pre_norm.gamma", new int[]{dim});
-			shapes.put(lk + ".pre_norm.beta", new int[]{dim});
-			shapes.put(lk + ".ff_norm.alpha", new int[]{1});
-			shapes.put(lk + ".ff_norm.gamma", new int[]{dim});
-			shapes.put(lk + ".ff_norm.beta", new int[]{dim});
-			shapes.put(lk + ".self_attn.to_qkv.weight", new int[]{5 * dim, dim});
-			shapes.put(lk + ".self_attn.to_out.weight", new int[]{dim, dim});
-			shapes.put(lk + ".self_attn.q_norm.alpha", new int[]{1});
-			shapes.put(lk + ".self_attn.q_norm.gamma", new int[]{dimHead});
-			shapes.put(lk + ".self_attn.q_norm.beta", new int[]{dimHead});
-			shapes.put(lk + ".self_attn.k_norm.alpha", new int[]{1});
-			shapes.put(lk + ".self_attn.k_norm.gamma", new int[]{dimHead});
-			shapes.put(lk + ".self_attn.k_norm.beta", new int[]{dimHead});
-			shapes.put(lk + ".rope.inv_freq", new int[]{invFreqLen});
-			shapes.put(lk + ".ff.ff.0.proj.weight", new int[]{2 * inner, dim});
-			shapes.put(lk + ".ff.ff.0.proj.bias", new int[]{2 * inner});
-			shapes.put(lk + ".ff.ff.2.weight", new int[]{dim, inner});
-			shapes.put(lk + ".ff.ff.2.bias", new int[]{dim});
-		}
-		return shapes;
+		return config.weightShapes(prefix);
 	}
 
 	/**

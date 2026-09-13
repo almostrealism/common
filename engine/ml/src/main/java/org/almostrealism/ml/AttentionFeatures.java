@@ -24,6 +24,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
@@ -171,6 +172,12 @@ import java.util.function.Function;
  * @see org.almostrealism.model.Block
  */
 public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
+
+	/**
+	 * Magnitude of the negative bias added to the attention logit of a masked key, large enough
+	 * that the key's softmax weight underflows to zero in single precision.
+	 */
+	double MASKED_LOGIT_PENALTY = 1e9;
 
 	/**
 	 * Creates a layer that reshapes input for split-half RoPE format.
@@ -990,8 +997,58 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 									PackedCollection kNormWeight, PackedCollection kNormBias,
 									PackedCollection invFreq,
 									ProjectionFactory projectionFactory) {
+		return sequenceAttention(batchSize, seqLen, dim, heads,
+				toQkvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias,
+				invFreq, projectionFactory, NormalizationType.LAYER, null, null, 0.0);
+	}
+
+	/**
+	 * Creates a sequence-based multi-head attention block with a selectable query/key
+	 * normalization family, an optional value padding mask, an optional key mask and optional
+	 * logit soft-capping.
+	 *
+	 * <p>This is the fully specified overload; every other {@code sequenceAttention} routes here
+	 * with {@link NormalizationType#LAYER}, no masks and no soft-cap. The two masks serve two
+	 * conventions for padded sequences: the padding mask zeroes the value vectors at masked
+	 * positions so they contribute nothing to any output while still occupying their softmax
+	 * slots (value masking), whereas the key mask removes masked keys from the softmax entirely
+	 * (logit masking). Query/key normalization is skipped when {@code qNormWeight} is
+	 * {@code null}.</p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param seqLen Sequence length
+	 * @param dim Model dimension
+	 * @param heads Number of attention heads
+	 * @param toQkvWeight Fused QKV projection weights
+	 * @param toOutWeight Output projection weights
+	 * @param qNormWeight Query normalization weights ({@code null} for no query/key normalization)
+	 * @param qNormBias Query normalization biases ({@code null} for none)
+	 * @param kNormWeight Key normalization weights
+	 * @param kNormBias Key normalization biases ({@code null} for none)
+	 * @param invFreq RoPE inverse frequencies
+	 * @param projectionFactory Factory for creating projection layers
+	 * @param qkNorm Family of the query/key normalization
+	 * @param paddingMask Per-position validity, shape {@code (batch, seqLen)} with one for a
+	 *                    valid position and zero for padding, or {@code null} for no value masking
+	 * @param keyMask Per-key validity, shape {@code (batch, seqLen)}, or {@code null} for no
+	 *                logit masking
+	 * @param logitSoftcap Soft-cap applied to the scaled attention logits, or {@code 0} for none
+	 * @return Sequence attention block
+	 */
+	default Block sequenceAttention(int batchSize, int seqLen, int dim, int heads,
+									PackedCollection toQkvWeight, PackedCollection toOutWeight,
+									PackedCollection qNormWeight, PackedCollection qNormBias,
+									PackedCollection kNormWeight, PackedCollection kNormBias,
+									PackedCollection invFreq,
+									ProjectionFactory projectionFactory,
+									NormalizationType qkNorm,
+									Producer<PackedCollection> paddingMask,
+									Producer<PackedCollection> keyMask,
+									double logitSoftcap) {
 		int dimHead = dim / heads;
 		TraversalPolicy inputShape = shape(batchSize, seqLen, dim);
+		TraversalPolicy headShape = shape(batchSize, heads, seqLen, dimHead);
 
 		SequentialBlock attention = new SequentialBlock(inputShape);
 
@@ -1013,22 +1070,29 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		v.permute(0, 2, 1, 3);
 
 		// 4. Apply QK normalization
-		q.add(norm(qNormWeight, qNormBias, 1e-6));
-		k.add(norm(kNormWeight, kNormBias, 1e-6));
+		if (qNormWeight != null) {
+			q.add(norm(qkNorm, qNormWeight, qNormBias, 1e-6));
+			k.add(norm(qkNorm, kNormWeight, kNormBias, 1e-6));
+		}
 
 		// 5. Apply rotary embeddings to Q and K
-		q.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
-		k.add(applyRotaryPositionEmbedding(shape(batchSize, heads, seqLen, dimHead), invFreq));
+		q.add(applyRotaryPositionEmbedding(headShape, invFreq));
+		k.add(applyRotaryPositionEmbedding(headShape, invFreq));
 
-		// 6. Store K and V tensors for use in attention computation
-		PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, seqLen, dimHead));
-		PackedCollection vTensor = new PackedCollection(shape(batchSize, heads, seqLen, dimHead));
+		// 6. Store K and V tensors for use in attention computation, masking padded values
+		if (paddingMask != null) {
+			v.add(scale(headShape, 2, paddingMask));
+		}
+
+		PackedCollection kTensor = new PackedCollection(headShape);
+		PackedCollection vTensor = new PackedCollection(headShape);
 
 		k.andThen(into(kTensor));
 		v.andThen(into(vTensor));
 
 		// 7. Compute scaled dot-product attention using stored tensors
-		q.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, kTensor, vTensor));
+		q.add(scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, kTensor, vTensor,
+				null, logitSoftcap, keyMask));
 
 		// Rearrange back to (batch, seqLen, dim)
 		q.permute(0, 2, 1, 3)
@@ -1039,6 +1103,102 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 				AdapterConfig.TargetLayer.SELF_ATTENTION_OUT));
 
 		return attention;
+	}
+
+	/**
+	 * Creates the self-attention sub-block for the requested {@link AttentionVariant}.
+	 *
+	 * <p>This is the attention-variant seam threaded through
+	 * {@link TransformerBlockFeatures#transformerBlock}. The base implementation supports
+	 * {@link AttentionVariant#STANDARD} only, delegating to {@link #sequenceAttention} so the
+	 * default path is unchanged. Alternative variants are provided by sub-interfaces that override
+	 * the fully specified overload (for example {@link DifferentialAttentionFeatures}); because the
+	 * call site in the block builder is a virtual dispatch, a consumer that implements such a
+	 * sub-interface automatically obtains the variant without forking the block builder.</p>
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param variant           the attention variant to construct ({@code null} is treated as
+	 *                          {@link AttentionVariant#STANDARD})
+	 * @param toQkvWeight       fused projection weights ({@code dim*3} for STANDARD, wider variants
+	 *                          define their own width)
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights
+	 * @param qNormBias         query normalization biases
+	 * @param kNormWeight       key normalization weights
+	 * @param kNormBias         key normalization biases
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        learned lambda for variants that require it (unused by STANDARD,
+	 *                          may be {@code null})
+	 * @param projectionFactory factory for creating projection layers
+	 * @return the self-attention block for the requested variant
+	 */
+	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
+								AttentionVariant variant,
+								PackedCollection toQkvWeight, PackedCollection toOutWeight,
+								PackedCollection qNormWeight, PackedCollection qNormBias,
+								PackedCollection kNormWeight, PackedCollection kNormBias,
+								PackedCollection invFreq,
+								Producer<PackedCollection> diffLambda,
+								ProjectionFactory projectionFactory) {
+		return selfAttention(batchSize, seqLen, dim, heads, variant,
+				toQkvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias,
+				invFreq, diffLambda, projectionFactory, NormalizationType.LAYER, null);
+	}
+
+	/**
+	 * Creates the self-attention sub-block for the requested variant, with a selectable query/key
+	 * normalization family and an optional padding mask.
+	 *
+	 * <p>This is the overload that sub-interfaces override to supply a variant; the shorter
+	 * {@code selfAttention} overload routes here with {@link NormalizationType#LAYER} and no
+	 * mask, so an override receives every call.</p>
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param variant           the attention variant to construct ({@code null} is treated as
+	 *                          {@link AttentionVariant#STANDARD})
+	 * @param toQkvWeight       fused projection weights ({@code dim*3} for STANDARD, wider variants
+	 *                          define their own width)
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights
+	 * @param qNormBias         query normalization biases ({@code null} for none)
+	 * @param kNormWeight       key normalization weights
+	 * @param kNormBias         key normalization biases ({@code null} for none)
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        learned lambda for variants that require it (unused by STANDARD,
+	 *                          may be {@code null})
+	 * @param projectionFactory factory for creating projection layers
+	 * @param qkNorm            family of the query/key normalization
+	 * @param paddingMask       per-position validity, shape {@code (batch, seqLen)}, or
+	 *                          {@code null} for no masking
+	 * @return the self-attention block for the requested variant
+	 */
+	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
+								AttentionVariant variant,
+								PackedCollection toQkvWeight, PackedCollection toOutWeight,
+								PackedCollection qNormWeight, PackedCollection qNormBias,
+								PackedCollection kNormWeight, PackedCollection kNormBias,
+								PackedCollection invFreq,
+								Producer<PackedCollection> diffLambda,
+								ProjectionFactory projectionFactory,
+								NormalizationType qkNorm,
+								Producer<PackedCollection> paddingMask) {
+		if (variant == null || variant == AttentionVariant.STANDARD) {
+			return sequenceAttention(batchSize, seqLen, dim, heads,
+					toQkvWeight, toOutWeight,
+					qNormWeight, qNormBias, kNormWeight, kNormBias,
+					invFreq, projectionFactory, qkNorm, paddingMask, null, 0.0);
+		}
+
+		throw new UnsupportedOperationException("Attention variant " + variant +
+				" is not available on the base AttentionFeatures; implement DifferentialAttentionFeatures" +
+				" (or another sub-interface) to use it");
 	}
 
 	/**
@@ -1168,445 +1328,6 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 				AdapterConfig.TargetLayer.CROSS_ATTENTION_OUT));
 
 		return crossAttention;
-	}
-
-	/**
-	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
-	 * Simplified version without attention score capturing - delegates to the full transformerBlock method.
-	 *
-	 * @param batchSize Batch dimension
-	 * @param dim Model dimension
-	 * @param seqLen Sequence length
-	 * @param heads Number of attention heads
-	 * @param crossAttend Whether to include cross-attention layer
-	 * @param contextSeqLen Context sequence length (for cross-attention)
-	 * @param context Context input block (for cross-attention)
-	 * @param preNormWeight Self-attention pre-normalization weights
-	 * @param preNormBias Self-attention pre-normalization biases
-	 * @param selfQkv Self-attention QKV projection weights
-	 * @param selfWo Self-attention output projection weights
-	 * @param selfQNormWeight Self-attention Q normalization weights
-	 * @param selfQNormBias Self-attention Q normalization biases
-	 * @param selfKNormWeight Self-attention K normalization weights
-	 * @param selfKNormBias Self-attention K normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
-	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
-	 * @param crossWq Cross-attention Q projection weights
-	 * @param crossKv Cross-attention KV projection weights
-	 * @param crossWo Cross-attention output projection weights
-	 * @param crossQNormWeight Cross-attention Q normalization weights
-	 * @param crossQNormBias Cross-attention Q normalization biases
-	 * @param crossKNormWeight Cross-attention K normalization weights
-	 * @param crossKNormBias Cross-attention K normalization biases
-	 * @param ffnNormWeight Feed-forward pre-normalization weights
-	 * @param ffnNormBias Feed-forward pre-normalization biases
-	 * @param w1 Feed-forward gate projection weights
-	 * @param w2 Feed-forward output projection weights
-	 * @param w1Bias Feed-forward gate projection bias
-	 * @param w2Bias Feed-forward output projection bias
-	 * @return Complete transformer block
-	 */
-	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
-								   boolean crossAttend,
-								   int contextSeqLen, Block context,
-								   // Self-attention weights
-								   PackedCollection preNormWeight, PackedCollection preNormBias,
-								   PackedCollection selfQkv, PackedCollection selfWo,
-								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
-								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
-								   PackedCollection invFreq,
-								   // Cross-attention weights
-								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
-								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
-								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
-								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
-								   // Feed-forward weights
-								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
-								   PackedCollection w1, PackedCollection w2,
-								   PackedCollection w1Bias, PackedCollection w2Bias) {
-		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
-				contextSeqLen, context,
-				preNormWeight, preNormBias,
-				selfQkv, selfWo,
-				selfQNormWeight, selfQNormBias,
-				selfKNormWeight, selfKNormBias,
-				invFreq,
-				crossAttPreNormWeight, crossAttPreNormBias,
-				crossWq, crossKv, crossWo,
-				crossQNormWeight, crossQNormBias,
-				crossKNormWeight, crossKNormBias,
-				ffnNormWeight, ffnNormBias,
-				w1, w2, w1Bias, w2Bias,
-				null, ProjectionFactory.dense());
-	}
-
-	/**
-	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
-	 * This is the full version that supports capturing attention scores via a Receptor.
-	 *
-	 * <p>The transformer block structure:
-	 * <pre>
-	 * x = x + self_attn(norm(x))
-	 * x = x + cross_attn(norm(x), context)  [optional]
-	 * x = x + ffn(norm(x))
-	 * </pre></p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param dim Model dimension
-	 * @param seqLen Sequence length
-	 * @param heads Number of attention heads
-	 * @param crossAttend Whether to include cross-attention layer
-	 * @param contextSeqLen Context sequence length (for cross-attention)
-	 * @param context Context input block (for cross-attention)
-	 * @param preNormWeight Self-attention pre-normalization weights
-	 * @param preNormBias Self-attention pre-normalization biases
-	 * @param selfQkv Self-attention QKV projection weights
-	 * @param selfWo Self-attention output projection weights
-	 * @param selfQNormWeight Self-attention Q normalization weights
-	 * @param selfQNormBias Self-attention Q normalization biases
-	 * @param selfKNormWeight Self-attention K normalization weights
-	 * @param selfKNormBias Self-attention K normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
-	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
-	 * @param crossWq Cross-attention Q projection weights
-	 * @param crossKv Cross-attention KV projection weights
-	 * @param crossWo Cross-attention output projection weights
-	 * @param crossQNormWeight Cross-attention Q normalization weights
-	 * @param crossQNormBias Cross-attention Q normalization biases
-	 * @param crossKNormWeight Cross-attention K normalization weights
-	 * @param crossKNormBias Cross-attention K normalization biases
-	 * @param ffnNormWeight Feed-forward pre-normalization weights
-	 * @param ffnNormBias Feed-forward pre-normalization biases
-	 * @param w1 Feed-forward gate projection weights
-	 * @param w2 Feed-forward output projection weights
-	 * @param w1Bias Feed-forward gate projection bias
-	 * @param w2Bias Feed-forward output projection bias
-	 * @param attentionScores Optional receptor to capture cross-attention scores
-	 * @return Complete transformer block
-	 */
-	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
-								   boolean crossAttend,
-								   int contextSeqLen, Block context,
-								   // Self-attention weights
-								   PackedCollection preNormWeight, PackedCollection preNormBias,
-								   PackedCollection selfQkv, PackedCollection selfWo,
-								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
-								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
-								   PackedCollection invFreq,
-								   // Cross-attention weights
-								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
-								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
-								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
-								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
-								   // Feed-forward weights
-								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
-								   PackedCollection w1, PackedCollection w2,
-								   PackedCollection w1Bias, PackedCollection w2Bias,
-								   Receptor<PackedCollection> attentionScores) {
-		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
-				contextSeqLen, context,
-				preNormWeight, preNormBias,
-				selfQkv, selfWo,
-				selfQNormWeight, selfQNormBias,
-				selfKNormWeight, selfKNormBias,
-				invFreq,
-				crossAttPreNormWeight, crossAttPreNormBias,
-				crossWq, crossKv, crossWo,
-				crossQNormWeight, crossQNormBias,
-				crossKNormWeight, crossKNormBias,
-				ffnNormWeight, ffnNormBias,
-				w1, w2, w1Bias, w2Bias,
-				attentionScores, ProjectionFactory.dense());
-	}
-
-	/**
-	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection layers
-	 * (QKV, output, FFN) are created. This enables LoRA (Low-Rank Adaptation) support
-	 * without code duplication.</p>
-	 *
-	 * <p>The transformer block structure:
-	 * <pre>
-	 * x = x + self_attn(norm(x))
-	 * x = x + cross_attn(norm(x), context)  [optional]
-	 * x = x + ffn(norm(x))
-	 * </pre></p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param dim Model dimension
-	 * @param seqLen Sequence length
-	 * @param heads Number of attention heads
-	 * @param crossAttend Whether to include cross-attention layer
-	 * @param contextSeqLen Context sequence length (for cross-attention)
-	 * @param context Context input block (for cross-attention)
-	 * @param preNormWeight Self-attention pre-normalization weights
-	 * @param preNormBias Self-attention pre-normalization biases
-	 * @param selfQkv Self-attention QKV projection weights
-	 * @param selfWo Self-attention output projection weights
-	 * @param selfQNormWeight Self-attention Q normalization weights
-	 * @param selfQNormBias Self-attention Q normalization biases
-	 * @param selfKNormWeight Self-attention K normalization weights
-	 * @param selfKNormBias Self-attention K normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
-	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
-	 * @param crossWq Cross-attention Q projection weights
-	 * @param crossKv Cross-attention KV projection weights
-	 * @param crossWo Cross-attention output projection weights
-	 * @param crossQNormWeight Cross-attention Q normalization weights
-	 * @param crossQNormBias Cross-attention Q normalization biases
-	 * @param crossKNormWeight Cross-attention K normalization weights
-	 * @param crossKNormBias Cross-attention K normalization biases
-	 * @param ffnNormWeight Feed-forward pre-normalization weights
-	 * @param ffnNormBias Feed-forward pre-normalization biases
-	 * @param w1 Feed-forward gate projection weights
-	 * @param w2 Feed-forward output projection weights
-	 * @param w1Bias Feed-forward gate projection bias
-	 * @param w2Bias Feed-forward output projection bias
-	 * @param attentionScores Optional receptor to capture cross-attention scores
-	 * @param projectionFactory Factory for creating projection layers (enables LoRA support)
-	 * @return Complete transformer block
-	 */
-	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
-								   boolean crossAttend,
-								   int contextSeqLen, Block context,
-								   // Self-attention weights
-								   PackedCollection preNormWeight, PackedCollection preNormBias,
-								   PackedCollection selfQkv, PackedCollection selfWo,
-								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
-								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
-								   PackedCollection invFreq,
-								   // Cross-attention weights
-								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
-								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
-								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
-								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
-								   // Feed-forward weights
-								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
-								   PackedCollection w1, PackedCollection w2,
-								   PackedCollection w1Bias, PackedCollection w2Bias,
-								   Receptor<PackedCollection> attentionScores,
-								   ProjectionFactory projectionFactory) {
-		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
-				contextSeqLen, context,
-				preNormWeight, preNormBias,
-				selfQkv, selfWo,
-				selfQNormWeight, selfQNormBias,
-				selfKNormWeight, selfKNormBias,
-				invFreq,
-				crossAttPreNormWeight, crossAttPreNormBias,
-				crossWq, crossKv, crossWo,
-				crossQNormWeight, crossQNormBias,
-				crossKNormWeight, crossKNormBias,
-				ffnNormWeight, ffnNormBias,
-				w1, w2, w1Bias, w2Bias,
-				attentionScores, projectionFactory,
-				AttentionVariant.STANDARD, null, null, null);
-	}
-
-	/**
-	 * Constructs the self-attention sub-computation for the selected {@link AttentionVariant}.
-	 *
-	 * <p>This is the attention-variant seam threaded through {@link #transformerBlock}. The base
-	 * implementation supports {@link AttentionVariant#STANDARD} only, delegating to
-	 * {@link #sequenceAttention(int, int, int, int, PackedCollection, PackedCollection,
-	 * PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection,
-	 * ProjectionFactory) sequenceAttention} so the default path is unchanged. Alternative variants
-	 * are provided by sub-interfaces that override this method (for example
-	 * {@link DifferentialAttentionFeatures}). Because the call site in {@code transformerBlock} is a
-	 * virtual dispatch, a consumer that implements such a sub-interface automatically obtains the
-	 * variant without forking the block builder.</p>
-	 *
-	 * @param batchSize         batch dimension
-	 * @param seqLen            sequence length
-	 * @param dim               model dimension
-	 * @param heads             number of attention heads
-	 * @param variant           the attention variant to construct ({@code null} is treated as
-	 *                          {@link AttentionVariant#STANDARD})
-	 * @param toQkvWeight       fused projection weights ({@code dim*3} for STANDARD, wider variants
-	 *                          define their own width)
-	 * @param toOutWeight       output projection weights
-	 * @param qNormWeight       query normalization weights
-	 * @param qNormBias         query normalization biases
-	 * @param kNormWeight       key normalization weights
-	 * @param kNormBias         key normalization biases
-	 * @param invFreq           RoPE inverse frequencies
-	 * @param diffLambda        learned lambda for variants that require it (unused by STANDARD,
-	 *                          may be {@code null})
-	 * @param projectionFactory factory for creating projection layers
-	 * @return the self-attention block for the requested variant
-	 */
-	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
-								AttentionVariant variant,
-								PackedCollection toQkvWeight, PackedCollection toOutWeight,
-								PackedCollection qNormWeight, PackedCollection qNormBias,
-								PackedCollection kNormWeight, PackedCollection kNormBias,
-								PackedCollection invFreq,
-								Producer<PackedCollection> diffLambda,
-								ProjectionFactory projectionFactory) {
-		if (variant == null || variant == AttentionVariant.STANDARD) {
-			return sequenceAttention(batchSize, seqLen, dim, heads,
-					toQkvWeight, toOutWeight,
-					qNormWeight, qNormBias, kNormWeight, kNormBias,
-					invFreq, projectionFactory);
-		}
-
-		throw new UnsupportedOperationException("Attention variant " + variant +
-				" is not available on the base AttentionFeatures; implement DifferentialAttentionFeatures" +
-				" (or another sub-interface) to use it");
-	}
-
-	/**
-	 * Creates a complete transformer block, selecting the self-attention implementation via an
-	 * {@link AttentionVariant}.
-	 *
-	 * <p>This is the variant-aware base overload. All other {@code transformerBlock} overloads
-	 * delegate here with {@link AttentionVariant#STANDARD} and a {@code null} lambda, so the
-	 * standard scaled-dot-product path is byte-for-byte identical to the previous behaviour. The
-	 * only difference from the standard path is that the self-attention sub-block is built through
-	 * {@link #selfAttention} rather than {@link #sequenceAttention} directly, which routes the
-	 * construction to the selected variant.</p>
-	 *
-	 * @param batchSize Batch dimension
-	 * @param dim Model dimension
-	 * @param seqLen Sequence length
-	 * @param heads Number of attention heads
-	 * @param crossAttend Whether to include cross-attention layer
-	 * @param contextSeqLen Context sequence length (for cross-attention)
-	 * @param context Context input block (for cross-attention)
-	 * @param preNormWeight Self-attention pre-normalization weights
-	 * @param preNormBias Self-attention pre-normalization biases
-	 * @param selfQkv Self-attention fused projection weights (width depends on {@code variant})
-	 * @param selfWo Self-attention output projection weights
-	 * @param selfQNormWeight Self-attention Q normalization weights
-	 * @param selfQNormBias Self-attention Q normalization biases
-	 * @param selfKNormWeight Self-attention K normalization weights
-	 * @param selfKNormBias Self-attention K normalization biases
-	 * @param invFreq RoPE inverse frequencies
-	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
-	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
-	 * @param crossWq Cross-attention Q projection weights
-	 * @param crossKv Cross-attention KV projection weights
-	 * @param crossWo Cross-attention output projection weights
-	 * @param crossQNormWeight Cross-attention Q normalization weights
-	 * @param crossQNormBias Cross-attention Q normalization biases
-	 * @param crossKNormWeight Cross-attention K normalization weights
-	 * @param crossKNormBias Cross-attention K normalization biases
-	 * @param ffnNormWeight Feed-forward pre-normalization weights
-	 * @param ffnNormBias Feed-forward pre-normalization biases
-	 * @param w1 Feed-forward gate projection weights
-	 * @param w2 Feed-forward output projection weights
-	 * @param w1Bias Feed-forward gate projection bias
-	 * @param w2Bias Feed-forward output projection bias
-	 * @param attentionScores Optional receptor to capture cross-attention scores
-	 * @param projectionFactory Factory for creating projection layers (enables LoRA support)
-	 * @param variant Attention variant for the self-attention sub-block
-	 * @param diffLambda Learned lambda supplied to variants that require it (may be {@code null})
-	 * @param modulation Optional packed adaLN modulation, shape {@code [batch, 6, dim]}, whose six
-	 *                   {@code [batch, dim]} components are the raw scale/shift/gate for self-attention
-	 *                   followed by the raw scale/shift/gate for the feed-forward; each sub-layer is
-	 *                   applied as {@code x + sigmoid(1 - gate) * f((1 + scale) * norm(x) + shift)}.
-	 *                   When {@code null} no modulation is applied and the block is the standard
-	 *                   pre-norm residual block (the prepend path).
-	 * @param localAddition Optional per-position additive conditioning, shape {@code [batch, seqLen, dim]},
-	 *                      added to the hidden state after the attention sub-layers and before the
-	 *                      feed-forward; {@code null} when absent.
-	 * @return Complete transformer block
-	 */
-	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
-								   boolean crossAttend,
-								   int contextSeqLen, Block context,
-								   // Self-attention weights
-								   PackedCollection preNormWeight, PackedCollection preNormBias,
-								   PackedCollection selfQkv, PackedCollection selfWo,
-								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
-								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
-								   PackedCollection invFreq,
-								   // Cross-attention weights
-								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
-								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
-								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
-								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
-								   // Feed-forward weights
-								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
-								   PackedCollection w1, PackedCollection w2,
-								   PackedCollection w1Bias, PackedCollection w2Bias,
-								   Receptor<PackedCollection> attentionScores,
-								   ProjectionFactory projectionFactory,
-								   AttentionVariant variant,
-								   Producer<PackedCollection> diffLambda,
-								   Producer<PackedCollection> modulation,
-								   Producer<PackedCollection> localAddition) {
-		TraversalPolicy blockShape = shape(batchSize, seqLen, dim);
-		SequentialBlock block = new SequentialBlock(blockShape);
-
-		// adaLN-Zero modulation components (null when unmodulated): scale/shift/gate for self-attention
-		// followed by scale/shift/gate for the feed-forward.
-		Producer<PackedCollection> scaleSelf = modulation == null ? null : residualScale(modulationComponent(modulation, batchSize, dim, 0));
-		Producer<PackedCollection> shiftSelf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 1);
-		Producer<PackedCollection> gateSelf = modulation == null ? null : residualGate(modulationComponent(modulation, batchSize, dim, 2));
-		Producer<PackedCollection> scaleFf = modulation == null ? null : residualScale(modulationComponent(modulation, batchSize, dim, 3));
-		Producer<PackedCollection> shiftFf = modulation == null ? null : modulationComponent(modulation, batchSize, dim, 4);
-		Producer<PackedCollection> gateFf = modulation == null ? null : residualGate(modulationComponent(modulation, batchSize, dim, 5));
-
-		// Python: x = x + sigmoid(1 - gate_self) * self_attn((1 + scale_self) * pre_norm(x) + shift_self)
-		SequentialBlock selfAttentionWithNorm = new SequentialBlock(blockShape);
-		selfAttentionWithNorm.add(norm(preNormWeight, preNormBias));
-		if (modulation != null) {
-			selfAttentionWithNorm.add(adaptiveModulate(blockShape, scaleSelf, shiftSelf));
-		}
-		selfAttentionWithNorm.add(selfAttention(
-				batchSize, seqLen, dim, heads, variant,
-				selfQkv, selfWo,
-				selfQNormWeight, selfQNormBias,
-				selfKNormWeight, selfKNormBias,
-				invFreq, diffLambda, projectionFactory));
-		if (modulation != null) {
-			selfAttentionWithNorm.add(adaptiveGate(blockShape, gateSelf));
-		}
-		block.add(residual(selfAttentionWithNorm));
-
-		// Cross-attention with pre-normalization inside residual branch (if needed). adaLN modulation
-		// drives only the self-attention and feed-forward sub-layers, so cross-attention is unmodulated.
-		// Python: x = x + cross_attn(cross_attend_norm(x))
-		if (crossAttend) {
-			if (context == null) {
-				throw new IllegalArgumentException("Context block cannot be null for cross-attention");
-			}
-
-			SequentialBlock crossAttentionWithNorm = new SequentialBlock(blockShape);
-			crossAttentionWithNorm.add(norm(crossAttPreNormWeight, crossAttPreNormBias));
-			crossAttentionWithNorm.add(sequenceCrossAttention(
-					batchSize, seqLen, contextSeqLen, dim, heads,
-					crossWq, crossKv, crossWo,
-					crossQNormWeight, crossQNormBias,
-					crossKNormWeight, crossKNormBias,
-					context, attentionScores, projectionFactory));
-			block.add(residual(crossAttentionWithNorm));
-		}
-
-		if (localAddition != null) {
-			block.add(layer("localAddCond", blockShape, blockShape, in -> add(c(in), c(localAddition))));
-		}
-
-		// Feed-forward with normalization inside residual branch
-		// Python: x = x + sigmoid(1 - gate_ff) * ff((1 + scale_ff) * ff_norm(x) + shift_ff)
-		Block feedForward = gatedLinearFeedForward(block.getOutputShape(),
-				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias,
-				scaleFf, shiftFf, projectionFactory);
-		if (modulation == null) {
-			block.add(residual(feedForward));
-		} else {
-			SequentialBlock gatedFeedForward = new SequentialBlock(block.getOutputShape());
-			gatedFeedForward.add(feedForward);
-			gatedFeedForward.add(adaptiveGate(blockShape, gateFf));
-			block.add(residual(gatedFeedForward));
-		}
-
-		return block;
 	}
 
 	/**
@@ -1927,25 +1648,65 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v,
 											Receptor<PackedCollection> attentionScores) {
+		return scaledDotProductAttention(batchSize, querySeqLen, contextSeqLen, heads, dimHead,
+				k, v, attentionScores, 0.0, null);
+	}
+
+	/**
+	 * Computes scaled dot-product attention with optional logit soft-capping and key masking:
+	 * {@code softmax(mask(softcap(Q @ K^T / sqrt(d_k)))) @ V}. Soft-capping squashes the scaled
+	 * logits to {@code cap * tanh(logit / cap)}; the key mask adds a large negative bias to the
+	 * logits of masked keys so they receive no attention. This is the fully specified overload;
+	 * the others route here with no soft-cap and no mask.
+	 *
+	 * @param batchSize batch dimension
+	 * @param querySeqLen sequence length for queries
+	 * @param contextSeqLen sequence length for context (keys/values)
+	 * @param heads number of attention heads
+	 * @param dimHead dimension per head
+	 * @param k key tensor data (batch, heads, seqLenK, dimHead)
+	 * @param v value tensor data (batch, heads, seqLenV, dimHead)
+	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
+	 * @param logitSoftcap the soft-cap applied to the scaled logits, or {@code 0} for none
+	 * @param keyMask per-key validity, shape {@code (batch, contextSeqLen)} with one for a key that
+	 *                may be attended and zero for one that may not, or {@code null} for no masking
+	 * @return Block computing the attention output
+	 */
+	default Block scaledDotProductAttention(int batchSize, int querySeqLen, int contextSeqLen, int heads, int dimHead,
+											PackedCollection k, PackedCollection v,
+											Receptor<PackedCollection> attentionScores,
+											double logitSoftcap, Producer<PackedCollection> keyMask) {
 		if (batchSize != 1) {
 			throw new UnsupportedOperationException("Batches of more than 1 are not currently supported");
 		}
 
+		TraversalPolicy scoresShape = shape(batchSize, heads, querySeqLen, contextSeqLen);
 		SequentialBlock attnBlock = new SequentialBlock(shape(batchSize, heads, querySeqLen, dimHead));
 
 		// Q @ K^T: (batch, heads, querySeqLen, dimHead) @ (batch, heads, dimHead, contextSeqLen)
 		//         = (batch, heads, querySeqLen, contextSeqLen)
 		attnBlock.add(layer("qkMatmul",
 				shape(batchSize, heads, querySeqLen, dimHead),
-				shape(batchSize, heads, querySeqLen, contextSeqLen),
+				scoresShape,
 				q -> scaledDotProduct(c(q), cp(k), true)));
 
 		// Scale by 1/sqrt(dimHead)
 		attnBlock.add(scale(1.0 / Math.sqrt(dimHead)));
 
+		if (logitSoftcap > 0.0) {
+			attnBlock.add(layer("logitSoftcap", scoresShape, scoresShape,
+					logits -> tanh(c(logits).multiply(1.0 / logitSoftcap)).multiply(logitSoftcap)));
+		}
+
+		if (keyMask != null) {
+			CollectionProducer bias = c(keyMask).add(-1.0).multiply(MASKED_LOGIT_PENALTY);
+			attnBlock.add(layer("keyMask", scoresShape, scoresShape,
+					logits -> add(c(logits), broadcast(scoresShape, 3, bias))));
+		}
+
 		// Apply softmax over last dimension (key positions) - capture these attention weights
-		SequentialBlock softmaxBlock = new SequentialBlock(shape(batchSize, heads, querySeqLen, contextSeqLen));
-		softmaxBlock.add(softmax(shape(batchSize, heads, querySeqLen, contextSeqLen), true));
+		SequentialBlock softmaxBlock = new SequentialBlock(scoresShape);
+		softmaxBlock.add(softmax(scoresShape, true));
 
 		// Capture attention weights if requested
 		if (attentionScores != null) {
@@ -1957,7 +1718,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		// Attention @ V: (batch, heads, querySeqLen, contextSeqLen) @ (batch, heads, contextSeqLen, dimHead)
 		//              = (batch, heads, querySeqLen, dimHead)
 		attnBlock.add(layer("attnValues",
-				shape(batchSize, heads, querySeqLen, contextSeqLen),
+				scoresShape,
 				shape(batchSize, heads, querySeqLen, dimHead),
 				attnWeights -> scaledDotProduct(c(attnWeights), cp(v))));
 

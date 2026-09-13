@@ -21,6 +21,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Random;
+
 /**
  * Tests for {@link DiffusionSampler}, in particular that both entry points into the sampling loop
  * build a schedule consistent with the latent's actual sequence length.
@@ -73,6 +75,69 @@ public class DiffusionSamplerTest extends TestSuiteBase {
 		PackedCollection output = sampler.sample(42L, null, null);
 
 		assertEquals(latentShape.getTotalSize(), output.getShape().getTotalSize());
+	}
+
+	/**
+	 * With guidance enabled the sampler runs the model twice per step, once with the sampling
+	 * conditioning and once with the negative conditioning, and feeds the guided prediction into
+	 * the sampling step. A model predicting one under conditioning and zero without it, guided
+	 * with scale two and no projection, predicts two; a single ping-pong step from noise at
+	 * {@code t = 1} to {@code t = 0} then yields {@code noise - 2}.
+	 */
+	@Test(timeout = 60000)
+	public void guidanceCombinesConditionalAndNegativePredictions() {
+		TraversalPolicy latentShape = shape(BATCH, CHANNELS, SEQ_LEN);
+		ConditioningSensitiveModel model = new ConditioningSensitiveModel(latentShape);
+		PingPongSamplingStrategy strategy = new PingPongSamplingStrategy(new LogSNRShift());
+		PackedCollection negative = new PackedCollection(shape(1, 1));
+
+		DiffusionSampler sampler = new DiffusionSampler(model, strategy, 1000, latentShape)
+				.setNumInferenceSteps(1)
+				.setVerbose(false)
+				.setGuidance(new ClassifierFreeGuidance(2.0, 0.0), null, negative);
+
+		PackedCollection positive = new PackedCollection(shape(1, 1)).fill(1.0);
+		PackedCollection output = sampler.sample(42L, null, positive);
+		PackedCollection noise = strategy.sampleInitialNoise(latentShape.extent(), new Random(42L));
+
+		assertEquals(2, model.calls);
+		assertEquals(1, model.conditionedCalls);
+		for (int i = 0; i < latentShape.getTotalSize(); i++) {
+			assertEquals(noise.toDouble(i) - 2.0, output.toDouble(i), 1e-5);
+		}
+	}
+
+	/**
+	 * A {@link DiffusionModel} stub predicting one everywhere when the global conditioning is
+	 * non-zero and zero everywhere otherwise, counting how it was called.
+	 */
+	private static class ConditioningSensitiveModel implements DiffusionModel {
+		/** Shape of the prediction returned for every forward pass. */
+		private final TraversalPolicy shape;
+
+		/** Number of forward passes made. */
+		private int calls;
+
+		/** Number of forward passes made with non-zero global conditioning. */
+		private int conditionedCalls;
+
+		/**
+		 * Creates the stub.
+		 *
+		 * @param shape shape of the prediction to return
+		 */
+		private ConditioningSensitiveModel(TraversalPolicy shape) {
+			this.shape = shape;
+		}
+
+		@Override
+		public PackedCollection forward(PackedCollection x, PackedCollection t,
+										 PackedCollection crossAttnCond, PackedCollection globalCond) {
+			calls++;
+			boolean conditioned = globalCond != null && globalCond.toDouble(0) != 0.0;
+			if (conditioned) conditionedCalls++;
+			return new PackedCollection(shape).fill(conditioned ? 1.0 : 0.0);
+		}
 	}
 
 	/**

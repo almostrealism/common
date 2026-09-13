@@ -927,6 +927,48 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Creates a scaling layer that multiplies the input by one factor per position along the
+	 * given axis, the same factor being applied across every other non-batch axis. A factor of
+	 * zero masks that position out entirely.
+	 *
+	 * @param shape        the input and output shape, whose first axis is the batch
+	 * @param axis         the axis the factors index (never the batch axis)
+	 * @param factors      the factors, shape {@code (batch, shape.length(axis))}
+	 * @param requirements optional compute requirements
+	 * @return the constructed scaling {@link CellularLayer}
+	 */
+	default CellularLayer scale(TraversalPolicy shape, int axis, Producer<PackedCollection> factors,
+								ComputeRequirement... requirements) {
+		return layer("scaleAlongAxis", shape, shape,
+				input -> c(input).multiply(broadcast(shape, axis, factors)), requirements);
+	}
+
+	/**
+	 * Expands one value per position along the given axis of a batched shape to the whole
+	 * shape, repeating the value across every other non-batch axis, so it can be combined
+	 * element-wise with a collection of that shape.
+	 *
+	 * @param shape  the target shape, whose first axis is the batch
+	 * @param axis   the axis the values index (never the batch axis)
+	 * @param values the values, shape {@code (batch, shape.length(axis))}
+	 * @return a producer of the values expanded to {@code shape}
+	 */
+	default CollectionProducer broadcast(TraversalPolicy shape, int axis, Producer<PackedCollection> values) {
+		if (axis <= 0 || axis >= shape.getDimensions()) {
+			throw new IllegalArgumentException("axis " + axis + " is not a non-batch axis of " + shape);
+		}
+
+		CollectionProducer expanded = c(values).reshape(shape.length(0), shape.length(axis));
+		for (int k = 1; k < shape.getDimensions(); k++) {
+			if (k != axis) {
+				expanded = expanded.repeat(k, shape.length(k));
+			}
+		}
+
+		return expanded.reshape(shape);
+	}
+
+	/**
 	 * Returns a setup operation that initializes the given weight collection with random
 	 * normal values scaled by the given factor.
 	 *

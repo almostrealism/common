@@ -83,6 +83,15 @@ public class DiffusionSampler implements ConsoleFeatures {
 	/** Whether to log per-step progress and NaN diagnostics. */
 	private boolean verbose = true;
 
+	/** Classifier-free guidance applied to every model prediction; null when disabled. */
+	private ClassifierFreeGuidance guidance;
+
+	/** Cross-attention conditioning for the unconditional prediction used by guidance. */
+	private PackedCollection negativeCrossAttnCond;
+
+	/** Global conditioning for the unconditional prediction used by guidance. */
+	private PackedCollection negativeGlobalCond;
+
 	/**
 	 * Creates a diffusion sampler.
 	 *
@@ -131,6 +140,29 @@ public class DiffusionSampler implements ConsoleFeatures {
 	 */
 	public DiffusionSampler setVerbose(boolean verbose) {
 		this.verbose = verbose;
+		return this;
+	}
+
+	/**
+	 * Enables classifier-free guidance. Every sampling step then runs the model twice, once
+	 * with the conditioning passed to {@link #sample} or {@link #sampleFrom} and once with the
+	 * negative conditioning given here, and combines the two predictions with the guidance.
+	 *
+	 * <p>The negative conditioning is whatever the conditioner produces for the negative (or
+	 * empty) prompt; it is not a zero tensor. Either negative input may be null when the model
+	 * does not take that input.</p>
+	 *
+	 * @param guidance the guidance to apply, or null to disable guidance
+	 * @param negativeCrossAttnCond cross-attention conditioning for the unconditional prediction
+	 * @param negativeGlobalCond global conditioning for the unconditional prediction
+	 * @return This sampler for chaining
+	 */
+	public DiffusionSampler setGuidance(ClassifierFreeGuidance guidance,
+										PackedCollection negativeCrossAttnCond,
+										PackedCollection negativeGlobalCond) {
+		this.guidance = guidance;
+		this.negativeCrossAttnCond = negativeCrossAttnCond;
+		this.negativeGlobalCond = negativeGlobalCond;
 		return this;
 	}
 
@@ -254,7 +286,7 @@ public class DiffusionSampler implements ConsoleFeatures {
 
 			// Model forward pass
 			long start = System.currentTimeMillis();
-			PackedCollection modelOutput = model.forward(x, tTensor, crossAttnCond, globalCond);
+			PackedCollection modelOutput = predict(x, tTensor, t, crossAttnCond, globalCond);
 			modelTotal += System.currentTimeMillis() - start;
 
 			// Check for NaN
@@ -286,6 +318,34 @@ public class DiffusionSampler implements ConsoleFeatures {
 		}
 
 		return x;
+	}
+
+	/**
+	 * Runs the model for one step, applying classifier-free guidance when it is enabled.
+	 *
+	 * <p>The model may hand back the same output buffer on every call, so the conditional
+	 * prediction is copied before the unconditional pass overwrites it. The guided prediction is
+	 * evaluated here because the sampling step consumes it as data.</p>
+	 *
+	 * @param x the current noisy latent
+	 * @param tTensor the timestep tensor supplied to the model
+	 * @param t the timestep value (the noise level of {@code x})
+	 * @param crossAttnCond cross-attention conditioning
+	 * @param globalCond global conditioning
+	 * @return the model prediction for this step
+	 */
+	private PackedCollection predict(PackedCollection x, PackedCollection tTensor, double t,
+									 PackedCollection crossAttnCond, PackedCollection globalCond) {
+		PackedCollection output = model.forward(x, tTensor, crossAttnCond, globalCond);
+		if (guidance == null || !guidance.isActive()) {
+			return output;
+		}
+
+		PackedCollection conditional = output.clone();
+		PackedCollection unconditional = model.forward(x, tTensor, negativeCrossAttnCond, negativeGlobalCond);
+		PackedCollection guided = guidance.guide(x, t, conditional, unconditional).evaluate();
+		conditional.destroy();
+		return guided;
 	}
 
 	/**

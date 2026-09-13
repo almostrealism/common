@@ -56,7 +56,7 @@ import java.util.Map;
  *       unchanged.</li>
  * </ul>
  */
-public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFeatures {
+public class AdaLNConditioningTest extends TestSuiteBase implements TransformerBlockFeatures {
 
 	/** Batch dimension; scaled-dot-product attention currently asserts a batch size of 1. */
 	private static final int BATCH = 1;
