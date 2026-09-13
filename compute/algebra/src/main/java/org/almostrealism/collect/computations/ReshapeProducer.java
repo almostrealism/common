@@ -610,6 +610,19 @@ public class ReshapeProducer
 		return new ReshapeProducer(shape, producer);
 	}
 
+	/**
+	 * Returns an evaluable that evaluates the underlying producer and re-views its result
+	 * with the configured shape, or along the configured traversal axis.
+	 *
+	 * <p>The reshape only changes the handle, never the contents, so for a kernel-backed
+	 * producer it is attached as a {@link HardwareEvaluable#setResultProcessor result
+	 * processor}: when this producer is an argument of a dependent kernel, the underlying
+	 * dispatch stays chained on the device and the reshaped handle is delivered with its
+	 * completion, instead of the kernel being completed on the host before every such
+	 * dispatch.</p>
+	 *
+	 * @return the evaluable for this reshape
+	 */
 	@Override
 	public Evaluable<PackedCollection> get() {
 		Evaluable<PackedCollection> ev = producer.get();
@@ -619,10 +632,7 @@ public class ReshapeProducer
 		}
 
 		HardwareEvaluable<PackedCollection> hev = new HardwareEvaluable<>(producer::get, null, null, false);
-		hev.setShortCircuit(args -> {
-			PackedCollection out = hev.getKernel().getValue().evaluate(args);
-			return apply(out);
-		});
+		hev.setResultProcessor(this::apply);
 		return hev;
 	}
 

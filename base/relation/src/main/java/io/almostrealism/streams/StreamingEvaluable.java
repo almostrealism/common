@@ -110,6 +110,32 @@ public interface StreamingEvaluable<T> extends Computable {
 	void request(Object[] args, Semaphore dependsOn);
 
 	/**
+	 * Initiates an asynchronous computation request, ordered after {@code dependsOn} exactly as
+	 * {@link #request(Object[], Semaphore)} is, whose result is delivered to the given consumer
+	 * instead of the consumer configured via {@link #setDownstream(Consumer)}.
+	 *
+	 * <p>This is the form to use when one evaluable is reached by several independent
+	 * requesters &mdash; a compiled kernel that several wrappers forward to, for example. The
+	 * default implementation installs {@code downstream} with {@link #setDownstream(Consumer)}
+	 * and then requests, which is only appropriate for an evaluable that serves a single
+	 * consumer for its whole life; an implementation that may be shared should override this
+	 * to deliver to {@code downstream} directly, so that no request mutates state another
+	 * requester relies on.</p>
+	 *
+	 * @param args       the arguments required for computation, in the same format as
+	 *                   {@link #request(Object[])}
+	 * @param dependsOn  completion the dispatch must chain on, or {@code null} when there
+	 *                   is no dependency
+	 * @param downstream the consumer to receive the result of this request; must not be null
+	 *
+	 * @see #request(Object[], Semaphore)
+	 */
+	default void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
+		setDownstream(downstream);
+		request(args, dependsOn);
+	}
+
+	/**
 	 * Sets the downstream consumer that will receive computation results.
 	 *
 	 * <p>The consumer will be invoked asynchronously each time a computation
