@@ -33,6 +33,10 @@ for var in FAILURE_COUNT BRANCH COMMIT_SHA; do
     fi
 done
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=prompt-render.sh
+source "${SCRIPT_DIR}/prompt-render.sh"
+
 FAILURE_LIST=$(cat "$FAILURES_FILE")
 
 cat > "$OUTPUT_FILE" <<'PROMPT_HEADER'
@@ -56,8 +60,9 @@ They pass on master, they fail on this branch. Every time. If you claim otherwis
 without actually running the CI command locally and showing it succeeds, you are wrong.
 
 **Browse GitHub Actions or other CI pages with WebFetch.** You do not have permission
-to access GitHub web pages and you do not need to. All the information you need is in
-this prompt. The failing tests and the branch diff tell you everything.
+to access GitHub web pages and you do not need to. Everything you need is in this
+prompt, in the branch diff, and in the pull request's review threads — which the
+GitHub MCP tools read for you, as the next section explains.
 
 **Look at a single commit and declare it "fine."** The problem is the ENTIRE set of
 changes between origin/master and this branch. Run `git diff origin/master...HEAD` to
@@ -125,6 +130,8 @@ tolerance weakening, assertion removal, and numeric literal shrinkage.
 ---
 
 PROMPT_HEADER
+
+append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 
 # ── Determine which modules contain failures and build CI commands ──
 # Parse class names from the failure list and map them to Maven modules.
@@ -220,13 +227,13 @@ suite before concluding.
    module suite. If it passes, your fix works.
 
 7. **Run the build validator to confirm your fix doesn't introduce new style or policy issues:**
-   ```
+   \`\`\`
    mcp__ar-build-validator__start_validation skip_build:true
-   ```
+   \`\`\`
    This checks checkstyle, code policy, test timeouts, and duplicate code without re-running
    the full build (since the project is already compiled at this point).
-   Poll `mcp__ar-build-validator__get_validation_status` until done, then check
-   `mcp__ar-build-validator__get_validation_violations` for any new violations.
+   Poll \`mcp__ar-build-validator__get_validation_status\` until done, then check
+   \`mcp__ar-build-validator__get_validation_violations\` for any new violations.
 
 **Remember: if a test exists on the base branch, the test is the specification — fix
 the production code. Modifications to base-branch test files or CI files will be rejected.**

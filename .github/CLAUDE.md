@@ -120,7 +120,11 @@ treated as passing).
 ### What the `auto-resolve` job covers (and the `Auto-Resolve Submit` split)
 
 `auto-resolve` parses the pipeline results, decides which agent prompt to build,
-and **stages** the request as the `auto-resolve-request` artifact. It carries no
+and **stages** the request as the `auto-resolve-request` artifact. Whichever
+prompt it picks — test failures, a build failure, a JVM crash, policy or quality
+gate failures, the docs-only verify, or the general review — carries the same
+pull-request review-comment policy, patched in from
+`tools/ci/prompts/pr-feedback.txt` (see `tools/ci/README.md`). The job carries no
 `environment:` and never submits to the controller itself. A separate
 `workflow_run`-triggered workflow (`.github/workflows/auto-resolve-submit.yaml`)
 downloads that artifact and performs the `worker`-environment-gated submission.

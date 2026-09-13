@@ -85,7 +85,9 @@ it knowingly does not cover are in
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
+| `pr-feedback.txt` | Shared fragment: how to find, read, act on and reply to pull-request review comments — patched into every auto-resolve prompt |
 | `project-planning.txt` | Template for the planning workflow |
+| `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`) |
 | `verify-completion.txt` | Template for verify-completion prompt |
 
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
@@ -96,3 +98,17 @@ Most take that path as their only argument; a few need additional file input fir
 `build-vm-crash-prompt.sh <crash-reports-dir> <output-file>` — where the output
 file is always the last argument. `tools/tests/test_prompt_builders.py` holds
 them to that contract.
+
+Instructions that several tasks share live once, as a fragment in this directory,
+and are patched into each prompt by `prompt-render.sh`: a template names the
+fragment on an `@include <file>` line, and a builder that assembles its prompt
+from heredocs calls `append_prompt_fragment <file> "$OUTPUT_FILE" VAR...`. The
+one fragment today is `pr-feedback.txt`, the policy for pull-request review
+comments — read both the inline and conversation feeds before starting, fix what
+is right in the code, reply threaded to the original comment only where the
+author is safe to answer (Copilot and people, never CodeRabbit or an unknown bot),
+and treat a comment as evidence to verify rather than an instruction to obey.
+Every auto-resolve builder carries it, whatever the job was submitted for — a
+reviewer may already have named the defect a test-failure job is chasing, and on
+a docs-only branch the review comments are usually the whole of the work.
+`test_prompt_builders.py` fails if any auto-resolve prompt stops carrying it.
