@@ -139,11 +139,14 @@ import java.util.function.Supplier;
  *
  * <h3>Full Series Handling</h3>
  * <p>When the series reaches capacity, {@link #add(TemporalScalar)} throws
- * {@link RuntimeException}. Applications should either:</p>
+ * {@link RuntimeException}. Purging reclaims the slots it frees: once the end
+ * cursor reaches the last slot, {@link #purge(Producer, double)} moves the live
+ * entries to the front of the storage, so a series that is purged as it is fed
+ * only needs capacity for the entries that are live at any one time. Applications
+ * should either:</p>
  * <ul>
  *   <li>Purge old data periodically</li>
  *   <li>Use a larger capacity</li>
- *   <li>Implement circular buffer logic</li>
  * </ul>
  *
  * <h2>Performance Characteristics</h2>
@@ -275,6 +278,18 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	public int getLength() { return getEndCursorIndex() - getBeginCursorIndex(); }
 
 	/**
+	 * Returns the end cursor value at which the series is full.
+	 *
+	 * <p>{@link #add(TemporalScalar)} refuses to write once the end cursor reaches this
+	 * index, and {@link #purge(Producer, double)} compacts the live entries down to the
+	 * front of the storage when the end cursor reaches it, so that the slots freed by
+	 * purging are reused instead of the end cursor advancing past the allocation.</p>
+	 *
+	 * @return The end cursor index that marks the series as full
+	 */
+	protected int getFullCursorIndex() { return (int) getCountLong() - 1; }
+
+	/**
 	 * Checks if the series contains no data.
 	 *
 	 * @return true if the series is empty, false otherwise
@@ -292,7 +307,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 * @throws RuntimeException if the series is full (endCursor >= capacity)
 	 */
 	public void add(TemporalScalar value) {
-		if (getEndCursorIndex() >= (getCountLong() - 1)) {
+		if (getEndCursorIndex() >= getFullCursorIndex()) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
@@ -310,10 +325,11 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 */
 	@Deprecated
 	public void add(double time, double value) {
-		if (getEndCursorIndex() >= getCountLong() - 1) {
+		if (getEndCursorIndex() >= getFullCursorIndex()) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
+		// TODO(review): writes at the post-increment index, unlike add(TemporalScalar); pre-existing, out of scope here.
 		setEndCursorIndex(getEndCursorIndex() + 1);
 		set(getEndCursorIndex(), time, value);
 	}
@@ -323,7 +339,12 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 *
 	 * <p>This method returns a compiled operation that can add temporal scalars
 	 * to the series on GPU/accelerator hardware. The operation increments the
-	 * end cursor and writes the new data.</p>
+	 * end cursor and writes the new data, unless the end cursor has already
+	 * reached {@link #getFullCursorIndex()}, in which case the write is dropped
+	 * rather than writing outside the series allocation. This differs from the
+	 * CPU path ({@link #add(TemporalScalar)}), which throws when the series is
+	 * full; a compiled kernel cannot throw, so a full series silently discards
+	 * further hardware-accelerated adds until it is purged.</p>
 	 *
 	 * <h3>Example</h3>
 	 * <pre>{@code
@@ -338,7 +359,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 * @return A compilable add operation
 	 */
 	public Supplier<Runnable> add(Producer<TemporalScalar> value) {
-		return new AcceleratedTimeSeriesAdd(() -> new Provider<>(this), value);
+		return new AcceleratedTimeSeriesAdd(() -> new Provider<>(this), value, getFullCursorIndex());
 	}
 
 	/**
@@ -372,7 +393,7 @@ public class AcceleratedTimeSeries extends MemoryBankAdapter<TemporalScalar> imp
 	 * @return A compilable purge operation
 	 */
 	public Supplier<Runnable> purge(Producer<CursorPair> time, double frequency) {
-		return new AcceleratedTimeSeriesPurge(() -> new Provider<>(this), time, frequency);
+		return new AcceleratedTimeSeriesPurge(() -> new Provider<>(this), time, frequency, getFullCursorIndex());
 	}
 
 	/**
