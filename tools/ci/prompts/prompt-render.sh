@@ -50,6 +50,19 @@ expand_prompt_includes() {
     done < "$template"
 }
 
+# Escapes a value for use as the replacement half of a `sed s|...|...|`
+# expression: a literal backslash or `&` is otherwise special to sed, and a
+# literal `|` would otherwise close the expression early. Backslashes are
+# escaped first, so escaping the later characters cannot introduce a
+# backslash that then gets mistaken for part of the original value.
+escape_sed_replacement() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//&/\\&}"
+    value="${value//|/\\|}"
+    printf '%s' "$value"
+}
+
 # Prints a template with its includes expanded and each named variable
 # substituted for its ${NAME} placeholder.
 #
@@ -64,7 +77,7 @@ render_prompt() {
     local expressions=()
     local name
     for name in "$@"; do
-        expressions+=(-e "s|\${${name}}|${!name}|g")
+        expressions+=(-e "s|\${${name}}|$(escape_sed_replacement "${!name}")|g")
     done
     if [ "${#expressions[@]}" -eq 0 ]; then
         expand_prompt_includes "$template"

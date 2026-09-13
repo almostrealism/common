@@ -68,6 +68,13 @@ _AUTO_RESOLVE_BUILDERS = (
 # characters the builders use as sed delimiters.
 _VALUE = "placeholder-value"
 
+# `&`, `|`, and `\` are all legal in a Git branch name and all special to sed:
+# `&` re-inserts the whole match, `|` is the delimiter render_prompt uses for
+# its substitutions, and `\` escapes whatever follows it. A branch with this
+# name must survive substitution unchanged rather than corrupting the prompt
+# or breaking the sed command that renders it.
+_SED_METACHARACTER_BRANCH = r"feature/a&b|c\d"
+
 
 def _read(path):
     """Returns a file's text, closing it — these tests run under -W error."""
@@ -249,6 +256,27 @@ class PromptBuilderTests(unittest.TestCase):
                 prompt = _read(self.output)
                 self.assertIn(rendered, prompt)
                 self.assertEqual(1, prompt.count(_PR_FEEDBACK_MARKER))
+
+    def test_a_branch_name_with_sed_metacharacters_is_substituted_literally(self):
+        """A branch such as `feature/a&b|c\\d` must not corrupt the prompt.
+
+        render_prompt builds a `sed s|${NAME}|value|g` expression for every
+        variable it substitutes; a value containing the delimiter or sed's
+        own replacement metacharacters must still come through unchanged.
+        Scoped to the builders that render through prompt-render.sh — the
+        recurring-round builders substitute BRANCH with their own inline sed
+        and are not touched by this fix.
+        """
+        for name in _AUTO_RESOLVE_BUILDERS:
+            builder = os.path.join(_PROMPT_DIR, name)
+            if "BRANCH" not in _required_vars(builder):
+                continue
+            with self.subTest(builder=os.path.basename(builder)):
+                result = self._run(builder, {"BRANCH": _SED_METACHARACTER_BRANCH})
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("", result.stderr)
+                prompt = _read(self.output)
+                self.assertIn(_SED_METACHARACTER_BRANCH, prompt)
 
     def test_a_missing_variable_is_refused_rather_than_substituted_empty(self):
         for builder in _builders():
