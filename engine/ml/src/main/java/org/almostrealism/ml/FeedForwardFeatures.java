@@ -21,8 +21,10 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
+import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LayerRoutingFeatures;
+import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
@@ -304,8 +306,43 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 										 Producer<PackedCollection> modScale, Producer<PackedCollection> modShift,
 										 ProjectionFactory projectionFactory,
 										 ComputeRequirement... requirements) {
+		return gatedLinearFeedForward(inputShape, NormalizationType.LAYER, normWeights, normBiases,
+				weightIn, biasIn, weightOut, biasOut, modScale, modShift, silu(), projectionFactory, requirements);
+	}
+
+	/**
+	 * Creates a gated linear feed-forward block whose pre-normalization is of the given family.
+	 *
+	 * <p>This is the fully specified overload; every other {@code gatedLinearFeedForward} routes
+	 * here with {@link NormalizationType#LAYER}, which keeps their normalization unchanged.</p>
+	 *
+	 * @param inputShape Input/output shape
+	 * @param normType Family of the pre-normalization
+	 * @param normWeights Normalization weights
+	 * @param normBiases Normalization biases ({@code null} for none)
+	 * @param weightIn Input projection weights (GLU)
+	 * @param biasIn Input projection bias
+	 * @param weightOut Output projection weights
+	 * @param biasOut Output projection bias
+	 * @param modScale adaLN multiplicative modulation applied after norm ({@code null} to disable)
+	 * @param modShift adaLN additive modulation applied after norm ({@code null} to disable)
+	 * @param gateActivation Activation applied to the gate half of the projection before it
+	 *                       multiplies the linear half (SiLU for a SwiGLU, GELU for a GeGLU)
+	 * @param projectionFactory Factory for creating projection layers
+	 * @param requirements Compute requirements
+	 * @return Gated linear feed-forward block
+	 * @throws IllegalArgumentException if exactly one of {@code modScale}/{@code modShift} is supplied
+	 */
+	default Block gatedLinearFeedForward(TraversalPolicy inputShape, NormalizationType normType,
+										 PackedCollection normWeights, PackedCollection normBiases,
+										 PackedCollection weightIn, PackedCollection biasIn,
+										 PackedCollection weightOut, PackedCollection biasOut,
+										 Producer<PackedCollection> modScale, Producer<PackedCollection> modShift,
+										 Function<TraversalPolicy, CellularLayer> gateActivation,
+										 ProjectionFactory projectionFactory,
+										 ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(inputShape);
-		feedForward.add(norm(normWeights, normBiases, requirements));
+		feedForward.add(norm(normType, normWeights, normBiases, requirements));
 
 		// adaLN modulation of the normalized activations: enabled when both modScale and modShift are
 		// supplied, disabled when both are null. Supplying exactly one is a misconfiguration.
@@ -322,11 +359,10 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightIn, biasIn,
 				AdapterConfig.TargetLayer.FFN_GATE));
 
-		// Split into gate and up projections, apply SwiGLU gating
+		// Split into the linear half and the gate half; the activated gate multiplies the linear half
 		List<Block> split = feedForward.split(2, feedForward.getOutputShape().getDimensions() - 1, 0);
-		Block gate = split.get(1).andThen(silu());
+		Block gate = split.get(1).andThen(gateActivation);
 
-		// Multiply linear output with gated branch
 		feedForward.add(product(gate));
 
 		// Output projection with factory

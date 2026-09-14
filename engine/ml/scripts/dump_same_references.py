@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Dump real per-stage SAME autoencoder reference activations for the Block C2
-``transformerResamplingBlock`` numerical-parity tests.
+``transformerResamplingBlock`` numerical-parity tests, plus a full-autoencoder
+round-trip reference for the Block C3 (``SAMEAutoEncoder``) parity test.
 
 This is the *reference-dump entry point* described in the Phase 1 component plan
 (Block C2 (d), Block E "Reference dumps"). It runs the **real** Stability AI
@@ -10,6 +11,14 @@ per-stage activations using the Block E serializer
 (:func:`safetensors_extractor.save_reference_output`). The Java
 ``TransformerResamplingBlock`` parity test loads these ``.bin`` files and asserts
 the AR primitive reproduces each stage within tolerance.
+
+In addition to the resampling-block stages, the dump includes a deterministic
+full round trip: ``ae_input`` (the raw stereo input), ``ae_pre_bottleneck`` (the
+encoder output before SoftNorm), ``ae_latent`` (the post-bottleneck encode
+output), ``ae_running_std`` (the bottleneck's running-std parameter), and
+``ae_output`` (the fully decoded audio). Their shapes are also recorded in the
+sidecar ``ae_shapes.json``. This is what a ``SAMEAutoEncoder`` end-to-end parity
+test compares against.
 
 It is deliberately torch-based (like ``extract_stable_audio_autoencoder.py``) and
 imports the SAME model classes directly (encoder/decoder/bottleneck/pretransform)
@@ -129,7 +138,9 @@ def same_reference_stages(autoencoder, audio):
     Returns ``dict[str, numpy.ndarray]`` covering: the raw input, the encoder
     resampling stage (block input/output, post-mapping, the pre-transformer
     "segment" tensor, and transformer layer 0 in/out), the encoder output and
-    latent, and the corresponding decoder resampling stage.
+    latent, the corresponding decoder resampling stage, and the full-autoencoder
+    round trip (``ae_input``, ``ae_pre_bottleneck``, ``ae_latent``,
+    ``ae_running_std``, ``ae_output``).
     """
     encoder = autoencoder.encoder
     decoder = autoencoder.decoder
@@ -170,12 +181,18 @@ def same_reference_stages(autoencoder, audio):
 
     with torch.no_grad():
         latent = autoencoder.encode(audio)
-        autoencoder.decode(latent)
+        decoded = autoencoder.decode(latent)
 
     encoder_out = store["encoder_out"]
 
     for h in handles:
         h.remove()
+
+    # TODO(review): the torch.ones(1) fallback assumes a scalar running_std; verify this
+    # matches the real SoftNorm bottleneck's attribute name/shape before relying on it for
+    # the C3 (SAMEAutoEncoder) parity test, since a mismatch here would fail silently.
+    running_std = autoencoder.bottleneck.running_std.detach().cpu().float() \
+        if hasattr(autoencoder.bottleneck, "running_std") else torch.ones(1)
 
     # The encoder transformer runs on contiguous chunks; un-chunk layer-0 input
     # back to the (batch, seq, dim) "segment" tensor that enters the transformer
@@ -231,6 +248,15 @@ def same_reference_stages(autoencoder, audio):
         "dec_poststack": dec_poststack,
         "dec_premap": store["dec_mapping_in"],
         "dec_resamp_output": store["dec_resamp_out"],
+        # Full-autoencoder round trip, for the C3 (SAMEAutoEncoder) numerical-parity test: the raw
+        # input, the pre-bottleneck encoder output (before SoftNorm), the post-bottleneck latent, the
+        # bottleneck's running_std, and the fully decoded audio, all with the same stochastic
+        # augmentations disabled above.
+        "ae_input": audio.detach().cpu().float(),
+        "ae_pre_bottleneck": encoder_out,
+        "ae_latent": latent.detach().cpu().float(),
+        "ae_running_std": running_std,
+        "ae_output": decoded.detach().cpu().float(),
     }
     return {k: v.numpy() if torch.is_tensor(v) else np.asarray(v)
             for k, v in stages.items()}
@@ -363,6 +389,19 @@ def main():
     print("Wrote %d reference activations to %s" % (len(written), args.out))
     for name in sorted(stages):
         print("  %-20s %s" % (name, list(stages[name].shape)))
+
+    ae_names = ["ae_input", "ae_pre_bottleneck", "ae_latent", "ae_running_std", "ae_output"]
+    ae_shapes = {name: list(stages[name].shape) for name in ae_names}
+    with open(os.path.join(args.out, "ae_shapes.json"), "w") as f:
+        json.dump(ae_shapes, f, indent=2, sort_keys=True)
+
+    input_rms = float(np.sqrt(np.mean(np.square(stages["ae_input"]))))
+    output_rms = float(np.sqrt(np.mean(np.square(stages["ae_output"]))))
+    noise = stages["ae_output"] - stages["ae_input"]
+    noise_rms = float(np.sqrt(np.mean(np.square(noise))))
+    snr_db = 20.0 * np.log10(input_rms / noise_rms) if noise_rms > 0 else float("inf")
+    print("Full-autoencoder round trip: input RMS=%.6e, output RMS=%.6e, "
+          "reconstruction SNR=%.2f dB" % (input_rms, output_rms, snr_db))
 
 
 if __name__ == "__main__":

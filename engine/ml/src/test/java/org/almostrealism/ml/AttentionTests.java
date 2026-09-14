@@ -41,7 +41,7 @@ import java.util.List;
  * Tests for attention mechanisms including self-attention, cross-attention,
  * scaled dot-product attention, and comparison against reference implementations.
  */
-public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
+public class AttentionTests extends TestSuiteBase implements TransformerBlockFeatures {
 
 	/**
 	 * Tests the attention key computation with direct verification.

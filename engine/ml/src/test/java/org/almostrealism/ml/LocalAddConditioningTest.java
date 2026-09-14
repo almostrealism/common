@@ -33,7 +33,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -284,66 +283,7 @@ public class LocalAddConditioningTest extends TestSuiteBase implements Diffusion
 	 * @return the weight map for a {@link StateDictionary}
 	 */
 	private Map<String, PackedCollection> ditWeights(DiffusionTransformerConfig config) {
-		int dim = config.getEmbedDim();
-		int io = config.getIoChannels();
-		int dimHead = dim / config.getNumHeads();
-		int hiddenDim = dim * 4;
-		int packed = AdaptiveLayerNormFeatures.MODULATION_COMPONENTS * dim;
-		Map<String, PackedCollection> w = new HashMap<>();
-
-		put(w, "model.model.to_timestep_embed.0.weight", dim, 256);
-		put(w, "model.model.to_timestep_embed.0.bias", dim);
-		put(w, "model.model.to_timestep_embed.2.weight", dim, dim);
-		put(w, "model.model.to_timestep_embed.2.bias", dim);
-		put(w, "model.model.to_global_embed.0.weight", dim, config.getGlobalCondDim());
-		put(w, "model.model.to_global_embed.2.weight", dim, dim);
-		put(w, "model.model.preprocess_conv.weight", io, io);
-		put(w, "model.model.postprocess_conv.weight", io, io);
-		put(w, "model.model.transformer.project_in.weight", dim, io);
-		put(w, "model.model.transformer.project_out.weight", io, dim);
-		put(w, "model.model.transformer.rotary_pos_emb.inv_freq", dimHead / 4);
-		put(w, "model.model.transformer.memory_tokens", config.getNumMemoryTokens(), dim);
-		put(w, "model.model.transformer.global_cond_embedder.0.weight", dim, dim);
-		put(w, "model.model.transformer.global_cond_embedder.0.bias", dim);
-		put(w, "model.model.transformer.global_cond_embedder.2.weight", packed, dim);
-		put(w, "model.model.transformer.global_cond_embedder.2.bias", packed);
-
-		for (int i = 0; i < config.getDepth(); i++) {
-			String p = "model.model.transformer.layers." + i;
-			put(w, p + ".pre_norm.gamma", dim);
-			put(w, p + ".pre_norm.beta", dim);
-			put(w, p + ".self_attn.to_qkv.weight", dim * 3, dim);
-			put(w, p + ".self_attn.to_out.weight", dim, dim);
-			put(w, p + ".self_attn.q_norm.weight", dimHead);
-			put(w, p + ".self_attn.q_norm.bias", dimHead);
-			put(w, p + ".self_attn.k_norm.weight", dimHead);
-			put(w, p + ".self_attn.k_norm.bias", dimHead);
-			put(w, p + ".ff_norm.gamma", dim);
-			put(w, p + ".ff_norm.beta", dim);
-			put(w, p + ".ff.ff.0.proj.weight", 2 * hiddenDim, dim);
-			put(w, p + ".ff.ff.0.proj.bias", 2 * hiddenDim);
-			put(w, p + ".ff.ff.2.weight", dim, hiddenDim);
-			put(w, p + ".ff.ff.2.bias", dim);
-			put(w, p + ".to_scale_shift_gate", packed);
-			put(w, p + ".to_local_embed.0.weight", dim, config.getLocalAddCondDim());
-			put(w, p + ".to_local_embed.0.bias", dim);
-			put(w, p + ".to_local_embed.2.weight", dim, dim);
-			put(w, p + ".to_local_embed.2.bias", dim);
-		}
-
-		return w;
-	}
-
-	/**
-	 * Adds a small random weight of the given shape to the weight map.
-	 *
-	 * @param weights the weight map
-	 * @param key     the weight key
-	 * @param dims    the weight dimensions
-	 */
-	private void put(Map<String, PackedCollection> weights, String key, int... dims) {
-		PackedCollection value = new PackedCollection(shape(dims)).randnFill();
-		weights.put(key, cp(value).multiply(0.1).into(value.traverseEach()).evaluate());
+		return new DiffusionTransformerWeightFixture().weights(config);
 	}
 
 	/**

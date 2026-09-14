@@ -38,7 +38,8 @@ import org.almostrealism.model.SequentialBlock;
  *
  * <p>Weights are read from a {@link StateDictionary} under the reference key layout:
  * {@code encoder.layers.0.*} and {@code decoder.layers.3.*} for the resampling blocks,
- * {@code encoder.layers.1.*} / {@code decoder.layers.1.*} for the latent projections and
+ * {@code encoder.layers.2.*} / {@code decoder.layers.1.*} for the latent projections (the
+ * released encoder has a parameterless transpose at index 1, the decoder at index 2) and
  * {@code bottleneck.*} for the bottleneck. The blocks returned by {@link #encoder} and
  * {@link #decoder} are compiled by the caller, typically into a compiled-model autoencoder adapter.</p>
  */
@@ -201,7 +202,7 @@ public class SAMEAutoEncoder implements TransformerResamplingFeatures, LayerFeat
 		SequentialBlock encoder = new SequentialBlock(shape(batchSize, getChannels(), samples));
 		encoder.add(pretransform.encode(batchSize, samples));
 		encoder.add(transformerResamplingBlock(batchSize, frames, encoderConfig, weights, "encoder.layers.0"));
-		encoder.add(channelProjection("encoder.layers.1", batchSize, encoderConfig.getOutChannels(), latentDim, latentLen));
+		encoder.add(channelProjection("encoder.layers.2", batchSize, encoderConfig.getOutChannels(), latentDim, latentLen));
 		encoder.add(bottleneck.bottleneck(batchSize, latentLen));
 		return encoder;
 	}
