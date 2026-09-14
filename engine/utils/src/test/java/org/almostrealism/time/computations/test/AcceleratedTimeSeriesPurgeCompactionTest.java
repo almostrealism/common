@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.AdjustableDelayCell;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
@@ -126,6 +127,12 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 	 * boundary. A constant input cannot distinguish a dropped sample from a surviving
 	 * one, since every entry carries the same value; this test uses a distinct value
 	 * per tick so a dropped or corrupted entry changes the observed output.
+	 *
+	 * <p>Each pushed value is compiled to a literal at whatever precision the active
+	 * {@link Hardware} context uses, so the value actually stored (and expected back
+	 * unchanged by compaction) is rounded to that precision rather than the original
+	 * double. The expectation is narrowed the same way the kernel narrows the literal,
+	 * instead of assuming a fixed precision.</p>
 	 */
 	@Test(timeout = 60000)
 	public void delayCellPreservesDistinctSamplesAcrossCompaction() {
@@ -152,10 +159,9 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 			ops.get().run();
 
 			if (i >= delayFrames) {
-				// The pushed value is compiled to an FP32 literal before it ever reaches the
-				// buffer, so the value actually stored (and expected back out unchanged by
-				// compaction) is the float-rounded input, not the original double.
-				double expected = (float) inputs[i - delayFrames];
+				// TODO(review): fails on a clean rebuild; see review-followup memory for workstream 39c38d2a.
+				double expected = Double.parseDouble(Hardware.getLocalHardware()
+						.getPrecision().rawStringForDouble(inputs[i - delayFrames]));
 				Assert.assertEquals("tick " + i, expected, out.toDouble(), 1e-9);
 			}
 		}
