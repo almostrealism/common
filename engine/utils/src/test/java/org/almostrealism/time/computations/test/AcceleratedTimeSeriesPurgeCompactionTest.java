@@ -128,11 +128,14 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 	 * one, since every entry carries the same value; this test uses a distinct value
 	 * per tick so a dropped or corrupted entry changes the observed output.
 	 *
-	 * <p>Each pushed value is compiled to a literal at whatever precision the active
-	 * {@link Hardware} context uses, so the value actually stored (and expected back
-	 * unchanged by compaction) is rounded to that precision rather than the original
-	 * double. The expectation is narrowed the same way the kernel narrows the literal,
-	 * instead of assuming a fixed precision.</p>
+	 * <p>Each pushed value is compiled to a literal at whatever precision the buffer's
+	 * own memory provider uses, so the value actually stored (and expected back unchanged
+	 * by compaction) is rounded to that precision rather than the original double. The
+	 * expectation is narrowed by checking {@link org.almostrealism.hardware.MemoryData#getMem()}'s
+	 * {@link io.almostrealism.code.MemoryProvider#getNumberSize()} on the delay buffer itself,
+	 * rather than assuming a fixed precision or relying on {@link Hardware#getPrecision()}'s
+	 * aggregate across every active {@link io.almostrealism.code.DataContext} (which can
+	 * disagree with the context that actually compiled and ran this buffer's kernels).</p>
 	 */
 	@Test(timeout = 60000)
 	public void delayCellPreservesDistinctSamplesAcrossCompaction() {
@@ -152,16 +155,22 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 			inputs[i] = (i + 1) * 0.001;
 		}
 
+		// The input is supplied through a PackedCollection read at runtime (cp), rather than
+		// a fresh compile-time literal (c) per tick, so the kernel built below is compiled once
+		// and reused for every tick instead of forcing a distinct compilation per distinct value.
+		PackedCollection input = new PackedCollection(1);
+		OperationList ops = new OperationList("Delay Push and Tick");
+		ops.add(delay.push(cp(input)));
+		ops.add(delay.tick());
+		Runnable op = ops.get();
+
 		for (int i = 0; i < ticks; i++) {
-			OperationList ops = new OperationList("Delay Push and Tick");
-			ops.add(delay.push(c(inputs[i])));
-			ops.add(delay.tick());
-			ops.get().run();
+			input.setMem(0, inputs[i]);
+			op.run();
 
 			if (i >= delayFrames) {
-				// TODO(review): fails on a clean rebuild; see review-followup memory for workstream 39c38d2a.
-				double expected = Double.parseDouble(Hardware.getLocalHardware()
-						.getPrecision().rawStringForDouble(inputs[i - delayFrames]));
+				int numberSize = delay.getBuffer().getMem().getProvider().getNumberSize();
+				double expected = numberSize == 8 ? inputs[i - delayFrames] : (float) inputs[i - delayFrames];
 				Assert.assertEquals("tick " + i, expected, out.toDouble(), 1e-9);
 			}
 		}
