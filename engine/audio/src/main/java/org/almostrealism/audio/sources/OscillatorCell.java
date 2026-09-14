@@ -110,7 +110,6 @@ public abstract class OscillatorCell extends CollectionTemporalCellAdapter imple
 	 *
 	 * @param data the hardware-side data storage for wave parameters
 	 */
-	// TODO(review): confirm no downstream consumer relies on SineWaveCell's old zero-amplitude default.
 	protected OscillatorCell(SineWaveCellData data) {
 		this.data = data;
 		this.initialAmplitude = 1.0;
