@@ -17,6 +17,7 @@
 package org.almostrealism.ml.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -74,11 +75,11 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	/** Output embedding dimensionality. */
 	private final int outDim;
 
-	/** Number of Fourier feature components, derived from {@link #fourierWeights}. */
+	/** Number of Fourier feature components. */
 	private final int fourierDim;
 
-	/** Fourier projection weights of shape {@code [fourierDim/2, 1]}. */
-	private final PackedCollection fourierWeights;
+	/** The Fourier frequency matrix, shape {@code [fourierDim/2, 1]}: learned weights or a fixed ladder. */
+	private final Producer<PackedCollection> frequencies;
 
 	/** Projection weight of shape {@code [outDim, fourierDim]} mapping the Fourier features to the embedding. */
 	private final PackedCollection projWeight;
@@ -113,6 +114,62 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	public NumberConditioner(double minVal, double maxVal, int outDim,
 							 PackedCollection fourierWeights, PackedCollection projWeight,
 							 PackedCollection projBias) {
+		this(minVal, maxVal, outDim, learnedFourierDim(fourierWeights),
+				new DiffusionTransformerFeatures() { }.cp(fourierWeights), projWeight, projBias);
+	}
+
+	/**
+	 * Creates a number conditioner whose Fourier features use the deterministic geometric
+	 * frequency ladder of {@link DiffusionTransformerFeatures#expoFourierFrequencies} rather than
+	 * learned frequencies; the checkpoint then carries only the projection.
+	 *
+	 * @param minVal     lower bound of the input range
+	 * @param maxVal     upper bound of the input range; must be greater than {@code minVal}
+	 * @param outDim     output embedding dimensionality; must equal {@code projWeight} rows
+	 * @param fourierDim number of Fourier feature components (an even count)
+	 * @param minFreq    lowest frequency of the ladder
+	 * @param maxFreq    highest frequency of the ladder
+	 * @param projWeight projection weight of shape {@code [outDim, fourierDim]}
+	 * @param projBias   optional projection bias of shape {@code [outDim]}, or {@code null}
+	 * @return the conditioner
+	 */
+	public static NumberConditioner expo(double minVal, double maxVal, int outDim, int fourierDim,
+										 double minFreq, double maxFreq,
+										 PackedCollection projWeight, PackedCollection projBias) {
+		DiffusionTransformerFeatures features = new DiffusionTransformerFeatures() { };
+		return new NumberConditioner(minVal, maxVal, outDim, fourierDim,
+				features.expoFourierFrequencies(fourierDim, minFreq, maxFreq), projWeight, projBias);
+	}
+
+	/**
+	 * The Fourier feature count implied by a learned frequency matrix of shape {@code [fourierDim/2, 1]}.
+	 *
+	 * @param fourierWeights the learned frequency matrix
+	 * @return the feature count
+	 */
+	private static int learnedFourierDim(PackedCollection fourierWeights) {
+		if (fourierWeights == null || fourierWeights.getShape().getDimensions() != 2
+				|| fourierWeights.getShape().length(1) != 1) {
+			throw new IllegalArgumentException("NumberConditioner fourierWeights must have shape [fourierDim/2, 1]");
+		}
+
+		return 2 * fourierWeights.getShape().length(0);
+	}
+
+	/**
+	 * Creates a number conditioner over the given Fourier frequency matrix.
+	 *
+	 * @param minVal      lower bound of the input range
+	 * @param maxVal      upper bound of the input range; must be greater than {@code minVal}
+	 * @param outDim      output embedding dimensionality; must equal {@code projWeight} rows
+	 * @param fourier     number of Fourier feature components
+	 * @param frequencies the Fourier frequency matrix producer, shape {@code [fourier/2, 1]}
+	 * @param projWeight  projection weight of shape {@code [outDim, fourierDim]}
+	 * @param projBias    optional projection bias of shape {@code [outDim]}, or {@code null}
+	 */
+	private NumberConditioner(double minVal, double maxVal, int outDim, int fourier,
+							  Producer<PackedCollection> frequencies,
+							  PackedCollection projWeight, PackedCollection projBias) {
 		if (maxVal <= minVal) {
 			throw new IllegalArgumentException("NumberConditioner maxVal must be greater than minVal");
 		}
@@ -120,13 +177,6 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 		if (outDim <= 0) {
 			throw new IllegalArgumentException("NumberConditioner outDim must be positive");
 		}
-
-		if (fourierWeights == null || fourierWeights.getShape().getDimensions() != 2
-				|| fourierWeights.getShape().length(1) != 1) {
-			throw new IllegalArgumentException("NumberConditioner fourierWeights must have shape [fourierDim/2, 1]");
-		}
-
-		int fourier = 2 * fourierWeights.getShape().length(0);
 
 		if (projWeight == null || projWeight.getShape().getDimensions() != 2) {
 			throw new IllegalArgumentException("NumberConditioner projWeight must be a matrix");
@@ -144,7 +194,7 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 		this.maxVal = maxVal;
 		this.outDim = outDim;
 		this.fourierDim = fourier;
-		this.fourierWeights = fourierWeights;
+		this.frequencies = frequencies;
 		this.projWeight = projWeight;
 		this.projBias = projBias == null ? null : projBias.flatten();
 	}
@@ -157,7 +207,7 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	 * @param value the raw input scalar
 	 * @return the normalized scalar in {@code [0, 1]}
 	 */
-	private double normalize(double value) {
+	public double normalize(double value) {
 		double clamped = Math.max(minVal, Math.min(maxVal, value));
 		return (clamped - minVal) / (maxVal - minVal);
 	}
@@ -175,8 +225,20 @@ public class NumberConditioner implements DiffusionTransformerFeatures {
 	 * @return a producer of the {@code [1, outDim]} embedding
 	 */
 	public CollectionProducer embed(double value) {
-		CollectionProducer input = c(shape(BATCH, 1), normalize(value));
-		CollectionProducer fourier = fourierFeatures(BATCH, fourierDim, input, fourierWeights);
+		return embed(c(shape(BATCH, 1), normalize(value)));
+	}
+
+	/**
+	 * Produces the learned embedding of an already normalized scalar supplied as a producer, so a
+	 * value that changes between runs can be a leaf of a compiled graph rather than a constant
+	 * baked into it. The producer holds the value normalized onto {@code [0, 1]} as
+	 * {@link #normalize(double)} does.
+	 *
+	 * @param normalized producer of the normalized scalar, shape {@code [1, 1]}
+	 * @return a producer of the {@code [1, outDim]} embedding
+	 */
+	public CollectionProducer embed(Producer<PackedCollection> normalized) {
+		CollectionProducer fourier = fourierFeatures(BATCH, fourierDim, normalized, frequencies);
 
 		CollectionProducer embedding = matmul(fourier, cp(projWeight).transpose(1));
 
