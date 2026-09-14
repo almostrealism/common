@@ -141,6 +141,13 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 	 * advanced by the compiled operation graph itself, rather than a fresh compile-time literal
 	 * per tick or a host-computed value pushed in from Java, so the kernel built below is
 	 * compiled once and reused for every tick.</p>
+	 *
+	 * <p>Under 32-bit precision, the expected value is rounded on the host by narrowing a
+	 * double to float, while the actual value is produced by float arithmetic performed
+	 * entirely on the device; these two paths can round the same conceptual value to
+	 * adjacent representable floats. The assertion tolerance is therefore widened to a few
+	 * float32 ULPs at this magnitude when the buffer is 32-bit, rather than requiring an
+	 * exact bitwise match that only 64-bit precision can guarantee.</p>
 	 */
 	@Test(timeout = 60000)
 	public void delayCellPreservesDistinctSamplesAcrossCompaction() {
@@ -170,7 +177,8 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 				double input = (i - delayFrames + 1) * 0.001;
 				int numberSize = delay.getBuffer().getMem().getProvider().getNumberSize();
 				double expected = numberSize == 8 ? input : (float) input;
-				Assert.assertEquals("tick " + i, expected, out.toDouble(), 1e-9);
+				double delta = numberSize == 8 ? 1e-9 : 1e-6;
+				Assert.assertEquals("tick " + i, expected, out.toDouble(), delta);
 			}
 		}
 	}
