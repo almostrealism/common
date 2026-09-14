@@ -136,6 +136,11 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 	 * rather than assuming a fixed precision or relying on {@link Hardware#getPrecision()}'s
 	 * aggregate across every active {@link io.almostrealism.code.DataContext} (which can
 	 * disagree with the context that actually compiled and ran this buffer's kernels).</p>
+	 *
+	 * <p>The distinct per-tick value is derived from a counter that lives on the device and is
+	 * advanced by the compiled operation graph itself, rather than a fresh compile-time literal
+	 * per tick or a host-computed value pushed in from Java, so the kernel built below is
+	 * compiled once and reused for every tick.</p>
 	 */
 	@Test(timeout = 60000)
 	public void delayCellPreservesDistinctSamplesAcrossCompaction() {
@@ -150,27 +155,21 @@ public class AcceleratedTimeSeriesPurgeCompactionTest extends TestSuiteBase impl
 		delay.setup().get().run();
 
 		int ticks = 6 * bufferSize;
-		double[] inputs = new double[ticks];
-		for (int i = 0; i < ticks; i++) {
-			inputs[i] = (i + 1) * 0.001;
-		}
 
-		// The input is supplied through a PackedCollection read at runtime (cp), rather than
-		// a fresh compile-time literal (c) per tick, so the kernel built below is compiled once
-		// and reused for every tick instead of forcing a distinct compilation per distinct value.
-		PackedCollection input = new PackedCollection(1);
+		PackedCollection counter = new PackedCollection(1);
 		OperationList ops = new OperationList("Delay Push and Tick");
-		ops.add(delay.push(cp(input)));
+		ops.add(delay.push(cp(counter).add(1.0).multiply(0.001)));
 		ops.add(delay.tick());
+		ops.add(a(1, p(counter), cp(counter).add(1.0)));
 		Runnable op = ops.get();
 
 		for (int i = 0; i < ticks; i++) {
-			input.setMem(0, inputs[i]);
 			op.run();
 
 			if (i >= delayFrames) {
+				double input = (i - delayFrames + 1) * 0.001;
 				int numberSize = delay.getBuffer().getMem().getProvider().getNumberSize();
-				double expected = numberSize == 8 ? inputs[i - delayFrames] : (float) inputs[i - delayFrames];
+				double expected = numberSize == 8 ? input : (float) input;
 				Assert.assertEquals("tick " + i, expected, out.toDouble(), 1e-9);
 			}
 		}
