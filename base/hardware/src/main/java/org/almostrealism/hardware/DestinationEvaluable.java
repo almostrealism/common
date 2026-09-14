@@ -364,6 +364,30 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
+		request(args, dependsOn, downstream);
+	}
+
+	/**
+	 * Requests asynchronous evaluation exactly as {@link #request(Object[], Semaphore)} does,
+	 * delivering the result to the given consumer rather than to {@link #downstream}. Nothing
+	 * is stored on this evaluable, so a destination evaluable that is reached through several
+	 * independent wrappers (a {@link HardwareEvaluable} whose {@link
+	 * HardwareEvaluable#setResultProcessor result processor} re-views this destination's output,
+	 * requested repeatedly across a streaming pipeline's lifetime) can serve every one of their
+	 * requests without any of them contending for {@link #setDownstream}.
+	 *
+	 * @param args       The input arguments ({@link MemoryData} instances)
+	 * @param dependsOn  completion that must fire before the dispatch (and its
+	 *                   argument preparation) reads memory, or {@code null}
+	 * @param downstream the consumer to receive the result of this request; a
+	 *                   {@link CompletionConsumer} receives it together with the
+	 *                   dispatch's completion, without any host wait
+	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
+	 */
+	// TODO(review): no regression test covers two independent wrappers sharing this
+	// evaluable as their kernel, each calling request() with its own downstream consumer
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (operation instanceof AcceleratedOperation) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
 					.apply(destination,

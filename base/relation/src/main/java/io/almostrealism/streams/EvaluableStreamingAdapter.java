@@ -19,6 +19,7 @@ package io.almostrealism.streams;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 /**
  * An adapter that wraps a synchronous {@link Evaluable} to provide a
@@ -108,6 +109,26 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
-		executor.execute(() -> getDownstream().accept(evaluable.evaluate(args)));
+		request(args, dependsOn, getDownstream());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Delivers to {@code downstream} directly instead of {@link #getDownstream()}, so that
+	 * this adapter can serve several independent requesters (a kernel wrapper re-viewing this
+	 * adapter's result through a {@code resultProcessor}, requested repeatedly across a
+	 * streaming pipeline's lifetime, for example) without any of them contending for
+	 * {@link #setDownstream}.</p>
+	 *
+	 * @param args       the arguments to pass to the underlying evaluable
+	 * @param dependsOn  ignored; the wrapped evaluable performs no chainable dispatch
+	 * @param downstream the consumer to receive the result of this request
+	 */
+	// TODO(review): no regression test covers two independent wrappers sharing this
+	// adapter as their kernel, each calling request() with its own downstream consumer
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
+		executor.execute(() -> downstream.accept(evaluable.evaluate(args)));
 	}
 }
