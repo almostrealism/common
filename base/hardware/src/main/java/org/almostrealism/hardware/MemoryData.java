@@ -577,7 +577,7 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			index = getDelegateOrdering().indexOf(index);
 			if (index < 0) return 0.0;
 
-			return getDelegate().toDouble(getDelegateOffset() + getDelegateOrdering().indexOf(index));
+			return getDelegate().toDouble(getDelegateOffset() + index);
 		}
 	}
 
