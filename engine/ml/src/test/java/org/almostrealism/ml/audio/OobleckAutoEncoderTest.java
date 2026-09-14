@@ -20,6 +20,10 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -280,5 +284,158 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 		CollectionFeatures ops = CollectionFeatures.getInstance();
 		ops.a(ops.cp(weights), ops.rand(weights.getShape(), rand).add(-0.5).multiply(0.1)).get().run();
 		return weights;
+	}
+
+	/**
+	 * Verifies that the residual block shared by {@link OobleckEncoder} and
+	 * {@link OobleckDecoder} (via {@link OobleckCodec#buildResidualBlock}) preserves
+	 * the input shape — a property the skip connection depends on.
+	 */
+	@Test(timeout = 120000)
+	public void sharedResidualBlockPreservesInputShape() {
+		int batchSize = 1;
+		int channels = 16;
+		int seqLength = 16;
+		String prefix = "block";
+
+		Map<String, PackedCollection> weights = new HashMap<>();
+		addResidualBlockWeights(weights, new Random(42), prefix, channels);
+		StateDictionary stateDict = new StateDictionary(weights);
+
+		ResidualBlockCodec codec = new ResidualBlockCodec(stateDict, batchSize, channels, seqLength);
+		Block residualBlock = codec.residualBlock(batchSize, channels, seqLength, prefix);
+
+		PackedCollection input = new PackedCollection(batchSize, channels, seqLength);
+		rand(input.getShape()).multiply(0.1).into(input.traverseEach()).evaluate();
+
+		PackedCollection output = runResidualBlock(residualBlock, batchSize, channels, seqLength, input);
+
+		assertEquals("Residual block must preserve the batch dimension",
+				batchSize, output.getShape().length(0));
+		assertEquals("Residual block must preserve the channel dimension",
+				channels, output.getShape().length(1));
+		assertEquals("Residual block must preserve the sequence dimension",
+				seqLength, output.getShape().length(2));
+	}
+
+	/**
+	 * Pins the behavior of the shared {@link OobleckCodec#buildResidualBlock} against an
+	 * inline reference construction of the same Snake -&gt; WNConv(k=7) -&gt; Snake -&gt;
+	 * WNConv(k=1) + skip graph. Both are built from numerically identical weights and
+	 * fed the same input; their outputs must agree. This guards the consolidation of the
+	 * previously-duplicated encoder and decoder residual-block builders.
+	 */
+	@Test(timeout = 120000)
+	public void sharedResidualBlockMatchesInlineReference() {
+		int batchSize = 1;
+		int channels = 16;
+		int seqLength = 16;
+		String prefix = "block";
+
+		StateDictionary sharedDict = positiveBetaResidualDict(prefix, channels);
+		StateDictionary referenceDict = positiveBetaResidualDict(prefix, channels);
+
+		ResidualBlockCodec codec = new ResidualBlockCodec(sharedDict, batchSize, channels, seqLength);
+		Block sharedBlock = codec.residualBlock(batchSize, channels, seqLength, prefix);
+		Block referenceBlock = buildReferenceResidualBlock(referenceDict, batchSize, channels, seqLength, prefix);
+
+		PackedCollection input = new PackedCollection(batchSize, channels, seqLength);
+		rand(input.getShape()).multiply(0.1).into(input.traverseEach()).evaluate();
+
+		PackedCollection sharedOut = runResidualBlock(sharedBlock, batchSize, channels, seqLength, input);
+		int len = sharedOut.getMemLength();
+		double[] sharedValues = new double[len];
+		for (int i = 0; i < len; i++) {
+			sharedValues[i] = sharedOut.toDouble(i);
+		}
+
+		PackedCollection referenceOut = runResidualBlock(referenceBlock, batchSize, channels, seqLength, input);
+		assertEquals("Output lengths must match", len, referenceOut.getMemLength());
+		for (int i = 0; i < len; i++) {
+			assertEquals("Shared residual block output must match the inline reference at index " + i,
+					referenceOut.toDouble(i), sharedValues[i], 1e-5);
+		}
+	}
+
+	/**
+	 * Builds a synthetic residual block weight set and forces the Snake beta parameters
+	 * positive so the activation stays finite for a value comparison. Two calls with the
+	 * same fixed seed produce numerically identical, independently-stored weights.
+	 */
+	private StateDictionary positiveBetaResidualDict(String prefix, int channels) {
+		Map<String, PackedCollection> weights = new HashMap<>();
+		addResidualBlockWeights(weights, new Random(42), prefix, channels);
+		for (String betaKey : new String[] { prefix + ".layers.0.beta", prefix + ".layers.2.beta" }) {
+			PackedCollection beta = weights.get(betaKey);
+			a(cp(beta), abs(cp(beta)).add(0.1)).get().run();
+		}
+		return new StateDictionary(weights);
+	}
+
+	/**
+	 * Inline reference construction of the Oobleck residual block, mirroring the shared
+	 * {@link OobleckCodec#buildResidualBlock} against which it is compared.
+	 */
+	private Block buildReferenceResidualBlock(StateDictionary dict, int batchSize,
+											  int channels, int seqLength, String prefix) {
+		TraversalPolicy inputShape = shape(batchSize, channels, seqLength);
+		SequentialBlock mainPath = new SequentialBlock(inputShape);
+
+		mainPath.add(snake(inputShape,
+				dict.get(prefix + ".layers.0.alpha"), dict.get(prefix + ".layers.0.beta")));
+		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 7, 1, 3,
+				dict.get(prefix + ".layers.1.weight_g"),
+				dict.get(prefix + ".layers.1.weight_v"),
+				dict.get(prefix + ".layers.1.bias")));
+		mainPath.add(snake(inputShape,
+				dict.get(prefix + ".layers.2.alpha"), dict.get(prefix + ".layers.2.beta")));
+		mainPath.add(wnConv1d(batchSize, channels, channels, seqLength, 1, 1, 0,
+				dict.get(prefix + ".layers.3.weight_g"),
+				dict.get(prefix + ".layers.3.weight_v"),
+				dict.get(prefix + ".layers.3.bias")));
+
+		return residual(mainPath);
+	}
+
+	/**
+	 * Wraps a residual block in a single-block model, compiles it, and runs one forward pass.
+	 */
+	private PackedCollection runResidualBlock(Block block, int batchSize, int channels,
+											  int seqLength, PackedCollection input) {
+		Model model = new Model(shape(batchSize, channels, seqLength));
+		model.add(block);
+		CompiledModel compiled = model.compile(false);
+		return compiled.forward(input);
+	}
+
+	/**
+	 * Minimal concrete {@link OobleckCodec} that exposes the shared residual-block builder
+	 * for direct testing without constructing a full encoder or decoder.
+	 */
+	private static class ResidualBlockCodec extends OobleckCodec {
+		/**
+		 * Creates a codec whose only purpose is to expose the shared residual-block builder.
+		 *
+		 * @param stateDict Synthetic weights for the residual block under test
+		 * @param batchSize Batch size
+		 * @param channels  Channel count
+		 * @param seqLength Sequence length
+		 */
+		ResidualBlockCodec(StateDictionary stateDict, int batchSize, int channels, int seqLength) {
+			super(new TraversalPolicy(batchSize, channels, seqLength), stateDict);
+		}
+
+		/**
+		 * Exposes the protected shared residual-block builder for testing.
+		 *
+		 * @param batchSize Batch size
+		 * @param channels  Channel count
+		 * @param seqLength Sequence length
+		 * @param prefix    Weight key prefix
+		 * @return Assembled residual block
+		 */
+		Block residualBlock(int batchSize, int channels, int seqLength, String prefix) {
+			return buildResidualBlock(batchSize, channels, seqLength, prefix);
+		}
 	}
 }
