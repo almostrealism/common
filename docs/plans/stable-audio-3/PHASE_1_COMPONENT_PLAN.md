@@ -753,8 +753,37 @@ Corrected in this pass after re-reading the reference source (`Stability-AI/stab
 `new DiffusionTransformerConfig(256, 1024, 20, 16, 1, 768, 768, "rf_denoiser", latentLen, 257)
 .withConditioningMode(ADALN).withMemoryTokens(64).withLocalAddCondDim(257).withTimestepEncoding(EXPO)`.
 
-Still open: D2 (T5Gemma encoder + conditioner wiring), the DiT attention padding mask
-(`mask_padding_attention` zeroes values at padded latent positions), the `timestep_features_logsnr`
-flag (check the released `model_config.json`), classifier-free guidance (`cfg_scale != 1`), the
-studio-level `CompiledModelAutoEncoder` wiring of `SAMEAutoEncoder`, and the real-weight parity runs
-for the SAME-S round trip and the corrected DiT.
+Added on 2026-09-13, after reading the released `model_config.json` files (fetched with the
+workspace Hugging Face token; every gated repo is accessible with it):
+
+| Item | Reference behaviour | Now |
+|---|---|---|
+| DiT normalization | `norm_type = rms_norm`, `qk_norm = rms`: every block norm is an RMS norm with a `gamma` only (no `beta`), query/key norms are `q_norm.gamma` / `k_norm.gamma` (`dim_head`, eps `1e-6`) | `NormalizationType` (`LAYER` / `RMS`) threaded through `transformerBlock`, `selfAttention`, `sequenceAttention`, `gatedLinearFeedForward`; `DiffusionTransformerConfig.withNormalization(RMS)` selects the gamma-only key layout. `rmsnorm` itself was fixed for multi-row inputs (it applied the per-row scale cyclically by element index) |
+| Padding mask | `mask_padding_attention = true`: the value vectors are zeroed at padded latent positions; prepended memory/conditioning tokens are always valid | `LayerFeatures.scale(shape, axis, factors)` inside `sequenceAttention`; `DiffusionTransformerConfig.withPaddingMask(true)` exposes `DiffusionTransformer.getPaddingMask()` (`[batch, latentLen]`, ones by default) |
+| Classifier-free guidance | `cfg_scale` (default `1`), `apg_scale` (default `1`, projection of the guidance difference orthogonal to the conditional estimate); `rescale_cfg` is a no-op in the released wrapper | `ClassifierFreeGuidance(scale, apgScale)`; `DiffusionSampler.setGuidance(guidance, negativeCrossAttnCond, negativeGlobalCond)` runs the negative-conditioning pass inside the sampling loop |
+| `timestep_features_logsnr` | `false` in the released small configs | nothing to do |
+| SAME-S encoder projection key | `encoder.layers.2.*` (index 1 is a parameterless transpose) | corrected from `encoder.layers.1` |
+
+Released small-model facts worth keeping next to the code: `cross_attention_cond_ids = [prompt,
+seconds_total]` (the cross-attention context is the 256 prompt tokens followed by the one
+duration token, so `condSeqLen = 257`), `global_cond_ids = [seconds_total]`, the prompt conditioner
+is `t5gemma` with `max_length = 256` and `padding_mode = learned` (`conditioner.conditioners.prompt.padding_embedding`,
+768 values), `norm_kwargs.force_fp32 = true`, and the released autoencoder is ~108M parameters.
+The small DiT is `new DiffusionTransformerConfig(256, 1024, 20, 16, 1, 768, 768, "rf_denoiser", latentLen, 257)
+.withConditioningMode(ADALN).withMemoryTokens(64).withLocalAddCondDim(257).withTimestepEncoding(EXPO)
+.withNormalization(RMS).withPaddingMask(true)`.
+
+| Item | Reference behaviour | Now |
+|---|---|---|
+| D2 prompt encoder | `T5GemmaEncoderModel` (`google/t5gemma-b-b-ul2`: hidden 768, 12 layers of 12 heads of 64, GeGLU 2048, RMS eps `1e-6` with a unit offset on every scale, attention soft-cap 50, rotary base 10000), tokenizer `max_length = 256`, padded keys masked out of the softmax | `org.almostrealism.ml.t5gemma.T5GemmaEncoder` over `T5GemmaConfig.baseUl2()`; `extract_t5gemma_weights.py` fuses q/k/v and up/gate, folds the norm offsets and adds the rotary table; `T5GemmaEncoderParityTest` (gated on `AR_T5GEMMA_WEIGHTS` and `dump_t5gemma_reference.py` output) |
+| D2 conditioner | `Conditioner.apply_padding(learned)` substitutes `conditioner.conditioners.prompt.padding_embedding` at padded positions; `seconds_total` = `NumberConditioner(0, 384, expo)` appended as the last cross-attention token and used as the global conditioning | `StableAudio3Conditioner` (one compiled model: encoder, padding substitution, duration token); `NumberConditioner.expo(...)` for the deterministic Fourier ladder |
+| Studio wiring | | `CompiledModelAutoEncoder.of(SAMEAutoEncoder, ...)` |
+
+Still open: the real-weight parity runs (the T5Gemma references must be regenerated on the
+runner that holds the weights, and the SAME-S transformer layers must be run on a Metal-free
+machine: the first real-weight `SAMEResamplingParityTest` run (2026-09-13) reproduced the
+convolution and mapping stages to ~1e-6 but produced NaN in every transformer layer past the
+first, which matches the deferred Metal defect noted by `skipWhenMetalPresent`; that test
+previously passed silently on NaN and now fails correctly), the extraction of the two conditioner
+tensors from the DiT checkpoint, and the generation glue that chains conditioner, DiT, sampler
+(`LogSNRShift` ping-pong with guidance) and autoencoder decode.

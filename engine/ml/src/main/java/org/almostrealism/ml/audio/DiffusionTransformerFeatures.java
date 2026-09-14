@@ -19,7 +19,7 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.ml.AttentionFeatures;
+import org.almostrealism.ml.TransformerBlockFeatures;
 import org.almostrealism.ml.DiffusionFeatures;
 import org.almostrealism.ml.LearnedTokenFeatures;
 import org.almostrealism.model.Block;
@@ -41,9 +41,9 @@ import java.util.List;
  * passing one around as an object defeats the purpose of the pattern.</p>
  *
  * @see DiffusionTransformer
- * @see org.almostrealism.ml.AttentionFeatures
+ * @see org.almostrealism.ml.TransformerBlockFeatures
  */
-public interface DiffusionTransformerFeatures extends AttentionFeatures, DiffusionFeatures, LearnedTokenFeatures {
+public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, DiffusionFeatures, LearnedTokenFeatures {
 
 	/**
 	 * Builds a Fourier feature projection layer.
