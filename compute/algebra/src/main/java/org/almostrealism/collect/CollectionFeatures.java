@@ -333,6 +333,32 @@ public interface CollectionFeatures extends GradientFeatures {
 	}
 
 	/**
+	 * Expands one value per position along the given axis of a batched shape to the whole
+	 * shape, repeating the value across every other non-batch axis, so it can be combined
+	 * element-wise with a collection of that shape.
+	 *
+	 * @param shape  the target shape, whose first axis is the batch
+	 * @param axis   the axis the values index (never the batch axis)
+	 * @param values the values, shape {@code (batch, shape.length(axis))}
+	 * @return a producer of the values expanded to {@code shape}
+	 * @throws IllegalArgumentException if {@code axis} is the batch axis or beyond the shape
+	 */
+	default CollectionProducer broadcast(TraversalPolicy shape, int axis, Producer<PackedCollection> values) {
+		if (axis <= 0 || axis >= shape.getDimensions()) {
+			throw new IllegalArgumentException("axis " + axis + " is not a non-batch axis of " + shape);
+		}
+
+		CollectionProducer expanded = c(values).reshape(shape.length(0), shape.length(axis));
+		for (int k = 1; k < shape.getDimensions(); k++) {
+			if (k != axis) {
+				expanded = expanded.repeat(k, shape.length(k));
+			}
+		}
+
+		return expanded.reshape(shape);
+	}
+
+	/**
 	 * Concatenates the given producers into an output with the given explicit shape.
 	 *
 	 * <p>When the inputs exactly cover the output along the concatenation axis (and
