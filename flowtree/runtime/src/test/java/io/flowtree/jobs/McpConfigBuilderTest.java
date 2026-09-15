@@ -26,11 +26,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -41,6 +43,25 @@ import static org.junit.Assert.fail;
  * project server discovery, and allowed tools assembly.
  */
 public class McpConfigBuilderTest extends TestSuiteBase {
+
+	/**
+	 * The agent environment raises the per-tool-call ceiling so a job can
+	 * wait the full {@code await_message} cap in one call, without overriding
+	 * a value the workstream's own environment already set.
+	 */
+	@Test(timeout = 30000)
+	public void agentEnvironmentRaisesTheMcpToolTimeout() {
+		McpConfigBuilder builder = new McpConfigBuilder();
+		Map<String, String> env = new LinkedHashMap<>();
+		builder.applyAgentEnvironment(env, "http://controller:7780/api/workstreams/ws-1/jobs/j1");
+		assertEquals(String.valueOf(McpConfigBuilder.MCP_TOOL_TIMEOUT_MILLIS), env.get("MCP_TOOL_TIMEOUT"));
+		assertTrue(McpConfigBuilder.MCP_TOOL_TIMEOUT_MILLIS > 25L * 60L * 1000L);
+
+		Map<String, String> preset = new LinkedHashMap<>();
+		preset.put("MCP_TOOL_TIMEOUT", "1234");
+		builder.applyAgentEnvironment(preset, null);
+		assertEquals("1234", preset.get("MCP_TOOL_TIMEOUT"));
+	}
 
 	/**
 	 * Verifies that {@link McpConfigBuilder} emits a valid HTTP entry for

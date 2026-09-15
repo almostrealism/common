@@ -90,6 +90,29 @@ class StatsQueryHandler {
     }
 
     /**
+     * Records the lifecycle phase a running job's harness says it has
+     * reached. No-op when no store is configured.
+     *
+     * @param jobId the job reporting
+     * @param phase the phase description, as the harness worded it
+     */
+    void recordPhase(String jobId, String phase) {
+        if (statsStore == null) return;
+        statsStore.recordPhase(jobId, phase);
+    }
+
+    /**
+     * Returns the phase most recently recorded for a job.
+     *
+     * @param jobId the job identifier
+     * @return the phase description, or {@code null} when none is recorded
+     *         or no store is configured
+     */
+    String jobPhase(String jobId) {
+        return statsStore == null ? null : statsStore.getJobPhase(jobId);
+    }
+
+    /**
      * Handles a {@code GET /api/workstreams/{id}/jobs/active} request.
      *
      * <p>Each entry carries the job's age and how long it has been since its

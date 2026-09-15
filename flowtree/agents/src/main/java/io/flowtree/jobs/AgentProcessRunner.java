@@ -133,10 +133,40 @@ public final class AgentProcessRunner {
                              String taskId,
                              Function<String, String> loopSignatureExtractor,
                              ConsoleFeatures logger) {
+        return runAttempt(pb, useTmux, inactivityTimeoutMillis, taskId,
+                loopSignatureExtractor, null, logger);
+    }
+
+    /**
+     * Starts the configured subprocess as
+     * {@link #runAttempt(ProcessBuilder, boolean, long, String, Function, ConsoleFeatures)}
+     * does, additionally feeding every output line to an
+     * {@link AgentActivityTracker} so the inactivity monitor can tell a wait
+     * on an MCP-served tool from a hang.
+     *
+     * @param pb                       fully configured process builder (command, env, dirs)
+     * @param useTmux                  if true, launch via {@link TmuxSession} for a real tty
+     * @param inactivityTimeoutMillis  stdout silence duration that triggers a kill
+     * @param taskId                   task identifier used in the monitor thread name
+     * @param loopSignatureExtractor   maps an output line to an action signature, or null to disable
+     * @param activityTracker          receives every output line, or null when the runner's
+     *                                 output carries no tool-call boundaries
+     * @param logger                   target for {@code log}/{@code warn} messages
+     * @return the captured result; {@link Result#exitCode} is {@code -1} on I/O failure
+     */
+    public static Result runAttempt(ProcessBuilder pb,
+                             boolean useTmux,
+                             long inactivityTimeoutMillis,
+                             String taskId,
+                             Function<String, String> loopSignatureExtractor,
+                             AgentActivityTracker activityTracker,
+                             ConsoleFeatures logger) {
         if (useTmux) {
-            return runInTmux(pb, inactivityTimeoutMillis, taskId, loopSignatureExtractor, logger);
+            return runInTmux(pb, inactivityTimeoutMillis, taskId,
+                    loopSignatureExtractor, activityTracker, logger);
         }
-        return runInProcess(pb, inactivityTimeoutMillis, taskId, loopSignatureExtractor, logger);
+        return runInProcess(pb, inactivityTimeoutMillis, taskId,
+                loopSignatureExtractor, activityTracker, logger);
     }
 
     /** Runs the command directly as a child {@link Process}. */
@@ -144,6 +174,7 @@ public final class AgentProcessRunner {
                                        long inactivityTimeoutMillis,
                                        String taskId,
                                        Function<String, String> loopSignatureExtractor,
+                                       AgentActivityTracker activityTracker,
                                        ConsoleFeatures logger) {
         StringBuilder out = new StringBuilder();
         AtomicBoolean killed = new AtomicBoolean(false);
@@ -162,7 +193,7 @@ public final class AgentProcessRunner {
 
             AtomicLong lastOutputAt = new AtomicLong(System.currentTimeMillis());
             monitor = new AgentInactivityMonitor(
-                    process::isAlive, killAction, lastOutputAt, inactivityTimeoutMillis,
+                    process::isAlive, killAction, lastOutputAt, inactivityTimeoutMillis, activityTracker,
                     idleMillis -> {
                         killed.set(true);
                         logger.warn("No Claude output for " + (idleMillis / 1000)
@@ -173,7 +204,7 @@ public final class AgentProcessRunner {
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 pumpOutput(reader, out, lastOutputAt, loopSignatureExtractor,
-                        killAction, loopKilled, logger);
+                        activityTracker, killAction, loopKilled, logger);
             }
 
             logger.log("Process output stream closed, waiting for exit...");
@@ -198,6 +229,7 @@ public final class AgentProcessRunner {
                                     long inactivityTimeoutMillis,
                                     String taskId,
                                     Function<String, String> loopSignatureExtractor,
+                                    AgentActivityTracker activityTracker,
                                     ConsoleFeatures logger) {
         StringBuilder out = new StringBuilder();
         AtomicBoolean killed = new AtomicBoolean(false);
@@ -226,6 +258,7 @@ public final class AgentProcessRunner {
                     killAction,
                     lastOutputAt,
                     inactivityTimeoutMillis,
+                    activityTracker,
                     idleMillis -> {
                         killed.set(true);
                         logger.warn("No Claude output for " + (idleMillis / 1000)
@@ -236,7 +269,7 @@ public final class AgentProcessRunner {
 
             try (BufferedReader reader = session.captureOutput()) {
                 pumpOutput(reader, out, lastOutputAt, loopSignatureExtractor,
-                        killAction, loopKilled, logger);
+                        activityTracker, killAction, loopKilled, logger);
             }
 
             logger.log("Process output stream closed, waiting for exit...");
@@ -267,6 +300,7 @@ public final class AgentProcessRunner {
      * @param out                     accumulates the captured output
      * @param lastOutputAt            inactivity clock updated on every line
      * @param loopSignatureExtractor  maps a line to an action signature, or null to disable detection
+     * @param activityTracker         receives every line, or null when no tool boundaries are tracked
      * @param killAction              terminates the subprocess tree when a loop is detected
      * @param loopKilled              set to {@code true} when a loop kill is triggered
      * @param logger                  target for {@code log}/{@code warn} messages
@@ -276,6 +310,7 @@ public final class AgentProcessRunner {
                                    StringBuilder out,
                                    AtomicLong lastOutputAt,
                                    Function<String, String> loopSignatureExtractor,
+                                   AgentActivityTracker activityTracker,
                                    Runnable killAction,
                                    AtomicBoolean loopKilled,
                                    ConsoleFeatures logger) throws IOException {
@@ -286,6 +321,7 @@ public final class AgentProcessRunner {
             lastOutputAt.set(System.currentTimeMillis());
             out.append(line).append("\n");
             logger.log(line);
+            if (activityTracker != null) activityTracker.observe(line);
             if (progress != null) {
                 String signature;
                 try {

@@ -1047,4 +1047,22 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(
 				managerSources, "workstream_submit_task").contains("self_notify"));
 	}
+
+	/**
+	 * Verifies that {@code send_message} declares the {@code message_id}
+	 * parameter in its signature. Without it a caller cannot name a retry of a
+	 * timed-out send, and the controller cannot recognise one.
+	 */
+	@Test(timeout = 30000)
+	public void managerSendMessageHasMessageIdParameter() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable from the test working"
+			+ " directory; a silent skip here would let MCP tool/schema drift go"
+			+ " undetected", managerSources.isEmpty());
+
+		assertTrue("send_message must declare message_id in signature;"
+				+ " without it a timed-out send cannot be retried without duplicating",
+			McpToolDiscovery.discoverToolParameters(
+				managerSources, "send_message").contains("message_id"));
+	}
 }
