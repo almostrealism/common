@@ -82,6 +82,40 @@ public class InvalidFileDetectorTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A Maven module's {@code target/} is build output and is not scanned; a
+	 * {@code target} directory with no {@code pom.xml} beside it is an ordinary
+	 * directory and still is.
+	 */
+	@Test(timeout = 30000)
+	public void skipsMavenBuildOutputButNotOtherTargetDirectories() throws IOException {
+		Path dir = Files.createTempDirectory("invalid-file-detector");
+		try {
+			Path module = dir.resolve("engine").resolve("ml");
+			Files.createDirectories(module.resolve("target").resolve("test-classes").resolve("refs"));
+			Files.writeString(module.resolve("pom.xml"), "<project/>");
+			Files.writeString(module.resolve("target").resolve("test-classes")
+					.resolve("refs").resolve("reference.bin"), "fixture");
+
+			Path plain = dir.resolve("docs").resolve("target");
+			Files.createDirectories(plain);
+			Files.writeString(plain.resolve("stray.bin"), "litter");
+
+			Files.writeString(module.resolve("stray.bin"), "litter beside the pom");
+
+			InvalidFileDetector detector = new InvalidFileDetector(jobWithWorkingDir(dir));
+			detector.detect();
+
+			List<String> found = detector.getInvalidFiles();
+			assertEquals("build output is skipped, everything else is found: " + found, 2, found.size());
+			assertTrue(found.contains("docs" + File.separator + "target" + File.separator + "stray.bin"));
+			assertTrue(found.contains("engine" + File.separator + "ml" + File.separator + "stray.bin"));
+			assertFalse(detector.getDescription().contains("reference.bin"));
+		} finally {
+			deleteTree(dir);
+		}
+	}
+
 	/** Finds .bin files at every depth while ignoring the .git directory. */
 	@Test(timeout = 30000)
 	public void detectsBinFilesRecursivelyAndSkipsGitDir() throws IOException {

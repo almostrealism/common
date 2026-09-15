@@ -487,6 +487,27 @@ class TestWorkspaceSecretRenderFile(unittest.TestCase):
     @patch.object(server, "SHARED_SECRET", "test-secret")
     @patch.object(server, "_controller_get")
     @patch.object(server, "_require_workstream_in_scope")
+    def test_render_names_the_host_that_received_the_file(self, mock_scope, mock_get):
+        """The caller is told which machine holds the file, since it may not be theirs."""
+        import socket, tempfile, os
+        mock_scope.return_value = None
+        mock_get.return_value = self._make_payload_resp()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = server.workspace_secret_render_file(
+                workstream_id="ws-abc",
+                secret_name="aws-prod",
+                template="region = {{region}}\n",
+                output_path=os.path.join(tmpdir, "credentials"),
+            )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["host"], socket.gethostname())
+        self.assertIn(result["host"], result["note"])
+        self.assertIn("ar-secrets", result["note"])
+        self.assertNotIn("us-east-1", str(result))
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
     def test_output_file_permissions(self, mock_scope, mock_get):
         import tempfile, os, stat
         mock_scope.return_value = None

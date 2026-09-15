@@ -93,6 +93,24 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 post.body.contains(HarnessStatusReporter.ACTIVITY));
     }
 
+    /** Phase transitions name the lifecycle state in the body; other posts do not. */
+    @Test(timeout = 30000)
+    public void phaseTransitionsCarryTheLifecycleState() {
+        List<Posted> posts = new ArrayList<>();
+        HarnessStatusReporter reporter = reporter(posts);
+        reporter.phaseEntry(Phase.PRIMARY, "claude", null);
+        reporter.phaseExit(Phase.PRIMARY, successResult(1000, 0.1));
+        reporter.phaseExit(Phase.REVIEW, successResult(1000, 0.1));
+        reporter.unusual("something");
+
+        assertEquals("primary", JsonFieldExtractor.extractString(posts.get(0).body, "phase"));
+        assertEquals("primary complete", JsonFieldExtractor.extractString(posts.get(1).body, "phase"));
+        assertEquals("review complete", JsonFieldExtractor.extractString(posts.get(2).body, "phase"));
+        assertFalse(posts.get(3).body.contains("\"phase\""));
+        assertEquals("review complete", Phase.REVIEW.lifecycleState(true));
+        assertEquals("review", Phase.REVIEW.lifecycleState(false));
+    }
+
     /** phaseExit message carries gear prefix, phase-exit emoji, phase name, and outcome. */
     @Test(timeout = 30000)
     public void phaseExitMessageSummarisesOutcome() {
@@ -174,6 +192,20 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertEquals("2m 5s", HarnessStatusReporter.formatDuration(125000));
         assertEquals("45s", HarnessStatusReporter.formatDuration(45000));
         assertEquals("0s", HarnessStatusReporter.formatDuration(-10));
+    }
+
+    /** The phase-entry message says where the job landed when a placement is given, and nothing extra otherwise. */
+    @Test(timeout = 30000)
+    public void phaseEntryNamesThePlacement() {
+        PhaseConfig config = new PhaseConfig("claude", "sonnet", "medium", "anthropic");
+        String placed = HarnessStatusReporter.formatPhaseEntry(
+                Phase.PRIMARY, "claude", config, "platform=linux, hostname=halo at feature/x@abc1234");
+        assertTrue(placed, placed.endsWith(" on platform=linux, hostname=halo at feature/x@abc1234"));
+        assertTrue(placed, placed.contains("Entering PRIMARY (claude/sonnet"));
+
+        String unplaced = HarnessStatusReporter.formatPhaseEntry(Phase.PRIMARY, "claude", config, "");
+        assertEquals(HarnessStatusReporter.formatPhaseEntry(Phase.PRIMARY, "claude", config), unplaced);
+        assertFalse(unplaced.contains(" on "));
     }
 
     /** No formatted message contains Unicode replacement character U+FFFD. */

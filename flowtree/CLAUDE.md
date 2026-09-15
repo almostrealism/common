@@ -91,9 +91,21 @@ notes go in `docs/plans/` at the repository root.
 overrides to 45) of **stdout silence** — not of total runtime. Anything that
 makes an agent quiet for a long stretch has to account for it.
 
-A blocking MCP tool call emits nothing while it blocks, so any tool that waits
-must bound the wait well under that window and end by producing output;
-returning is what resets the clock. `await_message` is the worked example: it
-composes a long wait out of short controller long-polls and returns
-`timed_out=true` rather than blocking indefinitely, and its prompt protocol
-tells the agent to call it again.
+What counts as output depends on the runner's output format, and the Claude
+CLI is unforgiving here: `--output-format json` writes **one line when the
+session ends and nothing before it**, which turns the silence budget into a
+hard wall clock. `ClaudeCodeRunner` therefore asks for `stream-json`, where
+every event — the agent's turns, each `tool_use`, each `tool_result` — is a
+line. Do not switch it back to `json` to make the capture file smaller.
+
+A blocking MCP tool call still emits nothing while it blocks. The runner reads
+the event stream (`ClaudeCodeRunner.classifyActivity`) into an
+`AgentActivityTracker`, and while an `mcp__*` call is open the monitor
+tolerates `AgentInactivityMonitor.IN_FLIGHT_MCP_CALL_MILLIS` (60 minutes) of
+silence instead of the configured window. A `Bash` call earns no such grace —
+an unterminated shell loop is the hang the monitor exists to catch. A tool
+that waits should still bound its wait: `await_message` composes a long wait
+out of short controller long-polls, returns `timed_out=true` rather than
+blocking indefinitely, and its prompt protocol tells the agent to call it
+again. Returning is what proves the session is alive; the grace is what keeps
+one long legitimate call from being mistaken for a hang.

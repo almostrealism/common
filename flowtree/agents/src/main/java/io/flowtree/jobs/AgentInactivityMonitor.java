@@ -30,12 +30,30 @@ import java.util.function.LongConsumer;
  * This protects against subprocesses that spawn shell loops which fail to
  * terminate (a recurring failure mode for autonomous coding agents).</p>
  *
+ * <p>Silence is not always a hang. An agent waiting on an MCP-served tool —
+ * a test run, a build validation, a download, a peer's message — emits nothing
+ * until the tool returns, and that wait is bounded by the serving process
+ * rather than by anything the agent wrote. When the owner supplies a way to
+ * ask whether such a call is in flight (see {@link AgentActivityTracker}), the
+ * monitor extends the window to {@link #IN_FLIGHT_MCP_CALL_MILLIS} before it
+ * fires. A shell command the agent wrote itself earns no extension: an
+ * unterminated polling loop is exactly the failure this monitor exists to
+ * bound.</p>
+ *
  * <p>The monitor is decoupled from any particular process abstraction: it
  * is given a {@link BooleanSupplier} that reports whether the subprocess is
  * still alive and a {@link Runnable} that terminates it. This lets the same
  * monitor watch a raw {@link Process} or a {@link TmuxSession}.</p>
  */
 final class AgentInactivityMonitor {
+
+    /**
+     * Silence tolerated while an MCP-served tool call is in flight. Sized to
+     * the longest MCP-managed operation seen in the field (a multi-gigabyte
+     * download); the ordinary window applies again as soon as the call
+     * returns.
+     */
+    static final long IN_FLIGHT_MCP_CALL_MILLIS = 60L * 60L * 1000L;
 
     /** Reports whether the watched subprocess is still alive. */
     private final BooleanSupplier alive;
@@ -48,6 +66,9 @@ final class AgentInactivityMonitor {
 
     /** Wall-clock duration of stdout silence after which the kill action runs. */
     private final long inactivityTimeoutMillis;
+
+    /** Knows which tool calls are in flight; {@code null} when the runner cannot tell. */
+    private final AgentActivityTracker activityTracker;
 
     /** Polling interval; never less than 5 seconds, never more than 60 seconds. */
     private final long checkIntervalMillis;
@@ -74,10 +95,34 @@ final class AgentInactivityMonitor {
                            long inactivityTimeoutMillis,
                            LongConsumer onTimeout,
                            String threadName) {
+        this(alive, killAction, lastOutputAt, inactivityTimeoutMillis, null, onTimeout, threadName);
+    }
+
+    /**
+     * Creates a monitor that also knows whether the agent is waiting on an
+     * MCP-served tool, and extends its patience while it is.
+     *
+     * @param alive                    reports whether the subprocess is still running
+     * @param killAction               terminates the subprocess (called once when the timeout fires)
+     * @param lastOutputAt             clock updated by the read loop on every output line
+     * @param inactivityTimeoutMillis  duration of stdout silence that triggers a kill
+     * @param activityTracker          knows which tool calls are in flight, or
+     *                                 {@code null} when the runner cannot tell
+     * @param onTimeout                callback invoked with the observed idle ms when firing
+     * @param threadName               name for the daemon monitor thread
+     */
+    AgentInactivityMonitor(BooleanSupplier alive,
+                           Runnable killAction,
+                           AtomicLong lastOutputAt,
+                           long inactivityTimeoutMillis,
+                           AgentActivityTracker activityTracker,
+                           LongConsumer onTimeout,
+                           String threadName) {
         this.alive = alive;
         this.killAction = killAction;
         this.lastOutputAt = lastOutputAt;
         this.inactivityTimeoutMillis = inactivityTimeoutMillis;
+        this.activityTracker = activityTracker;
         this.checkIntervalMillis = Math.min(60_000L,
                 Math.max(5_000L, inactivityTimeoutMillis / 4));
         this.onTimeout = onTimeout;
@@ -108,11 +153,26 @@ final class AgentInactivityMonitor {
                 return;
             }
             long idle = System.currentTimeMillis() - lastOutputAt.get();
-            if (idle >= inactivityTimeoutMillis) {
+            if (idle >= toleratedSilenceMillis()) {
                 onTimeout.accept(idle);
                 killAction.run();
                 return;
             }
         }
+    }
+
+    /**
+     * Returns the silence this monitor tolerates right now: the configured
+     * window, or {@link #IN_FLIGHT_MCP_CALL_MILLIS} when that is longer and an
+     * MCP-served tool call is in flight.
+     *
+     * @return the tolerated silence in milliseconds
+     */
+    long toleratedSilenceMillis() {
+        if (activityTracker != null && activityTracker.isMcpCallInFlight()) {
+            return Math.max(inactivityTimeoutMillis, IN_FLIGHT_MCP_CALL_MILLIS);
+        }
+
+        return inactivityTimeoutMillis;
     }
 }

@@ -23,6 +23,7 @@ import org.almostrealism.audio.filter.ADSREnvelope;
 import org.almostrealism.audio.filter.BiquadFilterCell;
 import org.almostrealism.audio.filter.BiquadFilterData;
 import org.almostrealism.audio.sources.BufferDetails;
+import org.almostrealism.audio.sources.OscillatorCell;
 import org.almostrealism.audio.sources.SawtoothWaveCell;
 import org.almostrealism.audio.sources.SineWaveCell;
 import org.almostrealism.audio.sources.SquareWaveCell;
@@ -36,7 +37,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.SummationCell;
-import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.Temporal;
@@ -84,7 +84,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	private OscillatorType oscillatorType;
 
 	/** The oscillator cells, one per entry in the frequency set. */
-	private final List<CollectionTemporalCellAdapter> cells;
+	private final List<OscillatorCell> cells;
 
 	/** Summing cell that accumulates output from all oscillators. */
 	private final SummationCell output;
@@ -201,7 +201,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	private void createOscillators(int count) {
 		cells.clear();
 		for (int i = 0; i < count; i++) {
-			CollectionTemporalCellAdapter cell = createOscillator();
+			OscillatorCell cell = createOscillator();
 			cell.setReceptor(output);
 			cells.add(cell);
 		}
@@ -210,26 +210,27 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	/**
 	 * Creates a single oscillator of the current type.
 	 */
-	private CollectionTemporalCellAdapter createOscillator() {
+	private OscillatorCell createOscillator() {
+		OscillatorCell cell;
+
 		switch (oscillatorType) {
 			case SQUARE:
-				SquareWaveCell square = new SquareWaveCell();
-				if (ampEnvelope != null) square.setEnvelope(ampEnvelope);
-				return square;
+				cell = new SquareWaveCell();
+				break;
 			case SAWTOOTH:
-				SawtoothWaveCell saw = new SawtoothWaveCell();
-				if (ampEnvelope != null) saw.setEnvelope(ampEnvelope);
-				return saw;
+				cell = new SawtoothWaveCell();
+				break;
 			case TRIANGLE:
-				TriangleWaveCell triangle = new TriangleWaveCell();
-				if (ampEnvelope != null) triangle.setEnvelope(ampEnvelope);
-				return triangle;
+				cell = new TriangleWaveCell();
+				break;
 			case SINE:
 			default:
-				SineWaveCell sine = new SineWaveCell();
-				if (ampEnvelope != null) sine.setEnvelope(ampEnvelope);
-				return sine;
+				cell = new SineWaveCell();
+				break;
 		}
+
+		if (ampEnvelope != null) cell.setEnvelope(ampEnvelope);
+		return cell;
 	}
 
 	/**
@@ -291,16 +292,8 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	public void setAmpEnvelope(ADSREnvelope envelope) {
 		this.ampEnvelope = envelope;
 		// Apply to existing oscillators
-		for (CollectionTemporalCellAdapter cell : cells) {
-			if (cell instanceof SineWaveCell) {
-				((SineWaveCell) cell).setEnvelope(envelope);
-			} else if (cell instanceof SquareWaveCell) {
-				((SquareWaveCell) cell).setEnvelope(envelope);
-			} else if (cell instanceof SawtoothWaveCell) {
-				((SawtoothWaveCell) cell).setEnvelope(envelope);
-			} else if (cell instanceof TriangleWaveCell) {
-				((TriangleWaveCell) cell).setEnvelope(envelope);
-			}
+		for (OscillatorCell cell : cells) {
+			cell.setEnvelope(envelope);
 		}
 	}
 
@@ -419,8 +412,8 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 */
 	public void setVelocity(double velocity) {
 		this.velocity = velocity;
-		for (CollectionTemporalCellAdapter cell : cells) {
-			setOscillatorAmplitude(cell, velocity);
+		for (OscillatorCell cell : cells) {
+			cell.setAmplitude(velocity);
 		}
 	}
 
@@ -461,10 +454,10 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * {@link RelativeFrequencySet}.
 	 */
 	private void applyFrequency(Frequency f) {
-		Iterator<CollectionTemporalCellAdapter> itr = cells.iterator();
+		Iterator<OscillatorCell> itr = cells.iterator();
 		for (Frequency r : tones.getFrequencies(f)) {
 			if (itr.hasNext()) {
-				setOscillatorFreq(itr.next(), r.asHertz());
+				itr.next().setFreq(r.asHertz());
 			}
 		}
 	}
@@ -518,53 +511,8 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * Strikes all oscillators (resets phase to beginning of wave).
 	 */
 	public void strike() {
-		for (CollectionTemporalCellAdapter cell : cells) {
-			strikeOscillator(cell);
-		}
-	}
-
-	/**
-	 * Helper to set frequency on any oscillator type.
-	 */
-	private void setOscillatorFreq(CollectionTemporalCellAdapter cell, double hertz) {
-		if (cell instanceof SineWaveCell) {
-			((SineWaveCell) cell).setFreq(hertz);
-		} else if (cell instanceof SquareWaveCell) {
-			((SquareWaveCell) cell).setFreq(hertz);
-		} else if (cell instanceof SawtoothWaveCell) {
-			((SawtoothWaveCell) cell).setFreq(hertz);
-		} else if (cell instanceof TriangleWaveCell) {
-			((TriangleWaveCell) cell).setFreq(hertz);
-		}
-	}
-
-	/**
-	 * Helper to set amplitude on any oscillator type.
-	 */
-	private void setOscillatorAmplitude(CollectionTemporalCellAdapter cell, double amplitude) {
-		if (cell instanceof SineWaveCell) {
-			((SineWaveCell) cell).setAmplitude(amplitude);
-		} else if (cell instanceof SquareWaveCell) {
-			((SquareWaveCell) cell).setAmplitude(amplitude);
-		} else if (cell instanceof SawtoothWaveCell) {
-			((SawtoothWaveCell) cell).setAmplitude(amplitude);
-		} else if (cell instanceof TriangleWaveCell) {
-			((TriangleWaveCell) cell).setAmplitude(amplitude);
-		}
-	}
-
-	/**
-	 * Helper to strike any oscillator type.
-	 */
-	private void strikeOscillator(CollectionTemporalCellAdapter cell) {
-		if (cell instanceof SineWaveCell) {
-			((SineWaveCell) cell).strike();
-		} else if (cell instanceof SquareWaveCell) {
-			((SquareWaveCell) cell).strike();
-		} else if (cell instanceof SawtoothWaveCell) {
-			((SawtoothWaveCell) cell).strike();
-		} else if (cell instanceof TriangleWaveCell) {
-			((TriangleWaveCell) cell).strike();
+		for (OscillatorCell cell : cells) {
+			cell.strike();
 		}
 	}
 
@@ -573,7 +521,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 		OperationList setup = new OperationList("AudioSynthesizer Setup");
 
 		// Setup all oscillator cells
-		for (CollectionTemporalCellAdapter cell : cells) {
+		for (OscillatorCell cell : cells) {
 			setup.add(cell.setup());
 		}
 
@@ -625,7 +573,7 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 		}
 
 		// Push audio from all oscillators and tick to advance wave position
-		for (CollectionTemporalCellAdapter cell : cells) {
+		for (OscillatorCell cell : cells) {
 			tick.add(cell.push(null));
 			tick.add(cell.tick());
 		}

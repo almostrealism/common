@@ -287,7 +287,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.notifiers = new NotifierRegistry(primaryNotifier, notifiersByWorkspace);
         this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
         this.secretsHandler = new SecretsRequestHandler(notifiers);
-        this.jobQueryHandler = new JobQueryHandler(this.notifiers);
+        this.jobQueryHandler = new JobQueryHandler(this.notifiers, () -> statsQueryHandler);
     }
 
     /** Sets the FlowTree server used for job submission. */
@@ -1497,7 +1497,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private MessageEndpointHandler messageEndpointHandler() {
         return new MessageEndpointHandler(notifiers, mailboxes, memoryServerUrl,
-                this::readBody, this::errorResponse, this::log, this::warn);
+                this::readBody, this::errorResponse, this::log, this::warn,
+                statsQueryHandler::recordPhase);
     }
 
     /**

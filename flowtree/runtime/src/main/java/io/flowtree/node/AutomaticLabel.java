@@ -138,6 +138,33 @@ public enum AutomaticLabel implements ConsoleFeatures {
 	public String key() { return key; }
 
 	/**
+	 * Describes the machine the current process runs on in the terms a job's
+	 * {@code required_labels} would use: every automatic label that can be
+	 * detected here, as {@code key=value} pairs separated by commas.
+	 *
+	 * <p>This is what a job says about where it landed. The controller never
+	 * sees a worker's labels, so the job's own report is how a submitter learns
+	 * which machine took it and which labels would target that machine
+	 * again.</p>
+	 *
+	 * @return  The description, e.g. {@code "platform=linux, hostname=halo"};
+	 *          empty when nothing can be detected.
+	 */
+	public static String describeMachine() {
+		StringBuilder out = new StringBuilder();
+
+		for (AutomaticLabel label : values()) {
+			String value = label.detect();
+			if (value == null) continue;
+
+			if (out.length() > 0) out.append(", ");
+			out.append(label.key()).append('=').append(value);
+		}
+
+		return out.toString();
+	}
+
+	/**
 	 * Determines the value of this label for the machine the current process
 	 * runs on.
 	 *

@@ -8,6 +8,7 @@ anything defined in ``server`` through the module rather than by import, so
 the suite's patches still apply. Helpers and constants stay in ``server.py``.
 """
 
+import hashlib
 import time
 
 import server
@@ -25,8 +26,26 @@ from server import mcp
 # resets the watchdog: the agent calls again.
 MAX_AWAIT_SECONDS = 1500
 
+# Longest wait that fits under any MCP client's per-call timeout, in
+# seconds.
+#
+# The server can block as long as it likes; whether the *caller* is
+# still listening is decided by its MCP client, and an interactive
+# session's client gives a single tool call on the order of a minute
+# before it reports a transport error instead of the tool's result.
+# A wait that outlives that is worse than a short one: the message
+# still lands on the server, but the caller sees a timeout and cannot
+# tell whether it waited too long or the tool failed. Job sessions are
+# launched with ``MCP_TOOL_TIMEOUT`` raised to cover ``MAX_AWAIT_SECONDS``
+# (see ``McpConfigBuilder.applyAgentEnvironment``), so they may ask for
+# the cap explicitly; everyone else gets this by default and loops.
+TRANSPORT_SAFE_AWAIT_SECONDS = 25
+
 # Default block for a single ``await_message`` call, in seconds.
-DEFAULT_AWAIT_SECONDS = 300
+DEFAULT_AWAIT_SECONDS = TRANSPORT_SAFE_AWAIT_SECONDS
+
+# Length of the message id derived when a caller does not supply one.
+DERIVED_MESSAGE_ID_LENGTH = 16
 
 # Longest single long-poll issued against the controller, in seconds.
 # Kept short enough that no intermediary times the request out; a
@@ -45,6 +64,7 @@ def send_message(
     workstream_id: str = "",
     job_id: str = "",
     activity: str = "",
+    message_id: str = "",
 ) -> dict:
     """Send a message for archival, notification, and delivery to peers.
 
@@ -61,6 +81,15 @@ def send_message(
     required to address a peer — a peer awaiting on this workstream sees
     every message posted to it, and a peer that is not listening loses
     nothing, because the conversation is durable and it can catch up.
+
+    Sending is idempotent, so a call that timed out on your side can be
+    repeated safely: the message usually landed, and the repeat is
+    answered with the original ``seq`` and ``duplicate=true`` instead of
+    being posted again.  Every message carries a ``message_id`` for this;
+    when you do not supply one it is derived from the sender, activity
+    and text, so a retry with the same text is recognised without you
+    remembering anything.  To post the same text twice on purpose within
+    a few minutes, pass a fresh ``message_id``.
 
     ``workstream_id`` and ``job_id`` are both optional. In a job session
     (Claude Code or opencode launched by the controller) the in-flight
@@ -90,9 +119,13 @@ def send_message(
             ``AR_AGENT_ACTIVITY`` is set and ``activity`` is not
             supplied, the env var value is used automatically so that
             correction-session agents do not need to pass it explicitly.
+        message_id: Identity of this message, used to recognise a retry.
+            Defaults to a digest of the sender, activity and text.
 
     Returns:
         Dictionary with ok=true on success or ok=false with error details.
+        A recognised retry carries ``duplicate=true`` and the ``seq`` of
+        the message it repeated.
     """
     server._require_scope("write")
 
@@ -280,10 +313,36 @@ def send_message(
         path += f"/jobs/{server.quote(effective_job, safe='')}"
     path += "/messages"
 
-    body: dict = {"text": text, "sender": _sender_identity(effective_job)}
+    sender = _sender_identity(effective_job)
+    body: dict = {
+        "text": text,
+        "sender": sender,
+        "messageId": message_id or _derived_message_id(sender, effective_activity, text),
+    }
     if effective_activity:
         body["activity"] = effective_activity
     return server._controller_post(path, body)
+
+
+def _derived_message_id(sender: str, activity: str, text: str) -> str:
+    """Derive a message identity from what the caller would repeat on a retry.
+
+    A timed-out ``send_message`` is retried with the same text by the same
+    sender, usually within the same activity; nothing else is stable
+    across the two calls.  Hashing exactly those three gives the retry the
+    identity the original carried, so the controller can recognise it
+    without the caller having minted anything.
+
+    Args:
+        sender: The sender identity recorded on the message.
+        activity: The activity tag, or an empty string.
+        text: The message text.
+
+    Returns:
+        A short hex digest.
+    """
+    digest = hashlib.sha256(f"{sender}\n{activity}\n{text}".encode("utf-8"))
+    return digest.hexdigest()[:DERIVED_MESSAGE_ID_LENGTH]
 
 
 def _sender_identity(job_id: str) -> str:
@@ -416,6 +475,17 @@ def await_message(
     invent busy-work to stay awake, and never abandon a collaboration
     just because one wait came back empty.
 
+    How long one call may block is decided by YOUR MCP client, not by
+    this server.  From an interactive session a single tool call is
+    allowed roughly a minute before the client reports a transport
+    error, so the default wait is ``TRANSPORT_SAFE_AWAIT_SECONDS`` (25)
+    and a long wait is a loop of short ones.  A job session launched by
+    the controller has its tool timeout raised to cover the cap, and may
+    pass ``timeout_seconds`` up to ``MAX_AWAIT_SECONDS`` (1500) to wait
+    in one call.  If a wait comes back as a transport timeout rather than
+    ``timed_out=true``, the value you passed was too long for your
+    client — halve it.
+
     Pass ``next_since`` from the previous result back as ``since`` so
     that nothing is delivered twice and nothing is missed.  The default
     of ``-1`` starts from the present moment; pass ``0`` to replay the
@@ -430,7 +500,8 @@ def await_message(
             default) waits for messages sent from now on; ``0`` replays
             the conversation from the beginning.
         timeout_seconds: How long to block.  Defaults to
-            ``DEFAULT_AWAIT_SECONDS`` (300) and is capped at
+            ``DEFAULT_AWAIT_SECONDS`` (25, which fits under any MCP
+            client's per-call timeout) and is capped at
             ``MAX_AWAIT_SECONDS`` (1500); a larger value is clamped, and
             the response says so.
         include_own: When true, messages you sent are returned as well.
