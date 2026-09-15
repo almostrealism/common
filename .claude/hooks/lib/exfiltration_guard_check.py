@@ -164,6 +164,37 @@ _INTERPRETER_CODE_FLAGS = frozenset({
     "-command", "-EncodedCommand", "-enc", "-ec", "eval",
 })
 _INTERPRETER_MODULE_FLAG = "-m"
+
+# Options that take their value from the NEXT token, so that token is not
+# the program. The interpreter loop below otherwise reads the first word
+# that does not start with a dash as the script to run, and
+# `python3 -W error -m unittest …` was blocked because there is no file
+# called `error`. A joined form (`-Werror`) needs nothing here — it is
+# one dash-led token and is skipped as such. Keyed by interpreter family
+# (see _interpreter_family); options that merely configure the run.
+_INTERPRETER_VALUE_FLAGS = {
+    "python": frozenset({"-W", "-X", "--check-hash-based-pycs"}),
+    "node": frozenset({"--stack-size", "--title", "--input-type", "--conditions", "-C",
+                       "--env-file", "--icu-data-dir", "--openssl-config"}),
+    "ruby": frozenset({"-I", "-E", "-C", "-F"}),
+    "perl": frozenset({"-I"}),
+}
+
+# Options whose next token names CODE the interpreter loads before the
+# program: a preload is a program by another route. A value that is a
+# readable file is scanned like a script; one that is not (a package
+# name such as `ts-node/register`, resolved from a module path the guard
+# does not model) passes, as a `require` inside a scanned script would.
+_INTERPRETER_PRELOAD_FLAGS = {
+    "node": frozenset({"-r", "--require", "--import", "--loader", "--experimental-loader"}),
+    "ruby": frozenset({"-r"}),
+}
+_INTERPRETER_FAMILIES = {
+    "python": ("python", "python2", "python3", "pypy", "pypy3"),
+    "node": ("node", "nodejs"),
+    "ruby": ("ruby",),
+    "perl": ("perl",),
+}
 NETWORK_MODULES = frozenset({
     "http.server", "SimpleHTTPServer", "smtplib", "ftplib", "telnetlib",
     "webbrowser", "twine", "pyftpdlib", "uploadserver", "wsgiref.simple_server",
@@ -1044,12 +1075,48 @@ def _read_script(path, ctx):
     return data.decode("utf-8", "replace")
 
 
+def _interpreter_family(prog):
+    """The option table an interpreter reads from, or None for one with no table."""
+    for family, names in _INTERPRETER_FAMILIES.items():
+        if prog in names:
+            return family
+    return None
+
+
+def _scan_preload(prog, value, ctx):
+    """Scan a preloaded module that names a file; pass a package name.
+
+    A value spelled as a path (``./x.js``, ``../x.rb``, ``~/x``, ``/x``) is
+    held to the same rule as a script: it is read and scanned, and one that
+    cannot be read blocks. Any other value is a package name unless a file
+    of that name happens to sit in the working directory.
+    """
+    spelled_as_path = value.startswith((".", "~", "/"))
+    if not spelled_as_path:
+        if ctx.command_cwd is None or not os.path.isfile(os.path.join(ctx.command_cwd, value)):
+            return
+    _scan_code(_read_script(os.path.expanduser(value), ctx), f"{prog} preload {value!r}")
+
+
 def _check_interpreter(prog, argv, piped, bodies, ctx, depth):
     args = argv[1:]
+    family = _interpreter_family(prog)
+    value_flags = _INTERPRETER_VALUE_FLAGS.get(family, frozenset())
+    preload_flags = _INTERPRETER_PRELOAD_FLAGS.get(family, frozenset())
     code_seen = False
     i = 0
     while i < len(args):
         tok = args[i]
+        # `-r` is inline code to php and a preload to node and ruby, so the
+        # family's own tables are consulted before the shared code flags.
+        if tok in value_flags:
+            i += 2
+            continue
+        if tok in preload_flags:
+            if i + 1 < len(args):
+                _scan_preload(prog, args[i + 1], ctx)
+            i += 2
+            continue
         if tok in _INTERPRETER_CODE_FLAGS or (prog in ("perl",) and tok.startswith("-M")):
             code = tok[2:] if tok.startswith("-M") else (args[i + 1] if i + 1 < len(args) else "")
             _scan_code(code, f"{prog} inline program")

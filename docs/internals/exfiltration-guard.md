@@ -130,6 +130,12 @@ State these plainly; do not assume the guard closes them.
 - **Interpreter scripts are scanned by pattern**, not executed symbolically. A
   program that assembles `"soc" + "ket"` at run time and imports it dynamically is
   not caught. Pipe-fed programs are refused precisely because of this.
+- **A preloaded package is not scanned.** `node -r ./setup.js` and `ruby -r ./x`
+  are read like scripts (a path that cannot be read blocks), but a package name
+  such as `node -r ts-node/register` is resolved from a module path the guard does
+  not model and passes — the same gap a `require` inside a scanned script has.
+  Options that only configure the run (`python -W error`, `-X dev`, `ruby -I lib`)
+  are skipped with their value rather than mistaken for the program.
 - **`ci/…` branches skip the CI comparison.** `verify-exfiltration-guard.sh` does
   not hold a branch named for the pipeline to its edits of the guard's files,
   because a change permitted to rewrite the workflow could delete the step that

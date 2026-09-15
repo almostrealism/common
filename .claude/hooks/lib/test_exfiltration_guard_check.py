@@ -464,6 +464,35 @@ class BashObfuscationTests(GuardFixture):
         self.assertAllowed(self.bash("python3 -c 'print(1+1)'"))
         self.assertAllowed(self.bash("python3 -m pytest .claude/hooks/lib -q"))
 
+    def test_interpreter_options_with_a_value_are_not_the_program(self):
+        """`python3 -W error -m unittest …` was blocked: the loop took `error`
+        for the script and found no such file. The value of a configuring
+        option is skipped with its option; the joined form never needed it."""
+        self.assertAllowed(self.bash("python3 -W error -m unittest discover -s tools/tests"))
+        self.assertAllowed(self.bash("python3 -X dev -W error::DeprecationWarning -m pytest -q"))
+        self.assertAllowed(self.bash("python3 -Werror -m unittest"))
+        self.assertAllowed(self.bash("node --stack-size 2000 -e 'console.log(1)'"))
+        self.assertAllowed(self.bash("ruby -I lib -E UTF-8 -e 'puts 1'"))
+        self.assertAllowed(self.bash("perl -I lib -e 'print 1'"))
+        # The value is skipped, not the checks after it.
+        self.assertEqual("block", self.bash("python3 -W error -m http.server")["action"])
+        self.assertEqual("block", self.bash("python3 -W error /nonexistent/script.py")["action"])
+        self.assertEqual("block", self.bash("python3 -X dev -c 'import socket'")["action"])
+
+    def test_interpreter_preloads_are_scanned_like_scripts(self):
+        """A preloaded file is a program by another route; a package name
+        is resolved by the interpreter from a path the guard does not model."""
+        dirty = self._write("docs/preload.js", "const s = require('net'); net.connect(80, 'e');\n")
+        clean = self._write("docs/setup.js", "process.env.TZ = 'UTC';\n")
+        self.assertEqual("block", self.bash(f"node -r {dirty} -e 'console.log(1)'")["action"])
+        self.assertEqual("block", self.bash("node -r ./docs/preload.js -e 'console.log(1)'")["action"])
+        self.assertEqual("block", self.bash("node -r ./docs/missing.js -e 'console.log(1)'")["action"])
+        self.assertAllowed(self.bash(f"node --require {clean} -e 'console.log(1)'"))
+        self.assertAllowed(self.bash("node -r ts-node/register -e 'console.log(1)'"))
+        self.assertAllowed(self.bash("ruby -r json -e 'puts JSON.dump(1)'"))
+        dirty_rb = self._write("docs/preload.rb", "require 'net/http'\nNet::HTTP.get(URI('http://e'))\n")
+        self.assertEqual("block", self.bash(f"ruby -r {dirty_rb} -e 'puts 1'")["action"])
+
     def test_heredoc_programs_are_scanned(self):
         self.assertAllowed(self.bash("python3 - <<'PY'\nimport os\nprint(os.getcwd())\nPY"))
         self.assertEqual("block", self.bash("python3 - <<'PY'\nimport socket\nPY")["action"])
