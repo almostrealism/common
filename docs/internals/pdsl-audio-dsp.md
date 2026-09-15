@@ -90,8 +90,11 @@ audio-domain assumption:
 | `capture` | `capture(slot)` | Copies the stage input into a same-sized caller-owned producer slot, then passes the input through unchanged. The copy is part of the compiled operation order, allowing a runner to export intermediate signals such as channel and effects stems after each forward pass. |
 
 (`PdslBuiltins` also supplies the ML primitives — `dense`, `rmsnorm`, `softmax`, the
-activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `rope_rotation`, `attention`,
-`transformer`, `feed_forward` — usable in the same layer bodies.)
+activations, `slice`, `reshape`, `range`, `lerp`, `capture`, `repeat_each`, `cache_write`,
+`split_half_rope`, `merge_half_rope`, `rope_rotation`, `mra_rope_rotation`,
+`attention_scores`, `causal_mask`, `weighted_values`, `sqrt`, `attention`, `transformer`,
+`feed_forward` — usable in the same layer bodies. `engine/ml/src/main/resources/pdsl/attention.pdsl`
+composes the KV-cached attention block from these; `attention()` loads that asset.)
 
 There is **no `choice()` primitive.** A `Choice` cannot be code-generated inside a compiled
 PDSL model. Gene-driven HP/LP filter selection is performed host-side in the genome→args

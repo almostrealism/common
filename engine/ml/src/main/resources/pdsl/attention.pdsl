@@ -1,0 +1,222 @@
+/**
+ * Autoregressive multi-head self-attention with a KV cache.
+ *
+ * One token per forward pass: the input is that token's residual-stream vector [1, dim]
+ * and `position` is its index in the sequence. This file replaces the Java assembly that
+ * used to live in AttentionFeatures.attentionImpl; the Java attention(...) methods now only
+ * allocate the caches, bind arguments and build one of the layers below.
+ *
+ * Data flow of one forward pass:
+ *
+ *   [1, dim] token vector
+ *     └─ rmsnorm(rms_att_weight)                                          [1, dim]
+ *        ├─ keys:   dense(wk) → rotate_heads → repeat_each → cache_write(key_cache, position)
+ *        ├─ values: dense(wv) → reshape → repeat_each → cache_write(value_cache, position)
+ *        └─ query:  dense(wq) → rotate_heads                               [heads, head_size]
+ *             └─ attend: attention_scores(key_cache)                       [heads, seq_len]
+ *                        scale(1 / sqrt(head_size))
+ *                        causal_mask(position)
+ *                        softmax()
+ *                        weighted_values(value_cache)                      [1, dim]
+ *             └─ dense(wo)                                                 [1, dim]
+ *
+ * A branch runs before the path that follows it, so both caches already hold the current
+ * token's key and value when the scores are computed. The caches are caller-owned state
+ * that persists across forward passes: row `position` is rewritten on every pass and every
+ * row up to `position` is read.
+ *
+ * Grouped-query attention: the caches hold one key and one value per QUERY head, so a
+ * model with kv_heads < heads duplicates each KV head for the heads / kv_heads query heads
+ * it serves before the cache write (repeat_each). With kv_heads == heads that stage passes
+ * the rows through untouched.
+ *
+ * Projection biases (bq, bk, bv) are optional weights: a model without them (Llama 2,
+ * SkyTNT) binds null and dense() adds nothing.
+ */
+
+/**
+ * The KV cache. Both entries are [seq_len, dim]: row s holds token s's rotated key (or its
+ * value) as one head_size slice per query head.
+ */
+state attention_cache {
+    key_cache: weight
+    value_cache: weight
+}
+
+/**
+ * Rotary position embedding, one rotation per head: [1, heads * head_size] -> [heads, head_size].
+ *
+ * The split-half layout pairs element i of a head with element i + head_size / 2 (the
+ * PyTorch Llama/Qwen convention), rope_rotation rotates each pair by the angle the frequency
+ * table holds for `position`, and merge_half_rope restores the per-head layout.
+ *
+ *   split_half_rope   [heads, head_size / 2, 2]
+ *   rope_rotation     [heads, head_size / 2, 2]
+ *   merge_half_rope   [heads, head_size]
+ */
+layer rotate_heads(heads: int, head_size: int, freq_cis: weight, position: scalar)
+        -> [1, heads * head_size] {
+    split_half_rope(heads, head_size)
+    rope_rotation([heads, head_size / 2, 2], freq_cis, position)
+    merge_half_rope(heads, head_size)
+}
+
+/**
+ * Rotary position embedding with one frequency table and one position per head group
+ * (multidimensional relative attention): [1, heads * head_size] -> [heads, head_size].
+ * Head groups encode different attributes, so each group is rotated by its own table at its
+ * own position; head_groups carries both. Shapes are as in rotate_heads.
+ */
+layer rotate_head_groups(heads: int, head_size: int, head_groups: rope_groups)
+        -> [1, heads * head_size] {
+    split_half_rope(heads, head_size)
+    mra_rope_rotation([heads, head_size / 2, 2], head_groups)
+    merge_half_rope(heads, head_size)
+}
+
+/**
+ * Scores, weights and context for one rotated query: [heads, head_size] -> [1, heads * head_size].
+ *
+ *   attention_scores   q_h · k_h[s] for every cached row s          [heads, seq_len]
+ *   scale              1 / sqrt(d_k)                                [heads, seq_len]
+ *   causal_mask        -10000 on every column after `position`      [heads, seq_len]
+ *   softmax            per-head attention weights over the sequence [heads, seq_len]
+ *   weighted_values    sum over s of w[h, s] · v_h[s]               [1, dim]
+ */
+layer attend(heads: int, head_size: int, position: scalar,
+             key_cache: weight, value_cache: weight) -> [heads, head_size] {
+    attention_scores(key_cache)
+    scale(1 / sqrt(head_size))
+    causal_mask(position)
+    softmax()
+    weighted_values(value_cache)
+}
+
+/**
+ * Multi-head attention (Llama 2, SkyTNT, and Qwen2.5-style models with projection biases):
+ * [1, dim] -> [1, dim].
+ *
+ *   rmsnorm                          [1, dim]
+ *   keys:   dense(wk, bk)            [1, kv_heads * head_size]
+ *           rotate_heads             [kv_heads, head_size]
+ *           repeat_each              [heads, head_size]
+ *           cache_write              key_cache[position] = keys
+ *   values: dense(wv, bv)            [1, kv_heads * head_size]
+ *           reshape                  [kv_heads, head_size], one row per KV head
+ *           repeat_each              [heads, head_size]
+ *           cache_write              value_cache[position] = values
+ *   dense(wq, bq)                    [1, dim]
+ *   rotate_heads                     [heads, head_size]
+ *   attend                           [1, dim]
+ *   dense(wo)                        [1, dim]
+ */
+layer attention(heads: int, kv_heads: int, head_size: int,
+                rms_att_weight: weight,
+                wq: weight, wk: weight, wv: weight, wo: weight,
+                bq: weight, bk: weight, bv: weight,
+                freq_cis: weight, position: scalar, epsilon: float) -> [1, heads * head_size] {
+    rmsnorm(rms_att_weight, epsilon)
+
+    branch keys {
+        dense(wk, bk)
+        rotate_heads(kv_heads, head_size, freq_cis, position)
+        repeat_each(heads / kv_heads)
+        cache_write(key_cache, position)
+    }
+    branch values {
+        dense(wv, bv)
+        reshape([kv_heads, head_size])
+        repeat_each(heads / kv_heads)
+        cache_write(value_cache, position)
+    }
+
+    dense(wq, bq)
+    rotate_heads(heads, head_size, freq_cis, position)
+    attend(heads, head_size, position, key_cache, value_cache)
+    dense(wo)
+    reshape([1, heads * head_size])
+}
+
+/**
+ * Multi-head attention with QK-norm (Qwen3): [1, dim] -> [1, dim].
+ *
+ * As `attention`, with each projected query and key normalized head by head before the
+ * rotation: rmsnorm takes its statistic over the last axis of its weights (head_size) and
+ * applies the [heads, head_size] scale element-wise.
+ *
+ *   keys:   dense(wk, bk)            [1, kv_heads * head_size]
+ *           rmsnorm(qk_norm_k)       per-head RMSNorm of each key
+ *           rotate_heads → repeat_each → cache_write   as in `attention`
+ *   values: as in `attention`
+ *   dense(wq, bq)                    [1, dim]
+ *   rmsnorm(qk_norm_q)               per-head RMSNorm of the query
+ *   rotate_heads → attend → dense(wo)   as in `attention`
+ */
+layer attention_qk_norm(heads: int, kv_heads: int, head_size: int,
+                        rms_att_weight: weight,
+                        wq: weight, wk: weight, wv: weight, wo: weight,
+                        bq: weight, bk: weight, bv: weight,
+                        qk_norm_q: weight, qk_norm_k: weight,
+                        freq_cis: weight, position: scalar, epsilon: float) -> [1, heads * head_size] {
+    rmsnorm(rms_att_weight, epsilon)
+
+    branch keys {
+        dense(wk, bk)
+        rmsnorm(qk_norm_k, 1e-6)
+        rotate_heads(kv_heads, head_size, freq_cis, position)
+        repeat_each(heads / kv_heads)
+        cache_write(key_cache, position)
+    }
+    branch values {
+        dense(wv, bv)
+        reshape([kv_heads, head_size])
+        repeat_each(heads / kv_heads)
+        cache_write(value_cache, position)
+    }
+
+    dense(wq, bq)
+    rmsnorm(qk_norm_q, 1e-6)
+    rotate_heads(heads, head_size, freq_cis, position)
+    attend(heads, head_size, position, key_cache, value_cache)
+    dense(wo)
+    reshape([1, heads * head_size])
+}
+
+/**
+ * Multi-head attention with per-head-group rotary embeddings (Moonbeam MIDI):
+ * [1, dim] -> [1, dim].
+ *
+ * As `attention` without projection biases, but each head group is rotated by its own
+ * frequency table at its own attribute position. kv_head_groups describes the same groups
+ * for the KV heads (each group's head count divided by heads / kv_heads).
+ *
+ *   keys:   dense(wk) → rotate_head_groups(kv_head_groups) → repeat_each → cache_write
+ *   values: as in `attention`
+ *   dense(wq) → rotate_head_groups(q_head_groups) → attend → dense(wo)
+ */
+layer attention_mra(heads: int, kv_heads: int, head_size: int,
+                    rms_att_weight: weight,
+                    wq: weight, wk: weight, wv: weight, wo: weight,
+                    q_head_groups: rope_groups, kv_head_groups: rope_groups,
+                    position: scalar, epsilon: float) -> [1, heads * head_size] {
+    rmsnorm(rms_att_weight, epsilon)
+
+    branch keys {
+        dense(wk)
+        rotate_head_groups(kv_heads, head_size, kv_head_groups)
+        repeat_each(heads / kv_heads)
+        cache_write(key_cache, position)
+    }
+    branch values {
+        dense(wv)
+        reshape([kv_heads, head_size])
+        repeat_each(heads / kv_heads)
+        cache_write(value_cache, position)
+    }
+
+    dense(wq)
+    rotate_head_groups(heads, head_size, q_head_groups)
+    attend(heads, head_size, position, key_cache, value_cache)
+    dense(wo)
+    reshape([1, heads * head_size])
+}

@@ -65,10 +65,18 @@ import java.util.function.Function;
  *       times as many leading rows (equivalent to {@code CollectionProducer.repeat(0, n)})</li>
  *   <li>{@code sum_channels()} - collapse a {@code [C, S]} tensor to {@code [1, S]}
  *       by summing along axis 0</li>
- *   <li>{@code rope_rotation(shape, freq_cis, position)}</li>
+ *   <li>{@code rope_rotation(shape, freq_cis, position)},
+ *       {@code mra_rope_rotation(shape, head_groups)},
+ *       {@code split_half_rope(heads, head_size)}, {@code merge_half_rope(heads, head_size)}</li>
+ *   <li>{@code repeat_each(n)} - duplicate every row of a {@code [rows, size]} input
+ *       {@code n} consecutive times</li>
+ *   <li>{@code cache_write(cache, position)} - record the input as row {@code position}
+ *       of a caller-owned {@code [rows, size]} cache and pass it through</li>
+ *   <li>{@code attention_scores(keys)}, {@code causal_mask(position)},
+ *       {@code weighted_values(values)} - the stages of single-query attention over a cache</li>
+ *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>
  *   <li>{@code attention(...)}, {@code transformer(...)},
  *       {@code feed_forward(...)}</li>
- *   <li>{@code embedding(table)}</li>
  * </ul>
  *
  * <p>Domain-specific primitives (audio DSP, multi-channel routing, etc.) are not
@@ -331,6 +339,10 @@ public class PdslInterpreter {
 		Environment env = new Environment(null);
 		populateDataDefs(args, env);
 		for (PdslNode.Parameter param : def.getParameters()) {
+			if (!args.containsKey(param.getName())) {
+				throw new PdslParseException(
+						"Missing argument '" + param.getName() + "' for model '" + name + "'");
+			}
 			env.set(param.getName(), args.get(param.getName()));
 		}
 		Model model = new Model(inputShape);
@@ -751,15 +763,16 @@ public class PdslInterpreter {
 
 	/**
 	 * Resolves an identifier name to a value using the current environment or config definitions.
+	 * A name that is bound to {@code null} (an optional weight the caller left out, for example)
+	 * resolves to {@code null}; only a name with no binding at all is undefined.
 	 *
 	 * @param name Identifier to resolve
 	 * @param env  Current variable environment
-	 * @return The resolved value
+	 * @return The resolved value, possibly {@code null}
 	 * @throws PdslParseException If the identifier is not defined
 	 */
 	private Object resolveIdentifier(String name, Environment env) {
-		Object value = env.get(name);
-		if (value != null) return value;
+		if (env.has(name)) return env.get(name);
 
 		// Check if it's a config name
 		if (configDefs.containsKey(name)) {
@@ -1137,6 +1150,11 @@ public class PdslInterpreter {
 		Object get(String name) {
 			if (bindings.containsKey(name)) return bindings.get(name);
 			return parent != null ? parent.get(name) : null;
+		}
+		/** Returns whether {@code name} is bound in this scope or an enclosing one, even to {@code null}. */
+		boolean has(String name) {
+			if (bindings.containsKey(name)) return true;
+			return parent != null && parent.has(name);
 		}
 		/** Binds a name to a value in the current scope. */
 		void set(String name, Object value) { bindings.put(name, value); }
