@@ -1053,8 +1053,7 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			return latentMask;
 		}
 
-		CollectionProducer prependedValid = integers(0, batchSize * prependedTokens)
-				.multiply(0.0).add(1.0).reshape(batchSize, prependedTokens);
+		CollectionProducer prependedValid = constant(shape(batchSize, prependedTokens), 1.0);
 		return concat(1, prependedValid, latentMask);
 	}
 

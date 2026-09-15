@@ -1246,7 +1246,8 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 	}
 
 	/**
-	 * Creates a cross-attention block with customizable projection layers.
+	 * Creates a cross-attention block with customizable projection layers, using layer
+	 * normalization for the query/key norms.
 	 *
 	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
 	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
@@ -1276,6 +1277,47 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 										 PackedCollection kNormWeight, PackedCollection kNormBias,
 										 Block contextInput, Receptor<PackedCollection> attentionScores,
 										 ProjectionFactory projectionFactory) {
+		return sequenceCrossAttention(batchSize, querySeqLen, contextSeqLen, dim, heads,
+				toQWeight, toKvWeight, toOutWeight,
+				qNormWeight, qNormBias, kNormWeight, kNormBias,
+				contextInput, attentionScores, projectionFactory, NormalizationType.LAYER);
+	}
+
+	/**
+	 * Creates a cross-attention block with customizable projection layers and query/key
+	 * normalization family, so that a block builder can be parameterized by the normalization
+	 * its checkpoint was trained with.
+	 *
+	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
+	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param querySeqLen Query sequence length
+	 * @param contextSeqLen Context sequence length
+	 * @param dim Model dimension
+	 * @param heads Number of attention heads
+	 * @param toQWeight Query projection weights
+	 * @param toKvWeight Fused KV projection weights for context
+	 * @param toOutWeight Output projection weights
+	 * @param qNormWeight Query normalization weights
+	 * @param qNormBias Query normalization biases
+	 * @param kNormWeight Key normalization weights
+	 * @param kNormBias Key normalization biases
+	 * @param contextInput Context block to attend over
+	 * @param attentionScores Optional receptor to capture attention weights
+	 * @param projectionFactory Factory for creating projection layers
+	 * @param normType Family of the query/key normalization
+	 * @return Cross-attention block
+	 */
+	default Block sequenceCrossAttention(int batchSize, int querySeqLen, int contextSeqLen,
+										 int dim, int heads,
+										 PackedCollection toQWeight, PackedCollection toKvWeight,
+										 PackedCollection toOutWeight,
+										 PackedCollection qNormWeight, PackedCollection qNormBias,
+										 PackedCollection kNormWeight, PackedCollection kNormBias,
+										 Block contextInput, Receptor<PackedCollection> attentionScores,
+										 ProjectionFactory projectionFactory,
+										 NormalizationType normType) {
 		int dimHead = dim / heads;
 		TraversalPolicy queryShape = shape(batchSize, querySeqLen, dim);
 
@@ -1288,7 +1330,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		crossAttention.permute(0, 2, 1, 3); // (batch, heads, querySeqLen, dimHead)
 
 		// 2. Apply Q normalization
-		crossAttention.add(norm(qNormWeight, qNormBias, 1e-6));
+		crossAttention.add(norm(normType, qNormWeight, qNormBias, 1e-6));
 
 		// 3. Process context input through separate branch for K and V
 		SequentialBlock contextBranch = contextInput.branch();
@@ -1305,7 +1347,7 @@ public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures
 		v.permute(0, 2, 1, 3);
 
 		// 5. Apply K normalization (no rotary for context keys/values)
-		k.add(norm(kNormWeight, kNormBias, 1e-6));
+		k.add(norm(normType, kNormWeight, kNormBias, 1e-6));
 
 		// 6. Store K and V tensors for use in attention computation
 		PackedCollection kTensor = new PackedCollection(shape(batchSize, heads, contextSeqLen, dimHead));
