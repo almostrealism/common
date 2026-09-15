@@ -232,6 +232,33 @@ public class WorkstreamMailbox implements ConsoleFeatures {
     }
 
     /**
+     * Atomically checks {@code messageId} against recent duplicates and
+     * appends only when none is found, under a single lock acquisition.
+     *
+     * <p>{@link #recent} and {@link #append} are each independently
+     * synchronized, but calling them as two separate steps leaves a window in
+     * which two concurrent retries of the same {@code messageId} can both
+     * observe no earlier match and both append — this method closes that
+     * window by performing the check and the append as one critical
+     * section.</p>
+     *
+     * @param text      the message body; must not be {@code null} or empty
+     * @param sender    identity of the sender; {@code null} becomes {@code "unknown"}
+     * @param jobId     job the message was sent from, or {@code null}
+     * @param activity  enforcement phase the message belongs to, or {@code null}
+     * @param messageId caller-supplied identity of the message, or {@code null}
+     *                  to always append as new
+     * @return the outcome: the resulting message and whether it was newly
+     *         appended by this call
+     */
+    public synchronized Dedupe appendIfNew(String text, String sender, String jobId,
+                                           String activity, String messageId) {
+        Message existing = recent(messageId);
+        if (existing != null) return new Dedupe(existing, false);
+        return new Dedupe(append(text, sender, jobId, activity, messageId), true);
+    }
+
+    /**
      * Finds the message a retry would repeat: the most recent one carrying
      * {@code messageId}, provided it was appended within
      * {@link #DEDUPE_WINDOW_MILLIS}.
@@ -388,6 +415,16 @@ public class WorkstreamMailbox implements ConsoleFeatures {
 
             return out.append("],\"nextSince\":").append(nextSince).append('}').toString();
         }
+    }
+
+    /**
+     * The outcome of {@link WorkstreamMailbox#appendIfNew}.
+     *
+     * @param message  the resulting message — either the message newly
+     *                 appended by this call, or the earlier one it repeats
+     * @param appended whether {@code message} was newly appended by this call
+     */
+    public record Dedupe(Message message, boolean appended) {
     }
 
     /**

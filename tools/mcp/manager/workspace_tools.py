@@ -398,10 +398,12 @@ def workspace_secret_render_file(
         "output_path": expanded,
         "host": host,
         "note": (
-            f"The file was written on the ar-manager host ({host}), not on"
-            " the machine you are calling from. Inside a job session use the"
-            " ar-secrets MCP server (secret_render_file), which writes into"
-            " the job's own filesystem."
+            f"The file was written on the ar-manager host ({host}). If you are"
+            " calling from a different machine, the file is not visible to"
+            " you there; the client and ar-manager may also be colocated, in"
+            " which case it is. Inside a job session use the ar-secrets MCP"
+            " server (secret_render_file), which writes into the job's own"
+            " filesystem."
         ),
     }
 

@@ -16,14 +16,17 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.workstream.WorkstreamMailbox;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -163,5 +166,31 @@ public class ConversationCatchUpTest extends TestSuiteBase {
 
         job.setCollaborative(true);
         assertNull("first session has nothing to catch up on", job.conversationCatchUp());
+    }
+
+    /**
+     * An inactivity relaunch runs inside the same logical session (it does not
+     * increment {@link RestartGovernor#getSessionsLaunched()}), so the catch-up
+     * decision must also look at {@link RestartGovernor#getInactivityRestartAttempt()}
+     * — otherwise a relaunched attempt silently misses the conversation.
+     */
+    @Test(timeout = 30000)
+    public void jobRendersCatchUpOnAnInactivityRelaunchWithinTheSameSession() {
+        CodingAgentJob job = new CodingAgentJob("j1", "do the thing");
+        job.setCollaborative(true);
+        RestartGovernor gov = job.restartGovernor();
+        gov.setMaxInactivityRestarts(1);
+
+        List<String> catchUpByAttempt = new ArrayList<>();
+        gov.runWithInactivityRetries("claude", attempt -> {
+            catchUpByAttempt.add(job.conversationCatchUp());
+            return new AgentRunResult(0, attempt == 0, "out", "sid",
+                    1000L, 0L, 1, 0.0, null, false, null, null);
+        });
+
+        assertNull("first attempt has nothing to catch up on", catchUpByAttempt.get(0));
+        assertEquals(2, catchUpByAttempt.size());
+        assertNotNull("relaunched attempt must render catch-up, not skip it",
+                catchUpByAttempt.get(1));
     }
 }

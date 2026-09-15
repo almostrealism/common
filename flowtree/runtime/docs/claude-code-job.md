@@ -963,7 +963,7 @@ This means the `set()` method must handle all keys that `encode()` produces. The
 The Claude Code command is constructed in `doWork()` as a `List<String>`. The final command has this structure:
 
 ```
-claude -p <instruction-prompt> --output-format json --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
+claude -p <instruction-prompt> --output-format stream-json --verbose --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
 ```
 
 ### Arguments in Detail

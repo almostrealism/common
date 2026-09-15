@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
@@ -290,5 +291,34 @@ public class HarnessStatusReporterPhaseEntrySuppressionTest extends TestSuiteBas
                 new PhaseConfig("claude", "opus", "high", "anthropic"));
 
         assertTrue("suppressed entry must produce zero posts", posts.isEmpty());
+    }
+
+    /**
+     * {@code recordPhaseEntry} is how a non-PRIMARY phase still reaches
+     * {@code /api/jobs/{id}} immediately: it posts with {@code silent=true}
+     * rather than not posting at all, so the phase recorder on the receiving
+     * end (see {@code MessageEndpointHandler}) sees it without the message
+     * reaching the notification channel.
+     */
+    @Test(timeout = 30000)
+    public void recordPhaseEntryRecordsNonPrimaryPhaseSilently() {
+        List<Posted> posts = new ArrayList<>();
+        reporter(posts).recordPhaseEntry(Phase.REVIEW, "opencode",
+                new PhaseConfig("opencode", "sonnet", "medium", "anthropic"), null);
+
+        assertEquals("recordPhaseEntry must record exactly one post", 1, posts.size());
+        assertTrue("recordPhaseEntry must mark the post silent",
+                JsonFieldExtractor.extractBoolean(posts.get(0).body, "silent"));
+        assertEquals("review", JsonFieldExtractor.extractString(posts.get(0).body, "phase"));
+    }
+
+    /** {@code recordPhaseEntry} is a no-op for PRIMARY, which {@code phaseEntry} already records visibly. */
+    @Test(timeout = 30000)
+    public void recordPhaseEntryIsANoOpForPrimary() {
+        List<Posted> posts = new ArrayList<>();
+        reporter(posts).recordPhaseEntry(Phase.PRIMARY, "claude",
+                new PhaseConfig("claude", "opus", "high", "anthropic"), null);
+
+        assertTrue("recordPhaseEntry must not duplicate PRIMARY's visible entry", posts.isEmpty());
     }
 }

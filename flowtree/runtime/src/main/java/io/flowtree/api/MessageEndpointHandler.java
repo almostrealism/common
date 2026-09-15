@@ -42,19 +42,20 @@ import io.flowtree.slack.NotifierRegistry;
  * {@code POST /api/workstreams/{id}/jobs/{jobId}/messages}) for
  * {@link FlowTreeApiEndpoint}.
  *
- * <p>Incoming messages are first stored as memories in the
- * ar-memory server (under the {@code messages} namespace) so the
- * activity record survives Slack outages or non-Slack deployments.
- * The message is then forwarded to the workstream's notification
- * channel on a best-effort basis: a missing or unconfigured channel
- * does not fail the request.</p>
- *
- * <p>Finally the message is appended to the workstream's
- * {@link WorkstreamMailbox}, which is what makes it readable by another
- * agent rather than only by a human. Every message sent through this
- * endpoint is therefore both a notification and a turn in whatever
+ * <p>Incoming messages are first appended to the workstream's
+ * {@link WorkstreamMailbox}, which is what makes a message readable by
+ * another agent rather than only by a human — every message sent through
+ * this endpoint is therefore both a notification and a turn in whatever
  * conversation the workstream's participants are having; there is no
- * separate way to address a peer.</p>
+ * separate way to address a peer. The append and the duplicate check below
+ * it happen as one atomic mailbox operation, so two concurrent retries of
+ * the same {@code messageId} cannot both win it.</p>
+ *
+ * <p>The message is then stored as a memory in the ar-memory server (under
+ * the {@code messages} namespace) so the activity record survives Slack
+ * outages or non-Slack deployments, and finally forwarded to the
+ * workstream's notification channel on a best-effort basis: a missing or
+ * unconfigured channel does not fail the request.</p>
  *
  * <p>A body may carry a {@code messageId}. When the mailbox already holds a
  * message with that identity from within
@@ -67,7 +68,11 @@ import io.flowtree.slack.NotifierRegistry;
  * <p>A body posted under a job may also carry a {@code phase}: the job's own
  * harness saying which lifecycle phase it has entered or finished. It is
  * handed to the phase recorder so the job record can answer "what is it
- * doing now" while the status is still {@code STARTED}.</p>
+ * doing now" while the status is still {@code STARTED}. A body may also carry
+ * {@code silent=true}, which still delivers, archives, and records the phase
+ * of the message but skips forwarding it to the notification channel — how
+ * the harness records a lifecycle transition it does not want to announce in
+ * the channel (see {@code HarnessStatusReporter.phaseEntry}).</p>
  *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
@@ -154,13 +159,15 @@ public final class MessageEndpointHandler {
 
         WorkstreamMailbox mailbox = mailboxes.mailboxFor(workstreamId);
         String messageId = JsonFieldExtractor.extractString(body, "messageId");
-        WorkstreamMailbox.Message earlier = mailbox.recent(messageId);
-        if (earlier != null) {
+        WorkstreamMailbox.Dedupe dedupe = mailbox.appendIfNew(
+                text, senderOf(body, jobId), jobId, activity, messageId);
+        if (!dedupe.appended()) {
             log.accept("Duplicate message " + messageId + " for workstream " + workstreamId
-                    + " repeats seq " + earlier.seq() + "; not posted again");
+                    + " repeats seq " + dedupe.message().seq() + "; not posted again");
             return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/json",
-                    "{\"ok\":true,\"seq\":" + earlier.seq() + ",\"duplicate\":true}");
+                    "{\"ok\":true,\"seq\":" + dedupe.message().seq() + ",\"duplicate\":true}");
         }
+        WorkstreamMailbox.Message delivered = dedupe.message();
 
         log.accept("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: "
                 + SlackNotifier.truncate(text, 80));
@@ -185,23 +192,22 @@ public final class MessageEndpointHandler {
             log.accept("Message not archived (memory server not configured): " + storeError);
         }
 
-        // Appended before the notification so a Slack outage cannot cost a
-        // collaborator its instruction
-        WorkstreamMailbox.Message delivered =
-                mailbox.append(text, senderOf(body, jobId), jobId, activity, messageId);
-
-        // Secondary: forward to notification channel (best-effort)
-        String threadTs = jobId != null ? targetNotifier.getThreadTs(jobId) : null;
-        String resultTs;
-        if (threadTs != null) {
-            resultTs = targetNotifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
-        } else {
-            if (jobId != null) warn.accept("send_message_no_thread_ts workstream_id=" + workstreamId
-                    + " job_id=" + jobId + " activity=" + (activity != null ? activity : ""));
-            resultTs = targetNotifier.postMessage(workstream.getChannelId(), text);
+        // Secondary: forward to notification channel (best-effort), unless the
+        // caller asked to record this message without broadcasting it
+        boolean silent = JsonFieldExtractor.extractBoolean(body, "silent");
+        String resultTs = null;
+        if (!silent) {
+            String threadTs = jobId != null ? targetNotifier.getThreadTs(jobId) : null;
+            if (threadTs != null) {
+                resultTs = targetNotifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
+            } else {
+                if (jobId != null) warn.accept("send_message_no_thread_ts workstream_id=" + workstreamId
+                        + " job_id=" + jobId + " activity=" + (activity != null ? activity : ""));
+                resultTs = targetNotifier.postMessage(workstream.getChannelId(), text);
+            }
         }
 
-        if (resultTs == null) {
+        if (resultTs == null && !silent) {
             log.accept("Message received for workstream " + workstreamId
                 + " but no notification channel is configured");
         }
@@ -209,7 +215,7 @@ public final class MessageEndpointHandler {
         String seq = ",\"seq\":" + delivered.seq();
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json",
-                resultTs != null
+                resultTs != null || silent
                     ? "{\"ok\":true" + seq + "}"
                     : "{\"ok\":true" + seq
                         + ",\"warning\":\"no notification channel configured\"}");

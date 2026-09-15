@@ -336,6 +336,37 @@ public class WorkstreamMailboxTest extends TestSuiteBase {
         assertEquals(1, registry.mailboxFor("one").read(0, null, 0).messages().size());
     }
 
+    /** {@code appendIfNew} appends a message with a fresh identity and reports it as new. */
+    @Test(timeout = 10000)
+    public void appendIfNewAppendsAFreshIdentity() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+
+        WorkstreamMailbox.Dedupe dedupe = mailbox.appendIfNew("report", "job:a", "a", null, "m-1");
+
+        assertTrue(dedupe.appended());
+        assertEquals(1, dedupe.message().seq());
+        assertEquals(1, mailbox.head());
+    }
+
+    /**
+     * {@code appendIfNew} reports a repeated identity as not newly appended and
+     * does not grow the log, matching the two-call {@code recent}/{@code append}
+     * sequence it replaces — but as a single atomic operation, closing the
+     * window in which two concurrent callers could otherwise both observe no
+     * earlier match and both append.
+     */
+    @Test(timeout = 10000)
+    public void appendIfNewRepeatsAnExistingIdentityWithoutAppending() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        WorkstreamMailbox.Dedupe first = mailbox.appendIfNew("report", "job:a", "a", null, "m-1");
+
+        WorkstreamMailbox.Dedupe retry = mailbox.appendIfNew("report", "job:a", "a", null, "m-1");
+
+        assertFalse(retry.appended());
+        assertEquals(first.message().seq(), retry.message().seq());
+        assertEquals(1, mailbox.head());
+    }
+
     /** The wire form of a delivery names both the messages and the next cursor. */
     @Test(timeout = 10000)
     public void deliveryRendersTheReadersNextCursor() {
