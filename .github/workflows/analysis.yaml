@@ -1057,32 +1057,42 @@ jobs:
           fi
 
   # ─── Early Workstream Registration ─────────────────────────────────
-  # Registers a workstream for this branch as soon as the early validation
-  # jobs pass, rather than waiting for auto-resolve at the end of the run.
+  # Registers a workstream for this branch as soon as `build` succeeds,
+  # rather than waiting for auto-resolve at the end of the run.
   #
   # auto-resolve already creates a workstream on demand
-  # (createWorkstreamIfMissing in submit-agent-job.sh), but it cannot run
-  # until every test job has reported, and the self-hosted test lanes are
-  # long. That leaves a branch with no workstream for the whole wait — so no
-  # workstream ID to submit other improvement jobs against, and nothing for
-  # another session to address memory to. Registering here closes that gap.
+  # (createWorkstreamIfMissing in submit-agent-job.sh), but it needs
+  # `analysis`, which needs the whole self-hosted test matrix (`test`,
+  # `test-flowtree`, `test-media`, `test-mac`, `test-media-mac`) — and those
+  # lanes are long. That leaves a branch with no workstream for the whole
+  # wait — so no workstream ID to submit other improvement jobs against, and
+  # nothing for another session to address memory to. Registering here
+  # closes that gap.
   #
-  # The two outcomes are both wanted. If a validation job fails, this is
-  # skipped and auto-resolve fires almost immediately, registering by its
-  # normal path. If they all pass, the tests are about to run for a long
-  # time and the workstream exists from the start.
+  # This job is deliberately independent of the validation gates
+  # (code-policy-check, test-timeout-check, duplicate-code-check,
+  # test-integrity-check, checkstyle). None of them gate the test jobs —
+  # every test job's `needs` chain runs back to `build` alone — so a
+  # validation-only failure does not stop the test matrix, and auto-resolve
+  # still cannot start until that matrix finishes. checkstyle in particular
+  # used to be treated as a fast-fail fallback for this job, but it is not a
+  # prerequisite of any test job either: a branch that only trips checkstyle
+  # still runs the full matrix, and register-workstream being skipped in
+  # that case left the branch with no workstream for as long as the matrix
+  # took (observed: 90+ minutes on PR #500, still waiting on queued test-cl
+  # lanes with no workstream to submit against). Registering unconditionally
+  # once `build` succeeds removes that gap regardless of which gate, if any,
+  # eventually fails.
   #
-  # checkstyle is one of the gates for that reason and no other: it is not a
-  # prerequisite of the test jobs, but it fails fast and hard, so a branch
-  # that trips it reaches auto-resolve without a long wait — exactly the
-  # case this job exists to avoid duplicating.
+  # Running both this job and auto-resolve's own registration is harmless:
+  # registration is idempotent on the controller (an existing workstream is
+  # returned with `existing: true`), so there is nothing to avoid by
+  # narrowing this job's `needs`.
   #
-  # Gating on those jobs also handles the docs-only case with no extra
-  # condition: they all declare `needs: build`, and `build` is gated on
-  # code_changed, so a docs-only PR skips them and therefore skips this.
-  # The code_changed check below is what expresses "some test job will
-  # actually run" — test-flowtree gates on code_changed alone, so whenever
-  # it is true at least one test job follows.
+  # The code_changed check handles the docs-only case: `build` itself is
+  # gated on code_changed, so a docs-only PR skips it and therefore skips
+  # this job too. The explicit check documents that dependency rather than
+  # relying on it silently.
   #
   # Deliberately NOT declaring `environment:`. A job with an environment in
   # a pull_request run attaches a GitHub Deployment to the PR head, and a
@@ -1094,15 +1104,10 @@ jobs:
   # signal, so this job is excluded from all-checks and every failure path
   # below reports a notice or warning and exits 0.
   register-workstream:
-    needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, checkstyle]
+    needs: [changes, build]
     if: >-
       github.ref != 'refs/heads/master' &&
       needs.build.result == 'success' &&
-      needs.code-policy-check.result == 'success' &&
-      needs.test-timeout-check.result == 'success' &&
-      needs.duplicate-code-check.result == 'success' &&
-      needs.test-integrity-check.result == 'success' &&
-      needs.checkstyle.result == 'success' &&
       needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
