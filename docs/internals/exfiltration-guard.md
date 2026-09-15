@@ -14,9 +14,11 @@ owner's:
 
 **The code and its tests are the authority on behavior.** What the guard
 decides for a given command is in `.claude/hooks/lib/exfiltration_guard_check.py`
-and pinned by `test_exfiltration_guard_check.py`; a decision table written in
-prose drifts from them within a release or two. This document holds what the
-code cannot say for itself: the threat model, the bypasses that were considered
+and its split-out bash modules (`exfil_bash_lex.py`, `exfil_bash_network.py`,
+`exfil_bash_runner.py`, `exfil_bash_vcs.py`, `exfil_bash_dispatch.py`), all
+pinned by `test_exfiltration_guard_check.py`; a decision table written in prose
+drifts from them within a release or two. This document holds what the code
+cannot say for itself: the threat model, the bypasses that were considered
 when it was designed, the limits it knowingly does not close, and what to do
 when it blocks something.
 
@@ -130,6 +132,18 @@ State these plainly; do not assume the guard closes them.
 - **Interpreter scripts are scanned by pattern**, not executed symbolically. A
   program that assembles `"soc" + "ket"` at run time and imports it dynamically is
   not caught. Pipe-fed programs are refused precisely because of this.
+- **A preloaded package name is not scanned.** `node -r ./setup.js` and `ruby -r ./x`
+  are read like scripts (a path that cannot be read blocks), and a value spelled as a
+  URI (`--import`/`--loader` accept ES module specifiers, not just paths) is handled
+  the same way: `data:` is decoded and scanned as inline code, `file:` is read like a
+  path, `node:` passes as one of Node's own builtin modules, and any other scheme is
+  denied outright because the guard cannot fetch and inspect it. A bare package name
+  such as `node -r ts-node/register` is still resolved from a module path the guard
+  does not model and passes — the same gap a `require` inside a scanned script has.
+  Options that only configure the run (`python -W error`, `-X dev`, `ruby -I lib`)
+  are skipped with their value rather than mistaken for the program; an option that
+  changes the working directory before the run (Ruby's `-C dir`) updates where later
+  relative paths resolve instead of being treated as an ordinary value flag.
 - **`ci/…` branches skip the CI comparison.** `verify-exfiltration-guard.sh` does
   not hold a branch named for the pipeline to its edits of the guard's files,
   because a change permitted to rewrite the workflow could delete the step that
@@ -195,7 +209,12 @@ For a human holding a legitimate blocked command:
 
 | Path | Role |
 |---|---|
-| `.claude/hooks/lib/exfiltration_guard_check.py` | the decision core, `decide(payload, hook_cwd, log_path)`; harness-neutral |
+| `.claude/hooks/lib/exfiltration_guard_check.py` | the decision core, `decide(payload, hook_cwd, log_path)`; harness-neutral; re-exports `Allowlist`, `_shell_invocation`, `normalize_host`, `owner_repo`, `SHELLS`, `GuardError` for backward compatibility |
+| `.claude/hooks/lib/exfil_bash_lex.py` | shell command tokenization, wrapper unwrapping, and the shared `GuardError`, `SHELLS`, `normalize_host`, `owner_repo` |
+| `.claude/hooks/lib/exfil_bash_network.py` | URL handling, curl/wget upload checks, ssh family, raw-socket and probe tools, the network-code patterns an inline program is scanned for |
+| `.claude/hooks/lib/exfil_bash_runner.py` | shell option grammar (`_shell_invocation`) and interpreter / script-file checks |
+| `.claude/hooks/lib/exfil_bash_vcs.py` | `git push` and `gh` checks, including the origin/host allowlist pin |
+| `.claude/hooks/lib/exfil_bash_dispatch.py` | `analyze_command` / `bash_targets` and `BashContext`; routes each simple command to the check that knows the program |
 | `.claude/hooks/block-exfiltration.sh` | thin Claude Code adapter (`--stdin`); exit 2 blocks |
 | `.claude/hooks/exfil-allowlist.txt` | lab hosts and git remotes, read from `HEAD` |
 | `.claude/settings.json` | the `PreToolUse` registration, covering `Artifact`, `SendUserFile` and `Bash` |

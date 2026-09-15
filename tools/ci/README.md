@@ -73,6 +73,7 @@ it knowingly does not cover are in
 | `build-defect-hunt-prompt.sh` | Build prompt for the recurring defect hunt |
 | `build-doc-qa-prompt.sh` | Build prompt for the recurring documentation-staleness review |
 | `build-performance-prompt.sh` | Build prompt for the recurring performance round |
+| `build-pdsl-migration-prompt.sh` | Build prompt for the recurring PDSL migration round |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
@@ -85,6 +86,7 @@ it knowingly does not cover are in
 | `doc-qa.txt` | Template for the documentation-staleness review |
 | `general-review.txt` | Template for general code review prompt |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
+| `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
 | `pr-feedback.txt` | Shared fragment: how to find, read, act on and reply to pull-request review comments — patched into every auto-resolve prompt |
 | `project-planning.txt` | Template for the planning workflow |
 | `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`) |
