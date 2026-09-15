@@ -70,6 +70,44 @@ public class WorkstreamMailboxTest extends TestSuiteBase {
         assertEquals(2, delivery.nextSince());
     }
 
+    /** A recent message is found by its identity; an unnamed one never is. */
+    @Test(timeout = 10000)
+    public void recentFindsAMessageByItsIdentity() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        WorkstreamMailbox.Message named = mailbox.append("report", "job:a", "a", null, "m-1");
+        mailbox.append("report", "job:a", "a", null);
+
+        assertEquals(named.seq(), mailbox.recent("m-1").seq());
+        assertNull(mailbox.recent("m-2"));
+        assertNull(mailbox.recent(null));
+        assertNull(mailbox.recent(""));
+    }
+
+    /** A message older than the dedupe window is no longer a retry candidate. */
+    @Test(timeout = 10000)
+    public void recentIgnoresMessagesOutsideTheDedupeWindow() throws IOException {
+        File file = directory().resolve(WORKSTREAM + ".ndjson").toFile();
+        long stale = System.currentTimeMillis() - WorkstreamMailbox.DEDUPE_WINDOW_MILLIS - 1000;
+        Files.write(file.toPath(), (new WorkstreamMailbox.Message(
+                1, stale, "job:a", "a", null, "old report", "m-1").toJson() + "\n")
+                .getBytes(StandardCharsets.UTF_8));
+
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, file);
+        assertEquals(1, mailbox.size());
+        assertNull(mailbox.recent("m-1"));
+    }
+
+    /** The identity survives the round trip through the backing file. */
+    @Test(timeout = 10000)
+    public void messageIdIsPersisted() throws IOException {
+        File file = directory().resolve(WORKSTREAM + ".ndjson").toFile();
+        new WorkstreamMailbox(WORKSTREAM, file).append("report", "job:a", "a", null, "m-1");
+
+        WorkstreamMailbox reloaded = new WorkstreamMailbox(WORKSTREAM, file);
+        assertEquals("m-1", reloaded.read(0, null, 0).messages().get(0).messageId());
+        assertEquals(1, reloaded.recent("m-1").seq());
+    }
+
     /** A read starting from a cursor returns only what follows it. */
     @Test(timeout = 10000)
     public void readSinceReturnsOnlyLaterMessages() {
@@ -296,6 +334,37 @@ public class WorkstreamMailboxTest extends TestSuiteBase {
 
         registry.mailboxFor("one").append("hello", "job:a", "a", null);
         assertEquals(1, registry.mailboxFor("one").read(0, null, 0).messages().size());
+    }
+
+    /** {@code appendIfNew} appends a message with a fresh identity and reports it as new. */
+    @Test(timeout = 10000)
+    public void appendIfNewAppendsAFreshIdentity() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+
+        WorkstreamMailbox.Dedupe dedupe = mailbox.appendIfNew("report", "job:a", "a", null, "m-1");
+
+        assertTrue(dedupe.appended());
+        assertEquals(1, dedupe.message().seq());
+        assertEquals(1, mailbox.head());
+    }
+
+    /**
+     * {@code appendIfNew} reports a repeated identity as not newly appended and
+     * does not grow the log, matching the two-call {@code recent}/{@code append}
+     * sequence it replaces — but as a single atomic operation, closing the
+     * window in which two concurrent callers could otherwise both observe no
+     * earlier match and both append.
+     */
+    @Test(timeout = 10000)
+    public void appendIfNewRepeatsAnExistingIdentityWithoutAppending() {
+        WorkstreamMailbox mailbox = new WorkstreamMailbox(WORKSTREAM, null);
+        WorkstreamMailbox.Dedupe first = mailbox.appendIfNew("report", "job:a", "a", null, "m-1");
+
+        WorkstreamMailbox.Dedupe retry = mailbox.appendIfNew("report", "job:a", "a", null, "m-1");
+
+        assertFalse(retry.appended());
+        assertEquals(first.message().seq(), retry.message().seq());
+        assertEquals(1, mailbox.head());
     }
 
     /** The wire form of a delivery names both the messages and the next cursor. */

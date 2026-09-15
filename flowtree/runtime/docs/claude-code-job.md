@@ -755,7 +755,7 @@ The class defines three compiled `Pattern` constants:
 
 ## Output Metric Extraction
 
-After the Claude Code process exits, `extractOutputMetrics(String jsonOutput)` parses the output to extract structured metrics. Claude Code with `--output-format json` emits NDJSON (newline-delimited JSON), where each line is a complete JSON object representing a turn or the final result.
+After the Claude Code process exits, `extractOutputMetrics(String jsonOutput)` parses the output to extract structured metrics. Claude Code with `--output-format stream-json` emits NDJSON (newline-delimited JSON), where each line is a complete JSON object representing an event or the final result.
 
 ### NDJSON Structure
 
@@ -963,7 +963,7 @@ This means the `set()` method must handle all keys that `encode()` produces. The
 The Claude Code command is constructed in `doWork()` as a `List<String>`. The final command has this structure:
 
 ```
-claude -p <instruction-prompt> --output-format json --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
+claude -p <instruction-prompt> --output-format stream-json --verbose --allowedTools <tools> --max-turns <N> [--max-budget-usd <N.NN>] --mcp-config <json>
 ```
 
 ### Arguments in Detail
@@ -972,9 +972,11 @@ claude -p <instruction-prompt> --output-format json --allowedTools <tools> --max
 
 The `-p` flag invokes Claude Code in non-interactive (headless) mode. The argument is the full instruction prompt string produced by `buildInstructionPrompt()`, which wraps the user's prompt with operational context. This is passed as a single string argument to the process.
 
-#### `--output-format json`
+#### `--output-format stream-json --verbose`
 
-Requests NDJSON output (one JSON object per line). This enables structured metric extraction after the process completes. Without this flag, Claude Code would produce human-readable text output.
+Requests the event stream: one JSON object per line as the session runs — `system`/`init`, each `assistant` turn (including its `tool_use` blocks), each `user` turn carrying `tool_result` blocks, and a final `result` object with the session metrics. The CLI requires `--verbose` alongside `stream-json` in print mode.
+
+The single-object `json` form is deliberately not used: it writes nothing until the session ends, which leaves the inactivity watchdog with no output to observe and turns it into a hard per-session wall clock. The event stream is also what `ClaudeCodeRunner.classifyActivity` reads to tell the watchdog when the agent is waiting on an MCP tool rather than hung (see `AgentActivityTracker`).
 
 #### `--allowedTools <tools>`
 
@@ -1034,15 +1036,16 @@ The command-line arguments are added to the `List<String>` in a specific order, 
 2. `-p` (headless prompt flag)
 3. The instruction prompt string
 4. `--output-format`
-5. `json`
-6. `--allowedTools`
-7. The comma-separated tools string
-8. `--max-turns`
-9. The turn limit as a string
-10. `--max-budget-usd` (conditional)
-11. The budget as a formatted string (conditional)
-12. `--mcp-config`
-13. The JSON config string
+5. `stream-json`
+6. `--verbose`
+7. `--allowedTools`
+8. The comma-separated tools string
+9. `--max-turns`
+10. The turn limit as a string
+11. `--max-budget-usd` (conditional)
+12. The budget as a formatted string (conditional)
+13. `--mcp-config`
+14. The JSON config string
 
 ### Complete Example Command
 
@@ -1053,7 +1056,7 @@ claude -p "You are working autonomously as a coding agent...
 --- BEGIN USER REQUEST ---
 Fix the memory leak in CacheManager
 --- END USER REQUEST ---" \
---output-format json \
+--output-format stream-json --verbose \
 --allowedTools Read,Edit,Write,Bash,Glob,Grep,TaskOutput,TaskStop,mcp__ar-manager__send_message,mcp__ar-manager__memory_recall,mcp__ar-manager__github_pr_find,mcp__ar-manager__github_pr_review_comments,mcp__ar-manager__github_pr_conversation,mcp__ar-manager__github_pr_reply,mcp__ar-manager__memory_store,mcp__ar-manager__memory_namespaces,mcp__ar-manager__workstream_context,mcp__ar-manager__consult \
 --max-turns 50 \
 --max-budget-usd 10.00 \

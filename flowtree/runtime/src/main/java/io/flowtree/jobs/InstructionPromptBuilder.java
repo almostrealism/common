@@ -122,6 +122,14 @@ public class InstructionPromptBuilder {
     private int inactivityRestartAttempt;
 
     /**
+     * The workstream conversation a relaunched collaborative session missed,
+     * rendered by {@link ConversationCatchUp}. When non-empty, a preamble
+     * quotes it above all content so the session acts on the newest
+     * instruction rather than restarting the original one.
+     */
+    private String conversationCatchUp;
+
+    /**
      * Refutation findings from the falsification phase. When non-empty, a
      * warning is prepended above all content telling the restarted primary
      * session that a load-bearing claim it relied on was refuted, with the
@@ -384,6 +392,23 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the conversation a relaunched collaborative session missed.
+     *
+     * <p>When non-empty, a preamble quotes the messages that arrived after the
+     * job's own last message and tells the agent to act on the newest
+     * instruction rather than redo work it was told to skip. Rendered by
+     * {@link ConversationCatchUp#render()}.</p>
+     *
+     * @param catchUp the rendered messages, or {@code null}/empty when there
+     *                are none or this is the job's first session
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setConversationCatchUp(String catchUp) {
+        this.conversationCatchUp = catchUp;
+        return this;
+    }
+
+    /**
      * Sets the falsification refutation findings to prepend above all content
      * when the falsification phase bounces the job back to primary.
      *
@@ -455,6 +480,7 @@ public class InstructionPromptBuilder {
      * <ol start="0">
      *   <li>Git Tampering Violation Warning -- restart preamble (when {@link #setGitTamperingViolation} is non-empty)</li>
      *   <li>Inactivity Timeout Warning -- restart preamble (when {@link #setInactivityRestartAttempt} is &gt; 0)</li>
+     *   <li>Conversation Catch-Up -- restart preamble (when {@link #setConversationCatchUp} is non-empty)</li>
      *   <li>Enforcement Retry Warning -- restart preamble (when {@code enforcementAttempt} is &gt; 0 and the prompt is not for a correction session)</li>
      * </ol>
      * <ol>
@@ -574,6 +600,24 @@ public class InstructionPromptBuilder {
             sb.append("---\n\n");
         }
 
+        // Conversation catch-up -- the newest instruction supersedes the
+        // original request's preparatory steps.
+        if (conversationCatchUp != null && !conversationCatchUp.isEmpty()) {
+            sb.append("## !! SESSION RESTARTED -- MESSAGES ARRIVED WHILE YOU WERE DOWN !!\n\n");
+            sb.append("You are a collaborative session that was relaunched. Your collaborator ");
+            sb.append("kept talking to you through the workstream conversation while you were ");
+            sb.append("down. Everything after your own last message is quoted below, oldest ");
+            sb.append("first:\n\n");
+            sb.append(conversationCatchUp).append("\n");
+            sb.append("**Act on the newest instruction.** Do NOT restart the preparatory ");
+            sb.append("steps of the original request if a message says they are done or ");
+            sb.append("tells you to skip them. Confirm with `send_message` what you are about ");
+            sb.append("to do, then do it. If the newest message asked a question, answer it ");
+            sb.append("first. Call `await_message` with `since=0` only if you need the ");
+            sb.append("history before these messages; otherwise continue from here.\n\n");
+            sb.append("---\n\n");
+        }
+
         // Enforcement retry warning -- prepended above everything else so the
         // agent sees it immediately.  This is used when the job has been
         // restarted because a previous attempt produced no code changes.
@@ -683,6 +727,12 @@ public class InstructionPromptBuilder {
             sb.append("`while`/`until` loop -- it will hang until the turn budget is exhausted. ");
             sb.append("If you find yourself reaching for `curl` to talk to a service in your ");
             sb.append("allowed-tools list, stop -- use the MCP tool instead.\n\n");
+            sb.append("Workspace credentials come from the `ar-secrets` MCP server ");
+            sb.append("(`secret_list_names`, `secret_render_file`), which writes the rendered ");
+            sb.append("file into this machine's filesystem. The ar-manager ");
+            sb.append("`workspace_secret_*` tools are operator tools that write on the ");
+            sb.append("ar-manager host; they are not granted to this session, and a denial ");
+            sb.append("of one is not a configuration problem to report -- use `ar-secrets`.\n\n");
 
             if (enforceChanges && !correctionSession) {
                 // When changes are enforced, replace the permissive sections with
@@ -1055,6 +1105,13 @@ public class InstructionPromptBuilder {
         sb.append("yourself.\n");
         sb.append("5. When you are told to finish, stop waiting and complete the session ");
         sb.append("normally. Leave the state of any detached work in a memory before you ");
-        sb.append("go.\n\n");
+        sb.append("go.\n");
+        sb.append("6. You see only what has been pushed to `origin`; your collaborator's ");
+        sb.append("working tree may be ahead of it. When they say a fix exists locally, ");
+        sb.append("take their word for it and say which commit you checked (`git rev-parse ");
+        sb.append("--short HEAD`) rather than re-verifying and reporting it \"still ");
+        sb.append("unfixed\". Wait for the full `await_message` cap (`timeout_seconds=1500`) ");
+        sb.append("per call; this session's tool timeout has been raised to allow it, and ");
+        sb.append("fewer, longer waits cost fewer turns.\n\n");
     }
 }

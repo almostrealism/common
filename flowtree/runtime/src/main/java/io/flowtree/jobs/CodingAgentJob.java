@@ -965,7 +965,28 @@ public class CodingAgentJob extends GitManagedJob {
                 .setInactivityRestartAttempt(restartGovernor.getInactivityRestartAttempt())
                 .setFalsificationFindings(falsificationFindings)
                 .setCollaborative(collaborative)
+                .setConversationCatchUp(conversationCatchUp())
                 .build();
+    }
+
+    /**
+     * Renders the conversation a relaunched collaborative session missed, or
+     * {@code null} when this is the job's first attempt or the job is not
+     * collaborative. Every restart path — inactivity, enforcement retry,
+     * guardrail violation — loses the conversation the same way, so the test
+     * is simply whether an attempt has run before: either an earlier logical
+     * session, or an earlier attempt within the current session's inactivity
+     * retry loop (an inactivity relaunch does not increment
+     * {@link RestartGovernor#getSessionsLaunched()}).
+     *
+     * @return the rendered catch-up block, or {@code null}
+     */
+    String conversationCatchUp() {
+        if (!collaborative) return null;
+        boolean firstAttemptOfFirstSession = restartGovernor.getSessionsLaunched() <= 1
+                && restartGovernor.getInactivityRestartAttempt() == 0;
+        if (firstAttemptOfFirstSession) return null;
+        return new ConversationCatchUp(resolveWorkstreamUrl(), getTaskId()).render();
     }
 
     /**
@@ -1221,8 +1242,10 @@ public class CodingAgentJob extends GitManagedJob {
 
         Phase currentPhase = resolveCurrentPhase();
         AgentRunner runner = resolveRunner(currentPhase);
-        harnessStatus().phaseEntry(currentPhase, runner.getName(),
-                resolveEffectivePhaseConfig(currentPhase));
+        String placement = describePlacement();
+        PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
+        harnessStatus().phaseEntry(currentPhase, runner.getName(), effective, placement);
+        harnessStatus().recordPhaseEntry(currentPhase, runner.getName(), effective, placement);
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
@@ -1235,7 +1258,6 @@ public class CodingAgentJob extends GitManagedJob {
             log("enforce_changes retry: restarting from PRIMARY (retry " + enforcementAttempt + ")");
         }
 
-        PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
         String modelKey = effective.toModelKey();
 
         accumulator.setOutput("");

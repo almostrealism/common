@@ -96,6 +96,19 @@ public enum Phase {
     }
 
     /**
+     * Names the lifecycle state a job is in once it has entered or finished
+     * this phase. This is what the controller records on the job so a poller
+     * can tell "primary still running" from "primary done, review running"
+     * while the job's status is still {@code STARTED}.
+     *
+     * @param complete {@code true} when this phase has finished
+     * @return the state, e.g. {@code "primary"} or {@code "primary complete"}
+     */
+    public String lifecycleState(boolean complete) {
+        return complete ? wireName + " complete" : wireName;
+    }
+
+    /**
      * Resolves a wire name back to its {@link Phase} value.
      *
      * @param wireName the kebab-case identifier produced by {@link #wireName()}

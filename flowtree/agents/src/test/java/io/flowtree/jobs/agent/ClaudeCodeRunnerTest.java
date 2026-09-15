@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs.agent;
 
+import io.flowtree.jobs.AgentActivity;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -90,7 +91,8 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         // Binary first.
         assertEquals("claude", cmd.get(0));
         assertFlagFollows(cmd, "-p", "do the thing");
-        assertFlagFollows(cmd, "--output-format", "json");
+        assertFlagFollows(cmd, "--output-format", "stream-json");
+        assertTrue("stream-json in print mode requires --verbose", cmd.contains("--verbose"));
         assertFlagFollows(cmd, "--allowedTools", "Read,Edit");
         assertFlagFollows(cmd, "--max-turns", "7");
         assertFlagFollows(cmd, "--max-budget-usd", "2.50");
@@ -249,6 +251,48 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         assertNotNull(b);
         // Each call yields a distinct instance — the supplier is invoked each time.
         assertTrue("registry should hand out fresh instances per call", a != b);
+    }
+
+    /** An {@code assistant} event opens one call per {@code tool_use} block, carrying id and name. */
+    @Test(timeout = 5000)
+    public void classifyActivityOpensCallsFromAssistantToolUseBlocks() {
+        String line = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":["
+                + "{\"type\":\"text\",\"text\":\"running\"},"
+                + "{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"mcp__ar-test-runner__start_test_run\",\"input\":{}},"
+                + "{\"type\":\"tool_use\",\"id\":\"toolu_2\",\"name\":\"Bash\",\"input\":{}}]}}";
+
+        List<AgentActivity> found = new ClaudeCodeRunner().classifyActivity(line);
+
+        assertEquals(2, found.size());
+        assertTrue(found.get(0).started());
+        assertEquals("toolu_1", found.get(0).toolUseId());
+        assertTrue(found.get(0).isMcpTool());
+        assertEquals("toolu_2", found.get(1).toolUseId());
+        assertFalse(found.get(1).isMcpTool());
+    }
+
+    /** A {@code user} event closes the call named by each {@code tool_result} block. */
+    @Test(timeout = 5000)
+    public void classifyActivityClosesCallsFromUserToolResultBlocks() {
+        String line = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":["
+                + "{\"tool_use_id\":\"toolu_1\",\"type\":\"tool_result\",\"content\":\"ok\"}]}}";
+
+        List<AgentActivity> found = new ClaudeCodeRunner().classifyActivity(line);
+
+        assertEquals(1, found.size());
+        assertFalse(found.get(0).started());
+        assertEquals("toolu_1", found.get(0).toolUseId());
+    }
+
+    /** Lines that are not tool boundaries — other events, prose, malformed JSON — yield nothing. */
+    @Test(timeout = 5000)
+    public void classifyActivityIgnoresLinesWithoutToolBoundaries() {
+        ClaudeCodeRunner runner = new ClaudeCodeRunner();
+        assertTrue(runner.classifyActivity("{\"type\":\"system\",\"subtype\":\"init\"}").isEmpty());
+        assertTrue(runner.classifyActivity("{\"type\":\"result\",\"result\":\"tool_use\"}").isEmpty());
+        assertTrue(runner.classifyActivity("not json \"tool_use\"").isEmpty());
+        assertTrue(runner.classifyActivity("{\"type\":\"assistant\",\"tool_use\":").isEmpty());
+        assertTrue(runner.classifyActivity(null).isEmpty());
     }
 
     /**

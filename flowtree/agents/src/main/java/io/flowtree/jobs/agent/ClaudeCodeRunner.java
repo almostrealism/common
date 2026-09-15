@@ -20,6 +20,8 @@ import static io.flowtree.JsonFieldExtractor.MAPPER;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.jobs.AgentActivity;
+import io.flowtree.jobs.AgentActivityTracker;
 import io.flowtree.jobs.AgentProcessRunner;
 import io.flowtree.jobs.TmuxSession;
 import org.almostrealism.io.ConsoleFeatures;
@@ -40,14 +42,20 @@ import java.util.Set;
  *
  * <p>This class owns every Claude-specific concern that used to live in the
  * orchestrator: the {@code claude -p ... --allowedTools ... --output-format
- * json ...} command construction, model and effort validation, NDJSON output
- * parsing, output-file dumping, and {@code AR_AGENT_ACTIVITY} environment
- * propagation. The orchestrator only hands over a runner-agnostic
+ * stream-json ...} command construction, model and effort validation, NDJSON
+ * output parsing, output-file dumping, and {@code AR_AGENT_ACTIVITY}
+ * environment propagation. The orchestrator only hands over a runner-agnostic
  * {@link AgentRunRequest} and receives a {@link AgentRunResult} back.</p>
  *
  * <p>The actual subprocess management — starting the process, reading stdout
  * with an inactivity watchdog, surviving stale processes — is delegated to
  * {@link AgentProcessRunner}, which is runner-agnostic.</p>
+ *
+ * <p>Output is requested as {@code stream-json} rather than {@code json}
+ * because the single-object form is written only when the session ends, which
+ * leaves the inactivity watchdog with nothing to observe for the whole run.
+ * The event stream is also what {@link #classifyActivity} reads to tell the
+ * watchdog when the agent is waiting on an MCP tool rather than hung.</p>
  *
  * @author Michael Murray
  */
@@ -170,6 +178,8 @@ public class ClaudeCodeRunner implements AgentRunner {
                 useTmux,
                 request.getInactivityTimeoutMillis(),
                 request.getTaskId(),
+                null,
+                new AgentActivityTracker(this::classifyActivity),
                 logger);
 
         String rawOutput = processResult.output();
@@ -216,7 +226,9 @@ public class ClaudeCodeRunner implements AgentRunner {
         command.add("-p");
         command.add(request.getPrompt() != null ? request.getPrompt() : "");
         command.add("--output-format");
-        command.add("json");
+        command.add("stream-json");
+        // The CLI refuses stream-json in print mode without it.
+        command.add("--verbose");
         command.add("--allowedTools");
         command.add(request.getAllowedTools() != null ? request.getAllowedTools() : "");
         command.add("--max-turns");
@@ -240,6 +252,52 @@ public class ClaudeCodeRunner implements AgentRunner {
         command.add("--mcp-config");
         command.add(request.getMcpConfigJson() != null ? request.getMcpConfigJson() : "{\"mcpServers\":{}}");
         return command;
+    }
+
+    /**
+     * Reads the tool-call boundaries out of one line of {@code stream-json}
+     * output. An {@code assistant} event opens one call per {@code tool_use}
+     * block it carries; a {@code user} event closes one per {@code tool_result}
+     * block. Every other line — and any line that is not well-formed JSON —
+     * yields nothing.
+     *
+     * @param line one line of the Claude Code event stream
+     * @return the boundaries the line carries, oldest first; empty when none
+     */
+    public List<AgentActivity> classifyActivity(String line) {
+        if (line == null || !line.startsWith("{")
+                || (!line.contains("\"tool_use\"") && !line.contains("\"tool_result\""))) {
+            return Collections.emptyList();
+        }
+
+        JsonNode root;
+
+        try {
+            root = MAPPER.readTree(line);
+        } catch (IOException e) {
+            return Collections.emptyList();
+        }
+
+        String type = JsonFieldExtractor.getTextOrNull(root, "type");
+        boolean opening = "assistant".equals(type);
+        if (!opening && !"user".equals(type)) return Collections.emptyList();
+
+        List<AgentActivity> found = new ArrayList<>();
+
+        for (JsonNode block : root.path("message").path("content")) {
+            String blockType = JsonFieldExtractor.getTextOrNull(block, "type");
+
+            if (opening && "tool_use".equals(blockType)) {
+                found.add(AgentActivity.started(
+                        JsonFieldExtractor.getTextOrNull(block, "id"),
+                        JsonFieldExtractor.getTextOrNull(block, "name")));
+            } else if (!opening && "tool_result".equals(blockType)) {
+                found.add(AgentActivity.finished(
+                        JsonFieldExtractor.getTextOrNull(block, "tool_use_id")));
+            }
+        }
+
+        return found;
     }
 
     /**
