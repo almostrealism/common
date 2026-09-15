@@ -31,7 +31,7 @@ if __name__ != "__main__" and not __package__:
     if HERE not in sys.path:
         sys.path.insert(0, HERE)
 
-from exfil_bash_lex import SHELLS, GuardError
+from exfil_bash_lex import SHELLS, GuardError, match_flag
 from exfil_bash_network import _scan_code, _scan_shell_script
 
 
@@ -141,6 +141,12 @@ def _interpreter_family(prog):
     return None
 
 
+def _match_flag(tok, flags, allow_attached=True):
+    """Wrap the shared ``match_flag`` so callers in this module can keep
+    the leading underscore that signals "module-private"."""
+    return match_flag(tok, flags, allow_attached)
+
+
 _URI_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
@@ -210,38 +216,63 @@ def _check_interpreter(prog, argv, piped, bodies, ctx, depth, analyze_command):
     family = _interpreter_family(prog)
     value_flags = _INTERPRETER_VALUE_FLAGS.get(family, frozenset())
     preload_flags = _INTERPRETER_PRELOAD_FLAGS.get(family, frozenset())
+    # The generic code/module fallback below is shared by every interpreter,
+    # including ones this module has no option grammar for (php, lua,
+    # tclsh, Rscript, ...). Attached-form matching is only enabled for the
+    # four families above, whose actual short-flag grammar is known; for
+    # the rest it would risk misreading an unrelated option (a classpath
+    # flag, say) as an attached inline-code flag.
+    attached_ok = family is not None
     code_seen = False
     i = 0
     while i < len(args):
         tok = args[i]
         # Ruby's -C changes the working directory before the script and any
         # -r preload run, so subsequent relative paths resolve against the
-        # new directory rather than being skipped like an ordinary value flag.
-        if family == "ruby" and tok == "-C":
-            if i + 1 < len(args):
-                ctx = ctx.at(_resolve_dir(args[i + 1], ctx.command_cwd))
-            i += 2
-            continue
+        # new directory rather than being skipped like an ordinary value
+        # flag. Its argument can be attached (`-Cdir`) as well as separate.
+        if family == "ruby":
+            flag, value = _match_flag(tok, frozenset({"-C"}))
+            if flag:
+                target = value if value is not None else (args[i + 1] if i + 1 < len(args) else None)
+                if target is not None:
+                    ctx = ctx.at(_resolve_dir(target, ctx.command_cwd))
+                i += 1 if value is not None else 2
+                continue
         # `-r` is inline code to php and a preload to node and ruby, so the
         # family's own tables are consulted before the shared code flags.
-        if tok in value_flags:
-            i += 2
+        flag, value = _match_flag(tok, value_flags)
+        if flag:
+            i += 1 if value is not None else 2
             continue
-        if tok in preload_flags:
-            if i + 1 < len(args):
-                _scan_preload(prog, args[i + 1], ctx)
-            i += 2
+        flag, value = _match_flag(tok, preload_flags)
+        if flag:
+            preload = value if value is not None else (args[i + 1] if i + 1 < len(args) else None)
+            if preload is not None:
+                _scan_preload(prog, preload, ctx)
+            i += 1 if value is not None else 2
             continue
-        if tok in _INTERPRETER_CODE_FLAGS or (prog in ("perl",) and tok.startswith("-M")):
-            code = tok[2:] if tok.startswith("-M") else (args[i + 1] if i + 1 < len(args) else "")
+        flag, value = _match_flag(tok, _INTERPRETER_CODE_FLAGS, allow_attached=attached_ok)
+        if flag or (prog in ("perl",) and tok.startswith("-M")):
+            if not flag:
+                code = tok[2:]
+                i += 1
+            elif value is not None:
+                code = value
+                i += 1
+            else:
+                code = args[i + 1] if i + 1 < len(args) else ""
+                i += 2
             _scan_code(code, f"{prog} inline program")
             code_seen = True
-            i += 2 if not tok.startswith("-M") else 1
             continue
-        if tok == _INTERPRETER_MODULE_FLAG and i + 1 < len(args):
-            if args[i + 1] in NETWORK_MODULES:
-                raise _GuardError(f"{prog} -m {args[i + 1]} is a network module; denied")
-            return f"{prog}:-m {args[i + 1]}"
+        flag, value = _match_flag(tok, frozenset({_INTERPRETER_MODULE_FLAG}), allow_attached=attached_ok)
+        if flag:
+            module = value if value is not None else (args[i + 1] if i + 1 < len(args) else None)
+            if module is not None:
+                if module in NETWORK_MODULES:
+                    raise _GuardError(f"{prog} -m {module} is a network module; denied")
+                return f"{prog}:-m {module}"
         if prog == "php" and tok == "-S":
             raise _GuardError("php -S serves files over the network; denied")
         if tok == "-":

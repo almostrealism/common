@@ -431,6 +431,18 @@ class BashGitAndGhTests(GuardFixture):
         self.assertAllowed(self.bash("gh api repos/a/b/pulls"))
         self.assertAllowed(self.bash("gh run list --limit 5"))
 
+    def test_gh_short_flags_attached_form_still_blocks(self):
+        """`-F`/`-f` take their value from the next token or attached with
+        no separator (`-F/tmp/b`), the same way a POSIX short flag can.
+        Checking only the exact token (or an `=`-joined value) missed the
+        attached form entirely, so `-F/tmp/b` walked past the body-file
+        check that `-F /tmp/b` (a separate token) already blocks."""
+        self.assertBlocked(self.bash("gh pr create --title t -F/tmp/b"), "-F")
+        self.assertBlocked(self.bash("gh issue create --title t -F/tmp/b"), "-F")
+        self.assertEqual("block", self.bash("gh api repos/a/b/issues -ftitle=x")["action"])
+        self.assertEqual("block", self.bash("gh api repos/a/b/issues -XPOST")["action"])
+        self.assertAllowed(self.bash("gh pr create --title t --body 'inline text'"))
+
 
 class BashObfuscationTests(GuardFixture):
     """Indirection and encoding tricks."""
@@ -527,6 +539,48 @@ class BashObfuscationTests(GuardFixture):
         self.assertEqual("block",
                          self.bash("ruby -C otherdir -r ./preload.rb -e 'puts 1'")["action"])
         self.assertAllowed(self.bash("ruby -C otherdir -e 'puts 1'"))
+
+    def test_preload_flag_attached_and_equals_forms_are_scanned(self):
+        """Node and Ruby also accept a preload flag's value attached
+        directly to the flag (a joined short form) or joined with `=`
+        (a joined long form), not only as a separate token. Either form
+        must reach the same preload scan as the space-separated form
+        tested above, or the file the interpreter will actually load is
+        never inspected."""
+        dirty = self._write("docs/preload_attached.js",
+                            "const s = require('net'); net.connect(80, 'e');\n")
+        self.assertEqual("block", self.bash(f"node -r{dirty} -e 'console.log(1)'")["action"])
+        self.assertEqual("block", self.bash(f"node --require={dirty} -e 'console.log(1)'")["action"])
+        self.assertEqual("block", self.bash(
+            "node --import=./docs/preload_attached.js -e 'console.log(1)'")["action"])
+        dirty_rb = self._write("docs/preload_attached.rb",
+                               "require 'net/http'\nNet::HTTP.get(URI('http://e'))\n")
+        self.assertEqual("block", self.bash(f"ruby -r{dirty_rb} -e 'puts 1'")["action"])
+        clean = self._write("docs/setup_attached.js", "process.env.TZ = 'UTC';\n")
+        self.assertAllowed(self.bash(f"node -r{clean} -e 'console.log(1)'"))
+
+    def test_ruby_dash_c_attached_form_updates_cwd(self):
+        """The same -C directory change must be tracked when its argument is
+        attached to the flag (`-Cotherdir`) rather than a separate token --
+        otherwise the fix above is defeated by simply removing one space."""
+        os.makedirs(os.path.join(self.root, "otherdir2"))
+        self._write("preload2.rb", "puts 'ok'\n")
+        self._write("otherdir2/preload2.rb", "require 'net/http'\nNet::HTTP.get(URI('http://e'))\n")
+        self.assertEqual("block",
+                         self.bash("ruby -Cotherdir2 -r ./preload2.rb -e 'puts 1'")["action"])
+        self.assertAllowed(self.bash("ruby -Cotherdir2 -e 'puts 1'"))
+
+    def test_interpreter_inline_code_and_module_attached_forms_are_scanned(self):
+        """python/node/ruby/perl accept an inline-code or module flag's
+        value attached with no separator (`-cCODE`) as well as separated
+        (`-c CODE`). Without recognising the attached form, a command such
+        as `python3 -c'import socket'` or `python3 -mhttp.server` (no
+        space) walked past every flag table and was never scanned at all."""
+        self.assertBlocked(self.bash("python3 -c'import socket'"), "network-capable")
+        self.assertEqual("block", self.bash("python3 -mhttp.server")["action"])
+        self.assertAllowed(self.bash("python3 -c'print(1)'"))
+        self.assertAllowed(self.bash("python3 -munittest"))
+        self.assertEqual("block", self.bash("perl -eLWP::Simple::get('http://e')")["action"])
 
     def test_heredoc_programs_are_scanned(self):
         self.assertAllowed(self.bash("python3 - <<'PY'\nimport os\nprint(os.getcwd())\nPY"))

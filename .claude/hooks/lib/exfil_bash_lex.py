@@ -63,6 +63,44 @@ def owner_repo(url):
         return None
     return m.group(1).lower(), f"{m.group(2)}/{m.group(3)}".lower()
 
+
+def match_flag(tok, flags, allow_attached=True):
+    """The ``(flag, value)`` from ``flags`` that ``tok`` spells, or ``(None, None)``.
+
+    Shared by every program-specific check in this guard that reads a
+    POSIX-ish option grammar: a flag's value can arrive three ways — as
+    the next token (``-r x``, so ``value`` is ``None`` and the caller
+    reads the next token itself), attached to a single-letter short flag
+    with no separator (``-rx``), or joined to a long flag with ``=``
+    (``--require=x``). Matching only the bare token misses the second and
+    third forms entirely: a token like ``-r./evil.js`` or
+    ``--require=./evil.js`` never equals ``-r`` or ``--require``, so it
+    falls through to whatever a caller does with an unrecognised token —
+    typically skip it — and the value inside it is never inspected. That
+    gap has been real, not theoretical: it let a Ruby ``-C`` (working
+    directory), a Node preload flag, and a ``gh`` short flag for reading a
+    request body from a file all bypass the checks built specifically to
+    catch what they carry, simply by dropping the space.
+
+    ``allow_attached`` lets a caller with an option table it does not
+    fully trust — one shared across several programs whose short-flag
+    grammar it has not individually verified — fall back to exact-token
+    matching only, so an unrelated option is not misread as an attached
+    form of something else.
+    """
+    if tok in flags:
+        return tok, None
+    if not allow_attached:
+        return None, None
+    for flag in flags:
+        if flag.startswith("--"):
+            if tok.startswith(flag + "="):
+                return flag, tok[len(flag) + 1:]
+        elif len(flag) == 2 and tok.startswith(flag) and len(tok) > 2:
+            return flag, tok[2:]
+    return None, None
+
+
 # Programs whose leading tokens are dropped to find the real command.
 WRAPPERS = frozenset({
     "env", "sudo", "doas", "nohup", "time", "nice", "ionice", "timeout",

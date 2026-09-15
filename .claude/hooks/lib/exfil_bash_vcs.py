@@ -20,7 +20,7 @@ if __name__ != "__main__" and not __package__:
     if HERE not in sys.path:
         sys.path.insert(0, HERE)
 
-from exfil_bash_lex import GuardError, owner_repo
+from exfil_bash_lex import GuardError, match_flag, owner_repo
 
 
 # `gh` subcommands allowed at all, and the flags that turn an allowed one
@@ -41,6 +41,7 @@ GH_ALLOWED_SECOND = {
 }
 GH_BODY_FILE_FLAGS = frozenset({"--body-file", "-F"})
 GH_API_BODY_FLAGS = frozenset({"-f", "-F", "--field", "--raw-field", "--input"})
+GH_API_METHOD_FLAGS = frozenset({"-X", "--method"})
 
 GIT_BLOCKED_SUBCOMMANDS = frozenset({
     "send-email", "svn", "p4", "daemon", "instaweb", "credential",
@@ -157,16 +158,21 @@ def _check_gh(argv, ctx):
             raise _GuardError(f"gh {sub} {second} is not a sanctioned operation")
     if sub in ("pr", "issue"):
         for a in rest[1:]:
-            if a.split("=", 1)[0] in GH_BODY_FILE_FLAGS:
+            flag, _ = _match_flag(a, GH_BODY_FILE_FLAGS)
+            if flag:
                 raise _GuardError(f"gh {sub} with {a}: a body read from a file cannot be reviewed "
                                   f"in the transcript; pass --body with the text inline")
     if sub == "api":
         for k, a in enumerate(rest[1:], 1):
-            base = a.split("=", 1)[0]
-            if base in GH_API_BODY_FLAGS:
-                raise _GuardError(f"gh api with {base}: request bodies are denied")
-            if base in ("-X", "--method"):
-                value = a.split("=", 1)[1] if "=" in a else (rest[k + 1] if k + 1 < len(rest) else "")
+            flag, value = _match_flag(a, GH_API_BODY_FLAGS)
+            if flag:
+                raise _GuardError(f"gh api with {flag}: request bodies are denied")
+            flag, value = _match_flag(a, GH_API_METHOD_FLAGS)
+            if flag:
+                if value is None:
+                    value = rest[k + 1] if k + 1 < len(rest) else ""
+                elif value.startswith("="):
+                    value = value[1:]
                 if value.upper() not in ("GET", "HEAD"):
                     raise _GuardError(f"gh api with method {value}: mutating requests are denied")
     return f"gh:{sub}"
@@ -177,6 +183,12 @@ def _check_gh(argv, ctx):
 # from ``exfil_bash_lex``; this alias keeps any code that named the
 # local stub still working.
 _GuardError = GuardError
+
+
+def _match_flag(tok, flags):
+    """Wrap the shared ``match_flag`` so callers in this module can keep
+    the leading underscore that signals "module-private"."""
+    return match_flag(tok, flags)
 
 
 def _owner_repo(url):
