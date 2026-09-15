@@ -19,8 +19,12 @@ patterns. ``analyze_command`` is passed in by the caller because this
 module is the leaf of the bash dispatch tree — re-importing the
 dispatcher to reach it would form a cycle.
 """
+import base64
+import binascii
 import os
+import re
 import sys
+from urllib.parse import unquote, urlparse
 
 if __name__ != "__main__" and not __package__:
     HERE = os.path.dirname(os.path.abspath(__file__))
@@ -58,7 +62,10 @@ _INTERPRETER_VALUE_FLAGS = {
     "python": frozenset({"-W", "-X", "--check-hash-based-pycs"}),
     "node": frozenset({"--stack-size", "--title", "--input-type", "--conditions", "-C",
                        "--env-file", "--icu-data-dir", "--openssl-config"}),
-    "ruby": frozenset({"-I", "-E", "-C", "-F"}),
+    # Ruby's -C changes the working directory rather than merely configuring
+    # the run, so it is excluded here and handled in _check_interpreter,
+    # where it can update ctx for the flags that follow it.
+    "ruby": frozenset({"-I", "-E", "-F"}),
     "perl": frozenset({"-I"}),
 }
 
@@ -99,13 +106,13 @@ def _read_script(path, ctx):
     return data.decode("utf-8", "replace")
 
 
-def _follow_cd(argv, cwd):
-    """The working directory after ``cd``/``pushd``, or None if it cannot be known."""
-    args = [a for a in argv[1:] if not a.startswith("-")]
-    if not args:
-        return os.path.expanduser("~")
-    target = args[0]
-    if target == "-" or "$" in target or "`" in target:
+def _resolve_dir(target, cwd):
+    """A directory argument resolved against ``cwd``, or None if it cannot be known.
+
+    Shared by ``cd``/``pushd`` (``_follow_cd``) and any interpreter flag that
+    changes the working directory before it runs, such as Ruby's ``-C``.
+    """
+    if "$" in target or "`" in target:
         return None
     target = os.path.expanduser(target)
     if os.path.isabs(target):
@@ -113,6 +120,17 @@ def _follow_cd(argv, cwd):
     if cwd is None:
         return None
     return os.path.normpath(os.path.join(cwd, target))
+
+
+def _follow_cd(argv, cwd):
+    """The working directory after ``cd``/``pushd``, or None if it cannot be known."""
+    args = [a for a in argv[1:] if not a.startswith("-")]
+    if not args:
+        return os.path.expanduser("~")
+    target = args[0]
+    if target == "-":
+        return None
+    return _resolve_dir(target, cwd)
 
 
 def _interpreter_family(prog):
@@ -123,14 +141,63 @@ def _interpreter_family(prog):
     return None
 
 
+_URI_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
+
+
+def _decode_data_uri(payload):
+    """The code carried by a ``data:`` URI's payload (the part after the scheme)."""
+    header, _, data = payload.partition(",")
+    if header.endswith(";base64"):
+        try:
+            return base64.b64decode(data).decode("utf-8", "replace")
+        except (binascii.Error, ValueError):
+            raise _GuardError("data: preload has invalid base64 payload; denied")
+    return unquote(data)
+
+
+def _scan_preload_uri(prog, value, ctx):
+    """Scan a preload value spelled as a URI: ``data:``, ``file:``, ``node:`` or other.
+
+    ``--import``/``--loader`` accept ES module specifiers, not just paths and
+    package names. A ``data:`` URI carries its code inline -- unlike a package
+    name, that is not resolved through a path the guard declines to model, it
+    is the program itself, so it is decoded and scanned exactly as an inline
+    ``-e`` argument would be. A ``file:`` URI names a script the same way a
+    plain path does. ``node:`` names one of Node's own builtin modules, which
+    is not user-supplied code. Any other scheme (network schemes and the
+    rest) fetches code the guard cannot see before it runs, so it is refused
+    rather than silently passed.
+    """
+    scheme = urlparse(value).scheme.lower()
+    if scheme == "node":
+        return
+    if scheme == "data":
+        _scan_code(_decode_data_uri(value.split(":", 1)[1]), f"{prog} preload {value!r}")
+        return
+    if scheme == "file":
+        parsed = urlparse(value)
+        if parsed.netloc not in ("", "localhost"):
+            raise _GuardError(f"{prog} preload {value!r} names a remote file: authority; denied")
+        _scan_code(_read_script(unquote(parsed.path), ctx), f"{prog} preload {value!r}")
+        return
+    raise _GuardError(f"{prog} preload {value!r} loads code via {scheme!r}, which the guard "
+                      f"cannot inspect; denied")
+
+
 def _scan_preload(prog, value, ctx):
     """Scan a preloaded module that names a file; pass a package name.
 
     A value spelled as a path (``./x.js``, ``../x.rb``, ``~/x``, ``/x``) is
     held to the same rule as a script: it is read and scanned, and one that
-    cannot be read blocks. Any other value is a package name unless a file
-    of that name happens to sit in the working directory.
+    cannot be read blocks. A value spelled as a URI (``data:``, ``file:``,
+    ``node:``, ...) is handled by ``_scan_preload_uri`` -- Node's ``--import``
+    and ``--loader`` accept module specifiers in that form, and a bare
+    package name never contains a colon. Any other value is a package name
+    unless a file of that name happens to sit in the working directory.
     """
+    if _URI_SCHEME.match(value):
+        _scan_preload_uri(prog, value, ctx)
+        return
     spelled_as_path = value.startswith((".", "~", "/"))
     if not spelled_as_path:
         if ctx.command_cwd is None or not os.path.isfile(os.path.join(ctx.command_cwd, value)):
@@ -147,6 +214,14 @@ def _check_interpreter(prog, argv, piped, bodies, ctx, depth, analyze_command):
     i = 0
     while i < len(args):
         tok = args[i]
+        # Ruby's -C changes the working directory before the script and any
+        # -r preload run, so subsequent relative paths resolve against the
+        # new directory rather than being skipped like an ordinary value flag.
+        if family == "ruby" and tok == "-C":
+            if i + 1 < len(args):
+                ctx = ctx.at(_resolve_dir(args[i + 1], ctx.command_cwd))
+            i += 2
+            continue
         # `-r` is inline code to php and a preload to node and ruby, so the
         # family's own tables are consulted before the shared code flags.
         if tok in value_flags:
