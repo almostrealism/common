@@ -322,7 +322,7 @@ TraversalPolicy variableMatrix = new TraversalPolicy(false, false, 10, 20);</cod
                 <h3>Kernel and Index Sequences</h3>
                 <p>The kernel package provides abstractions for parallel computation patterns.</p>
                 <pre><code class="language-java">// Create an arithmetic sequence
-IndexSequence seq = ArithmeticIndexSequence.of(0, 1, 100); // 0, 1, 2, ..., 99
+IndexSequence seq = new ArithmeticIndexSequence(1, 1, 100); // 0, 1, 2, ..., 99
 
 // Generate expression for the sequence
 Expression&lt;Integer&gt; expr = seq.getExpression(index);
