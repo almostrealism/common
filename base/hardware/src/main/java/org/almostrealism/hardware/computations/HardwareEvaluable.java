@@ -340,6 +340,13 @@ public class HardwareEvaluable<T> implements
 	/**
 	 * Returns an evaluable that writes its results into the given destination memory bank.
 	 *
+	 * <p>When a {@link #getResultProcessor() result processor} is set, the destination-based
+	 * evaluable is wrapped in a new {@link HardwareEvaluable} carrying the same result
+	 * processor, exactly as {@link #evaluate(Object...)} and {@link #request(Object[], Semaphore,
+	 * Consumer)} already do: the underlying operation writes its unprocessed result into
+	 * {@code destination}, and the processor re-views that result before it is returned or
+	 * delivered. Without a result processor, the destination-based evaluable is returned as is.</p>
+	 *
 	 * @param destination Memory bank to write results into
 	 * @return Evaluable targeting the specified destination
 	 */
@@ -349,11 +356,17 @@ public class HardwareEvaluable<T> implements
 		}
 
 		Evaluable ev = getKernel().getValue();
-		if (ev instanceof HardwareEvaluable<?>) {
-			return ((HardwareEvaluable) ev).withDestination(destination);
+		Evaluable<T> destinationEvaluable = ev instanceof HardwareEvaluable<?> ?
+				((HardwareEvaluable) ev).withDestination(destination) :
+				new DestinationEvaluable<>(ev, destination);
+
+		if (resultProcessor == null) {
+			return destinationEvaluable;
 		}
 
-		return new DestinationEvaluable<>(ev, destination);
+		HardwareEvaluable<T> result = new HardwareEvaluable<>(() -> destinationEvaluable, null, null, isKernel);
+		result.setResultProcessor(resultProcessor);
+		return result;
 	}
 
 	public ContextSpecific<Evaluable<T>> getKernel() { return kernel; }

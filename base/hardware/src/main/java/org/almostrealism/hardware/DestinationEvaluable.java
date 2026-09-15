@@ -384,8 +384,6 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 *                   dispatch's completion, without any host wait
 	 * @throws UnsupportedOperationException if operation is not an accelerated kernel
 	 */
-	// TODO(review): no regression test covers two independent wrappers sharing this
-	// evaluable as their kernel, each calling request() with its own downstream consumer
 	@Override
 	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		if (operation instanceof AcceleratedOperation) {
