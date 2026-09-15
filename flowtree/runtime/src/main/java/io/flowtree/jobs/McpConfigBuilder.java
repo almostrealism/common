@@ -261,6 +261,14 @@ public class McpConfigBuilder implements ConsoleFeatures {
      */
     private static final int PUSHED_TOOLS_CONFIG_PREVIEW_LIMIT = 200;
 
+    /**
+     * Ceiling on a single MCP tool call inside an agent session, in
+     * milliseconds: thirty minutes, which covers the 25-minute
+     * {@code await_message} cap with margin while staying under the
+     * inactivity watchdog's own grace for an in-flight MCP call.
+     */
+    static final long MCP_TOOL_TIMEOUT_MILLIS = 30L * 60L * 1000L;
+
     /** Shared Jackson mapper for serializing the MCP config JSON. */
     private static final ObjectMapper mapper = new ObjectMapper();
 
@@ -666,7 +674,15 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * (notably {@code ar-secrets}) onto the agent {@link ProcessBuilder}'s
      * environment map. Sets {@code AR_WORKSTREAM_URL},
      * {@code AR_CONTROLLER_URL}, {@code AR_WORKSTREAM_ID}, and
-     * {@code AR_MANAGER_TOKEN} when their source values are non-empty.
+     * {@code AR_MANAGER_TOKEN} when their source values are non-empty, and
+     * {@code MCP_TOOL_TIMEOUT} unless the caller already set one.
+     *
+     * <p>{@code MCP_TOOL_TIMEOUT} is the Claude Code ceiling on a single tool
+     * call, in milliseconds. The CLI's default is sized for an interactive
+     * session and is shorter than the longest legitimate wait a job makes —
+     * {@code await_message} may block for up to its own cap (25 minutes) so a
+     * collaborating agent is not woken every few seconds. The value here is
+     * {@link #MCP_TOOL_TIMEOUT_MILLIS}, which covers that cap with margin.</p>
      *
      * @param env    the mutable environment map (typically
      *               {@code pb.environment()})
@@ -674,6 +690,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      *               may be {@code null} or empty
      */
     public void applyAgentEnvironment(Map<String, String> env, String wsUrl) {
+        env.putIfAbsent("MCP_TOOL_TIMEOUT", String.valueOf(MCP_TOOL_TIMEOUT_MILLIS));
         if (wsUrl != null && !wsUrl.isEmpty()) {
             env.put("AR_WORKSTREAM_URL", wsUrl);
             String base = DeduplicationSpawner.extractControllerBaseUrl(wsUrl);

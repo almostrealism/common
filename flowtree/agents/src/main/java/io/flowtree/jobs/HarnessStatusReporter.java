@@ -114,17 +114,66 @@ public final class HarnessStatusReporter {
      * announcements are emitted only for the {@link Phase#PRIMARY PRIMARY}
      * phase. Every other phase still publishes a phase-exit message via
      * {@link #phaseExit(Phase, AgentRunResult)} when it finishes, so the
-     * operator still sees when each phase ends.</p>
+     * operator still sees when each phase ends. A caller that also needs
+     * {@code /api/jobs/{id}} to reflect a non-PRIMARY phase immediately,
+     * rather than only once it exits, pairs this with
+     * {@link #recordPhaseEntry(Phase, String, PhaseConfig, String)}.</p>
      *
      * @param phase  the lifecycle phase being dispatched
      * @param runner the runner name that will run it
      * @param config the effective phase configuration (model/provider/effort)
      */
     public void phaseEntry(Phase phase, String runner, PhaseConfig config) {
+        phaseEntry(phase, runner, config, null);
+    }
+
+    /**
+     * Publishes a phase-entry message that also says where the job is
+     * running: the host, its labels, and the branch head it checked out.
+     *
+     * <p>The controller never learns which worker took a job — labels live on
+     * the worker and the job is relayed until one accepts it — so this first
+     * message is how a submitter finds out where the job landed, and which
+     * commit the job's later claims refer to.</p>
+     *
+     * @param phase     the lifecycle phase being dispatched
+     * @param runner    the runner name that will run it
+     * @param config    the effective phase configuration (model/provider/effort)
+     * @param placement where the job runs, e.g.
+     *                  {@code "halo (platform=linux, hostname=halo) at feature/x@abc1234"};
+     *                  {@code null} or empty to omit
+     */
+    public void phaseEntry(Phase phase, String runner, PhaseConfig config, String placement) {
         if (phase != Phase.PRIMARY) {
             return;
         }
-        post(formatPhaseEntry(phase, runner, config));
+        post(formatPhaseEntry(phase, runner, config, placement),
+                phase != null ? phase.lifecycleState(false) : null);
+    }
+
+    /**
+     * Records that {@code phase} has been entered without publishing a
+     * visible channel message, for the phases {@link #phaseEntry} keeps out
+     * of channel traffic.
+     *
+     * <p>{@link #phaseEntry} deliberately announces only {@link Phase#PRIMARY
+     * PRIMARY} to the notification channel, but every phase's lifecycle state
+     * still needs to reach {@code /api/jobs/{id}} as soon as the phase starts
+     * rather than only once it exits (see {@code MessageEndpointHandler}'s
+     * phase recorder) — this is how a non-PRIMARY entry is recorded without
+     * adding to the visible channel traffic. A no-op for {@code PRIMARY},
+     * which {@link #phaseEntry} already records visibly.</p>
+     *
+     * @param phase     the lifecycle phase being dispatched
+     * @param runner    the runner name that will run it
+     * @param config    the effective phase configuration (model/provider/effort)
+     * @param placement where the job runs, or {@code null}/empty to omit
+     */
+    public void recordPhaseEntry(Phase phase, String runner, PhaseConfig config, String placement) {
+        if (phase == null || phase == Phase.PRIMARY) {
+            return;
+        }
+        post(formatPhaseEntry(phase, runner, config, placement), phase.lifecycleState(false), true);
     }
 
     /**
@@ -134,7 +183,7 @@ public final class HarnessStatusReporter {
      * @param result the session result, or {@code null} when none was produced
      */
     public void phaseExit(Phase phase, AgentRunResult result) {
-        post(formatPhaseExit(phase, result));
+        post(formatPhaseExit(phase, result), phase != null ? phase.lifecycleState(true) : null);
     }
 
     /**
@@ -167,6 +216,21 @@ public final class HarnessStatusReporter {
      * @return the formatted message text
      */
     public static String formatPhaseEntry(Phase phase, String runner, PhaseConfig config) {
+        return formatPhaseEntry(phase, runner, config, null);
+    }
+
+    /**
+     * Formats the phase-entry message, naming where the job runs when
+     * {@code placement} is given.
+     *
+     * @param phase     the phase being entered
+     * @param runner    the runner name
+     * @param config    the effective phase configuration; may be {@code null}
+     * @param placement where the job runs, or {@code null}/empty to omit
+     * @return the formatted message text
+     */
+    public static String formatPhaseEntry(Phase phase, String runner, PhaseConfig config,
+                                          String placement) {
         StringBuilder detail = new StringBuilder();
         detail.append(runner != null && !runner.isEmpty() ? runner : "default-runner");
         String model = config != null ? config.model() : null;
@@ -175,8 +239,9 @@ public final class HarnessStatusReporter {
         if (model != null && !model.isEmpty()) detail.append('/').append(model);
         if (provider != null && !provider.isEmpty()) detail.append(", provider=").append(provider);
         if (effort != null && !effort.isEmpty()) detail.append(", effort=").append(effort);
+        String where = placement != null && !placement.isEmpty() ? " on " + placement : "";
         return SYSTEM_PREFIX + PHASE_ENTRY_EMOJI + " Entering " + phaseLabel(phase)
-                + " (" + detail + ")";
+                + " (" + detail + ")" + where;
     }
 
     /**
@@ -254,12 +319,44 @@ public final class HarnessStatusReporter {
      * @param text the message text to publish
      */
     private void post(String text) {
+        post(text, null);
+    }
+
+    /**
+     * Posts {@code text} as {@link #post(String)} does, also naming the
+     * lifecycle state the job is now in so the controller can record it on
+     * the job.
+     *
+     * @param text  the message text to publish
+     * @param phase the lifecycle state (see {@link Phase#lifecycleState}), or
+     *              {@code null} when the message is not a phase transition
+     */
+    private void post(String text, String phase) {
+        post(text, phase, false);
+    }
+
+    /**
+     * Posts {@code text} as {@link #post(String, String)} does, optionally
+     * asking the controller to record it — including the phase, when named —
+     * without forwarding it to the workstream's notification channel. This is
+     * how a phase transition that should update {@code /api/jobs/{id}}
+     * without adding to the visible channel traffic is recorded.
+     *
+     * @param text   the message text to publish
+     * @param phase  the lifecycle state (see {@link Phase#lifecycleState}), or
+     *               {@code null} when the message is not a phase transition
+     * @param silent {@code true} to record without broadcasting to the
+     *               notification channel
+     */
+    private void post(String text, String phase, boolean silent) {
         if (!isEnabled() || text == null || text.isEmpty()) {
             return;
         }
         ObjectNode body = MAPPER.createObjectNode();
         body.put("text", text);
         body.put("activity", ACTIVITY);
+        if (phase != null && !phase.isEmpty()) body.put("phase", phase);
+        if (silent) body.put("silent", true);
         poster.accept(workstreamBaseUrl + "/messages", body.toString());
     }
 }

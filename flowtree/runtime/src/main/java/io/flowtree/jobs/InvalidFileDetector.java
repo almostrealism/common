@@ -53,6 +53,16 @@ import java.util.stream.Stream;
  * dependent repo is reported with the repo directory name as a prefix so the
  * offending repository is unambiguous.</p>
  *
+ * <h2>Build-output exception</h2>
+ * <p>A Maven module's {@code target/} directory — a directory named
+ * {@value #BUILD_OUTPUT_DIR} whose parent holds a {@value #BUILD_DESCRIPTOR} —
+ * is build output: created by the build, wiped by {@code mvn clean}, and
+ * where tests that generate binary fixtures write them precisely so that
+ * nothing reaches source control. It is skipped entirely. This is the only
+ * directory the scan skips besides {@code .git}; a {@code target} directory
+ * with no {@code pom.xml} beside it is an ordinary directory and is
+ * scanned.</p>
+ *
  * <h2>Base-branch exception</h2>
  * <p>A {@code .bin} file that already exists on the repository's base branch
  * ({@code origin/<baseBranch>}) is <em>not</em> litter — it is pre-existing
@@ -80,6 +90,12 @@ class InvalidFileDetector implements ConsoleFeatures {
 
     /** Directory name (the git metadata directory) excluded from the scan. */
     private static final String GIT_DIR = ".git";
+
+    /** Name of a Maven module's build-output directory. */
+    static final String BUILD_OUTPUT_DIR = "target";
+
+    /** The build descriptor whose presence marks a sibling {@link #BUILD_OUTPUT_DIR} as build output. */
+    static final String BUILD_DESCRIPTOR = "pom.xml";
 
     /** Base branch name; {@code .bin} files present on it are not litter. */
     private final String baseBranch;
@@ -169,6 +185,7 @@ class InvalidFileDetector implements ConsoleFeatures {
             return walk
                     .filter(Files::isRegularFile)
                     .filter(path -> !isInsideGitDir(repo.root, path))
+                    .filter(path -> !isInsideBuildOutput(repo.root, path))
                     .filter(path -> path.getFileName().toString().endsWith(INVALID_EXTENSION))
                     .map(repo.root::relativize)
                     .filter(relative -> !baseBranchLitter.contains(toGitPath(relative)))
@@ -236,6 +253,24 @@ class InvalidFileDetector implements ConsoleFeatures {
     private boolean isInsideGitDir(Path root, Path path) {
         Path relative = root.relativize(path);
         return relative.getNameCount() > 0 && GIT_DIR.equals(relative.getName(0).toString());
+    }
+
+    /**
+     * Returns whether the given path lies within a Maven module's build-output
+     * directory: a {@link #BUILD_OUTPUT_DIR} whose parent holds a
+     * {@link #BUILD_DESCRIPTOR}, anywhere between the repository root and the
+     * file.
+     */
+    private boolean isInsideBuildOutput(Path root, Path path) {
+        for (Path dir = path.getParent(); dir != null && dir.startsWith(root) && !dir.equals(root);
+                dir = dir.getParent()) {
+            if (BUILD_OUTPUT_DIR.equals(dir.getFileName().toString())
+                    && Files.isRegularFile(dir.resolveSibling(BUILD_DESCRIPTOR))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

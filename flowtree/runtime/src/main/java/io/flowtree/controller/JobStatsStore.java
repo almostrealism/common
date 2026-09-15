@@ -78,7 +78,8 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    pull_request_url VARCHAR(1000),"
         + "    error_message  VARCHAR(2000),"
         + "    trigger_reason VARCHAR(64) DEFAULT 'manual',"
-        + "    heartbeat_at   TIMESTAMP"
+        + "    heartbeat_at   TIMESTAMP,"
+        + "    phase          VARCHAR(64)"
         + ")";
 
     /** DDL statement that creates an index on {@code (workstream_id, started_at)} for efficient queries. */
@@ -128,7 +129,8 @@ public class JobStatsStore implements ConsoleFeatures {
         "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
         "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'",
-        "ALTER TABLE job_timing ADD COLUMN heartbeat_at TIMESTAMP"
+        "ALTER TABLE job_timing ADD COLUMN heartbeat_at TIMESTAMP",
+        "ALTER TABLE job_timing ADD COLUMN phase VARCHAR(64)"
     };
 
     /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
@@ -543,6 +545,56 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to record heartbeat: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Records the lifecycle phase a running job has reached, as the job's own
+     * harness reports it.
+     *
+     * <p>The job row's {@code status} stays {@code STARTED} from submission
+     * until the terminal event, so without this a poller cannot tell a job
+     * still in its primary session from one whose primary work is done and
+     * whose review phase is running. The phase is the harness's word for
+     * where it is — a phase wire name on entry, and the same name marked
+     * complete on exit.</p>
+     *
+     * @param jobId the job identifier
+     * @param phase the phase description; {@code null} or empty is ignored
+     */
+    public synchronized void recordPhase(String jobId, String phase) {
+        if (jobId == null || jobId.isEmpty() || connection == null) return;
+        if (phase == null || phase.isEmpty()) return;
+
+        String sql = "UPDATE job_timing SET phase = ? WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, phase);
+            ps.setString(2, jobId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to record phase: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Returns the lifecycle phase most recently recorded for a job.
+     *
+     * @param jobId the job identifier
+     * @return the phase description, or {@code null} when none was recorded
+     *         or the store is unavailable
+     */
+    public synchronized String getJobPhase(String jobId) {
+        if (jobId == null || jobId.isEmpty() || connection == null) return null;
+
+        String sql = "SELECT phase FROM job_timing WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString("phase") : null;
+            }
+        } catch (SQLException e) {
+            warn("Failed to read phase: " + e.getMessage());
+            return null;
         }
     }
 

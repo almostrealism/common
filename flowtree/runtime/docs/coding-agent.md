@@ -7,7 +7,7 @@ FlowTree integrates with Claude Code to execute AI coding prompts as distributed
 1. A **FlowTreeController** starts a FlowTree **Server** that listens for inbound agent connections.
 2. Agents (Docker containers or remote hosts) connect OUT to the controller by setting `FLOWTREE_ROOT_HOST` and `FLOWTREE_ROOT_PORT` environment variables.
 3. When a Slack message arrives, the controller creates a **ClaudeCodeJob.Factory** and sends it to a connected agent via `Server.sendTask()`.
-4. The agent's idle Node picks up the job and executes `claude -p "<prompt>" --output-format json`.
+4. The agent's idle Node picks up the job and executes `claude -p "<prompt>" --output-format stream-json --verbose`.
 5. When Claude Code finishes, the job optionally stages, commits, and pushes changes via **GitManagedJob**.
 6. A **JobCompletionEvent** fires, notifying any registered listeners (e.g., the Slack notifier).
 
@@ -270,7 +270,7 @@ Shared utility class (`io.flowtree.jobs.McpToolDiscovery`) that scans Python MCP
 
 Start events are fired by the controller immediately when a job is submitted, providing fast feedback to the Slack channel. Completion events are fired by the agent after Claude Code finishes and git operations complete. The agent POSTs completion events to the controller via the `workstreamUrl`, where `SlackNotifier` formats and posts the result to Slack.
 
-Completion events carry timing information extracted from Claude Code's `--output-format json` output: `durationMs`, `durationApiMs`, `costUsd`, and `numTurns`. These are populated via `withTimingInfo()` on the agent side (by `ClaudeCodeJob.populateEventDetails()`) and deserialized on the controller side (by `FlowTreeApiEndpoint.handleStatusEvent()`). The `SlackNotifier` writes timing data to `JobStatsStore` for aggregation.
+Completion events carry timing information extracted from the final `result` object of Claude Code's `--output-format stream-json` output: `durationMs`, `durationApiMs`, `costUsd`, and `numTurns`. These are populated via `withTimingInfo()` on the agent side (by `ClaudeCodeJob.populateEventDetails()`) and deserialized on the controller side (by `FlowTreeApiEndpoint.handleStatusEvent()`). The `SlackNotifier` writes timing data to `JobStatsStore` for aggregation.
 
 ## Serialization
 

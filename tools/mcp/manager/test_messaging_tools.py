@@ -211,6 +211,109 @@ class TestSendMessageSenderIdentity(unittest.TestCase):
         self.assertEqual(mock_post.call_args[0][1]["sender"], "caller:test")
 
 
+class TestSendMessageIdentity(unittest.TestCase):
+    """``send_message`` names every message so a timed-out call can be retried.
+
+    The controller deduplicates on ``messageId``; what is asserted here is
+    that the tool always sends one, that a retry with the same text carries
+    the same one without the caller minting anything, and that an explicit
+    id wins.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_token_context(workstream_id="ws-1", job_id="job-1")
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+        os.environ.pop("AR_AGENT_ACTIVITY", None)
+
+    @patch.object(server, "_controller_post")
+    def test_retry_with_the_same_text_carries_the_same_id(self, mock_post):
+        mock_post.return_value = {"ok": True, "seq": 7}
+        server.send_message(text="final report")
+        first = mock_post.call_args[0][1]["messageId"]
+        server.send_message(text="final report")
+        second = mock_post.call_args[0][1]["messageId"]
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), messaging_tools.DERIVED_MESSAGE_ID_LENGTH)
+
+    @patch.object(server, "_controller_post")
+    def test_different_text_sender_or_activity_yields_a_different_id(self, mock_post):
+        mock_post.return_value = {"ok": True}
+        server.send_message(text="ready")
+        base = mock_post.call_args[0][1]["messageId"]
+
+        server.send_message(text="ready?")
+        self.assertNotEqual(base, mock_post.call_args[0][1]["messageId"])
+
+        server.send_message(text="ready", activity="review")
+        self.assertNotEqual(base, mock_post.call_args[0][1]["messageId"])
+
+        server._set_token_context(workstream_id="ws-1", job_id="job-2")
+        server.send_message(text="ready")
+        self.assertNotEqual(base, mock_post.call_args[0][1]["messageId"])
+
+    @patch.object(server, "_controller_post")
+    def test_explicit_message_id_is_sent_verbatim(self, mock_post):
+        mock_post.return_value = {"ok": True}
+        server.send_message(text="ready", message_id="report-2")
+        self.assertEqual(mock_post.call_args[0][1]["messageId"], "report-2")
+
+    @patch.object(server, "_controller_post")
+    def test_duplicate_verdict_is_passed_through(self, mock_post):
+        mock_post.return_value = {"ok": True, "seq": 7, "duplicate": True}
+        result = server.send_message(text="final report")
+        self.assertTrue(result["duplicate"])
+        self.assertEqual(result["seq"], 7)
+
+
+class TestAwaitMessageTransportDefault(unittest.TestCase):
+    """The default wait must fit under an interactive MCP client's per-call timeout."""
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_token_context(workstream_id="ws-1", job_id="job-1")
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+
+    def test_default_is_the_transport_safe_wait(self):
+        self.assertEqual(messaging_tools.DEFAULT_AWAIT_SECONDS,
+                         messaging_tools.TRANSPORT_SAFE_AWAIT_SECONDS)
+        self.assertLess(messaging_tools.TRANSPORT_SAFE_AWAIT_SECONDS, 60)
+        self.assertLess(messaging_tools.TRANSPORT_SAFE_AWAIT_SECONDS,
+                        messaging_tools.MAX_AWAIT_SECONDS)
+
+    @staticmethod
+    def _delivered():
+        """A controller answer that ends the wait on the first poll."""
+        return {"ok": True, "nextSince": 1, "messages": [
+            {"seq": 1, "createdAt": "2026-09-08T19:00:00Z",
+             "sender": "job:other", "text": "go"}]}
+
+    @patch.object(server, "_controller_get")
+    def test_default_call_asks_the_controller_for_the_safe_wait(self, mock_get):
+        mock_get.return_value = self._delivered()
+        result = server.await_message()
+        self.assertFalse(result["timed_out"])
+        first_url = mock_get.call_args_list[0][0][0]
+        wait = int(first_url.rsplit("wait=", 1)[1])
+        self.assertLessEqual(wait, messaging_tools.TRANSPORT_SAFE_AWAIT_SECONDS)
+        self.assertGreaterEqual(wait, messaging_tools.TRANSPORT_SAFE_AWAIT_SECONDS - 1)
+
+    @patch.object(server, "_controller_get")
+    def test_explicit_long_wait_is_still_honoured_up_to_the_cap(self, mock_get):
+        mock_get.return_value = self._delivered()
+        with patch.object(messaging_tools, "CONTROLLER_POLL_SECONDS", 1000):
+            result = server.await_message(timeout_seconds=600)
+        self.assertFalse(result["clamped_to_max_await_seconds"])
+        first_url = mock_get.call_args_list[0][0][0]
+        wait = int(first_url.rsplit("wait=", 1)[1])
+        self.assertGreaterEqual(wait, 599)
+        self.assertLessEqual(wait, 600)
+
+
 class TestSendMessageActivity(unittest.TestCase):
 
     def setUp(self):

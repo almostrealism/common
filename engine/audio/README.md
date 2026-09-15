@@ -26,7 +26,11 @@ ar-audio
 |   +-- BatchedPatternRenderer - Batched four-kernel pattern-render dispatch; owns the bound scalar column layout consumed by BatchedPatternLayerRenderer
 |
 +-- sources/              - Signal Generators
+|   +-- OscillatorCell    - Shared oscillator scaffold (parameters, envelope, setup, tick)
 |   +-- SineWaveCell      - Sine wave oscillator
+|   +-- SquareWaveCell    - Square/pulse wave oscillator with duty cycle
+|   +-- SawtoothWaveCell  - Sawtooth wave oscillator
+|   +-- TriangleWaveCell  - Triangle wave oscillator
 |   +-- NoiseGenerator    - White noise generation
 |   +-- SourceAggregator  - Mixing and combining sources
 |
