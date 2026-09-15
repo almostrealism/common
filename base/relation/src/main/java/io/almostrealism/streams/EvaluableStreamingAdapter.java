@@ -19,6 +19,7 @@ package io.almostrealism.streams;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 /**
  * An adapter that wraps a synchronous {@link Evaluable} to provide a
@@ -99,15 +100,48 @@ public class EvaluableStreamingAdapter<T> extends StreamingEvaluableBase<T> {
 	 * (unless a synchronous executor is used).</p>
 	 *
 	 * <p>The adapter wraps a synchronous {@link Evaluable} and performs no hardware
-	 * dispatch of its own, so there is no provider into which a dependency could be
-	 * chained; {@code dependsOn} is therefore disregarded and the evaluation is
-	 * submitted immediately.</p>
+	 * dispatch of its own, so there is no provider into which {@code dependsOn} could be
+	 * chained. Unlike a hardware dispatch, which only chains a device handle, the wrapped
+	 * evaluable reads the actual contents of {@code args} on the thread that calls it, so
+	 * the dependency is still honored: submission to the executor is non-blocking, but the
+	 * submitted task waits for {@code dependsOn} before evaluating, exactly as
+	 * {@link #request(Object[], Semaphore, Consumer)} does.</p>
 	 *
 	 * @param args      the arguments to pass to the underlying evaluable
-	 * @param dependsOn ignored; the wrapped evaluable performs no chainable dispatch
+	 * @param dependsOn completion this evaluation must be ordered after, or
+	 *                  {@code null} when there is no dependency
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
-		executor.execute(() -> getDownstream().accept(evaluable.evaluate(args)));
+		request(args, dependsOn, getDownstream());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Delivers to {@code downstream} directly instead of {@link #getDownstream()}, so that
+	 * this adapter can serve several independent requesters (a kernel wrapper re-viewing this
+	 * adapter's result through a {@code resultProcessor}, requested repeatedly across a
+	 * streaming pipeline's lifetime, for example) without any of them contending for
+	 * {@link #setDownstream}.</p>
+	 *
+	 * <p>Submission to the executor is non-blocking, but the submitted task waits for
+	 * {@code dependsOn} (when non-null) before calling {@link Evaluable#evaluate(Object...)
+	 * evaluate}. The wrapped evaluable is a host function that reads the contents of
+	 * {@code args} rather than chaining a device handle, so a dispatch it depends on must
+	 * have completed before those contents are read; otherwise the evaluation could observe
+	 * memory the dependency has not finished writing.</p>
+	 *
+	 * @param args       the arguments to pass to the underlying evaluable
+	 * @param dependsOn  completion this evaluation must be ordered after, or
+	 *                   {@code null} when there is no dependency
+	 * @param downstream the consumer to receive the result of this request
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
+		executor.execute(() -> {
+			if (dependsOn != null) dependsOn.waitFor();
+			downstream.accept(evaluable.evaluate(args));
+		});
 	}
 }

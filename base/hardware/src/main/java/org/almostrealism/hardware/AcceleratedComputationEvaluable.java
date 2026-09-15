@@ -463,6 +463,25 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 */
 	@Override
 	public void request(Object[] args, Semaphore dependsOn) {
+		request(args, dependsOn, downstream);
+	}
+
+	/**
+	 * Requests asynchronous evaluation exactly as {@link #request(Object[], Semaphore)} does,
+	 * delivering the result to the given consumer rather than to {@link #downstream}. Nothing
+	 * is stored on this evaluable, so a compiled kernel that is reached through several
+	 * independent wrappers (each argument of a dependent kernel, for example) can serve
+	 * every one of their requests without any of them contending for {@link #setDownstream}.
+	 *
+	 * @param args       The input arguments for the computation
+	 * @param dependsOn  completion that must fire before the dispatch (and its
+	 *                   argument preparation) reads memory, or {@code null}
+	 * @param downstream the consumer to receive the result of this request; a
+	 *                   {@link CompletionConsumer} receives it together with the
+	 *                   dispatch's completion, without any host wait
+	 */
+	@Override
+	public void request(Object[] args, Semaphore dependsOn, Consumer<T> downstream) {
 		confirmLoad();
 
 		int outputArgIndex = getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
