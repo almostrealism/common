@@ -96,6 +96,11 @@ fi
 GUARD_FILES=(
     ".claude/hooks/block-exfiltration.sh"
     ".claude/hooks/lib/exfiltration_guard_check.py"
+    ".claude/hooks/lib/exfil_bash_lex.py"
+    ".claude/hooks/lib/exfil_bash_network.py"
+    ".claude/hooks/lib/exfil_bash_runner.py"
+    ".claude/hooks/lib/exfil_bash_vcs.py"
+    ".claude/hooks/lib/exfil_bash_dispatch.py"
     ".claude/hooks/lib/test_exfiltration_guard_check.py"
     ".claude/hooks/exfil-allowlist.txt"
     "tools/ci/agent-protection/verify-exfiltration-guard.sh"

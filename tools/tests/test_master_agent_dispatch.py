@@ -152,6 +152,26 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual({"runner", "model", "effort", "provider"}, set(primary))
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
 
+    def test_the_pdsl_migration_round_runs_at_max_effort_with_tests_locked(self):
+        """The round's hardest step is telling a building block from a
+        composition, and the cheap answer — a primitive that wraps the
+        Java class — is always available to a model that stops thinking
+        early; the effort pin is what buys the judgment the prompt asks
+        for, and losing it fails nothing visible. The test lock is what
+        keeps "migrate" from meaning "rewrite the test that noticed"."""
+        job = self.qa_jobs["pdsl-qa"]
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        primary = json.loads(env["PHASE_CONFIGS"])["primary"]
+        self.assertEqual("max", primary["effort"])
+        self.assertEqual("opus", primary["model"])
+        # Runner, model and provider must be set together; see the defect
+        # hunt's note in the workflow for why one alone misroutes the phase.
+        self.assertEqual({"runner", "model", "effort", "provider"}, set(primary))
+        self.assertEqual("true", env["PROTECT_TEST_FILES"])
+        self.assertNotIn("ENFORCE_CHANGES", env)
+
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""
         self.assertTrue(os.path.basename(_WORKFLOW).endswith("master-agent-dispatch.yaml"))

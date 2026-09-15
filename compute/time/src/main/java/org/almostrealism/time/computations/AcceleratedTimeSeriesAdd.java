@@ -72,40 +72,91 @@ import java.util.List;
 public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries>
 		implements ExpressionFeatures {
 	/**
+	 * Sentinel {@code fullCursorIndex} used by the legacy two-argument constructor. The end
+	 * cursor of an {@link AcceleratedTimeSeries} can never reach this value, so the write is
+	 * never guarded, matching the unguarded behavior the two-argument constructor had before
+	 * the guard was introduced.
+	 */
+	public static final int NO_CAPACITY_GUARD = Integer.MAX_VALUE;
+
+	/**
+	 * The end cursor value at which the series is full. A write attempted at or beyond this
+	 * index is dropped instead of writing past the end of the series allocation.
+	 */
+	private final int fullCursorIndex;
+
+	/**
+	 * Constructs an add operation for the specified series and temporal scalar, with no
+	 * guard against writing past the end of the series allocation.
+	 *
+	 * @param series Producer providing the target time-series
+	 * @param addition Producer providing the temporal scalar to add
+	 * @deprecated Use {@link #AcceleratedTimeSeriesAdd(Producer, Producer, int)} so that a
+	 *             write attempted once the series is full is dropped rather than writing
+	 *             outside the allocation
+	 */
+	@Deprecated
+	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
+		this(series, addition, NO_CAPACITY_GUARD);
+	}
+
+	/**
 	 * Constructs an add operation for the specified series and temporal scalar.
 	 *
 	 * @param series Producer providing the target time-series
 	 * @param addition Producer providing the temporal scalar to add
+	 * @param fullCursorIndex The end cursor value at which the series is full; a write
+	 *                        attempted at or beyond this index is dropped instead of
+	 *                        writing outside the series allocation
 	 */
-	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
-		super(new Producer[] { series, addition } );
+	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition,
+									 int fullCursorIndex) {
+		super(new Producer[] { series, addition });
+		this.fullCursorIndex = fullCursorIndex;
 	}
 
 	/**
 	 * Private constructor for internal regeneration.
 	 *
+	 * @param fullCursorIndex The end cursor value at which the series is full
 	 * @param arguments Producer arguments (series, addition)
 	 */
-	private AcceleratedTimeSeriesAdd(Producer... arguments) {
+	private AcceleratedTimeSeriesAdd(int fullCursorIndex, Producer... arguments) {
 		super(arguments);
+		this.fullCursorIndex = fullCursorIndex;
 	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return new AcceleratedTimeSeriesAdd(children.toArray(Producer[]::new));
+		return new AcceleratedTimeSeriesAdd(fullCursorIndex, children.toArray(Producer[]::new));
 	}
 
+	/**
+	 * Builds the scope that writes the new entry at the end cursor and advances it, unless
+	 * the end cursor has already reached {@link #fullCursorIndex}. In that case the write is
+	 * skipped entirely: the series' allocation ends at that index, so writing there (or
+	 * beyond it) would write outside the allocated storage. This mirrors, on the hardware
+	 * path, the {@code RuntimeException} that {@link AcceleratedTimeSeries#add(TemporalScalar)}
+	 * throws on the CPU path when the series is full — a kernel cannot throw, so the entry is
+	 * dropped instead.
+	 *
+	 * @param context the kernel structure context
+	 * @return the add scope
+	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression<?> bank1 = getArgument(0).valueAt(1);
 
-		scope.assign(getArgument(0).reference(bank1.toInt().multiply(2)),
+		Scope<Void> write = new Scope<>();
+		write.assign(getArgument(0).reference(bank1.toInt().multiply(2)),
 				getArgument(1).valueAt(0));
-		scope.assign(getArgument(0).reference(bank1.toInt().multiply(2).add(1)),
+		write.assign(getArgument(0).reference(bank1.toInt().multiply(2).add(1)),
 				getArgument(1).valueAt(1));
-		scope.assign(getArgument(0).reference(e(1)), bank1.add(e(1.0)));
+		write.assign(getArgument(0).reference(e(1)), bank1.add(e(1.0)));
+
+		scope.addCase(bank1.lessThan(e(fullCursorIndex)), write);
 		return scope;
 	}
 }
