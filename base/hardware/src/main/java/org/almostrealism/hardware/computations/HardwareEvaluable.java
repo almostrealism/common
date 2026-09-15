@@ -441,6 +441,15 @@ public class HardwareEvaluable<T> implements
 	 * processor}; a {@link CompletionConsumer} keeps receiving the dispatch's completion
 	 * alongside the processed handle, so the transformation introduces no host wait.
 	 *
+	 * <p>When {@code downstream} is a plain {@link Consumer} (not a {@link CompletionConsumer}),
+	 * it is handed a value it must be able to read immediately, exactly as {@link #evaluate(Object...)}
+	 * guarantees. The kernel evaluable is still handed a {@link CompletionConsumer} here so that its
+	 * dispatch is not forced to complete on the host before the request returns, but the completion is
+	 * awaited before {@code downstream} is invoked, on whatever thread the kernel evaluable delivers
+	 * on &mdash; matching the synchronous, same-call delivery a plain {@code Consumer} received prior
+	 * to {@code resultProcessor} replacing the short-circuit for reshape/repeat wrappers, rather than
+	 * silently handing it a value that may not be complete yet.</p>
+	 *
 	 * @param downstream the consumer to deliver to
 	 * @return {@code downstream} itself when there is no result processor
 	 */
@@ -451,7 +460,11 @@ public class HardwareEvaluable<T> implements
 			return ((CompletionConsumer<T>) downstream).compose(resultProcessor);
 		}
 
-		return value -> downstream.accept(resultProcessor.apply(value));
+		CompletionConsumer<T> completionConsumer = (value, completion) -> {
+			if (completion != null) completion.waitFor();
+			downstream.accept(resultProcessor.apply(value));
+		};
+		return completionConsumer;
 	}
 
 	@Override
