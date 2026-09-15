@@ -55,8 +55,8 @@ import java.util.stream.Stream;
  * framework. It composes the themed feature interfaces into a single mixin, so implementing it grants
  * access to the entire factory-method vocabulary - creation, slicing, arithmetic, aggregation,
  * comparison, and gradients - through simple method calls. {@link CollectionFeatures} itself declares
- * only the operations that span those categories (concatenation, element indexing, assignment, and
- * the generic {@code compute} factories).
+ * only the operations that span those categories (concatenation, element indexing, assignment,
+ * broadcasting a per-position value across a shape, and the generic {@code compute} factories).
  * </p>
  *
  * <h2>Design Pattern</h2>
@@ -100,8 +100,8 @@ import java.util.stream.Stream;
  *       {@code multiplyGradient}</li>
  *   <li>{@link CollectionFeatures} (this interface) - {@code concat}, element indexing
  *       ({@code c(collection, index)}, {@code index}, {@code sizeOf}), {@code a} (assignment),
- *       the generic {@code compute} factories, and host-side utilities
- *       ({@code argmax}, {@code topK})</li>
+ *       {@code broadcast} (expanding a per-position value across a shape), the generic
+ *       {@code compute} factories, and host-side utilities ({@code argmax}, {@code topK})</li>
  * </ul>
  *
  * <h2>Usage Examples</h2>
