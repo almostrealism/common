@@ -81,13 +81,16 @@ public interface GitOperations {
 ```
 
 This interface abstracts over git command execution for guardrail 2:
-`execute` reports an exit code (base-branch/merge-base existence checks),
-`executeWithOutput` reports command output (merge-base resolution, reading
-file content at the merge-base for `TestMethodProtection`). Only `execute` is
-abstract, so this remains a valid functional interface for guardrails that
-never need output; callers whose files can hit the `.java` protected-path
-check must supply a real `executeWithOutput`, or such files fail closed. See
-`GitManagedJob.asGitOperations()` for the production adapter.
+`execute` reports an exit code, `executeWithOutput` reports command output
+(merge-base resolution, the merge-base file listing, and reading file content
+at the merge-base for `TestMethodProtection`). Only `execute` is abstract, so
+this remains a valid functional interface for guardrails that never enable
+`protectTestFiles`. `evaluateFiles` resolves the merge-base and its file
+listing once per call whenever `protectTestFiles` is set, before it knows
+whether any candidate file is under a protected path — so any caller that
+enables `protectTestFiles` must supply a real `executeWithOutput`, or every
+guardrail-2 file (whole-file paths and `.java` protected sources alike) fails
+closed. See `GitManagedJob.asGitOperations()` for the production adapter.
 
 ### `evaluateFiles`
 
@@ -355,10 +358,11 @@ harness-side guardrail and the CI-side gate can never disagree about which
 methods changed.
 
 **Fail-safe behavior:** Any failure along the way — the merge-base cannot be
-resolved, base or current content cannot be read, the shared awk script is
-missing from the working tree, or the awk subprocess itself fails — makes
-the file fail closed: it is treated as protected in full, the same as the
-whole-file check. A warning names which step failed.
+resolved, the merge-base file listing cannot be read, base or current content
+cannot be read, the shared awk script is missing from the merge-base, or the
+awk subprocess itself fails — makes the file fail closed: it is treated as
+protected in full, the same as the whole-file check. A warning names which
+step failed.
 
 **Rationale:** This guardrail prevents automated agents from hiding test
 failures by modifying existing tests instead of fixing production code, while
@@ -735,9 +739,15 @@ non-`.java` protected file, e.g. a test resource):
 3. If a file does not match any protected path pattern, this guardrail does
    not apply.
 
-The merge-base existence check uses `git cat-file -e <mergeBase>:<file>`. An
-exit code of `0` means the file exists at the merge-base; any other exit code
-means it does not.
+The merge-base existence check is answered from a one-time
+`git ls-tree -r --name-only <mergeBase>` listing (`TestMethodProtection.
+resolveMergeBaseFiles`), not a per-file `git cat-file -e <mergeBase>:<file>`
+probe: for the `<rev>:<path>` object-name form, git's revision parser reports
+the identical exit code and message whether a path is genuinely absent from
+that tree or the lookup itself failed for an unrelated reason, so a per-file
+exit-code probe cannot tell the two apart. Listing the tree once turns
+"does file X exist at the merge-base" into a plain set-membership check, with
+the listing's own success judged exactly once.
 
 ### Rationale
 
@@ -753,30 +763,34 @@ lock is scoped to test methods rather than whole test classes.
 ### Determining "New" vs "Existing" Files
 
 The distinction between new and existing test files is determined by checking
-whether the file exists at the merge-base commit using `git cat-file -e`:
+whether the file is present in a listing of the merge-base commit's tree:
 
 ```
 git merge-base origin/<baseBranch> HEAD
-git cat-file -e <mergeBase>:<file>
+git ls-tree -r --name-only <mergeBase>
 ```
 
-- Exit code `0`: the file exists at the merge-base (it is an "existing" file
-  and is protected — in full for non-`.java`/CI paths, at method granularity
-  for `.java` test sources).
-- Non-zero exit code: the file does not exist at the merge-base (it is a
+- Present in the listing: the file exists at the merge-base (it is an
+  "existing" file and is protected — in full for non-`.java`/CI paths, at
+  method granularity for `.java` test sources).
+- Absent from the listing: the file does not exist at the merge-base (it is a
   "new" file and is allowed through).
+- Listing unreadable (the `ls-tree` command itself fails): the file is treated
+  as protected, the same as "present" — a listing failure must never be read
+  as "every file is branch-new."
 
 The merge-base, not the base branch's current tip, is what "existing" is
 measured against: the base branch keeps moving after a feature branch forks
 from it, and comparing against its live tip would misattribute the base
 branch's own later edits to the agent's branch. `TestMethodProtection`
-resolves the merge-base once per `evaluateFiles()` call via
-`git merge-base origin/<baseBranch> HEAD`, not once per file.
+resolves the merge-base and its file listing once per `evaluateFiles()` call,
+not once per file.
 
 The fail-safe behavior is critical: if any step of the check throws (network
-issues, missing refs, an unreadable file, a missing or failing
-`test-method-lines.awk` subprocess), the file is treated as protected in
-full. A warning is logged explaining why the check failed. This prevents a
+issues, missing refs, an unreadable merge-base listing, an unreadable file, a
+missing or failing `test-method-lines.awk` subprocess), the file is treated
+as protected in full. A warning is logged explaining why the check failed.
+This prevents a
 transient error from allowing modifications to protected test files.
 
 ---
@@ -1032,34 +1046,42 @@ FileStager.GitOperations gitOps = new FileStager.GitOperations() {
 `FileStager.GitOperations` has one abstract method (`execute`) and one
 `default` method (`executeWithOutput`, which throws
 `UnsupportedOperationException` unless overridden), so a bare exit-code
-lambda still type-checks but silently loses content-based checks — any
-`.java` protected-path file will fail closed (merge-base cannot be resolved)
-under such a lambda. Guardrails that never need content — pattern exclusion,
-size, binary detection, and whole-file protection for non-`.java`/CI paths —
-are unaffected:
+lambda still type-checks but silently loses content-based checks. Because
+`evaluateFiles` resolves the merge-base and its file listing once per call
+whenever `protectTestFiles` is set — before it knows whether any candidate
+file is under a protected path — this is not limited to `.java` files: every
+guardrail-2 file, whole-file paths included, will fail closed under such a
+lambda. Only guardrails that never enable `protectTestFiles` at all (pattern
+exclusion, size, binary detection) are unaffected:
 
 ```java
-// Fine for whole-file guardrails; a .java protected-path file would fail closed.
-FileStager.GitOperations existsEverywhere = args -> 0;
-FileStager.GitOperations existsNowhere = args -> 1;
+// Fine as long as protectTestFiles is false; with it true, every
+// guardrail-2 file fails closed (merge-base cannot be resolved).
+FileStager.GitOperations noOutputSupport = args -> 0;
 ```
 
-For a test that exercises `TestMethodProtection`'s content-based path,
-implement both methods:
+For a test that exercises test file protection — whole-file or
+method-level — implement both methods, matching how `TestMethodProtection`
+actually resolves the merge-base and its file listing:
 
 ```java
 FileStager.GitOperations gitOps = new FileStager.GitOperations() {
     @Override
     public int execute(String... args) {
-        // "cat-file", "-e", "<mergeBase>:<file>" -- 0 = exists at merge-base
-        if (args.length == 3 && "cat-file".equals(args[0])) return 0;
-        return 1;
+        return 0;
     }
 
     @Override
     public String executeWithOutput(String... args) {
-        if ("merge-base".equals(args[0])) return "abc1234def5678901234567890abcdef1234567";
-        if ("show".equals(args[0])) return baseFileContent; // content at the merge-base
+        if (args.length >= 1 && "merge-base".equals(args[0])) {
+            return "abc1234def5678901234567890abcdef1234567";
+        }
+        if (args.length >= 1 && "ls-tree".equals(args[0])) {
+            return "path/to/ExistingTest.java\n"; // files present at the merge-base
+        }
+        if (args.length >= 1 && "show".equals(args[0])) {
+            return baseFileContent; // content at the merge-base
+        }
         return "";
     }
 };
@@ -1071,10 +1093,14 @@ StagingResult result = stager.evaluateFiles(
 );
 ```
 
-See `TestMethodProtectionTest` for the full set of scenarios this pattern
-covers (branch-new file, added method, modified method, deleted method,
-annotation added to an existing method, merge-base unresolvable, missing awk
-script).
+A merge-base listing failure is simulated by making `execute` return non-zero
+for `ls-tree` (`executeOrNull` then returns `null` regardless of what
+`executeWithOutput` would produce), which exercises the fail-closed path.
+
+See `TestMethodProtectionTest` and `FileStagerTest` for the full set of
+scenarios this pattern covers (branch-new file, added method, modified
+method, deleted method, annotation added to an existing method, merge-base
+unresolvable, merge-base listing unreadable, missing awk script).
 
 This pattern makes it straightforward to unit test the guardrail logic
 without starting git processes, creating repositories, or setting up remote

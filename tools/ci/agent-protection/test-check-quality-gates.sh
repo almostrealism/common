@@ -121,6 +121,26 @@ run_case "other gates are still reported alongside an unattributed integrity fai
     "checkstyle" "test-integrity-check" \
     TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=infrastructure CHECKSTYLE_PASSED=false
 
+# ── Deception audit: a merge-base failure is not a clean result ─────
+#
+# deception-audit.sh sets audit_error=true (and leaves has_findings/
+# finding_count unset) when it could not resolve the merge-base or its
+# file listing, so the audit never ran at all. That must never render as
+# "no deception patterns detected" -- and, being informational like every
+# other deception-audit outcome, it must never raise has_failures either.
+
+run_case "deception audit error is not reported as a clean result or a failure" "false" \
+    "" "deception pattern(s) detected" \
+    DECEPTION_AUDIT_ERROR=true
+
+run_case "deception audit findings are still reported when there is no audit error" "false" \
+    "3 deception pattern(s) detected" "" \
+    DECEPTION_AUDIT_FINDINGS=true DECEPTION_FINDING_COUNT=3
+
+run_case "an audit error takes precedence over a stale findings flag" "false" \
+    "" "deception pattern(s) detected" \
+    DECEPTION_AUDIT_ERROR=true DECEPTION_AUDIT_FINDINGS=true DECEPTION_FINDING_COUNT=3
+
 echo ""
 echo "Passed: $PASS  Failed: $FAIL"
 if [ "$FAIL" -gt 0 ]; then

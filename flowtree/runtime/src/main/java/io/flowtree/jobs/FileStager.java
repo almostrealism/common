@@ -89,12 +89,18 @@ public class FileStager implements ConsoleFeatures {
          * information {@link #execute} cannot report because it only
          * returns an exit code.
          *
-         * <p>The default implementation always throws. Most guardrails only
-         * need an exit code, so most {@code GitOperations} implementations
-         * and test fakes never need to override this. A caller that enables
-         * {@code protectTestFiles} for Java test sources must supply a real
-         * implementation, or every such file will fail closed (see
-         * {@link TestMethodProtection}'s fail-safe behavior).</p>
+         * <p>The default implementation always throws. Guardrails that never
+         * enable {@code protectTestFiles} never need this method, so those
+         * {@code GitOperations} implementations and test fakes can skip it.
+         * {@link #evaluateFiles} resolves the merge-base and its file listing
+         * once per call whenever {@code protectTestFiles} is set — before it
+         * knows whether any candidate file is under a protected path — so
+         * this method is required for every guardrail-2 file, not only
+         * {@code .java} protected sources: a whole-file check (a CI workflow
+         * file, a non-{@code .java} protected resource) fails closed exactly
+         * like a method-level one if the caller cannot supply the merge-base
+         * listing (see {@link TestMethodProtection}'s fail-safe
+         * behavior).</p>
          *
          * @param args the git subcommand and its arguments
          *             (e.g., {@code "show", "abc123:path/to/File.java"})
