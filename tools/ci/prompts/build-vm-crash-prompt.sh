@@ -104,9 +104,10 @@ fi
 if [ -z "$CI_COMMANDS" ]; then
     CI_COMMANDS="
   Could not auto-detect crashed test classes. Examine the crash report below,
-  identify which module the crashed test belongs to, and run:
-    mcp__ar-test-runner__start_test_run module:\"<module>\" jmx_monitoring:true
-  For ML module tests, add profile:\"pipeline\"."
+  identify which module the crashed test belongs to, and run ONLY that class:
+    mcp__ar-test-runner__start_test_run module:\"<module>\" jmx_monitoring:true test_classes:[\"<CrashedClass>\"]
+  For ML module tests, add profile:\"pipeline\". Never omit test_classes -- that
+  runs the module's whole suite, which is not permitted."
 fi
 
 # ── Write the prompt ───────────────────────────────────────────────

@@ -108,6 +108,32 @@ carries the original for comparison plus a `notice` about the feature's state.
 See [the Consultant README](../consultant/README.md#memory-text-original-vs-reformulated)
 for the full contract.
 
+## Test Execution Limits
+
+`workstream_submit_task` mechanically rejects submissions that would have an agent or
+job submitter run a full/whole test suite, a module's whole suite, or a CI shard —
+there is no bypass flag, unlike `allow_commit_language`. Three independent checks run
+before the submission ever reaches the controller:
+
+- **`post_completion_command` / `command`** — rejected when it runs a Maven
+  test-executing phase (`test`/`integration-test`/`verify`/`install`/`package`/`deploy`)
+  without an explicit `Class#method` `-Dtest` selector (a bare `-Dtest=Class` also
+  counts as too broad), references `AR_TEST_GROUP`/`AR_TEST_GROUPS`, or runs pytest
+  against a directory or whole file instead of an explicit node id.
+- **`post_completion_timeout_seconds`** — rejected above 2400 (40 minutes).
+- **`prompt`** — rejected when it instructs the agent, in English, to run a
+  full/whole/entire suite, a module's tests, a shard, `mvn test` without a
+  single-method selector, or `AR_TEST_GROUP`.
+
+Implemented in [`test_execution_limits.py`](test_execution_limits.py); see its module
+docstring for the incident that made this a hard requirement. The controller
+(`FlowTreeApiEndpoint#handleSubmit`) applies the same command validation independently
+via `io.flowtree.jobs.PostCompletionCommandValidator`, so a direct API call cannot
+bypass what this server rejects, and clamps `postCompletionTimeoutSeconds` to the same
+2400s ceiling. The `mcp__ar-test-runner__start_test_run` tool enforces the mirror image
+of this rule for interactive agent use: it rejects `test_group`/`test_groups` (CI-shard
+reproduction) outright and caps `timeout_minutes` at 40.
+
 ## Environment Variables
 
 | Variable | Default | Description |

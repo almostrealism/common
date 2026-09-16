@@ -92,6 +92,19 @@ it knowingly does not cover are in
 | `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`) |
 | `verify-completion.txt` | Template for verify-completion prompt |
 
+### Test execution limits
+
+Every prompt built here must instruct the agent to run only the specific failing
+test(s), one at a time — never a module's whole suite, `AR_TEST_GROUP`/`AR_TEST_GROUPS`
+(CI-shard partitioning), or `python3 -m unittest discover`/a whole pytest directory.
+Broad verification is the CI pipeline's job; a prompt that tells an agent session to
+reproduce it (e.g. "run the full CI command", "run the relevant module's tests") is a
+bug in the prompt, not a fair characterization of what the session should do. This is
+enforced mechanically elsewhere too — `workstream_submit_task`'s prompt/command
+validation (`tools/mcp/manager/test_execution_limits.py`), the controller's
+`PostCompletionCommandValidator`, and an agent-side `PreToolUse` Bash hook — so a
+prompt written to violate it fails loudly rather than quietly working around the gate.
+
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.
 Most take that path as their only argument; a few need additional file input first

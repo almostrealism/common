@@ -49,7 +49,7 @@ import fork_discovery  # noqa: E402
 # The target Maven project. Re-exported here because the MCP dispatch below
 # resolves the caller's `project` argument, and because tests and other
 # collaborators address these through the server module.
-from project import resolve_ci_test_groups, resolve_project_root  # noqa: E402
+from project import resolve_project_root  # noqa: E402
 
 RUNS_DIR = Path(__file__).parent / "runs"
 
@@ -67,6 +67,11 @@ DEFAULT_MODULE = "engine/utils"
 # inactivity kill (which is a confusing failure mode for the agent). Callers
 # may pass a higher value, but values >20 are unsafe under the harness.
 DEFAULT_TIMEOUT = 15
+# Hard ceiling on timeout_minutes: agents and job submitters may never run a
+# test or build invocation with a timeout over 2400s (40 minutes) -- see
+# tools/mcp/manager/test_execution_limits.py for the ar-manager-side half of
+# this same rule. There is no bypass.
+MAX_TIMEOUT_MINUTES = 40
 # Output and stacktrace limits are owned by the collaborators that apply them;
 # named here because the tool descriptions below quote them to callers.
 DEFAULT_OUTPUT_LINES = run_store.DEFAULT_OUTPUT_LINES
@@ -1057,10 +1062,13 @@ async def list_tools():
                     "timeout_minutes": {
                         "type": "integer",
                         "minimum": 1,
+                        "maximum": MAX_TIMEOUT_MINUTES,
                         "description": (
                             f"Max run time in minutes (default: {DEFAULT_TIMEOUT}). "
                             "Values >20 are unsafe under the harness's "
-                            "20-minute inactivity timeout."
+                            f"20-minute inactivity timeout. Rejected above "
+                            f"{MAX_TIMEOUT_MINUTES} minutes (2400s) -- broad "
+                            "verification belongs to CI."
                         )
                     },
                     "jvm_args": {
@@ -1090,12 +1098,12 @@ async def list_tools():
                     "test_group": {
                         "type": "integer",
                         "minimum": 0,
-                        "description": "Reproduce a CI test-matrix group: run the WHOLE module in one JVM with AR_TEST_GROUP set, so only classes hashing to this group run but they share JVM state exactly as on CI. Use this to reproduce failures that only appear when a test runs after others in the same JVM (static cache/intern-table pollution) -- a single test_classes run cannot reproduce these. Mutually exclusive with test_classes/test_methods (those are ignored when test_group is set). When test_groups is omitted, the group count is read from the CI workflow (AR_TEST_GROUPS in .github/workflows/analysis.yaml), so the partition always matches what CI actually runs. To fully mirror a CI job, also copy that job's hardware flags (AR_HARDWARE_DRIVER etc.) from the workflow into jvm_args."
+                        "description": "REJECTED. Reproducing a CI test-matrix group (running the WHOLE module in one JVM with AR_TEST_GROUP set) is a CI shard, which agents and job submitters may never run -- there is no bypass. Pass test_classes or test_methods to select the specific test(s) you need."
                     },
                     "test_groups": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": "Total number of groups for test_group partitioning (AR_TEST_GROUPS). Defaults to the value the CI workflow currently uses, read from .github/workflows/analysis.yaml at request time. Pass explicitly only to explore a partitioning different from CI's. Only used when test_group is set."
+                        "description": "REJECTED alongside test_group; see its description. Present only for wire-format compatibility."
                     }
                 }
             }
@@ -1240,20 +1248,45 @@ async def call_tool(name: str, arguments: dict):
     """Handle tool calls."""
     try:
         if name == "start_test_run":
+            # test_group reproduces a whole CI shard (every class hashing to
+            # the group, sharing one JVM) -- exactly the broad run agents and
+            # job submitters must never start. There is no operator bypass:
+            # see tools/mcp/manager/test_execution_limits.py for the same
+            # rule enforced at job submission.
+            if arguments.get("test_group") is not None:
+                return [TextContent(type="text", text=json.dumps({
+                    "error": (
+                        "test_group is not permitted: it reproduces a whole CI "
+                        "shard (every test class hashing to the group, run "
+                        "together in one JVM), which agents and job submitters "
+                        "may never run. Pass test_classes or test_methods to "
+                        "select the specific test(s) you need instead."
+                    ),
+                }, indent=2))]
+            timeout_minutes = arguments.get("timeout_minutes", DEFAULT_TIMEOUT)
+            if timeout_minutes and timeout_minutes > MAX_TIMEOUT_MINUTES:
+                return [TextContent(type="text", text=json.dumps({
+                    "error": (
+                        f"timeout_minutes={timeout_minutes} exceeds the maximum "
+                        f"of {MAX_TIMEOUT_MINUTES} minutes (2400s). Broad "
+                        "verification belongs to CI; a test invocation here "
+                        "must be narrow and fast."
+                    ),
+                }, indent=2))]
             config = RunConfig(
                 depth=arguments.get("depth"),
                 project=arguments.get("project", ""),
                 module=arguments.get("module", DEFAULT_MODULE),
                 test_classes=arguments.get("test_classes", []),
                 test_methods=arguments.get("test_methods", []),
-                timeout_minutes=arguments.get("timeout_minutes", DEFAULT_TIMEOUT),
+                timeout_minutes=timeout_minutes,
                 jvm_args=arguments.get("jvm_args", []),
                 profile=arguments.get("profile"),
                 jmx_monitoring=arguments.get("jmx_monitoring", False),
                 jfr_settings=arguments.get("jfr_settings", "default"),
                 repetitions=arguments.get("repetitions", 1),
-                test_group=arguments.get("test_group"),
-                test_groups=arguments.get("test_groups")
+                test_group=None,
+                test_groups=None
             )
             # Resolve eagerly so a bad path is reported as a tool error rather
             # than surfacing later as an opaque Maven failure inside a run.
@@ -1270,8 +1303,9 @@ async def call_tool(name: str, arguments: dict):
                     ],
                 }, indent=2))]
 
-            if config.test_group is not None and config.test_groups is None:
-                config.test_groups = resolve_ci_test_groups(config.module, project_root)
+            # config.test_group is always None here -- rejected above before
+            # RunConfig is built. resolve_ci_test_groups is still used by
+            # RunConfig callers outside this MCP surface (see test_runner_server.py).
             run_id, command = runner.start_run(config)
             response = {
                 "run_id": run_id,

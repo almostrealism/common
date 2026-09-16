@@ -982,6 +982,22 @@ public class InstructionPromptBuilder {
         sb.append("test fails, fix the underlying cause. Do NOT add `@Disabled`, comment ");
         sb.append("out assertions, or weaken tests to make them green.\n\n");
 
+        // Test execution limits -- always included for coding tasks
+        sb.append("## Test Execution Limits\n");
+        sb.append("Run at most ONE test per invocation: a single pytest node id ");
+        sb.append("(`path/test_x.py::test_name`), or `-Dtest=Class#method` for Java via ");
+        sb.append("`mcp__ar-test-runner__start_test_run`. Never a bare `-Dtest=Class` (that ");
+        sb.append("still runs the whole class), never a module's whole suite, and never ");
+        sb.append("`AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard partitioning, reserved ");
+        sb.append("for the CI workflow matrix. Broad verification belongs to CI, not to this ");
+        sb.append("session.\n\n");
+        sb.append("Every test or build invocation needs an explicit timeout of at most 40 ");
+        sb.append("minutes (2400s). Never leave a background build or test run active when ");
+        sb.append("you end your turn: this session is killed for inactivity — stdout ");
+        sb.append("silence, not total runtime — so an unattended background process either ");
+        sb.append("gets killed mid-run or, worse, outlives the session as orphaned state the ");
+        sb.append("next session has to diagnose before it can trust the build tree.\n\n");
+
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {
             sb.append("You have");

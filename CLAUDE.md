@@ -456,6 +456,29 @@ If a test fails, fix the underlying cause. Do NOT add `@Disabled`, comment out a
 or weaken tests to make them green — those are deception patterns that will be detected
 and reverted.
 
+## Test Execution Limits
+
+Agents and job submitters may never run the full test suite, a module's whole suite, or a
+CI shard. This is enforced mechanically at every surface that can start a test run — ar-manager
+job submission (`workstream_submit_task`), the controller's `/api/submit` endpoint, the
+`mcp__ar-test-runner__start_test_run` tool, and a `PreToolUse` Bash hook — not just by this
+paragraph. There is no bypass.
+
+- **One test per invocation.** A single pytest node id (`path/test_x.py::test_name`), or
+  `-Dtest=Class#method` for Java. A bare `-Dtest=Class` still runs the whole class and counts
+  as too broad. Never `AR_TEST_GROUP`/`AR_TEST_GROUPS` — that is CI-shard partitioning,
+  reserved for the CI workflow matrix.
+- **Every test or build invocation needs an explicit timeout of at most 40 minutes (2400s).**
+  `mvn install`/`package` with `-DskipTests` is a build, not a test run, and is exempt from
+  the one-test restriction (though it still needs a timeout).
+- **Never leave a background build or test run active when you end your turn.** Sessions are
+  killed for inactivity — stdout silence, not total runtime — so an unattended background
+  process either gets killed mid-run or outlives the session as orphaned state the next
+  session has to diagnose before it can trust the build tree.
+- **Broad verification belongs to CI.** If you need confidence beyond the specific tests you
+  can run narrowly, say so and let CI's full matrix decide — do not try to reproduce it
+  yourself in this session.
+
 ## Validate Code Quality Before Completing Any Task
 
 Before declaring a task done, run the build validator to catch style and policy violations

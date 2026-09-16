@@ -490,6 +490,62 @@ class GetRunStatusBlockingTest(unittest.TestCase):
         self.assertIn("error", status)
 
 
+class StartTestRunLimitsTest(unittest.TestCase):
+    """start_test_run rejects a CI-shard run (test_group) and a timeout over
+    the 2400s (40-minute) ceiling before touching Maven or the run store --
+    both checks return before ``runner.start_run`` is ever reached, so no
+    real process is spawned by these tests. See
+    tools/mcp/manager/test_execution_limits.py for the sibling rule enforced
+    at ar-manager job submission; there is no bypass for either.
+    """
+
+    def _dispatch(self, arguments):
+        result = asyncio.run(server.call_tool("start_test_run", arguments))
+        return json.loads(result[0].text)
+
+    def test_test_group_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils", "test_group": 2, "test_groups": 8})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn("CI shard", response["error"])
+
+    def test_test_group_alone_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({"module": "engine/utils", "test_group": 0})
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+
+    def test_timeout_minutes_over_max_is_rejected(self):
+        with patch.object(server.runner, "start_run") as mock_start:
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+                "timeout_minutes": 60,
+            })
+        mock_start.assert_not_called()
+        self.assertIn("error", response)
+        self.assertIn(str(server.MAX_TIMEOUT_MINUTES), response["error"])
+
+    def test_timeout_minutes_at_max_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({
+                "module": "engine/utils",
+                "test_classes": ["FooTest"],
+                "timeout_minutes": server.MAX_TIMEOUT_MINUTES,
+            })
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+    def test_default_timeout_is_accepted(self):
+        with patch.object(server.runner, "start_run", return_value=("run-1", "mvn test")) as mock_start, \
+                patch.object(server.build_tree, "in_flight", return_value=[]):
+            response = self._dispatch({"module": "engine/utils", "test_classes": ["FooTest"]})
+        mock_start.assert_called_once()
+        self.assertEqual("run-1", response["run_id"])
+
+
 class InvocationReportCopyTest(unittest.TestCase):
     """Per-invocation report collection must ignore reports left by earlier runs.
 

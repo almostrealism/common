@@ -25,6 +25,7 @@ import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.CompletionListenerFanout;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
+import io.flowtree.jobs.PostCompletionCommandValidator;
 import io.flowtree.jobs.SensitiveFileBypassTrailer;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
@@ -804,6 +805,22 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int postCompletionTimeoutSeconds = extractJsonIntField(body, "postCompletionTimeoutSeconds");
         int maxPostCompletionPasses = extractJsonIntField(body, "maxPostCompletionPasses");
         int delaySeconds = extractJsonIntField(body, "delaySeconds");
+
+        // No bypass exists for either check; see PostCompletionCommandValidator's javadoc.
+        for (String candidate : new String[] {command, postCompletionCommand}) {
+            PostCompletionCommandValidator validator = new PostCompletionCommandValidator(candidate).validate();
+            if (validator.hasViolations()) {
+                log("Rejected job submission for workstream " + workstreamId
+                        + ": broad test-run command (" + validator.getViolations().get(0) + ")");
+                return errorResponse(validator.formatRejection());
+            }
+        }
+        if (postCompletionTimeoutSeconds > PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS) {
+            log("Clamping postCompletionTimeoutSeconds from " + postCompletionTimeoutSeconds
+                    + " to " + PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS
+                    + " for workstream " + workstreamId);
+            postCompletionTimeoutSeconds = PostCompletionCommandValidator.MAX_TIMEOUT_SECONDS;
+        }
 
         if (shellJob) {
             return shellCommandSubmissionHandler().handle(body, workstream, workstreamId, command,

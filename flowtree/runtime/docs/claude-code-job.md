@@ -446,6 +446,21 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 16. **User Request Markers** -- Always the last section. Wraps the raw user prompt between `--- BEGIN USER REQUEST ---` and `--- END USER REQUEST ---` markers.
 
+In addition to the numbered, conditionally-included sections above, `build()` always
+appends a block of unconditional operational guidance (working-efficiently heuristics,
+the targeted-test-verification reminder, and enforcement-configuration rules) ahead of
+the budget/turn-limit section. **Test Execution Limits** is one of these: it tells the
+agent to run at most one test per invocation (a pytest node id, or `-Dtest=Class#method`
+for Java -- never a bare `-Dtest=Class`, a module's whole suite, or
+`AR_TEST_GROUP`/`AR_TEST_GROUPS`), to give every test or build invocation an explicit
+timeout of at most 40 minutes (2400s), and to never leave a background build or test run
+active when the turn ends, since the session is killed for stdout inactivity rather than
+total runtime. This mirrors the same rule enforced at job submission by
+`tools/mcp/manager/test_execution_limits.py` and at the controller by
+`io.flowtree.jobs.PostCompletionCommandValidator` -- the preamble is the agent-facing
+half; the submission-time validators are the mechanical backstop for a prompt or
+post-completion command that tries to violate it anyway.
+
 ### Builder Setters
 
 | Setter | Type | Condition for Inclusion |

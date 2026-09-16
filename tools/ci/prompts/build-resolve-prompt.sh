@@ -50,10 +50,12 @@ job is to fix the production code so these tests pass again.**
 
 **Conclude that no fix is needed.** The tests fail. A fix IS needed. Period.
 
-**Claim the tests "pass individually."** The CI pipeline runs the full test suite
-for a module, not individual test methods. Tests that pass in isolation may fail when
-run alongside other tests (shared state, ordering, resource contention). The ONLY way
-to verify your fix works is to run the exact CI command listed below.
+**Claim the tests "pass individually" as proof of nothing.** CI may run these tests
+together with others (shared state, ordering, resource contention), so a pass in
+isolation does not by itself rule out an ordering-dependent cause. Reproduce and
+verify with the exact test_classes commands listed below; if you have reason to
+believe the failure is order-dependent, say so explicitly rather than running the
+whole module suite yourself -- that investigation belongs to CI.
 
 **Blame the CI environment or call it "transient."** These failures are reproducible.
 They pass on master, they fail on this branch. Every time. If you claim otherwise
@@ -83,8 +85,9 @@ code, and identify where the branch changes broke the expected behavior.
 **Fix the production code.** Make the minimal change needed so the tests pass.
 
 **Reproduce the failure locally, then verify your fix.** Use the MCP test runner to
-run the CI command listed below. Do NOT run individual test methods -- run the full
-module test suite. If it passes, your fix works. If it fails, keep investigating.
+run only the specific failing test(s) listed below, one at a time. Broad verification
+(a whole module's suite, a CI shard) belongs to CI, not this session. If each failing
+test now passes, your fix works. If one still fails, keep investigating.
 
 ---
 
@@ -134,9 +137,13 @@ PROMPT_HEADER
 append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
 
 # ── Determine which modules contain failures and build CI commands ──
-# Parse class names from the failure list and map them to Maven modules.
-# The CI command section tells the agent exactly how to reproduce.
+# Parse class#method names from the failure list and map each class to its
+# Maven module. The CI command section names the SPECIFIC failing classes
+# via test_classes so the agent reproduces narrowly, one test at a time --
+# never a bare module run (that is a whole-module suite, which agents may
+# never run; see ci/test-execution-limits).
 FAILING_MODULES=""
+MODULE_CLASSES=""
 while IFS= read -r line; do
     # Only process lines that start with "- " (test name lines).
     # Skip exception details, stack traces, and blank lines.
@@ -151,22 +158,30 @@ while IFS= read -r line; do
                 if ! echo "$FAILING_MODULES" | grep -qw "$module"; then
                     FAILING_MODULES="${FAILING_MODULES:+$FAILING_MODULES }$module"
                 fi
+                short_class="${class_name##*.}"
+                existing=$(eval "echo \"\${MODULE_CLASSES_${module}:-}\"")
+                if ! echo "$existing" | grep -qw "$short_class"; then
+                    eval "MODULE_CLASSES_${module}=\"\${existing:+\$existing }${short_class}\""
+                fi
             fi
             ;;
     esac
 done < "$FAILURES_FILE"
 
-# Build CI reproduction commands for each failing module
+# Build CI reproduction commands for each failing module: name the specific
+# failing classes, never a bare module-wide run.
 CI_COMMANDS=""
 for module in $FAILING_MODULES; do
+    classes=$(eval "echo \"\${MODULE_CLASSES_${module}:-}\"")
+    class_list=$(echo "$classes" | tr ' ' '\n' | sed 's/^/"/;s/$/"/' | paste -sd, -)
     if [ "$module" = "ml" ]; then
         CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\" profile:\"pipeline\""
+  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[${class_list}] profile:\"pipeline\""
     else
         CI_COMMANDS="${CI_COMMANDS}
 Module: ${module}
-  mcp__ar-test-runner__start_test_run module:\"${module}\""
+  mcp__ar-test-runner__start_test_run module:\"${module}\" test_classes:[${class_list}]"
     fi
 done
 
@@ -174,9 +189,11 @@ done
 if [ -z "$CI_COMMANDS" ]; then
     CI_COMMANDS="
 Could not auto-detect failing modules. Examine the failing test class names below,
-find which module they belong to (utils, ml, audio, music, compose), and run:
-  mcp__ar-test-runner__start_test_run module:\"<module>\"
-For ML module tests, add profile:\"pipeline\"."
+find which module they belong to (utils, ml, audio, music, compose), and run ONLY
+that specific class:
+  mcp__ar-test-runner__start_test_run module:\"<module>\" test_classes:[\"<FailingClass>\"]
+For ML module tests, add profile:\"pipeline\". Never omit test_classes -- that runs
+the module's whole suite, which is not permitted."
 fi
 
 # Now append the dynamic portion
@@ -195,14 +212,15 @@ These tests PASS on origin/master. They FAIL on this branch. The branch changes 
 ## How to reproduce (REQUIRED)
 
 You MUST reproduce the failure locally before attempting a fix and after applying
-your fix. Use the MCP test runner with these exact commands:
+your fix. Use the MCP test runner with these exact commands -- each names the
+specific failing class(es) via \`test_classes\`, never a bare module run:
 ${CI_COMMANDS}
 
-You MAY run individual test methods or classes to reproduce and debug the failure.
-However, passing in isolation does NOT prove the problem is fixed — the CI pipeline
-runs the FULL module test suite, and failures may only manifest when the entire suite
-runs (shared state, test ordering, etc.). Always verify your fix with the full module
-suite before concluding.
+Run only the specific failing test(s), one at a time. Do NOT run the module's whole
+suite and do NOT reference \`AR_TEST_GROUP\`/\`AR_TEST_GROUPS\` to reproduce CI's shard
+ordering -- if a failure genuinely only manifests alongside other tests (shared state,
+ordering), say so explicitly in your summary instead of running the whole suite
+yourself; broad verification is CI's job.
 
 ## Investigation steps
 
@@ -223,8 +241,8 @@ suite before concluding.
 
 5. **Fix the production code.** Make the minimal change needed.
 
-6. **Verify by running the full CI command above.** Not individual tests -- the full
-   module suite. If it passes, your fix works.
+6. **Verify by re-running the specific failing test(s) above, one at a time.** If
+   each one now passes, your fix works.
 
 7. **Run the build validator to confirm your fix doesn't introduce new style or policy issues:**
    \`\`\`
