@@ -22,6 +22,7 @@ import java.io.InputStream;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 /**
  * JNI bridge to native Metal framework (libMTL.dylib).
@@ -35,6 +36,12 @@ import java.nio.file.Files;
  * // Automatically extracts libMTL.dylib to temp directory and loads it
  * // No manual initialization required
  * }</pre>
+ *
+ * <p>The extracted copy is named uniquely per process (rather than a fixed
+ * {@code libMTL.dylib}) so that concurrent JVMs sharing the same OS temp
+ * directory, such as parallel test forks on one CI machine, never delete or
+ * overwrite the library file that another process is in the middle of
+ * extracting or loading.</p>
  *
  * <h2>Device Operations</h2>
  *
@@ -58,16 +65,15 @@ import java.nio.file.Files;
  */
 public class MTL {
 	static {
-		System.getProperty("java.io.tmpdir");
 		InputStream is = MTL.class.getClassLoader().getResourceAsStream("libMTL.dylib");
 
 		File tempDir = new File(System.getProperty("java.io.tmpdir"));
 		tempDir.mkdir();
 
-		File tempLibFile = new File(tempDir, "libMTL.dylib");
+		File tempLibFile = new File(tempDir, "libMTL-" + ProcessHandle.current().pid() + ".dylib");
 		try {
-			if (tempLibFile.exists()) Files.delete(tempLibFile.toPath());
-			Files.copy(is, tempLibFile.toPath());
+			Files.copy(is, tempLibFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			tempLibFile.deleteOnExit();
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
