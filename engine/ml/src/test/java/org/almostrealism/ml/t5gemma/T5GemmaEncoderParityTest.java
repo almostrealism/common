@@ -36,13 +36,13 @@ public class T5GemmaEncoderParityTest extends TestSuiteBase {
 
 	/** Candidate locations for the extracted weight directory (first existing wins). */
 	private static final String[] WEIGHT_DIRS = {
-			System.getenv("AR_T5GEMMA_WEIGHTS"),
+			System.getProperty("AR_T5GEMMA_WEIGHTS", System.getenv("AR_T5GEMMA_WEIGHTS")),
 			"/workspace/t5gemma-weights"
 	};
 
 	/** Candidate locations for the reference directory (first existing wins). */
 	private static final String[] REFERENCE_DIRS = {
-			System.getenv("AR_T5GEMMA_REFERENCES"),
+			System.getProperty("AR_T5GEMMA_REFERENCES", System.getenv("AR_T5GEMMA_REFERENCES")),
 			"target/test-classes/t5gemma-references",
 			"engine/ml/target/test-classes/t5gemma-references"
 	};

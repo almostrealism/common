@@ -51,8 +51,12 @@ def _find_token():
         "/Users/worker/.cache/huggingface/token",
     ):
         if os.path.isfile(path):
-            with open(path) as f:
-                token = f.read().strip()
+            try:
+                with open(path) as f:
+                    token = f.read().strip()
+            except OSError:
+                # An unreadable token file (another user's cache) is the same as no token.
+                continue
             if token:
                 return token
     return None
@@ -107,6 +111,14 @@ def test_ae_expected_keys_present(released_keys):
     missing = sorted(k for k in sa3.SA3_AE_EXPECTED_KEYS if k not in released_keys)
     assert not missing, (
         "SA3 AE remap config expects keys absent from the released checkpoint "
+        "(layout drift?): %s" % missing)
+
+
+def test_conditioner_expected_keys_present(released_keys):
+    """The conditioner tensors the SA3 config expects exist in the released repo."""
+    missing = sorted(k for k in sa3.SA3_CONDITIONER_EXPECTED_KEYS if k not in released_keys)
+    assert not missing, (
+        "SA3 conditioner remap config expects keys absent from the released checkpoint "
         "(layout drift?): %s" % missing)
 
 

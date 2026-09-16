@@ -779,11 +779,19 @@ The small DiT is `new DiffusionTransformerConfig(256, 1024, 20, 16, 1, 768, 768,
 | D2 conditioner | `Conditioner.apply_padding(learned)` substitutes `conditioner.conditioners.prompt.padding_embedding` at padded positions; `seconds_total` = `NumberConditioner(0, 384, expo)` appended as the last cross-attention token and used as the global conditioning | `StableAudio3Conditioner` (one compiled model: encoder, padding substitution, duration token); `NumberConditioner.expo(...)` for the deterministic Fourier ladder |
 | Studio wiring | | `CompiledModelAutoEncoder.of(SAMEAutoEncoder, ...)` |
 
-Still open: the real-weight parity runs (the T5Gemma references must be regenerated on the
-runner that holds the weights, and the SAME-S transformer layers must be run on a Metal-free
-machine: the first real-weight `SAMEResamplingParityTest` run (2026-09-13) reproduced the
-convolution and mapping stages to ~1e-6 but produced NaN in every transformer layer past the
-first, which matches the deferred Metal defect noted by `skipWhenMetalPresent`; that test
-previously passed silently on NaN and now fails correctly), the extraction of the two conditioner
-tensors from the DiT checkpoint, and the generation glue that chains conditioner, DiT, sampler
-(`LogSNRShift` ping-pong with guidance) and autoencoder decode.
+Added on 2026-09-16:
+
+| Item | Reference behaviour | Now |
+|---|---|---|
+| D2 real-weight parity | `T5GemmaEncoderModel` in float32 on the fixed prompt | passes (`maxErrorPrompt 0.18` of `maxRef 51.8`). The first run failed only for tokens whose table row starts beyond element `2^24`: the embedding gathered by a flat single-precision index. `CollectionFeatures.rows` (integer address arithmetic in the kernel) replaces it; `T5GemmaEncoderStageParityTest` checks the embedding and the first layer's branches separately |
+| Conditioner tensors | `conditioner.conditioners.prompt.padding_embedding`, `seconds_total.embedder.embedding.1.{weight,bias}` | `extract_sa3_weights.py --target conditioner` |
+| Generation | `Model.generate`: duration plus 6 s headroom aligned to 8192 samples and capped at `sample_size`; padding mask over the duration plus headroom; zero inpainting inputs; 8 ping-pong steps under `LogSNRShift(rate 0, -6.2, 2)`; guidance off by default; output clamped and truncated to the duration | `StableAudio3` (compiled once for a maximum duration; shorter requests are masked rather than cropped) with `StableAudio3.small(...)` over the extracted dictionaries; `StableAudio3Test` over synthetic components |
+| DiT real-weight parity | one forward pass of the released small DiT (`dump_sa3_dit_reference.py`) | `StableAudio3TransformerParityTest` (gated on `AR_SA3_DIT_WEIGHTS` / `AR_SA3_DIT_REFERENCES`) |
+
+Still open: the SAME-S transformer layers must be run on a Metal-free machine (the first
+real-weight `SAMEResamplingParityTest` run, 2026-09-13, reproduced the convolution and mapping
+stages to ~1e-6 but produced NaN in every transformer layer past the first, which matches the
+deferred Metal defect noted by `skipWhenMetalPresent`; no FlowTree runner carrying the
+`os:linux` label picked up the job submitted for it), the full autoencoder round trip against
+the `ae_*` references, and an end-to-end generation with the released weights (which on a Mac
+also waits on the Metal defect).
