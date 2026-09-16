@@ -428,7 +428,7 @@ for each file in changedFiles:
 
     if protectTestFiles AND matchesAnyPattern(file, protectedPathPatterns):
         if isCiWorkflowFile(file) OR NOT file.endsWith(".java"):
-            if existsOnBaseBranch(file):
+            if existsOnBaseBranch(file, mergeBase):
                 skip("protected - exists on base branch")
                 continue
             else:

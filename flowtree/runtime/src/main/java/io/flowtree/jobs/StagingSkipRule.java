@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -44,8 +45,17 @@ import java.util.List;
  * (review, deduplication, organizational placement, custom rules) and
  * immediately before the final commit-message check, so a skip is reported
  * only once those rules have had their say about the tree's content.</p>
+ *
+ * <p>{@code commit.txt} is excluded from what this rule reports even though
+ * {@link FileStager} always skips it: every job is instructed to write it,
+ * it is harness-owned metadata read by {@link CommitMessageBuilder} and
+ * never itself committed, and flagging its expected exclusion on every job
+ * would just be noise crowding out real drops.</p>
  */
 class StagingSkipRule implements EnforcementRule {
+
+    /** The one harness-owned file every job writes that is never itself committed. */
+    private static final String COMMIT_MESSAGE_FILE = "commit.txt";
 
     @Override
     public String getName() {
@@ -55,12 +65,12 @@ class StagingSkipRule implements EnforcementRule {
     @Override
     public boolean isViolated(CodingAgentJob job) {
         if (job.hasAgentCommitted()) return false;
-        return !job.previewStaging().getSkippedFiles().isEmpty();
+        return !reportableSkips(job).isEmpty();
     }
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
-        List<String> skipped = job.previewStaging().getSkippedFiles();
+        List<String> skipped = reportableSkips(job);
         if (skipped.isEmpty()) return null;
 
         StringBuilder prompt = new StringBuilder();
@@ -82,5 +92,23 @@ class StagingSkipRule implements EnforcementRule {
     @Override
     public int getMaxRetries() {
         return 2;
+    }
+
+    /**
+     * Returns the staging skips worth surfacing to the agent: every skip
+     * from {@link GitManagedJob#previewStaging()} except the expected
+     * exclusion of {@link #COMMIT_MESSAGE_FILE}.
+     *
+     * @param job the job whose current uncommitted changes to preview
+     * @return the skipped-file entries the agent should hear about
+     */
+    private List<String> reportableSkips(CodingAgentJob job) {
+        List<String> reportable = new ArrayList<>();
+        for (String entry : job.previewStaging().getSkippedFiles()) {
+            if (!entry.startsWith(COMMIT_MESSAGE_FILE + " (")) {
+                reportable.add(entry);
+            }
+        }
+        return reportable;
     }
 }

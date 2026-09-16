@@ -20,6 +20,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -117,6 +118,35 @@ public class StagingSkipRuleTest extends TestSuiteBase {
     public void correctionPromptNullWhenNothingSkipped() {
         StubJob job = new StubJob(clean());
         assertNull(new StagingSkipRule().buildCorrectionPrompt(job));
+    }
+
+    /**
+     * commit.txt is expected to be excluded by every job that writes one —
+     * it is harness-owned metadata, never itself committed — so its
+     * exclusion must not trigger the correction loop on its own.
+     */
+    @Test(timeout = 30000)
+    public void isViolatedFalseWhenOnlyCommitTxtIsSkipped() {
+        StubJob job = new StubJob(withSkip("commit.txt (excluded pattern)"));
+        assertFalse(new StagingSkipRule().isViolated(job));
+        assertNull(new StagingSkipRule().buildCorrectionPrompt(job));
+    }
+
+    /**
+     * A real drop alongside the expected commit.txt exclusion must still be
+     * reported, with commit.txt itself left out of the prompt.
+     */
+    @Test(timeout = 30000)
+    public void reportsRealSkipsWhileFilteringCommitTxt() {
+        StagingResult preview = new StagingResult(Collections.emptyList(), Arrays.asList(
+                "commit.txt (excluded pattern)",
+                "src/test/java/FooTest.java (protected - existing test method(s) changed: testFoo)"));
+        StubJob job = new StubJob(preview);
+        assertTrue(new StagingSkipRule().isViolated(job));
+        String prompt = new StagingSkipRule().buildCorrectionPrompt(job);
+        assertTrue(prompt.contains("FooTest.java"));
+        assertFalse("commit.txt's expected exclusion must not appear in the prompt",
+                prompt.contains("commit.txt"));
     }
 
     /**

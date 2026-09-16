@@ -215,7 +215,7 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /**
      * Returns all files reported as changed by {@code git status --porcelain -uall},
-     * via {@link GitOperations#getChangedFiles}.
+     * via {@link GitOperations#requireChangedFiles}.
      *
      * <p>Includes modified, added, deleted, and untracked files. Untracked
      * files are listed individually rather than collapsed to their containing
@@ -224,10 +224,16 @@ class GitCommitHandler implements ConsoleFeatures {
      * guardrails on its own and the commit-time {@code .flowtree/} gate can
      * act per file.</p>
      *
+     * <p>Uses the throwing query rather than {@link GitOperations#getChangedFiles},
+     * because {@link #handle} reads an empty result as "nothing to commit" and
+     * reports success — a failed {@code git status} query must surface as a
+     * failure here rather than being mistaken for a clean tree.</p>
+     *
      * @return list of changed file paths relative to the working directory
+     * @throws IOException if the underlying {@code git status} query fails
      */
-    private List<String> findChangedFiles() {
-        List<String> files = GitOperations.getChangedFiles(job.getWorkingDirectory());
+    private List<String> findChangedFiles() throws IOException {
+        List<String> files = GitOperations.requireChangedFiles(job.getWorkingDirectory());
         log("Found " + files.size() + " changed files");
         return files;
     }

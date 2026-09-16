@@ -148,8 +148,7 @@ public class FileStager implements ConsoleFeatures {
             if (config.isProtectTestFiles()
                     && matchesAnyPattern(file, config.getProtectedPathPatterns())) {
                 if (isCiWorkflowFile(file) || !file.endsWith(".java")) {
-                    // TODO(review): still checks origin/<baseBranch> tip, not mergeBase (see memory)
-                    if (existsOnBaseBranch(file, config.getBaseBranch(), gitOps)) {
+                    if (existsOnBaseBranch(file, mergeBase, gitOps)) {
                         log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
                         skippedFiles.add(file + " (protected - exists on base branch)");
                         continue;
@@ -327,21 +326,39 @@ public class FileStager implements ConsoleFeatures {
     }
 
     /**
-     * Checks whether a file exists on the base branch by invoking
-     * {@code git cat-file -e origin/<baseBranch>:<file>}.
+     * Checks whether a file exists at the merge-base by invoking
+     * {@code git cat-file -e <mergeBase>:<file>}.
      *
-     * <p>Fails safe: returns {@code true} (protected) if the check errors
-     * out, preventing accidental modifications to test files.</p>
+     * <p>Checked against the merge-base rather than the live tip of the base
+     * branch, for the same reason {@link TestMethodProtection} is: the base
+     * branch keeps moving after a feature branch forks from it, and a
+     * tip-based check would misattribute the base branch's own later edits
+     * to the agent's branch.</p>
      *
-     * @param file       the file path to check
-     * @param baseBranch the base branch name
-     * @param gitOps     git operations interface
-     * @return true if the file exists on the base branch
+     * <p>Fails safe: returns {@code true} (protected) if the merge-base is
+     * unresolved, if {@code cat-file} exits with anything other than its
+     * documented 0 (exists) or 1 (absent) result, or if the check errors
+     * out — preventing accidental modifications to test files.</p>
+     *
+     * @param file      the file path to check
+     * @param mergeBase the merge-base commit id, or {@code null} if it could
+     *                  not be resolved
+     * @param gitOps    git operations interface
+     * @return true if the file exists at the merge-base
      */
-    private boolean existsOnBaseBranch(String file, String baseBranch, GitOperations gitOps) {
+    private boolean existsOnBaseBranch(String file, String mergeBase, GitOperations gitOps) {
+        if (mergeBase == null) {
+            return true; // Fail safe: protect if merge-base could not be resolved
+        }
         try {
-            String ref = "origin/" + baseBranch;
-            return gitOps.execute("cat-file", "-e", ref + ":" + file) == 0;
+            int exitCode = gitOps.execute("cat-file", "-e", mergeBase + ":" + file);
+            if (exitCode == 1) {
+                return false;
+            }
+            if (exitCode != 0) {
+                warn("Could not check merge-base content for " + file + ": cat-file exited " + exitCode);
+            }
+            return true; // exit code 0 (exists), or any other code, fails safe
         } catch (Exception e) {
             warn("Could not check base branch for " + file + ": " + e.getMessage());
             return true; // Fail safe: protect if uncertain

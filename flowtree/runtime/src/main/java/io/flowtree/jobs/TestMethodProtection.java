@@ -163,6 +163,12 @@ class TestMethodProtection implements ConsoleFeatures {
      * Evaluates whether {@code file} may be staged, given its content at
      * {@code mergeBase} and its current content in {@code workingDirectory}.
      *
+     * <p>The merge-base existence check distinguishes {@code cat-file -e}'s
+     * documented "object does not exist" exit code (1) from any other
+     * non-zero exit code (e.g. a bad merge-base ref): only exit code 1 is
+     * read as "absent"; every other non-zero result is a failed check and
+     * fails closed rather than being read as a negative answer.</p>
+     *
      * @param file             the file path to evaluate, relative to
      *                         {@code workingDirectory}
      * @param mergeBase        the merge-base commit id from
@@ -176,13 +182,17 @@ class TestMethodProtection implements ConsoleFeatures {
             return Verdict.blocked("exists on base branch; merge-base could not be resolved");
         }
 
-        boolean existedAtMergeBase;
+        int existsExitCode;
         try {
-            existedAtMergeBase = gitOps.execute("cat-file", "-e", mergeBase + ":" + file) == 0;
+            existsExitCode = gitOps.execute("cat-file", "-e", mergeBase + ":" + file);
         } catch (Exception e) {
             return Verdict.blocked("exists on base branch; could not check merge-base content: " + e.getMessage());
         }
-        if (!existedAtMergeBase) {
+        if (existsExitCode != 0 && existsExitCode != 1) {
+            return Verdict.blocked(
+                    "exists on base branch; merge-base content check failed with exit code " + existsExitCode);
+        }
+        if (existsExitCode == 1) {
             return Verdict.allowed("branch-new file (absent at merge-base " + shortSha(mergeBase) + ")");
         }
 
