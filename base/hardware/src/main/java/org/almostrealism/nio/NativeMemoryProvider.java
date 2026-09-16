@@ -332,7 +332,8 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 */
 	@Override
 	public synchronized void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
-		if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer) {
+		if (mem instanceof NativeBuffer buffer && source instanceof NativeBuffer sourceBuffer
+				&& source.getProvider().getNumberSize() == getNumberSize()) {
 			copyBuffer(buffer, offset, sourceBuffer, srcOffset, length);
 			return;
 		}
